@@ -45,3 +45,10 @@ jobs:
       - run: cargo fmt --manifest-path apps/runtime/Cargo.toml -- --check
       - run: cargo test --manifest-path apps/runtime/Cargo.toml --locked
       - run: cargo clippy --manifest-path apps/runtime/Cargo.toml --all-targets --locked -- -D warnings
+
+  self-hosted-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: AELYS_SECRET_KEY=ci-only-aelys-secret-key-0123456789 POSTGRES_PASSWORD=ci-only-postgres-password docker compose -f compose.self-hosted.yaml config --quiet
+      - run: docker build --file backend/Dockerfile --tag aelys-backend:ci .
