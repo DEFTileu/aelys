@@ -58,6 +58,9 @@ Updated: 2026-10-28
 - Web/shared checks now pass: web has 12 Vitest tests and a production build;
   the desktop design shell is integrated in `codex/desktop-design-integration`
   and Home, Tasks and Projects keep live API/offline states.
+  Desktop Tauri unbundled release binary build passes; Android init/build remain
+  blocked by missing manually configured Android command-line tools and the
+  absent generated `gen/android` project.
   shared has 12 API/offline tests and a typecheck, including a 100-operation
   offline reopen batch. End-to-end authenticated CRUD,
   crash/restart sync and cross-device recovery are still pending.

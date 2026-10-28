@@ -15,6 +15,12 @@ shell and wallpaper. Its Home, Tasks and Projects surfaces preserve the live
 API/offline states; AI and Settings continue to use the authenticated live
 views. The visual layer does not turn unavailable data into demo records.
 
+The current branch also re-ran `pnpm --filter @aelys/desktop tauri:build`; the
+unbundled desktop release binary compiled successfully. Android verification
+remains blocked by the same external prerequisite: `tauri android init` stops
+because Android command-line tools require manual setup, so `gen/android` is
+absent and `tauri android build` cannot start.
+
 | Area | Evidence | Result |
 |---|---|---|
 | Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **56 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
