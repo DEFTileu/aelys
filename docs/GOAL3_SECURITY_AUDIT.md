@@ -173,18 +173,17 @@ Define and implement the approved secret-store boundary before release: external
 **Evidence**
 
 - backend/app/ai/policy.py:22-32 and backend/app/ai/tools.py:53-63 provide a policy-aware typed tool boundary.
-- backend/app/ai/api.py:28-30 accepts arbitrary system and tool messages and an unrestricted tool_scope object.
-- backend/app/ai/api.py:137-146 persists a run and user message, but does not resolve tool scope through a policy context.
-- backend/app/ai/api.py:172-185 constructs a provider request from the latest user message; the mounted path does not execute registered typed tools or enforce a local-session egress decision.
+- backend/app/ai/api.py now stores a conversation-scoped tool policy, rejects per-run scope escalation, and binds each run to its prompt/provider identity.
+- The mounted path now executes only the server-registered task/note tool subset through typed validation and `ServerPolicyEngine`; it still does not provide the full retrieval/local-session egress tool surface.
 - Prompt-injection/redaction tests exist in backend/tests/ai_automation/test_ai_harness.py:69-89, but they test the library boundary, not a full email-to-tool or agent-session-to-provider route.
 
 **Impact**
 
-The repository has policy primitives but does not prove note-to-task tool use, injection-triggered external-effect rejection, or a per-project/provider local-session egress switch.
+The repository now proves bounded task/note tool use and scope rejection, but does not prove note retrieval, injection-triggered external-effect rejection, or a per-project/provider local-session egress switch.
 
-**Remediation**
+**Remaining remediation**
 
-Make tool scopes server-derived and owner/project-bound. Reject caller-supplied authorization claims, route every tool call through policy and typed validation, mark retrieved content untrusted at the API boundary, add local_only/provider-egress decisions, and add integration tests for email injection, agent snippets, external effects, and cancellation.
+Expand the server-derived tool registry and owner/project policy, mark retrieved content untrusted at the API boundary, add local_only/provider-egress decisions, and add integration tests for email injection, agent snippets, external effects, and cancellation.
 
 ### G3-09 — Medium: browser token storage and Tauri CSP weaken the client boundary
 

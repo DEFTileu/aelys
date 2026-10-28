@@ -17,6 +17,26 @@ The strongest blockers are:
 4. PostgreSQL was not running locally; the two PostgreSQL integration tests failed with connection refused.
 5. The repository has no release workflow or artifact publication, and the install/self-host documentation is incomplete.
 
+### Current checkout update
+
+The original audit above is retained as historical evidence from its audit
+date. Subsequent verified work changed the current release evidence:
+
+- `make openapi` now writes through a temporary file and current generation
+  produces 65 paths with an HTTP bearer scheme.
+- A fresh temporary Docker PostgreSQL database on `127.0.0.1:55432` passed
+  Alembic upgrade/check through `0014` and both PostgreSQL integration tests.
+- `backend/.env.example`, `docs/SELF_HOSTING.md`, and
+  `docs/BACKUP_RESTORE.md` provide the local SQLite/PostgreSQL setup,
+  encrypted owner export/restore, and a PostgreSQL backup/restore drill.
+- The current checked-in frontend manifests use exact versions and frozen
+  pnpm install passes. Desktop Tauri release binary compilation also passes;
+  bundle/signing/notarization remain separate blockers.
+
+The release decision remains **not release-ready** because platform signing,
+Android APK generation, vendor execution trust, external integrations, and
+full cross-device/native offline recovery are still unverified or blocked.
+
 ## Repository and reproducibility inputs
 
 | Area | Evidence | Result |
