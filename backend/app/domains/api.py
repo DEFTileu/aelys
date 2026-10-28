@@ -19,6 +19,7 @@ class ProjectPatchIn(StrictModel): version: int | None = None; name: str | None 
 class ResourceLinkIn(StrictModel): from_resource_id: str; to_resource_id: str; relation_type: str = Field(min_length=1, max_length=50)
 class FinanceCategoryIn(StrictModel): name: str = Field(min_length=1, max_length=200); kind: str = "expense"
 class FinanceBudgetIn(StrictModel): category_id: str | None = None; currency: str = Field(min_length=3, max_length=3); period_start: datetime; period_end: datetime; limit_amount: Decimal
+class NotificationIn(StrictModel): kind: str = Field(default="info", min_length=1, max_length=80); title: str = Field(default="Notification", min_length=1, max_length=300); body: str | None = Field(default=None, max_length=20_000); data: dict = Field(default_factory=dict); dedup_key: str | None = Field(default=None, max_length=150)
 class NoteIn(BaseModel): title: str; markdown_body: str = ""; parent_id: str | None = None; project_id: str | None = None
 class NoteOut(NoteIn): model_config=ConfigDict(from_attributes=True); id: str; version: int
 class TaskIn(BaseModel): title: str; description: str = ""; project_id: str | None = None; parent_task_id: str | None = None; status: str = "todo"; priority: int = 0; due_at: datetime | None = None; due_timezone: str | None = None; rrule: str | None = None
@@ -276,8 +277,8 @@ async def history(principal=Depends(current_principal), db:AsyncSession=Depends(
 async def notifications(principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; return list((await db.execute(select(Notification).where(Notification.owner_id==user.id,Notification.deleted_at.is_(None)).order_by(Notification.created_at.desc()).limit(200))).scalars())
 @router.post("/notifications")
-async def create_notification(body:dict, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=Notification(owner_id=user.id,kind=str(body.get("kind","info")),title=str(body.get("title","Notification")),body=body.get("body"),data_json=body.get("data",{}),dedup_key=body.get("dedup_key")); db.add(item); await db.commit(); await db.refresh(item); return item
+async def create_notification(body:NotificationIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
+    user,_=principal; item=Notification(owner_id=user.id,kind=body.kind,title=body.title,body=body.body,data_json=body.data,dedup_key=body.dedup_key); db.add(item); await db.commit(); await db.refresh(item); return item
 @router.post("/notifications/{item_id}/read")
 async def mark_notification_read(item_id:str, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await owner_obj(Notification,item_id,user.id,db); item.read_at=datetime.now(timezone.utc); await db.commit(); return item

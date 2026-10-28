@@ -37,6 +37,7 @@ async def test_public_contracts_and_remote_run_policy(tmp_path, monkeypatch):
         assert (await c.get("/api/v1/finance/categories",headers=h)).status_code==200 and (await c.get("/api/v1/finance/budgets",headers=h)).status_code==200
         mail_account=(await c.post("/api/v1/mail/accounts",json={"provider":"local_import"},headers=h)).json(); assert any(x["id"]==mail_account["id"] for x in (await c.get("/api/v1/mail/accounts",headers=h)).json())
         notification=(await c.post("/api/v1/notifications",json={"kind":"test","title":"Notice"},headers=h)).json(); assert (await c.post(f"/api/v1/notifications/{notification['id']}/read",headers=h)).status_code==200
+        strict_notification=await c.post("/api/v1/notifications",json={"title":"Invalid","unexpected":True},headers=h); assert strict_notification.status_code==422
         device=(await c.post("/api/v1/devices/enroll",json={"platform":"macos","display_name":"Mac"},headers=h)).json()
         sync_h={"Authorization":f"Bearer {device['access_token']}"}
         grant=await c.post(f"/api/v1/projects/{project['id']}/grants",headers=h,json={"device_id":device["device_id"],"policy_id":"policy-1"}); assert grant.status_code==200 and grant.json()["isolation_validated"] is False
