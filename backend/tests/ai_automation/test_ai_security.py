@@ -64,6 +64,16 @@ async def test_ai_routes_bind_owner_project_idempotency_and_provider_endpoint(tm
                 assert response.status_code == 422
                 assert response.json()["detail"]["code"] == "INVALID_PROVIDER_ENDPOINT"
 
+            provider = await client.post("/api/v1/ai/providers", headers=headers, json={"kind": "claude"})
+            assert provider.status_code == 200
+            provider_id = provider.json()["id"]
+            stored = await client.put(f"/api/v1/ai/providers/{provider_id}/secret", headers=headers, json={"api_key": "test-only-provider-key"})
+            assert stored.status_code == 200
+            deleted = await client.delete(f"/api/v1/ai/providers/{provider_id}/secret", headers=headers)
+            assert deleted.status_code == 200 and deleted.json()["deleted"] is True
+            listed = await client.get("/api/v1/ai/providers", headers=headers)
+            assert listed.status_code == 200 and listed.json()[0]["secret_ref"] is None
+
             project = await client.post("/api/v1/projects", headers=headers, json={"name": "Owned"})
             assert project.status_code == 200
             conversation = await client.post(

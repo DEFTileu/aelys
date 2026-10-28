@@ -164,6 +164,9 @@ Keep execution disabled. Complete a supported macOS spike covering packaged help
 
 Authenticated encryption and response redaction are demonstrated, but production key custody, rotation, multi-process access control, deletion, and provider-specific egress isolation are not proven. A compromise of the application master secret exposes all stored provider credentials.
 
+The current checkout now provides authenticated owner-scoped secret deletion;
+key rotation/KMS custody and provider egress isolation remain release gates.
+
 **Remediation**
 
 Define and implement the approved secret-store boundary before release: external KMS/OS keychain or documented self-hosted equivalent, key-version rotation and re-encryption, ownership checks, deletion/revocation, redacted error/log tests, and provider egress policy tests.

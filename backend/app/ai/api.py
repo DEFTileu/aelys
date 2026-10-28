@@ -250,6 +250,15 @@ async def set_provider_secret(provider_id:str,body:SecretIn,principal=Depends(cu
     if not provider.secret_ref: provider.secret_ref=provider_id
     await db.commit()
     return {"stored":True,"provider_id":provider_id,"last_four":body.api_key[-4:]}
+@router.delete("/ai/providers/{provider_id}/secret")
+async def delete_provider_secret(provider_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    user,_=principal; provider=await db.get(AIProvider,provider_id)
+    if not provider or provider.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Provider not found"})
+    secret=await db.get(AIProviderSecret,provider_id)
+    if secret: await db.delete(secret)
+    provider.secret_ref=None
+    await db.commit()
+    return {"deleted":True,"provider_id":provider_id}
 @router.post("/ai/conversations")
 async def create_conversation(body:ConversationIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal

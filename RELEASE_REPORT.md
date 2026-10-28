@@ -94,6 +94,8 @@ unverified or blocked:
   references, execute only the server-registered task/note tool subset, and
   reject unapproved/non-HTTPS provider endpoints before any BYOK key is used;
   the selected provider is pinned to the run and HTTP redirects are disabled.
+- BYOK provider secrets now have an authenticated delete/revoke endpoint and a
+  typed shared client method; key rotation/KMS custody remain deployment gates.
 - AI SSE events are redacted, persisted per run with sequence IDs, and replayed
   for terminal runs or after `Last-Event-ID`.
 
