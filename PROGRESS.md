@@ -63,6 +63,8 @@ Updated: 2026-10-28
   absent generated `gen/android` project.
   A fresh disposable PostgreSQL 16 run from this checkout passed Alembic
   upgrade/check through 0014 and both PostgreSQL integration tests.
+  CI now has a tag/manual unsigned web and desktop artifact workflow with
+  checksum sidecars; it does not claim signing or Android artifacts.
   shared has 12 API/offline tests and a typecheck, including a 100-operation
   offline reopen batch. End-to-end authenticated CRUD,
   crash/restart sync and cross-device recovery are still pending.

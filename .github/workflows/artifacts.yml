@@ -1,0 +1,60 @@
+name: Unsigned development artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @aelys/web build
+      - name: Package unsigned web artifact
+        run: |
+          tar -czf aelys-web-unsigned.tar.gz -C apps/web/dist .
+          sha256sum aelys-web-unsigned.tar.gz > aelys-web-unsigned.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aelys-web-unsigned
+          path: |
+            aelys-web-unsigned.tar.gz
+            aelys-web-unsigned.tar.gz.sha256
+
+  desktop:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm --filter @aelys/desktop tauri:build
+      - name: Package unsigned desktop binary
+        run: |
+          tar -czf aelys-desktop-unsigned.tar.gz -C apps/desktop/src-tauri/target/release aelys-desktop
+          shasum -a 256 aelys-desktop-unsigned.tar.gz > aelys-desktop-unsigned.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aelys-desktop-unsigned
+          path: |
+            aelys-desktop-unsigned.tar.gz
+            aelys-desktop-unsigned.tar.gz.sha256

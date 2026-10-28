@@ -103,6 +103,10 @@ unverified or blocked:
 - CI now runs frozen workspace install, desktop/mobile host Rust checks, and
   the unbundled desktop Tauri binary build. It still does not claim signed
   bundles or Android APK artifacts.
+- `.github/workflows/artifacts.yml` now provides tag/manual unsigned web and
+  desktop development artifacts with SHA-256 sidecars; signing, notarization,
+  installer generation and Android artifacts remain deliberately outside that
+  workflow.
 - Active AI SSE streams observe auth-session revocation and cancel the run;
   repeated stream readers cannot claim a queued run twice.
 - Mounted AI runs bind their prompt message and request fingerprint, reject
