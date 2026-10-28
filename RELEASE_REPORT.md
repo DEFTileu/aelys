@@ -165,3 +165,5 @@ not claim production TLS, reverse proxy, process
 supervision, signing, or deployment readiness.
 The CI workflow now repeats the Compose config and image build smoke checks.
 The image uses the checked-in `backend/uv.lock` with `uv sync --frozen`.
+An ephemeral Compose smoke also passed PostgreSQL health, backend migration,
+`/healthz`, and `/docs`; its database volume was removed after the check.

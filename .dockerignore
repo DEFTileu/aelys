@@ -3,6 +3,7 @@
 .claude
 .codex
 .venv
+backend/.venv
 node_modules
 apps/*/node_modules
 apps/*/dist

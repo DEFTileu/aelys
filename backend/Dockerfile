@@ -11,5 +11,6 @@ RUN python -m pip install --no-cache-dir uv \
 COPY backend .
 
 ENV PATH="/app/backend/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/backend"
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "/app/backend/.venv/bin/alembic upgrade head && /app/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000"]

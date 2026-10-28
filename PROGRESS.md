@@ -105,3 +105,5 @@ Complete authenticated vendor CLI compatibility and supported macOS helper signi
 - `.dockerignore` keeps local caches, frontend artifacts, Rust targets and
   secrets out of the backend image build context; Compose config and a local
   backend image build pass.
+- An ephemeral Compose smoke passed PostgreSQL health, backend migration,
+  `/healthz` and `/docs`, then removed its temporary volume.
