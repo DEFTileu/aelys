@@ -47,7 +47,7 @@ const NAV: NavItem[] = [
   { id: 'calendar', label: 'Calendar', icon: Calendar, route: '/calendar' },
   { id: 'projects', label: 'Projects', icon: Folder, route: '/projects' },
   { id: 'notes', label: 'Notes', icon: NotebookText, route: '/notes' },
-  { id: 'mail', label: 'Mail', icon: Mail, badge: '12', route: '/mail' },
+  { id: 'mail', label: 'Mail', icon: Mail, route: '/mail' },
   { id: 'finance', label: 'Finances', icon: Wallet, route: '/finance' },
   { id: 'kb', label: 'Knowledge base', icon: BookOpen, route: '/notes' },
   { id: 'widgets', label: 'Widgets', icon: LayoutGrid, route: '/', customize: true },
@@ -81,7 +81,6 @@ export function AppShell({ route, children }: { route: RoutePath; apiStatus: Api
   const [scale, setScale] = useState(fitScale)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const settings = useDesktopState()
-  const remaining = settings.done.filter((on) => !on).length
 
   useEffect(() => {
     const onResize = () => setScale(fitScale())
@@ -120,7 +119,7 @@ export function AppShell({ route, children }: { route: RoutePath; apiStatus: Api
             {NAV.map((item) => {
               const on = item.id === screen
               const Icon = item.icon
-              const badge = item.id === 'tasks' ? String(remaining) : item.badge
+              const badge = item.badge
               // Widgets opens Home in Customize mode; the flag is set before navigating so Home picks it up on mount.
               const open = () => { if (item.customize) requestCustomizeHome(); go(item.route) }
               return <button key={item.id} type="button" className={`shell-btn shell-nav-item${on ? ' shell-nav-item--on' : ''}`} aria-current={on ? 'page' : undefined} onClick={open} style={on ? { background: 'var(--accent-soft)' } : undefined}>
