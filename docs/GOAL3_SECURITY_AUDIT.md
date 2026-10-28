@@ -195,8 +195,8 @@ Expand the server-derived tool registry and owner/project policy, mark retrieved
 **Evidence**
 
 - apps/web/src/lib/api.ts:4-5,37-49,58-64 stores the access token in JavaScript-readable sessionStorage.
-- apps/desktop/src-tauri/tauri.conf.json:24-25 and apps/mobile/src-tauri/tauri.conf.json:14-15 allow script-src 'unsafe-eval' and style-src 'unsafe-inline'.
-- apps/web/index.html:1-13 has no visible CSP.
+- apps/desktop/src-tauri/tauri.conf.json and apps/mobile/src-tauri/tauri.conf.json now use `script-src 'self'` with `object-src 'none'`; inline styles remain for the current UI.
+- apps/web/index.html now includes a visible CSP meta policy with `script-src 'self'`, `object-src 'none'`, and `frame-ancestors 'none'`.
 - packages/shared/src/offline.ts:59 correctly avoids putting the bearer token into the IndexedDB outbox, but this does not protect the live browser token from XSS.
 
 **Impact**
@@ -205,7 +205,7 @@ Script execution in the web origin can read the active access token. Tauri permi
 
 **Remediation**
 
-Prefer a server-managed session or short-lived device-bound token with a non-script refresh flow. Add strict production CSP without unsafe-eval, narrow development exceptions to dev builds, and add security-header checks.
+Prefer a server-managed session or short-lived device-bound token with a non-script refresh flow. Add response-header CSP/security-header checks and replace the remaining inline-style allowance when the UI styling pipeline permits it.
 
 ### G3-10 — Medium: domain input contracts are inconsistent with the security model
 
