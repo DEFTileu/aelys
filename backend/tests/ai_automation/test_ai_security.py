@@ -28,7 +28,15 @@ class CountingTransport:
 class ToolTransport(CountingTransport):
     async def post(self, url, *, headers, json):
         self.calls += 1
-        return HttpResponse(200, {"id": "tool-response", "content": [{"type": "tool_use", "id": "call-1", "name": "create_task", "input": {"title": "Created by AI"}}], "usage": {"input_tokens": 4, "output_tokens": 2}})
+        tool_call = {"type": "tool_use", "id": "call-1", "name": "create_task", "input": {"title": "Created by AI"}}
+        return HttpResponse(200, {"id": "tool-response", "content": [tool_call, tool_call], "usage": {"input_tokens": 4, "output_tokens": 2}})
+
+
+class FailingStreamTransport(CountingTransport):
+    async def stream(self, url, *, headers, json):
+        self.calls += 1
+        raise RuntimeError("provider unavailable")
+        yield {}
 
 
 @pytest.mark.asyncio
@@ -80,6 +88,23 @@ async def test_ai_routes_bind_owner_project_idempotency_and_provider_endpoint(tm
             conflict = await client.post("/api/v1/ai/runs", headers=headers, json=changed)
             assert conflict.status_code == 409
             assert conflict.json()["detail"]["code"] == "IDEMPOTENCY_CONFLICT"
+            scoped_conversation = await client.post(
+                "/api/v1/ai/conversations",
+                headers=headers,
+                json={"tool_scope": {"scopes": ["tasks.write"]}},
+            )
+            denied = await client.post(
+                "/api/v1/ai/runs",
+                headers=headers,
+                json={
+                    "conversation_id": scoped_conversation.json()["id"],
+                    "message": "escalate",
+                    "tool_scope": {"scopes": ["notes.write"]},
+                    "idempotency_key": "scope-escalation",
+                },
+            )
+            assert denied.status_code == 403
+            assert denied.json()["detail"]["code"] == "POLICY_DENIED"
     finally:
         await engine.dispose()
 
@@ -152,11 +177,11 @@ async def test_mounted_ai_tool_call_is_validated_authorized_and_executed_once(tm
                 },
             )
             await client.put(f"/api/v1/ai/providers/{provider.json()['id']}/secret", headers=headers, json={"api_key": "test-only-provider-key"})
-            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={"tool_scope": {"scopes": ["tasks.write"]}})
             run = await client.post(
                 "/api/v1/ai/runs",
                 headers=headers,
-                json={"conversation_id": conversation.json()["id"], "message": "make a task", "routing": {"provider": "claude", "model": "tool-model"}, "tool_scope": {"scopes": ["tasks.write"]}, "idempotency_key": "tool-once"},
+                json={"conversation_id": conversation.json()["id"], "message": "make a task", "routing": {"provider": "claude", "model": "tool-model"}, "idempotency_key": "tool-once"},
             )
             async with client.stream("GET", f"/api/v1/ai/runs/{run.json()['id']}/events", headers=headers) as response:
                 body = (await response.aread()).decode()
@@ -166,5 +191,31 @@ async def test_mounted_ai_tool_call_is_validated_authorized_and_executed_once(tm
             async with factory() as session:
                 tasks = (await session.execute(select(Task))).scalars().all()
                 assert len(tasks) == 1 and tasks[0].title == "Created by AI"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_is_terminal_failed_not_completed(tmp_path, monkeypatch):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/ai-failure.db")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(db, "SessionLocal", factory)
+    transport = FailingStreamTransport()
+    monkeypatch.setattr(ai_api, "HttpxTransport", lambda **kwargs: transport)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            bootstrap = await client.post("/api/v1/auth/bootstrap", json={"email": "ai-failure@example.com", "password": "correct horse battery staple"})
+            headers = {"Authorization": f"Bearer {bootstrap.json()['access_token']}"}
+            provider = await client.post("/api/v1/ai/providers", headers=headers, json={"kind": "claude", "model_policy": {"models": [{"name": "failure-model", "capabilities": ["streaming"], "context_tokens": 4096}]}})
+            await client.put(f"/api/v1/ai/providers/{provider.json()['id']}/secret", headers=headers, json={"api_key": "test-only-provider-key"})
+            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+            run = await client.post("/api/v1/ai/runs", headers=headers, json={"conversation_id": conversation.json()["id"], "message": "fail", "routing": {"provider": "claude", "model": "failure-model"}, "idempotency_key": "failure-once"})
+            async with client.stream("GET", f"/api/v1/ai/runs/{run.json()['id']}/events", headers=headers) as response:
+                body = (await response.aread()).decode()
+            assert "ai.run.failed" in body and "ai.run.completed" not in body
+            terminal = await client.get(f"/api/v1/ai/runs/{run.json()['id']}", headers=headers)
+            assert terminal.json()["status"] == "failed"
     finally:
         await engine.dispose()

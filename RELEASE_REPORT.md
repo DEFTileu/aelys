@@ -12,7 +12,7 @@ development evidence from platform or external-account blockers.
 
 | Area | Evidence | Result |
 |---|---|---|
-| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **49 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
+| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **50 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
 | Python quality | `compileall`, Ruff, mypy, Bandit and pip-audit from CI/local records | **Pass**; the audit warning from Starlette/httpx remains non-blocking |
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
 | OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
@@ -42,8 +42,9 @@ unverified or blocked:
 - AI typed tool execution from the mounted API, prompt-injection end-to-end
   tests and local-session egress policy: **partial/unverified**. A bounded
   server-registered task/note tool loop now validates, authorizes and executes
-  provider tool calls; broader tool coverage, prompt-injection E2E and durable
-  usage budget accounting remain open.
+  provider tool calls; its policy is conversation-scoped and cannot be expanded
+  by a run. Broader tool coverage, prompt-injection E2E, SSE event replay and
+  durable usage budget accounting remain open.
 - Claude Code/Codex authenticated execution: **blocked intentionally**.
   Version/help probes pass, but adapters remain `can_run=false` until
   credentialed compatibility and trusted macOS isolation/provenance evidence
@@ -84,7 +85,8 @@ unverified or blocked:
 - Mounted AI runs bind their prompt message and request fingerprint, reject
   idempotency-key reuse with a different payload, enforce owner project
   references, execute only the server-registered task/note tool subset, and
-  reject unapproved/non-HTTPS provider endpoints before any BYOK key is used.
+  reject unapproved/non-HTTPS provider endpoints before any BYOK key is used;
+  the selected provider is pinned to the run and HTTP redirects are disabled.
 
 ## Platform and external blockers
 

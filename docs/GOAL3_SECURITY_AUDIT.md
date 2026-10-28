@@ -12,7 +12,8 @@ The release gate remains open because:
 
 - logout does not revoke the authenticated session, and access tokens are not checked against a revocable session record;
 - agent metadata and live-search routes do not enforce project grants;
-- the mounted automation API writes directly to domain tables without the Policy Engine;
+- the mounted automation API has only a bounded task/notification action set and
+  still lacks durable rate limits and failure retry audit;
 - the web/native clients do not yet provide end-to-end durable local entity storage and crash/restart sync recovery;
 - authenticated vendor execution, packaged macOS isolation evidence, helper lifecycle, signing/provenance deployment, Android APK validation, Gmail OAuth, and Telegram delivery are absent or intentionally blocked.
 
@@ -62,22 +63,31 @@ An authenticated owner token can enumerate metadata for any owner project, and a
 
 Centralize an authorization helper requiring owner, non-revoked device, project grant, permitted operation, and egress policy. Apply it to metadata ingestion, session listing, search, snippets, run creation, credential leases, and WebSocket messages. Add negative tests for missing, revoked, mismatched-device, and mismatched-project grants.
 
-### G3-03 — High: mounted automation dispatch bypasses the Policy Engine
+### G3-03 — High: mounted automation durability is incomplete
 
 **Evidence**
 
-- backend/app/automation/api.py:43-64 directly creates Task and Notification rows.
-- The route stores policy_ref but never resolves or invokes ServerPolicyEngine or ToolRegistry.
-- backend/app/automation/api.py:52-60 allowlists action names but does not validate action arguments through typed tool validators or enforce project scope.
-- The separate library engine enforces policy at backend/app/automation/engine.py:75-96, and tests cover that library path in backend/tests/ai_automation/test_automation.py:17-60; that does not secure the mounted HTTP route.
+- backend/app/automation/api.py registers typed `create_task` and
+  `create_notification` handlers through `ToolRegistry` and
+  `ServerPolicyEngine`, with owner/project validation and a unique event claim.
+- backend/tests/test_automation_api.py covers strict action rejection, policy
+  denial, project scope and concurrent duplicate dispatch.
+- `rate_limit_json` is stored but durable rate limiting and failure retry audit
+  remain absent; the mounted handlers still write through the current route
+  transaction rather than a separate durable domain service.
 
 **Impact**
 
-The production API path can execute automation actions without the required policy decision. A rule can also create a task with an arbitrary same-owner project_id without resolving that project through an owner-scoped service.
+The remaining release risk is durability and operational audit: a configured
+rate limit is not enforced across processes and a failed transaction does not
+leave a durable retry record. The authorization boundary itself is now present
+for the bounded mounted action set.
 
 **Remediation**
 
-Remove direct table writes from the route. Persist and dispatch typed actions through ToolRegistry and policy context. Validate referenced projects, enforce rate limits and dry-run semantics in the durable service, make duplicate dispatch concurrency-safe, and add route-level tests proving out-of-scope actions are rejected.
+Keep the registered typed ToolRegistry/policy path, then add durable rate-limit
+records, failure/retry audit and full domain-service dispatch. Preserve the
+database uniqueness claim and route-level scope tests.
 
 ### G3-04 — High: offline-first durability and write idempotency are not proven end to end
 
@@ -102,13 +112,14 @@ push, pull and acknowledgement tests; implement native stores where required.
 Enforce one server idempotency contract for every state-changing route,
 including payload binding and owner/device scope.
 
-### G3-05 — High: OpenAPI does not describe authentication and production HTTP hardening is not visible
+### G3-05 — High: production HTTP hardening is not visible
 
 **Evidence**
 
 - backend/app/main.py:14-35 creates the FastAPI app and mounts routers without global security dependency, trusted-host middleware, CORS policy, request-size policy, or production exception/logging configuration.
-- backend/app/core/security.py:55-60 reads the bearer header manually rather than using an OpenAPI HTTPBearer/Security dependency.
-- docs/openapi.json has no explicit bearer security scheme/security requirement according to the repository’s existing contract audit; the same gap is described in docs/GOAL2_PLATFORM_AUDIT.md.
+- backend/app/core/security.py now uses the reusable `HTTPBearer` dependency and
+  docs/openapi.json exposes the bearer scheme; route-level security requirements
+  are still inferred rather than applied globally.
 - backend/app/core/api.py:46-52 exposes public bootstrap, hidden from schema but not disabled or protected after initialization.
 
 **Impact**
@@ -250,7 +261,7 @@ The following matrix audits every checkbox in docs/ACCEPTANCE_TESTS.md.
 | C6 | Telegram webhook redelivery deduplication | Blocked | No Telegram webhook handler exists. |
 | D1 | BYOK encrypted at rest, absent from API reads/logs | Partial / Unverified | AES-GCM storage and last-four response are implemented/tested; production key custody/rotation/log inspection are not proven. |
 | D2 | Routing respects capabilities, budget, privacy, manual override | Partial / Unverified | Router/model tests exist; mounted AI route uses a fixed request budget and does not derive scope from authorized policy. |
-| D3 | AI finds note and writes task through typed permissioned tool | Blocked | Tool primitives exist, but mounted run path does not invoke domain tools (backend/app/ai/api.py:137-185). |
+| D3 | AI finds note and writes task through typed permissioned tool | Partial / Unverified | Mounted API now executes the bounded server-registered task/note tools through validation and policy; retrieval, broader tools and prompt-injection E2E remain unverified. |
 | D4 | Email prompt injection cannot trigger send/shell | Partial / Unverified | Untrusted-data/policy unit tests exist; no complete email-to-tool integration, and live send/shell actions are absent. |
 | D5 | Streaming cancellation/timeout has stable final state | Verified for backend lifecycle evidence | Durable cancellation and compare-and-set completion exist (backend/app/ai/api.py:167-213); focused tests are present. |
 | E1 | Claude/Codex compatibility detectable | Verified as conservative probe only | Version/help probes exist; adapters remain can_run=false (apps/runtime/src/adapter.rs:102-124). This is not successful vendor execution. |
@@ -268,7 +279,7 @@ The following matrix audits every checkbox in docs/ACCEPTANCE_TESTS.md.
 | F7 | Revoking project grant prevents new runs | Verified for backend gate | Run creation requires a non-revoked, isolation-validated matching grant (backend/app/agents/api.py:223-227). |
 | G1 | Duplicate event executes one rule once | Partial / Unverified | In-memory engine and database uniqueness are present; mounted dispatch lacks a race-safe policy service transaction. |
 | G2 | Out-of-scope tool attempt denied regardless of model content | Verified for policy library / Unverified mounted path | Policy tests prove the primitive; API tool execution is incomplete. |
-| G3 | Dry run, audit, rate limit, disable stop execution | Unverified | Engine has the concepts; mounted dispatch does not enforce stored rate limits and bypasses policy (backend/app/automation/api.py:43-64). |
+| G3 | Dry run, audit, rate limit, disable stop execution | Partial / Unverified | Mounted policy and duplicate claims are covered; durable rate limits, failure audit/retry and complete dry-run durability remain open. |
 | H1 | New developer starts with sample config and no private secrets | Verified for documented local setup | READMEs and CLAUDE.md provide local commands and secret requirements; no clean-machine reproduction here. |
 | H2 | CI runs unit/integration/type/lint/security checks | Verified for recorded CI evidence | .github/workflows/ci.yml and PROGRESS.md record Python, Rust, TypeScript, migration, OpenAPI, Bandit, and dependency checks; no fresh CI run here. |
 | H3 | Final license confirmed before release | Blocked | docs/DECISIONS.md ADR-019 remains PROPOSED; docs/OPEN_QUESTIONS.md keeps license confirmation open. |
@@ -314,7 +325,9 @@ The following findings received local fixes after this audit snapshot:
   provider endpoints are restricted to approved HTTPS hosts. A bounded
   server-registered task/note tool loop now validates and authorizes provider
   calls; broader tool coverage, durable budget accounting and vendor execution
-  remain open.
+  remain open. The policy is conversation-scoped, provider identity is pinned
+  to the run, provider redirects are disabled, and duplicate tool-call IDs are
+  deduplicated. SSE event replay and DNS-level endpoint pinning remain open.
 - G3-05: protected REST operations expose an HTTP bearer scheme in OpenAPI and
   the Makefile rejects empty snapshots before replacement.
 - G3-11: encrypted owner export/restore is implemented and tested with an

@@ -3600,6 +3600,11 @@
             "type": "string",
             "title": "Title",
             "default": "Conversation"
+          },
+          "tool_scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Tool Scope"
           }
         },
         "type": "object",

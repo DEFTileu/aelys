@@ -162,13 +162,13 @@ class AIProviderSecret(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 class AIConversation(Owned):
     __tablename__ = "ai_conversations"
-    project_id: Mapped[str | None] = mapped_column(String(36)); title: Mapped[str] = mapped_column(String(300), default="Conversation")
+    project_id: Mapped[str | None] = mapped_column(String(36)); title: Mapped[str] = mapped_column(String(300), default="Conversation"); tool_scope_json: Mapped[dict] = mapped_column(JSON, default=dict)
 class AIMessage(Base):
     __tablename__ = "ai_messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid); conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_conversations.id")); role: Mapped[str] = mapped_column(String(20)); content: Mapped[str] = mapped_column(Text); source_refs_json: Mapped[list] = mapped_column(JSON, default=list); created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 class AIRun(Owned):
     __tablename__ = "ai_runs"
-    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_conversations.id")); prompt_message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_messages.id"), nullable=True); provider: Mapped[str] = mapped_column(String(50)); model: Mapped[str] = mapped_column(String(150)); status: Mapped[str] = mapped_column(String(30), default="queued"); idempotency_key: Mapped[str | None] = mapped_column(String(150), nullable=True); request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True); tool_scope_json: Mapped[dict] = mapped_column(JSON, default=dict); token_counts: Mapped[dict] = mapped_column(JSON, default=dict); cost_estimate: Mapped[Decimal] = mapped_column(Numeric(20,8), default=Decimal("0")); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_conversations.id")); prompt_message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_messages.id"), nullable=True); provider_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_providers.id"), nullable=True); provider: Mapped[str] = mapped_column(String(50)); model: Mapped[str] = mapped_column(String(150)); status: Mapped[str] = mapped_column(String(30), default="queued"); idempotency_key: Mapped[str | None] = mapped_column(String(150), nullable=True); request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True); tool_scope_json: Mapped[dict] = mapped_column(JSON, default=dict); token_counts: Mapped[dict] = mapped_column(JSON, default=dict); cost_estimate: Mapped[Decimal] = mapped_column(Numeric(20,8), default=Decimal("0")); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (Index("ix_ai_run_owner_idempotency", "owner_id", "idempotency_key", unique=True),)
 
 class AgentSessionIndex(Owned):

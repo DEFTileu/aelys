@@ -31,7 +31,7 @@ from urllib.parse import urlparse
 router=APIRouter()
 _active_cancellations: dict[str, asyncio.Event] = {}
 class ProviderIn(BaseModel): kind:str=Field(pattern="^(claude|openrouter)$"); base_url:str|None=None; enabled:bool=True; model_policy:dict={}; secret_ref:str|None=None
-class ConversationIn(BaseModel): project_id:str|None=None; title:str="Conversation"
+class ConversationIn(BaseModel): project_id:str|None=None; title:str="Conversation"; tool_scope:dict=Field(default_factory=dict)
 class MessageIn(BaseModel): role:str=Field(pattern="^(user|assistant|system|tool)$"); content:str; source_refs:list[dict]=[]
 class RunIn(BaseModel): conversation_id:str; message:str; routing:dict={}; tool_scope:dict={}; idempotency_key:str
 class SecretIn(BaseModel): api_key:str=Field(min_length=8,max_length=4096)
@@ -70,9 +70,11 @@ def _tool_call(raw: Mapping[str, Any]) -> ToolCall:
                 arguments = json.loads(arguments)
             except json.JSONDecodeError as exc:
                 raise ToolValidationError("tool arguments are invalid") from exc
-        return ToolCall(str(function.get("name", "")), arguments if isinstance(arguments, Mapping) else {}, str(raw.get("id", "")))
+        stable_id = str(raw.get("id") or hashlib.sha256(json.dumps({"name":function.get("name", ""),"arguments":arguments}, sort_keys=True, separators=(",",":"), default=str).encode()).hexdigest())
+        return ToolCall(str(function.get("name", "")), arguments if isinstance(arguments, Mapping) else {}, stable_id)
     arguments = raw.get("input", raw.get("arguments", {}))
-    return ToolCall(str(raw.get("name", "")), arguments if isinstance(arguments, Mapping) else {}, str(raw.get("id", "")))
+    stable_id = str(raw.get("id") or hashlib.sha256(json.dumps({"name":raw.get("name", ""),"arguments":arguments}, sort_keys=True, separators=(",",":"), default=str).encode()).hexdigest())
+    return ToolCall(str(raw.get("name", "")), arguments if isinstance(arguments, Mapping) else {}, stable_id)
 
 def _tool_registry(db: AsyncSession, owner_id: str, event_id: str) -> ToolRegistry:
     registry = ToolRegistry(ServerPolicyEngine())
@@ -116,8 +118,8 @@ def _provider_base_url(kind: str, value: str | None) -> str:
         raise HTTPException(status_code=422, detail={"code":"INVALID_PROVIDER_ENDPOINT","message":"Provider endpoint must be an approved HTTPS host"})
     return value.rstrip("/")
 
-def _request_fingerprint(body: RunIn) -> str:
-    canonical = json.dumps({"conversation_id":body.conversation_id,"message":body.message,"routing":body.routing,"tool_scope":body.tool_scope}, sort_keys=True, separators=(",",":"), ensure_ascii=False)
+def _request_fingerprint(body: RunIn, effective_scope: frozenset[str]) -> str:
+    canonical = json.dumps({"conversation_id":body.conversation_id,"message":body.message,"routing":body.routing,"tool_scope":{"scopes":sorted(effective_scope)}}, sort_keys=True, separators=(",",":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 class HttpxTransport:
@@ -127,7 +129,7 @@ class HttpxTransport:
 
     async def post(self,url,*,headers,json):
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=60, follow_redirects=False) as client:
                 response=await client.post(url,headers=headers,json=json)
             try: body=response.json()
             except ValueError: body={}
@@ -136,7 +138,7 @@ class HttpxTransport:
             raise RuntimeError("provider transport unavailable") from exc
     async def stream(self,url,*,headers,json):
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=120, follow_redirects=False) as client:
                 async with client.stream("POST",url,headers=headers,json=json) as response:
                     if response.status_code>=400: raise RuntimeError(f"provider returned status {response.status_code}")
                     lines = response.aiter_lines().__aiter__()
@@ -220,7 +222,8 @@ async def create_conversation(body:ConversationIn,principal=Depends(current_prin
         project = await db.get(Project, body.project_id)
         if not project or project.owner_id != user.id or project.deleted_at is not None:
             raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation project not found"})
-    item=AIConversation(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
+    scopes = _requested_tool_scopes(body.tool_scope)
+    item=AIConversation(owner_id=user.id,project_id=body.project_id,title=body.title,tool_scope_json={"scopes":sorted(scopes)}); db.add(item); await db.commit(); await db.refresh(item); return item
 @router.get("/ai/conversations/{conversation_id}/messages")
 async def messages(conversation_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,conversation_id)
@@ -235,8 +238,11 @@ async def add_message(conversation_id:str,body:MessageIn,principal=Depends(curre
 async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,body.conversation_id)
     if not convo or convo.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation not found"})
+    conversation_scopes = _requested_tool_scopes(convo.tool_scope_json or {})
     requested_scopes = _requested_tool_scopes(body.tool_scope)
-    fingerprint = _request_fingerprint(body)
+    if requested_scopes and requested_scopes != conversation_scopes:
+        raise HTTPException(status_code=403, detail={"code":"POLICY_DENIED","message":"AI run cannot change the conversation tool policy"})
+    fingerprint = _request_fingerprint(body, conversation_scopes)
     existing=(await db.execute(select(AIRun).where(AIRun.owner_id==user.id,AIRun.idempotency_key==body.idempotency_key))).scalar_one_or_none()
     if existing:
         if existing.request_fingerprint != fingerprint:
@@ -247,7 +253,7 @@ async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSes
     provider=configured.kind if configured else "configured"; model=body.routing.get("model","auto")
     message = AIMessage(conversation_id=body.conversation_id,role="user",content=body.message)
     db.add(message); await db.flush()
-    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint,tool_scope_json={"scopes":sorted(requested_scopes)}); db.add(item)
+    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider_id=configured.id if configured else None,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint,tool_scope_json={"scopes":sorted(conversation_scopes)}); db.add(item)
     try:
         await db.commit()
     except IntegrityError:
@@ -268,15 +274,15 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Run not found"})
     claims = decode_token(credentials.credentials if credentials else "")
     session_id = str(claims.get("sid", ""))
-    provider=(await db.execute(select(AIProvider).where(AIProvider.owner_id==user.id,AIProvider.kind==item.provider,AIProvider.enabled.is_(True),AIProvider.deleted_at.is_(None)))).scalar_one_or_none()
+    provider=await db.get(AIProvider, item.provider_id) if item.provider_id else (await db.execute(select(AIProvider).where(AIProvider.owner_id==user.id,AIProvider.kind==item.provider,AIProvider.enabled.is_(True),AIProvider.deleted_at.is_(None)))).scalars().first()
     secret=await db.get(AIProviderSecret,provider.id) if provider else None
     conversation = await db.get(AIConversation, item.conversation_id)
     last_message=await db.get(AIMessage, item.prompt_message_id) if item.prompt_message_id else None
-    if last_message is None:
-        last_message=(await db.execute(select(AIMessage).where(AIMessage.conversation_id==item.conversation_id,AIMessage.role=="user").order_by(AIMessage.created_at.desc()).limit(1))).scalars().first()
     async def stream():
-        if not provider or not secret:
-            yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':'MODEL_UNAVAILABLE','message':'Provider or encrypted BYOK secret is not configured'})}\n\n"; return
+        if not provider or provider.owner_id != user.id or not provider.enabled or not secret or last_message is None:
+            await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status.in_(["queued","running"])).values(status="failed",completed_at=datetime.now(timezone.utc)))
+            await db.commit()
+            yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':'MODEL_UNAVAILABLE' if provider and secret else 'PROMPT_UNAVAILABLE','message':'Provider, encrypted secret, or bound prompt is not available'})}\n\n"; return
         try:
             await db.refresh(item)
             if item.status == "cancelled":
@@ -318,9 +324,19 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
                 tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=Decimal("100"))
                 result = await service.complete(__import__('uuid').UUID(run_id), tool_request, (ChatMessage("user",last_message.content if last_message else ""),), tools=tuple(registry.schemas()), cancel=cancel_event)
+                if await durable_cancel_check():
+                    yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                    return
                 yield f"event: ai.run.started\ndata: {json.dumps({'run_id':run_id,'provider':result.provider.value,'model':result.model})}\n\n"
+                seen_calls: set[str] = set()
                 for raw_call in result.response.tool_calls:
                     call = _tool_call(raw_call)
+                    if call.call_id in seen_calls:
+                        continue
+                    seen_calls.add(call.call_id)
+                    if await durable_cancel_check():
+                        yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                        return
                     yield f"event: ai.tool.requested\ndata: {json.dumps({'run_id':run_id,'tool':call.name,'call_id':call.call_id})}\n\n"
                     try:
                         output = await registry.invoke(call, context)
@@ -340,12 +356,19 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(timezone.utc),token_counts=item.token_counts,cost_estimate=item.cost_estimate)); await db.commit()
                 yield f"event: ai.run.completed\ndata: {json.dumps({'run_id':run_id,'text_length':len(result.response.text),'estimated_cost':str(result.usage.estimated_cost)})}\n\n"
                 return
-            async for event in service.stream_sse(__import__('uuid').UUID(run_id),request,(ChatMessage("user",last_message.content if last_message else ""),),cancel=cancel_event,cancel_check=durable_cancel_check):
+            stream_failed = False
+            async for event in service.stream_sse(__import__('uuid').UUID(run_id),request,(ChatMessage("user",last_message.content),),cancel=cancel_event,cancel_check=durable_cancel_check):
                 await db.refresh(item)
                 if item.status == "cancelled":
                     yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
                     return
+                if event.startswith("event: ai.run.failed"):
+                    stream_failed = True
                 yield event
+            if stream_failed:
+                await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(timezone.utc)))
+                await db.commit()
+                return
             await db.refresh(item)
             if item.status == "cancelled":
                 return
