@@ -1,7 +1,7 @@
 # Aelys Goal 3 release report
 
 **Audit date:** 2026-10-28
-**Repository state:** `main`, 10 commits ahead of `origin/main` at report creation
+**Repository state:** `codex/desktop-design-integration`; release evidence below is for this checkout
 **Decision:** **Not release-ready; production deployment remains disabled.**
 
 This report is based on the current source tree, the Goal 1/Goal 2 handoffs,
