@@ -7,6 +7,7 @@ import { HomeView } from './views/HomeView'
 import { ModuleView, moduleConfigs } from './views/ModuleView'
 import { SearchView } from './views/SearchView'
 import { SettingsView } from './views/SettingsView'
+import { TasksView } from './views/TasksView'
 import type { ApiStatus, RoutePath } from './types'
 
 function useRoute(): RoutePath {
@@ -43,6 +44,6 @@ export default function App() {
   const apiStatus = useApiStatus()
   const [theme, toggleTheme] = useTheme()
   const moduleKey = route.slice(1)
-  const content = route === '/' ? <HomeView apiStatus={apiStatus} /> : route === '/ai' ? <AiView apiStatus={apiStatus} /> : route === '/search' ? <SearchView apiStatus={apiStatus} /> : route === '/settings' ? <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> : <ModuleView config={moduleConfigs[moduleKey] ?? moduleConfigs.projects} apiStatus={apiStatus} />
+  const content = route === '/' ? <HomeView apiStatus={apiStatus} /> : route === '/ai' ? <AiView apiStatus={apiStatus} /> : route === '/tasks' ? <TasksView apiStatus={apiStatus} /> : route === '/search' ? <SearchView apiStatus={apiStatus} /> : route === '/settings' ? <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> : <ModuleView config={moduleConfigs[moduleKey] ?? moduleConfigs.projects} apiStatus={apiStatus} />
   return <AppShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme}>{content}</AppShell>
 }
