@@ -192,4 +192,20 @@ describe("IndexedDbOfflineStore entities", () => {
     await expect(store.listOutbox()).resolves.toEqual([]);
     await expect(store.getEntity("bad-entity")).resolves.toBeUndefined();
   });
+
+  it("survives a 100-operation offline batch across a store reopen", async () => {
+    const factory = new FakeIndexedDb();
+    const first = new IndexedDbOfflineStore("stress-test", 2, factory as unknown as IDBFactory);
+
+    for (let index = 0; index < 100; index += 1) {
+      const key = `task-${index}`;
+      await first.setEntityAndEnqueue(key, { title: `Offline ${index}`, pending: true }, request(key));
+    }
+
+    const second = new IndexedDbOfflineStore("stress-test", 2, factory as unknown as IDBFactory);
+    const outbox = await second.listOutbox();
+    expect(outbox).toHaveLength(100);
+    await expect(second.getEntity<{ title: string; pending: boolean }>("task-0")).resolves.toMatchObject({ value: { title: "Offline 0", pending: true } });
+    await expect(second.getEntity<{ title: string; pending: boolean }>("task-99")).resolves.toMatchObject({ value: { title: "Offline 99", pending: true } });
+  });
 });

@@ -252,7 +252,7 @@ The following matrix audits every checkbox in docs/ACCEPTANCE_TESTS.md.
 | B2 | Concurrent Markdown edits preserve both branches | Verified for sync engine / Unverified end to end | Sync tests cover conflict behavior; no full cross-device recovery path is shown. |
 | B3 | Commit-order pagination/bootstrap never skips writes | Verified | Fresh temporary PostgreSQL migration and integration run passed; repository sync concurrency/bootstrap tests remain recorded. |
 | B4 | Tombstone and stale-device reset | Verified for repository-recorded backend evidence | Reset/compaction code and sync tests exist; native-client reset recovery is not shown. |
-| B5 | 100-operation offline stress test | Unverified | No Web/macOS/Android kill/restart stress evidence is present. |
+| B5 | 100-operation offline stress test | Partial / Unverified | Shared IndexedDB entity-plus-outbox test reopens after 100 operations; Web/macOS/Android kill/restart and cross-device stress evidence is still absent. |
 | B6 | Private Mac session contents excluded from sync/cloud DB | Verified for boundary | Raw agent_session is rejected and index fields are allowlisted (backend/app/sync/validation.py:128-155; apps/runtime/src/metadata.rs:5-20). Full deployed log/telemetry inspection remains unverified. |
 | C1 | Exact decimal finance and balanced transfers | Unverified / Blocked | Decimal columns/arithmetic exist, but transfer integrity is not implemented (backend/app/core/models.py:129-134). |
 | C2 | Duplicate offline transaction is one posting | Unverified | Transaction idempotency is optional in the body (backend/app/domains/api.py:21-22,214-222); no client crash/retry or uniform server receipt. |

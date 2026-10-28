@@ -14,7 +14,8 @@ Updated: 2026-10-28
   session-revoked AI SSE cancellation, strict mounted automation handlers,
   prompt-bound AI run idempotency and provider endpoint allowlisting.
 - Current local evidence: backend `53 passed, 2 skipped`; runtime `44 passed`,
-  format and Clippy pass; shared `11 passed` including atomic entity/outbox
+  format and Clippy pass; shared `12 passed` including atomic entity/outbox and
+  100-operation reopen coverage;
   coverage; web `6 passed`, typecheck and
   production build pass; desktop/mobile host Rust checks pass.
 - Release is still not ready. Android APK generation, macOS signing and
@@ -55,7 +56,8 @@ Updated: 2026-10-28
   because `apps/mobile/src-tauri/gen/android` is not initialized. No APK or
   notification/background-sync evidence is claimed.
 - Web/shared checks now pass: web has 6 Vitest tests and a production build;
-  shared has 11 API/offline tests and a typecheck. End-to-end authenticated CRUD,
+  shared has 12 API/offline tests and a typecheck, including a 100-operation
+  offline reopen batch. End-to-end authenticated CRUD,
   crash/restart sync and cross-device recovery are still pending.
 
 ## Status

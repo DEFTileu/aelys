@@ -16,7 +16,7 @@ development evidence from platform or external-account blockers.
 | Python quality | `compileall`, Ruff, mypy, Bandit and pip-audit from CI/local records | **Pass**; the audit warning from Starlette/httpx remains non-blocking |
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
 | OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
-| Shared client | `pnpm --filter @aelys/shared typecheck` and `test` | **Pass**, 11 tests; entity-plus-outbox atomic path covered |
+| Shared client | `pnpm --filter @aelys/shared typecheck` and `test` | **Pass**, 12 tests; entity-plus-outbox atomic path and 100-operation reopen batch covered |
 | Web | typecheck, Vitest, Vite production build | **Pass**, 6 tests and production assets |
 | Runtime | `cargo fmt`, locked tests, Clippy | **Pass**, 30 unit + 14 runtime-contract tests |
 | Tauri host compilation | desktop and mobile `cargo check` | **Pass for host targets only** |
@@ -30,10 +30,11 @@ The approved MVP is not fully accepted. The following items remain partial,
 unverified or blocked:
 
 - Cross-device offline create/edit, crash/restart recovery and 100-operation
-  stress testing: **unverified**. The web/shared client now has a tested
+  stress testing: **partial/unverified**. The web/shared client now has a tested
   IndexedDB entity-plus-outbox transaction and ModuleView uses it for offline
-  project, note and task creates; native SQLite client storage and full
-  cross-device recovery remain a spike.
+  project, note and task creates; a 100-operation reopen batch passes. Native
+  SQLite client storage, kill/restart during sync and full cross-device recovery
+  remain a spike.
 - Finance transfer integrity and timer pause/sleep conflict semantics:
   **unverified**.
 - Gmail OAuth and Telegram Bot API: **blocked by OPEN product/integration
