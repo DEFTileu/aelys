@@ -8,7 +8,7 @@ from app.main import app
 from app.core import db
 from app.core.db import Base
 from app.core.models import User
-from app.core.security import create_token, hash_password
+from app.core.security import hash_password
 
 pytestmark = pytest.mark.asyncio
 
@@ -52,7 +52,9 @@ async def test_mounted_postgres_bootstrap_page_is_snapshot_bound_and_pull_reset_
             session.add(owner)
             await session.commit()
             owner_id=owner.id
-        owner_headers={"Authorization":f"Bearer {create_token(owner_id,'access',900)}"}
+        login=await c.post("/api/v1/auth/login",json={"email":email,"password":"correct horse battery staple"})
+        assert login.status_code==200
+        owner_headers={"Authorization":f"Bearer {login.json()['access_token']}"}
         device=(await c.post("/api/v1/devices/enroll",headers=owner_headers,json={"platform":"macos","display_name":"pg"})).json()
         device_headers={"Authorization":f"Bearer {device['access_token']}"}
 

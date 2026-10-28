@@ -65,10 +65,11 @@ async def current_principal(credentials: HTTPAuthorizationCredentials | None = D
     user = await db.get(User, claims["sub"])
     if not user: raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Unknown owner"})
     session_id = claims.get("sid")
-    if session_id:
-        session = await db.get(AuthSession, session_id)
-        if not session or session.owner_id != user.id or session.revoked_at:
-            raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Session revoked"})
+    if not session_id:
+        raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Session-bound access token required"})
+    session = await db.get(AuthSession, session_id)
+    if not session or session.owner_id != user.id or session.revoked_at:
+        raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Session revoked"})
     device = None
     if claims.get("device_id"):
         device = await db.get(Device, claims["device_id"])
