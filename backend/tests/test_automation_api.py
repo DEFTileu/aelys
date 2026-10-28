@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from app.core import db
 from app.core.db import Base
-from app.core.models import AutomationExecution, Task
+from app.core.models import AutomationExecution, Notification, Task
 from app.main import app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
@@ -132,10 +132,13 @@ async def test_dispatch_fails_closed_for_unknown_policy_and_project_scope(
 
     async with factory() as session:  # type: AsyncSession
         assert await session.scalar(select(func.count()).select_from(Task)) == 0
-        assert (
-            await session.scalar(select(func.count()).select_from(AutomationExecution))
-            == 0
-        )
+        executions = list((await session.scalars(select(AutomationExecution))).all())
+        assert len(executions) == 2
+        assert {item.run_status for item in executions} == {"failed"}
+        assert {item.error_code for item in executions} == {
+            "POLICY_DENIED",
+            "NOT_FOUND",
+        }
 
 
 @pytest.mark.asyncio
@@ -170,4 +173,125 @@ async def test_concurrent_dispatch_claims_one_execution_and_one_task(automation_
         assert (
             await session.scalar(select(func.count()).select_from(AutomationExecution))
             == 1
+        )
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_is_owner_scoped_and_persisted(automation_client):
+    client, factory = automation_client
+    headers = await _owner(client)
+    rule = _rule()
+    rule["rate_limit"] = {"max_executions": 1, "window_seconds": 3600}
+    created = await client.post("/api/v1/automations", json=rule, headers=headers)
+    assert created.status_code == 200
+    rule_id = created.json()["id"]
+
+    first = await client.post(
+        "/api/v1/automations/dispatch",
+        json={"event_id": "rate-one", "event_kind": "task.created", "payload": {}},
+        headers=headers,
+    )
+    second = await client.post(
+        "/api/v1/automations/dispatch",
+        json={"event_id": "rate-two", "event_kind": "task.created", "payload": {}},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["results"] == [
+        {"rule_id": rule_id, "status": "rate_limited"}
+    ]
+
+    async with factory() as session:  # type: AsyncSession
+        executions = list(
+            (
+                await session.scalars(
+                    select(AutomationExecution).where(
+                        AutomationExecution.rule_id == rule_id
+                    )
+                )
+            ).all()
+        )
+        assert {item.run_status for item in executions} == {
+            "completed",
+            "rate_limited",
+        }
+        assert await session.scalar(select(func.count()).select_from(Task)) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_execution_is_audited_retryable_and_rolls_back_partial_actions(
+    automation_client,
+):
+    client, factory = automation_client
+    headers = await _owner(client)
+    rule = _rule()
+    rule["actions"] = [
+        {"kind": "create_notification", "args": {"title": "partial"}},
+        {
+            "kind": "create_task",
+            "args": {"title": "blocked", "project_id": "missing-project"},
+        },
+    ]
+    created = await client.post("/api/v1/automations", json=rule, headers=headers)
+    assert created.status_code == 200
+    rule_id = created.json()["id"]
+    event = {
+        "event_id": "retryable-failure",
+        "event_kind": "task.created",
+        "payload": {},
+    }
+
+    failed = await client.post(
+        "/api/v1/automations/dispatch", json=event, headers=headers
+    )
+    assert failed.status_code == 404
+
+    async with factory() as session:  # type: AsyncSession
+        execution = await session.scalar(
+            select(AutomationExecution).where(
+                AutomationExecution.rule_id == rule_id,
+                AutomationExecution.event_id == event["event_id"],
+            )
+        )
+        assert execution is not None
+        assert execution.run_status == "failed"
+        assert execution.error_code == "NOT_FOUND"
+        assert execution.attempt == 1
+        assert await session.scalar(select(func.count()).select_from(Task)) == 0
+        assert (
+            await session.scalar(select(func.count()).select_from(Notification)) == 0
+        )
+
+    patched = await client.patch(
+        f"/api/v1/automations/{rule_id}",
+        json={
+            "actions": [
+                {"kind": "create_task", "args": {"title": "retry succeeds"}}
+            ]
+        },
+        headers=headers,
+    )
+    assert patched.status_code == 200
+    retried = await client.post(
+        "/api/v1/automations/dispatch", json=event, headers=headers
+    )
+    assert retried.status_code == 200
+    assert retried.json()["results"] == [
+        {"rule_id": rule_id, "status": "completed"}
+    ]
+
+    async with factory() as session:  # type: AsyncSession
+        execution = await session.scalar(
+            select(AutomationExecution).where(
+                AutomationExecution.rule_id == rule_id,
+                AutomationExecution.event_id == event["event_id"],
+            )
+        )
+        assert execution is not None
+        assert execution.run_status == "completed"
+        assert execution.attempt == 2
+        assert await session.scalar(select(func.count()).select_from(Task)) == 1
+        assert (
+            await session.scalar(select(func.count()).select_from(Notification)) == 0
         )

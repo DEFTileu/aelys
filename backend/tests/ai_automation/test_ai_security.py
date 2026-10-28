@@ -146,8 +146,14 @@ async def test_repeated_ai_sse_reads_do_not_reexecute_provider(tmp_path, monkeyp
             async with client.stream("GET", f"/api/v1/ai/runs/{run_id}/events", headers=headers) as response:
                 second_body = (await response.aread()).decode()
             assert "ai.run.completed" in first_body
-            assert "replayed" in second_body
+            assert "ai.run.completed" in second_body
             assert transport.calls == 1
+            assert "id: " in first_body
+            event_id = next(line[4:] for line in first_body.splitlines() if line.startswith("id: "))
+            async with client.stream("GET", f"/api/v1/ai/runs/{run_id}/events", headers={**headers, "Last-Event-ID": event_id}) as response:
+                replay_body = (await response.aread()).decode()
+            assert "ai.run.completed" in replay_body
+            assert "ai.run.started" not in replay_body
     finally:
         await engine.dispose()
 

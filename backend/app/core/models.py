@@ -171,6 +171,17 @@ class AIRun(Owned):
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_conversations.id")); prompt_message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_messages.id"), nullable=True); provider_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_providers.id"), nullable=True); provider: Mapped[str] = mapped_column(String(50)); model: Mapped[str] = mapped_column(String(150)); status: Mapped[str] = mapped_column(String(30), default="queued"); idempotency_key: Mapped[str | None] = mapped_column(String(150), nullable=True); request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True); tool_scope_json: Mapped[dict] = mapped_column(JSON, default=dict); token_counts: Mapped[dict] = mapped_column(JSON, default=dict); cost_estimate: Mapped[Decimal] = mapped_column(Numeric(20,8), default=Decimal("0")); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (Index("ix_ai_run_owner_idempotency", "owner_id", "idempotency_key", unique=True),)
 
+class AIRunEvent(Base):
+    __tablename__ = "ai_run_events"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_runs.id"), index=True)
+    sequence: Mapped[int] = mapped_column(Integer)
+    event_id: Mapped[str] = mapped_column(String(100))
+    event_type: Mapped[str] = mapped_column(String(80))
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint("run_id", "sequence", name="uq_ai_run_event_sequence"), UniqueConstraint("run_id", "event_id", name="uq_ai_run_event_id"))
+
 class AgentSessionIndex(Owned):
     __tablename__ = "agent_session_index"
     device_id: Mapped[str] = mapped_column(String(36)); project_id: Mapped[str | None] = mapped_column(String(36)); adapter: Mapped[str] = mapped_column(String(30)); opaque_local_session_ref: Mapped[str] = mapped_column(String(255)); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); message_count: Mapped[int | None] = mapped_column(Integer); state: Mapped[str] = mapped_column(String(30), default="active")

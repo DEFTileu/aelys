@@ -3,15 +3,15 @@ import asyncio, json
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timezone
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
-from app.core.models import AIConversation, AIMessage, AIProvider, AIProviderSecret, AIRun, AuthSession, Note, Project, Task
+from app.core.models import AIConversation, AIMessage, AIProvider, AIProviderSecret, AIRun, AIRunEvent, AuthSession, Note, Project, Task, uid
 from app.core.security import bearer_scheme, current_principal, decode_token
 from app.core.config import get_settings
 from .crypto import decrypt_secret, encrypt_secret
@@ -102,6 +102,28 @@ def _tool_registry(db: AsyncSession, owner_id: str, event_id: str) -> ToolRegist
 async def _owned_project(db: AsyncSession, owner_id: str, project_id: str) -> Project | None:
     project = await db.get(Project, project_id)
     return project if project and project.owner_id == owner_id and project.deleted_at is None else None
+
+async def _persist_event(db: AsyncSession, run_id: str, wire: str) -> str:
+    event_type = next((line[7:] for line in wire.splitlines() if line.startswith("event: ")), "ai.run.event")
+    raw_data = next((line[6:] for line in wire.splitlines() if line.startswith("data: ")), "{}")
+    try:
+        payload = json.loads(raw_data)
+    except json.JSONDecodeError:
+        payload = {"message": "redacted event payload unavailable"}
+    sequence = int((await db.execute(select(func.max(AIRunEvent.sequence)).where(AIRunEvent.run_id == run_id))).scalar() or 0) + 1
+    event_id = f"{run_id}:{sequence}"
+    db.add(AIRunEvent(id=uid(), run_id=run_id, sequence=sequence, event_id=event_id, event_type=event_type, payload=payload))
+    await db.flush()
+    return f"id: {event_id}\n{wire}"
+
+async def _replay_events(db: AsyncSession, run_id: str, last_event_id: str | None):
+    after = 0
+    if last_event_id and ":" in last_event_id:
+        try:
+            after = int(last_event_id.rsplit(":", 1)[1])
+        except ValueError:
+            after = 0
+    return list((await db.execute(select(AIRunEvent).where(AIRunEvent.run_id == run_id, AIRunEvent.sequence > after).order_by(AIRunEvent.sequence))).scalars())
 
 def _provider_base_url(kind: str, value: str | None) -> str:
     default = "https://api.anthropic.com" if kind == "claude" else "https://openrouter.ai"
@@ -269,7 +291,7 @@ async def get_run(run_id:str,principal=Depends(current_principal),db:AsyncSessio
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Run not found"})
     return item
 @router.get("/ai/runs/{run_id}/events", response_class=StreamingResponse, responses={200:{"content":{"text/event-stream":{}}}})
-async def run_events(run_id:str,principal=Depends(current_principal),credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),db:AsyncSession=Depends(get_db)):
+async def run_events(run_id:str,principal=Depends(current_principal),credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await db.get(AIRun,run_id)
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Run not found"})
     claims = decode_token(credentials.credentials if credentials else "")
@@ -279,14 +301,31 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
     conversation = await db.get(AIConversation, item.conversation_id)
     last_message=await db.get(AIMessage, item.prompt_message_id) if item.prompt_message_id else None
     async def stream():
+        async def emit(event_type: str, payload: Mapping[str, Any]) -> str:
+            wire = f"event: {event_type}\ndata: {json.dumps(payload, separators=(',', ':'), ensure_ascii=False)}\n\n"
+            result = await _persist_event(db, run_id, wire)
+            await db.commit()
+            return result
+
+        history = await _replay_events(db, run_id, last_event_id)
+        for event in history:
+            yield f"id: {event.event_id}\nevent: {event.event_type}\ndata: {json.dumps(event.payload, separators=(',', ':'), ensure_ascii=False)}\n\n"
+        if item.status in {"completed", "failed", "cancelled"}:
+            if not history and not last_event_id:
+                terminal_type = "ai.run.cancelled" if item.status == "cancelled" else "ai.run.completed" if item.status == "completed" else "ai.run.failed"
+                yield await emit(terminal_type, {"run_id": run_id, "replayed": True})
+            return
         if not provider or provider.owner_id != user.id or not provider.enabled or not secret or last_message is None:
             await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status.in_(["queued","running"])).values(status="failed",completed_at=datetime.now(timezone.utc)))
             await db.commit()
-            yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':'MODEL_UNAVAILABLE' if provider and secret else 'PROMPT_UNAVAILABLE','message':'Provider, encrypted secret, or bound prompt is not available'})}\n\n"; return
+            failure = f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':'MODEL_UNAVAILABLE' if provider and secret else 'PROMPT_UNAVAILABLE','message':'Provider, encrypted secret, or bound prompt is not available'})}\n\n"
+            yield await _persist_event(db, run_id, failure)
+            await db.commit()
+            return
         try:
             await db.refresh(item)
             if item.status == "cancelled":
-                yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"; return
+                yield await emit("ai.run.cancelled", {"run_id": run_id}); return
             started = await db.execute(
                 update(AIRun)
                 .where(AIRun.id == run_id, AIRun.owner_id == user.id, AIRun.status == "queued")
@@ -296,13 +335,13 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             if int(getattr(started, "rowcount", 0) or 0) != 1:
                 await db.refresh(item)
                 if item.status == "cancelled":
-                    yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                    yield await emit("ai.run.cancelled", {"run_id": run_id})
                 elif item.status == "completed":
-                    yield f"event: ai.run.completed\ndata: {json.dumps({'run_id':run_id,'replayed':True})}\n\n"
+                    yield await emit("ai.run.completed", {"run_id": run_id, "replayed": True})
                 elif item.status == "failed":
-                    yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':'AI_ERROR','message':'Provider execution failed','replayed':True})}\n\n"
+                    yield await emit("ai.run.failed", {"run_id": run_id, "code": "AI_ERROR", "message": "Provider execution failed", "replayed": True})
                 else:
-                    yield f"event: ai.run.in_progress\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                    yield await emit("ai.run.in_progress", {"run_id": run_id})
                 return
             cancel_event=asyncio.Event(); _active_cancellations[run_id]=cancel_event
             async def durable_cancel_check() -> bool:
@@ -325,9 +364,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=Decimal("100"))
                 result = await service.complete(__import__('uuid').UUID(run_id), tool_request, (ChatMessage("user",last_message.content if last_message else ""),), tools=tuple(registry.schemas()), cancel=cancel_event)
                 if await durable_cancel_check():
-                    yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                    yield await emit("ai.run.cancelled", {"run_id": run_id})
                     return
-                yield f"event: ai.run.started\ndata: {json.dumps({'run_id':run_id,'provider':result.provider.value,'model':result.model})}\n\n"
+                yield await emit("ai.run.started", {"run_id": run_id, "provider": result.provider.value, "model": result.model})
                 seen_calls: set[str] = set()
                 for raw_call in result.response.tool_calls:
                     call = _tool_call(raw_call)
@@ -335,9 +374,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                         continue
                     seen_calls.add(call.call_id)
                     if await durable_cancel_check():
-                        yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                        yield await emit("ai.run.cancelled", {"run_id": run_id})
                         return
-                    yield f"event: ai.tool.requested\ndata: {json.dumps({'run_id':run_id,'tool':call.name,'call_id':call.call_id})}\n\n"
+                    yield await emit("ai.tool.requested", {"run_id": run_id, "tool": call.name, "call_id": call.call_id})
                     try:
                         output = await registry.invoke(call, context)
                     except (PolicyDenied, ToolValidationError, RuntimeError) as error:
@@ -346,28 +385,34 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                         await db.commit()
                         code = "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
                         message = "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
-                        yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':code,'message':message})}\n\n"
+                        yield await emit("ai.run.failed", {"run_id": run_id, "code": code, "message": message})
                         return
-                    yield f"event: ai.tool.approved\ndata: {json.dumps({'run_id':run_id,'tool':call.name,'call_id':call.call_id})}\n\n"
-                    yield f"event: ai.tool.result\ndata: {json.dumps({'run_id':run_id,'tool':call.name,'call_id':call.call_id,'result':output})}\n\n"
+                    yield await emit("ai.tool.approved", {"run_id": run_id, "tool": call.name, "call_id": call.call_id})
+                    yield await emit("ai.tool.result", {"run_id": run_id, "tool": call.name, "call_id": call.call_id, "result": output})
                 if result.response.text:
-                    yield f"event: ai.text.delta\ndata: {json.dumps({'run_id':run_id,'text':result.response.text})}\n\n"
+                    yield await emit("ai.text.delta", {"run_id": run_id, "text": result.response.text})
+                if cancel_event.is_set() or await durable_cancel_check():
+                    yield await emit("ai.run.cancelled", {"run_id": run_id})
+                    return
                 item.token_counts={"input":result.usage.usage.input_tokens,"output":result.usage.usage.output_tokens}; item.cost_estimate=result.usage.estimated_cost
                 await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(timezone.utc),token_counts=item.token_counts,cost_estimate=item.cost_estimate)); await db.commit()
-                yield f"event: ai.run.completed\ndata: {json.dumps({'run_id':run_id,'text_length':len(result.response.text),'estimated_cost':str(result.usage.estimated_cost)})}\n\n"
+                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.response.text), "estimated_cost": str(result.usage.estimated_cost)})
                 return
             stream_failed = False
             async for event in service.stream_sse(__import__('uuid').UUID(run_id),request,(ChatMessage("user",last_message.content),),cancel=cancel_event,cancel_check=durable_cancel_check):
                 await db.refresh(item)
                 if item.status == "cancelled":
-                    yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                    yield await emit("ai.run.cancelled", {"run_id": run_id})
                     return
                 if event.startswith("event: ai.run.failed"):
                     stream_failed = True
-                yield event
+                yield await _persist_event(db, run_id, event)
             if stream_failed:
                 await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(timezone.utc)))
                 await db.commit()
+                return
+            if cancel_event.is_set() or await durable_cancel_check():
+                yield await emit("ai.run.cancelled", {"run_id": run_id})
                 return
             await db.refresh(item)
             if item.status == "cancelled":
@@ -381,7 +426,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             if int(getattr(completed, "rowcount", 0) or 0) != 1:
                 await db.refresh(item)
                 if item.status == "cancelled":
-                    yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                    yield await emit("ai.run.cancelled", {"run_id": run_id})
         except Exception:
             await db.refresh(item)
             if item.status == "cancelled":
@@ -389,7 +434,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             failed=await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status!="cancelled").values(status="failed",completed_at=datetime.now(timezone.utc)))
             await db.commit()
             if int(getattr(failed, "rowcount", 0) or 0) == 1:
-                yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':'AI_ERROR','message':'Provider execution failed'})}\n\n"
+                yield await emit("ai.run.failed", {"run_id": run_id, "code": "AI_ERROR", "message": "Provider execution failed"})
         finally:
             _active_cancellations.pop(run_id,None)
     return StreamingResponse(stream(),media_type="text/event-stream")

@@ -12,7 +12,7 @@ development evidence from platform or external-account blockers.
 
 | Area | Evidence | Result |
 |---|---|---|
-| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **50 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
+| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **52 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
 | Python quality | `compileall`, Ruff, mypy, Bandit and pip-audit from CI/local records | **Pass**; the audit warning from Starlette/httpx remains non-blocking |
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
 | OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
@@ -43,8 +43,9 @@ unverified or blocked:
   tests and local-session egress policy: **partial/unverified**. A bounded
   server-registered task/note tool loop now validates, authorizes and executes
   provider tool calls; its policy is conversation-scoped and cannot be expanded
-  by a run. Broader tool coverage, prompt-injection E2E, SSE event replay and
-  durable usage budget accounting remain open.
+  by a run. Broader tool coverage, prompt-injection E2E and durable usage
+  budget accounting remain open. Redacted SSE events now persist with sequence
+  IDs and support terminal replay/`Last-Event-ID` recovery.
 - Claude Code/Codex authenticated execution: **blocked intentionally**.
   Version/help probes pass, but adapters remain `can_run=false` until
   credentialed compatibility and trusted macOS isolation/provenance evidence
@@ -54,9 +55,9 @@ unverified or blocked:
   is unavailable.
 - Automation: mounted actions now use strict typed actions, registered
   `ToolRegistry` handlers, owner/project validation, `ServerPolicyEngine`
-  authorization and a database uniqueness claim for duplicate events. Durable
-  rate limiting, failure audit/retry state and full domain-service dispatch
-  remain incomplete.
+  authorization, durable windowed rate-limit receipts, failed execution audit
+  and a database uniqueness claim for duplicate events. Full domain-service
+  dispatch and retry worker orchestration remain incomplete.
 
 ## Security changes made in Goal 3
 
@@ -87,6 +88,8 @@ unverified or blocked:
   references, execute only the server-registered task/note tool subset, and
   reject unapproved/non-HTTPS provider endpoints before any BYOK key is used;
   the selected provider is pinned to the run and HTTP redirects are disabled.
+- AI SSE events are redacted, persisted per run with sequence IDs, and replayed
+  for terminal runs or after `Last-Event-ID`.
 
 ## Platform and external blockers
 
@@ -127,7 +130,7 @@ than bypassed.
 2. Exercise the durable client entity store through kill/restart, conflict and
    cross-device E2E tests; implement native SQLite storage where required.
 3. Expand mounted AI typed tool/policy coverage and durable usage budgets; add
-   automation rate-limit/failure audit durability.
+   the remaining automation domain-service/retry worker integration.
 4. Perform the supported macOS isolation/helper/signing spike; only then
    consider enabling vendor execution.
 5. Initialize and validate Android Tauri on a machine with the required SDK,

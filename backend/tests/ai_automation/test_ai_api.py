@@ -106,6 +106,8 @@ async def test_cancel_endpoint_stops_active_provider_stream_and_keeps_cancelled_
             stream_task = asyncio.create_task(read_events())
             transport = await asyncio.wait_for(_transport_ready(transport_holder), timeout=1)
             await asyncio.wait_for(transport.started.wait(), timeout=1)
+            before_cancel = await client.get(f"/api/v1/ai/runs/{run_id}", headers=headers)
+            assert before_cancel.json()["status"] == "running"
 
             cancellation = await client.post(f"/api/v1/ai/runs/{run_id}/cancel", headers=headers)
             assert cancellation.status_code == 200

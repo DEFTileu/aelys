@@ -72,9 +72,10 @@ Centralize an authorization helper requiring owner, non-revoked device, project 
   `ServerPolicyEngine`, with owner/project validation and a unique event claim.
 - backend/tests/test_automation_api.py covers strict action rejection, policy
   denial, project scope and concurrent duplicate dispatch.
-- `rate_limit_json` is stored but durable rate limiting and failure retry audit
-  remain absent; the mounted handlers still write through the current route
-  transaction rather than a separate durable domain service.
+- durable windowed rate-limit receipts and failed execution audit are now
+  enforced by the route; the mounted handlers still write through the current
+  route transaction rather than a separate durable domain service, and retry
+  worker orchestration remains absent.
 
 **Impact**
 
@@ -279,7 +280,7 @@ The following matrix audits every checkbox in docs/ACCEPTANCE_TESTS.md.
 | F7 | Revoking project grant prevents new runs | Verified for backend gate | Run creation requires a non-revoked, isolation-validated matching grant (backend/app/agents/api.py:223-227). |
 | G1 | Duplicate event executes one rule once | Partial / Unverified | In-memory engine and database uniqueness are present; mounted dispatch lacks a race-safe policy service transaction. |
 | G2 | Out-of-scope tool attempt denied regardless of model content | Verified for policy library / Unverified mounted path | Policy tests prove the primitive; API tool execution is incomplete. |
-| G3 | Dry run, audit, rate limit, disable stop execution | Partial / Unverified | Mounted policy and duplicate claims are covered; durable rate limits, failure audit/retry and complete dry-run durability remain open. |
+| G3 | Dry run, audit, rate limit, disable stop execution | Partial / Unverified | Mounted policy, duplicate claims, durable windowed rate limits and failed execution audit are covered; complete dry-run durability and retry worker orchestration remain open. |
 | H1 | New developer starts with sample config and no private secrets | Verified for documented local setup | READMEs and CLAUDE.md provide local commands and secret requirements; no clean-machine reproduction here. |
 | H2 | CI runs unit/integration/type/lint/security checks | Verified for recorded CI evidence | .github/workflows/ci.yml and PROGRESS.md record Python, Rust, TypeScript, migration, OpenAPI, Bandit, and dependency checks; no fresh CI run here. |
 | H3 | Final license confirmed before release | Blocked | docs/DECISIONS.md ADR-019 remains PROPOSED; docs/OPEN_QUESTIONS.md keeps license confirmation open. |
@@ -318,8 +319,9 @@ The following findings received local fixes after this audit snapshot:
   native stores, cross-device conflict E2E and uniform server idempotency remain
   unverified.
 - G3-03: mounted automation now uses strict typed action models, registered
-  handlers and a database uniqueness claim for duplicate events. Durable rate
-  limits and failure audit/retry state remain open.
+  handlers, a database uniqueness claim for duplicate events, durable windowed
+  rate-limit receipts and failed execution audit. Full domain-service dispatch
+  and retry worker orchestration remain open.
 - G3-06: mounted AI run requests now bind their prompt message and request
   fingerprint, repeated SSE readers cannot claim a queued run twice, and
   provider endpoints are restricted to approved HTTPS hosts. A bounded
@@ -327,7 +329,8 @@ The following findings received local fixes after this audit snapshot:
   calls; broader tool coverage, durable budget accounting and vendor execution
   remain open. The policy is conversation-scoped, provider identity is pinned
   to the run, provider redirects are disabled, and duplicate tool-call IDs are
-  deduplicated. SSE event replay and DNS-level endpoint pinning remain open.
+  deduplicated. Redacted SSE event replay with sequence IDs and
+  `Last-Event-ID` recovery is covered; DNS-level endpoint pinning remains open.
 - G3-05: protected REST operations expose an HTTP bearer scheme in OpenAPI and
   the Makefile rejects empty snapshots before replacement.
 - G3-11: encrypted owner export/restore is implemented and tested with an

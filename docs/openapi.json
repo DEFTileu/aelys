@@ -2872,6 +2872,22 @@
               "type": "string",
               "title": "Run Id"
             }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
           }
         ],
         "responses": {
