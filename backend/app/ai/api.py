@@ -144,6 +144,19 @@ def _request_fingerprint(body: RunIn, effective_scope: frozenset[str]) -> str:
     canonical = json.dumps({"conversation_id":body.conversation_id,"message":body.message,"routing":body.routing,"tool_scope":{"scopes":sorted(effective_scope)}}, sort_keys=True, separators=(",",":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
+async def _remaining_monthly_budget(db: AsyncSession, owner_id: str, provider: AIProvider) -> Decimal:
+    policy = provider.model_policy_json or {}
+    try:
+        monthly_budget = Decimal(str(policy.get("monthly_budget", "100")))
+    except (ValueError, TypeError, ArithmeticError):
+        return Decimal("0")
+    if monthly_budget <= 0:
+        return Decimal("0")
+    now_utc = datetime.now(timezone.utc)
+    month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    spent = (await db.execute(select(func.coalesce(func.sum(AIRun.cost_estimate), 0)).where(AIRun.owner_id == owner_id, AIRun.provider_id == provider.id, AIRun.status == "completed", AIRun.completed_at >= month_start))).scalar_one()
+    return max(Decimal("0"), monthly_budget - Decimal(str(spent or "0")))
+
 class HttpxTransport:
     def __init__(self, cancel_event: asyncio.Event | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None):
         self._cancel_event = cancel_event
@@ -355,13 +368,19 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 if cancelled: cancel_event.set()
                 return cancelled
             service=_service(provider,decrypt_secret(secret.encrypted_value),cancel_event=cancel_event,cancel_check=durable_cancel_check); requested_model=item.model if item.model!="auto" else None
-            request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=Decimal("100"))
+            remaining_budget = await _remaining_monthly_budget(db, user.id, provider)
+            if remaining_budget <= 0:
+                await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(timezone.utc)))
+                await db.commit()
+                yield await emit("ai.run.failed", {"run_id": run_id, "code": "BUDGET_EXCEEDED", "message": "Configured monthly AI budget is exhausted"})
+                return
+            request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=min(Decimal("100"), remaining_budget))
             await db.refresh(item)
             requested_scopes = frozenset((item.tool_scope_json or {}).get("scopes", []))
             if requested_scopes:
                 registry = _tool_registry(db, user.id, run_id)
                 context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
-                tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=Decimal("100"))
+                tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal("100"), remaining_budget))
                 result = await service.complete(__import__('uuid').UUID(run_id), tool_request, (ChatMessage("user",last_message.content if last_message else ""),), tools=tuple(registry.schemas()), cancel=cancel_event)
                 if await durable_cancel_check():
                     yield await emit("ai.run.cancelled", {"run_id": run_id})

@@ -225,3 +225,30 @@ async def test_provider_failure_is_terminal_failed_not_completed(tmp_path, monke
             assert terminal.json()["status"] == "failed"
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_exhausted_monthly_budget_fails_closed(tmp_path, monkeypatch):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/ai-budget.db")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(db, "SessionLocal", factory)
+    transport = CountingTransport()
+    monkeypatch.setattr(ai_api, "HttpxTransport", lambda **kwargs: transport)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            bootstrap = await client.post("/api/v1/auth/bootstrap", json={"email": "ai-budget@example.com", "password": "correct horse battery staple"})
+            headers = {"Authorization": f"Bearer {bootstrap.json()['access_token']}"}
+            provider = await client.post("/api/v1/ai/providers", headers=headers, json={"kind": "claude", "model_policy": {"monthly_budget": "0", "models": [{"name": "budget-model", "capabilities": ["streaming"], "context_tokens": 4096}]}})
+            await client.put(f"/api/v1/ai/providers/{provider.json()['id']}/secret", headers=headers, json={"api_key": "test-only-provider-key"})
+            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+            run = await client.post("/api/v1/ai/runs", headers=headers, json={"conversation_id": conversation.json()["id"], "message": "budget", "routing": {"provider": "claude", "model": "budget-model"}, "idempotency_key": "budget-exhausted"})
+            async with client.stream("GET", f"/api/v1/ai/runs/{run.json()['id']}/events", headers=headers) as response:
+                body = (await response.aread()).decode()
+            assert "BUDGET_EXCEEDED" in body
+            assert transport.calls == 0
+            terminal = await client.get(f"/api/v1/ai/runs/{run.json()['id']}", headers=headers)
+            assert terminal.json()["status"] == "failed"
+    finally:
+        await engine.dispose()

@@ -12,7 +12,7 @@ development evidence from platform or external-account blockers.
 
 | Area | Evidence | Result |
 |---|---|---|
-| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **52 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
+| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **53 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
 | Python quality | `compileall`, Ruff, mypy, Bandit and pip-audit from CI/local records | **Pass**; the audit warning from Starlette/httpx remains non-blocking |
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
 | OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
@@ -45,7 +45,9 @@ unverified or blocked:
   provider tool calls; its policy is conversation-scoped and cannot be expanded
   by a run. Broader tool coverage, prompt-injection E2E and durable usage
   budget accounting remain open. Redacted SSE events now persist with sequence
-  IDs and support terminal replay/`Last-Event-ID` recovery.
+  IDs and support terminal replay/`Last-Event-ID` recovery. Mounted runs fail
+  closed when persisted monthly budget is exhausted; concurrent reservation
+  accounting remains open.
 - Claude Code/Codex authenticated execution: **blocked intentionally**.
   Version/help probes pass, but adapters remain `can_run=false` until
   credentialed compatibility and trusted macOS isolation/provenance evidence
@@ -130,8 +132,9 @@ than bypassed.
    supported deployment topology.
 2. Exercise the durable client entity store through kill/restart, conflict and
    cross-device E2E tests; implement native SQLite storage where required.
-3. Expand mounted AI typed tool/policy coverage and durable usage budgets; add
-   the remaining automation domain-service/retry worker integration.
+3. Expand mounted AI typed tool/policy coverage and concurrent durable usage
+   reservations; add the remaining automation domain-service/retry worker
+   integration.
 4. Perform the supported macOS isolation/helper/signing spike; only then
    consider enabling vendor execution.
 5. Initialize and validate Android Tauri on a machine with the required SDK,
