@@ -207,6 +207,9 @@ Script execution in the web origin can read the active access token. Tauri permi
 
 Prefer a server-managed session or short-lived device-bound token with a non-script refresh flow. Add response-header CSP/security-header checks and replace the remaining inline-style allowance when the UI styling pipeline permits it.
 
+The current API now emits baseline response security headers with a regression
+test; sessionStorage token handling remains the larger client-boundary issue.
+
 ### G3-10 — Medium: domain input contracts are inconsistent with the security model
 
 **Evidence**

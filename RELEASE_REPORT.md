@@ -95,6 +95,8 @@ unverified or blocked:
   references, execute only the server-registered task/note tool subset, and
   reject unapproved/non-HTTPS provider endpoints before any BYOK key is used;
   the selected provider is pinned to the run and HTTP redirects are disabled.
+- Backend responses now include baseline `nosniff`, frame, referrer, and
+  permissions security headers with regression coverage.
 - BYOK provider secrets now have an authenticated delete/revoke endpoint and a
   typed shared client method; a separate `AELYS_PROVIDER_ENCRYPTION_KEY` is
   supported for operator deployments, and `rotate_provider_secrets.py` now
