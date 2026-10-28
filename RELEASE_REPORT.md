@@ -17,7 +17,7 @@ development evidence from platform or external-account blockers.
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
 | OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
 | Shared client | `pnpm --filter @aelys/shared typecheck` and `test` | **Pass**, 12 tests; entity-plus-outbox atomic path and 100-operation reopen batch covered |
-| Web | typecheck, Vitest, Vite production build | **Pass**, 10 tests and production assets |
+| Web | typecheck, Vitest, Vite production build | **Pass**, 11 tests and production assets |
 | Runtime | `cargo fmt`, locked tests, Clippy | **Pass**, 30 unit + 14 runtime-contract tests |
 | Tauri host compilation | desktop and mobile `cargo check` | **Pass for host targets only** |
 | Desktop Tauri binary | `pnpm --filter @aelys/desktop tauri:build` | **Pass as an unbundled release binary**; not a signed `.app`/DMG/PKG |
