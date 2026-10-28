@@ -1,0 +1,40 @@
+# Aelys Implementation Progress
+
+Updated: 2026-10-28
+
+## Status
+
+- Documentation review: complete. Required project, architecture, API, sync, runtime, AI, security, acceptance, and roadmap documents read.
+- Repository inspection: complete. Existing repository is a documentation-first skeleton with pre-existing user changes preserved.
+- Foundation: implemented and verified with async SQLite and PostgreSQL tests; hashed rotating refresh sessions, device revocation, and Alembic migrations are configured.
+- Domain APIs: implemented for projects/resources, notes/revisions, tasks/calendar, finance/timer, local mail, AI settings/conversations, search/history/notifications.
+- Sync engine: implemented with idempotent receipts, version conflicts, note branches, ordered pull, snapshot-bound bootstrap pagination, retained tombstones, stale-cursor reset responses, device-bound monotonic acknowledgement cursors, and private-content rejection.
+- AI harness and automation: implemented with Claude/OpenRouter adapters, encrypted BYOK envelopes, capability/privacy/budget routing, Decimal usage/cost tracking, SSE, durable cancellation polling and compare-and-set terminal state, typed policy tools, and replay-safe rule dispatch.
+- macOS runtime: implemented as a headless Rust crate with local SQLite/FTS, Claude and Codex JSONL session parsing, metadata allowlist, conservative adapters, explicit network grant policy, signed channel types, authenticated heartbeat/lease/run-event/credential-lease channel operations, bounded Claude/Codex help-flag compatibility probes, Seatbelt isolation profiles, six-control probes with canonical root/profile/runtime/probe digest binding, bounded sandbox process supervision, process-group cancellation/timeout, reconnect, process-tree cleanup, durable SQLite-backed run leases and restart reconciliation, adapter executable identity binding, integrated run state transitions, signed single-use credential leases, signed provenance-bearing attestation, and internally mapped Keychain credential injection. The installed Claude Code `2.1.311` and Codex CLI `0.163.0` expose the required help flags, but authenticated invocation remains disabled. The backend requires an operator-pinned Ed25519-signed runtime/probe manifest before accepting provenance; manifest verification is covered by backend tests. Local Rust tests (30 unit, 14 integration), clippy, live PostgreSQL run lifecycle, and prior live channel/attestation evidence remain recorded, with the new trust-root deployment path still requiring release configuration.
+- Integration, CI, OpenAPI, and migration checks: backend verified; 40 Python tests pass. Bootstrap snapshots, PostgreSQL mounted sync integration with paged snapshot/reset and device acknowledgement coverage, PostgreSQL concurrent sync conflict behavior, durable run idempotency, owner-serialized sync pushes, repeatable-read bootstrap, refresh-token separation, fail-closed secret configuration, backend-signed credential lease issuance over HTTP and WebSocket, signed release-manifest provenance verification and generation tooling, cancel-before-start and active/durable AI stream cancellation, explicit SSE media types, fresh/incremental SQLite and PostgreSQL Alembic checks through 0012, live Rust-to-FastAPI heartbeat/metadata/revocation, provenance-bearing signed sandbox attestation, queued-run authorization, lease/cancellation lifecycle, sandboxed process execution, Claude JSONL parsing, and local run state transitions are verified. The installed Codex CLI also completed an ephemeral read-only `Reply with exactly OK` compatibility run. Full acceptance is not complete because vendor adapters remain conservatively disabled until a credentialed CLI compatibility run and trusted helper/code-signing provenance are available.
+
+## Decision guardrails
+
+The implementation will not claim Gmail OAuth, Telegram production delivery, Android support, cloud storage of agent transcripts/embeddings, or safe unattended remote execution without the corresponding approved decision and tests. Vendor autonomous execution remains disabled unless installed CLI compatibility and the credential broker are verified. Any incomplete security isolation keeps remote autonomous execution disabled.
+
+## Test record
+
+Backend verification: `PYTHONPATH=backend .venv/bin/pytest -q backend/tests` → 40 passed, 2 PostgreSQL-only tests skip without `AELYS_DATABASE_URL`. `compileall` passes; fresh and incremental SQLite/PostgreSQL Alembic upgrades through 0012 plus `check` pass, including the fresh-install/legacy-initial-schema compatibility path; OpenAPI generation produces 65 paths with explicit SSE media types. PostgreSQL mounted sync integration, paged bootstrap/reset and acknowledgement behavior, concurrent sync conflict test, durable run idempotency, backend-signed credential lease issuance, signed release-manifest provenance verification/generation, and cancellation lifecycle pass. Runtime verification: `cargo fmt -- --check`, `cargo test --manifest-path apps/runtime/Cargo.toml` → 44 tests passed, `cargo check --examples`, and `cargo clippy --all-targets -- -D warnings` pass. Live Rust heartbeat/metadata acknowledgements, post-revocation rejection, six-control Seatbelt probe, challenge-bound provenance-bearing canonical signed attestation, queued-run authorization, lease/cancellation lifecycle, reconnect, process-tree cleanup, persisted run restart reconciliation, signed credential lease scope/replay checks, sandboxed `/bin/echo` process execution, local run transition, internally mapped Keychain provider-variable handling, scrubbed environment handling, and Claude/Codex JSONL parser behavior were verified against FastAPI/macOS; the trust-root deployment path still requires release configuration.
+
+Multi-agent workflow used disjoint workers for AI/automation, domain APIs, sync, macOS runtime, and architecture/security review. Their scoped changes and validation were reviewed and integrated by the lead. The initial dispatcher also reported a thread-limit error, but the worker results arrived and were verified.
+
+## Next action
+
+Complete authenticated vendor CLI compatibility and supported macOS helper signing validation before enabling unattended vendor execution.
+
+## Remaining prerequisites
+
+- Goal 2: frontend/client offline stores, generated TypeScript contracts, Android wrapper spike, device UX, and approved Gmail/Telegram integration scope.
+- Goal 3: production deployment and encrypted backup topology, final macOS sandbox implementation and evidence on supported macOS versions, release signing/installers, license confirmation, and optional Mac-session backup decision.
+
+## Completion audit
+
+- Foundation, fail-closed secret configuration, access/refresh token separation, authentication/device revocation, PostgreSQL schema, Alembic 0001–0012, mounted REST/OpenAPI contracts, domain ownership checks, sync, AI provider/BYOK paths, automation, backend-signed credential lease issuance, and local-only metadata boundaries: implemented and tested.
+- Runtime session discovery/indexing, local SQLite/FTS, signed channel, digest-bound sandbox probes, lease-bound queue protocol, process supervision, cancellation, reconnect, process-tree cleanup, internal credential mapping, and cloud metadata privacy: implemented and tested.
+- Vendor CLI credentialed execution and macOS helper/code-signing validation remain release gates. The backend now verifies configured signed release-manifest digests, and the runtime detects required invocation flags without enabling them. Release operations still must provision that trust root and prove the helper signing chain on supported macOS versions. The runtime stays fail-closed for vendor execution.
+- CI verifies Python compilation/tests, strict application mypy checking, Ruff correctness lint, Bandit checks, pip-audit dependency scanning, database migrations, PostgreSQL integration, OpenAPI drift, and Rust format/tests/Clippy.
