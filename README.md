@@ -1,12 +1,21 @@
 # Aelys — документация проекта
 
-**Статус:** pre-implementation / discovery complete enough to start engineering.
+**Статус:** implementation in progress; Goal 3 release audit is active and
+production deployment remains disabled.
 **Версия комплекта:** 0.2 (2026-10-28).
 **Язык:** русский, имена API/типов/кода — английский.
 
 Aelys — персональная, полностью открытая (open-source) система для Web, macOS и Android: проекты, заметки, задачи, календарь, почта, финансы, таймер, Telegram, AI, история локальных Claude Code / Codex CLI и управление их запуском с других устройств.
 
-Это **документация и технический проект**, не готовое приложение. Разделяйте:
+Текущий checkout содержит рабочие backend, shared/web client, Tauri host crates
+и headless Mac runtime. Локальный web/backend запуск описан в
+[`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md); точное состояние acceptance,
+платформенных блокеров и тестов — в [`RELEASE_REPORT.md`](RELEASE_REPORT.md).
+Vendor execution остаётся fail-closed до credentialed CLI и macOS isolation
+evidence; signing/notarization, Android APK, PostgreSQL local run и внешние
+Gmail/Telegram integrations не объявляются пройденными.
+
+Разделяйте в документации:
 - **DECIDED** — подтверждено владельцем в обсуждении;
 - **PROPOSED** — предлагаемая реализация, уточняется инженерным проектированием;
 - **OPEN** — вопрос ещё не решён.
