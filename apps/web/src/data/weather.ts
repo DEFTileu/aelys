@@ -46,3 +46,7 @@ export function selectWeatherBackground(
 export function weatherBackgroundUrl(background: WeatherBackground): string {
   return `${WEATHER_BACKGROUND_PATH}${background.file}`
 }
+
+export function currentBackgroundUrl(now: Date = new Date()): string {
+  return weatherBackgroundUrl(selectWeatherBackground(getSolarPeriod(now), 'unknown'))
+}

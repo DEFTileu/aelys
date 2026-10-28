@@ -1,0 +1,44 @@
+.settings-screen,
+.settings-screen * { box-sizing: border-box; }
+
+.settings-screen button,
+.settings-screen input {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: inherit;
+}
+
+.settings-screen button { cursor: pointer; }
+.settings-screen input { outline: 0; background: transparent; }
+.settings-screen :focus-visible { outline: 2px solid #6A4CF2; outline-offset: 2px; }
+
+.settings-screen [data-glass] { -webkit-backdrop-filter: blur(var(--glass-blur, 20px)); backdrop-filter: blur(var(--glass-blur, 20px)); }
+
+.settings-screen .settings-upload {
+  flex: none;
+  white-space: nowrap;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #E7E2DE;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-screen .settings-upload:hover { background: #F6F3F0; }
+
+@media (prefers-reduced-transparency: reduce) {
+  .settings-screen [data-glass] {
+    background: rgba(252,250,248,.98) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}

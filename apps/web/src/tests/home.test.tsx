@@ -7,13 +7,15 @@ describe('HomeView', () => {
   let root: ReturnType<typeof createRoot> | undefined
   afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; window.localStorage.clear() })
 
-  it('renders the supplied local photo hero and honest offline widgets', async () => {
+  it('renders the design default My day widgets without fabricated offline data', async () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
     await act(async () => { root?.render(<HomeView apiStatus="offline" />) })
-    expect(host.textContent).toContain('Photo backdrop ·')
-    expect(host.textContent).toContain('Working offline')
-    expect(host.querySelector('.hero')?.getAttribute('style')).toContain('/backgrounds/weather/')
+    expect(host.textContent).toContain('My day')
+    expect(host.textContent).toContain('9 widgets')
+    expect(host.textContent).toContain('No tasks yet.')
+    expect(host.textContent).toContain('No transactions yet.')
+    expect(host.querySelector('[aria-label="Dashboard widgets"]')?.children.length).toBe(9)
   })
 })

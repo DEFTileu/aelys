@@ -1,0 +1,12 @@
+.screen-toolbar { padding: 0 28px 16px; display: flex; gap: 12px; align-items: center; }
+.segmented-tabs { display: flex; padding: 4px; gap: 2px; border-radius: 14px; background: rgba(255,255,255,.88); border: 1px solid #ECE7E3; }
+.segmented-tabs__tab { height: 32px; padding: 0 14px; border: 0; border-radius: 10px; display: flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; background: transparent; color: #3A3640; }
+.segmented-tabs__tab--active { background: #fff; color: #5132D6; }
+.screen-toolbar__ai { flex: 1; min-width: 200px; height: 40px; margin: 0; border-radius: 20px; background: var(--glass-bg, rgba(255,255,255,.88)); border: 1px solid #ECE7E3; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 8px; }
+.screen-toolbar__ai input { flex: 1; font: inherit; font-size: 14px; border: 0; outline: 0; background: transparent; color: inherit; }
+.ai-orb { width: 28px; height: 28px; flex: none; border-radius: 50%; background: radial-gradient(circle at 32% 28%,#fff 0,rgba(235,225,255,.9) 9%,transparent 28%),radial-gradient(circle at 72% 72%,#FF7AD9 0,transparent 48%),radial-gradient(circle at 24% 72%,#46D2FF 0,transparent 46%),radial-gradient(circle at 50% 50%,#6E4CF5 0,#2A1590 82%); }
+.screen-toolbar__send { width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--accent, #6A4CF2); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.screen-toolbar__secondary { flex: none; white-space: nowrap; height: 40px; padding: 0 14px; border-radius: 12px; background: #fff; border: 1px solid #E7E2DE; display: flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; font-weight: 500; color: inherit; cursor: pointer; }
+.screen-toolbar__secondary:hover { background: #F6F3F0; }
+.screen-toolbar__primary { flex: none; white-space: nowrap; height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--accent, #6A4CF2); color: #fff; display: flex; align-items: center; gap: 8px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; box-shadow: 0 4px 12px rgba(106,76,242,.3); }
+.screen-toolbar__primary:hover { background: #5B3DE6; }
