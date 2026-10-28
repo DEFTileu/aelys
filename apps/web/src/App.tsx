@@ -9,6 +9,8 @@ import { ModuleView, moduleConfigs } from './views/ModuleView'
 import { SearchView } from './views/SearchView'
 import { TasksView } from './views/TasksView'
 import { ProjectsView } from './views/ProjectsView'
+import { CalendarView } from './views/CalendarView'
+import { NotesView } from './views/NotesView'
 import type { ApiStatus, RoutePath } from './types'
 
 function useRoute(): RoutePath {
@@ -45,7 +47,7 @@ export default function App() {
   const apiStatus = useApiStatus()
   const [theme, toggleTheme] = useTheme()
   const moduleKey = route.slice(1)
-  const screens: Partial<Record<RoutePath, ReactElement>> = { '/': <HomeView apiStatus={apiStatus} />, '/ai': <AiView apiStatus={apiStatus} />, '/tasks': <TasksView apiStatus={apiStatus} />, '/projects': <ProjectsView apiStatus={apiStatus} />, '/search': <SearchView apiStatus={apiStatus} />, '/settings': <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> }
+  const screens: Partial<Record<RoutePath, ReactElement>> = { '/': <HomeView apiStatus={apiStatus} />, '/ai': <AiView apiStatus={apiStatus} />, '/tasks': <TasksView apiStatus={apiStatus} />, '/calendar': <CalendarView apiStatus={apiStatus} />, '/projects': <ProjectsView apiStatus={apiStatus} />, '/notes': <NotesView apiStatus={apiStatus} />, '/search': <SearchView apiStatus={apiStatus} />, '/settings': <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> }
   const content = screens[route] ?? <ModuleView config={moduleConfigs[moduleKey] ?? moduleConfigs.projects} apiStatus={apiStatus} />
   return <AppShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme}>{content}</AppShell>
 }
