@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Mapping
 
 from .errors import ToolValidationError, redact_error
@@ -22,6 +22,7 @@ class ToolDescriptor:
     validator: Validator
     handler: Handler
     external_effect: bool = False
+    input_schema: Mapping[str, Any] = field(default_factory=dict)
 
 
 class ToolRegistry:
@@ -34,8 +35,8 @@ class ToolRegistry:
             raise ValueError(f"duplicate tool: {descriptor.name}")
         self._tools[descriptor.name] = descriptor
 
-    def schemas(self) -> tuple[dict[str, str], ...]:
-        return tuple({"name": t.name, "description": t.description} for t in self._tools.values())
+    def schemas(self) -> tuple[dict[str, Any], ...]:
+        return tuple({"name": t.name, "description": t.description, "input_schema": dict(t.input_schema)} for t in self._tools.values())
 
     def descriptor(self, name: str) -> ToolDescriptor:
         descriptor = self._tools.get(name)

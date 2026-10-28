@@ -84,7 +84,8 @@ class OpenRouterAdapter(_BaseAdapter):
     kind = ProviderKind.OPENROUTER
 
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
-        return {"model": request.model, "messages": [{"role": m.role, "content": m.content} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": list(request.tools)} if request.tools else {})}
+        tools = [{"type": "function", "function": {"name": str(tool["name"]), "description": str(tool.get("description", "")), "parameters": tool.get("input_schema") or {"type": "object"}}} for tool in request.tools]
+        return {"model": request.model, "messages": [{"role": m.role, "content": m.content} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {})}
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
         response = await self._post("/api/v1/chat/completions", self._payload(request))

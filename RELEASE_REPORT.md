@@ -12,7 +12,7 @@ development evidence from platform or external-account blockers.
 
 | Area | Evidence | Result |
 |---|---|---|
-| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **48 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
+| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **49 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
 | Python quality | `compileall`, Ruff, mypy, Bandit and pip-audit from CI/local records | **Pass**; the audit warning from Starlette/httpx remains non-blocking |
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
 | OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
@@ -40,9 +40,10 @@ unverified or blocked:
   decisions and absent credentials**. Local mail import/drafts remain
   available; no live integration is claimed.
 - AI typed tool execution from the mounted API, prompt-injection end-to-end
-  tests and local-session egress policy: **partial/unverified**. Provider tool
-  payload support and policy primitives pass; the mounted run path still does
-  not expose the complete typed tool loop or durable usage budget accounting.
+  tests and local-session egress policy: **partial/unverified**. A bounded
+  server-registered task/note tool loop now validates, authorizes and executes
+  provider tool calls; broader tool coverage, prompt-injection E2E and durable
+  usage budget accounting remain open.
 - Claude Code/Codex authenticated execution: **blocked intentionally**.
   Version/help probes pass, but adapters remain `can_run=false` until
   credentialed compatibility and trusted macOS isolation/provenance evidence
@@ -82,8 +83,8 @@ unverified or blocked:
   repeated stream readers cannot claim a queued run twice.
 - Mounted AI runs bind their prompt message and request fingerprint, reject
   idempotency-key reuse with a different payload, enforce owner project
-  references, and reject unapproved/non-HTTPS provider endpoints before any
-  BYOK key is used.
+  references, execute only the server-registered task/note tool subset, and
+  reject unapproved/non-HTTPS provider endpoints before any BYOK key is used.
 
 ## Platform and external blockers
 
@@ -123,7 +124,7 @@ than bypassed.
    documented restore drill.
 2. Exercise the durable client entity store through kill/restart, conflict and
    cross-device E2E tests; implement native SQLite storage where required.
-3. Complete mounted AI typed tool/policy integration, durable usage budgets and
+3. Expand mounted AI typed tool/policy coverage and durable usage budgets; add
    automation rate-limit/failure audit durability.
 4. Perform the supported macOS isolation/helper/signing spike; only then
    consider enabling vendor execution.

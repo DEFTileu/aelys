@@ -45,14 +45,14 @@ class AIExecutionService:
     def select(self, request: RoutingRequest):
         return self.router.choose(request)
 
-    async def complete(self, run_id: UUID, request: RoutingRequest, messages: tuple[ChatMessage, ...], *, max_tokens: int = 1024, cancel: asyncio.Event | None = None) -> ExecutionResult:
+    async def complete(self, run_id: UUID, request: RoutingRequest, messages: tuple[ChatMessage, ...], *, max_tokens: int = 1024, tools: tuple[Mapping[str, object], ...] = (), cancel: asyncio.Event | None = None) -> ExecutionResult:
         decision = self.select(request)
         adapter = self.adapters.get(decision.provider)
         if adapter is None:
             raise ProviderError("configured provider adapter is unavailable")
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
-        response = await adapter.complete(ProviderRequest(decision.model, messages, max_tokens=max_tokens))
+        response = await adapter.complete(ProviderRequest(decision.model, messages, max_tokens=max_tokens, tools=tools))
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
         usage = self.usage.record(run_id, decision.provider, next(m for m in self.models if m.provider == decision.provider and m.model == decision.model), response.usage)

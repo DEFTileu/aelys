@@ -1,24 +1,27 @@
 from __future__ import annotations
 import asyncio, json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timezone
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
-from app.core.models import AIConversation, AIMessage, AIProvider, AIProviderSecret, AIRun, AuthSession, Project
+from app.core.models import AIConversation, AIMessage, AIProvider, AIProviderSecret, AIRun, AuthSession, Note, Project, Task
 from app.core.security import bearer_scheme, current_principal, decode_token
 from app.core.config import get_settings
 from .crypto import decrypt_secret, encrypt_secret
 from .execution import AIExecutionService, Adapter
-from .models import Capability, ChatMessage, ModelSpec, PrivacyClass, ProviderKind, RoutingRequest, TaskKind
+from .errors import PolicyDenied, ToolValidationError
+from .models import Capability, ChatMessage, ModelSpec, PermissionContext, PrivacyClass, ProviderKind, RoutingRequest, TaskKind, ToolCall
 from .providers import ClaudeAdapter, HttpResponse, OpenRouterAdapter
 from .secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
+from .policy import ServerPolicyEngine
+from .tools import ToolDescriptor, ToolRegistry
 from decimal import Decimal
 import hashlib
 import httpx
@@ -32,6 +35,71 @@ class ConversationIn(BaseModel): project_id:str|None=None; title:str="Conversati
 class MessageIn(BaseModel): role:str=Field(pattern="^(user|assistant|system|tool)$"); content:str; source_refs:list[dict]=[]
 class RunIn(BaseModel): conversation_id:str; message:str; routing:dict={}; tool_scope:dict={}; idempotency_key:str
 class SecretIn(BaseModel): api_key:str=Field(min_length=8,max_length=4096)
+
+class CreateTaskToolArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=10_000)
+    project_id: str | None = Field(default=None, max_length=36)
+
+class CreateNoteToolArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    markdown_body: str = Field(default="", max_length=100_000)
+    project_id: str | None = Field(default=None, max_length=36)
+
+# This is the server-registered, non-external AI policy. `tool_scope` is only a
+# request for a subset of this set; it cannot introduce a new permission.
+_REGISTERED_AI_TOOL_SCOPES = frozenset({"tasks.write", "notes.write"})
+
+def _requested_tool_scopes(raw: Mapping[str, Any]) -> frozenset[str]:
+    values = raw.get("scopes", [])
+    if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+        raise HTTPException(status_code=422, detail={"code":"VALIDATION_ERROR","message":"tool_scope.scopes must be a list of strings"})
+    scopes = frozenset(values)
+    if not scopes.issubset(_REGISTERED_AI_TOOL_SCOPES):
+        raise HTTPException(status_code=403, detail={"code":"POLICY_DENIED","message":"Requested AI tool scope is not registered"})
+    return scopes
+
+def _tool_call(raw: Mapping[str, Any]) -> ToolCall:
+    if "function" in raw and isinstance(raw["function"], Mapping):
+        function = raw["function"]
+        arguments = function.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError as exc:
+                raise ToolValidationError("tool arguments are invalid") from exc
+        return ToolCall(str(function.get("name", "")), arguments if isinstance(arguments, Mapping) else {}, str(raw.get("id", "")))
+    arguments = raw.get("input", raw.get("arguments", {}))
+    return ToolCall(str(raw.get("name", "")), arguments if isinstance(arguments, Mapping) else {}, str(raw.get("id", "")))
+
+def _tool_registry(db: AsyncSession, owner_id: str, event_id: str) -> ToolRegistry:
+    registry = ToolRegistry(ServerPolicyEngine())
+
+    async def create_task(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        project_id = arguments.get("project_id")
+        if project_id is not None and not await _owned_project(db, owner_id, str(project_id)):
+            raise ValueError("project is outside the owner scope")
+        item = Task(owner_id=owner_id, title=str(arguments["title"]), description=str(arguments.get("description", "")), project_id=str(project_id) if project_id is not None else None)
+        db.add(item); await db.flush()
+        return {"kind":"task", "id":item.id, "event_id":event_id}
+
+    async def create_note(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        project_id = arguments.get("project_id")
+        if project_id is not None and not await _owned_project(db, owner_id, str(project_id)):
+            raise ValueError("project is outside the owner scope")
+        item = Note(owner_id=owner_id, title=str(arguments["title"]), markdown_body=str(arguments.get("markdown_body", "")), project_id=str(project_id) if project_id is not None else None)
+        db.add(item); await db.flush()
+        return {"kind":"note", "id":item.id, "event_id":event_id}
+
+    registry.register(ToolDescriptor("create_task", "Create an owner-scoped task", "tasks.write", lambda value: CreateTaskToolArgs.model_validate(value).model_dump(mode="json", exclude_none=True), create_task, input_schema=CreateTaskToolArgs.model_json_schema()))
+    registry.register(ToolDescriptor("create_note", "Create an owner-scoped Markdown note", "notes.write", lambda value: CreateNoteToolArgs.model_validate(value).model_dump(mode="json", exclude_none=True), create_note, input_schema=CreateNoteToolArgs.model_json_schema()))
+    return registry
+
+async def _owned_project(db: AsyncSession, owner_id: str, project_id: str) -> Project | None:
+    project = await db.get(Project, project_id)
+    return project if project and project.owner_id == owner_id and project.deleted_at is None else None
 
 def _provider_base_url(kind: str, value: str | None) -> str:
     default = "https://api.anthropic.com" if kind == "claude" else "https://openrouter.ai"
@@ -167,6 +235,7 @@ async def add_message(conversation_id:str,body:MessageIn,principal=Depends(curre
 async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,body.conversation_id)
     if not convo or convo.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation not found"})
+    requested_scopes = _requested_tool_scopes(body.tool_scope)
     fingerprint = _request_fingerprint(body)
     existing=(await db.execute(select(AIRun).where(AIRun.owner_id==user.id,AIRun.idempotency_key==body.idempotency_key))).scalar_one_or_none()
     if existing:
@@ -178,7 +247,7 @@ async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSes
     provider=configured.kind if configured else "configured"; model=body.routing.get("model","auto")
     message = AIMessage(conversation_id=body.conversation_id,role="user",content=body.message)
     db.add(message); await db.flush()
-    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint); db.add(item)
+    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint,tool_scope_json={"scopes":sorted(requested_scopes)}); db.add(item)
     try:
         await db.commit()
     except IntegrityError:
@@ -201,6 +270,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
     session_id = str(claims.get("sid", ""))
     provider=(await db.execute(select(AIProvider).where(AIProvider.owner_id==user.id,AIProvider.kind==item.provider,AIProvider.enabled.is_(True),AIProvider.deleted_at.is_(None)))).scalar_one_or_none()
     secret=await db.get(AIProviderSecret,provider.id) if provider else None
+    conversation = await db.get(AIConversation, item.conversation_id)
     last_message=await db.get(AIMessage, item.prompt_message_id) if item.prompt_message_id else None
     if last_message is None:
         last_message=(await db.execute(select(AIMessage).where(AIMessage.conversation_id==item.conversation_id,AIMessage.role=="user").order_by(AIMessage.created_at.desc()).limit(1))).scalars().first()
@@ -242,6 +312,34 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             service=_service(provider,decrypt_secret(secret.encrypted_value),cancel_event=cancel_event,cancel_check=durable_cancel_check); requested_model=item.model if item.model!="auto" else None
             request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=Decimal("100"))
             await db.refresh(item)
+            requested_scopes = frozenset((item.tool_scope_json or {}).get("scopes", []))
+            if requested_scopes:
+                registry = _tool_registry(db, user.id, run_id)
+                context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
+                tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=Decimal("100"))
+                result = await service.complete(__import__('uuid').UUID(run_id), tool_request, (ChatMessage("user",last_message.content if last_message else ""),), tools=tuple(registry.schemas()), cancel=cancel_event)
+                yield f"event: ai.run.started\ndata: {json.dumps({'run_id':run_id,'provider':result.provider.value,'model':result.model})}\n\n"
+                for raw_call in result.response.tool_calls:
+                    call = _tool_call(raw_call)
+                    yield f"event: ai.tool.requested\ndata: {json.dumps({'run_id':run_id,'tool':call.name,'call_id':call.call_id})}\n\n"
+                    try:
+                        output = await registry.invoke(call, context)
+                    except (PolicyDenied, ToolValidationError, RuntimeError) as error:
+                        await db.rollback()
+                        await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(timezone.utc)))
+                        await db.commit()
+                        code = "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
+                        message = "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
+                        yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':code,'message':message})}\n\n"
+                        return
+                    yield f"event: ai.tool.approved\ndata: {json.dumps({'run_id':run_id,'tool':call.name,'call_id':call.call_id})}\n\n"
+                    yield f"event: ai.tool.result\ndata: {json.dumps({'run_id':run_id,'tool':call.name,'call_id':call.call_id,'result':output})}\n\n"
+                if result.response.text:
+                    yield f"event: ai.text.delta\ndata: {json.dumps({'run_id':run_id,'text':result.response.text})}\n\n"
+                item.token_counts={"input":result.usage.usage.input_tokens,"output":result.usage.usage.output_tokens}; item.cost_estimate=result.usage.estimated_cost
+                await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(timezone.utc),token_counts=item.token_counts,cost_estimate=item.cost_estimate)); await db.commit()
+                yield f"event: ai.run.completed\ndata: {json.dumps({'run_id':run_id,'text_length':len(result.response.text),'estimated_cost':str(result.usage.estimated_cost)})}\n\n"
+                return
             async for event in service.stream_sse(__import__('uuid').UUID(run_id),request,(ChatMessage("user",last_message.content if last_message else ""),),cancel=cancel_event,cancel_check=durable_cancel_check):
                 await db.refresh(item)
                 if item.status == "cancelled":

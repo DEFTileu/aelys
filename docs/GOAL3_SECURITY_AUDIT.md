@@ -311,8 +311,10 @@ The following findings received local fixes after this audit snapshot:
   limits and failure audit/retry state remain open.
 - G3-06: mounted AI run requests now bind their prompt message and request
   fingerprint, repeated SSE readers cannot claim a queued run twice, and
-  provider endpoints are restricted to approved HTTPS hosts. The complete
-  typed tool loop, durable budget accounting and vendor execution remain open.
+  provider endpoints are restricted to approved HTTPS hosts. A bounded
+  server-registered task/note tool loop now validates and authorizes provider
+  calls; broader tool coverage, durable budget accounting and vendor execution
+  remain open.
 - G3-05: protected REST operations expose an HTTP bearer scheme in OpenAPI and
   the Makefile rejects empty snapshots before replacement.
 - G3-11: encrypted owner export/restore is implemented and tested with an
