@@ -112,9 +112,10 @@ remains a spike, not a selected production wrapper.
 ### PostgreSQL
 
 SQLite tests and Alembic checks pass. PostgreSQL integration requires a running
-PostgreSQL service; local port `127.0.0.1:5432` was unavailable, so the two
-PostgreSQL-only tests remain skipped in the default suite. CI provisions the
-service, but a fresh local restore drill was not claimed.
+PostgreSQL service. A fresh temporary Docker PostgreSQL database on
+`127.0.0.1:55432` passed Alembic upgrade/check through 0014 and both
+`test_postgres_integration.py` tests. The default suite still reports two skips
+when `AELYS_DATABASE_URL` is absent.
 
 ### Vendor credentials and trust
 
@@ -125,8 +126,8 @@ than bypassed.
 
 ## Remaining release work
 
-1. Run the PostgreSQL migration/integration suite on a clean service and add a
-   documented restore drill.
+1. Add a documented PostgreSQL backup/restore drill and repeat it on the
+   supported deployment topology.
 2. Exercise the durable client entity store through kill/restart, conflict and
    cross-device E2E tests; implement native SQLite storage where required.
 3. Expand mounted AI typed tool/policy coverage and durable usage budgets; add
