@@ -19,9 +19,11 @@ from app.ai.usage import UsageTracker
 class FakeTransport:
     def __init__(self):
         self.headers = []
+        self.payloads = []
 
     async def post(self, url, *, headers, json):
         self.headers.append(headers)
+        self.payloads.append(json)
         if "messages" in url:
             return HttpResponse(200, {"id": "r1", "content": [{"type": "text", "text": "ok"}], "usage": {"input_tokens": 2, "output_tokens": 3}})
         return HttpResponse(200, {"id": "r2", "choices": [{"message": {"content": "ok"}}], "usage": {"prompt_tokens": 2, "completion_tokens": 3}})
@@ -47,9 +49,10 @@ class AIHarnessTests(unittest.TestCase):
             ref = SecretRef("claude", "owner/provider")
             store.put(ref, "sk-test-super-secret")
             transport = FakeTransport()
-            request = ProviderRequest("claude-3", (ChatMessage("user", "hello"),))
+            request = ProviderRequest("claude-3", (ChatMessage("user", "hello"),), tools=({"name": "create_task", "input_schema": {"type": "object"}},))
             self.assertEqual((await ClaudeAdapter(transport, store, ref, "https://claude").complete(request)).text, "ok")
             self.assertIn("sk-test-super-secret", transport.headers[0]["x-api-key"])
+            self.assertEqual(transport.payloads[0]["tools"][0]["name"], "create_task")
             self.assertNotIn(b"sk-test-super-secret", next(iter(store.encrypted_snapshot().values())))
         asyncio.run(scenario())
 
@@ -77,6 +80,9 @@ class AIHarnessTests(unittest.TestCase):
                 await registry.invoke(ToolCall("send_mail", {"scope": "mail.send", "project_id": "p1"}), PermissionContext("ai", frozenset(), frozenset({"p1"}), False))
             with self.assertRaises(PolicyDenied):
                 await registry.invoke(ToolCall("send_mail", {"project_id": "p1"}), PermissionContext("ai", frozenset({"mail.send"}), frozenset({"p1"}), False))
+            registry.register(ToolDescriptor("create_task", "create", "tasks.write", lambda x: x, handler))
+            with self.assertRaises(PolicyDenied):
+                await registry.invoke(ToolCall("create_task", {"project_id": "p1"}), PermissionContext("ai", frozenset({"tasks.write"}), frozenset(), False))
         asyncio.run(scenario())
 
 

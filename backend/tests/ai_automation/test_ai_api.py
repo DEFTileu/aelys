@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.ai import api as ai_api
 from app.core import db
 from app.core.db import Base
+from app.core.models import AIRun
 from app.main import app
 
 
@@ -135,6 +136,37 @@ async def test_cancel_endpoint_stops_active_provider_stream_and_keeps_cancelled_
             async with client.stream("GET", f"/api/v1/ai/runs/{queued_id}/events", headers=headers) as response:
                 assert response.status_code == 200
                 assert "event: ai.run.cancelled" in (await response.aread()).decode()
+
+            revoked_run = await client.post(
+                "/api/v1/ai/runs",
+                headers=headers,
+                json={
+                    "conversation_id": conversation.json()["id"],
+                    "message": "cancel when the session is revoked",
+                    "routing": {"provider": "claude", "model": "fake-stream-model"},
+                    "idempotency_key": "ai-session-revocation-test",
+                },
+            )
+            revoked_id = revoked_run.json()["id"]
+
+            async def read_revoked_events():
+                async with client.stream("GET", f"/api/v1/ai/runs/{revoked_id}/events", headers=headers) as response:
+                    assert response.status_code == 200
+                    return await response.aread()
+
+            revoked_stream = asyncio.create_task(read_revoked_events())
+            revoked_transport = await asyncio.wait_for(_transport_ready(transport_holder), timeout=1)
+            await asyncio.wait_for(revoked_transport.started.wait(), timeout=1)
+            logout = await client.post("/api/v1/auth/logout", headers=headers)
+            assert logout.status_code == 200
+            await asyncio.wait_for(revoked_transport.cancel_seen.wait(), timeout=1)
+            revoked_body = (await asyncio.wait_for(revoked_stream, timeout=1)).decode()
+            assert "event: ai.run.cancelled" in revoked_body
+            assert (await client.get(f"/api/v1/ai/runs/{revoked_id}", headers=headers)).status_code == 401
+
+            async with session_factory() as session:
+                persisted = await session.get(AIRun, revoked_id)
+                assert persisted is not None and persisted.status == "cancelled"
     finally:
         await engine.dispose()
 

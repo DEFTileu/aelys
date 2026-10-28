@@ -3349,9 +3349,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Body"
+                "$ref": "#/components/schemas/RulePatch"
               }
             }
           }
@@ -3606,6 +3604,105 @@
         },
         "type": "object",
         "title": "ConversationIn"
+      },
+      "CreateNotificationAction": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "create_notification",
+            "title": "Kind"
+          },
+          "args": {
+            "$ref": "#/components/schemas/CreateNotificationArgs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "args"
+        ],
+        "title": "CreateNotificationAction"
+      },
+      "CreateNotificationArgs": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "default": "automation"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "default": "Automation"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Body",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CreateNotificationArgs"
+      },
+      "CreateTaskAction": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "create_task",
+            "title": "Kind"
+          },
+          "args": {
+            "$ref": "#/components/schemas/CreateTaskArgs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "args"
+        ],
+        "title": "CreateTaskAction"
+      },
+      "CreateTaskArgs": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 10000,
+            "title": "Description",
+            "default": ""
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "CreateTaskArgs"
       },
       "CredentialLeaseIn": {
         "properties": {
@@ -4266,32 +4363,48 @@
           },
           "trigger_kind": {
             "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
             "title": "Trigger Kind"
           },
           "conditions": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Conditions",
-            "default": {}
+            "title": "Conditions"
           },
           "actions": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CreateTaskAction"
+                },
+                {
+                  "$ref": "#/components/schemas/CreateNotificationAction"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "create_notification": "#/components/schemas/CreateNotificationAction",
+                  "create_task": "#/components/schemas/CreateTaskAction"
+                }
+              }
             },
             "type": "array",
-            "title": "Actions",
-            "default": []
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Actions"
           },
           "policy_ref": {
             "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
             "title": "Policy Ref"
           },
           "rate_limit": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Rate Limit",
-            "default": {}
+            "title": "Rate Limit"
           },
           "enabled": {
             "type": "boolean",
@@ -4299,13 +4412,126 @@
             "default": true
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "name",
           "trigger_kind",
+          "actions",
           "policy_ref"
         ],
         "title": "RuleIn"
+      },
+      "RulePatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "trigger_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Kind"
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditions"
+          },
+          "actions": {
+            "anyOf": [
+              {
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CreateTaskAction"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CreateNotificationAction"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "kind",
+                    "mapping": {
+                      "create_notification": "#/components/schemas/CreateNotificationAction",
+                      "create_task": "#/components/schemas/CreateTaskAction"
+                    }
+                  }
+                },
+                "type": "array",
+                "maxItems": 20,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actions"
+          },
+          "policy_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Ref"
+          },
+          "rate_limit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Limit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RulePatch"
       },
       "SecretIn": {
         "properties": {
@@ -4772,19 +4998,23 @@
         "properties": {
           "event_id": {
             "type": "string",
+            "maxLength": 150,
+            "minLength": 1,
             "title": "Event Id"
           },
           "event_kind": {
             "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
             "title": "Event Kind"
           },
           "payload": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Payload",
-            "default": {}
+            "title": "Payload"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "event_id",

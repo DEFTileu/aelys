@@ -297,7 +297,8 @@ The following findings received local fixes after this audit snapshot:
 
 - G3-01: new tokens are session-bound; `current_principal` checks the active
   session and logout revokes it; a regression test covers access and refresh
-  rejection after logout.
+  rejection after logout, and active AI SSE streams now cancel when that
+  session is revoked.
 - G3-02: agent metadata ingestion/list/search now require the active owner,
   device and project grant boundary; route coverage was added to the API
   contract test.
@@ -305,6 +306,13 @@ The following findings received local fixes after this audit snapshot:
   transaction for offline project, note and task creates. Full client recovery,
   native stores, cross-device conflict E2E and uniform server idempotency remain
   unverified.
+- G3-03: mounted automation now uses strict typed action models, registered
+  handlers and a database uniqueness claim for duplicate events. Durable rate
+  limits and failure audit/retry state remain open.
+- G3-06: mounted AI run requests now bind their prompt message and request
+  fingerprint, repeated SSE readers cannot claim a queued run twice, and
+  provider endpoints are restricted to approved HTTPS hosts. The complete
+  typed tool loop, durable budget accounting and vendor execution remain open.
 - G3-05: protected REST operations expose an HTTP bearer scheme in OpenAPI and
   the Makefile rejects empty snapshots before replacement.
 - G3-11: encrypted owner export/restore is implemented and tested with an

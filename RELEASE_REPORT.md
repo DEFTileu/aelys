@@ -12,7 +12,7 @@ development evidence from platform or external-account blockers.
 
 | Area | Evidence | Result |
 |---|---|---|
-| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q backend/tests` | **43 passed, 2 skipped**; the skips are PostgreSQL-only tests without a running PostgreSQL service |
+| Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **48 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
 | Python quality | `compileall`, Ruff, mypy, Bandit and pip-audit from CI/local records | **Pass**; the audit warning from Starlette/httpx remains non-blocking |
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
 | OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
@@ -40,8 +40,9 @@ unverified or blocked:
   decisions and absent credentials**. Local mail import/drafts remain
   available; no live integration is claimed.
 - AI typed tool execution from the mounted API, prompt-injection end-to-end
-  tests and local-session egress policy: **partial/unverified**. Library policy
-  tests pass; the mounted run path does not yet expose the complete tool loop.
+  tests and local-session egress policy: **partial/unverified**. Provider tool
+  payload support and policy primitives pass; the mounted run path still does
+  not expose the complete typed tool loop or durable usage budget accounting.
 - Claude Code/Codex authenticated execution: **blocked intentionally**.
   Version/help probes pass, but adapters remain `can_run=false` until
   credentialed compatibility and trusted macOS isolation/provenance evidence
@@ -49,10 +50,11 @@ unverified or blocked:
 - Live Mac session search and remote event streaming: **blocked**. The API
   correctly returns `MAC_OFFLINE`/metadata-only behavior where live forwarding
   is unavailable.
-- Automation: mounted actions now require the registered `safe` policy path,
-  typed action shape, owner project validation and `ServerPolicyEngine`
-  authorization. Durable rate limiting and full tool-registry dispatch remain
-  incomplete.
+- Automation: mounted actions now use strict typed actions, registered
+  `ToolRegistry` handlers, owner/project validation, `ServerPolicyEngine`
+  authorization and a database uniqueness claim for duplicate events. Durable
+  rate limiting, failure audit/retry state and full domain-service dispatch
+  remain incomplete.
 
 ## Security changes made in Goal 3
 
@@ -64,7 +66,9 @@ unverified or blocked:
 - Agent session metadata ingestion, listing and search require an active
   owner/device/project grant. Raw session content remains excluded.
 - Mounted automation dispatch rejects unregistered policies, unknown actions,
-  malformed arguments and foreign project references before writes.
+  malformed arguments and foreign project references before writes; supported
+  actions use registered typed handlers and duplicate event claims are database
+  constrained.
 - `make openapi` writes through a temporary file and rejects empty output.
 - Encrypted single-owner export/restore uses a separate operator-supplied
   `AELYS_EXPORT_KEY`; it excludes auth sessions, device credentials, provider
@@ -74,6 +78,12 @@ unverified or blocked:
   the API client still strips caller-supplied authorization headers.
 - Frontend, shared and Tauri package manifests use exact checked versions; a
   frozen pnpm install and web/shared checks pass.
+- Active AI SSE streams observe auth-session revocation and cancel the run;
+  repeated stream readers cannot claim a queued run twice.
+- Mounted AI runs bind their prompt message and request fingerprint, reject
+  idempotency-key reuse with a different payload, enforce owner project
+  references, and reject unapproved/non-HTTPS provider endpoints before any
+  BYOK key is used.
 
 ## Platform and external blockers
 
@@ -113,7 +123,8 @@ than bypassed.
    documented restore drill.
 2. Exercise the durable client entity store through kill/restart, conflict and
    cross-device E2E tests; implement native SQLite storage where required.
-3. Complete mounted AI tool/policy integration and automation durability.
+3. Complete mounted AI typed tool/policy integration, durable usage budgets and
+   automation rate-limit/failure audit durability.
 4. Perform the supported macOS isolation/helper/signing spike; only then
    consider enabling vendor execution.
 5. Initialize and validate Android Tauri on a machine with the required SDK,

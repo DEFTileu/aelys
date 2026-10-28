@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
-from app.core.models import AIConversation, AIMessage, AIProvider, AIProviderSecret, AIRun
-from app.core.security import current_principal
+from app.core.models import AIConversation, AIMessage, AIProvider, AIProviderSecret, AIRun, AuthSession, Project
+from app.core.security import bearer_scheme, current_principal, decode_token
 from app.core.config import get_settings
 from .crypto import decrypt_secret, encrypt_secret
 from .execution import AIExecutionService, Adapter
@@ -20,6 +22,8 @@ from .secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
 from decimal import Decimal
 import hashlib
 import httpx
+import ipaddress
+from urllib.parse import urlparse
 
 router=APIRouter()
 _active_cancellations: dict[str, asyncio.Event] = {}
@@ -28,6 +32,25 @@ class ConversationIn(BaseModel): project_id:str|None=None; title:str="Conversati
 class MessageIn(BaseModel): role:str=Field(pattern="^(user|assistant|system|tool)$"); content:str; source_refs:list[dict]=[]
 class RunIn(BaseModel): conversation_id:str; message:str; routing:dict={}; tool_scope:dict={}; idempotency_key:str
 class SecretIn(BaseModel): api_key:str=Field(min_length=8,max_length=4096)
+
+def _provider_base_url(kind: str, value: str | None) -> str:
+    default = "https://api.anthropic.com" if kind == "claude" else "https://openrouter.ai"
+    if value is None:
+        return default
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    allowed = (kind == "claude" and host == "api.anthropic.com") or (kind == "openrouter" and host == "openrouter.ai")
+    try:
+        is_ip = ipaddress.ip_address(host)
+    except ValueError:
+        is_ip = None
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password or is_ip is not None or not allowed:
+        raise HTTPException(status_code=422, detail={"code":"INVALID_PROVIDER_ENDPOINT","message":"Provider endpoint must be an approved HTTPS host"})
+    return value.rstrip("/")
+
+def _request_fingerprint(body: RunIn) -> str:
+    canonical = json.dumps({"conversation_id":body.conversation_id,"message":body.message,"routing":body.routing,"tool_scope":body.tool_scope}, sort_keys=True, separators=(",",":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 class HttpxTransport:
     def __init__(self, cancel_event: asyncio.Event | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None):
@@ -96,7 +119,8 @@ def _service(provider: AIProvider, secret_value: str, *, cancel_event: asyncio.E
     settings=get_settings(); master=hashlib.sha256(settings.secret_key.encode()).digest()
     store=SecretStore(AuthenticatedStreamCipher(master)); ref=SecretRef(provider.kind,provider.secret_ref or provider.id); store.put(ref,secret_value)
     transport = HttpxTransport(cancel_event=cancel_event, cancel_check=cancel_check)
-    adapter=ClaudeAdapter(transport,store,ref,provider.base_url or "https://api.anthropic.com") if provider.kind=="claude" else OpenRouterAdapter(transport,store,ref,provider.base_url or "https://openrouter.ai")
+    endpoint = _provider_base_url(provider.kind, provider.base_url)
+    adapter=ClaudeAdapter(transport,store,ref,endpoint) if provider.kind=="claude" else OpenRouterAdapter(transport,store,ref,endpoint)
     policy=provider.model_policy_json or {}; raw_models=policy.get("models") or [{"name":policy.get("default_model","default"),"capabilities":["streaming"],"context_tokens":100000,"input_cost_per_1k":"0","output_cost_per_1k":"0"}]
     specs=[]
     for raw in raw_models:
@@ -110,7 +134,7 @@ async def providers(principal=Depends(current_principal),db:AsyncSession=Depends
     return [{"id":x.id,"kind":x.kind,"base_url":x.base_url,"enabled":x.enabled,"model_policy":x.model_policy_json,"secret_ref":x.secret_ref} for x in rows]
 @router.post("/ai/providers")
 async def create_provider(body:ProviderIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=AIProvider(owner_id=user.id,kind=body.kind,base_url=body.base_url,enabled=body.enabled,model_policy_json=body.model_policy,secret_ref=body.secret_ref); db.add(item); await db.commit(); await db.refresh(item); return {"id":item.id,"kind":item.kind,"enabled":item.enabled}
+    user,_=principal; endpoint = None if body.base_url is None else _provider_base_url(body.kind, body.base_url); item=AIProvider(owner_id=user.id,kind=body.kind,base_url=endpoint,enabled=body.enabled,model_policy_json=body.model_policy,secret_ref=body.secret_ref); db.add(item); await db.commit(); await db.refresh(item); return {"id":item.id,"kind":item.kind,"enabled":item.enabled}
 @router.put("/ai/providers/{provider_id}/secret")
 async def set_provider_secret(provider_id:str,body:SecretIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; provider=await db.get(AIProvider,provider_id)
@@ -123,7 +147,12 @@ async def set_provider_secret(provider_id:str,body:SecretIn,principal=Depends(cu
     return {"stored":True,"provider_id":provider_id,"last_four":body.api_key[-4:]}
 @router.post("/ai/conversations")
 async def create_conversation(body:ConversationIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=AIConversation(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
+    user,_=principal
+    if body.project_id:
+        project = await db.get(Project, body.project_id)
+        if not project or project.owner_id != user.id or project.deleted_at is not None:
+            raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation project not found"})
+    item=AIConversation(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
 @router.get("/ai/conversations/{conversation_id}/messages")
 async def messages(conversation_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,conversation_id)
@@ -138,24 +167,43 @@ async def add_message(conversation_id:str,body:MessageIn,principal=Depends(curre
 async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,body.conversation_id)
     if not convo or convo.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation not found"})
+    fingerprint = _request_fingerprint(body)
     existing=(await db.execute(select(AIRun).where(AIRun.owner_id==user.id,AIRun.idempotency_key==body.idempotency_key))).scalar_one_or_none()
-    if existing: return existing
+    if existing:
+        if existing.request_fingerprint != fingerprint:
+            raise HTTPException(409,detail={"code":"IDEMPOTENCY_CONFLICT","message":"Idempotency key is bound to a different AI request"})
+        return existing
     requested_provider=body.routing.get("provider")
     configured=(await db.execute(select(AIProvider).where(AIProvider.owner_id==user.id,AIProvider.enabled.is_(True),AIProvider.deleted_at.is_(None), *( [AIProvider.kind==requested_provider] if requested_provider else [] )).order_by(AIProvider.created_at))).scalars().first()
     provider=configured.kind if configured else "configured"; model=body.routing.get("model","auto")
-    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key); db.add(item); db.add(AIMessage(conversation_id=body.conversation_id,role="user",content=body.message)); await db.commit(); await db.refresh(item); return item
+    message = AIMessage(conversation_id=body.conversation_id,role="user",content=body.message)
+    db.add(message); await db.flush()
+    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint); db.add(item)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = (await db.execute(select(AIRun).where(AIRun.owner_id==user.id,AIRun.idempotency_key==body.idempotency_key))).scalar_one_or_none()
+        if not existing or existing.request_fingerprint != fingerprint:
+            raise HTTPException(409,detail={"code":"IDEMPOTENCY_CONFLICT","message":"Idempotency key is bound to a different AI request"}) from None
+        return existing
+    await db.refresh(item); return item
 @router.get("/ai/runs/{run_id}")
 async def get_run(run_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await db.get(AIRun,run_id)
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Run not found"})
     return item
 @router.get("/ai/runs/{run_id}/events", response_class=StreamingResponse, responses={200:{"content":{"text/event-stream":{}}}})
-async def run_events(run_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+async def run_events(run_id:str,principal=Depends(current_principal),credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await db.get(AIRun,run_id)
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Run not found"})
+    claims = decode_token(credentials.credentials if credentials else "")
+    session_id = str(claims.get("sid", ""))
     provider=(await db.execute(select(AIProvider).where(AIProvider.owner_id==user.id,AIProvider.kind==item.provider,AIProvider.enabled.is_(True),AIProvider.deleted_at.is_(None)))).scalar_one_or_none()
     secret=await db.get(AIProviderSecret,provider.id) if provider else None
-    last_message=(await db.execute(select(AIMessage).where(AIMessage.conversation_id==item.conversation_id,AIMessage.role=="user").order_by(AIMessage.created_at.desc()).limit(1))).scalars().first()
+    last_message=await db.get(AIMessage, item.prompt_message_id) if item.prompt_message_id else None
+    if last_message is None:
+        last_message=(await db.execute(select(AIMessage).where(AIMessage.conversation_id==item.conversation_id,AIMessage.role=="user").order_by(AIMessage.created_at.desc()).limit(1))).scalars().first()
     async def stream():
         if not provider or not secret:
             yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':'MODEL_UNAVAILABLE','message':'Provider or encrypted BYOK secret is not configured'})}\n\n"; return
@@ -163,24 +211,36 @@ async def run_events(run_id:str,principal=Depends(current_principal),db:AsyncSes
             await db.refresh(item)
             if item.status == "cancelled":
                 yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"; return
-            cancel_event=asyncio.Event(); _active_cancellations[run_id]=cancel_event
-            async def durable_cancel_check() -> bool:
-                current=(await db.execute(select(AIRun.status).where(AIRun.id==run_id,AIRun.owner_id==user.id))).scalar_one_or_none()
-                cancelled=current=="cancelled"
-                if cancelled: cancel_event.set()
-                return cancelled
-            service=_service(provider,decrypt_secret(secret.encrypted_value),cancel_event=cancel_event,cancel_check=durable_cancel_check); requested_model=item.model if item.model!="auto" else None
-            request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=Decimal("100"))
             started = await db.execute(
                 update(AIRun)
-                .where(AIRun.id == run_id, AIRun.owner_id == user.id, AIRun.status != "cancelled")
+                .where(AIRun.id == run_id, AIRun.owner_id == user.id, AIRun.status == "queued")
                 .values(status="running", started_at=datetime.now(timezone.utc))
             )
             await db.commit()
             if int(getattr(started, "rowcount", 0) or 0) != 1:
-                cancel_event.set()
-                yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                await db.refresh(item)
+                if item.status == "cancelled":
+                    yield f"event: ai.run.cancelled\ndata: {json.dumps({'run_id':run_id})}\n\n"
+                elif item.status == "completed":
+                    yield f"event: ai.run.completed\ndata: {json.dumps({'run_id':run_id,'replayed':True})}\n\n"
+                elif item.status == "failed":
+                    yield f"event: ai.run.failed\ndata: {json.dumps({'run_id':run_id,'code':'AI_ERROR','message':'Provider execution failed','replayed':True})}\n\n"
+                else:
+                    yield f"event: ai.run.in_progress\ndata: {json.dumps({'run_id':run_id})}\n\n"
                 return
+            cancel_event=asyncio.Event(); _active_cancellations[run_id]=cancel_event
+            async def durable_cancel_check() -> bool:
+                current=(await db.execute(select(AIRun.status).where(AIRun.id==run_id,AIRun.owner_id==user.id))).scalar_one_or_none()
+                session = await db.get(AuthSession, session_id)
+                session_revoked = not session or session.owner_id != user.id or session.revoked_at is not None
+                cancelled=current=="cancelled" or session_revoked
+                if session_revoked and current in {"queued", "running", "starting"}:
+                    await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status.in_(["queued", "running", "starting"])).values(status="cancelled",completed_at=datetime.now(timezone.utc)))
+                    await db.commit()
+                if cancelled: cancel_event.set()
+                return cancelled
+            service=_service(provider,decrypt_secret(secret.encrypted_value),cancel_event=cancel_event,cancel_check=durable_cancel_check); requested_model=item.model if item.model!="auto" else None
+            request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=Decimal("100"))
             await db.refresh(item)
             async for event in service.stream_sse(__import__('uuid').UUID(run_id),request,(ChatMessage("user",last_message.content if last_message else ""),),cancel=cancel_event,cancel_check=durable_cancel_check):
                 await db.refresh(item)

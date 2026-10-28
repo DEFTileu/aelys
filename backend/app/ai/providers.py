@@ -59,7 +59,7 @@ class ClaudeAdapter(_BaseAdapter):
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
         system = [m.content for m in request.messages if m.role == "system"]
         messages = [{"role": m.role, "content": m.content} for m in request.messages if m.role != "system"]
-        return {"model": request.model, "max_tokens": request.max_tokens, "temperature": float(request.temperature), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {})}
+        return {"model": request.model, "max_tokens": request.max_tokens, "temperature": float(request.temperature), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
         response = await self._post("/v1/messages", self._payload(request))
@@ -84,7 +84,7 @@ class OpenRouterAdapter(_BaseAdapter):
     kind = ProviderKind.OPENROUTER
 
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
-        return {"model": request.model, "messages": [{"role": m.role, "content": m.content} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream}
+        return {"model": request.model, "messages": [{"role": m.role, "content": m.content} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": list(request.tools)} if request.tools else {})}
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
         response = await self._post("/api/v1/chat/completions", self._payload(request))

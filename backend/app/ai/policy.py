@@ -28,5 +28,5 @@ class ServerPolicyEngine:
         if tool.external_effect and not context.allow_external_effects:
             raise PolicyDenied("external effects require explicit permission")
         project_id = call.arguments.get("project_id")
-        if project_id is not None and context.project_ids and str(project_id) not in context.project_ids:
+        if project_id is not None and str(project_id) not in context.project_ids:
             raise PolicyDenied("project is outside the granted scope")
