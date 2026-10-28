@@ -158,3 +158,4 @@ local containerized backend/PostgreSQL path with secrets supplied from the
 environment; `docker compose config` and a local `docker build` pass. They do
 not claim production TLS, reverse proxy, process
 supervision, signing, or deployment readiness.
+The CI workflow now repeats the Compose config and image build smoke checks.
