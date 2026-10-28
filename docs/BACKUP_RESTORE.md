@@ -29,6 +29,24 @@ PYTHONPATH=. ../.venv/bin/python scripts/restore_owner.py \
 
 For PostgreSQL physical backups, use the database operator's encrypted
 `pg_dump`/restore process and protect the dump with the same operational care.
-Run a clean restore drill before treating a backup as recoverable. Mac-only
+The following logical backup drill keeps the restore target isolated:
+
+```sh
+# Run with AELYS_DATABASE_URL pointing at the source database.
+pg_dump --format=custom --no-owner --file=/secure/aelys.dump "$AELYS_DATABASE_URL"
+
+# Create an empty restore database through the normal PostgreSQL operator path.
+createdb aelys_restore_check
+pg_restore --clean --if-exists --no-owner --dbname=aelys_restore_check /secure/aelys.dump
+
+# Point AELYS_DATABASE_URL at the restored database and verify schema/tests.
+cd backend
+PYTHONPATH=. ../.venv/bin/alembic check
+AELYS_DATABASE_URL="$AELYS_DATABASE_URL" PYTHONPATH=.. ../.venv/bin/pytest \
+  -q tests/test_postgres_integration.py
+```
+
+Drop `aelys_restore_check` only after the operator has inspected the restored
+data. Run a clean restore drill before treating a backup as recoverable. Mac-only
 session indexes and transcripts require a separate explicit local Mac backup
 decision; this workflow does not copy them off Mac.
