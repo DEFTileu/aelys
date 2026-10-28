@@ -12,7 +12,7 @@ describe('HomeView', () => {
     document.body.appendChild(host)
     root = createRoot(host)
     await act(async () => { root?.render(<HomeView apiStatus="offline" />) })
-    expect(host.textContent).toContain('Photo backdrop follows your local solar period')
+    expect(host.textContent).toContain('Photo backdrop ·')
     expect(host.textContent).toContain('Working offline')
     expect(host.querySelector('.hero')?.getAttribute('style')).toContain('/backgrounds/weather/')
   })

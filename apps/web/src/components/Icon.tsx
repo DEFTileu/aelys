@@ -4,7 +4,7 @@ type IconName =
   | 'home' | 'sparkles' | 'check-square' | 'calendar' | 'folder' | 'note' | 'mail' | 'wallet'
   | 'timer' | 'terminal' | 'workflow' | 'search' | 'settings' | 'grid' | 'chevron-right'
   | 'plus' | 'arrow-up' | 'moon' | 'sun' | 'menu' | 'x' | 'refresh' | 'cloud-off' | 'wifi'
-  | 'alert' | 'inbox' | 'sliders' | 'arrow-left' | 'send' | 'external' | 'lock'
+  | 'alert' | 'inbox' | 'sliders' | 'arrow-left' | 'send' | 'external' | 'lock' | 'bell' | 'more-horizontal'
 
 const paths: Record<IconName, string> = {
   home: 'M3 10.5 12 3l9 7.5v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9Z',
@@ -38,6 +38,8 @@ const paths: Record<IconName, string> = {
   send: 'm22 2-7 20-4-9-9-4 20-7Z',
   external: 'M14 5h5v5m-1-4-8 8M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5',
   lock: 'M7 10V7a5 5 0 0 1 10 0v3m-11 0h12v10H6V10Z',
+  bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',
+  'more-horizontal': 'M5 12h.01M12 12h.01M19 12h.01',
 }
 
 export function Icon({ name, size = 18, strokeWidth = 1.8, ...props }: SVGProps<SVGSVGElement> & { name: IconName; size?: number; strokeWidth?: number }) {

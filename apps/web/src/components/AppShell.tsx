@@ -24,7 +24,7 @@ export function AppShell({ route, apiStatus, theme, onToggleTheme, children }: {
     setLauncherOpen(false)
   }
 
-  return <div className={`app-shell ${railCollapsed ? 'app-shell--rail-collapsed' : ''}`}>
+  return <div className={`app-shell ${route === '/' ? 'app-shell--home' : ''} ${railCollapsed ? 'app-shell--rail-collapsed' : ''}`}>
     <aside className="sidebar" aria-label="Main navigation">
       <div className="brand-row">
         <button className="brand" onClick={() => go('/')} aria-label="Go to Aelys home">
