@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
-from app.core.models import AgentRun, AgentSessionIndex, AuditLog, Device, Project, ProjectGrant, now
+from app.core.models import AgentRun, AgentSessionIndex, AuditLog, AuthSession, Device, Project, ProjectGrant, now
 from app.core.config import get_settings
 from app.core.security import current_principal, decode_token
 from app.core import db as core_db
@@ -113,13 +113,15 @@ async def runtime_channel(websocket:WebSocket):
     authorization=websocket.headers.get("authorization")
     token=authorization.split(" ",1)[1] if authorization and authorization.lower().startswith("bearer ") else ""
     try:
-        claims=decode_token(token); device_id=claims.get("device_id")
+        claims=decode_token(token); device_id=claims.get("device_id"); session_id=claims.get("sid")
         if claims.get("typ")!="access": raise ValueError("access token required")
-        if not device_id: raise ValueError("device token required")
+        if not device_id or not session_id: raise ValueError("device session token required")
     except Exception:
         await websocket.close(code=4401); return
     async with core_db.SessionLocal() as db:
-        device=await db.get(Device,device_id)
+        device=await db.get(Device,device_id); session=await db.get(AuthSession,session_id)
+        if not session or session.revoked_at or session.owner_id!=claims.get("sub") or session.device_id not in {None,device_id}:
+            await websocket.close(code=4401); return
         if not device or device.revoked_at or device.platform not in {"macos","helper"} or device.owner_id!=claims.get("sub"):
             await websocket.close(code=4403); return
         await websocket.accept(); await websocket.send_json({"type":"ready","device_id":device_id})
@@ -127,7 +129,8 @@ async def runtime_channel(websocket:WebSocket):
             while True:
                 message=await websocket.receive_json(); kind=message.get("type")
                 await db.refresh(device)
-                if device.revoked_at:
+                await db.refresh(session)
+                if device.revoked_at or session.revoked_at:
                     await websocket.close(code=4403); return
                 if kind=="heartbeat":
                     device.last_seen_at=datetime.now(timezone.utc); await db.commit(); await websocket.send_json({"type":"heartbeat_ack"})
