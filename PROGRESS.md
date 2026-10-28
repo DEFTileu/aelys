@@ -99,3 +99,9 @@ Complete authenticated vendor CLI compatibility and supported macOS helper signi
 - Frontend/shell CI also performs frozen pnpm install, web checks, desktop and
   mobile host checks, and the unbundled desktop Tauri binary build; signed
   macOS bundles and Android APK artifacts remain platform-gated.
+- `backend/Dockerfile` and `compose.self-hosted.yaml` provide a local
+  containerized backend/PostgreSQL path; production TLS, reverse proxy,
+  process supervision and backup operations remain operator gates.
+- `.dockerignore` keeps local caches, frontend artifacts, Rust targets and
+  secrets out of the backend image build context; Compose config and a local
+  backend image build pass.

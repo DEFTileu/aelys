@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aelys}
+      POSTGRES_USER: ${POSTGRES_USER:-aelys}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD outside the repository}
+    volumes:
+      - aelys-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AELYS_SECRET_KEY: ${AELYS_SECRET_KEY:?set AELYS_SECRET_KEY outside the repository}
+      AELYS_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aelys}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aelys}
+      AELYS_ACCESS_TOKEN_MINUTES: ${AELYS_ACCESS_TOKEN_MINUTES:-15}
+      AELYS_REFRESH_TOKEN_DAYS: ${AELYS_REFRESH_TOKEN_DAYS:-30}
+    ports:
+      - "${AELYS_BACKEND_PORT:-8000}:8000"
+
+volumes:
+  aelys-postgres:

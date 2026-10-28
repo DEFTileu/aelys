@@ -152,3 +152,9 @@ See [docs/GOAL3_SECURITY_AUDIT.md](docs/GOAL3_SECURITY_AUDIT.md),
 [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md), and
 [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) for the detailed evidence and
 operator procedures.
+
+The checked-in `backend/Dockerfile` and `compose.self-hosted.yaml` provide a
+local containerized backend/PostgreSQL path with secrets supplied from the
+environment; `docker compose config` and a local `docker build` pass. They do
+not claim production TLS, reverse proxy, process
+supervision, signing, or deployment readiness.

@@ -50,6 +50,32 @@ Run the PostgreSQL integration tests with `AELYS_DATABASE_URL` set. Production
 TLS, role hardening, backup retention and process supervision remain operator
 responsibilities and are release prerequisites.
 
+## Containerized backend + PostgreSQL
+
+The repository includes `compose.self-hosted.yaml` for a reproducible local
+operator setup. It starts only the backend and PostgreSQL; serve the built web
+client through the operator's chosen web server and configure its API base URL.
+Secrets are supplied through the shell and are never committed:
+
+```sh
+export AELYS_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export POSTGRES_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+docker compose -f compose.self-hosted.yaml up --build
+```
+
+The backend is then available at `http://127.0.0.1:8000`; verify `/healthz`
+and open `/docs` for the API contract. Stop it with:
+
+```sh
+docker compose -f compose.self-hosted.yaml down
+```
+
+The named PostgreSQL volume is retained by `down`; use the documented backup
+and restore drill in [BACKUP_RESTORE.md](BACKUP_RESTORE.md) before removing it.
+This Compose file is a local/self-hosting development path. TLS, reverse proxy,
+operator role hardening, backups, monitoring and production process policy are
+deliberate deployment responsibilities.
+
 ## Checks
 
 ```sh
