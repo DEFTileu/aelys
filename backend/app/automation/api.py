@@ -4,7 +4,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
-from app.core.models import AutomationExecution, AutomationRule, Notification, Task
+from app.core.models import AutomationExecution, AutomationRule, Notification, Project, Task
+from app.ai.models import PermissionContext, ToolCall
+from app.ai.policy import ServerPolicyEngine
+from app.ai.tools import ToolDescriptor
 from app.core.security import current_principal
 
 router=APIRouter()
@@ -52,6 +55,26 @@ async def dispatch(body:EventIn,principal=Depends(current_principal),db:AsyncSes
             for action in rule.actions_json:
                 kind=action.get("kind") or action.get("tool")
                 args=action.get("args",action.get("arguments",{}))
+                if rule.policy_ref != "safe":
+                    raise HTTPException(403,detail={"code":"POLICY_DENIED","message":"Automation policy is not registered"})
+                if not isinstance(args,dict):
+                    raise HTTPException(422,detail={"code":"VALIDATION_ERROR","message":"Automation arguments must be an object"})
+                project_id=args.get("project_id",body.payload.get("project_id"))
+                if project_id:
+                    project=await db.get(Project,str(project_id))
+                    if not project or project.owner_id != user.id:
+                        raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Automation project not found"})
+                descriptor=ToolDescriptor(
+                    name=str(kind), description="mounted automation action",
+                    required_scope="tasks.write" if kind=="create_task" else "notifications.write" if kind=="create_notification" else "automation.unknown",
+                    validator=lambda value: value,
+                    handler=lambda value: None,
+                )
+                ServerPolicyEngine().authorize(
+                    descriptor,
+                    ToolCall(str(kind),args),
+                    PermissionContext(actor=f"automation:{rule.id}",scopes=frozenset({"tasks.write","notifications.write"}),project_ids=frozenset({str(project_id)}) if project_id else frozenset(),allow_external_effects=False,policy_id=rule.policy_ref),
+                )
                 if kind=="create_task":
                     db.add(Task(owner_id=user.id,title=str(args.get("title",body.payload.get("title","Automated task"))),description=str(args.get("description","")),project_id=args.get("project_id",body.payload.get("project_id"))))
                 elif kind=="create_notification":

@@ -1,10 +1,13 @@
 from __future__ import annotations
 import base64, hashlib, hmac, json, secrets, time
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from .config import get_settings
 from .db import get_db
-from .models import Device, User
+from .models import AuthSession, Device, User
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
@@ -22,10 +25,11 @@ def verify_password(password: str, encoded: str) -> bool:
 def _b64(value: bytes) -> str: return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
 def _unb64(value: str) -> bytes: return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
-def create_token(subject: str, kind: str, expires_seconds: int, device_id: str | None = None) -> str:
+def create_token(subject: str, kind: str, expires_seconds: int, device_id: str | None = None, session_id: str | None = None) -> str:
     header = _b64(json.dumps({"alg":"HS256","typ":"JWT"}, separators=(",",":")).encode())
     payload = {"sub": subject, "typ": kind, "exp": int(time.time()) + expires_seconds, "jti": secrets.token_urlsafe(18)}
     if device_id: payload["device_id"] = device_id
+    if session_id: payload["sid"] = session_id
     body = _b64(json.dumps(payload, separators=(",",":")).encode())
     signing = f"{header}.{body}".encode()
     sig = hmac.new(get_settings().secret_key.encode(), signing, hashlib.sha256).digest()
@@ -52,14 +56,19 @@ def decode_refresh_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Refresh token required"})
     return claims
 
-async def current_principal(authorization: str | None = Header(default=None), db: AsyncSession = Depends(get_db)) -> tuple[User, Device | None]:
-    if not authorization or not authorization.lower().startswith("bearer "):
+async def current_principal(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), db: AsyncSession = Depends(get_db)) -> tuple[User, Device | None]:
+    if not credentials:
         raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Bearer token required"})
-    claims = decode_token(authorization.split(" ",1)[1])
+    claims = decode_token(credentials.credentials)
     if claims.get("typ") != "access":
         raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Access token required"})
     user = await db.get(User, claims["sub"])
     if not user: raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Unknown owner"})
+    session_id = claims.get("sid")
+    if session_id:
+        session = await db.get(AuthSession, session_id)
+        if not session or session.owner_id != user.id or session.revoked_at:
+            raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Session revoked"})
     device = None
     if claims.get("device_id"):
         device = await db.get(Device, claims["device_id"])

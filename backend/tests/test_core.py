@@ -39,6 +39,16 @@ async def test_refresh_tokens_rotate_and_replay_is_rejected(client):
     replay=await client.post("/api/v1/auth/refresh",json={"refresh_token":old}); assert replay.status_code==401
     assert (await client.get("/api/v1/me",headers={"Authorization":f"Bearer {old}"})).status_code==401
 
+@pytest.mark.asyncio
+async def test_logout_revokes_bound_access_and_refresh_session(client):
+    r = await client.post("/api/v1/auth/bootstrap", json={"email":"logout@example.com","password":"correct horse battery staple"})
+    access, refresh = r.json()["access_token"], r.json()["refresh_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+    assert (await client.get("/api/v1/me", headers=headers)).status_code == 200
+    assert (await client.post("/api/v1/auth/logout", headers=headers)).status_code == 200
+    assert (await client.get("/api/v1/me", headers=headers)).status_code == 401
+    assert (await client.post("/api/v1/auth/refresh", json={"refresh_token":refresh})).status_code == 401
+
 def test_attestation_rejects_mutated_unsigned_request():
     key=Ed25519PrivateKey.generate(); public=key.public_key().public_bytes_raw()
     device_id="device-attestation-test"

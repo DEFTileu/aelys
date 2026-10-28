@@ -2,6 +2,24 @@
 
 Updated: 2026-10-28
 
+## Goal 3 status — release audit in progress
+
+- Goal 3 security and release audits are recorded in
+  `docs/GOAL3_SECURITY_AUDIT.md` and `docs/GOAL3_RELEASE_AUDIT.md`.
+- Release-critical local fixes now include session-bound access tokens and
+  logout revocation, explicit HTTP bearer security in OpenAPI, active project
+  grant checks for agent metadata/search, policy authorization on mounted
+  automation actions, an atomic OpenAPI snapshot target, and encrypted
+  single-owner export/restore that excludes credentials and raw Mac sessions.
+- Current local evidence: backend `43 passed, 2 skipped`; runtime `44 passed`,
+  format and Clippy pass; shared `6 passed`; web `6 passed`, typecheck and
+  production build pass; desktop/mobile host Rust checks pass.
+- Release is still not ready. Android APK generation, macOS signing and
+  notarization, distributable installer/update flow, PostgreSQL integration
+  against a running service, authenticated vendor execution, helper IPC,
+  Telegram/Gmail external integrations, and full cross-device offline E2E are
+  not verified. Security remains fail-closed where evidence is missing.
+
 ## Goal 2 status — in progress
 
 - Documentation and Goal 1 handoff were re-read before frontend work.

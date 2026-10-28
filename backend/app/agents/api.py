@@ -37,6 +37,14 @@ class MetadataItem(BaseModel):
 METADATA_FIELDS={"session_index_id","device_id","project_id","adapter","started_at","last_activity_at","state","message_count"}
 EVENT_STATES={"queued","starting","running","waiting_approval","completed","failed","cancelled","expired"}
 
+async def _active_project_grant(db: AsyncSession, owner_id: str, project_id: str, device_id: str) -> ProjectGrant | None:
+    return (await db.execute(select(ProjectGrant).where(
+        ProjectGrant.owner_id == owner_id,
+        ProjectGrant.project_id == project_id,
+        ProjectGrant.device_id == device_id,
+        ProjectGrant.revoked_at.is_(None),
+    ))).scalar_one_or_none()
+
 def _runtime_signing_key():
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     configured=get_settings().runtime_signing_key
@@ -133,14 +141,15 @@ async def runtime_channel(websocket:WebSocket):
                         except Exception: await websocket.send_json({"type":"error","code":"VALIDATION_ERROR"}); continue
                         if item.device_id != device_id:
                             await websocket.send_json({"type":"error","code":"FORBIDDEN"}); continue
-                        accepted.append(item)
                         index_id=item.session_index_id
                         if not index_id: continue
                         project_id=item.project_id
                         if project_id:
                             project=await db.get(Project, project_id)
-                            if not project or project.owner_id!=device.owner_id:
+                            grant=await _active_project_grant(db, device.owner_id, project_id, device_id)
+                            if not project or project.owner_id!=device.owner_id or not grant:
                                 await websocket.send_json({"type":"error","code":"FORBIDDEN"}); continue
+                        accepted.append(item)
                         existing=await db.get(AgentSessionIndex,index_id)
                         if existing and (existing.owner_id!=device.owner_id or existing.device_id!=device_id):
                             await websocket.send_json({"type":"error","code":"FORBIDDEN"}); continue
@@ -210,12 +219,26 @@ async def agent_devices(principal=Depends(current_principal),db:AsyncSession=Dep
     user,_=principal; return list((await db.execute(select(Device).where(Device.owner_id==user.id,Device.platform.in_(["macos","helper"]),Device.revoked_at.is_(None)))).scalars())
 @router.get("/agents/sessions")
 async def sessions(project_id:str|None=None,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; q=select(AgentSessionIndex).where(AgentSessionIndex.owner_id==user.id)
-    if project_id:q=q.where(AgentSessionIndex.project_id==project_id)
+    user,device=principal
+    q=select(AgentSessionIndex).where(AgentSessionIndex.owner_id==user.id)
+    if device:
+        q=q.where(AgentSessionIndex.device_id==device.id)
+    if project_id:
+        if not device or not await _active_project_grant(db,user.id,project_id,device.id):
+            raise HTTPException(403,detail={"code":"POLICY_DENIED","message":"Project grant required for agent metadata"})
+        q=q.where(AgentSessionIndex.project_id==project_id)
+    elif device:
+        q=q.where(AgentSessionIndex.project_id.is_(None))
     return list((await db.execute(q)).scalars())
 @router.post("/agents/sessions/search")
 async def search_sessions(body:SessionSearch,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; rows=list((await db.execute(select(AgentSessionIndex).where(AgentSessionIndex.owner_id==user.id, *( [AgentSessionIndex.project_id==body.project_id] if body.project_id else [] )).limit(body.limit))).scalars())
+    user,device=principal
+    if body.project_id and (not device or not await _active_project_grant(db,user.id,body.project_id,device.id)):
+        raise HTTPException(403,detail={"code":"POLICY_DENIED","message":"Project grant required for agent search"})
+    clauses=[AgentSessionIndex.owner_id==user.id]
+    if device: clauses.append(AgentSessionIndex.device_id==device.id)
+    clauses.append(AgentSessionIndex.project_id==body.project_id if body.project_id else AgentSessionIndex.project_id.is_(None))
+    rows=list((await db.execute(select(AgentSessionIndex).where(*clauses).limit(body.limit))).scalars())
     # Search content is forwarded to the Mac runtime; cloud returns only safe metadata while no channel is connected.
     return {"status":"MAC_OFFLINE","results":[{"session_index_id":x.id,"project_id":x.project_id,"adapter":x.adapter,"state":x.state} for x in rows]}
 @router.post("/agents/runs")

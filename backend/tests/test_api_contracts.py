@@ -38,6 +38,8 @@ async def test_public_contracts_and_remote_run_policy(tmp_path, monkeypatch):
         device=(await c.post("/api/v1/devices/enroll",json={"platform":"macos","display_name":"Mac"},headers=h)).json()
         sync_h={"Authorization":f"Bearer {device['access_token']}"}
         grant=await c.post(f"/api/v1/projects/{project['id']}/grants",headers=h,json={"device_id":device["device_id"],"policy_id":"policy-1"}); assert grant.status_code==200 and grant.json()["isolation_validated"] is False
+        assert (await c.get("/api/v1/agents/sessions",params={"project_id":project["id"]},headers=sync_h)).status_code == 200
+        assert (await c.post("/api/v1/agents/sessions/search",json={"query":"secret","project_id":"11111111-1111-1111-1111-111111111111"},headers=sync_h)).status_code == 403
         provider=(await c.post("/api/v1/ai/providers",json={"kind":"claude","model_policy":{"models":[{"name":"claude-test","capabilities":["streaming"],"context_tokens":4096,"input_cost_per_1k":"0.01","output_cost_per_1k":"0.02"}]}},headers=h)).json()
         secret=await c.put(f"/api/v1/ai/providers/{provider['id']}/secret",json={"api_key":"sk-live-example-1234"},headers=h); assert secret.status_code==200 and secret.json()["last_four"]=="1234"
         listed=(await c.get("/api/v1/ai/providers",headers=h)).json(); assert "api_key" not in str(listed) and "sk-live" not in str(listed)
