@@ -2,6 +2,41 @@
 
 Updated: 2026-10-28
 
+## Goal 2 status — in progress
+
+- Documentation and Goal 1 handoff were re-read before frontend work.
+- The repository now has `apps/web`, `apps/desktop`, `apps/mobile` and
+  `packages/shared` workspace targets. The web production build, shared
+  TypeScript check and host Rust checks for both Tauri shells pass; packaged
+  platform validation is still open.
+- The 13 supplied weather backgrounds are being copied as local web assets with
+  a manifest. They are selected by solar period and optional weather condition;
+  no remote hotlink is required.
+- The supplied design reference is being implemented as a responsive photo
+  hero + sidebar/rail + widget deck on desktop and launcher + AI Command Bar on
+  compact screens. The mobile layout deliberately has no bottom navigation.
+- The web shell uses the shared typed `ApiClient` and IndexedDB cache/outbox;
+  Settings exposes the real API base URL and browser-session login boundary.
+  The existing macOS runtime is exposed to the desktop shell only through
+  capability/status commands. Vendor invocation remains disabled and
+  fail-closed.
+
+### Goal 2 validation limits observed locally
+
+- Global `cargo-tauri` is not installed; the workspace Tauri CLI resolves at
+  version 2.12.4. `pnpm --filter @aelys/desktop tauri:build` now passes and
+  produces a release binary; `tauri dev` window smoke and signed packaging are
+  still unverified.
+- `xcodebuild` is unavailable because the active developer directory is only
+  Command Line Tools; macOS signing/notarization remain Goal 3 work.
+- Android APK prerequisites are not validated: `adb`/`sdkmanager` and Rust
+  Android targets are not available in PATH, and `tauri android build` stops
+  because `apps/mobile/src-tauri/gen/android` is not initialized. No APK or
+  notification/background-sync evidence is claimed.
+- Web/shared checks now pass: web has 6 Vitest tests and a production build;
+  shared has 6 API client tests and a typecheck. End-to-end authenticated CRUD,
+  crash/restart sync and cross-device recovery are still pending.
+
 ## Status
 
 - Documentation review: complete. Required project, architecture, API, sync, runtime, AI, security, acceptance, and roadmap documents read.

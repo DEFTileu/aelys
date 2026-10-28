@@ -1,5 +1,33 @@
 # Aelys Backend and macOS Runtime Implementation Plan
 
+## Goal 2 addendum — frontend and cross-platform applications
+
+This addendum extends the completed Goal 1 plan without changing its backend or
+runtime decisions. The active Goal 2 order is:
+
+1. Shared TypeScript contracts, API client, IndexedDB persistence and durable
+   sync outbox against the shipped `/api/v1` OpenAPI contract.
+2. Responsive React web shell using the supplied Aelys design reference: photo
+   hero, desktop rail/sidebar, mobile launcher and AI Command Bar, theme and
+   local widget layout persistence.
+3. Functional domain screens connected to real backend endpoints. Empty,
+   loading, offline, error and conflict states remain visible when data or
+   credentials are unavailable.
+4. Tauri 2 desktop wrapper with a narrow command surface into the existing
+   `aelys-runtime` crate. Vendor execution stays fail-closed; the UI may report
+   capability probes but may not start a vendor process.
+5. Android Tauri 2 spike and build validation. The approach remains
+   `PROPOSED / SPIKE` under ADR-006 until Android SDK, NDK, Java and APK tests
+   are available. No fallback wrapper is silently selected.
+6. Integration tests, OpenAPI drift checks, platform documentation and a
+   handoff that records unsupported external integrations.
+
+The attached design rebuild and the 13 local weather backgrounds are input
+assets, not an instruction to copy a screenshot. The implementation must keep
+the photo visible, use glass only for the hero/AI controls, and avoid a mobile
+bottom navigation bar. Full Goal 2 completion requires real API and supported
+platform evidence; a visual shell alone is not completion.
+
 ## Scope
 
 This goal implements the approved backend and headless macOS runtime scope from the repository specification. It intentionally excludes React, Tauri UI, Android, production deployment, and unresolved external integrations. The implementation is staged internally so every subsystem has a working contract and tests before dependent work is integrated.

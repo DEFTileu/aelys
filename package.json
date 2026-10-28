@@ -1,0 +1,17 @@
+{
+  "name": "aelys",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.18.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "pnpm --filter @aelys/web dev",
+    "build": "pnpm --filter @aelys/web build",
+    "test": "pnpm --filter @aelys/web test",
+    "typecheck": "pnpm --filter @aelys/web typecheck",
+    "desktop:dev": "pnpm --filter @aelys/desktop tauri:dev",
+    "desktop:build": "pnpm --filter @aelys/desktop tauri:build",
+    "mobile:dev": "pnpm --filter @aelys/mobile tauri:android:dev",
+    "mobile:build": "pnpm --filter @aelys/mobile tauri:android:build"
+  }
+}

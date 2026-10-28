@@ -10,3 +10,7 @@ target/
 .codex/
 .mypy_cache/
 .ruff_cache/
+node_modules/
+dist/
+*.tsbuildinfo
+apps/*/src-tauri/gen/
