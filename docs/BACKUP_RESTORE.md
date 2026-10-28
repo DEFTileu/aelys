@@ -50,3 +50,17 @@ Drop `aelys_restore_check` only after the operator has inspected the restored
 data. Run a clean restore drill before treating a backup as recoverable. Mac-only
 session indexes and transcripts require a separate explicit local Mac backup
 decision; this workflow does not copy them off Mac.
+
+To rotate provider secret encryption, provision the new
+`AELYS_PROVIDER_ENCRYPTION_KEY`, temporarily provide the old key as
+`AELYS_PROVIDER_ENCRYPTION_KEY_OLD`, and run:
+
+```sh
+cd backend
+PYTHONPATH=. ../.venv/bin/python scripts/rotate_provider_secrets.py
+```
+
+The script re-encrypts envelopes in memory, increments `key_version`, and
+prints only the number of rotated records. Remove the old key from the
+environment immediately after the operation. KMS/OS-keychain custody remains
+an operator deployment decision.

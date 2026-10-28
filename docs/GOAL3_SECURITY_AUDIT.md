@@ -164,9 +164,10 @@ Keep execution disabled. Complete a supported macOS spike covering packaged help
 
 Authenticated encryption and response redaction are demonstrated, but production key custody, rotation, multi-process access control, deletion, and provider-specific egress isolation are not proven. A compromise of the application master secret exposes all stored provider credentials.
 
-The current checkout now provides authenticated owner-scoped secret deletion
-and a separate `AELYS_PROVIDER_ENCRYPTION_KEY` path for operator deployments;
-key rotation/KMS custody and provider egress isolation remain release gates.
+The current checkout now provides authenticated owner-scoped secret deletion,
+a separate `AELYS_PROVIDER_ENCRYPTION_KEY` path, and an operator rotation
+script that re-encrypts envelopes and increments `key_version`; KMS custody and
+provider egress isolation remain release gates.
 
 **Remediation**
 

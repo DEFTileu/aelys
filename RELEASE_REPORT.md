@@ -96,8 +96,9 @@ unverified or blocked:
   the selected provider is pinned to the run and HTTP redirects are disabled.
 - BYOK provider secrets now have an authenticated delete/revoke endpoint and a
   typed shared client method; a separate `AELYS_PROVIDER_ENCRYPTION_KEY` is
-  supported for operator deployments, while key rotation/KMS custody remain
-  deployment gates.
+  supported for operator deployments, and `rotate_provider_secrets.py` now
+  re-encrypts envelopes with incremented key versions. KMS custody remains a
+  deployment gate.
 - AI SSE events are redacted, persisted per run with sequence IDs, and replayed
   for terminal runs or after `Last-Event-ID`.
 

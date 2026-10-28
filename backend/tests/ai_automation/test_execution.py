@@ -55,3 +55,12 @@ def test_provider_secret_can_use_a_separate_encryption_key(monkeypatch):
     with pytest.raises(Exception):
         decrypt_secret(encrypted)
     get_settings.cache_clear()
+
+def test_provider_secret_can_be_reencrypted_between_key_versions():
+    old_key = "o" * 32
+    new_key = "n" * 32
+    encrypted = encrypt_secret("provider-secret", old_key)
+    rotated = encrypt_secret(decrypt_secret(encrypted, old_key), new_key)
+    assert decrypt_secret(rotated, new_key) == "provider-secret"
+    with pytest.raises(Exception):
+        decrypt_secret(rotated, old_key)
