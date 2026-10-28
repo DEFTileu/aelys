@@ -56,6 +56,8 @@ Updated: 2026-10-28
   because `apps/mobile/src-tauri/gen/android` is not initialized. No APK or
   notification/background-sync evidence is claimed.
 - Web/shared checks now pass: web has 12 Vitest tests and a production build;
+  the desktop design shell is integrated in `codex/desktop-design-integration`
+  and Home, Tasks and Projects keep live API/offline states.
   shared has 12 API/offline tests and a typecheck, including a 100-operation
   offline reopen batch. End-to-end authenticated CRUD,
   crash/restart sync and cross-device recovery are still pending.

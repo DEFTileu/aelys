@@ -10,6 +10,11 @@ development evidence from platform or external-account blockers.
 
 ## Verified locally
 
+The current design integration branch also includes the supplied Cloud desktop
+shell and wallpaper. Its Home, Tasks and Projects surfaces preserve the live
+API/offline states; AI and Settings continue to use the authenticated live
+views. The visual layer does not turn unavailable data into demo records.
+
 | Area | Evidence | Result |
 |---|---|---|
 | Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **56 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
