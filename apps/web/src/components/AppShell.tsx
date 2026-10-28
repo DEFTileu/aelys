@@ -143,7 +143,7 @@ export function AppShell({ route, children }: { route: RoutePath; apiStatus: Api
           </div>
         </aside>
 
-        <main className="shell-main" style={{ position: 'relative', overflowY: isHome ? 'auto' : 'hidden', backgroundImage: isHome ? HOME_BG : PAGE_BG, backgroundAttachment: 'local' }}>
+        <main className="shell-main" style={{ position: 'relative', overflowY: 'auto', backgroundImage: isHome ? HOME_BG : PAGE_BG, backgroundAttachment: 'local' }}>
           <div style={{ position: 'absolute', top: 20, right: 28, display: 'flex', gap: 8, alignItems: 'center', zIndex: 2 }}>
             <button type="button" className="shell-btn shell-pill shell-pill--button" data-glass="" onClick={() => setPaletteOpen(true)} aria-label="Search or run a command" style={{ width: 260, padding: '0 8px 0 14px', gap: 10, fontSize: 13, color: '#625D69' }}>
               <Search size={18} color="#1C1B22" aria-hidden="true" />

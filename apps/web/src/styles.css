@@ -263,3 +263,4 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
    keep their data and controls while reusing that same title area. */
 .tasks-view .tv-hero, .projects-view .pv-hero { display: none; }
 .tasks-view .tv-toolbar, .projects-view .pv-toolbar { padding-top: 20px; }
+.shell-main .page-header { display: none; }
