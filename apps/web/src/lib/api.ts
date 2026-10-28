@@ -58,7 +58,9 @@ export function clearAccessToken(): void {
 export async function login(email: string, password: string): Promise<void> {
   const client = getSharedApiClient()
   const response = await client.login({ email, password })
-  window.sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, response.access_token)
+  client.setToken(response.access_token)
+  const enrollment = await client.enrollDevice({ platform: 'web', display_name: 'Aelys Web' })
+  window.sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, enrollment.access_token)
   sharedClient = undefined
   sharedClientKey = ''
 }
