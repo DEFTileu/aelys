@@ -55,6 +55,10 @@ export function clearAccessToken(): void {
   sharedClientKey = ''
 }
 
+export async function logout(): Promise<void> {
+  try { await getSharedApiClient().logout() } finally { clearAccessToken() }
+}
+
 export async function login(email: string, password: string): Promise<void> {
   const client = getSharedApiClient()
   const response = await client.login({ email, password })
