@@ -4,7 +4,9 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from app.core.config import get_settings
 
 def _key() -> bytes:
-    return hashlib.sha256(get_settings().secret_key.encode()).digest()
+    settings = get_settings()
+    material = settings.provider_encryption_key or settings.secret_key
+    return hashlib.sha256(material.encode()).digest()
 def encrypt_secret(value: str) -> str:
     import os
     nonce = os.urandom(12)

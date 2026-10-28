@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./aelys.db"
     secret_key: str = Field(min_length=32)
+    provider_encryption_key: str | None = Field(default=None, min_length=32)
     access_token_minutes: int = 15
     refresh_token_days: int = 30
     runtime_signing_key: str | None = None

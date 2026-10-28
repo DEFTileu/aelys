@@ -4,6 +4,7 @@ import pytest
 from app.ai.execution import AIExecutionService
 from app.ai.crypto import decrypt_secret, encrypt_secret
 from app.ai.models import ChatMessage, ModelSpec, ProviderKind, ProviderResponse, RoutingRequest, TaskKind, Capability, PrivacyClass, Usage
+from app.core.config import get_settings
 
 class FakeAdapter:
     kind=ProviderKind.CLAUDE
@@ -43,3 +44,14 @@ def test_provider_secret_envelope_is_authenticated_and_not_plaintext():
     encrypted=encrypt_secret("sk-live-example-1234")
     assert "sk-live-example" not in encrypted
     assert decrypt_secret(encrypted)=="sk-live-example-1234"
+
+def test_provider_secret_can_use_a_separate_encryption_key(monkeypatch):
+    monkeypatch.setenv("AELYS_PROVIDER_ENCRYPTION_KEY", "p" * 32)
+    get_settings.cache_clear()
+    encrypted = encrypt_secret("provider-secret")
+    assert decrypt_secret(encrypted) == "provider-secret"
+    monkeypatch.setenv("AELYS_PROVIDER_ENCRYPTION_KEY", "q" * 32)
+    get_settings.cache_clear()
+    with pytest.raises(Exception):
+        decrypt_secret(encrypted)
+    get_settings.cache_clear()
