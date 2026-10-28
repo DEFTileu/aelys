@@ -31,7 +31,7 @@ The strongest blockers are:
 
 - Node `v26.5.0`, pnpm `11.18.0`, Rust `1.99.1`, Cargo `1.99.1`, Python `3.14.6`, Java `21.0.11`, and local Tauri CLI `2.12.4` were available.
 - The repository requires Python `>=3.12`; the audit ran on Python 3.14. A supported-version matrix was not present.
-- `apps/web/package.json` contains `latest` ranges for React, Vite, Vitest, TypeScript, jsdom, and the React Vite plugin. This weakens clean-machine reproducibility despite the checked-in pnpm lockfile.
+- The frontend manifests originally contained `latest` ranges; the lead later pinned the checked versions and regenerated the workspace lockfile. Clean-machine reproducibility still depends on the checked-in lockfile and registry availability.
 - Desktop and mobile Tauri packages specify `^2.5.0`; the installed CLI resolved to `2.12.4` through the lockfile.
 
 ## Checks executed
@@ -175,7 +175,7 @@ Build directories and generated local outputs are not release artifacts unless t
 | G3-005 | P1 | `make openapi` is unsafe as a reproducibility check | Fix the target’s environment handling and add a check that rejects an empty/generated-invalid snapshot; current direct generation matched the checked-in snapshot. |
 | G3-006 | P1 | No release workflow or retained artifacts | Add tag-driven CI for all intended platforms, artifact upload, checksums, provenance/SBOM as required, and a release checklist. |
 | G3-007 | P1 | Clean self-host/install path is incomplete | Add a tested quickstart, sample environment, PostgreSQL/bootstrap procedure, production web/backend serving path, and recovery/upgrade notes. |
-| G3-008 | P1 | Dependency declarations weaken clean-build reproducibility | Replace `latest` ranges with intentional pinned ranges or document and enforce the lockfile/update policy; test from a clean cache. |
+| G3-008 | P1 | Dependency declarations weakened clean-build reproducibility | **Remediated locally:** frontend/shared/Tauri manifests now use exact checked versions and `pnpm install --frozen-lockfile` plus web/shared checks pass. Continue reviewing updates through controlled lockfile changes. |
 | G3-009 | P1 | License/release metadata is not finalized | Confirm the Apache-2.0 decision, replace placeholder ownership metadata, and add required third-party notices/attributions. |
 
 ## Final status

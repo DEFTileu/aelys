@@ -11,21 +11,21 @@ importers:
   apps/desktop:
     dependencies:
       '@tauri-apps/api':
-        specifier: ^2.5.0
+        specifier: 2.12.4
         version: 2.12.4
     devDependencies:
       '@tauri-apps/cli':
-        specifier: ^2.5.0
+        specifier: 2.12.4
         version: 2.12.4
 
   apps/mobile:
     dependencies:
       '@tauri-apps/api':
-        specifier: ^2.5.0
+        specifier: 2.12.4
         version: 2.12.4
     devDependencies:
       '@tauri-apps/cli':
-        specifier: ^2.5.0
+        specifier: 2.12.4
         version: 2.12.4
 
   apps/web:
@@ -33,42 +33,42 @@ importers:
       '@aelys/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@vitejs/plugin-react':
-        specifier: latest
-        version: 6.1.2(vite@8.3.5)
-      jsdom:
-        specifier: latest
-        version: 30.1.3
       react:
-        specifier: latest
+        specifier: 19.3.1
         version: 19.3.1
       react-dom:
-        specifier: latest
+        specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
-      typescript:
-        specifier: latest
-        version: 7.0.2
-      vite:
-        specifier: latest
-        version: 8.3.5
-      vitest:
-        specifier: latest
-        version: 5.0.5(jsdom@30.1.3)(vite@8.3.5)
     devDependencies:
       '@types/react':
-        specifier: ^19.3.0
+        specifier: 19.3.0
         version: 19.3.0
       '@types/react-dom':
-        specifier: ^19.3.0
+        specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: 6.1.2
+        version: 6.1.2(vite@8.3.5)
+      jsdom:
+        specifier: 30.1.3
+        version: 30.1.3
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 8.3.5
+        version: 8.3.5
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(jsdom@30.1.3)(vite@8.3.5)
 
   packages/shared:
     devDependencies:
       typescript:
-        specifier: ^5.7.2
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.8
+        specifier: 2.1.9
         version: 2.1.9(jsdom@30.1.3)(lightningcss@1.33.0)
 
 packages:

@@ -68,6 +68,8 @@ unverified or blocked:
 - Encrypted single-owner export/restore uses a separate operator-supplied
   `AELYS_EXPORT_KEY`; it excludes auth sessions, device credentials, provider
   secrets, project grants and raw Mac agent sessions.
+- Frontend, shared and Tauri package manifests use exact checked versions; a
+  frozen pnpm install and web/shared checks pass.
 
 ## Platform and external blockers
 
