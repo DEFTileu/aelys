@@ -1,0 +1,47 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aelys_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres -d aelys_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      AELYS_SECRET_KEY: ci-only-aelys-secret-key-0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m venv .venv
+      - run: .venv/bin/python -m pip install --upgrade pip
+      - run: .venv/bin/pip install -e 'backend[test,quality]'
+      - run: PYTHONPATH=backend .venv/bin/python -m compileall -q backend/app
+      - run: .venv/bin/ruff check --select E9,F backend/app backend/tests
+      - run: .venv/bin/mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs
+      - run: .venv/bin/bandit -q -r backend/app -ll
+      - run: .venv/bin/pip-audit
+      - run: PYTHONPATH=backend .venv/bin/pytest -q backend/tests
+      - run: cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
+      - run: cd backend && PYTHONPATH=. ../.venv/bin/alembic check
+      - run: AELYS_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/aelys_ci cd backend && AELYS_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/aelys_ci PYTHONPATH=. ../.venv/bin/alembic upgrade head
+      - run: AELYS_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/aelys_ci PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_postgres_integration.py
+      - run: PYTHONPATH=backend .venv/bin/python -c 'from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))' > docs/openapi.json
+      - run: git diff --exit-code -- docs/openapi.json
+  runtime:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --manifest-path apps/runtime/Cargo.toml -- --check
+      - run: cargo test --manifest-path apps/runtime/Cargo.toml --locked
+      - run: cargo clippy --manifest-path apps/runtime/Cargo.toml --all-targets --locked -- -D warnings

@@ -1,0 +1,13 @@
+PYTHON=.venv/bin/python
+
+test:
+	PYTHONPATH=backend $(PYTHON) -m pytest -q backend/tests
+
+compile:
+	PYTHONPATH=backend $(PYTHON) -m compileall -q backend/app
+
+migrate:
+	cd backend && PYTHONPATH=. ../$(PYTHON) -m alembic upgrade head
+
+openapi:
+	AELYS_SECRET_KEY="$${AELYS_SECRET_KEY:?set AELYS_SECRET_KEY}" PYTHONPATH=backend $(PYTHON) -c 'from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))' > docs/openapi.json
