@@ -161,3 +161,4 @@ environment; `docker compose config` and a local `docker build` pass. They do
 not claim production TLS, reverse proxy, process
 supervision, signing, or deployment readiness.
 The CI workflow now repeats the Compose config and image build smoke checks.
+The image uses the checked-in `backend/uv.lock` with `uv sync --frozen`.
