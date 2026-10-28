@@ -19,9 +19,8 @@ export const primaryNav: NavItem[] = [
 export const appNav: NavItem[] = [
   { label: 'Mail', path: '/mail', icon: 'mail' },
   { label: 'Finance', path: '/finance', icon: 'wallet' },
-  { label: 'Timer', path: '/timer', icon: 'timer' },
-  { label: 'Developer Hub', path: '/developer', icon: 'terminal' },
-  { label: 'Automation', path: '/automation', icon: 'workflow' },
+  { label: 'Knowledge base', path: '/knowledge', icon: 'book' },
+  { label: 'Widgets', path: '/widgets', icon: 'grid' },
 ]
 
 export const utilityNav: NavItem[] = [

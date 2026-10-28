@@ -2,7 +2,7 @@ import type { SVGProps } from 'react'
 
 type IconName =
   | 'home' | 'sparkles' | 'check-square' | 'calendar' | 'folder' | 'note' | 'mail' | 'wallet'
-  | 'timer' | 'terminal' | 'workflow' | 'search' | 'settings' | 'grid' | 'chevron-right'
+  | 'timer' | 'terminal' | 'workflow' | 'book' | 'search' | 'settings' | 'grid' | 'chevron-right'
   | 'plus' | 'arrow-up' | 'moon' | 'sun' | 'menu' | 'x' | 'refresh' | 'cloud-off' | 'wifi'
   | 'alert' | 'inbox' | 'sliders' | 'arrow-left' | 'send' | 'external' | 'lock' | 'bell' | 'more-horizontal'
 
@@ -18,6 +18,7 @@ const paths: Record<IconName, string> = {
   timer: 'M9 2h6M12 5v7l4 2M19.1 7.1l1.4-1.4M12 22a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z',
   terminal: 'm4 5 6 6-6 6m8 0h8',
   workflow: 'M6 3v5a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V3M6 21v-5a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v5M3 3h6M15 3h6M3 21h6M15 21h6',
+  book: 'M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22V5.5Zm0 0V20',
   search: 'm21 21-4.4-4.4m2.4-5.6a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z',
   settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0-6v3m0 14v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M2 12h3m14 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1',
   grid: 'M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h6v6h-6v-6Z',

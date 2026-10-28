@@ -26,10 +26,11 @@ export function AppShell({ route, apiStatus, theme, onToggleTheme, children }: {
 
   return <div className={`app-shell ${route === '/' ? 'app-shell--home' : ''} ${railCollapsed ? 'app-shell--rail-collapsed' : ''}`}>
     <aside className="sidebar" aria-label="Main navigation">
+      <div className="window-controls" aria-hidden="true"><span /><span /><span /></div>
       <div className="brand-row">
         <button className="brand" onClick={() => go('/')} aria-label="Go to Aelys home">
-          <span className="brand-mark"><span>✦</span></span>
-          {!railCollapsed && <span><strong>Aelys</strong><small>Personal OS</small></span>}
+          <span className="brand-mark"><span>Λ</span></span>
+          {!railCollapsed && <span><strong>Aelys</strong><small>Personal space</small></span>}
         </button>
         <button className="icon-button sidebar-toggle" onClick={() => setRailCollapsed((value) => !value)} aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'} title={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}><Icon name="menu" size={18} /></button>
       </div>
@@ -46,8 +47,7 @@ export function AppShell({ route, apiStatus, theme, onToggleTheme, children }: {
         {utilityNav.map((item) => <NavLink key={item.path} item={item} route={route} onNavigate={go} compact={railCollapsed} />)}
       </nav>
       <div className="sidebar-footer">
-        <ApiStatusPill status={apiStatus} />
-        {!railCollapsed && <div className="workspace-note"><span className="avatar">A</span><span><strong>Local workspace</strong><small>Web client</small></span></div>}
+        {!railCollapsed && <div className="workspace-note"><span className="avatar">T</span><span><strong>Tileuzhan</strong><small>Student · Developer</small></span><button className="icon-button" onClick={() => go('/settings')} aria-label="Open settings"><Icon name="settings" size={17} /></button></div>}
       </div>
     </aside>
 
@@ -57,7 +57,7 @@ export function AppShell({ route, apiStatus, theme, onToggleTheme, children }: {
     </div>
 
     <main className="main-content">
-      <div className="desktop-toolbar"><ApiStatusPill status={apiStatus} /><button className="icon-button" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} title="Toggle theme"><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} /></button></div>
+      <div className="desktop-toolbar"><button className="top-command" type="button" aria-label="Search or run a command"><Icon name="search" size={17} /><span>Search or run a command</span><kbd>⌘K</kbd></button><span className="top-weather"><Icon name="sun" size={17} />+14°</span><button className="top-notification" type="button" aria-label="Notifications"><Icon name="bell" size={17} /><i /></button><button className="icon-button theme-button" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} title="Toggle theme"><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} /></button></div>
       {children}
     </main>
 

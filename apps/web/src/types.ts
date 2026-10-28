@@ -6,6 +6,8 @@ export type RoutePath =
   | '/calendar'
   | '/mail'
   | '/finance'
+  | '/knowledge'
+  | '/widgets'
   | '/timer'
   | '/ai'
   | '/developer'

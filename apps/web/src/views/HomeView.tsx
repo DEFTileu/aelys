@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { AiCommandBar } from '../components/AiCommandBar'
 import { ApiStatusPill } from '../components/ApiStatusPill'
 import { Icon } from '../components/Icon'
-import { SectionHeading } from '../components/SectionHeading'
 import { StateCard } from '../components/StateCard'
 import { getSolarPeriod, selectWeatherBackground, weatherBackgroundUrl } from '../data/weather'
 import { formatDate, formatTime, greetingForHour } from '../lib/format'
@@ -10,7 +9,7 @@ import { getSharedApiClient } from '../lib/api'
 import { navigate } from '../lib/router'
 import type { ApiStatus } from '../types'
 
-const defaultWidgets = ['today', 'calendar', 'focus', 'weather', 'projects', 'notes', 'finance']
+const defaultWidgets = ['today', 'calendar', 'focus', 'weather', 'projects', 'notes', 'finance', 'knowledge', 'activity']
 const availableWidgets = [
   { id: 'today', label: 'Today', icon: 'check-square' as const },
   { id: 'calendar', label: 'Calendar', icon: 'calendar' as const },
@@ -19,6 +18,8 @@ const availableWidgets = [
   { id: 'projects', label: 'Projects', icon: 'folder' as const },
   { id: 'notes', label: 'Notes', icon: 'note' as const },
   { id: 'finance', label: 'Finance', icon: 'wallet' as const },
+  { id: 'knowledge', label: 'Knowledge base', icon: 'book' as const },
+  { id: 'activity', label: 'Recent activity', icon: 'sparkles' as const },
 ]
 
 type WidgetItem = { label: string; meta: string }
@@ -33,7 +34,7 @@ function useWidgetLayout() {
 }
 
 function EmptyWidget({ widgetId, status }: { widgetId: string; status: ApiStatus }) {
-  const title = widgetId === 'focus' ? 'No active session' : widgetId === 'today' ? 'Nothing due today' : widgetId === 'calendar' ? 'No events scheduled' : widgetId === 'weather' ? 'Weather is not connected' : `No ${widgetId} yet`
+  const title = widgetId === 'focus' ? 'No active session' : widgetId === 'today' ? 'Nothing due today' : widgetId === 'calendar' ? 'No events scheduled' : widgetId === 'weather' ? 'Weather is not connected' : widgetId === 'knowledge' ? 'No knowledge yet' : widgetId === 'activity' ? 'No recent activity' : `No ${widgetId} yet`
   const description = status === 'offline' ? 'Available again when this device reconnects.' : status === 'error' ? 'Check the API connection in Settings.' : 'Records will appear here when available.'
   return <StateCard status={status === 'ready' ? 'empty' : status} title={title} description={description} />
 }
@@ -81,16 +82,16 @@ export function HomeView({ apiStatus }: { apiStatus: ApiStatus }) {
   const addWidget = (id: string) => { if (!widgets.includes(id)) save([...widgets, id]); setShowAdd(false) }
   const removeWidget = (id: string) => save(widgets.filter((widget) => widget !== id))
 
-  return <div className="home-canvas" style={{ '--home-image': `url(${backgroundUrl})` } as CSSProperties}>
+  return <div className="page page--home home-canvas" style={{ '--home-image': `url(${backgroundUrl})` } as CSSProperties}>
     <section className="hero" style={{ '--hero-image': `url(${backgroundUrl})` } as CSSProperties}>
       <div className="hero__overlay" />
       <div className="hero__top"><div><p className="hero__date">{formatDate(now)}</p><span className="hero__location"><Icon name="sun" size={13} /> {period} atmosphere</span></div><div className="hero__controls"><ApiStatusPill status={apiStatus} /><button className="hero__circle" aria-label="Notifications"><Icon name="bell" size={17} /></button></div></div>
-      <div className="hero__copy"><p className="eyebrow">Your personal space</p><h1>{greetingForHour(now.getHours())}, Aelys</h1><p className="hero__subtitle">A calm view of the things that matter today.</p></div>
+      <div className="hero__copy"><p className="eyebrow">Your personal space</p><h1>{greetingForHour(now.getHours())}, Tileuzhan</h1><p className="hero__subtitle">A calm day creates bigger results.</p></div>
       <div className="hero__composer"><AiCommandBar /><div className="hero__chips"><button onClick={() => navigate('/tasks')}><Icon name="calendar" size={14} />Plan my day</button><button onClick={() => navigate('/search')}><Icon name="search" size={14} />Find something</button><button onClick={() => navigate('/notes')}><Icon name="note" size={14} />Create a note</button><button onClick={() => navigate('/ai')}><Icon name="sparkles" size={14} />Ask Aelys</button></div></div>
       <div className="hero__foot"><span><Icon name="timer" size={14} /> {formatTime(now)}</span><span>Photo backdrop · {background.id.replaceAll('-', ' ')}</span></div>
     </section>
     <section className="quick-actions" aria-label="Quick actions"><button onClick={() => navigate('/notes')}><Icon name="note" size={17} />New note</button><button onClick={() => navigate('/tasks')}><Icon name="check-square" size={17} />New task</button><button onClick={() => navigate('/timer')}><Icon name="timer" size={17} />Start focus</button></section>
-    <div className="dashboard-heading"><SectionHeading eyebrow="Your day" title="My day" action={<button className="button button--quiet" onClick={() => setEditMode((value) => !value)}><Icon name="sliders" size={16} />{editMode ? 'Done' : 'Customize home'}</button>} /></div>
+    <div className="dashboard-heading"><div className="section-heading"><div><h2>My day</h2><span className="dashboard-count">{widgets.length} widgets</span></div><div className="section-heading__action"><button className="button button--quiet" onClick={() => setEditMode((value) => !value)}><Icon name="grid" size={16} />{editMode ? 'Done' : 'Customize'}</button></div></div></div>
     {editMode && <div className="edit-panel"><div><strong>Arrange your day</strong><p>Changes save locally on this device.</p></div><button className="button button--primary" onClick={() => setShowAdd((value) => !value)}><Icon name="plus" size={16} />Add widget</button>{showAdd && <div className="widget-picker">{availableWidgets.filter((widget) => !widgets.includes(widget.id)).map((widget) => <button key={widget.id} onClick={() => addWidget(widget.id)}><Icon name={widget.icon} size={16} />{widget.label}</button>)}</div>}</div>}
     {dashboardStatus !== 'ready' && dashboardStatus !== 'empty' && <div className="dashboard-state"><StateCard status={dashboardStatus} title={dashboardStatus === 'loading' ? 'Loading your day' : dashboardStatus === 'offline' ? 'Working offline' : 'The API is unavailable'} description={dashboardStatus === 'loading' ? 'Checking connected sources.' : dashboardStatus === 'offline' ? 'Local preferences remain available until the connection returns.' : 'Connected data is hidden until the configured API responds.'} /></div>}
     <section className="widget-grid" aria-label="Dashboard widgets">{widgets.map((widgetId) => <WidgetCard key={widgetId} widgetId={widgetId} editMode={editMode} remove={() => removeWidget(widgetId)} status={dashboardStatus} items={dashboardItems[widgetId] ?? []} background={backgroundUrl} />)}</section>
