@@ -1,0 +1,19 @@
+[project]
+name = "aelys-backend"
+version = "0.1.0"
+description = "Aelys modular backend"
+requires-python = ">=3.12"
+dependencies = ["fastapi", "uvicorn[standard]", "pydantic-settings", "sqlalchemy[asyncio]", "greenlet", "asyncpg", "psycopg[binary]", "aiosqlite", "alembic", "cryptography", "python-multipart", "httpx"]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-asyncio", "httpx"]
+quality = ["ruff", "bandit", "pip-audit", "mypy"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["tests*", "alembic*", "apps*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = [".", ".."]

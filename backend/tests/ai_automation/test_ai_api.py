@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from app.ai import api as ai_api
+from app.core import db
+from app.core.db import Base
+from app.main import app
+
+
+class BlockingTransport:
+    def __init__(self, *, cancel_event: asyncio.Event | None = None):
+        self.cancel_event = cancel_event
+        self.started = asyncio.Event()
+        self.cancel_seen = asyncio.Event()
+
+    async def post(self, url, *, headers, json):
+        raise AssertionError("the cancellation test must not call a provider completion endpoint")
+
+    async def stream(self, url, *, headers, json):
+        self.started.set()
+        assert self.cancel_event is not None
+        await self.cancel_event.wait()
+        self.cancel_seen.set()
+        if False:
+            yield {}
+
+
+@pytest.mark.asyncio
+async def test_cancel_endpoint_stops_active_provider_stream_and_keeps_cancelled_state(tmp_path, monkeypatch):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/ai-cancel.db")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr(db, "SessionLocal", session_factory)
+
+    transport_holder: dict[str, BlockingTransport] = {}
+
+    def transport_factory(*, cancel_event=None, cancel_check=None):
+        transport = BlockingTransport(cancel_event=cancel_event)
+        transport_holder["transport"] = transport
+        return transport
+
+    monkeypatch.setattr(ai_api, "HttpxTransport", transport_factory)
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            bootstrap = await client.post(
+                "/api/v1/auth/bootstrap",
+                json={"email": "ai-cancel@example.com", "password": "correct horse battery staple"},
+            )
+            assert bootstrap.status_code == 200
+            headers = {"Authorization": f"Bearer {bootstrap.json()['access_token']}"}
+
+            provider = await client.post(
+                "/api/v1/ai/providers",
+                headers=headers,
+                json={
+                    "kind": "claude",
+                    "model_policy": {
+                        "models": [
+                            {
+                                "name": "fake-stream-model",
+                                "capabilities": ["streaming"],
+                                "context_tokens": 4096,
+                                "input_cost_per_1k": "0",
+                                "output_cost_per_1k": "0",
+                            }
+                        ]
+                    },
+                },
+            )
+            assert provider.status_code == 200
+            secret = await client.put(
+                f"/api/v1/ai/providers/{provider.json()['id']}/secret",
+                headers=headers,
+                json={"api_key": "test-only-provider-key"},
+            )
+            assert secret.status_code == 200
+
+            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+            assert conversation.status_code == 200
+            run = await client.post(
+                "/api/v1/ai/runs",
+                headers=headers,
+                json={
+                    "conversation_id": conversation.json()["id"],
+                    "message": "wait for cancellation",
+                    "routing": {"provider": "claude", "model": "fake-stream-model"},
+                    "idempotency_key": "ai-cancel-test",
+                },
+            )
+            assert run.status_code == 200
+            run_id = run.json()["id"]
+
+            async def read_events():
+                async with client.stream("GET", f"/api/v1/ai/runs/{run_id}/events", headers=headers) as response:
+                    assert response.status_code == 200
+                    return await response.aread()
+
+            stream_task = asyncio.create_task(read_events())
+            transport = await asyncio.wait_for(_transport_ready(transport_holder), timeout=1)
+            await asyncio.wait_for(transport.started.wait(), timeout=1)
+
+            cancellation = await client.post(f"/api/v1/ai/runs/{run_id}/cancel", headers=headers)
+            assert cancellation.status_code == 200
+            assert cancellation.json()["status"] == "cancelled"
+
+            await asyncio.wait_for(transport.cancel_seen.wait(), timeout=1)
+            stream_body = (await asyncio.wait_for(stream_task, timeout=1)).decode()
+            assert "event: ai.run.cancelled" in stream_body
+            assert "event: ai.run.completed" not in stream_body
+
+            terminal = await client.get(f"/api/v1/ai/runs/{run_id}", headers=headers)
+            assert terminal.status_code == 200
+            assert terminal.json()["status"] == "cancelled"
+
+            queued = await client.post(
+                "/api/v1/ai/runs",
+                headers=headers,
+                json={
+                    "conversation_id": conversation.json()["id"],
+                    "message": "cancel before starting",
+                    "routing": {"provider": "claude", "model": "fake-stream-model"},
+                    "idempotency_key": "ai-cancel-before-start",
+                },
+            )
+            queued_id = queued.json()["id"]
+            cancelled = await client.post(f"/api/v1/ai/runs/{queued_id}/cancel", headers=headers)
+            assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+            async with client.stream("GET", f"/api/v1/ai/runs/{queued_id}/events", headers=headers) as response:
+                assert response.status_code == 200
+                assert "event: ai.run.cancelled" in (await response.aread()).decode()
+    finally:
+        await engine.dispose()
+
+
+async def _transport_ready(holder: dict[str, BlockingTransport]) -> BlockingTransport:
+    while "transport" not in holder:
+        await asyncio.sleep(0)
+    return holder["transport"]
