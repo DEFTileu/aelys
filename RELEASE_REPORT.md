@@ -97,6 +97,8 @@ unverified or blocked:
   the selected provider is pinned to the run and HTTP redirects are disabled.
 - Backend responses now include baseline `nosniff`, frame, referrer, and
   permissions security headers with regression coverage.
+- Project/resource/link/category/budget mounted writes now use strict typed
+  request models with unknown-field rejection and finance period validation.
 - BYOK provider secrets now have an authenticated delete/revoke endpoint and a
   typed shared client method; a separate `AELYS_PROVIDER_ENCRYPTION_KEY` is
   supported for operator deployments, and `rotate_provider_secrets.py` now

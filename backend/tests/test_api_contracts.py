@@ -16,6 +16,8 @@ async def test_public_contracts_and_remote_run_policy(tmp_path, monkeypatch):
     async with AsyncClient(transport=ASGITransport(app=app),base_url="http://test") as c:
         boot=await c.post("/api/v1/auth/bootstrap",json={"email":"api@example.com","password":"correct horse battery staple"}); h={"Authorization":f"Bearer {boot.json()['access_token']}"}
         project=(await c.post("/api/v1/projects",json={"name":"P"},headers=h)).json()
+        strict_patch=await c.patch(f"/api/v1/projects/{project['id']}",json={"name":"P2","unexpected":True},headers=h)
+        assert strict_patch.status_code==422
         resource_a=(await c.post("/api/v1/resources",json={"kind":"note","entity_id":"resource-a","project_id":project["id"],"metadata":{}},headers=h)).json()
         resource_b=(await c.post("/api/v1/resources",json={"kind":"task","entity_id":"resource-b","project_id":project["id"],"metadata":{}},headers=h)).json()
         link=(await c.post("/api/v1/resource-links",json={"from_resource_id":resource_a["id"],"to_resource_id":resource_b["id"],"relation_type":"related"},headers=h)).json()

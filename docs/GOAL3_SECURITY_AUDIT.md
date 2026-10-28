@@ -214,10 +214,17 @@ test; sessionStorage token handling remains the larger client-boundary issue.
 
 **Evidence**
 
-- backend/app/domains/api.py:49-60, :65-71, :76-86, and :196-207 accept untyped dictionaries for resource, project patch, link, category, and budget writes.
+- backend/app/domains/api.py still accepts untyped dictionaries for notification
+  writes and other remaining domain endpoints; project/resource/link/category/
+  budget writes now use strict request models.
 - backend/app/automation/api.py:21-26 accepts an untyped patch body.
 - The API contract requires typed request/response models and idempotency for writes, but these routes do not consistently enforce unknown-field rejection, payload limits, or header idempotency.
 - backend/app/core/models.py:129-134 stores decimal finance fields, but there is no transfer relation/integrity model; backend/app/domains/api.py:227-238 only has start/stop focus behavior.
+
+The current checkout has replaced those five mounted write bodies with strict
+Pydantic request models and added an unknown-field regression test for project
+patches. Notification writes and some other domain inputs remain candidates for
+the same cleanup.
 
 **Impact**
 

@@ -11,7 +11,14 @@ from app.core.security import current_principal
 
 router = APIRouter()
 
-class ProjectRef(BaseModel): project_id: str | None = None
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+class ProjectRef(StrictModel): project_id: str | None = None
+class ResourceIn(StrictModel): kind: str = Field(min_length=1, max_length=40); entity_id: str = Field(min_length=1, max_length=100); project_id: str | None = None; metadata: dict = Field(default_factory=dict)
+class ProjectPatchIn(StrictModel): version: int | None = None; name: str | None = Field(default=None, min_length=1, max_length=200); description: str | None = None; status: str | None = None
+class ResourceLinkIn(StrictModel): from_resource_id: str; to_resource_id: str; relation_type: str = Field(min_length=1, max_length=50)
+class FinanceCategoryIn(StrictModel): name: str = Field(min_length=1, max_length=200); kind: str = "expense"
+class FinanceBudgetIn(StrictModel): category_id: str | None = None; currency: str = Field(min_length=3, max_length=3); period_start: datetime; period_end: datetime; limit_amount: Decimal
 class NoteIn(BaseModel): title: str; markdown_body: str = ""; parent_id: str | None = None; project_id: str | None = None
 class NoteOut(NoteIn): model_config=ConfigDict(from_attributes=True); id: str; version: int
 class TaskIn(BaseModel): title: str; description: str = ""; project_id: str | None = None; parent_task_id: str | None = None; status: str = "todo"; priority: int = 0; due_at: datetime | None = None; due_timezone: str | None = None; rrule: str | None = None
@@ -47,40 +54,37 @@ async def project_resources(project_id: str, principal=Depends(current_principal
     user,_=principal; await owner_obj(Project,project_id,user.id,db)
     return list((await db.execute(select(Resource).where(Resource.owner_id==user.id,Resource.project_id==project_id))).scalars())
 @router.post("/resources")
-async def create_resource(body: dict, principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
+async def create_resource(body: ResourceIn, principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
     user,_=principal
-    if not body.get("kind") or not body.get("entity_id"):
-        raise HTTPException(422, detail={"code":"VALIDATION_ERROR","message":"kind and entity_id are required"})
-    await owned_ref(Project, body.get("project_id"), user.id, db)
-    metadata=body.get("metadata",{})
+    await owned_ref(Project, body.project_id, user.id, db)
+    metadata=body.metadata
     if not isinstance(metadata,dict):
         raise HTTPException(422, detail={"code":"VALIDATION_ERROR","message":"metadata must be an object"})
-    if body.get("kind")=="agent_session" and any(k not in {"adapter","state","message_count","started_at","last_activity_at"} for k in metadata):
+    if body.kind=="agent_session" and any(k not in {"adapter","state","message_count","started_at","last_activity_at"} for k in metadata):
         raise HTTPException(422, detail={"code":"PRIVACY_VIOLATION","message":"Agent session metadata is allowlisted"})
-    item=Resource(owner_id=user.id,kind=str(body["kind"]),entity_id=str(body["entity_id"]),project_id=body.get("project_id"),metadata_json=metadata)
+    item=Resource(owner_id=user.id,kind=body.kind,entity_id=body.entity_id,project_id=body.project_id,metadata_json=metadata)
     db.add(item); await db.commit(); await db.refresh(item); return item
 @router.get("/projects/{project_id}")
 async def get_project(project_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; return await owner_obj(Project,project_id,user.id,db)
 @router.patch("/projects/{project_id}")
-async def update_project(project_id:str,body:dict,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+async def update_project(project_id:str,body:ProjectPatchIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await owner_obj(Project,project_id,user.id,db)
-    if body.get("version") is not None and body["version"]!=item.version: raise HTTPException(409,detail={"code":"VERSION_CONFLICT","message":"Concurrent update","details":{"server_version":item.version}})
+    if body.version is not None and body.version!=item.version: raise HTTPException(409,detail={"code":"VERSION_CONFLICT","message":"Concurrent update","details":{"server_version":item.version}})
     for key in ("name","description","status"):
-        if key in body:setattr(item,key,body[key])
+        value = getattr(body, key)
+        if value is not None: setattr(item,key,value)
     item.version+=1; await db.commit(); return item
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await owner_obj(Project,project_id,user.id,db); item.deleted_at=datetime.now(timezone.utc); item.version+=1; await db.commit(); return {"deleted":True}
 
 @router.post("/resource-links")
-async def link_resources(body: dict, principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
+async def link_resources(body: ResourceLinkIn, principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
     user,_=principal
-    for key in ("from_resource_id","to_resource_id","relation_type"):
-        if key not in body: raise HTTPException(422, detail={"code":"VALIDATION_ERROR","message":f"Missing {key}"})
-    left=await owner_obj(Resource,body["from_resource_id"],user.id,db); right=await owner_obj(Resource,body["to_resource_id"],user.id,db)
+    left=await owner_obj(Resource,body.from_resource_id,user.id,db); right=await owner_obj(Resource,body.to_resource_id,user.id,db)
     if left.id==right.id: raise HTTPException(409, detail={"code":"VALIDATION_ERROR","message":"Self links are not allowed"})
-    item=ResourceLink(owner_id=user.id,from_resource_id=left.id,to_resource_id=right.id,relation_type=body["relation_type"]); db.add(item)
+    item=ResourceLink(owner_id=user.id,from_resource_id=left.id,to_resource_id=right.id,relation_type=body.relation_type); db.add(item)
     try: await db.commit()
     except Exception: await db.rollback(); raise HTTPException(409, detail={"code":"DUPLICATE","message":"Link already exists"})
     return {"id":item.id}
@@ -193,18 +197,16 @@ async def create_account(body:FinanceAccountIn, principal=Depends(current_princi
 async def accounts(principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; return list((await db.execute(select(FinanceAccount).where(FinanceAccount.owner_id==user.id,FinanceAccount.deleted_at.is_(None)))).scalars())
 @router.post("/finance/categories")
-async def create_category(body:dict,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=FinanceCategory(owner_id=user.id,name=body["name"],kind=body.get("kind","expense")); db.add(item); await db.commit(); await db.refresh(item); return item
+async def create_category(body:FinanceCategoryIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    user,_=principal; item=FinanceCategory(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
 @router.get("/finance/categories")
 async def categories(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; return list((await db.execute(select(FinanceCategory).where(FinanceCategory.owner_id==user.id,FinanceCategory.deleted_at.is_(None)))).scalars())
 @router.post("/finance/budgets")
-async def create_budget(body:dict,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; await owned_ref(FinanceCategory, body.get("category_id"), user.id, db)
-    def as_datetime(value):
-        if isinstance(value, datetime): return value
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    item=FinanceBudget(owner_id=user.id,category_id=body.get("category_id"),currency=body["currency"],period_start=as_datetime(body["period_start"]),period_end=as_datetime(body["period_end"]),limit_amount=Decimal(str(body["limit_amount"]))); db.add(item); await db.commit(); await db.refresh(item); return item
+async def create_budget(body:FinanceBudgetIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    user,_=principal; await owned_ref(FinanceCategory, body.category_id, user.id, db)
+    if body.period_end < body.period_start: raise HTTPException(422, detail={"code":"VALIDATION_ERROR","message":"period_end must not precede period_start"})
+    item=FinanceBudget(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
 @router.get("/finance/budgets")
 async def budgets(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; return list((await db.execute(select(FinanceBudget).where(FinanceBudget.owner_id==user.id,FinanceBudget.deleted_at.is_(None)))).scalars())
