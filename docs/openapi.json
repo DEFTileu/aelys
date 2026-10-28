@@ -486,9 +486,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
-                "title": "Body"
+                "$ref": "#/components/schemas/ResourceIn"
               }
             }
           },
@@ -586,9 +584,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Body"
+                "$ref": "#/components/schemas/ProjectPatchIn"
               }
             }
           }
@@ -663,9 +659,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
-                "title": "Body"
+                "$ref": "#/components/schemas/ResourceLinkIn"
               }
             }
           },
@@ -1641,9 +1635,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
-                "title": "Body"
+                "$ref": "#/components/schemas/FinanceCategoryIn"
               }
             }
           },
@@ -1703,9 +1695,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
-                "title": "Body"
+                "$ref": "#/components/schemas/FinanceBudgetIn"
               }
             }
           },
@@ -2214,9 +2204,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "type": "object",
-                "title": "Body"
+                "$ref": "#/components/schemas/NotificationIn"
               }
             }
           },
@@ -2616,6 +2604,46 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Provider Secret",
+        "operationId": "delete_provider_secret_api_v1_ai_providers__provider_id__secret_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3982,6 +4010,78 @@
         ],
         "title": "FinanceAccountIn"
       },
+      "FinanceBudgetIn": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period End"
+          },
+          "limit_amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Limit Amount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "currency",
+          "period_start",
+          "period_end",
+          "limit_amount"
+        ],
+        "title": "FinanceBudgetIn"
+      },
+      "FinanceCategoryIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": "expense"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "FinanceCategoryIn"
+      },
       "FocusIn": {
         "properties": {
           "task_id": {
@@ -4167,6 +4267,56 @@
         ],
         "title": "NoteOut"
       },
+      "NotificationIn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Kind",
+            "default": "info"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "default": "Notification"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "dedup_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedup Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NotificationIn"
+      },
       "Operation": {
         "properties": {
           "operation_id": {
@@ -4240,6 +4390,59 @@
           "name"
         ],
         "title": "ProjectCreate"
+      },
+      "ProjectPatchIn": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProjectPatchIn"
       },
       "ProjectResponse": {
         "properties": {
@@ -4373,6 +4576,71 @@
           "idempotency_key"
         ],
         "title": "ReminderIn"
+      },
+      "ResourceIn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Kind"
+          },
+          "entity_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Entity Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "entity_id"
+        ],
+        "title": "ResourceIn"
+      },
+      "ResourceLinkIn": {
+        "properties": {
+          "from_resource_id": {
+            "type": "string",
+            "title": "From Resource Id"
+          },
+          "to_resource_id": {
+            "type": "string",
+            "title": "To Resource Id"
+          },
+          "relation_type": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Relation Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "from_resource_id",
+          "to_resource_id",
+          "relation_type"
+        ],
+        "title": "ResourceLinkIn"
       },
       "RuleIn": {
         "properties": {
