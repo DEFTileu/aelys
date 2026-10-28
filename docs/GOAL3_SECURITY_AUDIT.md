@@ -20,6 +20,10 @@ No successful vendor execution, macOS signing, Android build, Gmail integration,
 
 Status meanings: **Verified** means current source plus a focused repository test or explicit fail-closed behavior supports the claim. **Unverified** means partial implementation or test evidence exists but the approved end-to-end scenario is not proven. **Blocked** means the capability is intentionally unavailable, missing, or an unresolved decision prevents acceptance.
 
+The prioritized findings below preserve the original audit evidence. The lead's
+remediation status at the end of this document is authoritative for the current
+checkout.
+
 ## Prioritized findings
 
 ### G3-01 — High: logout is a no-op and access-token revocation is incomplete
@@ -80,18 +84,23 @@ Remove direct table writes from the route. Persist and dispatch typed actions th
 **Evidence**
 
 - packages/shared/src/api-client.ts:125-138 adds an Idempotency-Key header and :151-160 queues failed mutations.
-- packages/shared/src/offline.ts:59-79 stores request bodies, but does not store a local entity mutation and outbox update in one transaction.
-- apps/web/src/views/ModuleView.tsx:48-78 reads from the API and calls API create methods directly; it does not first durably apply the entity to a local store.
+- packages/shared/src/offline.ts now provides `setEntityAndEnqueue`, which stores the entity and sanitized request in one IndexedDB transaction; the focused shared tests cover the primitive.
+- apps/web/src/views/ModuleView.tsx now supplies an optimistic entity key/value for project, note and task creates; the API client selects the atomic capability when available.
 - backend/app/domains/api.py:49-60, :65-71, and :84-86 use plain dictionaries or do not consume the header.
 - apps/mobile/src-tauri/src/lib.rs:10-16 explicitly describes native SQLite as a follow-up spike.
 
 **Impact**
 
-A request may be queued without a durable local representation of the changed entity. Retried non-sync CRUD writes can lack a server-side idempotency receipt.
+A full cross-device workflow can still fail to meet the acceptance gate because
+kill/restart, native SQLite storage, conflict recovery and server-side
+idempotency receipts for every CRUD route remain unverified.
 
 **Remediation**
 
-Implement a durable per-client entity store plus outbox transaction, then test kill/restart during local apply, push, pull, and acknowledgement. Enforce one server idempotency contract for every state-changing route, including payload binding and owner/device scope.
+Exercise the implemented durable per-client entity store through kill/restart,
+push, pull and acknowledgement tests; implement native stores where required.
+Enforce one server idempotency contract for every state-changing route,
+including payload binding and owner/device scope.
 
 ### G3-05 — High: OpenAPI does not describe authentication and production HTTP hardening is not visible
 
@@ -226,7 +235,7 @@ The following matrix audits every checkbox in docs/ACCEPTANCE_TESTS.md.
 | A2 | Create project; link task, note, calendar event; backlinks resolve | Unverified | Project/resource/link endpoints exist (backend/app/domains/api.py:45-89), but no end-to-end backlink evidence. |
 | A3 | Markdown notes persist across relaunch; revisions restore | Unverified | Revisions are written (backend/app/domains/api.py:94-121), but relaunch durability and user-selected revision restore are not proven. |
 | A4 | Task subtasks, priority, recurrence, due date and filters | Unverified | Fields exist (backend/app/domains/api.py:17-18; backend/app/core/models.py:99-109), but hierarchy constraints and required filters are not demonstrated. |
-| A5 | Offline changes survive kill/restart and reach another device | Unverified / Blocked | IndexedDB outbox exists (packages/shared/src/offline.ts:59-79), but entity-first durable transactions and native stores are incomplete. |
+| A5 | Offline changes survive kill/restart and reach another device | Unverified / Blocked | IndexedDB entity-plus-outbox transaction and web create wiring are implemented and unit-tested; kill/restart, native stores and cross-device recovery remain unverified. |
 | B1 | Repeated identical sync batch applies exactly once | Verified for backend sync boundary | Receipt replay handling is in backend/app/sync/service.py:53-100; focused sync tests are present. Client CRUD E2E remains unverified. |
 | B2 | Concurrent Markdown edits preserve both branches | Verified for sync engine / Unverified end to end | Sync tests cover conflict behavior; no full cross-device recovery path is shown. |
 | B3 | Commit-order pagination/bootstrap never skips writes | Verified for repository-recorded backend evidence | PROGRESS.md records PostgreSQL concurrency/bootstrap checks; no fresh run was performed for this audit. |
@@ -292,6 +301,10 @@ The following findings received local fixes after this audit snapshot:
 - G3-02: agent metadata ingestion/list/search now require the active owner,
   device and project grant boundary; route coverage was added to the API
   contract test.
+- G3-04: shared/web now provide and exercise an IndexedDB entity-plus-outbox
+  transaction for offline project, note and task creates. Full client recovery,
+  native stores, cross-device conflict E2E and uniform server idempotency remain
+  unverified.
 - G3-05: protected REST operations expose an HTTP bearer scheme in OpenAPI and
   the Makefile rejects empty snapshots before replacement.
 - G3-11: encrypted owner export/restore is implemented and tested with an

@@ -10,7 +10,7 @@ import type {
   SyncAckRequest, SyncAckResponse, SyncBootstrapResponse, SyncPullResponse, SyncPushRequest, SyncPushResponse, SyncStatusResponse,
   TaskIn, TaskOut, TaskReminder, TokenResponse, TransactionIn, Id,
 } from "./types";
-import type { OfflineStore, OutboxRequest } from "./offline";
+import type { EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
 
 export type QueryValue = string | number | boolean | null | undefined;
 export type Query = Readonly<Record<string, QueryValue>>;
@@ -25,6 +25,9 @@ export interface RequestOptions {
   readonly cacheKey?: string;
   readonly cacheTtlMs?: number;
   readonly queueOnOffline?: boolean;
+  /** Persist this optimistic entity together with the offline outbox entry. */
+  readonly offlineEntityKey?: EntityKey;
+  readonly offlineEntityValue?: unknown;
   readonly signal?: AbortSignal;
 }
 export interface ApiClientOptions {
@@ -69,6 +72,10 @@ export class OfflineQueuedError extends NetworkError {
 function makeIdempotencyKey(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   return `aelys-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isEntityStore(store: OfflineStore | undefined): store is OfflineStore & EntityStore {
+  return typeof store !== "undefined" && typeof (store as Partial<EntityStore>).setEntityAndEnqueue === "function";
 }
 
 function encodeQuery(query: Query | undefined): string {
@@ -153,7 +160,10 @@ export class ApiClient {
         if (cached !== undefined) return cached;
       }
       if (method !== "GET" && options.queueOnOffline !== false && this.offlineStore) {
-        const entry = await this.offlineStore.enqueue({ method, path, query: options.query, headers: Object.keys(safeHeaders).length > 0 ? safeHeaders : undefined, body: options.body, idempotencyKey: idempotencyKey ?? makeIdempotencyKey() });
+        const request: OutboxRequest = { method, path, query: options.query, headers: Object.keys(safeHeaders).length > 0 ? safeHeaders : undefined, body: options.body, idempotencyKey: idempotencyKey ?? makeIdempotencyKey() };
+        const entry = options.offlineEntityKey && isEntityStore(this.offlineStore)
+          ? (await this.offlineStore.setEntityAndEnqueue(options.offlineEntityKey, options.offlineEntityValue ?? options.body, request)).outbox
+          : await this.offlineStore.enqueue(request);
         throw new OfflineQueuedError(entry.id, entry.request);
       }
       throw networkError;

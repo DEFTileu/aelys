@@ -16,7 +16,7 @@ development evidence from platform or external-account blockers.
 | Python quality | `compileall`, Ruff, mypy, Bandit and pip-audit from CI/local records | **Pass**; the audit warning from Starlette/httpx remains non-blocking |
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
 | OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
-| Shared client | `pnpm --filter @aelys/shared typecheck` and `test` | **Pass**, 6 tests |
+| Shared client | `pnpm --filter @aelys/shared typecheck` and `test` | **Pass**, 11 tests; entity-plus-outbox atomic path covered |
 | Web | typecheck, Vitest, Vite production build | **Pass**, 6 tests and production assets |
 | Runtime | `cargo fmt`, locked tests, Clippy | **Pass**, 30 unit + 14 runtime-contract tests |
 | Tauri host compilation | desktop and mobile `cargo check` | **Pass for host targets only** |
@@ -30,9 +30,10 @@ The approved MVP is not fully accepted. The following items remain partial,
 unverified or blocked:
 
 - Cross-device offline create/edit, crash/restart recovery and 100-operation
-  stress testing: **unverified**. IndexedDB outbox exists, but an entity and
-  outbox mutation are not committed as one local transaction; native SQLite
-  client storage is still a spike.
+  stress testing: **unverified**. The web/shared client now has a tested
+  IndexedDB entity-plus-outbox transaction and ModuleView uses it for offline
+  project, note and task creates; native SQLite client storage and full
+  cross-device recovery remain a spike.
 - Finance transfer integrity and timer pause/sleep conflict semantics:
   **unverified**.
 - Gmail OAuth and Telegram Bot API: **blocked by OPEN product/integration
@@ -68,6 +69,9 @@ unverified or blocked:
 - Encrypted single-owner export/restore uses a separate operator-supplied
   `AELYS_EXPORT_KEY`; it excludes auth sessions, device credentials, provider
   secrets, project grants and raw Mac agent sessions.
+- The shared client has an optional durable entity capability. Offline web
+  creates persist the optimistic entity and sanitized outbox request together;
+  the API client still strips caller-supplied authorization headers.
 - Frontend, shared and Tauri package manifests use exact checked versions; a
   frozen pnpm install and web/shared checks pass.
 
@@ -107,7 +111,8 @@ than bypassed.
 
 1. Run the PostgreSQL migration/integration suite on a clean service and add a
    documented restore drill.
-2. Complete durable client entity stores and cross-device offline/conflict E2E.
+2. Exercise the durable client entity store through kill/restart, conflict and
+   cross-device E2E tests; implement native SQLite storage where required.
 3. Complete mounted AI tool/policy integration and automation durability.
 4. Perform the supported macOS isolation/helper/signing spike; only then
    consider enabling vendor execution.

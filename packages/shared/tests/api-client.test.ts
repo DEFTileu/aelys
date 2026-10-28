@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiClient, ApiError, NetworkError, OfflineQueuedError } from "../src/api-client";
-import type { OfflineStore, OutboxEntry, OutboxRequest } from "../src/offline";
+import type { EntityStore, LocalEntity, OfflineStore, OutboxEntry, OutboxRequest } from "../src/offline";
 
 class MemoryStore implements OfflineStore {
   public readonly outbox: OutboxEntry[] = [];
@@ -19,6 +19,22 @@ class MemoryStore implements OfflineStore {
   public async getCache<T>(key: string): Promise<T | undefined> { return this.cache.get(key) as T | undefined; }
   public async setCache<T>(key: string, value: T): Promise<void> { this.cache.set(key, value); }
   public async removeCache(key: string): Promise<void> { this.cache.delete(key); }
+}
+
+class EntityMemoryStore extends MemoryStore implements EntityStore {
+  public readonly entities = new Map<string, LocalEntity>();
+  public async getEntity<T>(key: string): Promise<LocalEntity<T> | undefined> { return this.entities.get(key) as LocalEntity<T> | undefined; }
+  public async setEntity<T>(key: string, value: T, updatedAt = Date.now()): Promise<LocalEntity<T>> {
+    const entity = { key, value, updatedAt };
+    this.entities.set(key, entity);
+    return entity;
+  }
+  public async removeEntity(key: string): Promise<void> { this.entities.delete(key); }
+  public async setEntityAndEnqueue<T>(key: string, value: T, request: OutboxRequest): Promise<{ entity: LocalEntity<T>; outbox: OutboxEntry }> {
+    const entity = await this.setEntity(key, value);
+    const outbox = await this.enqueue(request);
+    return { entity, outbox };
+  }
 }
 
 describe("ApiClient", () => {
@@ -52,6 +68,20 @@ describe("ApiClient", () => {
     const result = client.createNote({ title: "Offline note" }, { headers: { Authorization: "caller-secret" } });
     await expect(result).rejects.toBeInstanceOf(OfflineQueuedError);
     expect(store.outbox[0]?.request).toMatchObject({ method: "POST", path: "/api/v1/notes", body: { title: "Offline note" } });
+    expect(store.outbox[0]?.request.headers).toBeUndefined();
+  });
+
+  it("atomically stores an optimistic entity with its offline outbox entry", async () => {
+    const store = new EntityMemoryStore();
+    const fetchImpl = vi.fn(async () => { throw new Error("offline"); });
+    const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, offlineStore: store });
+    await expect(client.createTask({ title: "Offline task" }, {
+      idempotencyKey: "operation-task-1",
+      offlineEntityKey: "pending:tasks:operation-task-1",
+      offlineEntityValue: { pending: true, title: "Offline task" },
+    })).rejects.toMatchObject({ name: "OfflineQueuedError", entryId: "queued-1" });
+    expect(store.entities.get("pending:tasks:operation-task-1")?.value).toEqual({ pending: true, title: "Offline task" });
+    expect(store.outbox).toHaveLength(1);
     expect(store.outbox[0]?.request.headers).toBeUndefined();
   });
 

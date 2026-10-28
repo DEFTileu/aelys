@@ -37,6 +37,11 @@ function statusForContent(apiStatus: ApiStatus): ApiStatus {
   return apiStatus === 'ready' ? 'empty' : apiStatus
 }
 
+function makeOperationId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID()
+  return `offline-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 export function ModuleView({ config, apiStatus }: { config: ModuleConfig; apiStatus: ApiStatus }) {
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<readonly Record<string, unknown>[]>([])
@@ -72,9 +77,24 @@ export function ModuleView({ config, apiStatus }: { config: ModuleConfig; apiSta
     setActionMessage('')
     try {
       const client = getSharedApiClient()
-      if (config.path === '/projects') await client.createProject({ name: title.trim() })
-      if (config.path === '/notes') await client.createNote({ title: title.trim(), markdown_body: '' })
-      if (config.path === '/tasks') await client.createTask({ title: title.trim() })
+      const operationId = makeOperationId()
+      const offlineOptions = (value: Record<string, unknown>) => ({
+        idempotencyKey: operationId,
+        offlineEntityKey: `pending:${config.path.slice(1)}:${operationId}`,
+        offlineEntityValue: { pending: true, ...value },
+      })
+      if (config.path === '/projects') {
+        const value = { name: title.trim() }
+        await client.createProject(value, offlineOptions(value))
+      }
+      if (config.path === '/notes') {
+        const value = { title: title.trim(), markdown_body: '' }
+        await client.createNote(value, offlineOptions(value))
+      }
+      if (config.path === '/tasks') {
+        const value = { title: title.trim() }
+        await client.createTask(value, offlineOptions(value))
+      }
       setTitle(''); setFormOpen(false); await load()
     } catch (error) {
       if (error instanceof OfflineQueuedError) setActionMessage('Saved to this device and queued for sync.')

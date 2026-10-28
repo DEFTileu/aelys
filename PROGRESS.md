@@ -12,7 +12,8 @@ Updated: 2026-10-28
   automation actions, an atomic OpenAPI snapshot target, and encrypted
   single-owner export/restore that excludes credentials and raw Mac sessions.
 - Current local evidence: backend `43 passed, 2 skipped`; runtime `44 passed`,
-  format and Clippy pass; shared `6 passed`; web `6 passed`, typecheck and
+  format and Clippy pass; shared `11 passed` including atomic entity/outbox
+  coverage; web `6 passed`, typecheck and
   production build pass; desktop/mobile host Rust checks pass.
 - Release is still not ready. Android APK generation, macOS signing and
   notarization, distributable installer/update flow, PostgreSQL integration
@@ -33,7 +34,7 @@ Updated: 2026-10-28
 - The supplied design reference is being implemented as a responsive photo
   hero + sidebar/rail + widget deck on desktop and launcher + AI Command Bar on
   compact screens. The mobile layout deliberately has no bottom navigation.
-- The web shell uses the shared typed `ApiClient` and IndexedDB cache/outbox;
+- The web shell uses the shared typed `ApiClient` and IndexedDB cache/entity/outbox;
   Settings exposes the real API base URL and browser-session login boundary.
   The existing macOS runtime is exposed to the desktop shell only through
   capability/status commands. Vendor invocation remains disabled and
@@ -52,7 +53,7 @@ Updated: 2026-10-28
   because `apps/mobile/src-tauri/gen/android` is not initialized. No APK or
   notification/background-sync evidence is claimed.
 - Web/shared checks now pass: web has 6 Vitest tests and a production build;
-  shared has 6 API client tests and a typecheck. End-to-end authenticated CRUD,
+  shared has 11 API/offline tests and a typecheck. End-to-end authenticated CRUD,
   crash/restart sync and cross-device recovery are still pending.
 
 ## Status
@@ -82,7 +83,7 @@ Complete authenticated vendor CLI compatibility and supported macOS helper signi
 
 ## Remaining prerequisites
 
-- Goal 2: frontend/client offline stores, generated TypeScript contracts, Android wrapper spike, device UX, and approved Gmail/Telegram integration scope.
+- Goal 2: full cross-device offline/restart E2E, generated TypeScript contracts, Android wrapper spike, device UX, and approved Gmail/Telegram integration scope.
 - Goal 3: production deployment and encrypted backup topology, final macOS sandbox implementation and evidence on supported macOS versions, release signing/installers, license confirmation, and optional Mac-session backup decision.
 
 ## Completion audit

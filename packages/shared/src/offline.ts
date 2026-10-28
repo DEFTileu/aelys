@@ -17,6 +17,19 @@ export interface OutboxEntry {
   readonly nextAttemptAt: number;
 }
 
+export type EntityKey = string;
+
+export interface LocalEntity<T = unknown> {
+  readonly key: EntityKey;
+  readonly value: T;
+  readonly updatedAt: number;
+}
+
+export interface AtomicEntityWrite<T = unknown> {
+  readonly entity: LocalEntity<T>;
+  readonly outbox: OutboxEntry;
+}
+
 export interface OfflineStore {
   enqueue(request: OutboxRequest): Promise<OutboxEntry>;
   listOutbox(now?: number): Promise<readonly OutboxEntry[]>;
@@ -27,8 +40,75 @@ export interface OfflineStore {
   removeCache(key: string): Promise<void>;
 }
 
+/** Optional durable entity capability. Kept separate so existing adapters remain compatible. */
+export interface EntityStore {
+  getEntity<T>(key: EntityKey): Promise<LocalEntity<T> | undefined>;
+  setEntity<T>(key: EntityKey, value: T, updatedAt?: number): Promise<LocalEntity<T>>;
+  removeEntity(key: EntityKey): Promise<void>;
+  setEntityAndEnqueue<T>(key: EntityKey, value: T, request: OutboxRequest): Promise<AtomicEntityWrite<T>>;
+}
+
+export type DurableOfflineStore = OfflineStore & EntityStore;
+
 interface OutboxRecord extends OutboxEntry { readonly kind: "outbox"; }
 interface CacheRecord { readonly key: string; readonly value: unknown; readonly expiresAt: number | null; }
+interface EntityRecord<T = unknown> extends LocalEntity<T> { readonly kind: "entity"; }
+
+const CURRENT_DATABASE_VERSION = 2;
+const SENSITIVE_FIELD_NAMES = new Set([
+  "accesstoken",
+  "apikey",
+  "authorization",
+  "clientsecret",
+  "cookie",
+  "credential",
+  "credentials",
+  "idtoken",
+  "password",
+  "privatekey",
+  "proxyauthorization",
+  "refreshtoken",
+  "secret",
+  "setcookie",
+  "token",
+  "xapikey",
+]);
+
+function normalizedFieldName(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function assertPersistable(value: unknown, location: string, seen = new WeakSet<object>()): void {
+  if (value === null || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertPersistable(item, `${location}[${index}]`, seen));
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (SENSITIVE_FIELD_NAMES.has(normalizedFieldName(key))) {
+      throw new Error(`Sensitive data cannot be persisted in offline storage: ${location}.${key}`);
+    }
+    assertPersistable(child, `${location}.${key}`, seen);
+  }
+}
+
+function assertValidEntityKey(key: EntityKey): void {
+  if (typeof key !== "string" || key.length === 0 || key.length > 512) {
+    throw new Error("Entity key must be a non-empty string of at most 512 characters");
+  }
+}
+
+function assertPersistableRequest(request: OutboxRequest): void {
+  for (const key of Object.keys(request.headers ?? {})) {
+    if (SENSITIVE_FIELD_NAMES.has(normalizedFieldName(key))) {
+      throw new Error(`Sensitive header cannot be persisted in offline storage: ${key}`);
+    }
+  }
+  assertPersistable(request.query, "request.query");
+  assertPersistable(request.body, "request.body");
+}
 
 function id(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
@@ -37,12 +117,15 @@ function id(): string {
 
 function openDatabase(factory: IDBFactory, name: string, version: number): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = factory.open(name, version);
+    // Version 2 adds entities. Opening an older requested version still upgrades
+    // safely so callers that used the version-1 default receive the migration.
+    const request = factory.open(name, Math.max(version, CURRENT_DATABASE_VERSION));
     request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains("outbox")) database.createObjectStore("outbox", { keyPath: "id" });
       if (!database.objectStoreNames.contains("cache")) database.createObjectStore("cache", { keyPath: "key" });
+      if (!database.objectStoreNames.contains("entities")) database.createObjectStore("entities", { keyPath: "key" });
     };
     request.onsuccess = () => resolve(request.result);
   });
@@ -57,12 +140,12 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 }
 
 /** Durable browser outbox/cache. It stores request bodies, never auth tokens. */
-export class IndexedDbOfflineStore implements OfflineStore {
+export class IndexedDbOfflineStore implements OfflineStore, EntityStore {
   private readonly database: Promise<IDBDatabase>;
 
   public constructor(
     name = "aelys-shared",
-    version = 1,
+    version = CURRENT_DATABASE_VERSION,
     factory: IDBFactory = globalThis.indexedDB,
   ) {
     if (!factory) throw new Error("IndexedDB is not available in this runtime");
@@ -70,6 +153,7 @@ export class IndexedDbOfflineStore implements OfflineStore {
   }
 
   public async enqueue(request: OutboxRequest): Promise<OutboxEntry> {
+    assertPersistableRequest(request);
     const entry: OutboxRecord = { kind: "outbox", id: id(), request, createdAt: Date.now(), attempts: 0, nextAttemptAt: Date.now() };
     const database = await this.database;
     const transaction = database.transaction("outbox", "readwrite");
@@ -130,6 +214,7 @@ export class IndexedDbOfflineStore implements OfflineStore {
   }
 
   public async setCache<T>(key: string, value: T, ttlMs?: number): Promise<void> {
+    assertPersistable(value, `cache.${key}`);
     const database = await this.database;
     const transaction = database.transaction("cache", "readwrite");
     const record: CacheRecord = { key, value, expiresAt: ttlMs === undefined ? null : Date.now() + ttlMs };
@@ -142,6 +227,57 @@ export class IndexedDbOfflineStore implements OfflineStore {
     const transaction = database.transaction("cache", "readwrite");
     transaction.objectStore("cache").delete(key);
     await transactionDone(transaction);
+  }
+
+  public async getEntity<T>(key: EntityKey): Promise<LocalEntity<T> | undefined> {
+    assertValidEntityKey(key);
+    const database = await this.database;
+    const transaction = database.transaction("entities", "readonly");
+    const request = transaction.objectStore("entities").get(key);
+    const value = await new Promise<EntityRecord<T> | undefined>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result as EntityRecord<T> | undefined);
+      request.onerror = () => reject(request.error ?? new Error("IndexedDB read failed"));
+    });
+    await transactionDone(transaction);
+    if (!value) return undefined;
+    return { key: value.key, value: value.value, updatedAt: value.updatedAt };
+  }
+
+  public async setEntity<T>(key: EntityKey, value: T, updatedAt = Date.now()): Promise<LocalEntity<T>> {
+    assertValidEntityKey(key);
+    assertPersistable(value, `entity.${key}`);
+    const entity: EntityRecord<T> = { kind: "entity", key, value, updatedAt };
+    const database = await this.database;
+    const transaction = database.transaction("entities", "readwrite");
+    transaction.objectStore("entities").put(entity);
+    await transactionDone(transaction);
+    return { key: entity.key, value: entity.value, updatedAt: entity.updatedAt };
+  }
+
+  public async removeEntity(key: EntityKey): Promise<void> {
+    assertValidEntityKey(key);
+    const database = await this.database;
+    const transaction = database.transaction("entities", "readwrite");
+    transaction.objectStore("entities").delete(key);
+    await transactionDone(transaction);
+  }
+
+  public async setEntityAndEnqueue<T>(key: EntityKey, value: T, request: OutboxRequest): Promise<AtomicEntityWrite<T>> {
+    assertValidEntityKey(key);
+    assertPersistable(value, `entity.${key}`);
+    assertPersistableRequest(request);
+    const now = Date.now();
+    const entity: EntityRecord<T> = { kind: "entity", key, value, updatedAt: now };
+    const outbox: OutboxRecord = { kind: "outbox", id: id(), request, createdAt: now, attempts: 0, nextAttemptAt: now };
+    const database = await this.database;
+    const transaction = database.transaction(["entities", "outbox"], "readwrite");
+    transaction.objectStore("entities").put(entity);
+    transaction.objectStore("outbox").put(outbox);
+    await transactionDone(transaction);
+    return {
+      entity: { key: entity.key, value: entity.value, updatedAt: entity.updatedAt },
+      outbox,
+    };
   }
 }
 
