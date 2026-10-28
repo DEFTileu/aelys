@@ -21,6 +21,10 @@ remains blocked by the same external prerequisite: `tauri android init` stops
 because Android command-line tools require manual setup, so `gen/android` is
 absent and `tauri android build` cannot start.
 
+A fresh disposable PostgreSQL 16 container on `127.0.0.1:55433` was also
+validated from this checkout: Alembic upgraded through `0014`, `alembic check`
+reported no pending operations, and both PostgreSQL integration tests passed.
+
 | Area | Evidence | Result |
 |---|---|---|
 | Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **56 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |

@@ -61,6 +61,8 @@ Updated: 2026-10-28
   Desktop Tauri unbundled release binary build passes; Android init/build remain
   blocked by missing manually configured Android command-line tools and the
   absent generated `gen/android` project.
+  A fresh disposable PostgreSQL 16 run from this checkout passed Alembic
+  upgrade/check through 0014 and both PostgreSQL integration tests.
   shared has 12 API/offline tests and a typecheck, including a 100-operation
   offline reopen batch. End-to-end authenticated CRUD,
   crash/restart sync and cross-device recovery are still pending.
