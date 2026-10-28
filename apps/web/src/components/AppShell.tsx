@@ -150,7 +150,7 @@ export function AppShell({ route, children }: { route: RoutePath; apiStatus: Api
               <kbd style={{ height: 24, padding: '0 8px', borderRadius: 7, background: '#F1EDEA', fontSize: 12, lineHeight: '24px', color: '#3A3640', fontFamily: 'inherit' }}>⌘K</kbd>
             </button>
             <div className="shell-pill" data-glass="" style={{ padding: '0 14px', gap: 8, fontSize: 14, fontWeight: 600 }}>
-              <CloudSun size={18} color="#E08A12" aria-hidden="true" />+14°
+              <CloudSun size={18} color="#E08A12" aria-hidden="true" /><span aria-label="Weather unavailable">—</span>
             </div>
             <button type="button" className="shell-btn shell-pill shell-pill--button" data-glass="" title="Notifications" aria-label="Notifications" style={{ position: 'relative', width: 40, justifyContent: 'center', borderRadius: '50%', padding: 0 }}>
               <Bell size={18} aria-hidden="true" />
