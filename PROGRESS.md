@@ -16,7 +16,7 @@ Updated: 2026-10-28
 - Current local evidence: backend `56 passed, 2 skipped`; runtime `44 passed`,
   format and Clippy pass; shared `12 passed` including atomic entity/outbox and
   100-operation reopen coverage;
-  coverage; web `12 passed`, typecheck and
+  coverage; web `14 passed`, typecheck and
   production build pass; desktop/mobile host Rust checks pass.
 - Release is still not ready. Android APK generation, macOS signing and
   notarization, distributable installer/update flow, PostgreSQL backup/restore
