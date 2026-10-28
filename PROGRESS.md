@@ -55,7 +55,7 @@ Updated: 2026-10-28
   Android targets are not available in PATH, and `tauri android build` stops
   because `apps/mobile/src-tauri/gen/android` is not initialized. No APK or
   notification/background-sync evidence is claimed.
-- Web/shared checks now pass: web has 11 Vitest tests and a production build;
+- Web/shared checks now pass: web has 12 Vitest tests and a production build;
   shared has 12 API/offline tests and a typecheck, including a 100-operation
   offline reopen batch. End-to-end authenticated CRUD,
   crash/restart sync and cross-device recovery are still pending.
