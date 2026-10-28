@@ -84,6 +84,9 @@ unverified or blocked:
   the API client still strips caller-supplied authorization headers.
 - Frontend, shared and Tauri package manifests use exact checked versions; a
   frozen pnpm install and web/shared checks pass.
+- CI now runs frozen workspace install, desktop/mobile host Rust checks, and
+  the unbundled desktop Tauri binary build. It still does not claim signed
+  bundles or Android APK artifacts.
 - Active AI SSE streams observe auth-session revocation and cancel the run;
   repeated stream readers cannot claim a queued run twice.
 - Mounted AI runs bind their prompt message and request fingerprint, reject

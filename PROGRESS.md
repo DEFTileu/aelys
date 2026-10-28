@@ -96,3 +96,6 @@ Complete authenticated vendor CLI compatibility and supported macOS helper signi
 - Runtime session discovery/indexing, local SQLite/FTS, signed channel, digest-bound sandbox probes, lease-bound queue protocol, process supervision, cancellation, reconnect, process-tree cleanup, internal credential mapping, and cloud metadata privacy: implemented and tested.
 - Vendor CLI credentialed execution and macOS helper/code-signing validation remain release gates. The backend now verifies configured signed release-manifest digests, and the runtime detects required invocation flags without enabling them. Release operations still must provision that trust root and prove the helper signing chain on supported macOS versions. The runtime stays fail-closed for vendor execution.
 - CI verifies Python compilation/tests, strict application mypy checking, Ruff correctness lint, Bandit checks, pip-audit dependency scanning, database migrations, PostgreSQL integration, OpenAPI drift, and Rust format/tests/Clippy.
+- Frontend/shell CI also performs frozen pnpm install, web checks, desktop and
+  mobile host checks, and the unbundled desktop Tauri binary build; signed
+  macOS bundles and Android APK artifacts remain platform-gated.
