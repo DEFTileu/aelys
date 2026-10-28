@@ -59,7 +59,8 @@ unverified or blocked:
 - Automation: mounted actions now use strict typed actions, registered
   `ToolRegistry` handlers, owner/project validation, `ServerPolicyEngine`
   authorization, durable windowed rate-limit receipts, failed execution audit
-  and a database uniqueness claim for duplicate events. Full domain-service
+  and owner-scoped ActivityEvent records for task/notification side effects,
+  plus a database uniqueness claim for duplicate events. Full domain-service
   dispatch and retry worker orchestration remain incomplete.
 
 ## Security changes made in Goal 3

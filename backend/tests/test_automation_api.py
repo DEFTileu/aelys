@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from app.core import db
 from app.core.db import Base
-from app.core.models import AutomationExecution, Notification, Task
+from app.core.models import ActivityEvent, AutomationExecution, Notification, Task
 from app.main import app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
@@ -170,6 +170,7 @@ async def test_concurrent_dispatch_claims_one_execution_and_one_task(automation_
 
     async with factory() as session:  # type: AsyncSession
         assert await session.scalar(select(func.count()).select_from(Task)) == 1
+        assert await session.scalar(select(func.count()).select_from(ActivityEvent)) == 1
         assert (
             await session.scalar(select(func.count()).select_from(AutomationExecution))
             == 1

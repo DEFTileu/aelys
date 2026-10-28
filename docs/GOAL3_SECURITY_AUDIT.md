@@ -324,7 +324,8 @@ The following findings received local fixes after this audit snapshot:
   unverified.
 - G3-03: mounted automation now uses strict typed action models, registered
   handlers, a database uniqueness claim for duplicate events, durable windowed
-  rate-limit receipts and failed execution audit. Full domain-service dispatch
+  rate-limit receipts, failed execution audit, and owner-scoped activity events.
+  Full domain-service dispatch
   and retry worker orchestration remain open.
 - G3-06: mounted AI run requests now bind their prompt message and request
   fingerprint, repeated SSE readers cannot claim a queued run twice, and

@@ -11,6 +11,7 @@ from app.ai.policy import ServerPolicyEngine
 from app.ai.tools import ToolDescriptor, ToolRegistry
 from app.core.db import get_db
 from app.core.models import (
+    ActivityEvent,
     AutomationExecution,
     AutomationRule,
     Notification,
@@ -254,6 +255,7 @@ def _build_action_registry(
         )
         db.add(item)
         await db.flush()
+        db.add(ActivityEvent(owner_id=owner_id, resource_id=item.id, event_kind="automation.task.created", actor_kind="automation", actor_id=None, non_sensitive_metadata={"event_id": event_id}))
         return {"action": "create_task", "task_id": item.id, "event_id": event_id}
 
     async def create_notification(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -266,6 +268,7 @@ def _build_action_registry(
         )
         db.add(item)
         await db.flush()
+        db.add(ActivityEvent(owner_id=owner_id, resource_id=item.id, event_kind="automation.notification.created", actor_kind="automation", actor_id=None, non_sensitive_metadata={"event_id": event_id}))
         return {
             "action": "create_notification",
             "notification_id": item.id,
