@@ -1788,6 +1788,49 @@
         ]
       }
     },
+    "/api/v1/finance/transfers": {
+      "post": {
+        "summary": "Create Transfer",
+        "operationId": "create_transfer_api_v1_finance_transfers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/finance/summary": {
       "get": {
         "summary": "Finance Summary",
@@ -4082,6 +4125,97 @@
         ],
         "title": "FinanceCategoryIn"
       },
+      "FinanceTransactionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "related_transfer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Transfer Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "owner_id",
+          "account_id",
+          "category_id",
+          "amount",
+          "currency",
+          "type",
+          "occurred_at",
+          "notes",
+          "idempotency_key",
+          "related_transfer_id",
+          "version"
+        ],
+        "title": "FinanceTransactionOut"
+      },
       "FocusIn": {
         "properties": {
           "task_id": {
@@ -5138,6 +5272,85 @@
           "occurred_at"
         ],
         "title": "TransactionIn"
+      },
+      "TransferIn": {
+        "properties": {
+          "from_account_id": {
+            "type": "string",
+            "title": "From Account Id"
+          },
+          "to_account_id": {
+            "type": "string",
+            "title": "To Account Id"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Notes",
+            "default": ""
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "from_account_id",
+          "to_account_id",
+          "amount",
+          "currency",
+          "occurred_at",
+          "idempotency_key"
+        ],
+        "title": "TransferIn"
+      },
+      "TransferOut": {
+        "properties": {
+          "transfer_id": {
+            "type": "string",
+            "title": "Transfer Id"
+          },
+          "debit": {
+            "$ref": "#/components/schemas/FinanceTransactionOut"
+          },
+          "credit": {
+            "$ref": "#/components/schemas/FinanceTransactionOut"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "transfer_id",
+          "debit",
+          "credit"
+        ],
+        "title": "TransferOut"
       },
       "ValidationError": {
         "properties": {

@@ -1,8 +1,10 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
+from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
@@ -28,6 +30,41 @@ class EventIn(BaseModel): title: str; description: str = ""; starts_at: datetime
 class EventOut(EventIn): model_config=ConfigDict(from_attributes=True); id: str; version: int
 class FinanceAccountIn(BaseModel): name: str; currency: str = Field(min_length=3,max_length=3); type: str = "cash"
 class TransactionIn(BaseModel): account_id: str; category_id: str | None = None; amount: Decimal; currency: str = Field(min_length=3,max_length=3); type: str; occurred_at: datetime; notes: str = ""; idempotency_key: str | None = None
+class TransferIn(StrictModel):
+    from_account_id: str
+    to_account_id: str
+    amount: Decimal
+    currency: str = Field(min_length=3, max_length=3)
+    occurred_at: datetime
+    notes: str = Field(default="", max_length=20_000)
+    idempotency_key: str = Field(min_length=1, max_length=100)
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def reject_float_amount(cls, value):
+        if isinstance(value, float):
+            raise ValueError("amount must be a decimal string")
+        return value
+
+class FinanceTransactionOut(StrictModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    owner_id: str
+    account_id: str
+    category_id: str | None
+    amount: Decimal
+    currency: str
+    type: str
+    occurred_at: datetime
+    notes: str
+    idempotency_key: str | None
+    related_transfer_id: str | None
+    version: int
+
+class TransferOut(StrictModel):
+    transfer_id: str
+    debit: FinanceTransactionOut
+    credit: FinanceTransactionOut
 class DraftIn(BaseModel): account_id: str | None = None; thread_id: str | None = None; recipients: list[str] = []; subject: str = ""; content: str = ""
 class MessageIn(BaseModel): account_id: str | None = None; thread_id: str | None = None; sender: str; recipients: list[str] = []; subject: str; body: str = ""; received_at: datetime; sync_origin: str = "import"
 class FocusIn(BaseModel): task_id: str | None = None; project_id: str | None = None; started_at: datetime; mode: str = "pomodoro"
@@ -223,6 +260,87 @@ async def create_transaction(body:TransactionIn, principal=Depends(current_princ
         old=(await db.execute(select(FinanceTransaction).where(FinanceTransaction.owner_id==user.id,FinanceTransaction.idempotency_key==body.idempotency_key))).scalar_one_or_none()
         if old: return old
     item=FinanceTransaction(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
+
+async def _transfer_response(transfer_id: str, owner_id: str, db: AsyncSession) -> TransferOut:
+    rows = list((await db.execute(
+        select(FinanceTransaction)
+        .where(
+            FinanceTransaction.owner_id == owner_id,
+            FinanceTransaction.related_transfer_id == transfer_id,
+            FinanceTransaction.deleted_at.is_(None),
+        )
+        .order_by(FinanceTransaction.amount.asc())
+    )).scalars())
+    if len(rows) != 2:
+        raise HTTPException(500, detail={"code": "TRANSFER_INTEGRITY_ERROR", "message": "Transfer is incomplete"})
+    debit, credit = rows
+    if debit.amount >= 0 or credit.amount <= 0 or debit.amount + credit.amount != 0:
+        raise HTTPException(500, detail={"code": "TRANSFER_INTEGRITY_ERROR", "message": "Transfer is unbalanced"})
+    return TransferOut(transfer_id=transfer_id, debit=debit, credit=credit)
+
+@router.post("/finance/transfers", response_model=TransferOut)
+async def create_transfer(body: TransferIn, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    existing = (await db.execute(
+        select(FinanceTransaction).where(
+            FinanceTransaction.owner_id == user.id,
+            FinanceTransaction.idempotency_key == body.idempotency_key,
+        )
+    )).scalar_one_or_none()
+    if existing:
+        if not existing.related_transfer_id:
+            raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Idempotency key belongs to another transaction"})
+        return await _transfer_response(existing.related_transfer_id, user.id, db)
+
+    if body.amount <= 0:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "amount must be greater than zero"})
+    if body.from_account_id == body.to_account_id:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Transfer accounts must differ"})
+    from_account = await owned_ref(FinanceAccount, body.from_account_id, user.id, db, required=True)
+    to_account = await owned_ref(FinanceAccount, body.to_account_id, user.id, db, required=True)
+    if from_account.currency != body.currency or to_account.currency != body.currency:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Transfer currency must match both accounts"})
+
+    transfer_id = str(uuid4())
+    debit = FinanceTransaction(
+        owner_id=user.id,
+        account_id=from_account.id,
+        category_id=None,
+        amount=-body.amount,
+        currency=body.currency,
+        type="transfer",
+        occurred_at=body.occurred_at,
+        notes=body.notes,
+        idempotency_key=body.idempotency_key,
+        related_transfer_id=transfer_id,
+    )
+    credit = FinanceTransaction(
+        owner_id=user.id,
+        account_id=to_account.id,
+        category_id=None,
+        amount=body.amount,
+        currency=body.currency,
+        type="transfer",
+        occurred_at=body.occurred_at,
+        notes=body.notes,
+        idempotency_key=None,
+        related_transfer_id=transfer_id,
+    )
+    db.add_all([debit, credit])
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = (await db.execute(
+            select(FinanceTransaction).where(
+                FinanceTransaction.owner_id == user.id,
+                FinanceTransaction.idempotency_key == body.idempotency_key,
+            )
+        )).scalar_one_or_none()
+        if existing and existing.related_transfer_id:
+            return await _transfer_response(existing.related_transfer_id, user.id, db)
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Idempotency key already exists"})
+    return await _transfer_response(transfer_id, user.id, db)
 @router.get("/finance/summary")
 async def finance_summary(principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; rows=list((await db.execute(select(FinanceTransaction).where(FinanceTransaction.owner_id==user.id,FinanceTransaction.deleted_at.is_(None)))).scalars()); total=sum((x.amount for x in rows),Decimal("0")); return {"total":str(total),"count":len(rows)}

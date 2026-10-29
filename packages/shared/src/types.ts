@@ -298,6 +298,21 @@ export interface FinanceTransaction {
   readonly id: Id;
   readonly owner_id: Id;
   readonly version: number;
+  readonly related_transfer_id: Id | null;
+}
+export interface FinanceTransferIn {
+  readonly from_account_id: Id;
+  readonly to_account_id: Id;
+  readonly amount: DecimalString;
+  readonly currency: string;
+  readonly occurred_at: IsoDateTime;
+  readonly notes?: string;
+  readonly idempotency_key: string;
+}
+export interface FinanceTransfer {
+  readonly transfer_id: Id;
+  readonly debit: FinanceTransaction;
+  readonly credit: FinanceTransaction;
 }
 export interface FinanceSummary {
   readonly total: DecimalString;

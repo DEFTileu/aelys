@@ -3,7 +3,7 @@ import type {
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDryRunResponse, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceCategory,
-  FinanceCategoryIn, FinanceSummary, FinanceTransaction, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
+  FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
   MailAccountIn, MailDraft, MailMessage, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
   ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession,
@@ -263,6 +263,7 @@ export class ApiClient {
   public createFinanceBudget(body: FinanceBudgetIn, options?: RequestOptions) { return this.request<FinanceBudget>("/api/v1/finance/budgets", this.write(body, options)); }
   public financeTransactions(options?: RequestOptions) { return this.request<readonly FinanceTransaction[]>("/api/v1/finance/transactions", this.read(options, "finance-transactions")); }
   public createFinanceTransaction(body: TransactionIn, options?: RequestOptions) { return this.request<FinanceTransaction>("/api/v1/finance/transactions", this.write(body, options)); }
+  public createFinanceTransfer(body: FinanceTransferIn, options?: RequestOptions) { return this.request<FinanceTransfer>("/api/v1/finance/transfers", this.write(body, options)); }
   public financeSummary(options?: RequestOptions) { return this.request<FinanceSummary>("/api/v1/finance/summary", this.read(options, "finance-summary")); }
 
   public mailAccounts(options?: RequestOptions) { return this.request<readonly MailAccount[]>("/api/v1/mail/accounts", this.read(options, "mail-accounts")); }

@@ -23,9 +23,12 @@ The original audit above is retained as historical evidence from its audit
 date. Subsequent verified work changed the current release evidence:
 
 - `make openapi` now writes through a temporary file and current generation
-  produces 65 paths with an HTTP bearer scheme.
-- A fresh temporary Docker PostgreSQL database on `127.0.0.1:55432` passed
-  Alembic upgrade/check through `0014` and both PostgreSQL integration tests.
+  produces 66 paths, including finance transfers, with an HTTP bearer scheme.
+- A fresh temporary Docker PostgreSQL database on `127.0.0.1:55434` passed
+  Alembic upgrade/check through `0015` and both PostgreSQL integration tests.
+- The current finance transfer contract verifies atomic balanced Decimal
+  postings, owner and currency binding, float rejection, and idempotent replay;
+  timer pause/sleep semantics remain unverified.
 - `backend/.env.example`, `docs/SELF_HOSTING.md`, and
   `docs/BACKUP_RESTORE.md` provide the local SQLite/PostgreSQL setup,
   encrypted owner export/restore, and a PostgreSQL backup/restore drill.

@@ -1,6 +1,6 @@
 # Aelys Goal 3 release report
 
-**Audit date:** 2026-10-28
+**Audit date:** 2026-10-29
 **Repository state:** `codex/desktop-design-integration`; release evidence below is for this checkout
 **Decision:** **Not release-ready; production deployment remains disabled.**
 
@@ -21,8 +21,8 @@ remains blocked by the same external prerequisite: `tauri android init` stops
 because Android command-line tools require manual setup, so `gen/android` is
 absent and `tauri android build` cannot start.
 
-A fresh disposable PostgreSQL 16 container on `127.0.0.1:55433` was also
-validated from this checkout: Alembic upgraded through `0014`, `alembic check`
+A fresh disposable PostgreSQL 16 container on `127.0.0.1:55434` was also
+validated from this checkout: Alembic upgraded through `0015`, `alembic check`
 reported no pending operations, and both PostgreSQL integration tests passed.
 
 | Area | Evidence | Result |
@@ -30,7 +30,7 @@ reported no pending operations, and both PostgreSQL integration tests passed.
 | Backend unit/API/sync/AI/automation | `AELYS_SECRET_KEY=... PYTHONPATH=backend .venv/bin/pytest -q -rs backend/tests` | **56 passed, 2 skipped**; the skips are PostgreSQL-only tests without a configured `AELYS_DATABASE_URL` |
 | Python quality | `compileall`, Ruff, mypy, Bandit and pip-audit from CI/local records | **Pass**; the audit warning from Starlette/httpx remains non-blocking |
 | Alembic | `cd backend && PYTHONPATH=. ../.venv/bin/alembic check` with a configured secret | **Pass**, no pending operations |
-| OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 65 paths; HTTP bearer scheme | **Pass**; Makefile now validates a non-empty JSON snapshot before replacing the file |
+| OpenAPI | `make openapi` with `AELYS_SECRET_KEY`; 66 paths including finance transfers; HTTP bearer scheme | **Pass**; Makefile validates a non-empty JSON snapshot before replacing the file |
 | Shared client | `pnpm --filter @aelys/shared typecheck` and `test` | **Pass**, 12 tests; entity-plus-outbox atomic path and 100-operation reopen batch covered |
 | Web | typecheck, Vitest, Vite production build | **Pass**, 14 tests and production assets |
 | Runtime | `cargo fmt`, locked tests, Clippy | **Pass**, 30 unit + 14 runtime-contract tests |
@@ -50,8 +50,10 @@ unverified or blocked:
   project, note and task creates; a 100-operation reopen batch passes. Native
   SQLite client storage, kill/restart during sync and full cross-device recovery
   remain a spike.
-- Finance transfer integrity and timer pause/sleep conflict semantics:
-  **unverified**.
+- Finance transfer integrity: **verified for the mounted backend contract**;
+  `POST /api/v1/finance/transfers` writes an atomic balanced Decimal pair,
+  binds both accounts to the owner and currency, and replays by idempotency key.
+  Timer pause/sleep conflict semantics remain **unverified**.
 - Gmail OAuth and Telegram Bot API: **blocked by OPEN product/integration
   decisions and absent credentials**. Local mail import/drafts remain
   available; no live integration is claimed.
@@ -148,7 +150,7 @@ remains a spike, not a selected production wrapper.
 
 SQLite tests and Alembic checks pass. PostgreSQL integration requires a running
 PostgreSQL service. A fresh temporary Docker PostgreSQL database on
-`127.0.0.1:55432` passed Alembic upgrade/check through 0014 and both
+`127.0.0.1:55434` passed Alembic upgrade/check through 0015 and both
 `test_postgres_integration.py` tests. The default suite still reports two skips
 when `AELYS_DATABASE_URL` is absent.
 

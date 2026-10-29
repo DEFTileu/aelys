@@ -32,6 +32,18 @@ async def test_public_contracts_and_remote_run_policy(tmp_path, monkeypatch):
         assert (await c.get(f"/api/v1/calendar/events/{event['id']}",headers=h)).status_code==200
         account_response=await c.post("/api/v1/finance/accounts",json={"name":"Cash","currency":"USD"},headers=h)
         assert account_response.status_code==200
+        checking=(await c.post("/api/v1/finance/accounts",json={"name":"Checking","currency":"USD"},headers=h)).json()
+        cash=account_response.json()
+        transfer_payload={"from_account_id":cash["id"],"to_account_id":checking["id"],"amount":"12.34","currency":"USD","occurred_at":"2026-10-28T00:00:00Z","idempotency_key":"transfer-contract-1"}
+        transfer=await c.post("/api/v1/finance/transfers",json=transfer_payload,headers=h)
+        assert transfer.status_code==200, transfer.text
+        transfer_json=transfer.json(); assert transfer_json["debit"]["amount"] == "-12.34" and transfer_json["credit"]["amount"] == "12.34"
+        replay_transfer=await c.post("/api/v1/finance/transfers",json={**transfer_payload,"amount":"99.00"},headers=h)
+        assert replay_transfer.status_code==200 and replay_transfer.json()["transfer_id"]==transfer_json["transfer_id"]
+        float_transfer=await c.post("/api/v1/finance/transfers",json={**transfer_payload,"idempotency_key":"transfer-contract-float","amount":1.25},headers=h)
+        assert float_transfer.status_code==422
+        mismatch_transfer=await c.post("/api/v1/finance/transfers",json={**transfer_payload,"idempotency_key":"transfer-contract-mismatch","currency":"EUR"},headers=h)
+        assert mismatch_transfer.status_code==422
         category=(await c.post("/api/v1/finance/categories",json={"name":"Food"},headers=h)).json()
         budget=await c.post("/api/v1/finance/budgets",json={"category_id":category["id"],"currency":"USD","period_start":"2026-10-01T00:00:00Z","period_end":"2026-10-31T00:00:00Z","limit_amount":"100.00"},headers=h); assert budget.status_code==200, budget.text
         assert (await c.get("/api/v1/finance/categories",headers=h)).status_code==200 and (await c.get("/api/v1/finance/budgets",headers=h)).status_code==200

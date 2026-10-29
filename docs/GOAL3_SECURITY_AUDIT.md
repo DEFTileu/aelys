@@ -219,7 +219,11 @@ test; sessionStorage token handling remains the larger client-boundary issue.
   notification writes now use strict request models.
 - backend/app/automation/api.py:21-26 accepts an untyped patch body.
 - The API contract requires typed request/response models and idempotency for writes, but these routes do not consistently enforce unknown-field rejection, payload limits, or header idempotency.
-- backend/app/core/models.py:129-134 stores decimal finance fields, but there is no transfer relation/integrity model; backend/app/domains/api.py:227-238 only has start/stop focus behavior.
+- The original audit snapshot lacked a transfer relation/integrity model. The
+  current checkout adds `related_transfer_id`, migration
+  `0015_finance_transfer_integrity`, and a strict
+  `POST /api/v1/finance/transfers` contract with atomic balanced postings and
+  idempotent replay.
 
 The current checkout has replaced those five mounted write bodies with strict
 Pydantic request models and added an unknown-field regression test for project
@@ -228,11 +232,17 @@ the same cleanup.
 
 **Impact**
 
-Malformed or out-of-contract fields can be accepted, and transfer balancing, timer pause/restart, and all accepted CRUD idempotency/recovery behavior are not proven.
+Malformed or out-of-contract fields can still be accepted on some remaining
+routes, and timer pause/restart plus all accepted CRUD idempotency/recovery
+behavior are not proven.
 
 **Remediation**
 
-Replace write dictionaries with strict Pydantic models, validate enum/range/timezone/reference constraints, bind foreign references to the authenticated owner, implement version/idempotency preconditions consistently, and add finance transfer and timer lifecycle tests.
+Continue replacing remaining write dictionaries with strict Pydantic models,
+validate enum/range/timezone/reference constraints, bind foreign references to
+the authenticated owner, implement version/idempotency preconditions
+consistently, and add timer lifecycle tests. Finance transfer integrity is now
+covered by the mounted API contract and PostgreSQL migration path.
 
 ### G3-11 — Medium: deployment, backup, deletion, and retention evidence is missing
 
@@ -268,7 +278,7 @@ The following matrix audits every checkbox in docs/ACCEPTANCE_TESTS.md.
 | B4 | Tombstone and stale-device reset | Verified for repository-recorded backend evidence | Reset/compaction code and sync tests exist; native-client reset recovery is not shown. |
 | B5 | 100-operation offline stress test | Partial / Unverified | Shared IndexedDB entity-plus-outbox test reopens after 100 operations; Web/macOS/Android kill/restart and cross-device stress evidence is still absent. |
 | B6 | Private Mac session contents excluded from sync/cloud DB | Verified for boundary | Raw agent_session is rejected and index fields are allowlisted (backend/app/sync/validation.py:128-155; apps/runtime/src/metadata.rs:5-20). Full deployed log/telemetry inspection remains unverified. |
-| C1 | Exact decimal finance and balanced transfers | Unverified / Blocked | Decimal columns/arithmetic exist, but transfer integrity is not implemented (backend/app/core/models.py:129-134). |
+| C1 | Exact decimal finance and balanced transfers | Verified for mounted backend contract | `POST /api/v1/finance/transfers` uses Decimal input, creates an atomic negative/positive pair linked by `related_transfer_id`, rejects float input and mismatched currencies, and replays by idempotency key; migration 0015 and PostgreSQL migration/integration checks pass. |
 | C2 | Duplicate offline transaction is one posting | Unverified | Transaction idempotency is optional in the body (backend/app/domains/api.py:21-22,214-222); no client crash/retry or uniform server receipt. |
 | C3 | Timer pause/restart/sleep and conflict handling | Unverified | Start/stop and one-active check exist (backend/app/domains/api.py:227-238); pause, sleep recovery, and cross-device semantics are absent. |
 | C4 | Imported EML searchable/draftable; Gmail not claimed without OAuth | Partial / Unverified | Local mail/import/draft entities exist (backend/app/domains/api.py:239-258); Gmail OAuth is absent and correctly unclaimed. |
