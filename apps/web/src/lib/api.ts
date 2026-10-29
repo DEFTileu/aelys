@@ -1,5 +1,5 @@
 import type { ApiConfig } from '../types'
-import { ApiClient, IndexedDbOfflineStore } from '@aelys/shared'
+import { ApiClient, IndexedDbOfflineStore, type TokenResponse } from '@aelys/shared'
 
 const API_BASE_STORAGE_KEY = 'aelys.apiBaseUrl'
 const ACCESS_TOKEN_STORAGE_KEY = 'aelys.accessToken'
@@ -62,6 +62,16 @@ export async function logout(): Promise<void> {
 export async function login(email: string, password: string): Promise<void> {
   const client = getSharedApiClient()
   const response = await client.login({ email, password })
+  await establishSession(client, response)
+}
+
+export async function bootstrapOwner(email: string, password: string): Promise<void> {
+  const client = getSharedApiClient()
+  const response = await client.bootstrapOwner({ email, password })
+  await establishSession(client, response)
+}
+
+async function establishSession(client: ApiClient, response: TokenResponse): Promise<void> {
   client.setToken(response.access_token)
   const enrollment = await client.enrollDevice({ platform: 'web', display_name: 'Aelys Web' })
   window.sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, enrollment.access_token)
@@ -98,7 +108,10 @@ export async function requestJson<T>(path: string, init?: RequestInit, config = 
 }
 
 export async function checkApi(config = getApiConfig()): Promise<void> {
-  await getSharedApiClient().syncStatus()
+  const baseUrl = normalizeApiBaseUrl(config.baseUrl)
+  const healthUrl = baseUrl === '/api/v1' ? '/healthz' : `${sharedOrigin(baseUrl)}/healthz`
+  const response = await fetch(healthUrl, { headers: { Accept: 'application/json' } })
+  if (!response.ok) throw new ApiError(`API returned ${response.status}`, response.status)
 }
 
 export { API_BASE_STORAGE_KEY, ACCESS_TOKEN_STORAGE_KEY, DEFAULT_API_BASE_URL }

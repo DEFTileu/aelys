@@ -134,15 +134,17 @@ function QuickFilter({ active, icon, label, count, tone = 'neutral', onClick }: 
   </button>
 }
 
-function EmptyTasks({ status, onRetry }: { status: ApiStatus; onRetry: () => void }) {
-  const copy = status === 'loading'
+function EmptyTasks({ status, requiresAuth, onRetry }: { status: ApiStatus; requiresAuth: boolean; onRetry: () => void }) {
+  const copy = requiresAuth
+    ? ['Open your owner session', 'Tasks are protected by the single-owner session. Open Settings to initialize or sign in to this private instance.']
+    : status === 'loading'
     ? ['Loading tasks', 'Checking the connected task source.']
     : status === 'offline'
       ? ['Tasks are offline', 'Reconnect to load the latest task data. Quick filters remain unavailable until task data is available. Previously saved local changes remain governed by the offline queue.']
       : status === 'empty'
         ? ['No tasks yet', 'Create a task or connect a source to see the Tasks workspace.']
       : ['Tasks are unavailable', 'The task API did not respond. Check the connection and try again.']
-  return <StateCard status={status} title={copy[0]} description={copy[1]} action={<button className="text-button" type="button" onClick={onRetry}><Icon name="refresh" size={14} />Try again</button>} />
+  return <StateCard status={requiresAuth ? 'empty' : status} title={copy[0]} description={copy[1]} action={requiresAuth ? <button className="text-button" type="button" onClick={() => window.location.assign('/settings')}><Icon name="settings" size={14} />Open Settings</button> : <button className="text-button" type="button" onClick={onRetry}><Icon name="refresh" size={14} />Try again</button>} />
 }
 
 export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
@@ -154,10 +156,12 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [formOpen, setFormOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [actionMessage, setActionMessage] = useState('')
+  const [requiresAuth, setRequiresAuth] = useState(false)
 
   const load = async () => {
     if (apiStatus !== 'ready') { setContentStatus(apiStatus); return }
     setContentStatus('loading')
+    setRequiresAuth(false)
     try {
       const client = getSharedApiClient()
       const [taskResult, projectResult] = await Promise.allSettled([client.tasks(), client.projects()])
@@ -165,7 +169,8 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
       setTasks(taskResult.value)
       if (projectResult.status === 'fulfilled') setProjects(new Map(projectResult.value.map((project) => [project.id, project])))
       setContentStatus('ready')
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) setRequiresAuth(true)
       setContentStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error')
     }
   }
@@ -339,7 +344,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     {formOpen && <form className="tv-create" onSubmit={createTask}><input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Name your task" aria-label="New task title" /><button type="submit">Save</button><button type="button" onClick={() => setFormOpen(false)}>Cancel</button></form>}
     {actionMessage && <p className="tv-message" role="status">{actionMessage}</p>}
 
-    {contentStatus !== 'ready' ? <div className="tv-empty"><EmptyTasks status={contentStatus} onRetry={() => void load()} /></div> : <div className="tv-layout">
+    {contentStatus !== 'ready' ? <div className="tv-empty"><EmptyTasks status={contentStatus} requiresAuth={requiresAuth} onRetry={() => void load()} /></div> : <div className="tv-layout">
       <div className="tv-column">
         <section className="tv-card" style={glassStyle}>
           <div className="tv-card-heading"><h2>{tab === 'today' ? 'Today' : tab === 'plan' ? 'Plan' : tab === 'projects' ? 'Project tasks' : filter === 'all' ? 'All tasks' : filter === 'completed' ? 'Completed' : 'Filtered tasks'}</h2><span className="tv-count">{displayToday.length}</span><time>{formatDay(today)}</time><button className="tv-nav-button" type="button" aria-label="Previous day"><Icon name="arrow-left" size={16} /></button><button className="tv-nav-button" type="button" aria-label="Next day"><Icon name="chevron-right" size={16} /></button></div>

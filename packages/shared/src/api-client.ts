@@ -212,6 +212,7 @@ export class ApiClient {
   }
 
   public login(body: LoginRequest, options?: RequestOptions) { return this.request<TokenResponse>("/api/v1/auth/login", this.write(body, { ...options, queueOnOffline: false })); }
+  public bootstrapOwner(body: LoginRequest, options?: RequestOptions) { return this.request<TokenResponse>("/api/v1/auth/bootstrap", this.write(body, { ...options, queueOnOffline: false })); }
   public refresh(body: RefreshRequest, options?: RequestOptions) { return this.request<TokenResponse>("/api/v1/auth/refresh", this.write(body, { ...options, queueOnOffline: false })); }
   public logout(options?: RequestOptions) { return this.request<{ readonly logged_out: boolean }>("/api/v1/auth/logout", this.write(undefined, { ...options, queueOnOffline: false })); }
   public me(options?: RequestOptions) { return this.request<MeResponse>("/api/v1/me", this.read(options)); }
