@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Icon } from './Icon'
+import { CloudOff, Inbox, RefreshCw, TriangleAlert, type LucideIcon } from 'lucide-react'
 import type { ApiStatus } from '../types'
 
 type Props = {
@@ -9,17 +9,16 @@ type Props = {
   action?: ReactNode
 }
 
-const icons = { loading: 'refresh', ready: 'inbox', empty: 'inbox', error: 'alert', offline: 'cloud-off' } as const
+const icons: Record<ApiStatus, LucideIcon> = { loading: RefreshCw, ready: Inbox, empty: Inbox, error: TriangleAlert, offline: CloudOff }
 
 export function StateCard({ status, title, description, action }: Props) {
+  const Icon = icons[status]
   return (
-    <div className={`state-card state-card--${status}`} role={status === 'error' ? 'alert' : 'status'}>
-      <span className="state-card__icon"><Icon name={icons[status]} size={20} /></span>
-      <div>
-        <strong>{title}</strong>
-        <p>{description}</p>
-        {action}
-      </div>
+    <div className={`mod-state mod-state--${status}`} role={status === 'error' ? 'alert' : 'status'}>
+      <span className="mod-state__icon"><Icon size={22} aria-hidden="true" /></span>
+      <strong className="mod-state__title">{title}</strong>
+      <p className="mod-state__desc">{description}</p>
+      {action && <div className="mod-state__action">{action}</div>}
     </div>
   )
 }

@@ -1,0 +1,71 @@
+/* Tasks screen. Static styles mirror the Aelys Desktop design; data-driven colors are set inline. */
+.tasks-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 0 28px; }
+.tasks-col { display: flex; flex-direction: column; gap: 16px; }
+.tasks-card { padding: 18px; border-radius: 20px; background: var(--glass-bg, rgba(255,255,255,.88)); backdrop-filter: blur(var(--glass-blur, 20px)); -webkit-backdrop-filter: blur(var(--glass-blur, 20px)); border: 1px solid rgba(255,255,255,.35); box-shadow: 0 8px 24px rgba(40,30,30,.07); }
+.tasks-subhead { font-size: 16px; font-weight: 600; line-height: 24px; }
+.tasks-subhead--grow { flex: 1; }
+.tasks-subhead--block { margin-bottom: 12px; }
+.tasks-heading { font-size: 22px; font-weight: 600; line-height: 30px; }
+.tasks-muted { font-size: 13px; color: #625D69; }
+.tasks-spacer { flex: 1; }
+.tasks-count { min-width: 24px; height: 22px; padding: 0 7px; border-radius: 11px; background: #F1EDEA; font-size: 12px; font-weight: 600; line-height: 22px; text-align: center; }
+.tasks-head { display: flex; align-items: center; gap: 8px; }
+.tasks-head--today { margin-bottom: 4px; }
+.tasks-head--upcoming { margin-bottom: 8px; }
+.tasks-icon-btn { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.tasks-icon-btn:hover { background: #F1EDEA; }
+
+.tasks-row { display: flex; align-items: center; gap: 12px; padding: 8px; margin: 0 -8px; border-radius: 12px; border-bottom: 1px solid #F0EBE7; }
+.tasks-row:hover { background: #F7F4F1; }
+.tasks-check { width: 22px; height: 22px; flex: none; padding: 0; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; }
+.tasks-flag { flex: none; display: flex; }
+.tasks-main { flex: 1; min-width: 0; }
+.tasks-line { display: flex; align-items: center; gap: 8px; }
+.tasks-name { font-size: 14px; line-height: 20px; font-weight: 500; }
+.tasks-desc { font-size: 13px; line-height: 18px; color: #625D69; }
+.tasks-tag { height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; display: flex; align-items: center; gap: 4px; }
+.tasks-line .tasks-tag { font-weight: 500; }
+.tasks-time { font-size: 13px; width: 44px; }
+.tasks-more { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: #625D69; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.tasks-more:hover { background: #ECE7E3; }
+
+.tasks-day { padding: 6px 10px; border-radius: 10px; background: #F4F0EC; font-size: 13px; line-height: 18px; margin: 4px 0; }
+.tasks-day__name { font-weight: 600; }
+.tasks-day__sub { color: #625D69; }
+.tasks-upcoming { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 8px; border-radius: 10px; }
+.tasks-upcoming:hover { background: #F7F4F1; }
+.tasks-ring { width: 20px; height: 20px; flex: none; border-radius: 50%; border: 2px solid #BDB7C2; }
+.tasks-upcoming__name { font-size: 14px; }
+.tasks-dots { width: 32px; display: flex; justify-content: center; color: #625D69; }
+
+.tasks-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tasks-filter { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border: 0; border-radius: 12px; font: inherit; font-size: 13px; color: inherit; text-align: left; cursor: pointer; }
+.tasks-filter__label { flex: 1; white-space: nowrap; }
+.tasks-filter__count { min-width: 24px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 12px; line-height: 20px; text-align: center; }
+
+.tasks-card-head { display: flex; align-items: center; margin-bottom: 12px; }
+.tasks-card-head--projects { height: 28px; }
+.tasks-link { display: flex; align-items: center; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; color: #625D69; cursor: pointer; }
+.tasks-link:hover { color: #1C1B22; }
+.tasks-projects { display: flex; flex-direction: column; gap: 12px; }
+.tasks-project { display: flex; gap: 12px; align-items: center; }
+.tasks-project__icon { width: 36px; height: 36px; flex: none; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.tasks-project__body { flex: 1; }
+.tasks-project__top { display: flex; font-size: 14px; line-height: 20px; font-weight: 500; }
+.tasks-project__name { flex: 1; }
+.tasks-project__pct { font-size: 12px; font-weight: 400; color: #625D69; }
+.tasks-bar { height: 4px; border-radius: 2px; background: #ECE7E3; margin-top: 4px; }
+.tasks-bar__fill { height: 100%; border-radius: 2px; }
+.tasks-project__sub { font-size: 12px; line-height: 16px; color: #625D69; margin-top: 2px; }
+
+.tasks-select { flex: none; white-space: nowrap; height: 32px; padding: 0 10px; border-radius: 10px; background: #fff; border: 1px solid #E7E2DE; display: flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: 500; color: inherit; cursor: pointer; }
+.tasks-stats { display: flex; align-items: center; gap: 20px; }
+.tasks-donut { width: 96px; height: 96px; flex: none; border-radius: 50%; padding: 8px; }
+.tasks-donut__inner { width: 100%; height: 100%; border-radius: 50%; background: #FDFBFA; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.tasks-donut__value { font-size: 22px; line-height: 30px; font-weight: 700; }
+.tasks-donut__label { font-size: 12px; line-height: 16px; color: #625D69; }
+.tasks-legend { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 18px; }
+.tasks-legend__row { display: flex; gap: 8px; align-items: center; }
+.tasks-legend__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
+.tasks-legend__label { flex: 1; }
+.tasks-legend__value { font-weight: 600; }

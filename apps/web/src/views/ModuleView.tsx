@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Calendar, ChevronRight, Folder, Mail, NotebookText, RefreshCw, Search, SquareCheck, Terminal, Timer, Wallet, Workflow, type LucideIcon } from 'lucide-react'
 import type { ApiStatus, RoutePath } from '../types'
 import { ApiStatusPill } from '../components/ApiStatusPill'
-import { Icon } from '../components/Icon'
-import { SectionHeading } from '../components/SectionHeading'
+import { ScreenToolbar, SegmentedTabs } from '../components/ScreenToolbar'
 import { StateCard } from '../components/StateCard'
-import { AiCommandBar } from '../components/AiCommandBar'
 import { navigate } from '../lib/router'
 import { ApiError, OfflineQueuedError } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
+import './desktop/module.css'
 
 export type ModuleConfig = {
   path: RoutePath
   label: string
-  icon: Parameters<typeof Icon>[0]['name']
+  icon: LucideIcon
   eyebrow: string
   description: string
   action: string
@@ -22,15 +22,15 @@ export type ModuleConfig = {
 }
 
 export const moduleConfigs: Record<string, ModuleConfig> = {
-  projects: { path: '/projects', label: 'Projects', icon: 'folder', eyebrow: 'Workspace', description: 'Keep related work, notes and tasks in one context.', action: 'New project', emptyTitle: 'No projects yet', emptyDescription: 'Projects from the API will appear here once the workspace is connected.', canCreate: true },
-  notes: { path: '/notes', label: 'Notes', icon: 'note', eyebrow: 'Knowledge', description: 'A quiet place for Markdown notes, links and revisions.', action: 'New note', emptyTitle: 'Your notes are empty', emptyDescription: 'Create a note locally or connect the API to load your existing knowledge.', canCreate: true },
-  tasks: { path: '/tasks', label: 'Tasks', icon: 'check-square', eyebrow: 'Work queue', description: 'See what needs attention today and what is coming next.', action: 'New task', emptyTitle: 'No tasks to show', emptyDescription: 'The task list is empty until a connected source returns tasks.', canCreate: true },
-  calendar: { path: '/calendar', label: 'Calendar', icon: 'calendar', eyebrow: 'Time', description: 'Plan events and reminders around the work that matters.', action: 'New event', emptyTitle: 'Nothing scheduled', emptyDescription: 'Events will appear after the calendar API is connected.' },
-  mail: { path: '/mail', label: 'Mail', icon: 'mail', eyebrow: 'Communication', description: 'A model for messages and drafts, ready for a provider adapter.', action: 'Import mail', emptyTitle: 'Mail is not connected', emptyDescription: 'Aelys does not invent messages. Connect or import a provider when one is approved.' },
-  finance: { path: '/finance', label: 'Finance', icon: 'wallet', eyebrow: 'Money', description: 'Track manual transactions, accounts and budgets with decimal-safe values.', action: 'Add transaction', emptyTitle: 'No transactions yet', emptyDescription: 'Your ledger will stay empty until a local or API source supplies transactions.' },
-  timer: { path: '/timer', label: 'Timer', icon: 'timer', eyebrow: 'Focus', description: 'A durable focus timer that can be tied to a task or project.', action: 'Start timer', emptyTitle: 'Ready when you are', emptyDescription: 'No active focus session is stored locally yet.' },
-  developer: { path: '/developer', label: 'Developer Hub', icon: 'terminal', eyebrow: 'Local runtime', description: 'A safe home for connected project repositories and agent sessions.', action: 'Connect Mac', emptyTitle: 'Mac runtime is offline', emptyDescription: 'Full Claude Code and Codex CLI transcripts stay on Mac and are never fabricated in the web client.' },
-  automation: { path: '/automation', label: 'Automation', icon: 'workflow', eyebrow: 'Rules', description: 'Review policy checked triggers, conditions and actions.', action: 'New rule', emptyTitle: 'No automations configured', emptyDescription: 'Automation rules will be listed after the policy backed API is connected.' },
+  projects: { path: '/projects', label: 'Projects', icon: Folder, eyebrow: 'Workspace', description: 'Keep related work, notes and tasks in one context.', action: 'New project', emptyTitle: 'No projects yet', emptyDescription: 'Projects from the API will appear here once the workspace is connected.', canCreate: true },
+  notes: { path: '/notes', label: 'Notes', icon: NotebookText, eyebrow: 'Knowledge', description: 'A quiet place for Markdown notes, links and revisions.', action: 'New note', emptyTitle: 'Your notes are empty', emptyDescription: 'Create a note locally or connect the API to load your existing knowledge.', canCreate: true },
+  tasks: { path: '/tasks', label: 'Tasks', icon: SquareCheck, eyebrow: 'Work queue', description: 'See what needs attention today and what is coming next.', action: 'New task', emptyTitle: 'No tasks to show', emptyDescription: 'The task list is empty until a connected source returns tasks.', canCreate: true },
+  calendar: { path: '/calendar', label: 'Calendar', icon: Calendar, eyebrow: 'Time', description: 'Plan events and reminders around the work that matters.', action: 'New event', emptyTitle: 'Nothing scheduled', emptyDescription: 'Events will appear after the calendar API is connected.' },
+  mail: { path: '/mail', label: 'Mail', icon: Mail, eyebrow: 'Communication', description: 'A model for messages and drafts, ready for a provider adapter.', action: 'Import mail', emptyTitle: 'Mail is not connected', emptyDescription: 'Aelys does not invent messages. Connect or import a provider when one is approved.' },
+  finance: { path: '/finance', label: 'Finance', icon: Wallet, eyebrow: 'Money', description: 'Track manual transactions, accounts and budgets with decimal-safe values.', action: 'Add transaction', emptyTitle: 'No transactions yet', emptyDescription: 'Your ledger will stay empty until a local or API source supplies transactions.' },
+  timer: { path: '/timer', label: 'Timer', icon: Timer, eyebrow: 'Focus', description: 'A durable focus timer that can be tied to a task or project.', action: 'Start timer', emptyTitle: 'Ready when you are', emptyDescription: 'No active focus session is stored locally yet.' },
+  developer: { path: '/developer', label: 'Developer Hub', icon: Terminal, eyebrow: 'Local runtime', description: 'A safe home for connected project repositories and agent sessions.', action: 'Connect Mac', emptyTitle: 'Mac runtime is offline', emptyDescription: 'Full Claude Code and Codex CLI transcripts stay on Mac and are never fabricated in the web client.' },
+  automation: { path: '/automation', label: 'Automation', icon: Workflow, eyebrow: 'Rules', description: 'Review policy checked triggers, conditions and actions.', action: 'New rule', emptyTitle: 'No automations configured', emptyDescription: 'Automation rules will be listed after the policy backed API is connected.' },
 }
 
 function statusForContent(apiStatus: ApiStatus): ApiStatus {
@@ -44,6 +44,7 @@ function makeOperationId(): string {
 
 export function ModuleView({ config, apiStatus }: { config: ModuleConfig; apiStatus: ApiStatus }) {
   const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('All')
   const [items, setItems] = useState<readonly Record<string, unknown>[]>([])
   const [contentStatus, setContentStatus] = useState<ApiStatus>(statusForContent(apiStatus))
   const [formOpen, setFormOpen] = useState(false)
@@ -65,11 +66,13 @@ export function ModuleView({ config, apiStatus }: { config: ModuleConfig; apiSta
 
   useEffect(() => { void load() }, [apiStatus, config.path])
 
+  // Pill tabs come from the statuses the API actually returned, never from invented categories.
+  const statuses = useMemo(() => [...new Set(items.map((item) => String(item.status ?? '')).filter(Boolean))], [items])
+  const filtering = query.trim() !== '' || statusFilter !== 'All'
   const visibleItems = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    if (!needle) return items
-    return items.filter((item) => Object.values(item).some((value) => typeof value === 'string' && value.toLowerCase().includes(needle)))
-  }, [items, query])
+    return items.filter((item) => (statusFilter === 'All' || String(item.status ?? '') === statusFilter) && (!needle || Object.values(item).some((value) => typeof value === 'string' && value.toLowerCase().includes(needle))))
+  }, [items, query, statusFilter])
 
   const create = async (event: FormEvent) => {
     event.preventDefault()
@@ -105,11 +108,25 @@ export function ModuleView({ config, apiStatus }: { config: ModuleConfig; apiSta
 
   const itemLabel = (item: Record<string, unknown>) => String(item.name ?? item.title ?? item.subject ?? item.provider ?? item.id ?? 'Untitled')
   const itemMeta = (item: Record<string, unknown>) => String(item.description ?? item.status ?? item.occurred_at ?? item.starts_at ?? item.created_at ?? '')
-  return <div className="page page--module">
-    <header className="page-header"><div className="page-header__title"><span className="page-icon"><Icon name={config.icon} size={21} /></span><div><p className="eyebrow">{config.eyebrow}</p><h1>{config.label}</h1><p>{config.description}</p></div></div><button className="button button--primary" onClick={() => setFormOpen(true)} disabled={!config.canCreate} title={config.canCreate ? config.action : 'This entry point is not wired yet'}><Icon name="plus" size={17} />{config.action}</button></header>
-    <div className="context-strip"><ApiStatusPill status={apiStatus} /><span className="context-strip__copy">The web shell is ready for the shared client boundary.</span></div>
-    <div className="module-toolbar"><label className="search-field"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${config.label.toLowerCase()}…`} aria-label={`Search ${config.label}`} /></label><button className="button button--quiet"><Icon name="sliders" size={17} />Filter</button></div>
-    <section className="module-surface"><SectionHeading title={query ? `Results for “${query}”` : 'Overview'} action={<button className="text-button" onClick={() => navigate('/settings')}>Connection settings</button>} />{formOpen && <form className="inline-create" onSubmit={create}><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder={`Name your ${config.label.toLowerCase().replace(/s$/, '')}`} aria-label={`New ${config.label}`} /><button className="button button--primary" type="submit">Save</button><button className="button button--quiet" type="button" onClick={() => setFormOpen(false)}>Cancel</button></form>}{actionMessage && <p className="save-note" role="status">{actionMessage}</p>}{contentStatus === 'ready' && visibleItems.length > 0 ? <div className="record-list">{visibleItems.map((item) => <article className="record-row" key={String(item.id ?? `${itemLabel(item)}-${itemMeta(item)}`)}><span className="record-row__icon"><Icon name={config.icon} size={16} /></span><span className="record-row__body"><strong>{itemLabel(item)}</strong><small>{itemMeta(item)}</small></span><span className="record-row__version">{item.version ? `v${String(item.version)}` : ''}</span></article>)}</div> : contentStatus === 'empty' || (contentStatus === 'ready' && visibleItems.length === 0) ? <StateCard status="empty" title={query ? 'No matching records' : config.emptyTitle} description={query ? 'Try a different search term.' : config.emptyDescription} action={<button className="text-button" onClick={() => navigate('/settings')}>Check API settings <Icon name="chevron-right" size={14} /></button>} /> : <StateCard status={contentStatus} title={contentStatus === 'loading' ? 'Loading workspace' : contentStatus === 'offline' ? 'You are offline' : 'Could not load this app'} description={contentStatus === 'loading' ? 'Checking the configured API before loading this view.' : contentStatus === 'offline' ? 'Previously saved local settings remain available. Sync will resume when you are back online.' : 'The configured API did not respond. Check the base URL or try again.'} action={<button className="text-button" onClick={() => void load()}><Icon name="refresh" size={14} />Try again</button>} />}</section>
-    <div className="module-ai"><AiCommandBar compact /></div>
+  const ModuleIcon = config.icon
+  return <div className={`mod-screen ${config.canCreate ? '' : 'mod-screen--locked'}`}>
+    <ScreenToolbar
+      tabs={statuses.length > 1 ? <SegmentedTabs tabs={['All', ...statuses].map((status) => ({ id: status, label: status }))} value={statusFilter} onChange={setStatusFilter} label="Filter by status" /> : undefined}
+      placeholder={`Ask Aelys about your ${config.label.toLowerCase()}…`}
+      primary={config.action}
+      onPrimary={config.canCreate ? () => setFormOpen(true) : undefined}
+      onAsk={() => navigate('/ai')}
+    />
+    <div className="mod-body">
+      <div className="mod-bar">
+        <label className="mod-field"><Search size={16} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${config.label.toLowerCase()}…`} aria-label={`Search ${config.label}`} /></label>
+        <span className="mod-bar__spacer" />
+        <ApiStatusPill status={apiStatus} />
+        <button type="button" className="mod-link" onClick={() => navigate('/settings')}>Connection settings</button>
+      </div>
+      {formOpen && <form className="mod-create" onSubmit={create}><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder={`Name your ${config.label.toLowerCase().replace(/s$/, '')}`} aria-label={`New ${config.label}`} /><button className="mod-btn mod-btn--primary" type="submit">Save</button><button className="mod-btn" type="button" onClick={() => setFormOpen(false)}>Cancel</button></form>}
+      {actionMessage && <p className="mod-note" role="status">{actionMessage}</p>}
+      {contentStatus === 'ready' && visibleItems.length > 0 ? <div className="mod-card">{visibleItems.map((item) => <article className="mod-row" key={String(item.id ?? `${itemLabel(item)}-${itemMeta(item)}`)}><span className="mod-row__icon"><ModuleIcon size={17} aria-hidden="true" /></span><span className="mod-row__body"><strong className="mod-row__title">{itemLabel(item)}</strong><small className="mod-row__meta">{itemMeta(item)}</small></span>{item.version ? <span className="mod-row__badge">v{String(item.version)}</span> : null}</article>)}</div> : contentStatus === 'empty' || (contentStatus === 'ready' && visibleItems.length === 0) ? <StateCard status="empty" title={filtering ? 'No matching records' : config.emptyTitle} description={filtering ? 'Try a different search term or status.' : config.emptyDescription} action={<button type="button" className="mod-link" onClick={() => navigate('/settings')}>Check API settings <ChevronRight size={14} /></button>} /> : <StateCard status={contentStatus} title={contentStatus === 'loading' ? 'Loading workspace' : contentStatus === 'offline' ? 'You are offline' : 'Could not load this app'} description={contentStatus === 'loading' ? 'Checking the configured API before loading this view.' : contentStatus === 'offline' ? 'Previously saved local settings remain available. Sync will resume when you are back online.' : 'The configured API did not respond. Check the base URL or try again.'} action={contentStatus === 'loading' ? undefined : <button type="button" className="mod-btn" onClick={() => void load()}><RefreshCw size={14} aria-hidden="true" />Try again</button>} />}
+    </div>
   </div>
 }
