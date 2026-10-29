@@ -6,7 +6,8 @@ import {
   settingsNav,
   sliderSettings,
   themeOptions,
-  wallpaperTiles,
+  VISIBLE_WALLPAPERS,
+  WALLPAPERS,
   type ThemeId,
 } from '../../data/desktop/settings'
 import { setSettings, useDesktopState } from '../../lib/desktopStore'
@@ -29,6 +30,7 @@ const TRAFFIC_LIGHTS = ['#FF5F57', '#FEBC2E', '#28C840']
 
 export function SettingsScreen({ theme, onToggleTheme }: Props) {
   const [followsSystem, setFollowsSystem] = useState(false)
+  const [allWallpapers, setAllWallpapers] = useState(false)
   // Wallpaper, accent and the two sliders are shared with the shell and persisted by desktopStore.
   const { accent, wallpaper: wall, transparency, blur } = useDesktopState()
   const sliderValues = [transparency, blur]
@@ -218,20 +220,8 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
             </button>
           </div>
           <div role="group" aria-label="Wallpapers" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
-            {wallpaperTiles.map((w, i) => {
+            {(allWallpapers ? WALLPAPERS : WALLPAPERS.slice(0, VISIBLE_WALLPAPERS)).map((url, i) => {
               const on = wall === i
-              if (w.label) {
-                return (
-                  <button
-                    key={w.label}
-                    type="button"
-                    aria-label="More wallpapers"
-                    style={{ position: 'relative', height: 88, borderRadius: 12, background: w.background, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}
-                  >
-                    {w.label}
-                  </button>
-                )
-              }
               return (
                 <button
                   key={i}
@@ -240,7 +230,7 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
                   aria-checked={on}
                   aria-label={`Wallpaper ${i + 1}`}
                   onClick={() => setSettings({ wallpaper: i })}
-                  style={{ position: 'relative', height: 88, borderRadius: 12, background: w.background, boxShadow: on ? '0 0 0 3px #6A4CF2' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}
+                  style={{ position: 'relative', height: 88, borderRadius: 12, background: `url('${url}') center/cover`, boxShadow: on ? '0 0 0 3px #6A4CF2' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}
                 >
                   {on && (
                     <span
@@ -253,6 +243,14 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
                 </button>
               )
             })}
+            <button
+              type="button"
+              aria-expanded={allWallpapers}
+              onClick={() => setAllWallpapers((open) => !open)}
+              style={{ position: 'relative', height: 88, borderRadius: 12, background: `linear-gradient(rgba(40,36,50,.55),rgba(40,36,50,.55)), url('${WALLPAPERS[VISIBLE_WALLPAPERS]}') center/cover`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}
+            >
+              {allWallpapers ? 'Less' : 'More'}
+            </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
             {sliderSettings.map((s, i) => (

@@ -164,6 +164,8 @@ function ControlButton({ label, title, icon: Icon, onClick, dim = false, danger 
 export type HomeWidgetProps = {
   id: WidgetId
   span: number
+  // Grid columns at the current width; the widget's grid span is clamped to it, the body layout still follows span.
+  cols: number
   index: number
   count: number
   editing: boolean
@@ -175,7 +177,7 @@ export type HomeWidgetProps = {
   onRemove: () => void
 }
 
-export function HomeWidget({ id, span, index, count, editing, done, focus, onToggleTask, onMove, onResize, onRemove }: HomeWidgetProps) {
+export function HomeWidget({ id, span, cols, index, count, editing, done, focus, onToggleTask, onMove, onResize, onRemove }: HomeWidgetProps) {
   const def = WIDGET_CATALOG[id]
   const { c, soft } = accentOf(def.color)
   const dark = id === 'weather'
@@ -189,8 +191,8 @@ export function HomeWidget({ id, span, index, count, editing, done, focus, onTog
   const link = def.link
   const linkRoute = link?.route
   const style: CSSProperties = {
-    gridColumn: `span ${span}`,
-    height: full ? 'auto' : 264,
+    gridColumn: `span ${Math.min(span, cols)}`,
+    minHeight: full ? 'auto' : 264,
     background: dark ? 'linear-gradient(180deg,rgba(30,34,60,.30),rgba(20,22,40,.72)),url("/backgrounds/weather/08_evening_sunset.jpg") 82% 40%/auto 420px' : 'var(--glass-bg, rgba(255,255,255,.88))',
     color: dark ? '#fff' : '#1C1B22',
     border: editing ? '1.5px dashed rgba(106,76,242,.55)' : '1px solid rgba(255,255,255,.35)',

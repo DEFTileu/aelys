@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowRight, Check, LayoutGrid, Plus, RotateCcw } from 'lucide-react'
 import { HOME_CHIPS, accentOf } from '../data/desktop/home'
-import { askAelys, takeCustomizeHome, toggleTask, useDesktopState } from '../lib/desktopStore'
+import { askAelys, takeCustomizeHome, toggleTask, useDesktopState, useWindowWidth } from '../lib/desktopStore'
 import type { ApiStatus } from '../types'
 import { DEFAULT_LAYOUT, WIDGET_CATALOG, WIDGET_IDS, readLayout, saveLayout, type LayoutEntry, type WidgetId } from './desktop/homeLayout'
 import { HomeWidget, useFocusTimer } from './desktop/homeWidgets'
@@ -15,6 +15,8 @@ export function HomeView(_props: { apiStatus?: ApiStatus }) {
   const [editing, setEditing] = useState(false)
   const [picker, setPicker] = useState(false)
   const { done, customizeHome } = useDesktopState()
+  const width = useWindowWidth()
+  const cols = width >= 1240 ? 4 : width >= 900 ? 2 : 1
   const [draft, setDraft] = useState('')
   const focus = useFocusTimer()
   // The sidebar Widgets item sets this flag and navigates here.
@@ -91,8 +93,8 @@ export function HomeView(_props: { apiStatus?: ApiStatus }) {
         : <button type="button" className="home-btn home-tool" onClick={() => setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />Customize</button>}
     </div>
 
-    <section aria-label="Dashboard widgets" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 16, alignItems: 'start' }}>
-      {layout.map(([id, span], index) => <HomeWidget key={id} id={id} span={span} index={index} count={layout.length} editing={editing} done={done} focus={focus} onToggleTask={toggleTask} onMove={(delta) => moveWidget(index, delta)} onResize={() => resizeWidget(index)} onRemove={() => removeWidget(index)} />)}
+    <section aria-label="Dashboard widgets" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},minmax(0,1fr))`, gap: 16, alignItems: 'start' }}>
+      {layout.map(([id, span], index) => <HomeWidget key={id} id={id} span={span} cols={cols}index={index} count={layout.length} editing={editing} done={done} focus={focus} onToggleTask={toggleTask} onMove={(delta) => moveWidget(index, delta)} onResize={() => resizeWidget(index)} onRemove={() => removeWidget(index)} />)}
     </section>
     <div style={{ height: 12 }} />
   </div>

@@ -1,23 +1,15 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Bell, BookOpen, Calendar, CloudSun, Folder, House, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, SquareCheck, Wallet, type LucideIcon } from 'lucide-react'
-import { accentColors } from '../data/desktop/settings'
-import { requestCustomizeHome, useDesktopState, type DesktopSettings } from '../lib/desktopStore'
+import { WALLPAPERS, accentColors } from '../data/desktop/settings'
+import { requestCustomizeHome, useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
 import type { ApiStatus, RoutePath } from '../types'
 import { CommandPalette } from './CommandPalette'
 
-// The design is a fixed 1400x1040 window scaled to fit the viewport (min 0.3).
-const FRAME_W = 1400
-const FRAME_H = 1040
-const HOME_BG = 'linear-gradient(180deg,rgba(18,18,40,.32) 0,rgba(18,18,40,.08) 170px,rgba(246,241,236,0) 300px,rgba(246,241,236,.9) 345px,#F5F0EB 480px)'
+// Full-viewport layout: the wallpaper is a photo band at the top of the content column, faded into the page by these overlays.
+const HOME_BG = 'linear-gradient(180deg,rgba(18,18,40,.22) 0,rgba(18,18,40,.04) 220px,rgba(246,241,236,0) 330px,rgba(246,241,236,.8) 385px,#F5F0EB 420px)'
 const PAGE_BG = 'linear-gradient(180deg,rgba(18,18,40,.32) 0,rgba(18,18,40,.05) 110px,rgba(246,241,236,.75) 150px,rgba(245,240,235,.97) 230px)'
-// Wallpaper crops of the sunset image: index 0 is the design's original shell position, the rest match the Settings tiles.
-const WALLPAPER_POSITIONS = ['70% 62%', '55% 40%', '30% 50%', '95% 20%', '10% 60%']
 const DEFAULT_ACCENT = '#6A4CF2'
-
-function fitScale() {
-  return Math.max(0.3, Math.min(1, (window.innerWidth - 40) / FRAME_W, (window.innerHeight - 40) / FRAME_H))
-}
 
 // Multicolor is a gradient, not a color token, so it keeps the default accent.
 function accentHex(index: number): string {
@@ -78,37 +70,28 @@ function screenFor(route: RoutePath): string | null {
 
 // theme and onToggleTheme stay in the signature for App.tsx; the design has no theme toggle in the window chrome.
 export function AppShell({ route, children }: { route: RoutePath; apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void; children: ReactNode }) {
-  const [scale, setScale] = useState(fitScale)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const settings = useDesktopState()
   const remaining = settings.done.filter((on) => !on).length
 
   useEffect(() => {
-    const onResize = () => setScale(fitScale())
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPaletteOpen((open) => !open) }
       else if (event.key === 'Escape') setPaletteOpen(false)
     }
-    window.addEventListener('resize', onResize)
     window.addEventListener('keydown', onKey)
-    return () => { window.removeEventListener('resize', onResize); window.removeEventListener('keydown', onKey) }
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   const screen = screenFor(route)
   const hero = HEROES[route]
   const isHome = screen === 'home'
   const heroDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const sideW = useWindowWidth() >= 900 ? 240 : 200
   const go = (path: RoutePath) => { setPaletteOpen(false); navigate(path) }
 
-  return <div className="shell-root" style={{ ...shellVars(settings), position: 'relative', height: '100vh', minHeight: 520, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-    <div className="shell-wallpaper" aria-hidden="true" style={{ backgroundPosition: WALLPAPER_POSITIONS[settings.wallpaper] ?? WALLPAPER_POSITIONS[0] }} />
-    <div className="shell-shade" aria-hidden="true" />
-    <div style={{ position: 'relative', flex: 'none', width: FRAME_W * scale, height: FRAME_H * scale }}>
-      <div className="shell-frame" data-screen-label={screen ?? route} style={{ transform: `scale(${scale})` }}>
-        <aside className="shell-sidebar" data-glass="" aria-label="Main navigation">
-          <div aria-hidden="true" style={{ display: 'flex', gap: 8, padding: '0 4px 24px' }}>
-            {['#FF5F57', '#FEBC2E', '#28C840'].map((color) => <span key={color} style={{ width: 12, height: 12, borderRadius: '50%', background: color }} />)}
-          </div>
+  return <div className="shell-root" data-screen-label={screen ?? route} style={{ ...shellVars(settings), '--side-w': `${sideW}px`, gridTemplateColumns: `${sideW}px minmax(0,1fr)` } as CSSProperties}>
+        <aside className="shell-sidebar" aria-label="Main navigation">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px 24px' }}>
             <div aria-hidden="true" style={{ width: 40, height: 40, flex: 'none', borderRadius: 12, background: 'linear-gradient(135deg,#FF9AC8 0%,#B57BFF 45%,#5FA8FF 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 22, fontWeight: 400, boxShadow: '0 6px 16px rgba(140,90,240,.3)' }}>Λ</div>
             <div>
@@ -143,7 +126,10 @@ export function AppShell({ route, children }: { route: RoutePath; apiStatus: Api
           </div>
         </aside>
 
-        <main className="shell-main" style={{ position: 'relative', overflowY: isHome ? 'auto' : 'hidden', backgroundImage: isHome ? HOME_BG : PAGE_BG, backgroundAttachment: 'local' }}>
+        <main className="shell-main">
+          <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, backgroundImage: `url('${WALLPAPERS[settings.wallpaper] ?? WALLPAPERS[0]}')` }} />
+          <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, background: isHome ? HOME_BG : PAGE_BG }} />
+          <div style={{ position: 'relative' }}>
           <div style={{ position: 'absolute', top: 20, right: 28, display: 'flex', gap: 8, alignItems: 'center', zIndex: 2 }}>
             <button type="button" className="shell-btn shell-pill shell-pill--button" data-glass="" onClick={() => setPaletteOpen(true)} aria-label="Search or run a command" style={{ width: 260, padding: '0 8px 0 14px', gap: 10, fontSize: 13, color: '#625D69' }}>
               <Search size={18} color="#1C1B22" aria-hidden="true" />
@@ -159,17 +145,16 @@ export function AppShell({ route, children }: { route: RoutePath; apiStatus: Api
             </button>
           </div>
 
-          <div className="shell-hero" style={{ height: isHome ? 176 : 140, paddingTop: isHome ? 56 : 32 }}>
+          <div className="shell-hero" style={{ height: isHome ? 276 : 140, paddingTop: isHome ? 56 : 32 }}>
             {hero?.date && <div style={{ fontSize: 14, lineHeight: '20px', fontWeight: 500 }}>{heroDate}</div>}
             {hero && <h1 style={{ margin: isHome ? '4px 0 0' : '2px 0 0', fontSize: isHome ? 36 : 30, lineHeight: isHome ? '44px' : '38px', fontWeight: 700, letterSpacing: '-.02em' }}>{hero.title}</h1>}
             {hero && <div style={{ fontSize: 14, lineHeight: '22px', marginTop: 2 }}>{hero.sub}</div>}
           </div>
 
           {children}
+          </div>
         </main>
 
         {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onNavigate={go} />}
-      </div>
-    </div>
   </div>
 }

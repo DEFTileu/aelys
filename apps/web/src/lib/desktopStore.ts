@@ -95,3 +95,12 @@ export function takeCustomizeHome(): boolean {
   if (on) update({ customizeHome: false })
   return on
 }
+
+function subscribeResize(onChange: () => void) {
+  window.addEventListener('resize', onChange)
+  return () => window.removeEventListener('resize', onChange)
+}
+
+export function useWindowWidth(): number {
+  return useSyncExternalStore(subscribeResize, () => window.innerWidth)
+}
