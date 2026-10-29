@@ -1,0 +1,12 @@
+/* Hover and focus rules that inline styles cannot express; the rest of the notes screen is inline, mirroring the design. */
+.notes-btn { appearance: none; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: inherit; cursor: pointer; }
+.notes-btn:focus-visible { outline: 2px solid #6A4CF2; outline-offset: 2px; }
+.notes-icon-btn:hover { background: #F4F0EC; }
+
+.notes-grid [data-glass] { -webkit-backdrop-filter: blur(var(--glass-blur, 20px)); backdrop-filter: blur(var(--glass-blur, 20px)); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .notes-grid [data-glass] { background: rgba(252, 250, 248, .98) !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .notes-grid [data-glass] { background: rgba(252, 250, 248, .98) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+}
