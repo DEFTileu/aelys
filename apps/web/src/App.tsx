@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react'
 import { AppShell } from './components/AppShell'
 import { checkApi, getApiConfig } from './lib/api'
+import { useWindowWidth } from './lib/desktopStore'
 import { getRoute } from './lib/router'
 import { HomeView } from './views/HomeView'
 import { ModuleView, moduleConfigs } from './views/ModuleView'
@@ -11,6 +12,7 @@ import { NotesScreen } from './views/desktop/NotesScreen'
 import { ProjectsScreen } from './views/desktop/ProjectsScreen'
 import { SettingsScreen } from './views/desktop/SettingsScreen'
 import { TasksScreen } from './views/desktop/TasksScreen'
+import { MobileApp } from './views/mobile/MobileApp'
 import type { ApiStatus, RoutePath } from './types'
 
 function useRoute(): RoutePath {
@@ -46,6 +48,8 @@ export default function App() {
   const route = useRoute()
   const apiStatus = useApiStatus()
   const [theme, toggleTheme] = useTheme()
+  const phone = useWindowWidth() < 600
+  if (phone) return <MobileApp route={route} theme={theme} onToggleTheme={toggleTheme} />
   const moduleKey = route.slice(1)
   const screens: Partial<Record<RoutePath, ReactElement>> = { '/': <HomeView apiStatus={apiStatus} />, '/ai': <ChatScreen />, '/tasks': <TasksScreen />, '/calendar': <CalendarScreen />, '/projects': <ProjectsScreen />, '/notes': <NotesScreen />, '/search': <SearchView apiStatus={apiStatus} />, '/settings': <SettingsScreen theme={theme} onToggleTheme={toggleTheme} /> }
   const content = screens[route] ?? <ModuleView config={moduleConfigs[moduleKey] ?? moduleConfigs.projects} apiStatus={apiStatus} />
