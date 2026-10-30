@@ -338,6 +338,12 @@ idempotency guarantee is introduced by this UX slice.
   version parameter atomically. A stale version returns 409 VERSION_CONFLICT
   without changing the note or appending a revision. Legacy omitted versions
   remain compatible; the updated web editor sends its draft's base version.
+- Note create/update accepts optional `folder: string | null` (max 120) and
+  `tags: string[]` (max 50 labels, 80 characters each). Responses include both.
+  Folder whitespace becomes null; tags are trimmed, a leading `#` removed and
+  duplicates eliminated. Omitted organization fields on legacy updates preserve
+  saved values. Explicit null/empty values clear them. The UI retains drafts
+  when an older server does not return the requested organization values.
 - `/search` preserves the result shape but projects only id/title in SQL and
   excludes tombstones. Full note/mail bodies are used in predicates, never
   materialized as result ORM entities solely to build search metadata.

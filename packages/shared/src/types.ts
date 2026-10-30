@@ -134,12 +134,16 @@ export interface DeleteResponse {
 }
 
 export interface NoteIn {
+  readonly folder?: string | null;
+  readonly tags?: readonly string[];
   readonly title: string;
   readonly markdown_body?: string;
   readonly parent_id?: Id | null;
   readonly project_id?: Id | null;
 }
 export interface NoteOut {
+  readonly folder?: string | null;
+  readonly tags?: readonly string[];
   readonly title: string;
   readonly markdown_body: string;
   readonly parent_id: Id | null;

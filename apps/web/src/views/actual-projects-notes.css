@@ -52,3 +52,18 @@
 @media (max-width:700px) { .notes-live:not(.notes-live--editing) .nl-grid { display:grid; }.notes-live:not(.notes-live--editing) .nl-list { display:contents; }.notes-live:not(.notes-live--editing) .nl-search { order:0; margin:0; }.notes-live:not(.notes-live--editing) .nl-folders { order:1; }.notes-live:not(.notes-live--editing) .nl-note-list { order:2; }.notes-live:not(.notes-live--editing) .nl-new-compact { order:3; }.pv-mobile-detail-progress { display:grid; grid-template-columns:1fr auto; gap:10px; margin-top:12px; color:var(--muted); font-size:13px; }.pv-mobile-detail-progress b { color:var(--ink); }.pv-mobile-detail-progress .pv-progress { grid-column:1 / -1; } }
 
 @media(min-width:701px) and (max-width:1199px) { .nl-grid { grid-template-columns:minmax(0,300px) minmax(0,1fr); } .nl-folders { display:none; } }
+/* Note organization shares the note's versioned save and draft. */
+.nl-tags,.nl-note-tags { display:flex; flex-wrap:wrap; gap:6px; }
+.nl-tags button,.nl-note-tags span { border:0; border-radius:12px; padding:4px 9px; background:var(--purple-soft); color:var(--purple-deep); font:500 12px var(--font-ui); }
+.nl-tags button { cursor:pointer; }
+.nl-tags button[aria-pressed='true'] { outline:2px solid var(--purple); }
+.nl-note-tags { margin-top:6px; }
+.nl-note-tags span { font-size:11px; }
+.nl-organization { display:flex; flex-wrap:wrap; gap:12px; margin:0 0 12px; font-size:12px; color:var(--muted); }
+.nl-organization label,.nl-tag-editor { display:grid; gap:5px; min-width:0; }
+.nl-organization input { width:auto; min-width:130px; max-width:100%; padding:7px 10px; border:1px solid var(--line); border-radius:9px; color:var(--ink); background:var(--surface-soft); font:13px var(--font-ui); }
+.nl-tag-add { display:flex; gap:6px; }
+.nl-tag-add button { padding:6px 10px; border:1px solid var(--line); border-radius:9px; background:var(--surface-soft); color:var(--ink); cursor:pointer; }
+
+.nl-editor-body .nl-organization input { width:auto; min-width:130px; max-width:100%; padding:7px 10px; border:1px solid var(--line); border-radius:9px; color:var(--ink); background:var(--surface-soft); font:13px var(--font-ui); }
+@media(min-width:701px) and (max-width:1199px) { .nl-grid { grid-template-columns:160px minmax(0,1fr); } .nl-folders { display:block; } .nl-editor { grid-column:1 / -1; } }

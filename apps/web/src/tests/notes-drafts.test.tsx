@@ -31,7 +31,7 @@ describe('note drafts', () => {
   it('filters unfiled notes and keeps drafts through the mobile list transition', async () => {
     await mount(); await change('Note body', 'Alpha draft'); await click('Unfiled')
     expect(host.querySelector('.nl-note-list')?.textContent).toContain('Beta')
-    expect(host.querySelector('.nl-note-list')?.textContent).not.toContain('Alpha')
+    expect(host.querySelector('.nl-note-list')?.textContent).toContain('Alpha')
     await click('Beta'); expect(host.querySelector('.notes-live--editing')).not.toBeNull()
     await click('← All notes'); expect(host.querySelector('.notes-live--editing')).toBeNull()
     await click('All notes'); await click('Alpha'); expect(input('Note body').value).toBe('Alpha draft')
@@ -163,4 +163,34 @@ describe('note drafts', () => {
     vi.restoreAllMocks()
   })
 
+})
+
+it('retains organization drafts when an older server ignores their fields', async () => {
+  client.updateNote.mockResolvedValueOnce({ ...first, version: 2 })
+  await mount(); await change('Note folder', 'Work'); await click('Save changes')
+  expect(input('Note folder').value).toBe('Work')
+  expect(host.textContent).toContain('server did not save folders and tags')
+  expect(host.textContent).not.toContain('Changes saved.')
+})
+
+it('saves folder and tags with the note and filters saved organization', async () => {
+  const saved = { ...first, folder: 'Work', tags: ['design'], version: 2 }
+  client.updateNote.mockResolvedValue(saved)
+  await mount(); await change('Note folder', 'Work'); await change('New tag', 'design'); await click('Add'); await click('Save changes')
+  expect(client.updateNote).toHaveBeenCalledWith('1', expect.objectContaining({ folder: 'Work', tags: ['design'] }), expect.objectContaining({ query: { version: 1 } }))
+  await click('Work'); expect(host.querySelector('.nl-note-list')?.textContent).toContain('Alpha')
+  await click('#design'); expect(host.querySelector('.nl-note-list')?.textContent).toContain('Alpha')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Remove tag design"]')!.click()); await act(async () => root.render(<NotesView apiStatus="offline" />))
+  expect(host.querySelector('[aria-label="Remove tag design"]')).toBeNull()
+})
+
+it('opens create and note intents on mount and same-route popstate', async () => {
+  window.history.replaceState({}, '', '/notes?create=1')
+  await mount(); expect(input('New note title')).toBeTruthy()
+  await click('Cancel')
+  await act(async () => { window.history.pushState({}, '', '/notes?note=2'); window.dispatchEvent(new PopStateEvent('popstate')) })
+  expect(input('Note title').value).toBe('Beta')
+  await act(async () => { window.history.pushState({}, '', '/notes?create=1'); window.dispatchEvent(new PopStateEvent('popstate')) })
+  expect(input('New note title')).toBeTruthy()
+  window.history.replaceState({}, '', '/')
 })

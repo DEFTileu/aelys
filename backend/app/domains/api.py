@@ -61,7 +61,26 @@ class FinanceBudgetIn(StrictModel):
             raise ValueError("limit_amount must be a decimal string")  # noqa: TRY004 - Pydantic needs ValueError for structured money validation
         return value
 class NotificationIn(StrictModel): kind: str = Field(default="info", min_length=1, max_length=80); title: str = Field(default="Notification", min_length=1, max_length=300); body: str | None = Field(default=None, max_length=20_000); data: dict = Field(default_factory=dict); dedup_key: str | None = Field(default=None, max_length=150)
-class NoteIn(BaseModel): title: str; markdown_body: str = ""; parent_id: str | None = None; project_id: str | None = None
+class NoteIn(BaseModel):
+    title: str
+    markdown_body: str = ""
+    parent_id: str | None = None
+    project_id: str | None = None
+    folder: str | None = Field(default=None, max_length=120)
+    tags: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("folder")
+    @classmethod
+    def clean_folder(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str]) -> list[str]:
+        tags = [tag.strip().removeprefix("#").strip() for tag in value]
+        if any(not tag or len(tag) > 80 for tag in tags):
+            raise ValueError("Tags must be 1 to 80 characters")
+        return list(dict.fromkeys(tags))
 class NoteOut(NoteIn): model_config=ConfigDict(from_attributes=True); id: str; version: int
 class TaskIn(BaseModel):
     title: str
@@ -344,10 +363,15 @@ async def update_note(item_id:str, body:NoteIn, version: int | None = Query(defa
     await owned_ref(Note, body.parent_id, user.id, db)
     expected = version if version is not None else item.version
     changed_body = body.markdown_body != item.markdown_body
+    values = body.model_dump()
+    # Older clients do not send organization fields; preserve them on update.
+    for field in ("folder", "tags"):
+        if field not in body.model_fields_set:
+            values.pop(field)
     result = await db.execute(update(Note).where(
         Note.id == item_id, Note.owner_id == user.id, Note.deleted_at.is_(None),
         Note.version == expected,
-    ).values(**body.model_dump(), version=expected + 1))
+    ).values(**values, version=expected + 1))
     if int(getattr(result, "rowcount", 0) or 0) != 1:
         await db.rollback()
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Note changed. Your draft must be compared with the latest version before saving."})

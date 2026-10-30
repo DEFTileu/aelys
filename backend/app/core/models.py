@@ -103,6 +103,8 @@ class Note(Owned):
     markdown_body: Mapped[str] = mapped_column(Text, default="")
     parent_id: Mapped[str | None] = mapped_column(String(36))
     project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"))
+    folder: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    tags: Mapped[list] = mapped_column(JSON, default=list, server_default="[]", nullable=False)
 
 class NoteRevision(Base):
     __tablename__ = "note_revisions"

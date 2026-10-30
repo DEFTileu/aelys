@@ -33,7 +33,12 @@ Constraints: `(kind, entity_id, owner_id)` unique; resource must be owned by cur
 ## 3. User modules
 
 ### notes / note_revisions
-`notes(id PK, owner_id, title, markdown_body, parent_id NULL, project_id NULL, version, deleted_at, ...)`.
+`notes(id PK, owner_id, title, markdown_body, parent_id NULL, project_id NULL, folder NULL, tags JSON, version, deleted_at, ...)`.
+`folder` is an optional owner-defined label (120 characters); `tags` is a JSON
+array defaulting to `[]` (50 distinct trimmed labels, 80 characters each).
+Organization is independent of the existing parent/project hierarchy and uses
+the same optimistic note version check. Migration `0023_note_organization`
+preserves existing note bodies, parents and versions.
 `note_revisions(id PK, note_id FK, base_version, revision_no, body, source_device_id, created_at)`.
 Conflicting simultaneous revisions: preserve both branches, don't silently overwrite body.
 
