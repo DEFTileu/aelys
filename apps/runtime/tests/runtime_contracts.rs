@@ -356,6 +356,45 @@ fn local_run_coordinator_claim_and_heartbeat_enforce_lease_window() {
 }
 
 #[cfg(target_os = "macos")]
+#[test]
+fn coordinator_records_running_process_timeout_and_lease_expiry() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().unwrap();
+    let script = root.path().join("wait.sh");
+    std::fs::write(&script, "#!/bin/sh\nwhile :; do /bin/sleep 1; done\n").unwrap();
+    let mut permissions = std::fs::metadata(&script).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&script, permissions).unwrap();
+    let profile = aelys_runtime::sandbox::SandboxProfile::new(root.path()).unwrap();
+    let coordinator = coordinator_with_executable(script.to_string_lossy().into_owned());
+
+    for (key, claimed_at, timeout) in [
+        ("timeout", Utc::now(), StdDuration::from_millis(100)),
+        (
+            "lease",
+            Utc::now() - Duration::minutes(2),
+            StdDuration::from_secs(5),
+        ),
+    ] {
+        coordinator
+            .submit(key, Uuid::new_v4(), "test task")
+            .unwrap();
+        coordinator
+            .claim(key, claimed_at, Duration::minutes(1))
+            .unwrap();
+        let result = coordinator
+            .execute_once(key, profile.clone(), &profile.root, &script, timeout)
+            .unwrap();
+        assert_eq!(result.state, RunState::Expired);
+        assert_eq!(
+            coordinator.manager.get(key).unwrap().state,
+            RunState::Expired
+        );
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn write_process_tree_script(root: &Path) -> (PathBuf, PathBuf) {
     use std::os::unix::fs::PermissionsExt;
 

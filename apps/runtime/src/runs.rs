@@ -240,6 +240,7 @@ fn transition(run: &mut RunRecord, target: RunState) -> RuntimeResult<()> {
                 | RunState::Completed
                 | RunState::Failed
                 | RunState::Cancelled
+                | RunState::Expired
         ),
         RunState::WaitingApproval => matches!(
             target,
