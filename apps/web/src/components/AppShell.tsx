@@ -53,6 +53,7 @@ const MODULE_TITLES: Partial<Record<RoutePath, string>> = {
   '/ai': 'AI Chat',
   '/calendar': 'Calendar',
   '/tasks': 'Tasks',
+  '/widgets': 'Customize home',
   '/projects': 'Projects',
   '/notes': 'Notes',
   '/knowledge': 'Knowledge base',

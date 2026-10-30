@@ -85,3 +85,8 @@
 .mobile-shell--home .home-screen:not(.home-screen--editing) .home-layout-toolbar .home-tool { width:100%; display:flex; justify-content:center; border-radius:20px; border:1.5px dashed #cfc9d4; background:transparent; color:var(--ink-soft); font-size:14px; }
 .mobile-shell--home .home-screen { padding-top:24px !important; }
 .mobile-shell--home .home-screen--editing .home-layout-toolbar { order:-1; flex-wrap:nowrap; justify-content:flex-end; }
+
+.mobile-shell--home .home-widget[data-size='large'] .home-widget-body .home-task-row:nth-child(n+4) { display:flex !important; }
+.mobile-shell--home .home-widget[data-widget-id='focus'][data-size='wide'] .home-focus-body { flex-direction:row !important; flex-wrap:wrap; gap:16px !important; }
+.mobile-shell--home .home-widget[data-widget-id='weather'][data-size='wide'] { min-height:228px; }
+.mobile-shell--home .home-widget:not([data-size='large'])[data-widget-id='focus'], .mobile-shell--home .home-widget:not([data-size='large'])[data-widget-id='weather'] { grid-row:span 1; }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Check, LayoutGrid, Plus, RotateCcw } from '../icons'
 import { HOME_CHIPS, accentOf } from '../data/desktop/home'
 import { askAelys, takeCustomizeHome, useDesktopState, useWindowWidth } from '../lib/desktopStore'
+import { navigate } from '../lib/router'
 import { getSharedApiClient } from '../lib/api'
 import type { FocusIn, FocusOut, TaskOut } from '@aelys/shared'
 import type { ApiStatus } from '../types'
@@ -76,7 +77,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     return { left: focusSession ? elapsed : 0, running: !!focusSession, disabled: focusBusy || apiStatus !== 'ready', toggle: () => { void changeFocus() }, reset: () => { void changeFocus(true) } }
   }, [focusSession, focusTick, focusBusy, apiStatus])
   // The sidebar Widgets item sets this flag and navigates here.
-  useEffect(() => { if (takeCustomizeHome()) setEditing(true) }, [customizeHome])
+  useEffect(() => { if (takeCustomizeHome()) { if(mobile) navigate('/widgets'); else setEditing(true) } }, [customizeHome])
   const ask = (text: string) => { const value = text.trim(); if (value) { setDraft(''); askAelys(value) } }
 
   const toggleTask = async (task: TaskOut) => {
@@ -150,7 +151,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
             </div>}
           </div>
         </>
-        : <button type="button" className="home-btn home-tool" onClick={() => setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />{mobile ? 'Customize home' : 'Customize'}</button>}
+        : <button type="button" className="home-btn home-tool" onClick={() => mobile ? navigate('/widgets') : setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />{mobile ? 'Customize home' : 'Customize'}</button>}
     </div>
 
     {apiStatus !== 'ready' && <p role="status">{apiStatus === 'loading' ? 'Loading workspace…' : 'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}

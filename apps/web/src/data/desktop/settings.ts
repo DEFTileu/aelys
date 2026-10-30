@@ -35,7 +35,7 @@ export type ThemeOption = { id: ThemeId; title: string; subtitle: string; previe
 
 export const themeOptions: ThemeOption[] = [
   { id: 'light', title: 'Light', subtitle: 'Clean and minimal', preview: 'linear-gradient(135deg,#F4D6D6,#E8E6F4)', panel: 'rgba(255,255,255,.9)' },
-  { id: 'system', title: 'System', subtitle: 'Follows macOS', preview: 'linear-gradient(180deg,#9AA6CC,#F0B79C 55%,#5A5F7E)', panel: 'rgba(255,255,255,.7)' },
+  { id: 'system', title: 'System', subtitle: 'Follows your device', preview: 'linear-gradient(180deg,#9AA6CC,#F0B79C 55%,#5A5F7E)', panel: 'rgba(255,255,255,.7)' },
   { id: 'dark', title: 'Dark', subtitle: 'Comfortable at night', preview: 'linear-gradient(180deg,#2E3346,#1E2230)', panel: 'rgba(80,85,100,.8)' },
 ]
 
