@@ -1,8 +1,8 @@
-import { ArrowRight, Plus, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Plus, type AelysIconComponent } from '../icons'
 import './screen-toolbar.css'
 import type { ReactNode } from 'react'
 
-export type ToolbarButton = { label: string; icon: LucideIcon; color: string; onClick?: () => void }
+export type ToolbarButton = { label: string; icon: AelysIconComponent; color: string; onClick?: () => void }
 
 // Shared toolbar from the desktop design: optional tabs, AI input, secondary buttons, primary action.
 export function ScreenToolbar({ tabs, placeholder, secondary = [], primary, onPrimary, onAsk }: { tabs?: ReactNode; placeholder: string; secondary?: ToolbarButton[]; primary: string; onPrimary?: () => void; onAsk?: (text: string) => void }) {
@@ -18,7 +18,7 @@ export function ScreenToolbar({ tabs, placeholder, secondary = [], primary, onPr
   </div>
 }
 
-export function SegmentedTabs<T extends string>({ tabs, value, onChange, label }: { tabs: { id: T; label: string; icon?: LucideIcon }[]; value: T; onChange: (id: T) => void; label: string }) {
+export function SegmentedTabs<T extends string>({ tabs, value, onChange, label }: { tabs: { id: T; label: string; icon?: AelysIconComponent }[]; value: T; onChange: (id: T) => void; label: string }) {
   return <div className="segmented-tabs" role="tablist" aria-label={label}>
     {tabs.map(({ id, label: text, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={id === value} className={id === value ? 'segmented-tabs__tab segmented-tabs__tab--active' : 'segmented-tabs__tab'} onClick={() => onChange(id)}>{Icon && <Icon size={16} />}{text}</button>)}
   </div>

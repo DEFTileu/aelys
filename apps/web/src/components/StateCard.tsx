@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { CloudOff, Inbox, RefreshCw, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { CloudOff, Inbox, RefreshCw, TriangleAlert, type AelysIconComponent } from '../icons'
 import type { ApiStatus } from '../types'
 
 type Props = {
@@ -9,7 +9,7 @@ type Props = {
   action?: ReactNode
 }
 
-const icons: Record<ApiStatus, LucideIcon> = { loading: RefreshCw, ready: Inbox, empty: Inbox, error: TriangleAlert, offline: CloudOff }
+const icons: Record<ApiStatus, AelysIconComponent> = { loading: RefreshCw, ready: Inbox, empty: Inbox, error: TriangleAlert, offline: CloudOff }
 
 export function StateCard({ status, title, description, action }: Props) {
   const Icon = icons[status]

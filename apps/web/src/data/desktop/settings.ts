@@ -11,13 +11,11 @@ import {
   Sparkles,
   User,
   Zap,
-  type LucideIcon,
-} from 'lucide-react'
+  type AelysIconComponent,
+} from '../../icons'
 
-// Stand-in for the design's assets/wallpaper.png, which is not available in the app.
-export const SETTINGS_WALLPAPER = '/backgrounds/weather/08_evening_sunset.jpg'
 
-export type SettingsNavItem = { title: string; subtitle: string; icon: LucideIcon; active?: boolean }
+export type SettingsNavItem = { title: string; subtitle: string; icon: AelysIconComponent; active?: boolean }
 
 export const settingsNav: SettingsNavItem[] = [
   { title: 'Profile', subtitle: 'Personal data and account', icon: User },
@@ -52,21 +50,31 @@ export const accentColors: { name: string; color: string }[] = [
   { name: 'Multicolor', color: 'conic-gradient(#F87171,#FBBF24,#34D399,#60A5FA,#A78BFA,#F87171)' },
 ]
 
-const WALL_URL = `url('${SETTINGS_WALLPAPER}')`
+// Wallpapers in public/backgrounds/aelys; the stored `wallpaper` setting is an index into this list.
+export const WALLPAPERS = [
+  'golden-sunrise-over-mountain-cityscape',
+  'sunset-garden-avenue-with-alpine-peaks',
+  'alpine-skyline-cityscape',
+  'misty-alpine-lake-at-sunrise',
+  'golden-sunset-over-the-mountain-valley',
+  'glittering-city-beneath-snowy-peaks',
+  'fountains-beneath-snow-capped-mountains',
+  'rainy-boulevard-beneath-misty-mountains',
+  'rainy-boulevard-beneath-snowy-peaks',
+  'rainy-park-path-to-the-ornate-cathedral',
+  'snowy-alpine-ice-arena',
+  'blizzard-over-the-alpine-gondola',
+].map((name) => `/backgrounds/aelys/${name}.jpg`)
 
-export type WallpaperTile = { background: string; label?: string }
-
-export const wallpaperTiles: WallpaperTile[] = [
-  ...['82% 30%', '55% 40%', '30% 50%', '95% 20%', '10% 60%'].map(pos => ({ background: `${WALL_URL} ${pos}/auto 260px` })),
-  { background: `linear-gradient(rgba(40,36,50,.55),rgba(40,36,50,.55)), ${WALL_URL} 70% 40%/auto 260px`, label: 'More' },
-]
+// The design shows five tiles and a "More" tile that reveals the rest.
+export const VISIBLE_WALLPAPERS = 5
 
 export const sliderSettings: { title: string; subtitle: string; initial: number }[] = [
   { title: 'Interface transparency', subtitle: 'How see-through panels and cards are', initial: 70 },
   { title: 'Background blur', subtitle: 'Strength of the blur effect', initial: 40 },
 ]
 
-export const homeToggles: { title: string; subtitle: string; icon: LucideIcon; initial: boolean }[] = [
+export const homeToggles: { title: string; subtitle: string; icon: AelysIconComponent; initial: boolean }[] = [
   { title: 'Greeting', subtitle: 'Personal greeting and motivation', icon: House, initial: true },
   { title: 'Widgets', subtitle: 'Widgets on the home screen', icon: LayoutGrid, initial: true },
   { title: 'Quick actions', subtitle: 'Create tasks, notes and projects', icon: Zap, initial: true },

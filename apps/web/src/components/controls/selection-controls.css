@@ -1,0 +1,58 @@
+.aelys-selection-field { display: grid; align-content: start; gap: 9px; min-width: 0; font-size: 14px; }
+.aelys-selection-field > label { color: var(--ink); font-size: 13px; font-weight: 600; }
+.aelys-select-wrap { position: relative; display: flex; align-items: center; }
+.aelys-select-trigger, .aelys-multiselect__trigger {
+  appearance: none; -webkit-appearance: none; min-height: 44px; width: 100%; padding: 10px 13px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-solid); color: var(--ink); font: inherit; text-align: left;
+}
+.aelys-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; transition: border-color 120ms ease, box-shadow 120ms ease; }
+.aelys-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aelys-select-trigger > svg { flex: none; color: var(--muted); transition: transform 140ms ease; }
+.aelys-select-trigger:hover:not(:disabled) { border-color: var(--muted); }
+.aelys-select-trigger[aria-expanded='true'] { border-color: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
+.aelys-select-trigger[aria-expanded='true'] > svg { transform: rotate(180deg); }
+.aelys-select-trigger:disabled { opacity: .45; cursor: not-allowed; }
+.aelys-select-trigger[aria-invalid='true'] { border-color: var(--red-ink); }
+.aelys-select-trigger__placeholder { color: var(--faint); }
+.aelys-select-list { position: absolute; top: calc(100% + 7px); left: 0; right: 0; z-index: 20; padding: 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface-solid); box-shadow: var(--shadow-lift); animation: selection-enter 120ms ease-out; }
+.aelys-select-list[data-placement='above'] { top: auto; bottom: calc(100% + 7px); }
+.aelys-select-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 10px; border-radius: 8px; color: var(--ink); font-size: 14px; line-height: 20px; cursor: pointer; }
+.aelys-select-option > span { min-width: 0; overflow-wrap: anywhere; }
+.aelys-select-option[aria-selected='true'] { color: var(--purple-deep); background: var(--purple-soft); font-weight: 550; }
+.aelys-select-option[data-active] { background: var(--surface-hover); outline: 1px solid var(--line); outline-offset: -1px; }
+.aelys-select-option[data-active][aria-selected='true'] { background: var(--purple-soft); outline-color: var(--purple); }
+.aelys-select-option[aria-disabled='true'] { opacity: .4; cursor: not-allowed; }
+.aelys-select-empty { padding: 12px; font-size: 13px; color: var(--muted); }
+.aelys-selection-error { font-size: 12px; color: var(--red-ink); }
+.aelys-multiselect { position: relative; }
+.aelys-multiselect__trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-right: 13px; cursor: pointer; }
+.aelys-multiselect__trigger[aria-expanded='true'] { border-color: var(--purple); }
+.aelys-multiselect__trigger svg { color: var(--muted); }
+.aelys-multiselect__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.aelys-selection-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 5px 3px 9px; border-radius: 8px; background: var(--purple-soft); color: var(--purple-deep); font-size: 12px; }
+.aelys-selection-chip button { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; color: inherit; background: transparent; }
+.aelys-selection-chip button:hover { background: var(--purple-soft); }
+.aelys-multiselect__panel { position: absolute; top: 76px; left: 0; right: 0; z-index: 10; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface-solid); box-shadow: var(--shadow-lift); overflow: hidden; animation: selection-enter 120ms ease-out; }
+.aelys-multiselect__search { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.aelys-multiselect__search input { min-width: 0; width: 100%; padding: 4px; border: 0; border-radius: 3px; background: transparent; font: inherit; color: var(--ink); }
+.aelys-multiselect__options { display: grid; align-content: start; gap: 2px; max-height: 240px; overflow-y: auto; margin: 0; padding: 8px; border: 0; }
+.aelys-multiselect__options .aelys-checkbox { padding: 9px 6px; border-radius: 8px; }
+.aelys-multiselect__options .aelys-checkbox:hover { background: var(--surface-hover); }
+.aelys-multiselect__options p { padding: 6px; color: var(--muted); font-size: 13px; }
+.aelys-multiselect__footer { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.aelys-multiselect__footer button { min-height: 36px; padding: 6px; border: 0; border-radius: 6px; background: transparent; color: var(--purple-deep); font-size: 12px; }
+.aelys-checkbox { position: relative; display: inline-flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; line-height: 20px; cursor: pointer; }
+.aelys-checkbox > input { position: absolute; left: 0; width: 20px; height: 20px; opacity: 0; margin: 0; }
+.aelys-checkbox__box { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; border: 1.5px solid var(--line-strong); border-radius: 6px; background: var(--surface-solid); transition: background-color 130ms ease, border-color 130ms ease; }
+.aelys-checkbox__box svg { color: #fff; opacity: 0; transform: scale(.65); transition: transform 130ms ease, opacity 130ms ease; }
+.aelys-checkbox > input:checked + .aelys-checkbox__box, .aelys-checkbox > input:indeterminate + .aelys-checkbox__box { background: var(--purple); border-color: var(--purple); }
+.aelys-checkbox > input:checked + .aelys-checkbox__box svg { opacity: 1; transform: scale(1); }
+.aelys-checkbox__dash { width: 10px; height: 2px; border-radius: 1px; background: #fff; }
+.aelys-checkbox > input:focus-visible + .aelys-checkbox__box { outline: 2px solid var(--purple); outline-offset: 3px; }
+.aelys-checkbox--disabled { opacity: .45; cursor: not-allowed; }
+.aelys-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@keyframes selection-enter { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .aelys-multiselect__panel { animation: none; } .aelys-checkbox__box, .aelys-checkbox__box svg { transition: none; } }
+@media (forced-colors: active) { .aelys-checkbox__box { border-color: ButtonText; } .aelys-checkbox > input:checked + .aelys-checkbox__box, .aelys-checkbox > input:indeterminate + .aelys-checkbox__box { background: Highlight; } }
+
+@media (prefers-reduced-motion: reduce) { .aelys-select-list { animation: none; } .aelys-select-trigger, .aelys-select-trigger > svg { transition: none; } }
+@media (forced-colors: active) { .aelys-select-option[data-active] { outline-color: Highlight; } .aelys-select-option[aria-selected='true'] { color: HighlightText; background: Highlight; } }

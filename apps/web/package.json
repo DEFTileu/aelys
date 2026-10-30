@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.12.4",
     "@aelys/shared": "workspace:*",
     "lucide-react": "1.49.0",
     "react": "19.3.1",

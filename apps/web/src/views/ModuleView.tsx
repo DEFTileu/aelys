@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Calendar, ChevronRight, Folder, Mail, NotebookText, RefreshCw, Search, SquareCheck, Terminal, Timer, Wallet, Workflow, type LucideIcon } from 'lucide-react'
+import { Calendar, ChevronRight, Folder, Mail, NotebookText, RefreshCw, Search, SquareCheck, Terminal, Timer, Wallet, Workflow, type AelysIconComponent } from '../icons'
 import type { ApiStatus, RoutePath } from '../types'
 import { ApiStatusPill } from '../components/ApiStatusPill'
 import { ScreenToolbar, SegmentedTabs } from '../components/ScreenToolbar'
@@ -12,7 +12,7 @@ import './desktop/module.css'
 export type ModuleConfig = {
   path: RoutePath
   label: string
-  icon: LucideIcon
+  icon: AelysIconComponent
   eyebrow: string
   description: string
   action: string

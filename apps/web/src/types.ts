@@ -14,6 +14,7 @@ export type RoutePath =
   | '/automation'
   | '/search'
   | '/settings'
+  | '/components'
 
 export type ApiStatus = 'loading' | 'ready' | 'empty' | 'error' | 'offline'
 

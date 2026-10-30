@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Mail, NotebookText, Search, SquareCheck, type LucideIcon } from 'lucide-react'
+import { Mail, NotebookText, Search, SquareCheck, type AelysIconComponent } from '../icons'
 import { StateCard } from '../components/StateCard'
 import type { ApiStatus } from '../types'
 import { getSharedApiClient } from '../lib/api'
 import type { SearchResult } from '@aelys/shared'
 import './desktop/module.css'
 
-function kindIcon(kind?: string): LucideIcon {
+function kindIcon(kind?: string): AelysIconComponent {
   return kind === 'task' ? SquareCheck : kind === 'mail' ? Mail : NotebookText
 }
 

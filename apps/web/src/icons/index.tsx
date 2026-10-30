@@ -1,0 +1,96 @@
+import { forwardRef, type CSSProperties, type SVGProps } from 'react'
+import { glyphs, washes, type GlyphName } from './glyphs'
+
+export type AelysIconProps = SVGProps<SVGSVGElement> & { size?: number | string; strokeWidth?: number; title?: string }
+export type AelysIconComponent = ReturnType<typeof createIcon>
+
+export function createIcon(name: GlyphName) {
+  const Component = forwardRef<SVGSVGElement, AelysIconProps>(function AelysGlyph({ size = 20, strokeWidth = 1.75, title, children, style, ...props }, ref) {
+    const meaningful = !!(title || props['aria-label'] || props['aria-labelledby'])
+    return <svg ref={ref} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" focusable="false" aria-hidden={meaningful ? undefined : true} role={meaningful ? 'img' : undefined} data-aelys-icon={name} style={{ flexShrink: 0, ...style } as CSSProperties} {...props}>
+      {title && <title>{title}</title>}
+      {washes[name] && <path d={washes[name]} fill="currentColor" fillOpacity=".12" stroke="none" />}
+      <path d={glyphs[name]} />
+      {children}
+    </svg>
+  })
+  Component.displayName = `Aelys${name}`
+  return Component
+}
+
+export const House = createIcon('House')
+export const Sparkles = createIcon('Sparkles')
+export const SquareCheck = createIcon('SquareCheck')
+export const Calendar = createIcon('Calendar')
+export const CalendarDays = createIcon('CalendarDays')
+export const CalendarCheck = createIcon('CalendarCheck')
+export const CalendarPlus = createIcon('CalendarPlus')
+export const Folder = createIcon('Folder')
+export const FolderOpen = createIcon('FolderOpen')
+export const NotebookText = createIcon('NotebookText')
+export const FileText = createIcon('FileText')
+export const Mail = createIcon('Mail')
+export const MessageSquareText = createIcon('MessageSquareText')
+export const Wallet = createIcon('Wallet')
+export const Timer = createIcon('Timer')
+export const Clock = createIcon('Clock')
+export const AlarmClock = createIcon('AlarmClock')
+export const BookOpen = createIcon('BookOpen')
+export const Terminal = createIcon('Terminal')
+export const Workflow = createIcon('Workflow')
+export const LayoutGrid = createIcon('LayoutGrid')
+export const LayoutPanelLeft = createIcon('LayoutPanelLeft')
+export const Blocks = createIcon('Blocks')
+export const ChartColumn = createIcon('ChartColumn')
+export const ListChecks = createIcon('ListChecks')
+export const ListFilter = createIcon('ListFilter')
+export const Search = createIcon('Search')
+export const Settings = createIcon('Settings')
+export const Shield = createIcon('Shield')
+export const User = createIcon('User')
+export const Bell = createIcon('Bell')
+export const Paintbrush = createIcon('Paintbrush')
+export const Keyboard = createIcon('Keyboard')
+export const History = createIcon('History')
+export const Flag = createIcon('Flag')
+export const Inbox = createIcon('Inbox')
+export const Save = createIcon('Save')
+export const SquarePen = createIcon('SquarePen')
+export const MapPin = createIcon('MapPin')
+export const LocateFixed = createIcon('LocateFixed')
+export const Sun = createIcon('Sun')
+export const Moon = createIcon('Moon')
+export const Cloud = createIcon('Cloud')
+export const CloudSun = createIcon('CloudSun')
+export const CloudRain = createIcon('CloudRain')
+export const CloudSnow = createIcon('CloudSnow')
+export const CloudFog = createIcon('CloudFog')
+export const CloudLightning = createIcon('CloudLightning')
+export const CloudOff = createIcon('CloudOff')
+export const Wifi = createIcon('Wifi')
+export const TriangleAlert = createIcon('TriangleAlert')
+export const CircleDot = createIcon('CircleDot')
+export const Zap = createIcon('Zap')
+export const ArrowRight = createIcon('ArrowRight')
+export const ArrowLeft = createIcon('ArrowLeft')
+export const ArrowUp = createIcon('ArrowUp')
+export const ChevronRight = createIcon('ChevronRight')
+export const ChevronLeft = createIcon('ChevronLeft')
+export const ChevronDown = createIcon('ChevronDown')
+export const ChevronUp = createIcon('ChevronUp')
+export const Plus = createIcon('Plus')
+export const X = createIcon('X')
+export const Check = createIcon('Check')
+export const Play = createIcon('Play')
+export const Square = createIcon('Square')
+export const RefreshCw = createIcon('RefreshCw')
+export const RotateCcw = createIcon('RotateCcw')
+export const GripVertical = createIcon('GripVertical')
+export const Scaling = createIcon('Scaling')
+export const Ellipsis = createIcon('Ellipsis')
+export const Upload = createIcon('Upload')
+export const Menu = createIcon('Menu')
+export const Sliders = createIcon('Sliders')
+export const Send = createIcon('Send')
+export const External = createIcon('External')
+export const Lock = createIcon('Lock')

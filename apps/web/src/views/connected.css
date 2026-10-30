@@ -1,0 +1,28 @@
+.connected-workspace { padding: 0 28px 32px; color: #1c1b22; }
+.connected-toolbar, .provider-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.connected-toolbar { margin-bottom: 16px; }
+.connected-toolbar label { display: flex; align-items: center; gap: 8px; }
+.connected-workspace input, .connected-workspace select, .connected-workspace textarea, .settings-form select { border: 1px solid #e7e2de; border-radius: 10px; padding: 9px 12px; background: #fff; color: #1c1b22; font: inherit; min-width: 0; }
+.connected-columns { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; }
+.connected-card { border: 1px solid rgba(255,255,255,.35); border-radius: 20px; padding: 20px; min-width: 0; background: var(--glass-bg, rgba(255,255,255,.88)); backdrop-filter: blur(var(--glass-blur, 20px)); box-shadow: 0 8px 24px rgba(40,30,30,.07); }
+.connected-list { display: flex; flex-direction: column; gap: 8px; max-height: 680px; overflow-y: auto; }
+.connected-list button { border: 0; border-radius: 10px; padding: 12px; background: #f7f4f1; color: #1c1b22; text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.connected-list button.connected-selected { background: #eeeafd; color: #5132d6; }
+.connected-list strong, .connected-list small { display: block; }
+.connected-list small { margin-top: 6px; color: #625d69; }
+.chat-content { display: flex; flex-direction: column; min-height: 480px; }
+.chat-lines { flex: 1; }
+.chat-line { margin-bottom: 18px; padding: 12px; border-radius: 12px; background: #f7f4f1; }
+.chat-line--user { background: #eeeafd; }
+.chat-line div, .mail-body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 8px; }
+.connected-compose { display: flex; align-items: end; gap: 8px; }
+.connected-compose textarea { flex: 1; resize: vertical; min-height: 72px; }
+.mail-body { margin-block: 20px; }
+.connected-help, .provider-row p { color: #625d69; font-size: 13px; }
+.auth-connection { display: grid; gap: 10px; margin-top: 14px; min-width: 0; }
+.auth-connection .text-button { justify-self: start; max-width: 100%; overflow-wrap: anywhere; }
+.auth-connection .settings-form { min-width: 0; }
+.provider-row { border-bottom: 1px solid #e7e2de; padding-block: 16px; margin-bottom: 12px; }
+.finance-stats { display:flex; gap:32px; margin-bottom:16px; }.finance-stats div{display:grid;gap:4px}.finance-stats small{color:#625d69}.finance-stats strong{font-size:24px}.finance-row{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid #eee8e3}.finance-row span{color:#625d69}.timer-card{display:grid;gap:12px;justify-items:center;margin-bottom:16px}.timer-card label{display:grid;gap:4px;width:min(360px,100%)}.timer-time{font-variant-numeric:tabular-nums;font-size:56px;font-weight:700;letter-spacing:.03em}.timer-card p{color:#625d69}
+.connected-workspace button:disabled { opacity: .5; cursor: not-allowed; }
+@media(max-width: 900px) { .connected-columns { grid-template-columns: 1fr; } .connected-list { max-height: 200px; } .connected-workspace { padding-inline: 16px; } .connected-compose { flex-wrap: wrap; } .connected-compose textarea { flex-basis: 100%; } }

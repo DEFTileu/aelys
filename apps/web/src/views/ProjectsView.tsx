@@ -37,8 +37,7 @@ export function ProjectsView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [message, setMessage] = useState('')
 
   const load = async () => {
-    if (apiStatus !== 'ready') { setStatus(apiStatus); return }
-    setStatus('loading')
+    setStatus(apiStatus === 'ready' ? 'loading' : apiStatus)
     try {
       const client = getSharedApiClient()
       const [projectResult, taskResult] = await Promise.allSettled([client.projects(), client.tasks()])

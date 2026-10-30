@@ -1,4 +1,4 @@
-import { CloudOff, TriangleAlert, Wifi, RefreshCw, type LucideIcon } from 'lucide-react'
+import { CloudOff, TriangleAlert, Wifi, RefreshCw, type AelysIconComponent } from '../icons'
 import type { ApiStatus } from '../types'
 
 const copy: Record<ApiStatus, string> = {
@@ -9,7 +9,7 @@ const copy: Record<ApiStatus, string> = {
   offline: 'Offline',
 }
 
-const icons: Record<ApiStatus, LucideIcon> = { loading: RefreshCw, ready: Wifi, empty: Wifi, error: TriangleAlert, offline: CloudOff }
+const icons: Record<ApiStatus, AelysIconComponent> = { loading: RefreshCw, ready: Wifi, empty: Wifi, error: TriangleAlert, offline: CloudOff }
 
 export function ApiStatusPill({ status }: { status: ApiStatus }) {
   const Icon = icons[status]

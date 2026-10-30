@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Calendar, CalendarPlus, Folder, House, MessageSquareText, NotebookText, Plus, Search, Settings, Sparkles, SquareCheck, SquarePen, type LucideIcon } from 'lucide-react'
+import { Calendar, CalendarPlus, Folder, House, MessageSquareText, NotebookText, Plus, Search, Settings, Sparkles, SquareCheck, SquarePen, type AelysIconComponent } from '../icons'
 import { askAelys } from '../lib/desktopStore'
 import type { RoutePath } from '../types'
 
-type PaletteItem = { label: string; icon: LucideIcon; hint: string; route: RoutePath }
+type PaletteItem = { label: string; icon: AelysIconComponent; hint: string; route: RoutePath }
 type PaletteGroup = { title: string; items: PaletteItem[] }
 
 const GROUPS: PaletteGroup[] = [

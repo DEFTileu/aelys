@@ -1,0 +1,57 @@
+/* Explicitly reset native button chrome, including inside Settings' local reset. */
+.aelys-switch[role='switch'] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: none;
+  vertical-align: middle;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.aelys-switch__track {
+  display: block;
+  width: 44px;
+  height: 28px;
+  padding: 3px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--line-strong, #D3CED8);
+  transition: background-color 140ms ease;
+}
+.aelys-switch__thumb {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(28 27 34 / 12%);
+  transform: translateX(0);
+  transition: transform 140ms ease;
+}
+.aelys-switch[aria-checked='true'] .aelys-switch__track { background: var(--accent, var(--purple, #6A4CF2)); }
+.aelys-switch[aria-checked='true'] .aelys-switch__thumb { transform: translateX(16px); }
+.aelys-switch[role='switch']:disabled { opacity: .45; cursor: default; }
+.aelys-switch[aria-busy='true']:disabled { opacity: .75; cursor: progress; }
+.aelys-switch[role='switch']:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.aelys-switch__progress { width: 12px; height: 12px; border: 1.5px solid #CFC8F4; border-top-color: #6A4CF2; border-radius: 50%; animation: switch-progress .75s linear infinite; }
+@keyframes switch-progress { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .aelys-switch__track, .aelys-switch__thumb { transition: none; }
+  .aelys-switch__progress { animation: none; }
+}
+@media (forced-colors: active) {
+  .aelys-switch__track { border: 1px solid ButtonText; background: Canvas; }
+  .aelys-switch[aria-checked='true'] .aelys-switch__track { background: Highlight; }
+  .aelys-switch__thumb { background: ButtonText; }
+}

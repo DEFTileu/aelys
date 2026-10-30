@@ -1,4 +1,4 @@
-import { CalendarCheck, ChartColumn, CircleDot, Ellipsis, FolderOpen, Mail, type LucideIcon } from 'lucide-react'
+import { CalendarCheck, ChartColumn, CircleDot, Ellipsis, FolderOpen, Mail, type AelysIconComponent } from '../../icons'
 
 export const ACCENT = {
   violet: '#6A4CF2',
@@ -20,9 +20,8 @@ export function accentOf(key: AccentKey) {
 }
 
 export const FOCUS_SESSION_SECONDS = 1500
-export const FOCUS_START_SECONDS = 1122
 
-export const HOME_CHIPS: { label: string; icon: LucideIcon; color: string }[] = [
+export const HOME_CHIPS: { label: string; icon: AelysIconComponent; color: string }[] = [
   { label: 'Plan my day', icon: CalendarCheck, color: '#2F6FE4' },
   { label: 'Find a task', icon: CircleDot, color: '#D93636' },
   { label: 'Continue project', icon: FolderOpen, color: '#6A4CF2' },

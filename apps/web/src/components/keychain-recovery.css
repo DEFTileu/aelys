@@ -1,0 +1,6 @@
+.keychain-recovery { font-size: 13px; line-height: 1.6; }
+.keychain-recovery > p { margin: 0 0 10px; color: var(--muted); }
+.keychain-recovery__button { white-space: normal; }
+.keychain-recovery details { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.keychain-recovery summary { cursor: pointer; width: fit-content; border-radius: 4px; }
+.keychain-recovery details p { margin: 8px 0 0; max-width: 50ch; }

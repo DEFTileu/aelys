@@ -33,6 +33,9 @@ importers:
       '@aelys/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@tauri-apps/api':
+        specifier: 2.12.4
+        version: 2.12.4
       lucide-react:
         specifier: 1.49.0
         version: 1.49.0(@types/react@19.3.0)(react@19.3.1)

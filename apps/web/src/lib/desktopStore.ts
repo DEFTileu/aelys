@@ -5,11 +5,12 @@ import { navigate } from './router'
 
 const STORAGE_KEY = 'aelys.desktop.state.v1'
 
-export type DesktopSettings = { wallpaper: number; transparency: number; blur: number; accent: number }
+export type DesktopSettings = { wallpaper: number; customWallpaper: string | null; transparency: number; blur: number; accent: number }
 
 export type DesktopState = DesktopSettings & {
   // Five Today tasks, by position; Home and Tasks read the same slots.
   done: boolean[]
+  homeToggles: boolean[]
   pendingAsk: string | null
   customizeHome: boolean
 }
@@ -17,6 +18,8 @@ export type DesktopState = DesktopSettings & {
 const DEFAULTS: DesktopState = {
   done: [true, true, false, false, false],
   wallpaper: 0,
+  customWallpaper: null,
+  homeToggles: [true, true, true, true],
   transparency: 70,
   blur: 40,
   accent: 0,
@@ -27,8 +30,10 @@ const DEFAULTS: DesktopState = {
 function load(): DesktopState {
   const base = { ...DEFAULTS, done: [...DEFAULTS.done] }
   try {
-    const stored: Partial<Record<keyof DesktopSettings | 'done', unknown>> = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || 'null') ?? {}
+    const stored: Partial<Record<keyof DesktopSettings | 'done' | 'homeToggles', unknown>> = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || 'null') ?? {}
     if (Array.isArray(stored.done) && stored.done.length === base.done.length) base.done = stored.done.map(Boolean)
+    if (Array.isArray(stored.homeToggles) && stored.homeToggles.length === base.homeToggles.length) base.homeToggles = stored.homeToggles.map(Boolean)
+    if (typeof stored.customWallpaper === 'string') base.customWallpaper = stored.customWallpaper
     for (const key of ['wallpaper', 'transparency', 'blur', 'accent'] as const) {
       const value = stored[key]
       if (typeof value === 'number') base[key] = value
@@ -45,8 +50,8 @@ const listeners = new Set<() => void>()
 function update(patch: Partial<DesktopState>) {
   state = { ...state, ...patch }
   try {
-    const { done, wallpaper, transparency, blur, accent } = state
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ done, wallpaper, transparency, blur, accent }))
+    const { done, homeToggles, wallpaper, customWallpaper, transparency, blur, accent } = state
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ done, homeToggles, wallpaper, customWallpaper, transparency, blur, accent }))
   } catch {
     // Storage can be blocked; the state still applies for this session.
   }
@@ -74,6 +79,10 @@ export function setSettings(patch: Partial<DesktopSettings>) {
   update(patch)
 }
 
+export function setHomeToggle(index: number, value: boolean) {
+  update({ homeToggles: state.homeToggles.map((on, i) => i === index ? value : on) })
+}
+
 // Hands the question to ChatScreen, which takes it once; any Ask Aelys surface can call this.
 export function askAelys(text: string) {
   update({ pendingAsk: text })
@@ -94,4 +103,13 @@ export function takeCustomizeHome(): boolean {
   const on = state.customizeHome
   if (on) update({ customizeHome: false })
   return on
+}
+
+function subscribeResize(onChange: () => void) {
+  window.addEventListener('resize', onChange)
+  return () => window.removeEventListener('resize', onChange)
+}
+
+export function useWindowWidth(): number {
+  return useSyncExternalStore(subscribeResize, () => window.innerWidth)
 }

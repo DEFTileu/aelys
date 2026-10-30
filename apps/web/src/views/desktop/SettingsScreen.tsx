@@ -1,18 +1,20 @@
-import { useState, type CSSProperties } from 'react'
-import { Check, Search, Upload } from 'lucide-react'
+import { useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
+import { Check, Search, Upload } from '../../icons'
 import {
   accentColors,
   homeToggles,
   settingsNav,
   sliderSettings,
   themeOptions,
-  wallpaperTiles,
+  VISIBLE_WALLPAPERS,
+  WALLPAPERS,
   type ThemeId,
 } from '../../data/desktop/settings'
-import { setSettings, useDesktopState } from '../../lib/desktopStore'
+import { setHomeToggle, setSettings, useDesktopState } from '../../lib/desktopStore'
 import './settings.css'
+import { Switch } from '../../components/Switch'
 
-type Props = { theme: 'light' | 'dark'; onToggleTheme: () => void }
+type Props = { theme: 'light' | 'dark'; onToggleTheme: () => void; onOpenAI?: () => void }
 
 const glass: CSSProperties = {
   borderRadius: 20,
@@ -27,12 +29,13 @@ const sectionTitle: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600, 
 const mutedText: CSSProperties = { fontSize: 12, lineHeight: '16px', color: '#625D69' }
 const TRAFFIC_LIGHTS = ['#FF5F57', '#FEBC2E', '#28C840']
 
-export function SettingsScreen({ theme, onToggleTheme }: Props) {
+export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
   const [followsSystem, setFollowsSystem] = useState(false)
+  const [allWallpapers, setAllWallpapers] = useState(false)
   // Wallpaper, accent and the two sliders are shared with the shell and persisted by desktopStore.
-  const { accent, wallpaper: wall, transparency, blur } = useDesktopState()
+  const { accent, wallpaper: wall, customWallpaper, transparency, blur } = useDesktopState()
   const sliderValues = [transparency, blur]
-  const [toggles, setToggles] = useState(() => homeToggles.map(t => t.initial))
+  const { homeToggles: toggles } = useDesktopState()
 
   // The app has a single light/dark prop; "System" is resolved once at pick time.
   const selectedTheme: ThemeId = followsSystem ? 'system' : theme
@@ -49,7 +52,19 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
   }
 
   function flipToggle(i: number) {
-    setToggles(prev => prev.map((on, j) => (j === i ? !on : on)))
+    setHomeToggle(i, !toggles[i])
+  }
+
+  const uploadRef = useRef<HTMLInputElement>(null)
+  function uploadWallpaper(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') setSettings({ wallpaper: -1, customWallpaper: reader.result })
+    }, { once: true })
+    reader.readAsDataURL(file)
+    event.target.value = ''
   }
 
   return (
@@ -76,6 +91,7 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
             <button
               key={item.title}
               type="button"
+              onClick={item.title === 'AI & models' ? onOpenAI : undefined}
               aria-current={on ? 'page' : undefined}
               style={{
                 display: 'flex',
@@ -212,26 +228,16 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
               <h3 style={sectionTitle}>Wallpaper</h3>
               <div style={{ fontSize: 13, lineHeight: '18px', color: '#625D69' }}>Pick a background or use your own image</div>
             </div>
-            <button type="button" className="settings-upload">
+            <input ref={uploadRef} type="file" accept="image/*" onChange={uploadWallpaper} style={{ display: 'none' }} />
+            <button type="button" className="settings-upload" onClick={() => uploadRef.current?.click()}>
               <Upload size={16} aria-hidden="true" />
               Upload photo
             </button>
           </div>
           <div role="group" aria-label="Wallpapers" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
-            {wallpaperTiles.map((w, i) => {
+            {customWallpaper && <button type="button" role="radio" aria-checked={wall === -1} aria-label="Uploaded wallpaper" onClick={() => setSettings({ wallpaper: -1 })} style={{ position: 'relative', height: 88, borderRadius: 12, background: `url('${customWallpaper}') center/cover`, boxShadow: wall === -1 ? '0 0 0 3px #6A4CF2' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>Uploaded</button>}
+            {(allWallpapers ? WALLPAPERS : WALLPAPERS.slice(0, VISIBLE_WALLPAPERS)).map((url, i) => {
               const on = wall === i
-              if (w.label) {
-                return (
-                  <button
-                    key={w.label}
-                    type="button"
-                    aria-label="More wallpapers"
-                    style={{ position: 'relative', height: 88, borderRadius: 12, background: w.background, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}
-                  >
-                    {w.label}
-                  </button>
-                )
-              }
               return (
                 <button
                   key={i}
@@ -240,7 +246,7 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
                   aria-checked={on}
                   aria-label={`Wallpaper ${i + 1}`}
                   onClick={() => setSettings({ wallpaper: i })}
-                  style={{ position: 'relative', height: 88, borderRadius: 12, background: w.background, boxShadow: on ? '0 0 0 3px #6A4CF2' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}
+                  style={{ position: 'relative', height: 88, borderRadius: 12, background: `url('${url}') center/cover`, boxShadow: on ? '0 0 0 3px #6A4CF2' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}
                 >
                   {on && (
                     <span
@@ -253,6 +259,14 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
                 </button>
               )
             })}
+            <button
+              type="button"
+              aria-expanded={allWallpapers}
+              onClick={() => setAllWallpapers((open) => !open)}
+              style={{ position: 'relative', height: 88, borderRadius: 12, background: `linear-gradient(rgba(40,36,50,.55),rgba(40,36,50,.55)), url('${WALLPAPERS[VISIBLE_WALLPAPERS]}') center/cover`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}
+            >
+              {allWallpapers ? 'Less' : 'More'}
+            </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
             {sliderSettings.map((s, i) => (
@@ -292,16 +306,7 @@ export function SettingsScreen({ theme, onToggleTheme }: Props) {
                     <div style={{ fontSize: 14, lineHeight: '20px', fontWeight: 500 }}>{g.title}</div>
                     <div style={mutedText}>{g.subtitle}</div>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={on}
-                    aria-label={g.title}
-                    onClick={() => flipToggle(i)}
-                    style={{ width: 40, height: 24, flex: 'none', borderRadius: 12, padding: 3, display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', background: on ? '#6A4CF2' : '#CFC9D4', transition: 'background .15s' }}
-                  >
-                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
-                  </button>
+                  <Switch label={g.title} checked={on} onCheckedChange={() => flipToggle(i)} />
                 </div>
               )
             })}
