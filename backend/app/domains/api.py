@@ -396,8 +396,23 @@ async def update_task(item_id:str, body:TaskPatchIn, principal=Depends(current_p
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Task changed. Reload before saving."})
     await db.commit(); await db.refresh(item); return item
 @router.delete("/tasks/{item_id}")
-async def delete_task(item_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(Task,item_id,user.id,db); item.deleted_at=datetime.now(UTC); item.version+=1; await db.commit(); return {"deleted":True}
+async def delete_task(item_id: str, version: int | None = Query(default=None, ge=1), principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    item = await owner_obj(Task, item_id, user.id, db)
+    if version is None:
+        item.deleted_at = datetime.now(UTC)
+        item.version += 1
+    else:
+        result = await db.execute(
+            update(Task)
+            .where(Task.id == item_id, Task.owner_id == user.id, Task.deleted_at.is_(None), Task.version == version)
+            .values(deleted_at=datetime.now(UTC), version=Task.version + 1)
+        )
+        if int(getattr(result, "rowcount", 0) or 0) != 1:
+            await db.rollback()
+            raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Task changed. Reload before deleting."})
+    await db.commit()
+    return {"deleted": True}
 
 @router.post("/tasks/{item_id}/reminders")
 async def create_reminder(item_id:str, body:ReminderIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):

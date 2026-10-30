@@ -4,11 +4,13 @@ from types import SimpleNamespace
 import pytest
 from app.core import db
 from app.core.db import Base
-from app.core.models import AuthSession, User
+from app.core.models import AuthSession, Task, User
 from app.core.security import create_token
+from app.domains import api as domain_api
 from app.domains.api import TaskIn, TaskOut
 from app.main import app
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
@@ -96,9 +98,66 @@ async def test_task_owner_isolation_and_invalid_references(client):
     assert (await api.get("/api/v1/tasks")).json() == []
     assert (await api.get(f"/api/v1/tasks/{task['id']}")).status_code == 404
     assert (await api.patch(f"/api/v1/tasks/{task['id']}", json=task)).status_code == 404
+    assert (await api.delete(f"/api/v1/tasks/{task['id']}", params={"version": task["version"]})).status_code == 404
     assert (await api.post("/api/v1/tasks", json={"title": "Foreign project", "project_id": project["id"]})).status_code == 404
     assert (await api.post("/api/v1/tasks", json={"title": "Foreign parent", "parent_task_id": task["id"]})).status_code == 404
     assert (await api.post("/api/v1/tasks", json={"title": "Missing project", "project_id": "missing"})).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_task_delete_version_guard_and_legacy_delete(client):
+    api, sessions = client
+    task = (await api.post("/api/v1/tasks", json={"title": "Versioned"})).json()
+    path = f"/api/v1/tasks/{task['id']}"
+    saved = await api.patch(path, json={**task, "title": "Newer"})
+    assert saved.status_code == 200
+    stale = await api.delete(path, params={"version": task["version"]})
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "VERSION_CONFLICT"
+    assert (await api.get(path)).json() == saved.json()
+    invalid = await api.delete(path, params={"version": 0})
+    assert invalid.status_code == 422
+    deleted = await api.delete(path, params={"version": saved.json()["version"]})
+    assert deleted.status_code == 200 and deleted.json() == {"deleted": True}
+    async with sessions() as session:
+        deleted_task = await session.get(Task, task["id"])
+        assert deleted_task.deleted_at is not None
+        assert deleted_task.version == saved.json()["version"] + 1
+    assert (await api.get(path)).status_code == 404
+    assert (await api.delete(path, params={"version": saved.json()["version"]})).status_code == 404
+
+    legacy = (await api.post("/api/v1/tasks", json={"title": "Legacy"})).json()
+    legacy_path = f"/api/v1/tasks/{legacy['id']}"
+    assert (await api.delete(legacy_path)).json() == {"deleted": True}
+    assert (await api.get(legacy_path)).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_task_delete_rejects_change_after_ownership_lookup(client, monkeypatch):
+    api, sessions = client
+    task = (await api.post("/api/v1/tasks", json={"title": "Before"})).json()
+    path = f"/api/v1/tasks/{task['id']}"
+    owner_obj = domain_api.owner_obj
+    intervened = False
+
+    async def update_after_lookup(model, item_id, owner_id, session):
+        nonlocal intervened
+        item = await owner_obj(model, item_id, owner_id, session)
+        if model is Task and not intervened:
+            intervened = True
+            async with sessions() as other:
+                await other.execute(update(Task).where(Task.id == item_id).values(title="Concurrent edit", version=Task.version + 1))
+                await other.commit()
+        return item
+
+    monkeypatch.setattr(domain_api, "owner_obj", update_after_lookup)
+    response = await api.delete(path, params={"version": task["version"]})
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "VERSION_CONFLICT"
+    fetched = await api.get(path)
+    assert fetched.status_code == 200
+    assert fetched.json()["title"] == "Concurrent edit"
+    assert fetched.json()["version"] == task["version"] + 1
 
 
 @pytest.mark.parametrize("model", [TaskIn, TaskOut])

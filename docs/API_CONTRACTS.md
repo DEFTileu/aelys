@@ -360,3 +360,11 @@ credentials/session checks grant access. Validation errors do not reflect
 passwords/tokens. Tokens are bearer credentials associated with a device record,
 not hardware proof of possession. Client storage/IPC security and an actual
 macOS restart test remain separate acceptance gates; Android is still a spike.
+
+### Task deletion from the ACTUAL detail panel (2026-10-30)
+
+`DELETE /tasks/{id}?version=N` performs the tombstone/version transition
+atomically and returns `409 VERSION_CONFLICT` if another edit won the race.
+Owner isolation and legacy calls without a version remain compatible. The
+updated detail panel supplies its selected version and preserves the draft on
+conflict; a client-side preflight alone is not the concurrency guarantee.
