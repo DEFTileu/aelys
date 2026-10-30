@@ -107,3 +107,6 @@ Touch ID / Keychain implementation and native transport security rules were
 preserved. APK packaging continues to reject blanket cleartext access. Existing
 OPEN integration and security gates remain OPEN; this change does not claim
 full release readiness for every module.
+
+For the subsequent owner-authorized native icon installation, see
+[native app icon installation](native-app-icons-install.md).

@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { rotateDebugApk, secureManifest } from './prepare-android.mjs'
+import { installLauncherIcons, rotateDebugApk, secureManifest } from './prepare-android.mjs'
 
 test('packaged debug and release ignore the generated HTTP-enabling placeholder', () => {
   const original = '<application android:usesCleartextTraffic="${usesCleartextTraffic}" android:label="Aelys" />'
@@ -49,4 +49,31 @@ test('does not rotate archives for release, manual preparation, or a different p
     { TAURI_ENV_PLATFORM: 'android', TAURI_ENV_DEBUG: 'false' },
     { TAURI_ENV_PLATFORM: 'darwin', TAURI_ENV_DEBUG: 'true' },
   ]) assert.equal(await rotateDebugApk(root, env), false)
+})
+
+
+test('restores branded adaptive icons after Android initialization without replacing other resources', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'aelys-launcher-icons-'))
+  const project = pathToFileURL(`${directory}/project/`)
+  const icons = pathToFileURL(`${directory}/icons/`)
+  const fixtures = {
+    'mipmap-mdpi/ic_launcher.png': 'brand-png',
+    'mipmap-anydpi-v26/ic_launcher.xml': '<adaptive-icon>brand</adaptive-icon>',
+    'mipmap-anydpi-v33/ic_launcher.xml': '<adaptive-icon>themed-brand</adaptive-icon>',
+  }
+  try {
+    for (const [name, value] of Object.entries(fixtures)) {
+      await mkdir(new URL('.', new URL(name, icons)), { recursive: true })
+      await writeFile(new URL(name, icons), value)
+    }
+    const other = new URL('app/src/main/res/xml/file_paths.xml', project)
+    await mkdir(new URL('.', other), { recursive: true }); await writeFile(other, 'existing file-provider policy')
+    await installLauncherIcons(project, icons)
+    for (const [name, value] of Object.entries(fixtures)) assert.equal(await readFile(new URL(`app/src/main/res/${name}`, project), 'utf8'), value)
+    assert.equal(await readFile(other, 'utf8'), 'existing file-provider policy')
+    await writeFile(new URL('app/src/main/res/mipmap-mdpi/ic_launcher.png', project), 'regenerated template')
+    await installLauncherIcons(project, icons)
+    assert.equal(await readFile(new URL('app/src/main/res/mipmap-mdpi/ic_launcher.png', project), 'utf8'), 'brand-png')
+    await assert.rejects(installLauncherIcons(project, new URL('missing/', icons)), { code: 'ENOENT' })
+  } finally { await rm(directory, { recursive: true, force: true }) }
 })

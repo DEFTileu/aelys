@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { cp, readFile, rename, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 
@@ -30,6 +30,11 @@ export async function rotateDebugApk(androidProject, env) {
   }
 }
 
+export async function installLauncherIcons(androidProject, iconSource = new URL('../src-tauri/icons/android/', import.meta.url)) {
+  for (const file of ['mipmap-mdpi/ic_launcher.png', 'mipmap-anydpi-v26/ic_launcher.xml', 'mipmap-anydpi-v33/ic_launcher.xml']) await readFile(new URL(file, iconSource))
+  await cp(iconSource, new URL('app/src/main/res/', androidProject), { recursive: true })
+}
+
 export async function prepareAndroid() {
   const project = new URL('../src-tauri/gen/android/', import.meta.url)
   const manifest = new URL('app/src/main/AndroidManifest.xml', project)
@@ -38,7 +43,8 @@ export async function prepareAndroid() {
   })
   const secured = secureManifest(source)
   if (secured !== source) await writeFile(manifest, secured)
-  console.log('Android packaged network policy: cleartext disabled')
+  await installLauncherIcons(project)
+  console.log('Android packaged network policy: cleartext disabled; Aelys launcher icons installed')
   if (await rotateDebugApk(project, process.env)) console.log('Previous debug APK retained as .apk.previous; packaging a fresh archive')
 }
 

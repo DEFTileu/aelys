@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><rect width="1024" height="1024" fill="#F4EFFF"/><g transform="translate(192 249.6) scale(6.4)">
+  <defs>
+    <linearGradient id="ae-l" x1="10" y1="4" x2="40" y2="50" gradientUnits="userSpaceOnUse"><stop stop-color="#DCCBFC"></stop><stop offset="1" stop-color="#B597F7"></stop></linearGradient>
+    <linearGradient id="ae-r" x1="52" y1="6" x2="90" y2="62" gradientUnits="userSpaceOnUse"><stop stop-color="#6A3FE8"></stop><stop offset="1" stop-color="#8457FB"></stop></linearGradient>
+    <linearGradient id="ae-b" x1="24" y1="50" x2="98" y2="80" gradientUnits="userSpaceOnUse"><stop stop-color="#B08CF8"></stop><stop offset=".5" stop-color="#D6C5FC"></stop><stop offset="1" stop-color="#C9B2FA"></stop></linearGradient>
+    <linearGradient id="ae-m" x1="50" y1="50" x2="98" y2="70" gradientUnits="userSpaceOnUse"><stop stop-color="#7B4FF6"></stop><stop offset="1" stop-color="#A27EFA"></stop></linearGradient>
+    <linearGradient id="ae-f" x1="2" y1="78" x2="36" y2="50" gradientUnits="userSpaceOnUse"><stop stop-color="#7C52FA"></stop><stop offset="1" stop-color="#6338E0"></stop></linearGradient>
+  </defs>
+  <path d="M5.5 60.4C14 46 23.5 27 31.7 10.4 34.7 4.2 40 1.2 46.3 1.2c8.4 0 15.6 2.4 20.7 7.3-5.2-2.6-10.6-1.9-14.6 0-2.4 2-3.9 5.4-4.8 10.4C45 27 40.8 36.5 33 41.6 27.4 45.2 18 47.7 12.3 52Z" fill="url(#ae-l)"></path>
+  <path d="M47.6 18.9c1.5-5.4 3.6-9.6 7.4-11.6 4.3-1.6 8.6-.6 11.2 2.6C72.3 20.4 83 44 95.1 62.8L63.4 46.3C57.8 37.8 52.3 28.4 47.6 18.9Z" fill="url(#ae-r)"></path>
+  <path d="M63.4 46.3c5.4-5 11.4-6.8 18.3-6.7l13.4 23.2c-12.4.3-24.2-5.5-31.7-16.5Z" fill="#5A31D0"></path>
+  <path d="M24.4 47c8.9-1.4 17.3 3.7 25 11 12.8 8.6 30.4 16.7 48.8 13.3-.9 6-11 9.9-22.6 9.7C60 81 46 72.5 34 61.6c-4.4-3.9-9.2-5.4-14.4-4.4Z" fill="url(#ae-b)"></path>
+  <path d="M49.4 58l14-11.7c7.6 11 19.4 16.8 31.7 16.5 1.5 2.4 2.8 5.3 3.1 8.5-17.6 3.5-35-3.2-48.8-13.3Z" fill="url(#ae-m)"></path>
+  <path d="M5.5 60.4c5-7.4 11.5-11.8 18.9-13.4 4.9-.4 8.3 1.8 11.4 5.2-3.3.4-6.8 2.8-10.2 7.3C21.4 64.6 16 72.5 13.4 76.3 11.6 79 9.6 80.4 7.4 80.4 3.6 80.4 1 76.7 1 71.6c0-4.2 1.7-7.8 4.5-11.2Z" fill="url(#ae-f)"></path>
+  <path d="M49.4 27c1 9 3.6 14 11.6 16-8 2-10.6 6-11.6 12.5-1.1-6.5-3.4-10.5-12.4-12.5 9-2 11.3-7 12.4-16Z" fill="#DCCDFD"></path>
+</g></svg>
