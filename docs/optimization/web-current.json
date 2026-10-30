@@ -1,0 +1,9 @@
+{
+  "file": "index-l1tSM9KX.js",
+  "bytes": 312775,
+  "gzip_bytes": 95809,
+  "baseline_file": "docs/optimization/web-before.json",
+  "raw_reduction_percent": 29.87,
+  "gzip_reduction_percent": 25.15,
+  "method": "Python gzip.compress default compression, mtime=0; point-in-time build with Touch ID UI"
+}

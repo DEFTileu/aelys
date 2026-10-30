@@ -2,6 +2,14 @@
 
 ## Goal 2 addendum — frontend and cross-platform applications
 
+Current task (2026-10-29): adopt the user-selected design from
+[PR #1](https://github.com/DEFTileu/aelys/pull/1), pinned to
+`f0e26b4cc9c711a43cdd08e0b6a96a7835bc6837`. Use its full-viewport desktop
+shell, wallpaper catalog and Tasks layout while retaining live API contracts,
+owner authentication and offline state. The owner will merge the upstream PR;
+this task does not merge it. Mobile mock screens are reference material until
+their data paths are integrated and verified.
+
 This addendum extends the completed Goal 1 plan without changing its backend or
 runtime decisions. The active Goal 2 order is:
 
@@ -60,3 +68,17 @@ This goal implements the approved backend and headless macOS runtime scope from 
 
 - Goal 2: frontend/client offline stores, generated TypeScript contracts, Android wrapper spike, device UX, and approved Gmail/Telegram integration scope.
 - Goal 3: production deployment/backup topology, final Mac sandbox technology validation on target macOS versions, release signing/installers, license confirmation, and optional encrypted Mac-session backup decision.
+
+## Connected workspaces follow-through (2026-10-29)
+
+Selected task: Phase 4 / AI Core provider connectivity and persistent chat.
+Follow-on task: Phase 3 / Mail import/drafts with owner-approved Gmail reading
+and draft management; calendar create/edit/delete uses version checks and UTC.
+Assumptions: Gmail sync is explicit/manual, loaded mail remains in the Aelys
+store on disconnect, no sending, attachments or background sync. Actual Google
+client/key setup and a live provider reply require owner credentials; do not
+claim external acceptance based on injected transport tests. Finance ledger,
+transfers, persisted focus sessions and RRULE persistence are now wired to the
+backend. RRULE projection and recurring in-app reminder delivery are verified.
+General offline mutation sync and platform release gates remain unfinished.
+Phase 3 evidence and next milestone: docs/PHASE3_VALIDATION.md.

@@ -1,0 +1,41 @@
+{
+  "method": "httpx ASGITransport, real SQLAlchemy DB, no worker lifespan; includes authentication SQL, no network latency",
+  "dialect": "sqlite",
+  "records_per_domain": 2000,
+  "repeats": 15,
+  "endpoints": {
+    "task_list": {
+      "first_request_ms": 41.196,
+      "warm_p50_ms": 13.099,
+      "warm_p95_ms": 36.308,
+      "response_bytes": 1777691,
+      "queries_min": 3,
+      "queries_max": 3
+    },
+    "project_tasks": {
+      "first_request_ms": 3.458,
+      "warm_p50_ms": 2.649,
+      "warm_p95_ms": 2.841,
+      "response_bytes": 183890,
+      "queries_min": 3,
+      "queries_max": 3
+    },
+    "notes": {
+      "first_request_ms": 22.979,
+      "warm_p50_ms": 23.491,
+      "warm_p95_ms": 48.278,
+      "response_bytes": 17092891,
+      "queries_min": 3,
+      "queries_max": 3
+    },
+    "search": {
+      "first_request_ms": 27.853,
+      "warm_p50_ms": 25.754,
+      "warm_p95_ms": 26.806,
+      "response_bytes": 566683,
+      "queries_min": 5,
+      "queries_max": 5
+    }
+  },
+  "search_peak_python_bytes": 4469003
+}

@@ -12,8 +12,10 @@ Aelys — персональная, полностью открытая (open-so
 [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md); точное состояние acceptance,
 платформенных блокеров и тестов — в [`RELEASE_REPORT.md`](RELEASE_REPORT.md).
 Vendor execution остаётся fail-closed до credentialed CLI и macOS isolation
-evidence; signing/notarization, Android APK, PostgreSQL local run и внешние
-Gmail/Telegram integrations не объявляются пройденными.
+evidence. Web и unsigned macOS/Android development builds собраны; реальный
+вход и lifecycle на устройствах, signing/notarization и внешние интеграции
+ещё требуют acceptance. Проверки текущего снимка и ограничения:
+[`docs/INTEGRATION_CHECKPOINT.md`](docs/INTEGRATION_CHECKPOINT.md).
 
 Разделяйте в документации:
 - **DECIDED** — подтверждено владельцем в обсуждении;
@@ -22,22 +24,22 @@ Gmail/Telegram integrations не объявляются пройденными.
 
 ## Читать в таком порядке
 
-1. [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md) — полный исходный контекст и границы решения.
-2. [`DECISIONS.md`](DECISIONS.md) — принятые решения и степень определённости.
-3. [`PRD.md`](PRD.md) — функциональные требования и user stories.
-4. [`ARCHITECTURE.md`](ARCHITECTURE.md) — компоненты, границы модулей, события.
-5. [`DATA_MODEL.md`](DATA_MODEL.md) — логическая реляционная модель.
-6. [`API_CONTRACTS.md`](API_CONTRACTS.md) — черновик REST/SSE/WS-контрактов.
-7. [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md) — офлайн-редактирование, конфликтность, курсоры.
-8. [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) — Mac, CLI-адаптеры, локальные сессии, remote control.
-9. [`AI_HARNESS.md`](AI_HARNESS.md) — BYOK, tool calling, Model Router, безопасность данных.
-10. [`INTEGRATIONS.md`](INTEGRATIONS.md) — Mail/Telegram и внешние сервисы.
-11. [`SECURITY.md`](SECURITY.md) — границы полномочий и угрозы.
-12. [`ACCEPTANCE_TESTS.md`](ACCEPTANCE_TESTS.md) — измеримые сценарии готовности.
-13. [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — этапы и зависимости.
-14. [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — неразрешённые продуктовые решения.
+1. [`PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md) — полный исходный контекст и границы решения.
+2. [`DECISIONS.md`](docs/DECISIONS.md) — принятые решения и степень определённости.
+3. [`PRD.md`](docs/PRD.md) — функциональные требования и user stories.
+4. [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — компоненты, границы модулей, события.
+5. [`DATA_MODEL.md`](docs/DATA_MODEL.md) — логическая реляционная модель.
+6. [`API_CONTRACTS.md`](docs/API_CONTRACTS.md) — черновик REST/SSE/WS-контрактов.
+7. [`SYNC_PROTOCOL.md`](docs/SYNC_PROTOCOL.md) — офлайн-редактирование, конфликтность, курсоры.
+8. [`AGENT_RUNTIME.md`](docs/AGENT_RUNTIME.md) — Mac, CLI-адаптеры, локальные сессии, remote control.
+9. [`AI_HARNESS.md`](docs/AI_HARNESS.md) — BYOK, tool calling, Model Router, безопасность данных.
+10. [`INTEGRATIONS.md`](docs/INTEGRATIONS.md) — Mail/Telegram и внешние сервисы.
+11. [`SECURITY.md`](docs/SECURITY.md) — границы полномочий и угрозы.
+12. [`ACCEPTANCE_TESTS.md`](docs/ACCEPTANCE_TESTS.md) — измеримые сценарии готовности.
+13. [`IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) — этапы и зависимости.
+14. [`OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — неразрешённые продуктовые решения.
 15. [`AGENTS.md`](AGENTS.md) — правила работы для кодинг-агентов.
-16. [`GOAL_PROMPT.md`](GOAL_PROMPT.md) — задание агенту для планомерного старта.
+16. [`GOAL_PROMPT.md`](docs/GOAL_PROMPT.md) — задание агенту для планомерного старта.
 
 Для запуска из чистого checkout см. [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md),
 а для зашифрованного single-owner export/restore —

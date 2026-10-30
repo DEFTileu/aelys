@@ -1,0 +1,86 @@
+{
+  "assets": [
+    {
+      "file": "AiView-B4XFCh1P.js",
+      "bytes": 5403,
+      "gzip_bytes": 2242
+    },
+    {
+      "file": "ApiStatusPill-Ej2fyxNu.js",
+      "bytes": 419,
+      "gzip_bytes": 304
+    },
+    {
+      "file": "CalendarView-jTrnKEUN.js",
+      "bytes": 13849,
+      "gzip_bytes": 4542
+    },
+    {
+      "file": "FinanceView-DAQOgaZh.js",
+      "bytes": 8862,
+      "gzip_bytes": 2853
+    },
+    {
+      "file": "HomeView-Bxr27NF-.js",
+      "bytes": 25539,
+      "gzip_bytes": 8413
+    },
+    {
+      "file": "Icon-DTRo6hF0.js",
+      "bytes": 787,
+      "gzip_bytes": 512
+    },
+    {
+      "file": "MailView-DcQdznxx.js",
+      "bytes": 8704,
+      "gzip_bytes": 2880
+    },
+    {
+      "file": "ModuleView-DF2ih-Lt.js",
+      "bytes": 9117,
+      "gzip_bytes": 3445
+    },
+    {
+      "file": "NotesView-BO4p5-Rp.js",
+      "bytes": 8993,
+      "gzip_bytes": 2970
+    },
+    {
+      "file": "ProjectsView-CcXgznOg.js",
+      "bytes": 8919,
+      "gzip_bytes": 3207
+    },
+    {
+      "file": "SearchView-CEJde7e-.js",
+      "bytes": 1976,
+      "gzip_bytes": 951
+    },
+    {
+      "file": "SettingsView-D6qUx-hY.js",
+      "bytes": 31257,
+      "gzip_bytes": 8451
+    },
+    {
+      "file": "StateCard-CaHfTbxT.js",
+      "bytes": 599,
+      "gzip_bytes": 336
+    },
+    {
+      "file": "TasksView-CUqO8pUK.js",
+      "bytes": 27044,
+      "gzip_bytes": 8004
+    },
+    {
+      "file": "TimerView-CaDDpZl6.js",
+      "bytes": 4656,
+      "gzip_bytes": 1790
+    },
+    {
+      "file": "index-_g9JRz5B.js",
+      "bytes": 297063,
+      "gzip_bytes": 91579
+    }
+  ],
+  "total_bytes": 453187,
+  "total_gzip_bytes": 142479
+}
