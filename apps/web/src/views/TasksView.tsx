@@ -1,3 +1,4 @@
+import { StyledSelect } from '../components/controls/StyledSelect'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ApiError, type ProjectResponse, type TaskOut } from '@aelys/shared'
 import { Calendar, CalendarDays, Check, Ellipsis, Flag, Folder, Inbox, SquareCheck, Plus, RefreshCw, Search, X } from '../icons'
@@ -148,6 +149,36 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     setMessage(''); setActionError(''); setConfirmDelete(false)
     setEditor(editDrafts.current.get(task.id) ?? { task, draft: draftFromTask(task), error: '', conflict: false, latest: null })
   }
+  const [routeIntent, setRouteIntent] = useState<{ task: string | null; create: boolean } | null>(null)
+  useEffect(() => {
+    const readIntent = () => {
+      if (window.location.pathname !== '/tasks') return
+      const params = new URLSearchParams(window.location.search)
+      const task = params.get('task')
+      setRouteIntent(task ? { task, create: false } : params.get('create') === '1' ? { task: null, create: true } : null)
+    }
+    readIntent()
+    window.addEventListener('popstate', readIntent)
+    return () => window.removeEventListener('popstate', readIntent)
+  }, [])
+  useEffect(() => {
+    if (!routeIntent || pending) return
+    if (routeIntent.task && source === 'loading') return
+    if (routeIntent.task && editor?.task.id === routeIntent.task) { setRouteIntent(null); return }
+    if (routeIntent.task && !tasks.some(task => task.id === routeIntent.task)) {
+      setActionError('This task could not be found in the loaded task list.')
+      setRouteIntent(null)
+      return
+    }
+    if (editor && (JSON.stringify(editor.draft) !== JSON.stringify(draftFromTask(editor.task)) || editor.error)) editDrafts.current.set(editor.task.id, editor)
+    if (routeIntent.create) { setEditor(null); setQuickOpen(true) }
+    else {
+      const task = tasks.find(item => item.id === routeIntent.task)!
+      setQuickOpen(false); setEditor(editDrafts.current.get(task.id) ?? { task, draft: draftFromTask(task), error: '', conflict: false, latest: null })
+      setConfirmDelete(false); setActionError('')
+    }
+    setRouteIntent(null)
+  }, [routeIntent, tasks, source, pending, editor])
   const beginWrite = () => { if (pendingRef.current || !writeAllowed) return false; pendingRef.current = true; setPending(true); setMessage(''); setActionError(''); return true }
   const endWrite = () => { pendingRef.current = false; setPending(false) }
   const createTask = async (event: FormEvent) => {
@@ -252,17 +283,17 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
       </div>
       <div className="tasks-tools">
         <label className="tasks-search"><Search size={18} /><input aria-label="Search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} />{query && <button type="button" aria-label="Clear search" className="tasks-icon" onClick={() => setQuery('')}><X size={16} /></button>}</label>
-        <label className="tasks-tool-label tasks-priority-filter"><select aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{PRIORITIES.map((priority, index) => <option key={priority} value={index}>{priority}</option>)}</select></label>
-        <label className="tasks-tool-label tasks-project-filter"><select aria-label="Filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{[...new Set([...projects.map(project => project.id), ...tasks.flatMap(task => task.project_id ? [task.project_id] : [])])].map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</select></label>
-        <details className="tasks-more-filters"><summary>More</summary><div className="tasks-more-panel"><div className="tasks-mobile-filters"><label>Search<input aria-label="Mobile search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} /></label><label>Priority<select aria-label="Mobile filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{PRIORITIES.map((priority, index) => <option key={priority} value={index}>{priority}</option>)}</select></label><label>Project<select aria-label="Mobile filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{[...new Set([...projects.map(project => project.id), ...tasks.flatMap(task => task.project_id ? [task.project_id] : [])])].map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</select></label></div><button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>All tasks</button><button type="button" aria-pressed={highOnly} onClick={() => setHighOnly(value => !value)}><Flag size={15} />High priority</button><button type="button" aria-pressed={overdueOnly} onClick={() => { setOverdueOnly(value => !value); if (!overdueOnly) setView('all') }}>Overdue</button>{activeFilters && <button type="button" onClick={clearFilters}>Clear filters</button>}<label className="tasks-tool-label">Status<select aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="completed">Completed</option></select></label>
+        <div className="tasks-tool-label tasks-priority-filter"><StyledSelect aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{PRIORITIES.map((priority, index) => <option key={priority} value={index}>{priority}</option>)}</StyledSelect></div>
+        <div className="tasks-tool-label tasks-project-filter"><StyledSelect aria-label="Filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{[...new Set([...projects.map(project => project.id), ...tasks.flatMap(task => task.project_id ? [task.project_id] : [])])].map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</StyledSelect></div>
+        <details className="tasks-more-filters"><summary>More</summary><div className="tasks-more-panel"><div className="tasks-mobile-filters"><label>Search<input aria-label="Mobile search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} /></label><div>Priority<StyledSelect aria-label="Mobile filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{PRIORITIES.map((priority, index) => <option key={priority} value={index}>{priority}</option>)}</StyledSelect></div><div>Project<StyledSelect aria-label="Mobile filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{[...new Set([...projects.map(project => project.id), ...tasks.flatMap(task => task.project_id ? [task.project_id] : [])])].map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</StyledSelect></div></div><button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>All tasks</button><button type="button" aria-pressed={highOnly} onClick={() => setHighOnly(value => !value)}><Flag size={15} />High priority</button><button type="button" aria-pressed={overdueOnly} onClick={() => { setOverdueOnly(value => !value); if (!overdueOnly) setView('all') }}>Overdue</button>{activeFilters && <button type="button" onClick={clearFilters}>Clear filters</button>}<div className="tasks-tool-label">Status<StyledSelect aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="completed">Completed</option></StyledSelect></div>
         <button type="button" aria-label="Refresh tasks" className="tasks-icon" disabled={refreshing || pending} onClick={() => void load()}><RefreshCw size={18} /></button>
         </div></details>
       </div></div>
     <form className={`tasks-quick${detailsOpen ? ' tasks-quick--details' : ''}`} aria-label="Quick add task" onSubmit={createTask} onKeyDown={quickKeys}>
       <div className="tasks-quick-main"><Plus size={20} /><input ref={quickTitle} aria-label={quickOpen ? 'New task title' : 'Add a task'} placeholder="Add a task — Enter to save, Q to focus" value={newDraft.title} required disabled={pending} onFocus={() => { if (!quickOpen) setQuickOpen(true) }} onChange={event => patchQuick({ title: event.target.value })} />
-        <select aria-label="Quick date" value={newDraft.dueDate === dateKey(new Date().toISOString()) ? 'today' : newDraft.dueDate === tomorrowKey ? 'tomorrow' : newDraft.dueDate ? 'custom' : 'none'} disabled={pending} onChange={event => { const date = new Date(); if (event.target.value === 'tomorrow') date.setDate(date.getDate() + 1); patchQuick({ dueDate: event.target.value === 'none' ? '' : dateKey(date.toISOString()) ?? '', dueTime: '' }) }}><option value="none">No date</option><option value="today">Today</option><option value="tomorrow">Tomorrow</option>{newDraft.dueDate && newDraft.dueDate !== dateKey(new Date().toISOString()) && newDraft.dueDate !== tomorrowKey && <option value="custom">{newDraft.dueDate}</option>}</select>
-        <select aria-label="Quick priority" value={newDraft.priority} disabled={pending} onChange={event => patchQuick({ priority: event.target.value })}><option value="0">No priority</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option></select>
-        <select aria-label="Quick project" value={newDraft.projectId} disabled={pending || projectsUnavailable} onChange={event => patchQuick({ projectId: event.target.value })}><option value="">No project</option>{newDraft.projectId && !projects.some(project => project.id === newDraft.projectId) && <option value={newDraft.projectId}>Unavailable project</option>}{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+        <StyledSelect aria-label="Quick date" value={newDraft.dueDate === dateKey(new Date().toISOString()) ? 'today' : newDraft.dueDate === tomorrowKey ? 'tomorrow' : newDraft.dueDate ? 'custom' : 'none'} disabled={pending} onChange={event => { const date = new Date(); if (event.target.value === 'tomorrow') date.setDate(date.getDate() + 1); patchQuick({ dueDate: event.target.value === 'none' ? '' : dateKey(date.toISOString()) ?? '', dueTime: '' }) }}><option value="none">No date</option><option value="today">Today</option><option value="tomorrow">Tomorrow</option>{newDraft.dueDate && newDraft.dueDate !== dateKey(new Date().toISOString()) && newDraft.dueDate !== tomorrowKey && <option value="custom">{newDraft.dueDate}</option>}</StyledSelect>
+        <StyledSelect aria-label="Quick priority" value={newDraft.priority} disabled={pending} onChange={event => patchQuick({ priority: event.target.value })}><option value="0">No priority</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option></StyledSelect>
+        <StyledSelect aria-label="Quick project" value={newDraft.projectId} disabled={pending || projectsUnavailable} onChange={event => patchQuick({ projectId: event.target.value })}><option value="">No project</option>{newDraft.projectId && !projects.some(project => project.id === newDraft.projectId) && <option value={newDraft.projectId}>Unavailable project</option>}{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</StyledSelect>
         <button className="tasks-primary" aria-label="Add task" type="submit" disabled={!writeAllowed || pending || !newDraft.title.trim() || createUncertain}>{pending ? 'Saving…' : 'Add'}</button>
       </div>
       {quickOpen && <div className="tasks-quick-extra"><button type="button" className="tasks-quiet" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(value => !value)}>{detailsOpen ? 'Hide details' : 'Add details'}</button><button type="button" aria-label="Close quick add" className="tasks-quiet" disabled={pending} onClick={closeQuick}>Close</button></div>}

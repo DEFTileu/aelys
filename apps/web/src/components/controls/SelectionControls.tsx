@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Search, X } from '../../icons'
 import './selection-controls.css'
@@ -6,9 +7,9 @@ export type SelectOption = { value: string; label: string; disabled?: boolean }
 
 type SelectProps = {
   label: string; value: string; onChange: (value: string) => void; options: SelectOption[]
-  placeholder?: string; disabled?: boolean; error?: string
+  placeholder?: string; disabled?: boolean; error?: string; hideLabel?: boolean
 }
-export function SelectField({ label, value, onChange, options, placeholder = 'Выберите вариант', disabled = false, error }: SelectProps) {
+export function SelectField({ label, value, onChange, options, placeholder = 'Выберите вариант', disabled = false, error, hideLabel = false }: SelectProps) {
   const id = useId()
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -16,7 +17,7 @@ export function SelectField({ label, value, onChange, options, placeholder = 'В
   const typeahead = useRef({ text: '', at: 0 })
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
-  const [placement, setPlacement] = useState({ above: false, height: 280 })
+  const [placement, setPlacement] = useState({ above: false, height: 280, left:0, top:0, width:0 })
   const selected = options.find(option => option.value === value)
   const visible = open && !disabled
   const enabled = options.map((option, index) => option.disabled ? -1 : index).filter(index => index >= 0)
@@ -39,7 +40,7 @@ export function SelectField({ label, value, onChange, options, placeholder = 'В
   useEffect(() => {
     if (!visible) return
     const outside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false)
+      if (event.target instanceof Node && !root.current?.contains(event.target) && !list.current?.contains(event.target)) setOpen(false)
     }
     const position = () => {
       const rect = trigger.current?.getBoundingClientRect()
@@ -47,7 +48,8 @@ export function SelectField({ label, value, onChange, options, placeholder = 'В
       const below = window.innerHeight - rect.bottom - 16
       const above = rect.top - 16
       const useAbove = below < 180 && above > below
-      setPlacement({ above: useAbove, height: Math.max(80, Math.min(280, useAbove ? above : below)) })
+      const height=Math.max(80,Math.min(280,useAbove?above:below))
+      setPlacement({above:useAbove,height,left:Math.max(8,Math.min(rect.left,window.innerWidth-rect.width-8)),top:useAbove?rect.top-6:rect.bottom+6,width:Math.min(rect.width,window.innerWidth-16)})
     }
     position()
     document.addEventListener('pointerdown', outside)
@@ -62,7 +64,7 @@ export function SelectField({ label, value, onChange, options, placeholder = 'В
   return <div ref={root} className="aelys-selection-field aelys-single-select" onBlur={event => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close()
   }}>
-    <label id={`${id}-label`} htmlFor={id}>{label}</label>
+    <label className={hideLabel ? 'aelys-visually-hidden' : undefined} id={`${id}-label`} htmlFor={id}>{label}</label>
     <div className="aelys-select-wrap">
       <button ref={trigger} type="button" id={id} role="combobox" className="aelys-select-trigger" disabled={disabled}
         aria-labelledby={`${id}-label`} aria-expanded={visible} aria-haspopup="listbox" aria-controls={visible ? `${id}-list` : undefined}
@@ -104,8 +106,8 @@ export function SelectField({ label, value, onChange, options, placeholder = 'В
         <span className={!selected ? 'aelys-select-trigger__placeholder' : undefined}>{selected?.label ?? placeholder}</span>
         <ChevronDown size={17} aria-hidden="true" />
       </button>
-      {visible && <div ref={list} id={`${id}-list`} className="aelys-select-list" data-placement={placement.above ? 'above' : 'below'}
-        style={{ maxHeight: placement.height }} role="listbox" aria-labelledby={`${id}-label`}>
+      {visible && createPortal(<div ref={list} id={`${id}-list`} className="aelys-select-list" data-placement={placement.above ? 'above' : 'below'}
+        style={{ position:'fixed',left:placement.left,top:placement.top,width:placement.width,maxHeight:placement.height,transform:placement.above?'translateY(-100%)':undefined }} role="listbox" aria-labelledby={`${id}-label`}>
         {options.map((option, index) => <div key={option.value} id={`${id}-option-${index}`} data-option-index={index}
           className="aelys-select-option" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined}
           data-active={index === active && !option.disabled ? '' : undefined}
@@ -114,7 +116,7 @@ export function SelectField({ label, value, onChange, options, placeholder = 'В
           <span>{option.label}</span>{option.value === value && <Check size={16} aria-hidden="true" />}
         </div>)}
         {!options.length && <div className="aelys-select-empty">Нет вариантов</div>}
-      </div>}
+      </div>,document.body)}
     </div>
     {error && <span id={`${id}-error`} className="aelys-selection-error">{error}</span>}
   </div>

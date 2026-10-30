@@ -1,3 +1,4 @@
+import { StyledSelect } from '../../components/controls/StyledSelect'
 import { useEffect, useId, useRef, type FormEvent, type ReactNode } from 'react'
 import type { ProjectResponse, TaskOut } from '@aelys/shared'
 import type { TaskDraft } from './taskModel'
@@ -23,7 +24,7 @@ export interface TaskEditorProps {
   deleteDisabled: boolean
 }
 
-const focusableSelector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+const focusableSelector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled):not([tabindex="-1"]), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
 
 export function TaskEditor({ value, onChange, task, projects, projectsUnavailable, pending, saveDisabled = false, error, notice, onSave, onClose, dirty, onRevert, confirmDelete, onDelete, onCancelDelete, deleteDisabled }: TaskEditorProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -130,21 +131,21 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
           <div className="task-editor__field">Priority
             <div className="task-editor__priorities" role="radiogroup" aria-label="Priority">{[['0','None'],['3','High'],['2','Medium'],['1','Low']].map(([priority, label]) => <button type="button" role="radio" aria-checked={value.priority === priority} key={priority} disabled={pending} onClick={() => patch({ priority })}>{label}</button>)}{!knownPriority && <span>Current priority ({value.priority})</span>}</div>
           </div>
-          <label className="task-editor__field">Project
-            <select aria-label="Project" value={value.projectId} disabled={pending || projectsUnavailable} onChange={(event) => patch({ projectId: event.target.value })}>
+          <div className="task-editor__field">Project
+            <StyledSelect aria-label="Project" value={value.projectId} disabled={pending || projectsUnavailable} onChange={(event) => patch({ projectId: event.target.value })}>
               <option value="">None</option>
               {!knownProject && <option value={value.projectId}>Current project ({value.projectId})</option>}
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
-          </label>
+            </StyledSelect>
+          </div>
           {projectsUnavailable && <p className="task-editor__help">Projects are unavailable. The current project will be preserved.</p>}
           {notice}
-          <details className="task-editor__advanced"><summary>More options</summary><label className="task-editor__field">Status
-            <select aria-label="Status" value={value.status} disabled={pending} onChange={(event) => patch({ status: event.target.value })}>
+          <details className="task-editor__advanced"><summary>More options</summary><div className="task-editor__field">Status
+            <StyledSelect aria-label="Status" value={value.status} disabled={pending} onChange={(event) => patch({ status: event.target.value })}>
               {!knownStatus && <option value={value.status}>Current status ({value.status})</option>}
               <option value="todo">To do</option><option value="in_progress">In progress</option><option value="completed">Completed</option>
-            </select>
-          </label></details>
+            </StyledSelect>
+          </div></details>
         </div>
         <footer className="task-editor__footer">
           {confirmDelete && <span className="task-editor__confirm" role="status">Delete this task?</span>}

@@ -1,33 +1,25 @@
-import { useEffect, useState } from 'react'
-import { Mail, NotebookText, Search, SquareCheck, type AelysIconComponent } from '../icons'
-import { StateCard } from '../components/StateCard'
+import { useState } from 'react'
+import { ChevronRight, Mail, NotebookText, Search, SquareCheck, X, type AelysIconComponent } from '../icons'
+import { kindLabels, openSearchUrl, resultUrl, searchKinds, useSearchResults, type SearchKind } from '../lib/searchNavigation'
 import type { ApiStatus } from '../types'
-import { getSharedApiClient } from '../lib/api'
-import type { SearchResult } from '@aelys/shared'
-import './desktop/module.css'
+import './search.css'
 
-function kindIcon(kind?: string): AelysIconComponent {
-  return kind === 'task' ? SquareCheck : kind === 'mail' ? Mail : NotebookText
-}
+const icons: Record<SearchKind, AelysIconComponent> = { task: SquareCheck, note: NotebookText, mail: Mail }
+const colors: Record<SearchKind, string> = { task: 'blue', note: 'orange', mail: 'violet' }
 
 export function SearchView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [query, setQuery] = useState('')
-  const [state, setState] = useState<ApiStatus>(apiStatus === 'ready' ? 'empty' : apiStatus)
-  const [results, setResults] = useState<readonly SearchResult[]>([])
-  useEffect(() => {
-    const trimmed = query.trim()
-    if (!trimmed) { setResults([]); setState(apiStatus === 'ready' ? 'empty' : apiStatus); return }
-    if (apiStatus !== 'ready') { setState(apiStatus); return }
-    let active = true
-    setState('loading')
-    const timer = window.setTimeout(() => { void getSharedApiClient().search(trimmed).then((response) => { if (active) { setResults(response.results); setState(response.results.length ? 'ready' : 'empty') } }).catch(() => { if (active) setState(navigator.onLine ? 'error' : 'offline') }) }, 220)
-    return () => { active = false; window.clearTimeout(timer) }
-  }, [apiStatus, query])
-  return <div className="mod-body">
-    <label className="mod-search"><Search size={19} aria-hidden="true" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects, notes, tasks…" aria-label="Search Aelys" /></label>
-    {state === 'ready' ? <div className="mod-card">{results.map((result) => {
-      const KindIcon = kindIcon(result.kind)
-      return <article className="mod-row" key={`${result.kind}-${result.id}`}><span className="mod-row__icon"><KindIcon size={17} aria-hidden="true" /></span><span className="mod-row__body"><strong className="mod-row__title">{result.title}</strong><small className="mod-row__meta">{result.kind}</small></span></article>
-    })}</div> : state === 'empty' ? <StateCard status="empty" title={query ? `No results for “${query}”` : 'Search is empty'} description={query ? 'No connected source returned a matching record.' : 'Start typing to search connected records.'} /> : <StateCard status={state} title={state === 'loading' ? 'Searching connected sources' : state === 'offline' ? 'Search is offline' : 'Search is unavailable'} description={state === 'loading' ? 'Waiting for the API response.' : state === 'offline' ? 'Search needs a local index or a live connection.' : 'Check the API base URL in Settings.'} />}
+  const [filter, setFilter] = useState<SearchKind | 'all'>('all')
+  const { results, status } = useSearchResults(query, apiStatus === 'ready')
+  const kinds = filter === 'all' ? searchKinds : [filter]
+  const visible = results.filter(result => filter === 'all' || result.kind === filter)
+  return <div className="actual-search-page">
+    <label className="actual-search-page__input"><Search size={20} /><input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="Search Aelys" aria-label="Search Aelys" />{query && <button type="button" aria-label="Clear search" onClick={() => setQuery('')}><X size={16} /></button>}</label>
+    <div className="actual-search-filters" aria-label="Filter search results">{(['all', ...searchKinds] as const).map(kind => <button type="button" key={kind} aria-pressed={filter === kind} onClick={() => setFilter(kind)}>{kind === 'all' ? 'All' : kindLabels[kind]}</button>)}</div>
+    {apiStatus !== 'ready' ? <p className="actual-search-message">{apiStatus === 'offline' ? 'Search is offline.' : apiStatus === 'loading' ? 'Connecting…' : 'Search is unavailable.'}</p> : !query.trim() ? <p className="actual-search-message">Search tasks, notes and mail.</p> : status === 'loading' ? <p className="actual-search-message" role="status">Searching…</p> : status === 'error' ? <p className="actual-search-message" role="status">Search unavailable. Try again.</p> : visible.length === 0 ? <p className="actual-search-message">No results for “{query.trim()}”.</p> : kinds.map(kind => {
+      const entries = visible.filter(result => result.kind === kind)
+      const Icon = icons[kind]
+      return entries.length ? <section className="actual-search-section" key={kind}><h2>{kindLabels[kind]}</h2><div className="actual-search-section__card">{entries.map(entry => <button type="button" className="actual-search-page__row" key={entry.id} onClick={() => openSearchUrl(resultUrl(entry))}><span className={`actual-search-icon ${colors[kind]}`}><Icon size={17} /></span><span><strong>{entry.title || 'Untitled'}</strong>{entry.snippet && <small>{entry.snippet}</small>}</span><ChevronRight size={16} /></button>)}</div></section> : null
+    })}
   </div>
 }

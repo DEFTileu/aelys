@@ -36,10 +36,12 @@ export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [reminderAt, setReminderAt] = useState('')
   const [reminders, setReminders] = useState<readonly CalendarReminder[]>([])
   const operationKey = useRef(crypto.randomUUID())
+  const createBaseline = useRef<{ startsAt: string; endsAt: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<EventOut | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [message, setMessage] = useState('')
+  const [parkedEvent, setParkedEvent] = useState<{ title: string; startsAt: string; endsAt: string; rrule: string; reminderAt: string; editing: EventOut; reminders: readonly CalendarReminder[] } | null>(null)
   const [selectedDate, setSelectedDate] = useState(() => new Date())
   const [visibleMonth, setVisibleMonth] = useState(() => { const date = new Date(); return new Date(date.getFullYear(), date.getMonth(), 1) })
   const requestGeneration = useRef(0)
@@ -81,9 +83,42 @@ export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {
     start.setDate(start.getDate() + weekOffset * 7)
     start.setHours(9, 0, 0, 0)
     const end = new Date(start.getTime() + 60 * 60 * 1000)
+    createBaseline.current = { startsAt: localInputDate(start), endsAt: localInputDate(end) }
     setStartsAt(localInputDate(start)); setEndsAt(localInputDate(end)); setRrule(''); setReminderAt(''); setMessage(''); setFormOpen(true)
     setEditing(null); setConfirmDelete(false); setTitle('')
     setReminders([]); operationKey.current = crypto.randomUUID()
+  }
+
+  const initialIntent = useRef(false)
+  const pendingCreateIntent = useRef(false)
+  const routeIntentHandler = useRef<() => void>(() => {})
+  useEffect(() => {
+    const readIntent = () => {
+      if (window.location.pathname !== '/calendar' || new URLSearchParams(window.location.search).get('create') !== '1') return
+      if (saving) { pendingCreateIntent.current = true; setMessage('The new event form will open after the current save.'); return }
+      pendingCreateIntent.current = false
+      if (editing) {
+        setParkedEvent({ title, startsAt, endsAt, rrule, reminderAt, editing, reminders })
+        openCreate()
+      } else if (formOpen || createBaseline.current) {
+        setFormOpen(true)
+      } else openCreate()
+    }
+    routeIntentHandler.current = readIntent
+    if (!initialIntent.current) { initialIntent.current = true; readIntent() }
+    window.addEventListener('popstate', readIntent)
+    return () => window.removeEventListener('popstate', readIntent)
+  })
+
+  useEffect(() => { if (!saving && pendingCreateIntent.current) routeIntentHandler.current() }, [saving])
+
+  const resumeParkedEvent = () => {
+    if (!parkedEvent) return
+    const baseline = createBaseline.current
+    if (!editing && (title.trim() || rrule.trim() || reminderAt || (baseline && (startsAt !== baseline.startsAt || endsAt !== baseline.endsAt)))) { setMessage('Save or clear the new event before resuming the event edit.'); return }
+    setTitle(parkedEvent.title); setStartsAt(parkedEvent.startsAt); setEndsAt(parkedEvent.endsAt)
+    setRrule(parkedEvent.rrule); setReminderAt(parkedEvent.reminderAt); setEditing(parkedEvent.editing)
+    setReminders(parkedEvent.reminders); setParkedEvent(null); createBaseline.current = null; setFormOpen(true)
   }
 
   const editEvent = (occurrence: EventOccurrence) => {
@@ -116,7 +151,7 @@ export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {
       const body = { ...(editing ?? {}), title: title.trim(), starts_at: start.toISOString(), ends_at: end.toISOString(), timezone: editing?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, rrule: rrule.trim() || null, reminder_at: reminder?.toISOString() ?? null }
       if (editing) await getSharedApiClient().updateCalendarEvent(editing.id, { ...body, version: editing.version }, { queueOnOffline: false })
       else await getSharedApiClient().createCalendarEvent(body, { queueOnOffline: false, idempotencyKey: operationKey.current })
-      setTitle(''); setFormOpen(false); setMessage('Event saved.'); await load()
+      setTitle(''); createBaseline.current = null; setFormOpen(false); setMessage('Event saved.'); await load()
     } catch (error) {
       if (error instanceof ApiError) setMessage(`${error.code}: ${error.message}`)
       else setMessage('Could not save this event.')
@@ -141,6 +176,7 @@ export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {
 
   return <div className="calendar-live page">
     <div className="cl-toolbar"><form className="cl-assistant" onSubmit={event => { event.preventDefault(); if (assistantDraft.trim()) { askAelys(assistantDraft.trim()); setAssistantDraft('') } }}><span className="cl-assistant-orb" aria-hidden="true" /><input aria-label="Ask Aelys about your calendar" placeholder="Ask Aelys to schedule something…" value={assistantDraft} onChange={event => setAssistantDraft(event.target.value)} /><button type="submit" aria-label="Send calendar request" disabled={!assistantDraft.trim()}><ArrowRight size={14} /></button></form><button type="button" className="cl-btn cl-assistant-action" onClick={() => askAelys('Find a free time in my calendar.')}><Calendar size={16} />Find a time</button><button type="button" className="cl-btn cl-assistant-action" onClick={() => askAelys('Help draft an invitation for a calendar event.')}><User size={16} />Invite people</button><ApiStatusPill status={apiStatus} /><button className="cl-btn cl-btn--primary" type="button" onClick={openCreate}><Plus size={16} />Create event</button></div>
+    {parkedEvent && <p role="status">Event edit kept. <button type="button" onClick={resumeParkedEvent}>Resume event edit</button></p>}
     {formOpen && <form aria-label="Event editor" className="cl-form" onSubmit={createEvent}><input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Event title" aria-label="New event title" /><label>Start<input required type="datetime-local" aria-label="Event start" value={startsAt} onInput={(event) => setStartsAt(event.currentTarget.value)} onChange={(event) => setStartsAt(event.target.value)} /></label><label>End<input required type="datetime-local" aria-label="Event end" value={endsAt} onInput={(event) => setEndsAt(event.currentTarget.value)} onChange={(event) => setEndsAt(event.target.value)} /></label>{editing?.rrule && <p>Editing the entire recurring series.</p>}<label>Repeat (RRULE)<input aria-label="Event recurrence" value={rrule} onChange={(event) => setRrule(event.target.value)} placeholder="FREQ=WEEKLY;COUNT=4" /></label><label>Reminder (same lead time on repeats)<input aria-label="Event reminder" type="datetime-local" value={reminderAt} onInput={(event) => setReminderAt(event.currentTarget.value)} onChange={(event) => setReminderAt(event.target.value)} /></label><button className="cl-btn cl-btn--primary" type="submit" disabled={saving || apiStatus !== 'ready'}>{saving ? 'Saving…' : 'Save'}</button><button className="cl-btn" type="button" disabled={saving} onClick={() => setFormOpen(false)}>Cancel</button>{editing && <button className="cl-btn" type="button" disabled={saving || apiStatus !== 'ready'} onClick={() => void deleteEvent()}>{confirmDelete ? 'Confirm delete' : 'Delete event'}</button>}</form>}
     {formOpen && editing && <section aria-label="Event reminders">{reminders.map((reminder) => <p key={reminder.id}>{new Date(reminder.notify_at).toLocaleString()} · {reminder.reminder_status} <button type="button" disabled={saving || apiStatus !== 'ready'} onClick={() => { setSaving(true); void getSharedApiClient().cancelCalendarReminder(editing.id, reminder.id, reminder.version, { queueOnOffline: false }).then(async () => setReminders(await getSharedApiClient().calendarReminders(editing.id))).catch((error) => setMessage(error instanceof ApiError ? `${error.code}: ${error.message}` : 'Could not cancel reminder.')).finally(() => setSaving(false)) }}>Cancel reminder</button></p>)}</section>}
     {apiStatus !== 'ready' && <p role="status">Calendar is offline or unavailable. Previously loaded events may be shown from cache. Changes require a connection (OFFLINE_WRITE_UNAVAILABLE).</p>}

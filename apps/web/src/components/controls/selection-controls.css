@@ -56,3 +56,11 @@
 
 @media (prefers-reduced-motion: reduce) { .aelys-select-list { animation: none; } .aelys-select-trigger, .aelys-select-trigger > svg { transition: none; } }
 @media (forced-colors: active) { .aelys-select-option[data-active] { outline-color: Highlight; } .aelys-select-option[aria-selected='true'] { color: HighlightText; background: Highlight; } }
+
+.styled-select { display:inline-grid; min-width:0; position:relative; vertical-align:middle; }
+.styled-select > .styled-select__native { position:absolute; width:1px!important; height:1px!important; min-height:0!important; padding:0!important; border:0!important; opacity:0; pointer-events:none; clip-path:inset(50%); }
+.styled-select .aelys-single-select { gap:0; }
+.styled-select .aelys-select-trigger { min-height:40px; height:40px; border-color:var(--line); background:var(--surface-soft); border-radius:12px; padding:0 12px; font-size:13px; }
+.aelys-select-list { z-index:1000; margin:0; bottom:auto; right:auto; font-family:var(--font-ui); color:var(--ink); }
+.aelys-select-list[data-placement='above'] { bottom:auto; }
+@media(max-width:700px) { .aelys-select-option { min-height:44px; } .styled-select .aelys-select-trigger { min-height:44px; height:44px; } }

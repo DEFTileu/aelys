@@ -1,3 +1,4 @@
+import { StyledSelect } from '../../components/controls/StyledSelect'
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, GripVertical, Scaling } from '../../icons'
 import { normalizeWidgetSize, WIDGET_GRID_GAP, WIDGET_SIZES, type WidgetId } from './homeLayout'
@@ -109,7 +110,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
       <div className="home-widget-edit-tools" role="group" aria-label={`${controls.title} widget controls`}>
         <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} earlier`} title="Move earlier" disabled={!canMoveEarlier} onClick={() => controls.onMove(-1)}><ChevronUp size={16} /></button>
         <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} later`} title="Move later" disabled={!canMoveLater} onClick={() => controls.onMove(1)}><ChevronDown size={16} /></button>
-        <select aria-label={`Size of ${controls.title}`} value={currentPreset.id} onChange={event => { const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
+        <StyledSelect aria-label={`Size of ${controls.title}`} value={currentPreset.id} onChange={event => { const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>
       </div>
       <button type="button" className="home-btn home-resize-handle" aria-label={`Resize ${controls.title}`} title="Drag to resize to a tile" onPointerDown={event => begin(event, 'resize')} {...pointerHandlers} onKeyDown={event => {
         if (event.key === 'Escape') { finish(true); return }
