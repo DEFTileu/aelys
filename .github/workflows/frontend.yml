@@ -17,9 +17,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @aelys/shared typecheck
+      - run: pnpm --filter @aelys/shared test
       - run: pnpm --filter @aelys/web typecheck
       - run: pnpm --filter @aelys/web test
       - run: pnpm --filter @aelys/web build
+      - run: pnpm --filter @aelys/mobile test
 
   tauri-rust:
     runs-on: macos-latest
@@ -34,6 +37,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: dtolnay/rust-toolchain@stable
+      - run: cargo fmt --manifest-path packages/native-transport/Cargo.toml -- --check
+      - run: cargo test --manifest-path packages/native-transport/Cargo.toml --locked --lib
+      - run: cargo clippy --manifest-path packages/native-transport/Cargo.toml --all-targets --locked -- -D warnings
+      - run: cargo test --manifest-path packages/android-session-store/Cargo.toml --locked
       - run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
       - run: cargo check --manifest-path apps/mobile/src-tauri/Cargo.toml
