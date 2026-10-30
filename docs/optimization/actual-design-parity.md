@@ -121,3 +121,14 @@ hashes matched after signing. Launch was observed in the native window (star
 intro), followed by the real Touch ID entry screen. No biometric, password or
 Keychain approval was supplied by the agent. Launch animation runs once per
 app start, not on each route change; reduced-motion preference is respected.
+
+### Touch ID glyph correction
+
+The owner noticed the fingerprint still used the earlier hand-drawn shape.
+Replaced it with the nine SVG paths and 24px viewBox from ACTUAL launch,
+including its 52px presentation, muted white base and pending stroke/pulse.
+Reduced motion is respected. Native authentication and error handling remain
+unchanged; no simulated success state was added. The two existing biometric
+suites passed 24 tests, TypeScript and the Mac release build passed. Updated the
+installed ad-hoc-signed Mac bundle and verified its signature; retained the prior
+bundle. Owner data and Keychain were not modified by this visual correction.

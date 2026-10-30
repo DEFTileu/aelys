@@ -21,7 +21,7 @@
 .auth-panel { box-sizing: border-box; width: min(360px, 100%); min-width: 0; padding: 24px; text-align: center; border: 1px solid rgba(255,255,255,.32); border-radius: 28px; background: rgba(28,18,58,.38); box-shadow: 0 24px 60px rgba(20,10,40,.35), inset 0 1px 0 rgba(255,255,255,.25); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); }
 .auth-emblem { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 16px; color: #fff; border: 1px solid rgba(255,255,255,.45); border-radius: 18px; background: rgba(255,255,255,.16); }
 .auth-emblem:has(.auth-fingerprint) { width: 92px; height: 92px; border-radius: 28px; }
-.auth-emblem > .auth-fingerprint { width: 52px; height: 52px; }
+.auth-touch-id > .auth-fingerprint { width: 52px; height: 52px; }
 .auth-emblem--pending { opacity: .7; }
 .auth-panel h1 { margin: 0; font-size: 22px; line-height: 30px; font-weight: 600; }
 .auth-description { margin: 4px 0 18px; color: var(--entry-muted); font-size: 14px; line-height: 20px; }
@@ -62,3 +62,11 @@
 
 .auth-emblem:has(.auth-fingerprint) { cursor:pointer; padding:0; }
 .auth-emblem:has(.auth-fingerprint):hover:not(:disabled) { background:rgba(255,255,255,.24); }
+
+.auth-touch-id { position:relative; display:block; width:52px; height:52px; }
+.auth-touch-id > svg { display:block; }
+.auth-touch-id__pulse { position:absolute; inset:-14px; border-radius:24px; border:2px solid rgba(255,255,255,.8); animation:touch-id-pulse .9s ease-out infinite; }
+.auth-touch-id__stroke { animation:touch-id-draw .9s cubic-bezier(.4,0,.2,1) both; }
+@keyframes touch-id-pulse { from { opacity:.7; transform:scale(.9); } to { opacity:0; transform:scale(1.5); } }
+@keyframes touch-id-draw { from { stroke-dashoffset:1; } to { stroke-dashoffset:0; } }
+@media(prefers-reduced-motion:reduce) { .auth-touch-id__pulse { animation:none; opacity:.4; } .auth-touch-id__stroke { animation:none; } }
