@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, SquareCheck, Wallet, type AelysIconComponent } from '../icons'
+import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
 import { WALLPAPERS, accentColors } from '../data/desktop/settings'
 import { requestCustomizeHome, useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
@@ -8,6 +8,8 @@ import { CommandPalette } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
 import { WeatherPill, WeatherSettingsDialog } from './Weather'
 import { AelysMark } from './AelysMark'
+import { MobileShell } from './MobileShell'
+import './actual-shell.css'
 
 // The home page keeps its wallpaper; module pages use the neutral theme canvas.
 const HOME_BG = 'linear-gradient(180deg,rgba(18,18,40,.22) 0,rgba(18,18,40,.04) 220px,rgba(246,241,236,0) 330px,rgba(246,241,236,.8) 385px,#F5F0EB 420px)'
@@ -20,11 +22,11 @@ function accentHex(index: number): string {
 }
 
 // Shell-root custom properties read by the glass surfaces. At 70% transparency the panels keep the design's .88 alpha.
-function shellVars({ transparency, blur, accent }: DesktopSettings): CSSProperties {
+function shellVars({ transparency, blur, accent }: DesktopSettings, theme: 'light' | 'dark'): CSSProperties {
   const alpha = Math.min(1, Math.max(0.6, 0.88 + (70 - transparency) / 300))
   return {
-    '--glass-bg': `rgba(255,255,255,${alpha.toFixed(3)})`,
-    '--sidebar-bg': `rgba(250,247,244,${(alpha - 0.06).toFixed(3)})`,
+    '--glass-bg': theme === 'dark' ? `rgba(35,34,53,${alpha.toFixed(3)})` : `rgba(255,255,255,${alpha.toFixed(3)})`,
+    '--sidebar-bg': theme === 'dark' ? '#1b1928' : `rgba(250,247,244,${(alpha - 0.06).toFixed(3)})`,
     '--glass-blur': `${blur / 2}px`,
     '--sidebar-blur': `${blur * 0.6}px`,
     '--accent': accentHex(accent),
@@ -43,7 +45,7 @@ const NAV: NavItem[] = [
   { id: 'notes', label: 'Notes', icon: NotebookText, route: '/notes' },
   { id: 'mail', label: 'Mail', icon: Mail, route: '/mail' },
   { id: 'finance', label: 'Finances', icon: Wallet, route: '/finance' },
-  { id: 'kb', label: 'Knowledge base', icon: BookOpen, route: '/notes' },
+  { id: 'kb', label: 'Knowledge base', icon: BookOpen, route: '/knowledge' },
   { id: 'widgets', label: 'Widgets', icon: LayoutGrid, route: '/', customize: true },
 ]
 
@@ -52,6 +54,7 @@ const MODULE_TITLES: Partial<Record<RoutePath, string>> = {
   '/calendar': 'Calendar',
   '/projects': 'Projects',
   '/notes': 'Notes',
+  '/knowledge': 'Knowledge base',
   '/mail': 'Mail',
   '/finance': 'Finances',
   '/timer': 'Timer',
@@ -67,7 +70,12 @@ function screenFor(route: RoutePath): string | null {
 }
 
 // theme and onToggleTheme stay in the signature for App.tsx; the design has no theme toggle in the window chrome.
-export function AppShell({ route, apiStatus, children }: { route: RoutePath; apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void; children: ReactNode }) {
+export function AppShell(props: { route: RoutePath; apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void; children: ReactNode }) {
+  const width = useWindowWidth()
+  return <DesktopShell {...props} mobile={width <= 700} />
+}
+
+function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile }: { mobile: boolean; route: RoutePath; apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void; children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const settings = useDesktopState()
 
@@ -87,8 +95,9 @@ export function AppShell({ route, apiStatus, children }: { route: RoutePath; api
   const wallpaper = settings.wallpaper === -1 && settings.customWallpaper ? settings.customWallpaper : WALLPAPERS[settings.wallpaper] ?? WALLPAPERS[0]
   const go = (path: RoutePath) => { setPaletteOpen(false); navigate(path) }
 
-  return <div className="shell-root" data-screen-label={screen ?? route} style={{ ...shellVars(settings), '--side-w': `${sideW}px`, gridTemplateColumns: `${sideW}px minmax(0,1fr)` } as CSSProperties}>
-        <aside className="shell-sidebar" aria-label="Main navigation">
+  return <div className={mobile ? `mobile-shell${isHome ? ' mobile-shell--home' : ''}` : 'shell-root actual-desktop'} data-screen-label={screen ?? route} style={mobile ? shellVars(settings, theme) : { ...shellVars(settings, theme), '--side-w': `${sideW}px`, gridTemplateColumns: `${sideW}px minmax(0,1fr)` } as CSSProperties}>
+        {mobile && <MobileShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={onToggleTheme} chromeOnly>{null}</MobileShell>}
+        {!mobile && <aside className="shell-sidebar" aria-label="Main navigation">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px 24px' }}>
             <AelysMark />
             <div>
@@ -121,35 +130,36 @@ export function AppShell({ route, apiStatus, children }: { route: RoutePath; api
               <Settings size={18} aria-hidden="true" />
             </button>
           </div>
-        </aside>
+        </aside>}
 
-        <main className="shell-main" style={isHome ? undefined : { background: 'var(--canvas)', color: 'var(--ink)' }}>
-          {isHome && <>
+        <main className={mobile ? 'mobile-shell__content' : 'shell-main'} style={isHome || mobile ? undefined : { background: 'var(--canvas)', color: 'var(--ink)' }}>
+          {!mobile && isHome && <>
             <div className="shell-photo" aria-hidden="true" style={{ height: 420, backgroundImage: `url('${wallpaper}')` }} />
-            <div className="shell-photo" aria-hidden="true" style={{ height: 420, background: HOME_BG }} />
+            <div className="shell-photo" aria-hidden="true" style={{ height: 420, background: theme === 'dark' ? 'linear-gradient(180deg,rgba(18,18,40,.22),rgba(21,20,31,.15) 220px,#15141F 420px)' : HOME_BG }} />
           </>}
           <div style={{ position: 'relative' }}>
-          <div style={{ position: 'absolute', top: 20, right: 28, display: 'flex', gap: 8, alignItems: 'center', zIndex: 2 }}>
+          {!mobile && <div className="actual-desktop__tools" style={{ position: 'absolute', top: 20, right: 28, display: 'flex', gap: 8, alignItems: 'center', zIndex: 2 }}>
             <button type="button" className="shell-btn shell-pill shell-pill--button" data-glass="" onClick={() => setPaletteOpen(true)} aria-label="Search or run a command" style={{ width: 260, padding: '0 8px 0 14px', gap: 10, fontSize: 13, color: '#625D69' }}>
               <Search size={18} color="#1C1B22" aria-hidden="true" />
               <span style={{ flex: 1, textAlign: 'left' }}>Search or run a command</span>
               <kbd style={{ height: 24, padding: '0 8px', borderRadius: 7, background: '#F1EDEA', fontSize: 12, lineHeight: '24px', color: '#3A3640', fontFamily: 'inherit' }}>⌘K</kbd>
             </button>
             <WeatherPill />
+            <button type="button" className="shell-btn shell-pill actual-theme" title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} onClick={onToggleTheme}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
             <NotificationCenter apiStatus={apiStatus} route={route} />
-          </div>
+          </div>}
 
-          {isHome ? <div className="shell-hero" style={{ height: showGreeting ? 200 : 116, paddingTop: 96 }}>
+          {!mobile && (isHome ? <div className="shell-hero" style={{ height: showGreeting ? 200 : 116, paddingTop: 96 }}>
             {showGreeting && <h1 style={{ margin: '4px 0 0', fontSize: 36, lineHeight: '44px', fontWeight: 700, letterSpacing: '-.02em' }}>Home</h1>}
           </div> : route === '/tasks' ? <div aria-hidden="true" style={{ height: 76 }} /> : <div className="shell-hero" style={{ height: 132, paddingTop: 80, color: 'var(--ink)', textShadow: 'none' }}>
             {MODULE_TITLES[route] && <h1 style={{ margin: '2px 0 0', fontSize: 30, lineHeight: '38px', fontWeight: 700, letterSpacing: '-.02em' }}>{MODULE_TITLES[route]}</h1>}
-          </div>}
+          </div>)}
 
           {children}
           </div>
         </main>
 
-        <WeatherSettingsDialog />
+        {!mobile && <WeatherSettingsDialog />}
         {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} onNavigate={go} />}
   </div>
 }

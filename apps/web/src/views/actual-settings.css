@@ -1,0 +1,24 @@
+.actual-settings { display: grid; grid-template-columns: 280px minmax(0, 1fr); align-items: start; gap: 16px; padding: 0 28px 28px; color: var(--ink); }
+.actual-settings *, .actual-settings *::before, .actual-settings *::after { box-sizing: border-box; }
+.actual-settings-nav { min-width: 0; padding: 12px 8px; border: 1px solid var(--glass-edge, #ede8e3); border-radius: 20px; background: var(--glass-bg, #fff); backdrop-filter: blur(var(--glass-blur, 20px)); box-shadow: 0 8px 24px rgba(40,30,30,.07); }
+.actual-settings-search { display: flex; align-items: center; gap: 8px; height: 40px; margin: 0 4px 8px; padding: 0 12px; border-radius: 12px; background: var(--surface-soft, #f4f0ec); color: var(--muted); }
+.actual-settings-search input { flex: 1; width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; }
+.actual-settings-nav nav { display: grid; gap: 2px; }
+.actual-settings-nav nav button, .actual-settings-nav nav a { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 8px 14px; border: 0; border-radius: 14px; background: transparent; color: var(--ink); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.actual-settings-nav nav button[aria-current='page'] { background: var(--purple-soft, #eeeafd); color: var(--purple-deep, #5132d6); }
+.actual-settings-nav nav button:hover, .actual-settings-nav nav a:hover { background: var(--surface-hover, #f4f0ec); }
+.actual-settings-nav nav span { display: grid; gap: 2px; }
+.actual-settings-nav nav strong { font-size: 14px; line-height: 20px; font-weight: 600; }
+.actual-settings-nav nav small { color: var(--muted); font-size: 12px; line-height: 16px; }
+.actual-settings-nav nav p { padding: 0 14px; color: var(--muted); font-size: 13px; }
+.actual-settings :focus-visible { outline: 2px solid var(--purple, #6a4cf2); outline-offset: 2px; }
+.actual-settings-content, .actual-settings-appearance { min-width: 0; }
+.actual-settings-content > .page { padding: 0; }
+.actual-settings-content .settings-grid { grid-template-columns: minmax(0, 1fr); }
+.actual-settings-content .settings-card--wide { grid-column: auto; }
+.actual-appearance-content { color: var(--ink); }
+.actual-accent-grid { flex-wrap: wrap; }
+:root[data-theme='dark'] .actual-theme-grid [role='radio'][aria-checked='true'] { background: #423960 !important; }
+:root[data-theme='dark'] .actual-settings-appearance .settings-upload { background: var(--surface-solid); color: var(--ink); border-color: var(--line-strong); }
+@media (max-width: 900px) { .actual-settings { grid-template-columns: 220px minmax(0, 1fr); padding-inline: 16px; } .actual-wallpaper-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } }
+@media (max-width: 700px) { .actual-settings { display: block; padding-inline: 16px; } .actual-settings-nav { margin-bottom: 16px; } .actual-settings-nav nav { display: flex; overflow-x: auto; padding-bottom: 3px; } .actual-settings-nav nav button, .actual-settings-nav nav a { flex: 0 0 auto; width: auto; min-height: 44px; padding: 8px 12px; gap: 7px; white-space: nowrap; } .actual-settings-nav nav small { display: none; } .actual-appearance-content { padding: 18px 16px !important; } .actual-theme-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; } .actual-theme-grid [role='radio'] { min-width: 0; } .actual-theme-grid [role='radio'] > div:first-child { height: 60px !important; } .actual-appearance-pair { grid-template-columns: 1fr !important; } }

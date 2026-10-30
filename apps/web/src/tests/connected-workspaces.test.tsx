@@ -87,6 +87,24 @@ describe('connected workspaces', () => {
     expect(body).toMatchObject({ from_account_id: 'a1', to_account_id: 'a2', currency: 'KZT', amount: '12.3401', idempotency_key: options.idempotencyKey })
   })
 
+  it('filters actual finance history by type and account without changing amounts', async () => {
+    client.financeAccounts.mockResolvedValue([{ id: 'a1', name: 'Cash', currency: 'KZT', type: 'cash' }, { id: 'a2', name: 'Bank', currency: 'KZT', type: 'cash' }])
+    client.financeSummary.mockResolvedValue({ count: 2, total: '0', currencies: [] })
+    client.financeTransactions.mockResolvedValue([
+      { id: 't1', account_id: 'a1', type: 'expense', amount: '1234567890123456.0001', currency: 'KZT', notes: 'Groceries', occurred_at: '2026-10-29T12:00:00Z' },
+      { id: 't2', account_id: 'a2', type: 'income', amount: '12.3400', currency: 'KZT', notes: 'Salary', occurred_at: '2026-10-29T12:00:00Z' },
+    ])
+    await render(<FinanceView apiStatus="ready" />)
+    expect(host.textContent).toContain('1234567890123456.0001')
+    await click('Income')
+    expect(host.textContent).toContain('Salary'); expect(host.textContent).not.toContain('Groceries')
+    const filter = host.querySelector<HTMLSelectElement>('select[aria-label="Filter by account"]')!
+    await act(async () => { filter.value = 'a1'; filter.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(host.textContent).toContain('No transactions for these filters.')
+    await click('Expense')
+    expect(host.textContent).toContain('1234567890123456.0001'); expect(host.textContent).not.toContain('Salary')
+  })
+
   it('starts and stops a persisted focus session through the API', async () => {
     const active = { id: 's1', version: 1, started_at: new Date(Date.now() - 30_000).toISOString(), mode: 'pomodoro', status: 'active', elapsed_seconds: 30 }
     client.focusSessions.mockResolvedValue([]); client.tasks.mockResolvedValue([]); client.projects.mockResolvedValue([])

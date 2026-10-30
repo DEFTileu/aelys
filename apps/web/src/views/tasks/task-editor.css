@@ -36,3 +36,12 @@
   .task-editor__header, .task-editor__footer { padding-left: 16px; padding-right: 16px; }
   .task-editor__body { padding: 20px 16px; }
 }
+/* Match the reference details card while retaining the modal focus boundary. */
+@media (min-width: 641px) {
+  .task-editor__backdrop { padding:16px; }
+  .task-editor__dialog { height:100%; max-height:calc(100vh - 32px); border:1px solid var(--line); border-radius:20px; overflow:hidden; }
+  .task-editor__header { border-bottom:0; padding:18px 18px 0; }
+  .task-editor__body { gap:14px; padding:18px; }
+  .task-editor__footer { margin:0 18px; padding:12px 0 18px; }
+  .task-editor__field input, .task-editor__field textarea, .task-editor__field select { background:var(--surface-soft); border-color:var(--line); border-radius:12px; }
+}

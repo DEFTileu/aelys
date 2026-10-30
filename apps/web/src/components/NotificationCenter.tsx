@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Bell } from '../icons'
 import type { Notification } from '@aelys/shared'
-import { getAccessToken, getSharedApiClient } from '../lib/api'
+import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 
 export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus; route: string }) {
@@ -11,7 +11,6 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
   useEffect(() => {
     let active = true
     const load = async () => {
-      if (!getAccessToken()) { if (active) setItems([]); return }
       try {
         const client = getSharedApiClient()
         if (apiStatus === 'ready') await client.dispatchCalendarReminders()

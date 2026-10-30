@@ -14,6 +14,7 @@ const SearchView = lazy(() => import('./views/SearchView').then((module) => ({ d
 const TasksView = lazy(() => import('./views/TasksView').then((module) => ({ default: module.TasksView })))
 const ProjectsView = lazy(() => import('./views/ProjectsView').then((module) => ({ default: module.ProjectsView })))
 const CalendarView = lazy(() => import('./views/CalendarView').then((module) => ({ default: module.CalendarView })))
+const KnowledgeView = lazy(() => import('./views/KnowledgeView').then((module) => ({ default: module.KnowledgeView })))
 const NotesView = lazy(() => import('./views/NotesView').then((module) => ({ default: module.NotesView })))
 const FinanceView = lazy(() => import('./views/FinanceView').then((module) => ({ default: module.FinanceView })))
 const TimerView = lazy(() => import('./views/TimerView').then((module) => ({ default: module.TimerView })))
@@ -72,7 +73,7 @@ export default function App() {
 function WorkspaceApp({ route, theme, toggleTheme }: { route: RoutePath; theme: 'light' | 'dark'; toggleTheme: () => void }) {
   const apiStatus = useApiStatus()
   const moduleKey = route.slice(1)
-  const screens: Partial<Record<RoutePath, ReactElement>> = { '/': <HomeView apiStatus={apiStatus} />, '/mail': <MailView apiStatus={apiStatus} />, '/ai': <AiView apiStatus={apiStatus} />, '/tasks': <TasksView apiStatus={apiStatus} />, '/calendar': <CalendarView apiStatus={apiStatus} />, '/projects': <ProjectsView apiStatus={apiStatus} />, '/notes': <NotesView apiStatus={apiStatus} />, '/finance': <FinanceView apiStatus={apiStatus} />, '/timer': <TimerView apiStatus={apiStatus} />, '/search': <SearchView apiStatus={apiStatus} />, '/settings': <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> }
+  const screens: Partial<Record<RoutePath, ReactElement>> = { '/': <HomeView apiStatus={apiStatus} />, '/mail': <MailView apiStatus={apiStatus} />, '/ai': <AiView apiStatus={apiStatus} />, '/tasks': <TasksView apiStatus={apiStatus} />, '/calendar': <CalendarView apiStatus={apiStatus} />, '/projects': <ProjectsView apiStatus={apiStatus} />, '/notes': <NotesView apiStatus={apiStatus} />, '/knowledge': <KnowledgeView apiStatus={apiStatus} />, '/widgets': <HomeView apiStatus={apiStatus} />, '/finance': <FinanceView apiStatus={apiStatus} />, '/timer': <TimerView apiStatus={apiStatus} />, '/search': <SearchView apiStatus={apiStatus} />, '/settings': <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> }
   const content = screens[route] ?? <ModuleView moduleKey={moduleKey} apiStatus={apiStatus} />
   return <AuthGate apiStatus={apiStatus}><AppShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme}><RouteErrorBoundary key={route}><Suspense fallback={<div role="status">Загрузка раздела…</div>}>{content}</Suspense></RouteErrorBoundary></AppShell></AuthGate>
 }

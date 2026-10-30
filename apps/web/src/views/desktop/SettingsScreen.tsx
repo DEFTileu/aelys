@@ -1,9 +1,8 @@
 import { useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
-import { Check, Search, Upload } from '../../icons'
+import { Check, Upload } from '../../icons'
 import {
   accentColors,
   homeToggles,
-  settingsNav,
   sliderSettings,
   themeOptions,
   VISIBLE_WALLPAPERS,
@@ -14,7 +13,7 @@ import { setHomeToggle, setSettings, useDesktopState } from '../../lib/desktopSt
 import './settings.css'
 import { Switch } from '../../components/Switch'
 
-type Props = { theme: 'light' | 'dark'; onToggleTheme: () => void; onOpenAI?: () => void }
+type Props = { theme: 'light' | 'dark'; onToggleTheme: () => void }
 
 const glass: CSSProperties = {
   borderRadius: 20,
@@ -26,10 +25,10 @@ const glass: CSSProperties = {
 }
 
 const sectionTitle: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600, lineHeight: '24px' }
-const mutedText: CSSProperties = { fontSize: 12, lineHeight: '16px', color: '#625D69' }
+const mutedText: CSSProperties = { fontSize: 12, lineHeight: '16px', color: 'var(--muted, #625D69)' }
 const TRAFFIC_LIGHTS = ['#FF5F57', '#FEBC2E', '#28C840']
 
-export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
+export function SettingsScreen({ theme, onToggleTheme }: Props) {
   const [followsSystem, setFollowsSystem] = useState(false)
   const [allWallpapers, setAllWallpapers] = useState(false)
   // Wallpaper, accent and the two sliders are shared with the shell and persisted by desktopStore.
@@ -68,54 +67,10 @@ export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
   }
 
   return (
-    <div
-      className="settings-screen"
-      style={{
-        padding: '0 28px',
-        display: 'grid',
-        gridTemplateColumns: '280px minmax(0,1fr)',
-        gridTemplateRows: 'minmax(0,1fr)',
-        gap: 16,
-        height: 816,
-      }}
-    >
-      <div data-glass="" style={{ ...glass, padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <label style={{ height: 40, margin: '4px 4px 8px', borderRadius: 12, background: '#F4F0EC', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
-          <Search size={16} color="#625D69" aria-hidden="true" />
-          <input placeholder="Search settings…" aria-label="Search settings" style={{ flex: 1, minWidth: 0, fontSize: 13 }} />
-        </label>
-        {settingsNav.map(item => {
-          const Icon = item.icon
-          const on = !!item.active
-          return (
-            <button
-              key={item.title}
-              type="button"
-              onClick={item.title === 'AI & models' ? onOpenAI : undefined}
-              aria-current={on ? 'page' : undefined}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 14,
-                height: 64,
-                padding: '0 14px',
-                borderRadius: 14,
-                background: on ? '#EEEAFD' : 'transparent',
-                color: on ? '#5132D6' : '#1C1B22',
-              }}
-            >
-              <Icon size={20} aria-hidden="true" />
-              <div>
-                <div style={{ fontSize: 14, lineHeight: '20px', fontWeight: 600 }}>{item.title}</div>
-                <div style={mutedText}>{item.subtitle}</div>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
+    <div className="settings-screen actual-settings-appearance">
       <div
         data-glass=""
+        className="actual-appearance-content"
         style={{
           ...glass,
           minWidth: 0,
@@ -129,12 +84,12 @@ export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
       >
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, lineHeight: '30px' }}>Appearance</h2>
-          <div style={{ fontSize: 13, lineHeight: '18px', color: '#625D69' }}>Theme, wallpaper and visual effects</div>
+          <div style={{ fontSize: 13, lineHeight: '18px', color: 'var(--muted, #625D69)' }}>Theme, wallpaper and visual effects</div>
         </div>
 
         <section aria-label="Interface theme">
           <h3 style={{ ...sectionTitle, marginBottom: 12 }}>Interface theme</h3>
-          <div role="radiogroup" aria-label="Interface theme" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+          <div className="actual-theme-grid" role="radiogroup" aria-label="Interface theme" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
             {themeOptions.map(t => {
               const on = selectedTheme === t.id
               return (
@@ -148,8 +103,8 @@ export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
                     display: 'block',
                     padding: 8,
                     borderRadius: 16,
-                    border: `2px solid ${on ? '#6A4CF2' : '#ECE7E3'}`,
-                    background: on ? '#F3F0FE' : '#fff',
+                    border: `2px solid ${on ? '#6A4CF2' : 'var(--line-strong, #ECE7E3)'}`,
+                    background: on ? 'var(--surface-selected, #F3F0FE)' : 'var(--surface-solid, #fff)',
                     textAlign: 'left',
                   }}
                 >
@@ -192,7 +147,7 @@ export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
 
         <section aria-label="Accent color">
           <h3 style={{ ...sectionTitle, marginBottom: 12 }}>Accent color</h3>
-          <div role="radiogroup" aria-label="Accent color" style={{ display: 'flex', gap: 16 }}>
+          <div className="actual-accent-grid" role="radiogroup" aria-label="Accent color" style={{ display: 'flex', gap: 16 }}>
             {accentColors.map((a, i) => {
               const on = accent === i
               return (
@@ -226,7 +181,7 @@ export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
               <h3 style={sectionTitle}>Wallpaper</h3>
-              <div style={{ fontSize: 13, lineHeight: '18px', color: '#625D69' }}>Pick a background or use your own image</div>
+              <div style={{ fontSize: 13, lineHeight: '18px', color: 'var(--muted, #625D69)' }}>Pick a background or use your own image</div>
             </div>
             <input ref={uploadRef} type="file" accept="image/*" onChange={uploadWallpaper} style={{ display: 'none' }} />
             <button type="button" className="settings-upload" onClick={() => uploadRef.current?.click()}>
@@ -234,7 +189,7 @@ export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
               Upload photo
             </button>
           </div>
-          <div role="group" aria-label="Wallpapers" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
+          <div className="actual-wallpaper-grid" role="group" aria-label="Wallpapers" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12 }}>
             {customWallpaper && <button type="button" role="radio" aria-checked={wall === -1} aria-label="Uploaded wallpaper" onClick={() => setSettings({ wallpaper: -1 })} style={{ position: 'relative', height: 88, borderRadius: 12, background: `url('${customWallpaper}') center/cover`, boxShadow: wall === -1 ? '0 0 0 3px #6A4CF2' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600 }}>Uploaded</button>}
             {(allWallpapers ? WALLPAPERS : WALLPAPERS.slice(0, VISIBLE_WALLPAPERS)).map((url, i) => {
               const on = wall === i
@@ -268,9 +223,9 @@ export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
               {allWallpapers ? 'Less' : 'More'}
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+          <div className="actual-appearance-pair" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
             {sliderSettings.map((s, i) => (
-              <div key={s.title} style={{ padding: '12px 14px', borderRadius: 14, background: '#F7F4F1' }}>
+              <div key={s.title} style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--surface-soft, #F7F4F1)' }}>
                 <div style={{ display: 'flex', fontSize: 14, lineHeight: '20px', fontWeight: 500 }}>
                   <span style={{ flex: 1 }}>{s.title}</span>
                   <span>{sliderValues[i]}%</span>
@@ -292,14 +247,14 @@ export function SettingsScreen({ theme, onToggleTheme, onOpenAI }: Props) {
 
         <section aria-label="Home screen">
           <h3 style={sectionTitle}>Home screen</h3>
-          <div style={{ fontSize: 13, lineHeight: '18px', color: '#625D69', marginBottom: 12 }}>Choose what the home screen shows</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px' }}>
+          <div style={{ fontSize: 13, lineHeight: '18px', color: 'var(--muted, #625D69)', marginBottom: 12 }}>Choose what the home screen shows</div>
+          <div className="actual-appearance-pair" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px' }}>
             {homeToggles.map((g, i) => {
               const on = toggles[i]
               const Icon = g.icon
               return (
-                <div key={g.title} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, background: '#F7F4F1' }}>
-                  <span style={{ width: 32, height: 32, flex: 'none', borderRadius: 9, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div key={g.title} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, background: 'var(--surface-soft, #F7F4F1)' }}>
+                  <span style={{ width: 32, height: 32, flex: 'none', borderRadius: 9, background: 'var(--surface-solid, #fff)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Icon size={16} aria-hidden="true" />
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>

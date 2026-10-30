@@ -1,0 +1,52 @@
+.actual-desktop { background: var(--canvas); color: var(--ink); }
+.actual-desktop .actual-theme { width: 40px; height: 40px; justify-content: center; padding: 0; border-radius: 50%; }
+.actual-desktop .shell-main { scrollbar-color: var(--line-strong) transparent; }
+.actual-desktop .shell-sidebar { background: var(--surface-soft); border-color: var(--line); }
+.actual-desktop .shell-nav-item { color: var(--ink-soft); }
+.actual-desktop .shell-nav-item--on { color: var(--purple-deep); }
+.actual-desktop .shell-pill { color: var(--ink); background: var(--surface); border-color: var(--line); }
+.actual-desktop .shell-main > div > .shell-hero { color: var(--ink); }
+.actual-desktop[data-screen-label='home'] .shell-main > div > .shell-hero { color: #fff; }
+.actual-desktop .page-header { margin: 0 0 18px; }
+.actual-desktop .page-header h1 { font-size: 26px; }
+.actual-desktop :is(.projects-view, .notes-view) > :is(.pv-hero, .nv-header) { padding-top: 0; }
+.actual-desktop :is(.projects-view, .notes-view) > :is(.pv-hero, .nv-header) h1 { display: none; }
+.actual-desktop :is(.projects-view, .notes-view) .pv-eyebrow { display: none; }
+.actual-desktop .settings-panels { margin-inline: 28px; margin-bottom: 18px; flex-wrap: wrap; }
+:root[data-theme='dark'] .actual-desktop { --glass-bg: rgba(35,34,53,.9); --sidebar-bg: #1b1928; }
+:root[data-theme='dark'] .actual-desktop .shell-sidebar { background: #1b1928; color: var(--ink); }
+:root[data-theme='dark'] .actual-desktop .shell-sidebar :is(div,button) { color: inherit !important; }
+:root[data-theme='dark'] .actual-desktop .shell-nav-item:hover { background: rgba(255,255,255,.06); }
+:root[data-theme='dark'] .actual-desktop :is(.shell-pill,.home-widget:not([data-widget-id='weather']),.home-screen [data-glass]:not([data-widget-id='weather'])) { background: var(--surface) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+:root[data-theme='dark'] .actual-desktop :is(.shell-pill,.home-widget) :is(span,small,kbd) { color: inherit !important; }
+:root[data-theme='dark'] .actual-desktop .shell-pill svg { color: var(--ink); }
+:root[data-theme='dark'] .actual-desktop .shell-pill kbd { background: var(--surface-hover) !important; }
+:root[data-theme='dark'] .home-screen :is(.home-composer,.home-chip,.home-tool) { background: var(--surface-solid) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+@media (max-width: 1000px) and (min-width: 701px) {
+ .actual-desktop__tools .shell-pill[aria-label='Search or run a command'] { width: 44px !important; padding: 0 !important; justify-content: center; }
+ .actual-desktop__tools .shell-pill[aria-label='Search or run a command'] :is(span,kbd) { display: none; }
+}
+/* Mobile Home uses the reference's two-unit tile grid and bottom composer. */
+.mobile-shell--home .home-screen > section[aria-label='Ask Aelys'] { display: none; }
+.mobile-shell--home .home-screen { padding: 0 16px !important; gap: 12px !important; }
+.mobile-shell--home .home-screen > div:has(h2) { flex-wrap: wrap; }
+.mobile-shell--home .home-screen h2 { font-size: 20px !important; }
+.mobile-shell--home .home-widget-grid { --widget-columns: 2; gap: 16px; grid-auto-rows: 112px; }
+.mobile-shell--home .home-widget { padding: 16px !important; border-radius: 22px !important; }
+.mobile-shell--home .home-widget :is(h2,h3) { font-size: 14px !important; }
+.mobile-shell--home .home-widget[data-widget-id='focus'] .home-widget-body > div { flex-direction: column; }
+.mobile-shell--home .home-layout-help { font-size: 12px; }
+.mobile-shell--home .home-picker { width: min(300px, calc(100vw - 32px)) !important; }
+.mobile-shell--home .home-tool { white-space: nowrap; }
+@media (max-width: 350px) {
+ .mobile-shell--home .home-widget-grid { --widget-columns: 1; }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+ :root[data-theme='dark'] [data-glass] { background: var(--surface-solid) !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+ :root[data-theme='dark'] [data-glass] { background: var(--surface-solid) !important; }
+}
+
+:root[data-theme='dark'] .home-composer input { color: var(--ink) !important; }

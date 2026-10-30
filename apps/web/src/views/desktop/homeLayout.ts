@@ -25,7 +25,7 @@ export const WIDGET_CATALOG: Record<WidgetId, WidgetDefinition> = {
   proj: { title: 'Projects', icon: Folder, color: 'violet', description: 'Progress across projects', link: { label: 'All', route: '/projects' } },
   notes: { title: 'Notes', icon: NotebookText, color: 'orange', description: 'Most recent notes', link: { label: 'All', route: '/notes' } },
   fin: { title: 'Finances', icon: Wallet, color: 'green', description: 'Balance and spending' },
-  kb: { title: 'Knowledge base', icon: BookOpen, color: 'violet', description: 'Recent knowledge notes', link: { label: 'Open', route: '/notes' } },
+  kb: { title: 'Knowledge base', icon: BookOpen, color: 'violet', description: 'Recent knowledge notes', link: { label: 'Open', route: '/knowledge' } },
   mail: { title: 'Mail', icon: Mail, color: 'blue', description: 'Latest imported emails', link: { label: 'Open', route: '/mail' } },
   activity: { title: 'Recent activity', icon: Zap, color: 'violet', description: 'What happened recently' },
 }

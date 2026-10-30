@@ -8,6 +8,7 @@ import { Icon } from './Icon'
 import { isKeychainAccessRequired, isNativeHost, KEYCHAIN_ACCESS_NOTICE, loadNativeTransport, nativeBackendOrigin, NATIVE_SESSION_EXPIRED_EVENT } from '../lib/nativeTransport'
 import { navigate } from '../lib/router'
 import { KeychainAccessRecovery } from './KeychainAccessRecovery'
+import { LaunchIntro } from './LaunchIntro'
 
 type AuthState = 'checking' | 'ready' | 'login' | 'setup' | 'connection' | 'biometric'
 
@@ -51,9 +52,9 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
           const origin = nativeBackendOrigin(getApiConfig().baseUrl)
           const native = await transport.status(origin)
           if (isSignedOut()) { setCanUnlock(false); publish('login'); return }
-          if (alive && generation.current === run) setCanUnlock(!!native.biometric_locked && !!native.can_resume)
+          if (alive && generation.current === run) setCanUnlock(!androidHost && !!native.biometric_locked && !!native.can_resume)
           if (native.signed_in) { publish('ready'); return }
-          if (native.biometric_locked && native.can_resume) { publish('biometric'); return }
+          if (native.biometric_locked && native.can_resume) { publish(androidHost ? 'login' : 'biometric'); return }
           if (!native.initialized) { publish('setup'); return }
           if (explicitReauthentication.current) { publish('login', 'Сессия завершена. Войдите ещё раз.'); return }
           if (native.can_resume) {
@@ -108,7 +109,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       }
       const status = await transport.status(origin)
       if (run !== generation.current || origin !== nativeBackendOrigin(getApiConfig().baseUrl)) return
-      if (status.can_resume && status.biometric_locked) {
+      if (!androidHost && status.can_resume && status.biometric_locked) {
         setCanUnlock(true); setState('biometric'); setNotice('')
       } else {
         setCanUnlock(false); setState('login'); setNotice('Войдите с паролем Aelys.')
@@ -139,11 +140,10 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       }
     } finally { setBusy(false) }
   }
-  if (state === 'ready') return <>{children}</>
   const keychainDenied = notice === KEYCHAIN_ACCESS_NOTICE
-  return <main className="auth-entry">
-    <header className="auth-brand"><AelysMark size={28} /><span>Aelys</span></header>
+  return <><LaunchIntro />{state === 'ready' ? children : <main className="auth-entry">
     <div className="auth-stage">
+      <header className="auth-brand"><AelysMark size={52} /><span><strong>Aelys</strong><small>С возвращением</small></span></header>
       <section className="auth-panel" aria-label="Вход в Aelys" aria-busy={busy}>
         <div className={`auth-emblem${state === 'checking' || busy ? ' auth-emblem--pending' : ''}`} aria-hidden="true">
           {state === 'biometric' ? <svg className="auth-fingerprint" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
@@ -189,5 +189,5 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       <a href="/components" aria-disabled={busy} onClick={(event) => { event.preventDefault(); if (!busy) navigate('/components') }}>Компоненты</a>
       {state !== 'checking' && <button type="button" disabled={busy} aria-expanded={connectionOpen} onClick={() => setConnectionOpen((value) => !value)}><Icon name="sliders" size={14} />Адрес сервера</button>}
     </footer>
-  </main>
+  </main>}</>
 }

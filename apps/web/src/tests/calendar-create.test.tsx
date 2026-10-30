@@ -8,7 +8,51 @@ vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 
 describe('calendar event creation', () => {
   let root: ReturnType<typeof createRoot> | undefined
-  afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; vi.clearAllMocks() })
+  afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; vi.resetAllMocks(); vi.useRealTimers() })
+
+  it('navigates weeks and returns to today using the calendar controls', async () => {
+    client.calendarOccurrences.mockResolvedValue([])
+    const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    await act(async () => { root?.render(<CalendarView apiStatus="ready" />) })
+    const initialStart = client.calendarOccurrences.mock.calls.at(-1)![0]
+    const nextDate = new Date(); nextDate.setDate(nextDate.getDate() + 7)
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Next week"]')!.click() })
+    expect(new Date(client.calendarOccurrences.mock.calls.at(-1)![0]).getTime()).toBeGreaterThan(new Date(initialStart).getTime())
+    expect(host.querySelector('.cl-mini-selected')?.getAttribute('aria-label')).toBe(nextDate.toLocaleDateString(undefined, { dateStyle: 'full' }))
+    expect(host.querySelector('.cl-side-card h2')?.textContent).toBe('Selected day')
+    await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Today')!.click() })
+    expect(client.calendarOccurrences.mock.calls.at(-1)![0]).toBe(initialStart)
+    expect(host.querySelector('.cl-side-card h2')?.textContent).toBe('Today’s events')
+  })
+
+  it('keeps the displayed month when its first day is in the preceding week', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 3, 15, 12))
+    client.calendarOccurrences.mockResolvedValue([])
+    const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    await act(async () => { root?.render(<CalendarView apiStatus="ready" />) })
+    const monthHeading = () => host.querySelector('.cl-mini-title span')?.textContent
+    expect(monthHeading()).toBe(new Date(2026, 3, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Next month"]')!.click() })
+    expect(monthHeading()).toBe(new Date(2026, 4, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Next month"]')!.click() })
+    expect(monthHeading()).toBe(new Date(2026, 5, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))
+  })
+
+  it('ignores an older occurrences response after a newer request completes', async () => {
+    let resolveOld!: (value: unknown[]) => void
+    let resolveNew!: (value: unknown[]) => void
+    client.calendarOccurrences.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve })).mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve }))
+    const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    await act(async () => { root?.render(<CalendarView apiStatus="ready" />) })
+    await act(async () => { root?.render(<CalendarView apiStatus="offline" />) })
+    const start = new Date(); start.setHours(9, 0, 0, 0)
+    const makeEvent = (title: string) => ({ id: title, occurrence_id: title, title, starts_at: start.toISOString(), ends_at: new Date(start.getTime() + 3600000).toISOString() })
+    await act(async () => { resolveNew([makeEvent('Current event')]) })
+    expect(host.textContent).toContain('Current event')
+    await act(async () => { resolveOld([makeEvent('Stale event')]) })
+    expect(host.textContent).toContain('Current event')
+    expect(host.textContent).not.toContain('Stale event')
+  })
 
   it('sends the displayed start and end to the backend', async () => {
     client.calendarOccurrences.mockResolvedValue([])

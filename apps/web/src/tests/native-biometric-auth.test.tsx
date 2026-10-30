@@ -25,6 +25,21 @@ async function mount(apiStatus: 'ready' | 'error' = 'ready') {
 function button(host: HTMLElement, label: string) { return [...host.querySelectorAll('button')].find((item) => item.textContent?.includes(label))! }
 
 describe('native biometric entry', () => {
+  it('shows the visual introduction without unlocking the session', async () => {
+    const host = await mount()
+    expect(host.querySelector('.launch-intro')?.getAttribute('aria-hidden')).toBe('true')
+    expect(button(host, 'Открыть с Touch ID')).toBeDefined()
+    expect(native.resume).not.toHaveBeenCalled()
+    expect(host.textContent).not.toContain('Защищённые данные')
+  })
+  it('shows password entry on Android even if a session is reported as biometric locked', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Android')
+    const host = await mount()
+    expect(host.querySelector('input[type=password]')).not.toBeNull()
+    expect(host.textContent).not.toContain('Touch ID')
+    expect(native.resume).not.toHaveBeenCalled()
+    expect(host.textContent).not.toContain('Защищённые данные')
+  })
   it('keeps explicit sign-out closed even if native status has a resumable credential', async () => {
     localStorage.setItem('aelys.signedOut', '1')
     const host = await mount()

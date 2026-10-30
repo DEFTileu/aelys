@@ -6,6 +6,7 @@ import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import './connected.css'
+import './actual-mail-finance.css'
 
 type FormKind = 'account' | 'category' | 'budget' | 'transaction' | 'transfer'
 const decimal = (value: string) => /^\d{1,16}(\.\d{1,4})?$/.test(value) && /[1-9]/.test(value)
@@ -33,6 +34,8 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<ApiStatus>('loading')
   const [notice, setNotice] = useState('')
+  const [historyType, setHistoryType] = useState('all')
+  const [historyAccount, setHistoryAccount] = useState('all')
   const operationKey = useRef(crypto.randomUUID())
   const occurredAt = useRef(new Date().toISOString())
   const load = useCallback(async () => {
@@ -86,14 +89,20 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
     const account = accounts.find((item) => item.id === id)
     if (account) setCurrency(account.currency)
   }
-  return <div className="connected-workspace">
-    <div className="connected-toolbar"><ApiStatusPill status={apiStatus}/>{(['transaction', 'transfer', 'account', 'category', 'budget'] as const).map((value) => <button key={value} className="button button--quiet" disabled={busy} onClick={() => openForm(value)}>{value === 'transfer' ? 'Transfer' : `Add ${value}`}</button>)}<button className="button button--quiet" onClick={() => void load()}>Refresh</button></div>
+  const history = transactions.filter((item) => (historyType === 'all' || item.type === historyType) && (historyAccount === 'all' || item.account_id === historyAccount))
+  return <div className="connected-workspace actual-workspace actual-finance">
+    <div className="actual-topline"><ApiStatusPill status={apiStatus}/><button className="button button--quiet" onClick={() => void load()}>Refresh</button></div>
     {apiStatus !== 'ready' && <p role="status">Finance is offline or unavailable. Previously loaded records may be shown from cache. Changes require a connection (OFFLINE_WRITE_UNAVAILABLE).</p>}
     {notice && <p role="status">{notice}</p>}
     {status !== 'ready' ? <StateCard status={status} title={status === 'loading' ? 'Loading ledger' : 'Finance unavailable'} description="Check the connection and owner session."/> : <>
-      <section className="connected-card"><h2>Summary</h2><p>{summary?.count ?? 0} transactions</p>{summary?.currencies?.length ? summary.currencies.map((item) => <p key={item.currency}>{item.currency}: balance {item.balance} · income {item.income} · expenses {item.expense}</p>) : <p>No currency balances yet.</p>}</section>
+      <section className="actual-accounts" aria-label="Accounts">
+        {accounts.map((item) => <button type="button" key={item.id} className="actual-account" aria-pressed={accountId === item.id} onClick={() => changeAccount(item.id)}><span className="actual-account-heading"><span className="actual-icon" aria-hidden="true">◈</span><strong>{item.name}</strong><span className="actual-badge">{item.currency}</span></span><span className="actual-account-type">{item.type}</span></button>)}
+        <button type="button" className="actual-new-account" disabled={busy} onClick={() => openForm('account')}>Add account</button>
+      </section>
+      <div className="actual-finance-columns"><div className="actual-finance-left">
+        {form ? null : <section className="actual-panel actual-record"><h2>Record</h2><p>Record a transaction or transfer.</p><button className="button button--primary" disabled={busy} onClick={() => openForm('transaction')}>Add transaction</button><button className="button button--quiet" disabled={busy} onClick={() => openForm('transfer')}>Transfer</button></section>}
       {form && <form className="connected-card settings-form" onSubmit={submit}>
-        <h2>New {form}</h2><fieldset disabled={busy} style={{ border: 0, padding: 0, display: 'grid', gap: 12 }}>
+        <h2>{form === 'transaction' ? 'Record' : `New ${form}`}</h2><fieldset disabled={busy} style={{ border: 0, padding: 0, display: 'grid', gap: 12 }}>
           {(form === 'account' || form === 'category') && <label>Name<input required value={name} onChange={(event) => setName(event.target.value)}/></label>}
           {(form === 'category' || form === 'transaction') && <label>Type<select value={kind} onChange={(event) => { setKind(event.target.value); setCategoryId('') }}><option value="expense">Expense</option><option value="income">Income</option></select></label>}
           {(form === 'transaction' || form === 'transfer') && <label>From account<select required value={accountId} onChange={(event) => changeAccount(event.target.value)}><option value="">Choose account</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.currency}</option>)}</select></label>}
@@ -106,10 +115,11 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
           <div><button className="button button--primary" disabled={busy || apiStatus !== 'ready'}>{busy ? 'Saving…' : 'Save'}</button><button type="button" className="button button--quiet" onClick={() => setForm(null)}>Cancel</button></div>
         </fieldset>
       </form>}
-      <section className="connected-card"><h2>Accounts</h2>{accounts.length ? accounts.map((item) => <p key={item.id}>{item.name} · {item.currency} · {item.type}</p>) : <StateCard status="empty" title="No accounts yet" description="Create an account before adding transactions."/>}</section>
-      <section className="connected-card"><h2>Categories</h2>{categories.length ? categories.map((item) => <p key={item.id}>{item.name} · {item.kind}</p>) : <StateCard status="empty" title="No categories yet" description="Create categories to classify transactions."/>}</section>
-      <section className="connected-card"><h2>Budgets</h2>{budgets.length ? budgets.map((item) => <p key={item.id}>{categories.find((category) => category.id === item.category_id)?.name ?? 'All categories'}: {item.limit_amount} {item.currency} · {new Date(item.period_start).toLocaleDateString()} – {new Date(item.period_end).toLocaleDateString()}</p>) : <StateCard status="empty" title="No budgets yet" description="Create a budget to track planned spending."/>}</section>
-      <section className="connected-card"><h2>Transactions</h2>{transactions.length ? transactions.map((item) => <article className="finance-row" key={item.id}><strong>{item.amount} {item.currency}</strong><span>{accounts.find((account) => account.id === item.account_id)?.name} · {item.type} · {categories.find((category) => category.id === item.category_id)?.name ?? 'Uncategorized'} · {item.notes || 'No note'}</span></article>) : <StateCard status="empty" title="No transactions yet" description="Create a decimal transaction to start the ledger."/>}</section>
+      <section className="actual-panel actual-summary"><h2>Summary</h2><p>{summary?.count ?? 0} transactions</p>{summary?.currencies?.length ? summary.currencies.map((item) => <div className="actual-summary-currency" key={item.currency}><strong>{item.currency}</strong><b>{item.balance}</b><span>Income {item.income}</span><span>Spent {item.expense}</span></div>) : <p>No currency balances yet.</p>}</section>
+      <details className="actual-panel actual-finance-tools"><summary>Categories &amp; budgets</summary><div className="actual-actions"><button className="button button--quiet" disabled={busy} onClick={() => openForm('category')}>Add category</button><button className="button button--quiet" disabled={busy} onClick={() => openForm('budget')}>Add budget</button></div><h3>Categories</h3>{categories.length ? categories.map((item) => <p key={item.id}>{item.name} · {item.kind}</p>) : <p>No categories yet.</p>}<h3>Budgets</h3>{budgets.length ? budgets.map((item) => <p key={item.id}>{categories.find((category) => category.id === item.category_id)?.name ?? 'All categories'}: {item.limit_amount} {item.currency} · {new Date(item.period_start).toLocaleDateString()} – {new Date(item.period_end).toLocaleDateString()}</p>) : <p>No budgets yet.</p>}</details>
+      </div><section className="actual-panel actual-history"><div className="actual-history-head"><h2>History</h2><div className="actual-filter" aria-label="Filter history by type">{(['all', 'expense', 'income'] as const).map((value) => <button type="button" key={value} aria-pressed={historyType === value} onClick={() => setHistoryType(value)}>{value === 'all' ? 'All' : value === 'expense' ? 'Expense' : 'Income'}</button>)}</div><select aria-label="Filter by account" value={historyAccount} onChange={(event) => setHistoryAccount(event.target.value)}><option value="all">All accounts</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+        {history.length ? history.map((item) => <article className="actual-history-row" key={item.id}><span className="actual-icon" aria-hidden="true">{item.type === 'income' ? '↗' : '↙'}</span><div><strong>{item.notes || categories.find((category) => category.id === item.category_id)?.name || 'Uncategorized'}</strong><small>{accounts.find((account) => account.id === item.account_id)?.name ?? 'Unknown account'} · {item.type} · {new Date(item.occurred_at).toLocaleDateString()}</small></div><b>{item.amount} {item.currency}</b></article>) : <p className="actual-empty">{transactions.length ? 'No transactions for these filters.' : 'No transactions yet.'}</p>}
+      </section></div>
     </>}
   </div>
 }

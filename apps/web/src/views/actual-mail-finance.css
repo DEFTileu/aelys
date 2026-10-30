@@ -1,0 +1,62 @@
+.actual-workspace { --amf-surface: var(--surface-solid, #fff); --amf-soft: #f7f4f1; --amf-border: #ede8e3; --amf-text: #1c1b22; --amf-muted: #625d69; --amf-accent: #6a4cf2; --amf-selected: #eeeafd; color: var(--amf-text); }
+:root[data-theme='dark'] .actual-workspace { --amf-surface: #252534; --amf-soft: #30303f; --amf-border: #454351; --amf-text: #f5f3fa; --amf-muted: #c3bdca; --amf-accent: #ad9cff; --amf-selected: #423960; }
+.actual-workspace * { box-sizing: border-box; }
+.actual-workspace h2 { font-size: 16px; line-height: 24px; margin: 0; }
+.actual-workspace h3 { font-size: 14px; margin: 16px 0 8px; }
+.actual-workspace p { color: var(--amf-muted); font-size: 13px; }
+.actual-workspace input, .actual-workspace select, .actual-workspace textarea { background: var(--amf-soft); color: var(--amf-text); border-color: var(--amf-border); }
+.actual-workspace button:focus-visible, .actual-workspace summary:focus-visible, .actual-workspace input:focus-visible, .actual-workspace select:focus-visible, .actual-workspace textarea:focus-visible { outline: 2px solid var(--amf-accent); outline-offset: 2px; }
+.actual-panel, .actual-workspace .connected-card { min-width: 0; border: 1px solid var(--amf-border); border-radius: 20px; background: var(--amf-surface); box-shadow: 0 8px 24px rgba(40,30,30,.05); padding: 18px; color: var(--amf-text); }
+.actual-topline, .actual-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.actual-topline { justify-content: flex-end; margin-bottom: 12px; }
+.actual-mail-tools { position: relative; }
+.actual-mail-tools summary, .actual-finance-tools summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 10px; }
+.actual-mail-tools[open] { flex-basis: 100%; padding: 12px; border-radius: 14px; background: var(--amf-surface); }
+.actual-mail-grid { display: grid; grid-template-columns: 200px minmax(240px, 340px) minmax(0, 1fr); gap: 16px; min-height: 560px; }
+.actual-folders, .actual-mail-list { padding: 12px; }
+.actual-folders { display: flex; flex-direction: column; gap: 8px; }
+.actual-folders nav { display: grid; gap: 2px; margin-top: 8px; }
+.actual-folders nav button { display: flex; justify-content: space-between; border: 0; border-radius: 10px; padding: 11px; background: transparent; color: var(--amf-text); font: inherit; cursor: pointer; text-align: left; }
+.actual-folders nav button[aria-pressed='true'], .actual-mail-row[aria-pressed='true'] { background: var(--amf-selected); }
+.actual-folders nav span, .actual-mail-row time { color: var(--amf-muted); font-size: 12px; }
+.actual-mail-list { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.actual-mail-list > input { width: 100%; margin-bottom: 6px; }
+.actual-mail-row { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 12px 8px; border: 0; border-radius: 12px; background: transparent; color: var(--amf-text); text-align: left; cursor: pointer; font: inherit; }
+.actual-avatar, .actual-icon { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--amf-selected); color: var(--amf-accent); font-weight: 600; }
+.actual-mail-row-text { display: grid; min-width: 0; flex: 1; gap: 3px; font-size: 13px; }
+.actual-mail-row-text strong, .actual-mail-row-text span, .actual-mail-row-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.actual-mail-row-text small { color: var(--amf-muted); }
+.actual-mail-reader { padding: 24px; overflow-wrap: anywhere; }
+.actual-mail-reader h2 { font-size: 22px; line-height: 30px; }
+.actual-sender { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.actual-sender p { margin: 0; }
+.actual-mail-reader time { font-size: 12px; color: var(--amf-muted); }
+.actual-mail-reader .mail-body { line-height: 1.6; min-height: 150px; }
+.actual-mobile-mail-actions, .actual-folder-select, .actual-back { display: none; }
+.actual-accounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.actual-account, .actual-new-account { min-height: 104px; border: 1px solid var(--amf-border); border-radius: 18px; padding: 16px; background: var(--amf-surface); color: var(--amf-text); font: inherit; text-align: left; cursor: pointer; }
+.actual-account[aria-pressed='true'] { border-color: var(--amf-accent); }
+.actual-account-heading { display: flex; align-items: center; gap: 10px; }
+.actual-account-heading strong { flex: 1; overflow-wrap: anywhere; }
+.actual-icon { border-radius: 10px; }
+.actual-badge { background: var(--amf-soft); border-radius: 6px; padding: 4px 7px; font-size: 11px; }
+.actual-account-type { display: block; color: var(--amf-muted); margin-top: 10px; font-size: 13px; text-transform: capitalize; }
+.actual-new-account { border-style: dashed; text-align: center; color: var(--amf-muted); }
+.actual-finance-columns { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.actual-finance-left { display: grid; gap: 16px; }
+.actual-record .button { margin: 4px 8px 0 0; }
+.actual-summary-currency { display: grid; grid-template-columns: 1fr auto; gap: 8px; background: var(--amf-soft); border-radius: 14px; padding: 12px; margin-top: 10px; font-size: 13px; }
+.actual-summary-currency span { color: var(--amf-muted); }
+.actual-history { padding: 12px; }
+.actual-history-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.actual-history-head h2 { flex: 1; }
+.actual-filter { display: flex; background: var(--amf-soft); padding: 3px; border-radius: 12px; }
+.actual-filter button { border: 0; border-radius: 9px; background: transparent; color: var(--amf-text); padding: 8px 10px; cursor: pointer; }
+.actual-filter button[aria-pressed='true'] { background: var(--amf-surface); box-shadow: 0 1px 4px #0002; }
+.actual-history-row { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--amf-border); font-size: 14px; }
+.actual-history-row > div { display: grid; gap: 4px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.actual-history-row small { color: var(--amf-muted); }
+.actual-history-row > b { white-space: nowrap; }
+.actual-empty { padding: 24px 8px; text-align: center; }
+@media (max-width: 1100px) { .actual-mail-grid { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); } .actual-folders { display: none; } .actual-mobile-mail-actions { display: flex; gap: 8px; flex-wrap: wrap; } .actual-folder-select { display: grid; gap: 4px; color: var(--amf-muted); font-size: 12px; } }
+@media (max-width: 700px) { .actual-workspace { padding-inline: 16px; } .actual-mail-grid { display: block; min-height: 0; } .actual-mail-reader { display: none; } .actual-reader-open .actual-mail-list { display: none; } .actual-reader-open .actual-mail-reader { display: block; } .actual-back { display: inline-flex; margin-bottom: 14px; } .actual-finance-columns { grid-template-columns: minmax(0, 1fr); } .actual-accounts { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); } .actual-history-head h2 { flex-basis: 100%; } .actual-history-row > b { white-space: normal; overflow-wrap: anywhere; text-align: right; } }

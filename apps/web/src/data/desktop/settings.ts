@@ -51,7 +51,7 @@ export const accentColors: { name: string; color: string }[] = [
 ]
 
 // Wallpapers in public/backgrounds/aelys; the stored `wallpaper` setting is an index into this list.
-export const WALLPAPERS = [
+const LEGACY_WALLPAPERS = [
   'golden-sunrise-over-mountain-cityscape',
   'sunset-garden-avenue-with-alpine-peaks',
   'alpine-skyline-cityscape',
@@ -65,6 +65,9 @@ export const WALLPAPERS = [
   'snowy-alpine-ice-arena',
   'blizzard-over-the-alpine-gondola',
 ].map((name) => `/backgrounds/aelys/${name}.jpg`)
+
+// Keep persisted wallpaper indexes stable; the default tile adopts ACTUAL artwork.
+export const WALLPAPERS = ['/backgrounds/aelys/actual-wallpaper.png', ...LEGACY_WALLPAPERS.slice(1)]
 
 // The design shows five tiles and a "More" tile that reveals the rest.
 export const VISIBLE_WALLPAPERS = 5

@@ -1,0 +1,15 @@
+.launch-intro { position: fixed; inset: 0; z-index: 20; overflow: hidden; pointer-events: none; background: radial-gradient(ellipse 70% 55% at 50% 60%, #2d1e66, #160e38 55%, #0b0720); animation: launch-out .5s ease-in 2.4s both; }
+.launch-intro__sunrise, .launch-intro__scenery { position: absolute; inset: 0; }
+.launch-intro__sunrise { background: linear-gradient(180deg, #3b2f86, #8c6cc8 34%, #eba79a 66%, #f7d5b8); animation: launch-reveal .9s ease-in-out .5s both; }
+.launch-intro__scenery { background: linear-gradient(180deg, rgba(20,14,50,.15), rgba(20,14,50,.35)), url('/backgrounds/aelys/actual-wallpaper.png') 70% 55% / cover no-repeat; animation: launch-reveal 1s ease-out 1.1s both; }
+.launch-intro__content { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: white; text-shadow: 0 2px 18px rgba(30,15,70,.45); }
+.launch-intro__mark { position: relative; animation: launch-mark 1.1s cubic-bezier(.2,.8,.2,1) both; }
+.launch-intro__mark img { height: auto; }
+.launch-intro__star { position: absolute; left: 49%; top: 50%; color: #fff4e5; font-size: 36px; line-height: 1; text-shadow: 0 0 24px #fff, 0 0 55px #ffe1b9; transform: translate(-50%, -50%); animation: launch-star .8s ease-out 1.3s both; }
+.launch-intro__name { font-size: 46px; font-weight: 700; line-height: 1; animation: launch-reveal .6s ease-out 1.5s both; }
+.launch-intro__welcome { font-size: 14px; font-weight: 500; animation: launch-reveal .5s ease-out 1.9s both; }
+@keyframes launch-reveal { from { opacity: 0; } to { opacity: 1; } }
+@keyframes launch-mark { from { opacity: 0; transform: scale(.75); filter: blur(8px); } to { opacity: 1; transform: scale(1); filter: blur(0); } }
+@keyframes launch-star { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.2) rotate(-90deg); } 65% { opacity: 1; transform: translate(-50%, -50%) scale(1.3) rotate(10deg); } 100% { opacity: .7; transform: translate(-50%, -50%) scale(1); } }
+@keyframes launch-out { to { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .launch-intro { display: none; } }

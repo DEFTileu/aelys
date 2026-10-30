@@ -1,3 +1,5 @@
+@font-face { font-family: Inter; font-style: normal; font-weight: 100 900; font-display: swap; src: url('/fonts/inter/InterVariable.woff2') format('woff2'); }
+
 /* Aelys web shell. Tokens and glass surfaces are ported from the Claude Design "Aelys Desktop" mockup.
    No external fonts or CDNs: the Tauri CSP allows font-src/style-src 'self' only. */
 

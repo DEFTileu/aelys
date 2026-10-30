@@ -28,6 +28,14 @@ beforeEach(() => { vi.resetAllMocks(); client.notes.mockResolvedValue([first, se
 afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = '' })
 
 describe('note drafts', () => {
+  it('filters unfiled notes and keeps drafts through the mobile list transition', async () => {
+    await mount(); await change('Note body', 'Alpha draft'); await click('Unfiled')
+    expect(host.querySelector('.nl-note-list')?.textContent).toContain('Beta')
+    expect(host.querySelector('.nl-note-list')?.textContent).not.toContain('Alpha')
+    await click('Beta'); expect(host.querySelector('.notes-live--editing')).not.toBeNull()
+    await click('← All notes'); expect(host.querySelector('.notes-live--editing')).toBeNull()
+    await click('All notes'); await click('Alpha'); expect(input('Note body').value).toBe('Alpha draft')
+  })
   it('keeps the editor draft when opening and cancelling creation', async () => {
     await mount(); await change('Note body', 'Unsaved body'); await click('New note'); await change('New note title', 'New'); await click('Cancel')
     expect(input('Note body').value).toBe('Unsaved body')

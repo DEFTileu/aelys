@@ -2,16 +2,19 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AIConversation, AIMessage, AIProvider } from '@aelys/shared'
 import { ApiError } from '@aelys/shared'
 import { ApiStatusPill } from '../components/ApiStatusPill'
+import { SelectField } from '../components/controls/SelectionControls'
+import { ArrowUp, Calendar, ChevronRight, Folder, MessageSquareText, Plus, Search, Settings, Sparkles, SquareCheck } from '../icons'
 import { getSharedApiClient } from '../lib/api'
 import { takePendingAsk, useDesktopState } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
 import { consumeSse } from '../lib/sse'
 import type { ApiStatus } from '../types'
-import './connected.css'
+import './actual-ai.css'
 
 type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'>
 export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [message, setMessage] = useState('')
+  const [search, setSearch] = useState('')
   const [providers, setProviders] = useState<readonly AIProvider[]>([])
   const [providerId, setProviderId] = useState('')
   const [conversations, setConversations] = useState<readonly AIConversation[]>([])
@@ -74,12 +77,43 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
     try { await getSharedApiClient().cancelAIRun(runId.current); setNotice('Cancellation requested.') }
     catch { setNotice('Could not confirm cancellation. Try again.') }
   }
-  return <div className="connected-workspace">
-    <div className="connected-toolbar"><ApiStatusPill status={apiStatus} /><label>Provider<select aria-label="Chat provider" value={providerId} disabled={running} onChange={(event) => setProviderId(event.target.value)}>{!providers.length && <option value="">Configure a provider</option>}{providers.map((item) => <option key={item.id} value={item.id}>{item.kind} · {String(item.model_policy?.default_model ?? 'auto')}</option>)}</select></label><button className="button button--quiet" onClick={() => navigate('/settings')}>AI settings</button><button className="button button--primary" disabled={running} onClick={() => { setConversationId(''); setLines([]); setPartial(''); setNotice('') }}>New chat</button></div>
-    <div className="connected-columns"><aside className="connected-card connected-list" aria-label="Conversations">{conversations.map((item) => <button disabled={running || loading} className={item.id === conversationId ? 'connected-selected' : ''} key={item.id} onClick={() => setConversationId(item.id)}>{item.title}</button>)}{!conversations.length && <p>No conversations yet.</p>}</aside>
-      <section className="connected-card chat-content" aria-label="AI conversation"><div className="chat-lines" aria-live="polite">{lines.map((line) => <article key={line.id} className={`chat-line chat-line--${line.role}`}><strong>{line.role === 'user' ? 'You' : 'Aelys'}</strong><div>{line.content}</div></article>)}{partial && <article className="chat-line"><strong>Aelys</strong><div>{partial}</div></article>}{!lines.length && !partial && <p>{loading ? 'Loading conversation…' : 'Choose a provider in Settings, then ask Aelys.'}</p>}</div>
-        {notice && <p role="status">{notice}</p>}
-        <form className="connected-compose" onSubmit={submit}><textarea aria-label="Message Aelys" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask Aelys…" disabled={running || loading} /><button className="button button--primary" type="submit" disabled={running || loading || !message.trim() || !providerId || apiStatus !== 'ready'}>{running ? 'Responding…' : 'Send'}</button>{running && <button type="button" className="button button--quiet" onClick={() => void cancel()}>Stop</button>}</form>
-      </section></div>
+  const filteredConversations = conversations.filter((item) => (item.title ?? '').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  const selectedTitle = conversations.find((item) => item.id === conversationId)?.title || 'New conversation'
+  const newChat = () => { setConversationId(''); setLines([]); setPartial(''); setNotice('') }
+  const prompts = [
+    { label: 'Plan my day', text: 'Help me make a realistic plan for today.' },
+    { label: 'Break down a task', text: 'Help me break a task into manageable steps.' },
+    { label: 'Think through priorities', text: 'Help me decide what to prioritize.' },
+  ]
+  return <div className="actual-ai">
+    <aside className="actual-ai__card actual-ai__history" aria-label="Conversations">
+      <div className="actual-ai__history-head"><h2>Conversations</h2><ApiStatusPill status={apiStatus} /></div>
+      <label className="actual-ai__search"><Search size={17} /><input aria-label="Search conversations" placeholder="Search chats…" value={search} onChange={event => setSearch(event.target.value)} /></label>
+      <button type="button" className="actual-ai__new" disabled={running} onClick={newChat}><Plus size={18} />New chat</button>
+      <div className="actual-ai__list" aria-label="Conversation list">
+        <p className="actual-ai__list-label">Your chats</p>
+        {filteredConversations.map(item => <button type="button" disabled={running || loading} className={`actual-ai__conversation${item.id === conversationId ? ' actual-ai__conversation--selected' : ''}`} key={item.id} aria-current={item.id === conversationId ? 'true' : undefined} onClick={() => setConversationId(item.id)}><span className="actual-ai__list-icon"><MessageSquareText size={17} /></span><span>{item.title || 'Untitled conversation'}</span></button>)}
+        {!filteredConversations.length && <p className="actual-ai__empty-list">{search.trim() ? 'No matching conversations.' : 'No conversations yet.'}</p>}
+      </div>
+    </aside>
+    <section className="actual-ai__card actual-ai__thread" aria-label="AI conversation">
+      <div className="actual-ai__thread-head"><div><h2>{selectedTitle}</h2><p>Your conversation with Aelys</p></div><button type="button" className="actual-ai__settings" onClick={() => navigate('/settings')}><Settings size={16} />AI settings</button></div>
+      <div className="actual-ai__provider"><SelectField label="Chat provider" value={providerId} disabled={running || !providers.length} onChange={setProviderId} options={providers.map(item => ({ value: item.id, label: `${item.kind} · ${String(item.model_policy?.default_model ?? 'auto')}` }))} placeholder="Configure a provider" />{!providers.length && <button type="button" onClick={() => navigate('/settings')}>Configure provider</button>}</div>
+      <div className="actual-ai__lines" aria-live="polite">
+        {lines.map(line => <article key={line.id} className={`actual-ai__line${line.role === 'user' ? ' actual-ai__line--user' : ''}`}><span className="actual-ai__avatar" aria-hidden="true">{line.role === 'user' ? 'You' : <Sparkles size={16} />}</span><div className="actual-ai__bubble"><strong>{line.role === 'user' ? 'You' : line.role === 'assistant' ? 'Aelys' : line.role}</strong><div>{line.content}</div></div></article>)}
+        {partial && <article className="actual-ai__line"><span className="actual-ai__avatar" aria-hidden="true"><Sparkles size={16} /></span><div className="actual-ai__bubble"><strong>Aelys</strong><div>{partial}</div></div></article>}
+        {!lines.length && !partial && <div className="actual-ai__welcome"><span className="actual-ai__welcome-icon"><Sparkles size={25} /></span><h2>{loading ? 'Loading conversation…' : 'How can I help?'}</h2><p>{providers.length ? 'Ask a question or choose a prompt to get started.' : 'Configure a provider in AI settings to start a conversation.'}</p></div>}
+      </div>
+      {notice && <p className="actual-ai__notice" role="status">{notice}</p>}
+      <form className="actual-ai__compose" onSubmit={submit}><span className="actual-ai__compose-icon" aria-hidden="true"><Sparkles size={20} /></span><div className="actual-ai__compose-field"><textarea aria-label="Message Aelys" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask Aelys or take an action…" disabled={running || loading} rows={2} /><button className="actual-ai__send" type="submit" aria-label="Send message" disabled={running || loading || !message.trim() || !providerId || apiStatus !== 'ready'}><ArrowUp size={18} /><span>Send</span></button></div>{running && <button type="button" className="actual-ai__stop" onClick={() => void cancel()}>Stop</button>}</form>
+    </section>
+    <aside className="actual-ai__side" aria-label="Chat resources">
+      <section className="actual-ai__card actual-ai__side-card"><h2>Context</h2><p className="actual-ai__side-copy">Open your workspace to review your information.</p><div className="actual-ai__actions">
+        <button type="button" onClick={() => navigate('/tasks')}><span><SquareCheck size={17} /></span><b>Tasks</b><ChevronRight size={16} /></button>
+        <button type="button" onClick={() => navigate('/calendar')}><span><Calendar size={17} /></span><b>Calendar</b><ChevronRight size={16} /></button>
+        <button type="button" onClick={() => navigate('/projects')}><span><Folder size={17} /></span><b>Projects</b><ChevronRight size={16} /></button>
+      </div></section>
+      <section className="actual-ai__card actual-ai__side-card"><h2>Useful prompts</h2><p className="actual-ai__side-copy">Choose a prompt to edit before sending.</p><div className="actual-ai__prompts">{prompts.map(prompt => <button type="button" key={prompt.label} disabled={running || loading} onClick={() => setMessage(prompt.text)}><Sparkles size={16} />{prompt.label}</button>)}</div></section>
+    </aside>
   </div>
 }
