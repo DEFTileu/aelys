@@ -4,8 +4,10 @@ import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
 import { ApiStatusPill } from '../components/ApiStatusPill'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
+import { SelectField } from '../components/controls/SelectionControls'
 import type { ApiStatus } from '../types'
 import './connected.css'
+import './actual-utilities.css'
 
 const clock = (seconds: number) => `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 const errorText = (error: unknown) => error instanceof ApiError || error instanceof OfflineWriteUnavailableError ? `${error.code}: ${error.message}` : 'Focus is unavailable. Check your session and connection.'
@@ -20,6 +22,7 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<ApiStatus>('loading')
+  const [linksNotice, setLinksNotice] = useState('')
   const [now, setNow] = useState(Date.now)
   const pendingStart = useRef<{ key: string; body: FocusIn } | null>(null)
   const active = sessions.find((session) => session.status === 'active')
@@ -31,6 +34,7 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
       const [loadedTasks, loadedProjects] = await Promise.allSettled([client.tasks(), client.projects()])
       if (loadedTasks.status === 'fulfilled') setTasks(loadedTasks.value)
       if (loadedProjects.status === 'fulfilled') setProjects(loadedProjects.value)
+      setLinksNotice(loadedTasks.status === 'rejected' || loadedProjects.status === 'rejected' ? 'Some task or project choices could not be loaded.' : '')
     } catch (error) { setNotice(errorText(error)); setStatus(navigator.onLine ? 'error' : 'offline') }
   }, [])
   useEffect(() => { void load() }, [load, apiStatus])
@@ -59,24 +63,26 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
     catch (error) { setNotice(errorText(error)) }
     finally { setBusy(false) }
   }
-  return <div className="connected-workspace">
-    <div className="connected-toolbar"><ApiStatusPill status={apiStatus}/><button className="button button--quiet" onClick={() => void load()}>Refresh</button></div>
+  return <div className="connected-workspace actual-utilities actual-timer">
+    <div className="actual-utilities-bar"><div><p>Track focus sessions</p></div><div className="actual-utilities-bar__actions"><ApiStatusPill status={apiStatus}/><button className="button button--quiet" onClick={() => void load()}>Refresh</button></div></div>
     {apiStatus !== 'ready' && <p role="status">Cached focus history is available when previously loaded. Starting and stopping require a connection (OFFLINE_WRITE_UNAVAILABLE).</p>}
     {notice && <p role="status">{notice}</p>}
     {status !== 'ready' ? <StateCard status={status} title={status === 'loading' ? 'Loading focus sessions' : 'Focus sessions unavailable'} description="Check your connection and owner session."/> : <>
-      <section className="connected-card timer-card">
+      <div className="actual-timer-layout"><section className="connected-card timer-card">
+        <h2>Focus session</h2>
         <div className="timer-time" aria-label="Elapsed focus time">{clock(elapsed)}</div>
         <p>{active ? `Started ${new Date(active.started_at).toLocaleString()}` : 'No active focus session'}</p>
         {active ? <button className="button button--primary" disabled={busy || apiStatus !== 'ready'} onClick={() => void stop()}>Stop focus</button> : <>
-          <label>Mode<select value={mode} disabled={!!pendingStart.current} onChange={(event) => setMode(event.target.value)}><option value="pomodoro">Pomodoro</option><option value="stopwatch">Stopwatch</option><option value="custom">Custom</option></select></label>
-          <label>Task<select value={taskId} disabled={!!pendingStart.current} onChange={(event) => setTaskId(event.target.value)}><option value="">No task</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
-          <label>Project<select value={projectId} disabled={!!pendingStart.current} onChange={(event) => setProjectId(event.target.value)}><option value="">No project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+          {linksNotice && <p role="status">{linksNotice}</p>}
+          <SelectField label="Mode" value={mode} disabled={!!pendingStart.current} onChange={setMode} options={[{ value: 'pomodoro', label: 'Pomodoro' }, { value: 'stopwatch', label: 'Stopwatch' }, { value: 'custom', label: 'Custom' }]} />
+          <SelectField label="Task" value={taskId} disabled={!!pendingStart.current} onChange={setTaskId} options={[{ value: '', label: 'No task' }, ...tasks.map((task) => ({ value: task.id, label: task.title }))]} />
+          <SelectField label="Project" value={projectId} disabled={!!pendingStart.current} onChange={setProjectId} options={[{ value: '', label: 'No project' }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} />
           <button className="button button--primary" disabled={busy || apiStatus !== 'ready'} onClick={() => void start()}>Start focus</button>
         </>}
       </section>
       <section className="connected-card"><h2>Focus history</h2><p>Total focus: {clock(total)} · {sessions.filter((session) => session.status === 'completed').length} completed sessions</p>
         {sessions.length ? sessions.map((session) => <article className="finance-row" key={session.id}><strong>{session.status} · {clock(session.id === active?.id ? elapsed : session.elapsed_seconds)}</strong><span>{new Date(session.started_at).toLocaleString()} · {session.mode}{session.task_id && ` · ${tasks.find((task) => task.id === session.task_id)?.title ?? 'Linked task'}`}{session.project_id && ` · ${projects.find((project) => project.id === session.project_id)?.name ?? 'Linked project'}`}</span></article>) : <StateCard status="empty" title="No focus sessions" description="Start a session to save focus statistics."/>}
-      </section>
+      </section></div>
     </>}
   </div>
 }

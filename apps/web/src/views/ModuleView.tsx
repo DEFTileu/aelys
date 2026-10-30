@@ -8,6 +8,7 @@ import { navigate } from '../lib/router'
 import { ApiError, OfflineQueuedError } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
 import './desktop/module.css'
+import './actual-utilities.css'
 
 export type ModuleConfig = {
   path: RoutePath
@@ -29,7 +30,7 @@ export const moduleConfigs: Record<string, ModuleConfig> = {
   mail: { path: '/mail', label: 'Mail', icon: Mail, eyebrow: 'Communication', description: 'A model for messages and drafts, ready for a provider adapter.', action: 'Import mail', emptyTitle: 'Mail is not connected', emptyDescription: 'Aelys does not invent messages. Connect or import a provider when one is approved.' },
   finance: { path: '/finance', label: 'Finance', icon: Wallet, eyebrow: 'Money', description: 'Track manual transactions, accounts and budgets with decimal-safe values.', action: 'Add transaction', emptyTitle: 'No transactions yet', emptyDescription: 'Your ledger will stay empty until a local or API source supplies transactions.' },
   timer: { path: '/timer', label: 'Timer', icon: Timer, eyebrow: 'Focus', description: 'A durable focus timer that can be tied to a task or project.', action: 'Start timer', emptyTitle: 'Ready when you are', emptyDescription: 'No active focus session is stored locally yet.' },
-  developer: { path: '/developer', label: 'Developer Hub', icon: Terminal, eyebrow: 'Local runtime', description: 'A safe home for connected project repositories and agent sessions.', action: 'Connect Mac', emptyTitle: 'Mac runtime is offline', emptyDescription: 'Full Claude Code and Codex CLI transcripts stay on Mac and are never fabricated in the web client.' },
+  developer: { path: '/developer', label: 'Developer Hub', icon: Terminal, eyebrow: 'Local runtime', description: 'A safe home for connected project repositories and agent sessions.', action: 'Connect Mac', emptyTitle: 'No sessions found', emptyDescription: 'Session metadata will appear here when available. Full transcripts stay on Mac.' },
   automation: { path: '/automation', label: 'Automation', icon: Workflow, eyebrow: 'Rules', description: 'Review policy checked triggers, conditions and actions.', action: 'New rule', emptyTitle: 'No automations configured', emptyDescription: 'Automation rules will be listed after the policy backed API is connected.' },
 }
 
@@ -50,16 +51,18 @@ export function ModuleView({ config, apiStatus }: { config: ModuleConfig; apiSta
   const [formOpen, setFormOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [actionMessage, setActionMessage] = useState('')
+  const [loadBlocked, setLoadBlocked] = useState(false)
 
   const load = async () => {
     if (apiStatus !== 'ready') { setContentStatus(apiStatus); return }
-    setContentStatus('loading')
+    setContentStatus('loading'); setLoadBlocked(false)
     try {
       const client = getSharedApiClient()
       const value = config.path === '/projects' ? await client.projects() : config.path === '/notes' ? await client.notes() : config.path === '/tasks' ? await client.tasks() : config.path === '/calendar' ? await client.calendarEvents() : config.path === '/mail' ? await client.mailMessages() : config.path === '/finance' ? await client.financeTransactions() : config.path === '/timer' ? await client.focusSessions() : config.path === '/automation' ? await client.automations() : config.path === '/developer' ? await client.agentSessions() : []
       setItems(value as unknown as readonly Record<string, unknown>[])
       setContentStatus('ready')
-    } catch {
+    } catch (error) {
+      setLoadBlocked(error instanceof ApiError && (error.status === 403 || /POLICY|FORBIDDEN|PERMISSION/.test(error.code)))
       setContentStatus(navigator.onLine ? 'error' : 'offline')
     }
   }
@@ -67,12 +70,13 @@ export function ModuleView({ config, apiStatus }: { config: ModuleConfig; apiSta
   useEffect(() => { void load() }, [apiStatus, config.path])
 
   // Pill tabs come from the statuses the API actually returned, never from invented categories.
-  const statuses = useMemo(() => [...new Set(items.map((item) => String(item.status ?? '')).filter(Boolean))], [items])
+  const itemStatus = (item: Record<string, unknown>) => config.path === '/developer' ? String(item.state ?? '') : config.path === '/automation' ? item.enabled === true ? 'Enabled' : item.enabled === false ? 'Disabled' : '' : String(item.status ?? '')
+  const statuses = useMemo(() => [...new Set(items.map(itemStatus).filter(Boolean))], [items, config.path])
   const filtering = query.trim() !== '' || statusFilter !== 'All'
   const visibleItems = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return items.filter((item) => (statusFilter === 'All' || String(item.status ?? '') === statusFilter) && (!needle || Object.values(item).some((value) => typeof value === 'string' && value.toLowerCase().includes(needle))))
-  }, [items, query, statusFilter])
+    return items.filter((item) => (statusFilter === 'All' || itemStatus(item) === statusFilter) && (!needle || Object.values(item).some((value) => typeof value === 'string' && value.toLowerCase().includes(needle))))
+  }, [items, query, statusFilter, config.path])
 
   const create = async (event: FormEvent) => {
     event.preventDefault()
@@ -109,6 +113,15 @@ export function ModuleView({ config, apiStatus }: { config: ModuleConfig; apiSta
   const itemLabel = (item: Record<string, unknown>) => String(item.name ?? item.title ?? item.subject ?? item.provider ?? item.id ?? 'Untitled')
   const itemMeta = (item: Record<string, unknown>) => String(item.description ?? item.status ?? item.occurred_at ?? item.starts_at ?? item.created_at ?? '')
   const ModuleIcon = config.icon
+  if (config.path === '/developer' || config.path === '/automation') {
+    const developer = config.path === '/developer'
+    return <div className="actual-utilities actual-utility-module">
+      <header className="actual-utilities-bar"><div><p>{developer ? 'Local agent session metadata' : 'Policy-checked rules'}</p></div><div className="actual-utilities-bar__actions"><ApiStatusPill status={apiStatus} /><button type="button" className="button button--quiet" onClick={() => void load()}>Refresh</button></div></header>
+      <div className="actual-utility-intro"><ModuleIcon size={20} aria-hidden="true" /><p>{developer ? 'Full session transcripts stay on your Mac. Access and execution depend on the approved project sandbox.' : 'Rules run only when allowed by the Policy Engine. Rule creation is not available here.'}</p></div>
+      <div className="actual-utility-filter"><label className="mod-field"><Search size={16} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${config.label.toLowerCase()}…`} aria-label={`Search ${config.label}`} /></label>{statuses.length > 1 && <SegmentedTabs tabs={['All', ...statuses].map((status) => ({ id: status, label: status }))} value={statusFilter} onChange={setStatusFilter} label="Filter by status" />}</div>
+      {contentStatus === 'ready' && visibleItems.length > 0 ? <div className="mod-card actual-utility-list">{visibleItems.map((item) => <article className="mod-row" key={String(item.id)}><span className="mod-row__icon"><ModuleIcon size={17} aria-hidden="true" /></span><span className="mod-row__body"><strong className="mod-row__title">{developer ? String(item.adapter ?? 'Agent session') : String(item.name ?? 'Automation')}</strong><small className="mod-row__meta">{developer ? [item.state, item.last_activity_at].filter(Boolean).join(' · ') : [item.trigger_kind, item.policy_ref ? `Policy: ${String(item.policy_ref)}` : null].filter(Boolean).join(' · ')}</small></span>{itemStatus(item) && <span className="mod-row__badge">{itemStatus(item)}</span>}</article>)}</div> : contentStatus === 'empty' || (contentStatus === 'ready' && !visibleItems.length) ? <StateCard status="empty" title={filtering ? 'No matching records' : config.emptyTitle} description={filtering ? 'Try a different search or status.' : config.emptyDescription} /> : <StateCard status={contentStatus} title={contentStatus === 'loading' ? 'Loading' : loadBlocked ? 'Access restricted' : contentStatus === 'offline' ? 'You are offline' : 'Could not load'} description={contentStatus === 'loading' ? 'Loading records from the API.' : loadBlocked ? 'The request was denied. Check the owner session and applicable permissions.' : contentStatus === 'offline' ? 'Connect to load these records.' : 'Check the connection and try again.'} action={contentStatus === 'loading' ? undefined : <button type="button" className="mod-btn" onClick={() => void load()}><RefreshCw size={14} aria-hidden="true" />Try again</button>} />}
+    </div>
+  }
   return <div className={`mod-screen ${config.canCreate ? '' : 'mod-screen--locked'}`}>
     <ScreenToolbar
       tabs={statuses.length > 1 ? <SegmentedTabs tabs={['All', ...statuses].map((status) => ({ id: status, label: status }))} value={statusFilter} onChange={setStatusFilter} label="Filter by status" /> : undefined}

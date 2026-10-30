@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import type { AIProvider, AIProviderKind } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
+import { SelectField } from '../components/controls/SelectionControls'
 
 export function ProviderSettings() {
   const [providers, setProviders] = useState<readonly AIProvider[]>([])
@@ -42,10 +43,11 @@ export function ProviderSettings() {
     setEditing(provider?.id ?? ''); setKind(provider?.kind ?? 'claude')
     setModel(String(provider?.model_policy?.default_model ?? '')); setApiKey(''); setNotice('')
   }
-  return <div className="page page--settings"><div className="settings-grid">
+  return <div className="page page--settings actual-settings-forms"><div className="settings-grid">
     <section className="settings-card">
       <div className="settings-card__header"><div><h2>AI &amp; models</h2><p>Choose Claude or OpenRouter and enter the model ID available to your account. Keys are encrypted on your Aelys backend.</p></div></div>
       {notice && <p role="status">{notice}</p>}
+      {!providers.length && <p className="actual-settings-empty">No providers added yet.</p>}
       {providers.map((provider) => <article className="provider-row" key={provider.id}>
         <strong>{provider.kind} · {String(provider.model_policy?.default_model ?? 'Model not set')}</strong>
         <p>{provider.enabled ? 'Enabled' : 'Disabled'} · {provider.has_secret ? 'Key stored' : 'Key required'}</p>
@@ -64,7 +66,7 @@ export function ProviderSettings() {
     <section className="settings-card">
       <h2>{editing ? 'Edit provider' : 'Add provider'}</h2>
       <form className="settings-form" onSubmit={save}>
-        <label>Provider<select value={kind} disabled={!!editing || busy} onChange={(event) => setKind(event.target.value as AIProviderKind)}><option value="claude">Claude</option><option value="openrouter">OpenRouter</option></select></label>
+        <SelectField label="Provider" value={kind} disabled={!!editing || busy} onChange={(value) => setKind(value as AIProviderKind)} options={[{ value: 'claude', label: 'Claude' }, { value: 'openrouter', label: 'OpenRouter' }]} />
         <label>Model ID<input required value={model} onChange={(event) => setModel(event.target.value)} autoComplete="off" placeholder="Model ID from your provider" /></label>
         <label>{editing ? 'Replace API key (optional)' : 'API key'}<input type="password" autoComplete="off" required={!editing} minLength={8} value={apiKey} onChange={(event) => setApiKey(event.target.value)} /></label>
         <button className="button button--primary" disabled={busy} type="submit">{busy ? 'Saving…' : 'Save provider'}</button>

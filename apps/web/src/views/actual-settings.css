@@ -29,7 +29,25 @@
 .actual-connection-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 24px; border: 1px solid var(--glass-edge, #ede8e3); border-radius: 20px; background: var(--glass-bg, #fff); }
 .actual-connection-header h2 { margin: 0; font-size: 22px; line-height: 30px; font-weight: 600; }
 .actual-connection-header p { margin: 0; color: var(--muted); font-size: 13px; line-height: 18px; }
+/* Integration settings share the appearance panel's compact, grouped surfaces. */
+.actual-settings-content .actual-settings-forms .settings-card { min-width: 0; padding: 20px 24px; border: 1px solid var(--glass-edge, #ede8e3); background: var(--glass-bg, #fff); box-shadow: 0 8px 24px rgba(40,30,30,.07); }
+.actual-settings-content .actual-settings-forms .settings-card h2 { margin: 0 0 8px; color: var(--ink); font-size: 18px; line-height: 26px; }
+.actual-settings-content .actual-settings-forms .settings-card p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.actual-settings-content .actual-settings-forms .settings-form { gap: 14px; }
+.actual-settings-content .actual-settings-forms .settings-form textarea { width: 100%; min-height: 100px; padding: 10px 12px; resize: vertical; border: 1px solid var(--line-strong, #e7e2de); border-radius: 12px; background: var(--surface-soft, #f7f4f1); color: var(--ink); font: inherit; }
+.actual-settings-content .actual-settings-forms .settings-form .aelys-checkbox { display: flex; align-items: center; color: var(--ink); }
+.actual-settings-content .actual-settings-forms .settings-form .aelys-checkbox input { min-height: 0; }
+.actual-settings-content .actual-settings-forms .provider-row { min-width: 0; margin: 12px 0; padding: 14px; border: 0; border-radius: 14px; background: var(--surface-soft, #f7f4f1); overflow-wrap: anywhere; }
+.actual-settings-content .actual-settings-forms .provider-row p { margin: 6px 0 10px; }
+.actual-settings-content .actual-settings-forms .actual-settings-disclosure { margin: 12px 0; padding: 12px 14px; border-radius: 14px; background: var(--surface-soft, #f7f4f1); }
+.actual-settings-content .actual-settings-forms .actual-settings-disclosure summary { color: var(--ink); font-size: 14px; font-weight: 600; cursor: pointer; }
+.actual-settings-content .actual-settings-forms .actual-settings-disclosure ol { padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.actual-settings-content .actual-settings-forms .provider-actions { gap: 8px; }
+.actual-settings-content .actual-settings-forms .settings-form > button { justify-self: start; }
 @media (max-width: 700px) {
+  .actual-settings-content .actual-settings-forms .settings-card { padding: 18px 16px; border-radius: 22px; }
+  .actual-settings-content .actual-settings-forms .provider-actions > button { flex: 1 1 auto; min-height: 44px; }
+  .actual-settings-content .actual-settings-forms .settings-form > button { width: 100%; min-height: 44px; }
   .actual-settings-nav { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
   .actual-settings-nav nav { display: grid; gap: 0; overflow: visible; padding: 4px 6px; border: 1px solid var(--glass-edge, #ede8e3); border-radius: 22px; background: var(--glass-bg, #fff); box-shadow: 0 6px 20px rgba(40,30,30,.06); }
   .actual-settings-nav nav button, .actual-settings-nav nav a { width: 100%; min-height: 56px; padding: 4px 10px; gap: 12px; white-space: normal; }

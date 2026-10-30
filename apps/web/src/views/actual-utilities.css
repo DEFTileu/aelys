@@ -1,0 +1,40 @@
+.actual-utilities { min-width: 0; padding: 0 28px 28px; color: var(--ink, #1c1b22); }
+.actual-utilities *, .actual-utilities *::before, .actual-utilities *::after { box-sizing: border-box; }
+.actual-utilities-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.actual-utilities-bar p { margin: 2px 0 0; color: var(--muted, #625d69); font-size: 13px; }
+.actual-utilities-bar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.actual-timer-layout { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.actual-timer .connected-card { padding: 20px 24px; border: 1px solid var(--glass-edge, #ede8e3); background: var(--glass-bg, #fff); }
+.actual-timer .timer-card { margin: 0; gap: 12px; }
+.actual-timer .connected-card h2 { justify-self: start; margin: 0; font-size: 16px; line-height: 24px; }
+.actual-timer .timer-time { font-size: clamp(38px, 5vw, 56px); letter-spacing: .01em; }
+.actual-timer .timer-card p { margin: 0; color: var(--muted); font-size: 13px; text-align: center; }
+.actual-timer .timer-card .aelys-selection-field { width: 100%; }
+.actual-timer .timer-card > button { width: 100%; min-height: 44px; margin-top: 4px; }
+.actual-timer .finance-row { flex-wrap: wrap; overflow-wrap: anywhere; border-color: var(--line, #eee8e3); font-size: 13px; }
+.actual-timer .finance-row span, .actual-timer .connected-card > p { color: var(--muted); }
+.actual-timer .connected-card > p { font-size: 13px; }
+.actual-utility-intro { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; padding: 16px; border: 1px solid var(--glass-edge, #ede8e3); border-radius: 18px; background: var(--glass-bg, #fff); color: var(--purple-deep, #5132d6); }
+.actual-utility-intro svg { flex: none; }
+.actual-utility-intro p { margin: 0; color: var(--muted, #625d69); font-size: 13px; line-height: 20px; }
+.actual-utility-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.actual-utility-filter .mod-field { min-width: 0; }
+.actual-utility-module .mod-card, .actual-utility-module .mod-state, .actual-timer .mod-state { background: var(--glass-bg, #fff); border-color: var(--glass-edge, #ede8e3); }
+.actual-utility-module .mod-field { background: var(--surface-solid, #fff); border-color: var(--line-strong, #e7e2de); }
+.actual-utility-module .mod-field input, .actual-utility-module .mod-row__title, .actual-utilities .mod-state__title { color: var(--ink, #1c1b22); }
+.actual-utility-module .mod-row__meta, .actual-utilities .mod-state__desc { color: var(--muted, #625d69); }
+.actual-utility-module .mod-row + .mod-row { border-color: var(--line, #f0ebe7); }
+.actual-utility-module .mod-row:hover { background: var(--surface-hover, #f7f4f1); }
+.actual-utilities :focus-visible { outline: 2px solid var(--purple, #6a4cf2); outline-offset: 2px; }
+@media (max-width: 700px) {
+  .actual-utilities { padding: 0 16px 24px; }
+  .actual-utilities-bar { align-items: flex-start; flex-wrap: wrap; }
+  .actual-timer-layout { grid-template-columns: minmax(0, 1fr); }
+  .actual-timer .connected-card { padding: 18px 16px; border-radius: 22px; }
+  .actual-utility-filter { align-items: stretch; flex-direction: column; }
+  .actual-utility-filter .mod-field { flex: none; width: 100%; max-width: none; }
+  .actual-utility-filter .segmented-tabs { max-width: 100%; overflow-x: auto; }
+  .actual-utility-module .mod-row { align-items: flex-start; }
+  .actual-utility-module .mod-row__title, .actual-utility-module .mod-row__meta { white-space: normal; overflow-wrap: anywhere; }
+  .actual-utility-module .mod-row__badge { max-width: 35%; height: auto; white-space: normal; overflow-wrap: anywhere; }
+}
