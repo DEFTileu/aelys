@@ -145,11 +145,9 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
     <div className="auth-stage">
       <header className="auth-brand"><AelysMark size={52} /><span><strong>Aelys</strong><small>С возвращением</small></span></header>
       <section className="auth-panel" aria-label="Вход в Aelys" aria-busy={busy}>
-        <div className={`auth-emblem${state === 'checking' || busy ? ' auth-emblem--pending' : ''}`} aria-hidden="true">
-          {state === 'biometric' ? <svg className="auth-fingerprint" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+        {state === 'biometric' ? <button type="button" className={`auth-emblem${busy ? ' auth-emblem--pending' : ''}`} aria-label="Открыть с Touch ID" disabled={busy} onClick={() => void unlock()}><svg className="auth-fingerprint" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
             <path d="M15 17c4-5 10-8 17-8s13 3 17 8M9 29c1-6 4-11 8-14M47 15c5 4 8 10 8 17 0 8-1 14-3 20M17 29c1-8 7-13 15-13 9 0 16 7 16 16 0 10-2 19-5 25M10 37c0 5-1 10-3 14M23 51c3-6 4-12 4-19a5 5 0 0 1 10 0c0 11-2 20-6 29M17 59c5-8 7-17 7-27M18 43c1-4 1-7 1-11a13 13 0 0 1 26 0c0 8-1 14-3 20M32 32c0 9-1 17-4 24M38 59l2-5" />
-          </svg> : <Icon name={state === 'connection' ? 'cloud-off' : 'lock'} size={36} strokeWidth={1.5} />}
-        </div>
+          </svg></button> : <div className={`auth-emblem${state === 'checking' || busy ? ' auth-emblem--pending' : ''}`} aria-hidden="true"><Icon name={state === 'connection' ? 'cloud-off' : 'lock'} size={36} strokeWidth={1.5} /></div>}
         {state === 'checking' ? <>
           <h1>Открываем Aelys…</h1><p className="auth-description" role="status">Проверяем сессию.</p>
         </> : state === 'connection' ? <>

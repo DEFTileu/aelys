@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { NoteOut } from '@aelys/shared'
 import { ApiError } from '@aelys/shared'
 import { FileText, Folder, Plus, Save, Search } from '../icons'
@@ -10,6 +10,11 @@ import './actual-projects-notes.css'
 
 const makeOperationId = () => globalThis.crypto?.randomUUID?.() ?? `offline-${Date.now()}`
 
+function PreviewLine({ line }: { line: string }) {
+  const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+  return <>{parts.map((part, index) => part.startsWith('**') && part.endsWith('**') ? <strong key={index}>{part.slice(2, -2)}</strong> : part.startsWith('*') && part.endsWith('*') ? <em key={index}>{part.slice(1, -1)}</em> : <Fragment key={index}>{part}</Fragment>)}</>
+}
+
 function NotesState({ status, retry }: { status: ApiStatus; retry: () => void }) {
   const copy = status === 'loading' ? ['Loading notes', 'Checking the connected knowledge source.'] : status === 'offline' ? ['Notes are offline', 'Saving notes requires a connection. Unsaved drafts remain in this view.'] : ['Notes are unavailable', 'The notes API did not respond. Check the connection and try again.']
   return <StateCard status={status} title={copy[0]} description={copy[1]} action={<button className="text-button" type="button" onClick={retry}>Try again</button>} />
@@ -19,7 +24,9 @@ export function NotesView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [notes, setNotes] = useState<readonly NoteOut[]>([])
   const [status, setStatus] = useState<ApiStatus>(apiStatus === 'ready' ? 'loading' : apiStatus)
   const [query, setQuery] = useState('')
-  const [folder, setFolder] = useState<'all' | 'unfiled'>('all')
+  const [folder, setFolder] = useState('all')
+  const [preview, setPreview] = useState(false)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const [mobileEditor, setMobileEditor] = useState(() => !!new URLSearchParams(window.location.search).get('note'))
   const [selectedId, setSelectedId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('note'))
   type Draft = { title: string; body: string; base: NoteOut }
@@ -44,13 +51,21 @@ export function NotesView({ apiStatus }: { apiStatus: ApiStatus }) {
     } catch { setStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error') }
   }
   useEffect(() => { void load() }, [apiStatus])
-  const visible = useMemo(() => { const needle = query.trim().toLowerCase(); return notes.filter((note) => (folder === 'all' || (!note.parent_id && !note.project_id)) && (!needle || `${note.title} ${note.markdown_body}`.toLowerCase().includes(needle))) }, [notes, query, folder])
+  const visible = useMemo(() => { const needle = query.trim().toLowerCase(); return notes.filter((note) => (folder === 'all' || (folder === 'unfiled' ? !note.parent_id && !note.project_id : note.parent_id === folder)) && (!needle || `${note.title} ${note.markdown_body}`.toLowerCase().includes(needle))) }, [notes, query, folder])
   const selected = visible.find((note) => note.id === selectedId) ?? visible[0]
   const draft = selected ? drafts[selected.id] ?? { title: selected.title, body: selected.markdown_body, base: selected } : undefined
   const editDraft = (change: Partial<Pick<Draft, 'title' | 'body'>>) => {
     if (!selected || !draft) return
     setDrafts((current) => ({ ...current, [selected.id]: { ...(current[selected.id] ?? draft), ...change } }))
   }
+  const formatBody = (before: string, after = '') => {
+    const area = bodyRef.current
+    if (!area || !draft) return
+    const start = area.selectionStart, end = area.selectionEnd
+    editDraft({ body: draft.body.slice(0, start) + before + draft.body.slice(start, end) + after + draft.body.slice(end) })
+    requestAnimationFrame(() => { area.focus(); area.setSelectionRange(start + before.length, end + before.length) })
+  }
+  const parentFolders = notes.filter((note) => notes.some((child) => child.parent_id === note.id))
   const canWrite = apiStatus === 'ready' && (typeof navigator === 'undefined' || navigator.onLine)
   const showSavedNotice = !!savedNotice && canWrite && selected?.id === savedNotice.id && draft?.title === savedNotice.title && draft.body === savedNotice.markdown_body
   useEffect(() => { if (savedNotice && !showSavedNotice) setSavedNotice(null) }, [savedNotice, showSavedNotice])
@@ -93,6 +108,17 @@ export function NotesView({ apiStatus }: { apiStatus: ApiStatus }) {
     finally { endWrite() }
   }
 
+  const deleteNote = async () => {
+    if (!selected || !canWrite || writing || !window.confirm(`Delete ${selected.title}? Unsaved changes to this note will be lost.`) || !beginWrite()) return
+    try {
+      await getSharedApiClient().deleteNote(selected.id, { queueOnOffline: false })
+      setNotes((current) => current.filter((note) => note.id !== selected.id))
+      setDrafts((current) => { const next = { ...current }; delete next[selected.id]; return next })
+      setSelectedId(null); setMobileEditor(false); setMessage('Note deleted.')
+    } catch { setMessage('Could not confirm deletion. Your draft is preserved; reload before retrying.') }
+    finally { endWrite() }
+  }
+
   const reviewLatest = async () => {
     if (!selected || !beginWrite()) return
     try { setLatestConflict(await getSharedApiClient().note(selected.id)) }
@@ -107,10 +133,10 @@ export function NotesView({ apiStatus }: { apiStatus: ApiStatus }) {
   }
 
   return <div className={`notes-live page${mobileEditor ? ' notes-live--editing' : ''}`} >
-    <div className="nl-toolbar"><h1>Notes</h1><ApiStatusPill status={apiStatus} /><label className="nl-search"><Search size={15} color="#625D69" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes…" aria-label="Search notes" /></label><button className="nl-btn nl-btn--primary" type="button" onClick={() => setFormOpen(true)}><Plus size={16} />New note</button></div>
+    <div className="nl-toolbar"><h1>Notes</h1><ApiStatusPill status={apiStatus} />{status !== 'ready' && notes.length === 0 && <button className="nl-btn nl-btn--primary" type="button" onClick={() => setFormOpen(true)}><Plus size={16} />New note</button>}</div>
     {formOpen && <form className="nl-form" onSubmit={createNote}><input autoFocus value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="Note title" aria-label="New note title" /><button className="nl-btn nl-btn--primary" type="submit" disabled={!canWrite || writing || createUncertain}>Save</button><button className="nl-btn" type="button" onClick={() => setFormOpen(false)}>Cancel</button></form>}
     {(message || showSavedNotice) && <p className="nl-message" role="status">{message || 'Changes saved.'}</p>}
     {selected && conflictId === selected.id && <div className="nl-form"><button className="nl-btn" type="button" disabled={!canWrite || writing} onClick={() => void reviewLatest()}>Review latest version</button>{latestConflict?.id === selected.id && <div><p>Server title: {latestConflict.title} (v{latestConflict.version})</p><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{latestConflict.markdown_body}</pre><button className="nl-btn" type="button" onClick={useLatestVersion}>Keep my draft and use this version</button></div>}</div>}
-    {status !== 'ready' && notes.length === 0 ? <NotesState status={status} retry={() => void load()} /> : <div className="nl-grid"><section className="nl-card nl-folders"><h2>Folders</h2><button className={`nl-folder ${folder === 'all' ? 'nl-folder--active' : ''}`} type="button" aria-pressed={folder === 'all'} onClick={() => setFolder('all')}><Folder size={16} /><span>All notes</span><small>{notes.length}</small></button><button className={`nl-folder ${folder === 'unfiled' ? 'nl-folder--active' : ''}`} type="button" aria-pressed={folder === 'unfiled'} onClick={() => setFolder('unfiled')}><Folder size={16} /><span>Unfiled</span><small>{notes.filter((note) => !note.parent_id && !note.project_id).length}</small></button></section><section className="nl-card nl-list"><h2>{folder === 'all' ? 'All notes' : 'Unfiled'}</h2><div className="nl-note-list">{visible.map((note) => <button key={note.id} type="button" className={`nl-note ${note.id === selected?.id ? 'nl-note--active' : ''}`} onClick={() => { setSelectedId(note.id); setMobileEditor(true) }}><span className="nl-note-icon"><FileText size={15} /></span><span className="nl-note-body"><span className="nl-note-title"><span>{note.title}</span><small>v{note.version}</small></span><p>{note.markdown_body || 'Empty note'}</p></span></button>)}{visible.length === 0 && <span className="nl-muted">{query ? 'No matching notes.' : 'No notes yet.'}</span>}</div></section><section className="nl-card nl-editor">{selected ? <><div className="nl-editor-head"><button className="nl-back nl-btn" type="button" onClick={() => setMobileEditor(false)}>← All notes</button><FileText size={17} /><span>Note · v{selected.version}</span></div><div className="nl-editor-body"><input value={draft?.title ?? ''} onChange={(event) => editDraft({ title: event.target.value })} aria-label="Note title" /><textarea value={draft?.body ?? ''} onChange={(event) => editDraft({ body: event.target.value })} aria-label="Note body" placeholder="Write in Markdown…" /></div><div className="nl-editor-actions"><button className="nl-btn" type="button" onClick={() => void saveNote()} disabled={!canWrite || writing || conflictId === selected.id}><Save size={15} />Save changes</button></div></> : <StateCard status="empty" title="Select a note" description="Choose a note from the list or create a new one." />}</section></div>}
+    {status !== 'ready' && notes.length === 0 ? <NotesState status={status} retry={() => void load()} /> : <div className="nl-grid"><section className="nl-card nl-folders"><button className="nl-btn nl-btn--primary nl-new" type="button" onClick={() => setFormOpen(true)}><Plus size={16} />New note</button><h2>Folders</h2><button className={`nl-folder ${folder === 'all' ? 'nl-folder--active' : ''}`} type="button" aria-pressed={folder === 'all'} onClick={() => setFolder('all')}><Folder size={16} /><span>All notes</span><small>{notes.length}</small></button><button className={`nl-folder ${folder === 'unfiled' ? 'nl-folder--active' : ''}`} type="button" aria-pressed={folder === 'unfiled'} onClick={() => setFolder('unfiled')}><Folder size={16} /><span>Unfiled</span><small>{notes.filter((note) => !note.parent_id && !note.project_id).length}</small></button>{parentFolders.map((parent) => <button className={`nl-folder ${folder === parent.id ? 'nl-folder--active' : ''}`} key={parent.id} type="button" aria-pressed={folder === parent.id} onClick={() => setFolder(parent.id)}><Folder size={16} /><span>{parent.title}</span><small>{notes.filter((note) => note.parent_id === parent.id).length}</small></button>)}</section><section className="nl-card nl-list"><button className="nl-btn nl-btn--primary nl-new-compact" type="button" onClick={() => setFormOpen(true)}><Plus size={16} />New note</button><label className="nl-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes" aria-label="Search notes" /></label><h2>{folder === 'all' ? 'All notes' : folder === 'unfiled' ? 'Unfiled' : parentFolders.find((parent) => parent.id === folder)?.title}</h2><div className="nl-note-list">{visible.map((note) => <button key={note.id} type="button" className={`nl-note ${note.id === selected?.id ? 'nl-note--active' : ''}`} onClick={() => { setSelectedId(note.id); setMobileEditor(true) }}><span className="nl-note-body"><span className="nl-note-title"><span>{note.title}</span><small>v{note.version}</small></span><p>{note.markdown_body || 'Empty note'}</p></span></button>)}{visible.length === 0 && <span className="nl-muted">{query ? 'No matching notes.' : 'No notes yet.'}</span>}</div></section><section className="nl-card nl-editor">{selected ? <><div className="nl-editor-head"><button className="nl-back nl-btn" type="button" onClick={() => setMobileEditor(false)}>← All notes</button><FileText size={17} /><span>Note · v{selected.version}</span><button className="nl-delete" type="button" onClick={() => void deleteNote()} disabled={!canWrite || writing} aria-label="Delete note">Delete</button></div><div className="nl-editor-body"><input value={draft?.title ?? ''} onChange={(event) => editDraft({ title: event.target.value })} aria-label="Note title" /><div className="nl-format" role="toolbar" aria-label="Markdown formatting"><button type="button" onClick={() => formatBody('**', '**')} disabled={preview}>Bold</button><button type="button" onClick={() => formatBody('*', '*')} disabled={preview}>Italic</button><button type="button" onClick={() => formatBody('## ')} disabled={preview}>Heading</button><button type="button" onClick={() => formatBody('- ')} disabled={preview}>List</button><button type="button" aria-pressed={preview} onClick={() => setPreview(!preview)}>{preview ? 'Edit' : 'Preview'}</button></div>{preview ? <div className="nl-preview">{(draft?.body ?? '').split('\n').map((line, index) => { const heading = /^(#{1,3})\s+(.+)$/.exec(line); return heading ? <strong key={index} className="nl-preview-heading"><PreviewLine line={heading[2]} /></strong> : <div key={index}><PreviewLine line={line || '\u00a0'} /></div> })}</div> : <textarea ref={bodyRef} value={draft?.body ?? ''} onChange={(event) => editDraft({ body: event.target.value })} aria-label="Note body" placeholder="Start writing…" />}</div><div className="nl-editor-actions"><span>{draft?.body.trim() ? draft.body.trim().split(/\s+/).length : 0} words</span><button className="nl-btn" type="button" onClick={() => void saveNote()} disabled={!canWrite || writing || conflictId === selected.id}><Save size={15} />Save changes</button></div></> : <StateCard status="empty" title="Select a note" description="Choose a note from the list or create a new one." />}</section></div>}
   </div>
 }

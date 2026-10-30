@@ -78,7 +78,7 @@ export const sliderSettings: { title: string; subtitle: string; initial: number 
 ]
 
 export const homeToggles: { title: string; subtitle: string; icon: AelysIconComponent; initial: boolean }[] = [
-  { title: 'Greeting', subtitle: 'Personal greeting and motivation', icon: House, initial: true },
+  { title: 'Home title', subtitle: 'Show the Home heading', icon: House, initial: true },
   { title: 'Widgets', subtitle: 'Widgets on the home screen', icon: LayoutGrid, initial: true },
   { title: 'Quick actions', subtitle: 'Create tasks, notes and projects', icon: Zap, initial: true },
   { title: 'Recent activity', subtitle: 'Latest actions and events', icon: History, initial: true },

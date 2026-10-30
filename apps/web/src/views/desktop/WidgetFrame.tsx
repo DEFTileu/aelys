@@ -12,7 +12,7 @@ export type WidgetFrameControls = {
   onSize: (span: number, height: number) => void
 }
 
-type Gesture = { kind: 'move' | 'resize'; x: number; y: number; width: number; height: number; column: number; gap: number; columns: number; moved: boolean; target?: WidgetId }
+type Gesture = { kind: 'move' | 'resize'; x: number; y: number; width: number; height: number; column: number; gap: number; columns: number; row: number; moved: boolean; target?: WidgetId }
 
 /** Editing is explicit. Both pointer previews and persisted sizes use tile units. */
 export function WidgetFrame({ controls, style, children, editing, onRemove, canMoveEarlier, canMoveLater }: {
@@ -45,7 +45,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
     const gap = Number.parseFloat(grid.columnGap) || WIDGET_GRID_GAP
     const padding = (Number.parseFloat(grid.paddingLeft) || 0) + (Number.parseFloat(grid.paddingRight) || 0)
     const column = (node.parentElement.getBoundingClientRect().width - padding - gap * (columns - 1)) / columns
-    gesture.current = { kind, x: event.clientX, y: event.clientY, width: rect.width, height: rect.height, column, gap, columns, moved: false }
+    gesture.current = { kind, x: event.clientX, y: event.clientY, width: rect.width, height: rect.height, column, gap, columns, row: Number.parseFloat(grid.gridAutoRows) || ((rect.height + gap) / size.rows - gap), moved: false }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   const move = (event: PointerEvent<HTMLElement>) => {
@@ -58,7 +58,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
       // Compare actual pixel distances to preset rectangles. No freeform height.
       const available = WIDGET_SIZES.filter(item => item.span <= drag.columns || drag.columns === 1 && item.id !== 'full')
       const nearest = available.reduce((best, item) => {
-        const distance = (candidate: typeof item) => Math.hypot((Math.min(drag.columns, candidate.span) * (drag.column + drag.gap) - drag.gap) - (drag.width + dx), candidate.height - (drag.height + dy))
+        const distance = (candidate: typeof item) => Math.hypot((Math.min(drag.columns, candidate.span) * (drag.column + drag.gap) - drag.gap) - (drag.width + dx), (candidate.rows * (drag.row + drag.gap) - drag.gap) - (drag.height + dy))
         return distance(item) < distance(best) ? item : best
       }, available[0])
       const next = { span: nearest.span, height: nearest.height, rows: nearest.rows }
@@ -75,7 +75,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
       })
       drag.target = target?.dataset.widgetId as WidgetId | undefined
       cards.forEach(card => card.toggleAttribute('data-drop-target', card === target))
-      const viewport = grid.closest('.shell-main')
+      const viewport = grid.closest('.shell-main') ?? document.scrollingElement
       if (viewport) {
         const rect = viewport.getBoundingClientRect()
         if (event.clientY > rect.bottom - 64) viewport.scrollTop += 18
@@ -94,7 +94,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
   }
   const pointerHandlers = { onPointerMove: move, onPointerUp: () => finish(false), onPointerCancel: () => finish(true), onLostPointerCapture: () => finish(true) }
   const currentPreset = WIDGET_SIZES.find(item => item.span === size.span && item.height === size.height) ?? WIDGET_SIZES[0]
-  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-size={currentPreset.id} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, height: activeSize.height, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
+  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-size={WIDGET_SIZES.find(item => item.span === activeSize.span && item.height === activeSize.height)?.id ?? currentPreset.id} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, height: activeSize.height, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
     {editing && <button type="button" className="home-btn home-remove-widget" aria-label={`Remove ${controls.title}`} onClick={onRemove}><span aria-hidden="true">−</span></button>}
     <div className="home-widget-drag-bar" onPointerDown={event => {
       if (editing && !(event.target as HTMLElement).closest('button,a,input,select,textarea')) begin(event, 'move')

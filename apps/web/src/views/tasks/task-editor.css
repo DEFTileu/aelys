@@ -45,3 +45,26 @@
   .task-editor__footer { margin:0 18px; padding:12px 0 18px; }
   .task-editor__field input, .task-editor__field textarea, .task-editor__field select { background:var(--surface-soft); border-color:var(--line); border-radius:12px; }
 }
+.task-editor__backdrop { background:rgba(20,18,30,.25); }
+.task-editor__dialog { width:min(400px, calc(100vw - 32px)); }
+.task-editor__header h2 { font-size:16px; font-weight:600; }
+.task-editor__body { gap:14px; }
+.task-editor__field { font-size:12px; line-height:16px; }
+.task-editor__field input,.task-editor__field select { min-height:40px; font-size:14px; }
+.task-editor__field textarea { font-size:14px; }
+.task-editor__complete { height:40px; display:flex; align-items:center; gap:10px; padding:0 12px; border:0; border-radius:12px; background:#f7f4f1; font-size:14px; font-weight:500; }
+.task-editor__complete span { width:20px; height:20px; display:grid; place-items:center; border:1px solid #aaa3ad; border-radius:50%; }
+.task-editor__complete[aria-checked=true] span { background:#6a4cf2; color:white; border-color:#6a4cf2; }
+.task-editor__priorities { display:flex; gap:2px; padding:4px; background:#efeae5; border-radius:14px; }
+.task-editor__priorities button { flex:1; height:32px; padding:0 8px; border:0; border-radius:10px; background:transparent; font-size:13px; }
+.task-editor__priorities button[aria-checked=true] { background:#fff; color:#5132d6; box-shadow:0 1px 3px rgba(40,30,30,.1); }
+.task-editor__advanced summary { cursor:pointer; color:var(--muted); font-size:13px; }
+.task-editor__advanced[open] { display:grid; gap:12px; }
+.task-editor__footer { display:flex; justify-content:flex-end; }
+.task-editor__save { width:auto; min-height:36px; padding:0 16px; font-size:13px; }
+.task-editor__header { justify-content:flex-start; gap:8px; }.task-editor__close { margin-left:auto; }
+.task-editor__unsaved { padding:3px 8px; border-radius:11px; background:#fdf1d9; color:#8a5a00; font-size:12px; }
+.task-editor__footer { align-items:center; gap:8px; flex-wrap:wrap; }
+.task-editor__delete,.task-editor__secondary { height:36px; padding:0 12px; border:1px solid #e7e2de; border-radius:10px; background:#fff; font-size:13px; cursor:pointer; }
+.task-editor__delete { margin-right:auto; color:#c9302c; border-color:transparent; }
+.task-editor__confirm { flex-basis:100%; color:#c9302c; font-size:13px; }

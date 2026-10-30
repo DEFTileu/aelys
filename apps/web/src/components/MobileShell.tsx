@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowLeft, ArrowUp, BookOpen, Calendar, Folder, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, Sparkles, SquareCheck, Terminal, Timer, User, Wallet, Workflow, X, type AelysIconComponent } from '../icons'
+import { ArrowLeft, ArrowUp, BookOpen, Calendar, Folder, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, Sparkles, SquareCheck, Terminal, Timer, User, Wallet, Workflow, X, Plus, type AelysIconComponent } from '../icons'
+import { HOME_CHIPS } from '../data/desktop/home'
 import { WALLPAPERS } from '../data/desktop/settings'
 import { askAelys, requestCustomizeHome, useDesktopState } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
@@ -75,7 +76,8 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
     {isHome && <div className="mobile-shell__weather"><WeatherPill /></div>}
     {!chromeOnly && <main className="mobile-shell__content">{children}</main>}
     <div className="mobile-shell__bottom">
-      {isHome && <form className="mobile-shell__ask" onSubmit={submit}><label className="mobile-shell__ask-field"><span className="mobile-shell__sr-only">Ask Aelys</span><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask or search" /></label><button className="mobile-shell__orb" type="submit" aria-label={draft.trim() ? 'Send to Aelys' : 'Open AI Chat'}>{draft.trim() ? <ArrowUp size={21} /> : <Sparkles size={21} />}</button></form>}
+      {isHome && <form className="mobile-shell__ask" onSubmit={submit}><label className="mobile-shell__ask-field"><span className="mobile-shell__sr-only">Ask Aelys</span><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask or search" /><button className="mobile-shell__add" type="button" aria-label="Add task" onClick={() => go('/tasks')}><Plus size={20} /></button></label><button className="mobile-shell__orb" type="submit" aria-label={draft.trim() ? 'Send to Aelys' : 'Open AI Chat'}>{draft.trim() ? <ArrowUp size={21} /> : <Sparkles size={21} />}</button></form>}
+      {isHome && settings.homeToggles[2] && <div className="mobile-shell__chips">{HOME_CHIPS.slice(0,5).map(chip => <button key={chip.label} type="button" onClick={() => askAelys(chip.label)}><chip.icon size={16} color={chip.color} />{chip.label}</button>)}</div>}
       {!isHome && route !== '/ai' && <button className="mobile-shell__orb mobile-shell__fab" type="button" aria-label="Open AI Chat" onClick={() => go('/ai')}><Sparkles size={21} /></button>}
     </div>
     {appsOpen && <div className="mobile-shell__overlay"><div className="mobile-shell__backdrop" onClick={() => setAppsOpen(false)} aria-hidden="true" /><section ref={sheet} className="mobile-shell__sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-apps-title"><div className="mobile-shell__handle" /><div className="mobile-shell__sheet-head"><h2 id="mobile-apps-title">All apps</h2><button type="button" className="mobile-shell__close" aria-label="Close all apps" onClick={() => setAppsOpen(false)}><X size={18} /></button></div><div className="mobile-shell__apps">{APPS.map(({ label, route: path, icon: Icon, color }) => <button key={path} type="button" onClick={() => go(path)}><span className={`mobile-shell__app-icon mobile-shell__app-icon--${color}`}><Icon size={20} /></span><span>{label}</span></button>)}</div></section></div>}

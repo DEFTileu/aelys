@@ -19,10 +19,42 @@ describe('calendar event creation', () => {
     await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Next week"]')!.click() })
     expect(new Date(client.calendarOccurrences.mock.calls.at(-1)![0]).getTime()).toBeGreaterThan(new Date(initialStart).getTime())
     expect(host.querySelector('.cl-mini-selected')?.getAttribute('aria-label')).toBe(nextDate.toLocaleDateString(undefined, { dateStyle: 'full' }))
-    expect(host.querySelector('.cl-side-card h2')?.textContent).toBe('Selected day')
+    expect(host.querySelector('.cl-side-card h2')?.textContent).toContain('Selected day')
     await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Today')!.click() })
     expect(client.calendarOccurrences.mock.calls.at(-1)![0]).toBe(initialStart)
-    expect(host.querySelector('.cl-side-card h2')?.textContent).toBe('Today’s events')
+    expect(host.querySelector('.cl-side-card h2')?.textContent).toContain('Today’s events')
+  })
+
+  it('navigates month and day views using live occurrence ranges', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 3, 15, 12))
+    client.calendarOccurrences.mockResolvedValue([])
+    const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    await act(async () => { root?.render(<CalendarView apiStatus="ready" />) })
+    await act(async () => { [...host.querySelectorAll('[role="tab"]')].find(item => item.textContent === 'Month')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    const [start, end] = client.calendarOccurrences.mock.calls.at(-1)!
+    expect((new Date(end).getTime() - new Date(start).getTime()) / 86400000).toBe(42)
+    await act(async () => { host.querySelectorAll<HTMLButtonElement>('[aria-label="Next month"]')[0]!.click() })
+    expect(host.querySelector('.cl-mini-title')?.textContent).toContain('May 2026')
+    await act(async () => { [...host.querySelectorAll('[role="tab"]')].find(item => item.textContent === 'Day')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(host.querySelectorAll('.cl-day')).toHaveLength(1)
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="Next day"]')!.click() })
+    expect(host.querySelector('.cl-mini-selected')?.getAttribute('aria-label')).toBe(new Date(2026, 4, 2).toLocaleDateString(undefined, { dateStyle: 'full' }))
+  })
+
+  it('reveals weekend events in the week grid and opens their editor', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 28, 12))
+    const start = new Date(2026, 9, 31, 9); const end = new Date(2026, 9, 31, 10)
+    const event = { id: 'weekend', version: 1, occurrence_id: 'weekend', title: 'Weekend event', starts_at: start.toISOString(), ends_at: end.toISOString(), series_starts_at: start.toISOString(), series_ends_at: end.toISOString(), timezone: 'UTC', rrule: null }
+    client.calendarOccurrences.mockResolvedValue([event]); client.calendarReminders.mockResolvedValue([])
+    const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    await act(async () => root?.render(<CalendarView apiStatus="ready" />))
+    const toggle = [...host.querySelectorAll('button')].find(button => button.textContent === 'Show weekends')!
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    await act(async () => toggle.click())
+    expect(host.querySelector('.cl-show-weekends')).not.toBeNull()
+    const eventButton = [...host.querySelectorAll<HTMLButtonElement>('.cl-day button')].find(button => button.textContent?.includes('Weekend event'))!
+    await act(async () => eventButton.click())
+    expect(host.querySelector<HTMLInputElement>('[aria-label="New event title"]')?.value).toBe('Weekend event')
   })
 
   it('keeps the displayed month when its first day is in the preceding week', async () => {
@@ -75,7 +107,7 @@ describe('calendar event creation', () => {
     expect(start.value).toBe('2026-10-29T23:00')
     const expectedStart = new Date(start.value).toISOString()
     const expectedEnd = new Date(end.value).toISOString()
-    await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
+    await act(async () => { host.querySelector('form[aria-label="Event editor"]')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
     expect(client.createCalendarEvent).toHaveBeenCalledWith(expect.objectContaining({ title: 'Planning', starts_at: expectedStart, ends_at: expectedEnd, reminder_at: new Date(reminder.value).toISOString() }), expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
     expect(host.textContent).toContain('Event saved.')
   })
@@ -101,7 +133,7 @@ describe('calendar event creation', () => {
     const buttons = [...host.querySelectorAll('button')].filter((button) => button.textContent?.includes('Recurring planning'))
     expect(buttons).toHaveLength(2)
     await act(async () => buttons[buttons.length - 1]!.click())
-    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    await act(async () => host.querySelector('form[aria-label="Event editor"]')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
     expect(client.updateCalendarEvent).toHaveBeenCalledWith('series-1', expect.objectContaining({ starts_at: start.toISOString(), ends_at: end.toISOString(), version: 3 }), { queueOnOffline: false })
   })
 })

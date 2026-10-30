@@ -9,7 +9,7 @@ import { TimerView } from '../views/TimerView'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { consumeSse } from '../lib/sse'
 
-const client = vi.hoisted(() => ({ aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), createAIProvider: vi.fn(), setAIProviderSecret: vi.fn(), updateAIProvider: vi.fn(), mailMessages: vi.fn(), mailDrafts: vi.fn(), createMailDraft: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn(), financeAccounts: vi.fn(), financeCategories: vi.fn(), financeBudgets: vi.fn(), financeTransactions: vi.fn(), financeSummary: vi.fn(), createFinanceAccount: vi.fn(), createFinanceCategory: vi.fn(), createFinanceBudget: vi.fn(), createFinanceTransaction: vi.fn(), createFinanceTransfer: vi.fn(), focusSessions: vi.fn(), tasks: vi.fn(), projects: vi.fn(), startFocusSession: vi.fn(), stopFocusSession: vi.fn(), notifications: vi.fn(), dispatchCalendarReminders: vi.fn(), markNotificationRead: vi.fn() }))
+const client = vi.hoisted(() => ({ aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), createAIProvider: vi.fn(), setAIProviderSecret: vi.fn(), updateAIProvider: vi.fn(), mailMessages: vi.fn(), mailDrafts: vi.fn(), createMailDraft: vi.fn(), updateMailDraft: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn(), financeAccounts: vi.fn(), financeCategories: vi.fn(), financeBudgets: vi.fn(), financeTransactions: vi.fn(), financeSummary: vi.fn(), createFinanceAccount: vi.fn(), createFinanceCategory: vi.fn(), createFinanceBudget: vi.fn(), createFinanceTransaction: vi.fn(), createFinanceTransfer: vi.fn(), focusSessions: vi.fn(), tasks: vi.fn(), projects: vi.fn(), startFocusSession: vi.fn(), stopFocusSession: vi.fn(), notifications: vi.fn(), dispatchCalendarReminders: vi.fn(), markNotificationRead: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client, getAccessToken: () => 'test-session' }))
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
@@ -55,15 +55,33 @@ describe('connected workspaces', () => {
     client.mailDrafts.mockResolvedValue([]); client.createMailDraft.mockResolvedValue({ id: 'd1', version: 1 })
     await render(<MailView apiStatus="ready" />)
     expect(host.textContent).toContain('<script>bad()</script>'); expect(host.querySelector('script')).toBeNull()
-    await click('Reply as draft'); await fill('Draft message', 'My reply'); await submit()
+    await fill('Reply draft', 'My reply'); await submit()
     expect(client.createMailDraft).toHaveBeenCalledWith(expect.objectContaining({ recipients: ['person@example.test'], subject: 'Re: Question', content: 'My reply', thread_id: 'thread-1' }), { queueOnOffline: false })
     expect(host.textContent).toContain('Draft saved.')
+  })
+
+  it('keeps reply text per message and updates only the draft created by this reply', async () => {
+    const message = (id: string, sender: string) => ({ id, sender, recipients: ['owner@example.test'], subject: id, body: 'Body', received_at: '2026-10-29T12:00:00Z', thread_id: 'shared-thread' })
+    client.mailMessages.mockResolvedValue([message('m1', 'first@example.test'), message('m2', 'second@example.test')])
+    client.mailDrafts.mockResolvedValue([{ id: 'existing', version: 9, recipients: [], subject: 'Another draft', content: 'Keep me', thread_id: 'shared-thread' }])
+    client.createMailDraft.mockResolvedValue({ id: 'new-reply', version: 1, content: 'First reply' })
+    client.updateMailDraft.mockResolvedValue({ id: 'new-reply', version: 2, content: 'Updated reply' })
+    await render(<MailView apiStatus="ready" />)
+    await fill('Reply draft', 'First reply'); await submit()
+    await act(async () => host.querySelectorAll<HTMLButtonElement>('.actual-mail-row')[1]!.click())
+    expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Reply draft"]')!.value).toBe('')
+    await fill('Reply draft', 'Second reply')
+    await act(async () => host.querySelectorAll<HTMLButtonElement>('.actual-mail-row')[0]!.click())
+    expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Reply draft"]')!.value).toBe('First reply')
+    await fill('Reply draft', 'Updated reply'); await submit()
+    expect(client.createMailDraft).toHaveBeenCalledTimes(1)
+    expect(client.updateMailDraft).toHaveBeenCalledWith('new-reply', expect.objectContaining({ version: 1, content: 'Updated reply' }), { queueOnOffline: false })
   })
 
   it('creates finance records using decimal strings and exposes transfers', async () => {
     client.financeAccounts.mockResolvedValue([{ id: 'a1', name: 'Cash', currency: 'KZT', type: 'cash' }]); client.financeTransactions.mockResolvedValue([]); client.financeSummary.mockResolvedValue({ total: '0.00', count: 0 })
     await render(<FinanceView apiStatus="ready" />)
-    await click('Add transaction'); await fill('Amount (decimal)', '1250.50'); await submit()
+    expect(host.querySelector('form.actual-record')).not.toBeNull(); await fill('Amount (decimal)', '1250.50'); await submit()
     expect(client.createFinanceTransaction).toHaveBeenCalledWith(expect.objectContaining({ amount: '1250.50' }), expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
   })
 
@@ -82,7 +100,7 @@ describe('connected workspaces', () => {
   it('submits a transfer with the same stable operation key in header and body', async () => {
     client.financeAccounts.mockResolvedValue([{ id: 'a1', name: 'Cash', currency: 'KZT', type: 'cash' }, { id: 'a2', name: 'Savings', currency: 'KZT', type: 'cash' }]); client.financeTransactions.mockResolvedValue([]); client.financeSummary.mockResolvedValue({ count: 0, total: '0', currencies: [] })
     await render(<FinanceView apiStatus="ready" />)
-    await click('Transfer'); await fill('Amount (decimal)', '12.3401'); await submit()
+    await click('Transfer between accounts'); await fill('Amount (decimal)', '12.3401'); await submit()
     const [body, options] = client.createFinanceTransfer.mock.calls[0]!
     expect(body).toMatchObject({ from_account_id: 'a1', to_account_id: 'a2', currency: 'KZT', amount: '12.3401', idempotency_key: options.idempotencyKey })
   })
@@ -96,12 +114,12 @@ describe('connected workspaces', () => {
     ])
     await render(<FinanceView apiStatus="ready" />)
     expect(host.textContent).toContain('1234567890123456.0001')
-    await click('Income')
+    await act(async () => host.querySelector<HTMLButtonElement>('.actual-filter button:nth-child(3)')!.click())
     expect(host.textContent).toContain('Salary'); expect(host.textContent).not.toContain('Groceries')
     const filter = host.querySelector<HTMLSelectElement>('select[aria-label="Filter by account"]')!
     await act(async () => { filter.value = 'a1'; filter.dispatchEvent(new Event('change', { bubbles: true })) })
     expect(host.textContent).toContain('No transactions for these filters.')
-    await click('Expense')
+    await act(async () => host.querySelector<HTMLButtonElement>('.actual-filter button:nth-child(2)')!.click())
     expect(host.textContent).toContain('1234567890123456.0001'); expect(host.textContent).not.toContain('Salary')
   })
 

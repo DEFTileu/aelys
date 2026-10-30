@@ -4,7 +4,7 @@ import { ApiError, NetworkError, type ProjectResponse, type TaskOut } from '@ael
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TasksView } from '../views/TasksView'
 
-const client = vi.hoisted(() => ({ tasks: vi.fn(), projects: vi.fn(), createTask: vi.fn(), updateTask: vi.fn(), task: vi.fn() }))
+const client = vi.hoisted(() => ({ tasks: vi.fn(), projects: vi.fn(), createTask: vi.fn(), updateTask: vi.fn(), deleteTask: vi.fn(), task: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 
 const project: ProjectResponse = { id: 'project-1', name: 'Orion', description: '', status: 'active', version: 1 }
@@ -14,11 +14,12 @@ function task(overrides: Partial<TaskOut> = {}): TaskOut {
 
 let root: ReturnType<typeof createRoot> | undefined
 let host: HTMLDivElement
-async function mount(status: 'ready' | 'offline' = 'ready') {
+async function mount(status: 'ready' | 'offline' = 'ready', defaultView = false) {
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
   await act(async () => root!.render(<TasksView apiStatus={status} />))
+  if (!defaultView) await act(async () => host.querySelector<HTMLButtonElement>('[role=tab][aria-label=Inbox]')!.click())
 }
 function button(name: string): HTMLButtonElement {
   const match = [...host.querySelectorAll('button')].find((item) => item.getAttribute('aria-label') === name || item.textContent?.trim() === name)
@@ -33,7 +34,7 @@ function field(name: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelec
   if (!result) throw new Error(`Field not found: ${name}`)
   return result
 }
-async function click(name: string) { await act(async () => button(name).click()) }
+async function click(name: string) { await act(async () => { if (name === 'New task') field('Add a task').focus(); else button(name).click() }) }
 async function setField(name: string, value: string) {
   const element = field(name)
   const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
@@ -69,6 +70,21 @@ afterEach(() => {
 })
 
 describe('Tasks workspace', () => {
+  it('defaults to Today and separates active tasks from Completed', async () => {
+    const now = new Date(); now.setHours(12, 0, 0, 0)
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1)
+    client.tasks.mockResolvedValue([task({ id: 'past', title: 'Past', due_at: yesterday.toISOString() }), task({ id: 'today', title: 'Due today', due_at: now.toISOString() }), task({ id: 'done', title: 'Done', due_at: now.toISOString(), status: 'completed' }), task({ id: 'inbox', title: 'Undated' })])
+    await mount('ready', true)
+    expect(button('Today').getAttribute('aria-selected')).toBe('true')
+    expect(row('Past')).not.toBeNull(); expect(row('Due today')).not.toBeNull(); expect(row('Done')).toBeNull(); expect(row('Undated')).toBeNull()
+    expect(host.querySelector('[aria-label="Overdue"]')).not.toBeNull()
+    expect(host.querySelector('.tasks-filter-disclosure')).toBeNull()
+    expect(host.querySelector('[aria-label="New task"]')).toBeNull()
+    await click('Completed'); expect(row('Done')).not.toBeNull(); expect(row('Due today')).toBeNull()
+    await click('Inbox'); expect(row('Undated')).not.toBeNull(); expect(row('Done')).toBeNull()
+    await click('All tasks'); expect(row('Done')).not.toBeNull(); expect(row('Past')).not.toBeNull()
+  })
+
   it('creates an undated task in the default Inbox without an offline queue', async () => {
     const created = task({ title: 'Buy paper', project_id: null, parent_task_id: null, description: '', priority: 0, rrule: null, version: 1 })
     client.createTask.mockImplementation(async () => { client.tasks.mockResolvedValue([created]); return created })
@@ -88,8 +104,8 @@ describe('Tasks workspace', () => {
     await click('Add details')
     await setField('New due date', '2026-11-17')
     await setField('New due time', '14:35')
-    await setField('New priority', '3')
-    await setField('New project', project.id)
+    await setField('Quick priority', '3')
+    await setField('Quick project', project.id)
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Timed task', due_at: new Date(2026, 10, 17, 14, 35).toISOString(), due_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, priority: 3, project_id: project.id }), expect.objectContaining({ queueOnOffline: false }))
   })
@@ -117,11 +133,41 @@ describe('Tasks workspace', () => {
     await setField('Description', 'Updated notes')
     await setField('Due date', '2026-11-17')
     await setField('Due time', '14:35')
-    await setField('Priority', '3')
+    await click('High')
     await setField('Project', project.id)
     await setField('Status', 'in_progress')
     await submit('Save changes')
     expect(client.updateTask).toHaveBeenCalledWith(original.id, expect.objectContaining({ title: 'Launch ready', description: 'Updated notes', due_at: new Date(2026, 10, 17, 14, 35).toISOString(), priority: 3, project_id: project.id, status: 'in_progress', parent_task_id: original.parent_task_id, rrule: original.rrule, version: 4 }), expect.objectContaining({ queueOnOffline: false }))
+  })
+
+  it('reverts unsaved edits and confirms deletion against a fresh version', async () => {
+    const original = task(); client.tasks.mockResolvedValue([original]); client.task.mockResolvedValue(original); client.deleteTask.mockResolvedValue({ deleted: true })
+    await mount(); await click('Open task: Plan launch'); await setField('Task title', 'Edited')
+    expect(host.textContent).toContain('Unsaved')
+    await click('Revert'); expect(field('Task title').value).toBe(original.title)
+    await click('Delete'); expect(client.deleteTask).not.toHaveBeenCalled()
+    await click('Cancel'); expect(client.deleteTask).not.toHaveBeenCalled()
+    await click('Delete'); await click('Confirm delete')
+    expect(client.task).toHaveBeenCalledWith(original.id, { allowCacheFallback: false })
+    expect(client.deleteTask).toHaveBeenCalledWith(original.id, { version: original.version }, { queueOnOffline: false })
+    expect(row(original.title)).toBeNull()
+  })
+
+  it('keeps the editor and draft when deletion encounters a newer task', async () => {
+    const original = task(); client.tasks.mockResolvedValue([original]); client.task.mockResolvedValue({ ...original, version: 5 })
+    await mount(); await click('Open task: Plan launch'); await setField('Task title', 'My draft')
+    await click('Delete'); await click('Confirm delete')
+    expect(client.deleteTask).not.toHaveBeenCalled(); expect(field('Task title').value).toBe('My draft')
+    expect(host.textContent).toMatch(/version conflict/i)
+  })
+
+  it('creates with inline date, priority and project options', async () => {
+    client.createTask.mockResolvedValue(task())
+    await mount(); await click('New task'); await setField('New task title', 'Inline')
+    await setField('Quick date', 'tomorrow'); await setField('Quick priority', '3'); await setField('Quick project', project.id)
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(23, 59, 0, 0)
+    await submit('Add task')
+    expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Inline', due_at: tomorrow.toISOString(), priority: 3, project_id: project.id }), expect.anything())
   })
 
   it('completes a task without dropping any fields and sends its version', async () => {
@@ -360,7 +406,7 @@ describe('Tasks workspace', () => {
     await click('Today')
     expect(row('Local today')).not.toBeNull()
     expect(row('Local tomorrow')).toBeNull()
-    expect(row('Local yesterday')).toBeNull()
+    expect(row('Local yesterday')).not.toBeNull()
     await click('Upcoming')
     expect(row('Local tomorrow')).not.toBeNull()
     expect(row('Local today')).toBeNull()

@@ -15,11 +15,17 @@ export interface TaskEditorProps {
   notice?: ReactNode
   onSave: () => void
   onClose: () => void
+  dirty: boolean
+  onRevert: () => void
+  confirmDelete: boolean
+  onDelete: () => void
+  onCancelDelete: () => void
+  deleteDisabled: boolean
 }
 
 const focusableSelector = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
 
-export function TaskEditor({ value, onChange, task, projects, projectsUnavailable, pending, saveDisabled = false, error, notice, onSave, onClose }: TaskEditorProps) {
+export function TaskEditor({ value, onChange, task, projects, projectsUnavailable, pending, saveDisabled = false, error, notice, onSave, onClose, dirty, onRevert, confirmDelete, onDelete, onCancelDelete, deleteDisabled }: TaskEditorProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const onCloseRef = useRef(onClose)
@@ -100,11 +106,11 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
     <div ref={dialogRef} className="task-editor__dialog" role="dialog" aria-modal="true" aria-labelledby={headingId} data-task-id={task.id} tabIndex={-1}>
       <form className="task-editor__form" onSubmit={submit}>
         <header className="task-editor__header">
-          <h2 id={headingId}>Task details</h2>
+          <h2 id={headingId}>Task details</h2>{dirty && <span className="task-editor__unsaved">Unsaved</span>}
           <button className="task-editor__close" type="button" aria-label="Close task editor" disabled={pending} onClick={onClose}>×</button>
         </header>
         <div className="task-editor__body">
-          {notice}
+          <button className="task-editor__complete" type="button" role="checkbox" aria-checked={value.status === 'completed'} disabled={pending} onClick={() => patch({ status: value.status === 'completed' ? 'todo' : 'completed' })}><span>{value.status === 'completed' ? '✓' : ''}</span>Completed</button>
           {error && <p ref={errorRef} tabIndex={-1} className="task-editor__error" role="alert">{error}</p>}
           <label className="task-editor__field">Task title
             <input ref={titleRef} aria-label="Task title" type="text" value={value.title} required disabled={pending} onChange={(event) => patch({ title: event.target.value })} />
@@ -121,12 +127,9 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
             </label>
           </div>
           <p id={dateHelpId} className="task-editor__help">Times shown in {timeZone}. If no time is selected, the due time defaults to 23:59.</p>
-          <label className="task-editor__field">Priority
-            <select aria-label="Priority" value={value.priority} disabled={pending} onChange={(event) => patch({ priority: event.target.value })}>
-              {!knownPriority && <option value={value.priority}>Current priority ({value.priority})</option>}
-              <option value="0">None</option><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option>
-            </select>
-          </label>
+          <div className="task-editor__field">Priority
+            <div className="task-editor__priorities" role="radiogroup" aria-label="Priority">{[['0','None'],['3','High'],['2','Medium'],['1','Low']].map(([priority, label]) => <button type="button" role="radio" aria-checked={value.priority === priority} key={priority} disabled={pending} onClick={() => patch({ priority })}>{label}</button>)}{!knownPriority && <span>Current priority ({value.priority})</span>}</div>
+          </div>
           <label className="task-editor__field">Project
             <select aria-label="Project" value={value.projectId} disabled={pending || projectsUnavailable} onChange={(event) => patch({ projectId: event.target.value })}>
               <option value="">None</option>
@@ -135,14 +138,19 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
             </select>
           </label>
           {projectsUnavailable && <p className="task-editor__help">Projects are unavailable. The current project will be preserved.</p>}
-          <label className="task-editor__field">Status
+          {notice}
+          <details className="task-editor__advanced"><summary>More options</summary><label className="task-editor__field">Status
             <select aria-label="Status" value={value.status} disabled={pending} onChange={(event) => patch({ status: event.target.value })}>
               {!knownStatus && <option value={value.status}>Current status ({value.status})</option>}
               <option value="todo">To do</option><option value="in_progress">In progress</option><option value="completed">Completed</option>
             </select>
-          </label>
+          </label></details>
         </div>
         <footer className="task-editor__footer">
+          {confirmDelete && <span className="task-editor__confirm" role="status">Delete this task?</span>}
+          <button className="task-editor__delete" type="button" disabled={pending || deleteDisabled} onClick={onDelete}>{confirmDelete ? 'Confirm delete' : 'Delete'}</button>
+          {confirmDelete && <button className="task-editor__secondary" type="button" disabled={pending} onClick={onCancelDelete}>Cancel</button>}
+          {dirty && <button className="task-editor__secondary" type="button" disabled={pending} onClick={onRevert}>Revert</button>}
           <button className="task-editor__save" type="submit" disabled={pending || saveDisabled}>{pending ? 'Saving' : 'Save changes'}</button>
         </footer>
       </form>

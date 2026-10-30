@@ -52,6 +52,7 @@ const NAV: NavItem[] = [
 const MODULE_TITLES: Partial<Record<RoutePath, string>> = {
   '/ai': 'AI Chat',
   '/calendar': 'Calendar',
+  '/tasks': 'Tasks',
   '/projects': 'Projects',
   '/notes': 'Notes',
   '/knowledge': 'Knowledge base',
@@ -149,9 +150,9 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             <NotificationCenter apiStatus={apiStatus} route={route} />
           </div>}
 
-          {!mobile && (isHome ? <div className="shell-hero" style={{ height: showGreeting ? 200 : 116, paddingTop: 96 }}>
+          {!mobile && (isHome ? <div className="shell-hero" style={{ height: showGreeting ? 276 : 116, paddingTop: 80 }}>
             {showGreeting && <h1 style={{ margin: '4px 0 0', fontSize: 36, lineHeight: '44px', fontWeight: 700, letterSpacing: '-.02em' }}>Home</h1>}
-          </div> : route === '/tasks' ? <div aria-hidden="true" style={{ height: 76 }} /> : <div className="shell-hero" style={{ height: 132, paddingTop: 80, color: 'var(--ink)', textShadow: 'none' }}>
+          </div> : <div className="shell-hero" style={{ height: 132, paddingTop: 80, color: 'var(--ink)', textShadow: 'none' }}>
             {MODULE_TITLES[route] && <h1 style={{ margin: '2px 0 0', fontSize: 30, lineHeight: '38px', fontWeight: 700, letterSpacing: '-.02em' }}>{MODULE_TITLES[route]}</h1>}
           </div>)}
 

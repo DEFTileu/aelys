@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from '../views/HomeView'
-import { HOME_LAYOUT_KEY, normalizeWidgetSize, readLayout, reorderLayout, type LayoutEntry } from '../views/desktop/homeLayout'
+import { HOME_LAYOUT_KEY, MOBILE_HOME_LAYOUT_KEY, saveLayout, normalizeWidgetSize, readLayout, reorderLayout, type LayoutEntry } from '../views/desktop/homeLayout'
 
 const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), focusSessions: vi.fn(), mailMessages: vi.fn(), activity: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
@@ -29,7 +29,7 @@ async function mount() {
   grid.style.gridTemplateColumns = '200px 200px 200px 200px'; grid.style.columnGap = '16px'
   const rect = (left: number, top: number, width: number, height: number) => ({ left, top, right: left + width, bottom: top + height, width, height, x: left, y: top, toJSON: () => ({}) })
   vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 848, 560))
-  ;[...grid.children].forEach((card, index) => vi.spyOn(card, 'getBoundingClientRect').mockReturnValue(rect(index % 4 * 216, Math.floor(index / 4) * 256, 200, 240)))
+  ;[...grid.children].forEach((card, index) => vi.spyOn(card, 'getBoundingClientRect').mockReturnValue(rect(index % 4 * 216, Math.floor(index / 4) * 256, 200, 264)))
   return { host, grid }
 }
 
@@ -62,34 +62,34 @@ describe('dashboard customization', () => {
   })
 
   it('snaps pointer resize to the grid and restores the saved size after remount', async () => {
-    localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 1, 240], ['cal', 2, 240]]))
+    localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 1, 264], ['cal', 2, 264]]))
     const { host, grid } = await mount(); await customize(host)
     const resize = host.querySelector('[aria-label="Resize Today"]')!
-    await act(async () => pointer(resize, 'pointerdown', 200, 240))
+    await act(async () => pointer(resize, 'pointerdown', 200, 264))
     await act(async () => pointer(resize, 'pointermove', 410, 350))
     await act(async () => pointer(resize, 'pointerup', 410, 350))
-    expect(readLayout()[0]).toEqual(['today', 2, 240])
-    expect((grid.children[0] as HTMLElement).style.height).toBe('240px')
+    expect(readLayout()[0]).toEqual(['today', 2, 264])
+    expect((grid.children[0] as HTMLElement).style.height).toBe('264px')
     await act(async () => root!.unmount()); root = undefined
     const restored = await mount()
-    expect((restored.grid.children[0] as HTMLElement).style.height).toBe('240px')
+    expect((restored.grid.children[0] as HTMLElement).style.height).toBe('264px')
     expect((restored.grid.children[0] as HTMLElement).style.getPropertyValue('--widget-span')).toBe('2')
   })
 
   it('snaps a large vertical pointer resize to four rows', async () => {
     const { host } = await mount(); await customize(host)
     const resize = host.querySelector('[aria-label="Resize Today"]')!
-    await act(async () => pointer(resize, 'pointerdown', 200, 240))
+    await act(async () => pointer(resize, 'pointerdown', 200, 264))
     await act(async () => pointer(resize, 'pointermove', 410, 600))
     await act(async () => pointer(resize, 'pointerup', 410, 600))
-    expect(readLayout()[0]).toEqual(['today', 2, 496])
+    expect(readLayout()[0]).toEqual(['today', 2, 544])
   })
 
   it('offers preset sizes and button and keyboard alternatives for reordering', async () => {
     const { host } = await mount(); await customize(host)
     const select = host.querySelector<HTMLSelectElement>('[aria-label="Size of Today"]')!
     expect([...select.options].map((option) => option.value)).toEqual(['small', 'wide', 'large', 'full'])
-    for (const [value, span, height] of [['wide', 2, 240], ['large', 2, 496], ['full', 4, 240], ['small', 1, 240]] as const) {
+    for (const [value, span, height] of [['wide', 2, 264], ['large', 2, 544], ['full', 4, 264], ['small', 1, 264]] as const) {
       await act(async () => { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })) })
       expect(readLayout()[0]).toEqual(['today', span, height])
     }
@@ -117,19 +117,19 @@ describe('dashboard customization', () => {
   it('cancels pointer resize on pointercancel and Escape', async () => {
     const { host, grid } = await mount(); await customize(host)
     const resize = host.querySelector('[aria-label="Resize Today"]')!
-    await act(async () => { pointer(resize, 'pointerdown', 200, 240); pointer(resize, 'pointermove', 410, 600) })
+    await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 600) })
     await act(async () => pointer(resize, 'pointercancel', 410, 600))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect((grid.children[0] as HTMLElement).style.height).toBe('240px')
-    await act(async () => { pointer(resize, 'pointerdown', 200, 240); pointer(resize, 'pointermove', 410, 600) })
+    expect((grid.children[0] as HTMLElement).style.height).toBe('264px')
+    await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 600) })
     await act(async () => resize.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     await act(async () => pointer(resize, 'pointerup', 410, 600))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect((grid.children[0] as HTMLElement).style.height).toBe('240px')
-    await act(async () => { pointer(resize, 'pointerdown', 200, 240); pointer(resize, 'pointermove', 410, 600) })
+    expect((grid.children[0] as HTMLElement).style.height).toBe('264px')
+    await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 600) })
     await act(async () => pointer(resize, 'lostpointercapture', 410, 600))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect((grid.children[0] as HTMLElement).style.height).toBe('240px')
+    expect((grid.children[0] as HTMLElement).style.height).toBe('264px')
   })
 
   it('Done cancels a gesture and removes editing affordances', async () => {
@@ -157,20 +157,29 @@ describe('dashboard customization', () => {
 })
 
 describe('layout durability and validation', () => {
+  it('keeps desktop and mobile layouts durable and independent', () => {
+    const desktop: LayoutEntry[] = [['today', 2, 544]]
+    const mobile: LayoutEntry[] = [['mail', 2, 264], ['focus', 1, 264]]
+    expect(readLayout(true).map(([id]) => id)).toEqual(['today', 'focus', 'weather', 'cal', 'mail', 'notes', 'fin', 'proj'])
+    saveLayout(desktop); saveLayout(mobile, true)
+    expect(readLayout()).toEqual(desktop)
+    expect(readLayout(true)).toEqual(mobile)
+    expect(localStorage.getItem(HOME_LAYOUT_KEY)).not.toEqual(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY))
+  })
   it('normalizes legacy sizes to the nearest supported width and row height', () => {
-    expect(normalizeWidgetSize(1, 264)).toEqual({ span: 1, height: 240, rows: 2 })
-    expect(normalizeWidgetSize(2, 384)).toEqual({ span: 2, height: 496, rows: 4 })
-    expect(normalizeWidgetSize(3.6, 720)).toEqual({ span: 2, height: 496, rows: 4 })
-    expect(normalizeWidgetSize(1, 496)).toEqual({ span: 2, height: 496, rows: 4 })
-    expect(normalizeWidgetSize(1.8, 240)).toEqual({ span: 2, height: 240, rows: 2 })
+    expect(normalizeWidgetSize(1, 264)).toEqual({ span: 1, height: 264, rows: 2 })
+    expect(normalizeWidgetSize(2, 384)).toEqual({ span: 2, height: 264, rows: 2 })
+    expect(normalizeWidgetSize(3.6, 720)).toEqual({ span: 2, height: 544, rows: 4 })
+    expect(normalizeWidgetSize(1, 544)).toEqual({ span: 2, height: 544, rows: 4 })
+    expect(normalizeWidgetSize(1.8, 264)).toEqual({ span: 2, height: 264, rows: 2 })
   })
   it('migrates legacy tuples, removes duplicates and rejects unknown/invalid cards', () => {
     localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 10], ['cal', 0, 9999], ['today', 1], ['unknown', 2], ['fin', null], ['focus', 2, 384]]))
-    expect(readLayout()).toEqual([['today', 4, 240], ['cal', 2, 496], ['focus', 2, 496]])
+    expect(readLayout()).toEqual([['today', 4, 264], ['cal', 2, 544], ['focus', 2, 264]])
   })
   it('reorders by insertion while keeping sizes and hidden entries attached to their widgets', () => {
-    const layout: LayoutEntry[] = [['today', 2, 496], ['activity', 4, 240], ['cal', 1, 240], ['focus', 1, 240]]
-    expect(reorderLayout(layout, 'today', 'focus')).toEqual([['activity', 4, 240], ['cal', 1, 240], ['focus', 1, 240], ['today', 2, 496]])
-    expect(layout[0]).toEqual(['today', 2, 496])
+    const layout: LayoutEntry[] = [['today', 2, 544], ['activity', 4, 264], ['cal', 1, 264], ['focus', 1, 264]]
+    expect(reorderLayout(layout, 'today', 'focus')).toEqual([['activity', 4, 264], ['cal', 1, 264], ['focus', 1, 264], ['today', 2, 544]])
+    expect(layout[0]).toEqual(['today', 2, 544])
   })
 })

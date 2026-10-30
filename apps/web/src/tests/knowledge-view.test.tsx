@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KnowledgeView } from '../views/KnowledgeView'
 import { NotesView } from '../views/NotesView'
 
-const client = vi.hoisted(() => ({ notes: vi.fn() }))
+const client = vi.hoisted(() => ({ notes: vi.fn(), projects: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 const records = [
   { id: 'first', title: 'Alpha', markdown_body: '# Heading\n<script>alert(1)</script>', parent_id: null, project_id: null, version: 1 },
@@ -19,7 +19,7 @@ async function input(label: string, value: string) {
   const element = host.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)!
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })) })
 }
-beforeEach(() => { vi.resetAllMocks(); client.notes.mockResolvedValue(records); window.history.replaceState({}, '', '/knowledge') })
+beforeEach(() => { vi.resetAllMocks(); client.notes.mockResolvedValue(records); client.projects.mockResolvedValue([]); window.history.replaceState({}, '', '/knowledge') })
 afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; window.history.replaceState({}, '', '/') })
 
 describe('knowledge view', () => {
@@ -55,4 +55,13 @@ describe('knowledge view', () => {
     expect(host.querySelector<HTMLInputElement>('[aria-label="Note title"]')?.value).toBe('Beta')
     expect(host.querySelector('.notes-live--editing')).not.toBeNull()
   })
+  it('groups notes using existing parent and project relationships', async () => {
+    client.notes.mockResolvedValue([records[0], { ...records[1], parent_id: 'first' }, { ...records[1], id: 'third', title: 'Gamma', project_id: 'p1' }])
+    client.projects.mockResolvedValue([{ id: 'p1', name: 'Real project', description: '', status: 'active', version: 1 }])
+    await mount()
+    const headings = [...host.querySelectorAll('.knowledge-items h2')].map((item) => item.textContent)
+    expect(headings).toContain('Alpha 1')
+    expect(headings).toContain('Real project 1')
+  })
+
 })

@@ -12,7 +12,7 @@
 .actual-mail-tools { position: relative; }
 .actual-mail-tools summary, .actual-finance-tools summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 10px; }
 .actual-mail-tools[open] { flex-basis: 100%; padding: 12px; border-radius: 14px; background: var(--amf-surface); }
-.actual-mail-grid { display: grid; grid-template-columns: 200px minmax(240px, 340px) minmax(0, 1fr); gap: 16px; min-height: 560px; }
+.actual-mail-grid { display: grid; grid-template-columns: 220px minmax(240px, 340px) minmax(0, 1fr); gap: 16px; min-height: 560px; }
 .actual-folders, .actual-mail-list { padding: 12px; }
 .actual-folders { display: flex; flex-direction: column; gap: 8px; }
 .actual-folders nav { display: grid; gap: 2px; margin-top: 8px; }
@@ -58,5 +58,127 @@
 .actual-history-row small { color: var(--amf-muted); }
 .actual-history-row > b { white-space: nowrap; }
 .actual-empty { padding: 24px 8px; text-align: center; }
-@media (max-width: 1100px) { .actual-mail-grid { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); } .actual-folders { display: none; } .actual-mobile-mail-actions { display: flex; gap: 8px; flex-wrap: wrap; } .actual-folder-select { display: grid; gap: 4px; color: var(--amf-muted); font-size: 12px; } }
+@media (max-width: 1199px) { .actual-mail-grid { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); } .actual-folders { display: none; } .actual-mobile-mail-actions { display: flex; gap: 8px; flex-wrap: wrap; } .actual-folder-select { display: grid; gap: 4px; color: var(--amf-muted); font-size: 12px; } }
 @media (max-width: 700px) { .actual-workspace { padding-inline: 16px; } .actual-mail-grid { display: block; min-height: 0; } .actual-mail-reader { display: none; } .actual-reader-open .actual-mail-list { display: none; } .actual-reader-open .actual-mail-reader { display: block; } .actual-back { display: inline-flex; margin-bottom: 14px; } .actual-finance-columns { grid-template-columns: minmax(0, 1fr); } .actual-accounts { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); } .actual-history-head h2 { flex-basis: 100%; } .actual-history-row > b { white-space: normal; overflow-wrap: anywhere; text-align: right; } }
+/* ACTUAL connected module details */
+.actual-mail-grid { height: calc(100vh - 168px); }
+.actual-folder-heading { padding: 8px 10px 4px; color: var(--amf-muted); font-size: 12px; font-weight: 600; }
+.actual-folders nav { margin-top: 0; }
+.actual-mail-account { display: grid; gap: 3px; padding: 10px; border-radius: 12px; background: var(--amf-soft); font-size: 13px; overflow-wrap: anywhere; }
+.actual-mail-account span, .actual-mail-account small { color: var(--amf-muted); font-size: 12px; }
+.actual-mail-policy { margin: auto 10px 4px; line-height: 16px; }
+.actual-mail-row { padding: 12px 10px; border-radius: 14px; }
+.actual-mail-row-text { line-height: 18px; }
+.actual-mail-row-text strong { font-size: 14px; line-height: 20px; }
+.actual-mail-reader { padding: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.actual-mail-reader article { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.actual-mail-reader article > h2 { padding: 20px 24px 0; font-weight: 600; }
+.actual-mail-reader article > .actual-sender { margin: 10px 24px 0; }
+.actual-mail-reader article > time { padding: 6px 24px 16px 70px; border-bottom: 1px solid var(--amf-border); }
+.actual-mail-reader .mail-body { flex: 1; padding: 20px 24px; font-size: 15px; line-height: 24px; white-space: pre-wrap; }
+.actual-mail-reader > form, .actual-mail-reader > p { margin: 24px; }
+.actual-reply { margin: 0 16px 16px; padding: 12px; border: 1px solid var(--amf-border); border-radius: 16px; background: var(--amf-soft); }
+.actual-reply-heading { margin-bottom: 8px; font-size: 13px; }
+.actual-reply textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--amf-border); border-radius: 12px; background: var(--amf-surface); font: inherit; resize: vertical; }
+.actual-reply-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.actual-reply-actions > span { flex: 1; min-width: 120px; font-size: 12px; color: var(--amf-muted); }
+.actual-reply-details, .actual-transfer-link { padding: 5px 0; border: 0; background: transparent; color: var(--amf-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.actual-accounts { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.actual-account { border-width: 1.5px; }
+.actual-record { display: flex; flex-direction: column; gap: 12px; }
+.actual-record label { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--amf-muted); font-size: 12px; line-height: 16px; font-weight: 600; }
+.actual-record-types { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: #efeae5; }
+.actual-record-types button { flex: 1; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--amf-text); font: inherit; font-size: 13px; cursor: pointer; }
+.actual-record-types button[aria-checked='true'] { background: var(--amf-surface); box-shadow: 0 1px 4px #0002; }
+.actual-amount { display: flex; align-items: center; height: 52px; padding: 0 14px; border: 1.5px solid var(--amf-border); border-radius: 14px; background: var(--amf-soft); font-size: 18px; }
+.actual-amount input { flex: 1; min-width: 0; width: 100%; padding: 0; border: 0; background: transparent; font-size: 22px; font-weight: 600; }
+.actual-record-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.actual-record-fields input, .actual-record-fields select { width: 100%; height: 40px; min-width: 0; padding: 0 12px; border: 1px solid var(--amf-border); border-radius: 12px; font-size: 14px; }
+.actual-record .actual-record-submit { width: 100%; height: 44px; margin: 0; justify-content: center; }
+.actual-transfer-link { align-self: center; }
+.actual-history { padding: 6px; }
+.actual-history-head { padding: 12px 12px 8px; }
+.actual-history-row { min-height: 52px; padding: 6px 12px; border: 0; border-radius: 12px; }
+.actual-history-row strong { font-weight: 500; }
+.actual-summary-currency b { font-size: 16px; }
+@media (max-width: 700px) {
+  .actual-mail-grid { height: auto; }
+  .actual-mail-list { padding: 12px; }
+  .actual-mail-row .actual-avatar { width: 40px; height: 40px; }
+  .actual-mail-row-text strong { font-size: 15px; }
+  .actual-mail-reader { background: transparent; border: 0; box-shadow: none; overflow: visible; }
+  .actual-mail-reader article { gap: 10px; }
+  .actual-mail-reader article > h2 { padding: 18px 18px 0; font-size: 19px; line-height: 26px; background: var(--amf-surface); border-radius: 22px 22px 0 0; }
+  .actual-mail-reader article > .actual-sender { margin: -10px 0 0; padding: 12px 18px 0; background: var(--amf-surface); }
+  .actual-mail-reader article > time { margin-top: -10px; padding: 4px 18px 0 64px; border: 0; background: var(--amf-surface); }
+  .actual-mail-reader .mail-body { margin-top: -10px; padding: 14px 18px 18px; border-radius: 0 0 22px 22px; background: var(--amf-surface); }
+  .actual-reply { margin: 0; padding: 14px; border-radius: 22px; background: var(--amf-surface); }
+  .actual-reply textarea { background: var(--amf-soft); }
+  .actual-reply-actions > span { flex-basis: 100%; text-align: center; order: 2; }
+  .actual-reply-actions button { flex: 1; }
+  .actual-back { margin: 0 0 10px; }
+  .actual-accounts { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); }
+}
+.actual-finance-mobile-total, .actual-record-close, .actual-mobile-folders { display: none; }
+.actual-record-title { display: flex; justify-content: space-between; align-items: center; }
+@media (max-width: 700px) {
+  .actual-finance-mobile-total { display: block; padding: 18px; margin-bottom: 16px; border-radius: 24px; color: white; background: linear-gradient(135deg,#7b5cf5,#5132d6); box-shadow: 0 12px 30px rgba(81,50,214,.25); }
+  .actual-finance-mobile-total > div:not(.actual-mobile-record-actions) { display: grid; gap: 2px; font-size: 13px; }
+  .actual-finance-mobile-total strong { font-size: 30px; line-height: 38px; letter-spacing: -.01em; }
+  .actual-mobile-record-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+  .actual-mobile-record-actions button { height: 44px; border: 0; border-radius: 14px; background: #ffffff2e; color: #fff; font: inherit; font-size: 14px; font-weight: 600; }
+  .actual-mobile-record-actions button + button { background: white; color: #3b1c70; }
+  .actual-accounts { display: flex; overflow-x: auto; }
+  .actual-account, .actual-new-account { flex: 0 0 168px; }
+  .actual-record { display: none; }
+  .actual-record.actual-record-open { display: flex; position: fixed; z-index: 100; inset: auto 0 0; max-height: 90vh; overflow-y: auto; border-radius: 22px 22px 0 0; box-shadow: 0 -20px 0 100vmax #0007; }
+  .actual-record-close { display: block; border: 0; background: transparent; color: var(--amf-text); font-size: 24px; }
+  .actual-mobile-folders { display: flex; gap: 8px; }
+  .actual-mobile-folders button { height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: var(--amf-soft); color: var(--amf-text); font: inherit; font-size: 13px; font-weight: 600; }
+  .actual-mobile-folders button[aria-pressed='true'] { background: var(--amf-selected); color: var(--amf-accent); }
+  .actual-folder-select { display: none; }
+}
+.actual-record-mobile-choices { display: none; }
+@media (max-width: 700px) {
+  .actual-finance-columns { display: flex; flex-direction: column; }
+  .actual-finance-left, .actual-history { width: 100%; }
+  .actual-finance-left { display: contents; }
+  .actual-history { order: 0; border-radius: 22px; }
+  .actual-summary { order: 1; }
+  .actual-finance-tools { order: 2; }
+  .actual-record-open, .actual-finance-left > .settings-form { order: 3; }
+  .actual-record-open .actual-amount { height: 64px; border-radius: 18px; background: var(--amf-surface); }
+  .actual-record-open .actual-amount input { font-size: 28px; font-weight: 700; }
+  .actual-record-open .actual-record-fields > label:nth-child(-n+2) { display: none; }
+  .actual-record-mobile-choices { display: grid; gap: 8px; font-size: 12px; font-weight: 600; color: var(--amf-muted); }
+  .actual-record-mobile-choices > div { display: flex; gap: 8px; flex-wrap: wrap; }
+  .actual-record-mobile-choices button { min-height: 36px; padding: 0 14px; border: 1px solid var(--amf-border); border-radius: 18px; background: var(--amf-surface); color: var(--amf-text); font: inherit; font-size: 13px; }
+  .actual-record-mobile-choices button[aria-pressed='true'] { background: var(--amf-selected); color: var(--amf-accent); }
+  .actual-record .actual-record-submit { height: 52px; border-radius: 14px; }
+}
+
+/* Finance ledger breakdown and budget progress */
+.actual-finance .actual-account-balance { display: block; margin-top: 12px; font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+.actual-finance .actual-finance-breakdown { margin-top: 18px; }
+.actual-finance .actual-finance-breakdown h3 { font-size: 13px; color: var(--amf-muted); }
+.actual-finance .actual-finance-chart { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.actual-finance .actual-finance-donut { width: 130px; height: 130px; flex: none; border-radius: 50%; display: grid; place-items: center; }
+.actual-finance .actual-finance-donut > span { width: 92px; height: 92px; padding: 8px; border-radius: 50%; background: var(--amf-surface); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.actual-finance .actual-finance-donut small { color: var(--amf-muted); font-weight: 400; }
+.actual-finance .actual-finance-chart ul { list-style: none; padding: 0; margin: 0; flex: 1; min-width: 140px; }
+.actual-finance .actual-finance-chart li { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12px; }
+.actual-finance .actual-finance-chart li i { width: 8px; height: 8px; flex: none; border-radius: 50%; }
+.actual-finance .actual-finance-chart li span { flex: 1; overflow-wrap: anywhere; }
+.actual-finance .actual-finance-chart li b { overflow-wrap: anywhere; }
+.actual-finance .actual-finance-budget + .actual-finance-budget { margin-top: 16px; }
+.actual-finance .actual-finance-budget > div:first-child { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.actual-finance .actual-finance-progress { height: 8px; margin: 8px 0; border-radius: 8px; background: var(--amf-soft); overflow: hidden; }
+.actual-finance .actual-finance-progress span { display: block; height: 100%; background: var(--amf-accent); border-radius: inherit; }
+.actual-finance .actual-finance-budget small { color: var(--amf-muted); }
+@media (max-width: 700px) { .actual-finance .actual-finance-budgets { order: 2; } }
+@media(min-width:701px) {
+  .actual-mail { position:relative; }
+  .actual-mail > .actual-topline { position:absolute; top:-56px; right:28px; z-index:4; margin:0; }
+  .actual-mail-tools[open] { position:absolute; top:0; right:0; width:min(540px,calc(100vw - 300px)); max-height:70dvh; overflow:auto; border:1px solid var(--amf-border); box-shadow:0 12px 36px #140a1e26; }
+  .actual-mail-grid { height:calc(100dvh - 160px); }
+}

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@aelys/shared'
 import { NotesView } from '../views/NotesView'
 
-const client = vi.hoisted(() => ({ notes: vi.fn(), note: vi.fn(), updateNote: vi.fn(), createNote: vi.fn() }))
+const client = vi.hoisted(() => ({ notes: vi.fn(), note: vi.fn(), updateNote: vi.fn(), createNote: vi.fn(), deleteNote: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 
 const first = { id: '1', title: 'Alpha', markdown_body: 'Original', version: 1, parent_id: 'parent', project_id: 'project' }
@@ -141,4 +141,26 @@ describe('note drafts', () => {
     expect(input('New note title').value).toBe('New'); expect(host.textContent).toContain('may have succeeded')
     expect(host.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true)
   })
+  it('formats a selection and safely previews the draft without saving', async () => {
+    await mount(); await change('Note body', '<script>bad()</script> hello')
+    const area = input('Note body') as HTMLTextAreaElement
+    area.setSelectionRange(23, 28)
+    await click('Bold')
+    expect(input('Note body').value).toContain('**hello**')
+    await click('Preview')
+    expect(host.querySelector('.nl-preview script')).toBeNull()
+    expect(host.querySelector('.nl-preview strong')?.textContent).toBe('hello')
+    expect(client.updateNote).not.toHaveBeenCalled()
+    await click('Edit'); expect(input('Note body').value).toContain('**hello**')
+  })
+
+  it('confirms deletion and removes only the selected note after success', async () => {
+    client.deleteNote.mockResolvedValue({}); vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await mount(); await click('Delete')
+    expect(client.deleteNote).toHaveBeenCalledWith('1', { queueOnOffline: false })
+    expect(host.querySelector('.nl-note-list')?.textContent).not.toContain('Alpha')
+    expect(host.querySelector('.nl-note-list')?.textContent).toContain('Beta')
+    vi.restoreAllMocks()
+  })
+
 })

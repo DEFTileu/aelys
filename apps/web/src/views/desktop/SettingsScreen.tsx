@@ -10,6 +10,7 @@ import {
   type ThemeId,
 } from '../../data/desktop/settings'
 import { setHomeToggle, setSettings, useDesktopState } from '../../lib/desktopStore'
+import { setThemePreference, useThemePreference } from '../../lib/theme'
 import './settings.css'
 import { Switch } from '../../components/Switch'
 
@@ -28,22 +29,16 @@ const sectionTitle: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 600, 
 const mutedText: CSSProperties = { fontSize: 12, lineHeight: '16px', color: 'var(--muted, #625D69)' }
 const TRAFFIC_LIGHTS = ['#FF5F57', '#FEBC2E', '#28C840']
 
-export function SettingsScreen({ theme, onToggleTheme }: Props) {
-  const [followsSystem, setFollowsSystem] = useState(false)
+export function SettingsScreen(_props: Props) {
+  const selectedTheme = useThemePreference()
   const [allWallpapers, setAllWallpapers] = useState(false)
   // Wallpaper, accent and the two sliders are shared with the shell and persisted by desktopStore.
   const { accent, wallpaper: wall, customWallpaper, transparency, blur } = useDesktopState()
   const sliderValues = [transparency, blur]
   const { homeToggles: toggles } = useDesktopState()
 
-  // The app has a single light/dark prop; "System" is resolved once at pick time.
-  const selectedTheme: ThemeId = followsSystem ? 'system' : theme
-
   function pickTheme(id: ThemeId) {
-    setFollowsSystem(id === 'system')
-    const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false
-    const wanted = id === 'system' ? (systemDark ? 'dark' : 'light') : id
-    if (wanted !== theme) onToggleTheme()
+    setThemePreference(id)
   }
 
   function setSlider(i: number, value: number) {

@@ -17,10 +17,10 @@ export function WeatherPill() {
   </button>
 }
 
-export function WeatherCard() {
+export function WeatherCard({ compact = false }: { compact?: boolean }) {
   const { location, forecast, status, notice } = useWeather()
   if (!location) return <div className="weather-empty"><CloudSun size={36} aria-hidden="true" /><p>Погода в вашем городе</p><button type="button" className="weather-action" onClick={openWeatherSettings}><MapPin size={15} />Выбрать город</button></div>
-  return <div className="weather-card-body">
+  return <div className={`weather-card-body${compact ? ' weather-card-body--compact' : ''}`}>
     <button type="button" className="home-btn weather-location" onClick={openWeatherSettings}><MapPin size={14} /><span>{location.name}</span></button>
     {forecast ? <>
       <div className="weather-current"><WeatherIcon code={forecast.code} day={forecast.isDay} size={38} /><strong>{temperature(forecast.temperature)}</strong></div>

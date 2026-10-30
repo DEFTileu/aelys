@@ -1,3 +1,4 @@
+import { useTheme } from './lib/theme'
 import { Component, lazy, Suspense, useEffect, useState, type ReactElement, type ReactNode } from 'react'
 import { AppShell } from './components/AppShell'
 import { AuthGate } from './components/AuthGate'
@@ -38,12 +39,6 @@ function useRoute(): RoutePath {
   const [route, setRoute] = useState<RoutePath>(() => getRoute())
   useEffect(() => { const onPopState = () => setRoute(getRoute()); window.addEventListener('popstate', onPopState); return () => window.removeEventListener('popstate', onPopState) }, [])
   return route
-}
-
-function useTheme(): ['light' | 'dark', () => void] {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => (window.localStorage.getItem('aelys.theme') as 'light' | 'dark') || 'light')
-  useEffect(() => { document.documentElement.dataset.theme = theme; window.localStorage.setItem('aelys.theme', theme) }, [theme])
-  return [theme, () => setTheme((value) => value === 'light' ? 'dark' : 'light')]
 }
 
 function useApiStatus(): ApiStatus {

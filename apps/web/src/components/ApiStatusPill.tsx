@@ -12,6 +12,7 @@ const copy: Record<ApiStatus, string> = {
 const icons: Record<ApiStatus, AelysIconComponent> = { loading: RefreshCw, ready: Wifi, empty: Wifi, error: TriangleAlert, offline: CloudOff }
 
 export function ApiStatusPill({ status }: { status: ApiStatus }) {
+  if (status === 'ready') return null
   const Icon = icons[status]
   return <span className={`mod-pill mod-pill--${status}`}><Icon size={13} aria-hidden="true" />{copy[status]}</span>
 }

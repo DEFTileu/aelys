@@ -26,21 +26,34 @@
  .actual-desktop__tools .shell-pill[aria-label='Search or run a command'] { width: 44px !important; padding: 0 !important; justify-content: center; }
  .actual-desktop__tools .shell-pill[aria-label='Search or run a command'] :is(span,kbd) { display: none; }
 }
-/* Mobile Home uses the reference's two-unit tile grid and bottom composer. */
+/* ACTUAL mobile uses its own persisted tile order and compact geometry. */
 .mobile-shell--home .home-screen > section[aria-label='Ask Aelys'] { display: none; }
 .mobile-shell--home .home-screen { padding: 0 16px !important; gap: 12px !important; }
 .mobile-shell--home .home-screen > div:has(h2) { flex-wrap: wrap; }
 .mobile-shell--home .home-screen h2 { font-size: 20px !important; }
-.mobile-shell--home .home-widget-grid { --widget-columns: 2; gap: 16px; grid-auto-rows: 112px; }
-.mobile-shell--home .home-widget { padding: 16px !important; border-radius: 22px !important; }
-.mobile-shell--home .home-widget :is(h2,h3) { font-size: 14px !important; }
-.mobile-shell--home .home-widget[data-widget-id='focus'] .home-widget-body > div { flex-direction: column; }
+.mobile-shell--home .home-widget-grid { --widget-columns: 2; gap: 12px; grid-auto-rows: auto; align-items: stretch; }
+.mobile-shell--home .home-widget { height: auto !important; min-height: 176px; grid-row: span 1; padding: 16px !important; border-radius: 22px !important; }
+.mobile-shell--home .home-widget[data-size='large'] { min-height: 364px; grid-row: span 2; }
+.mobile-shell--home .home-widget [data-widget-heading] { height: 28px !important; margin-bottom: 8px !important; }
+.mobile-shell--home .home-widget [data-widget-heading] > span:first-child { display: none !important; }
+.mobile-shell--home .home-widget [data-widget-heading] > span { font-size: 14px !important; }
+.mobile-shell--home .home-widget [data-widget-heading] > span:last-of-type { display: none; }
+.mobile-shell--home .home-widget [data-widget-heading] > button { margin-left: auto; }
+.mobile-shell--home .home-widget:not([data-size='small']) .home-widget-body > .home-records { grid-template-columns: 1fr; }
+.mobile-shell--home .home-focus-ring { width: 108px !important; height: 108px !important; padding: 7px !important; }
+.mobile-shell--home .home-focus-time { font-size: 20px !important; line-height: 28px !important; }
+.mobile-shell--home .home-focus-body { gap: 12px !important; }
+.mobile-shell--home .home-focus-controls .home-focus-toggle, .mobile-shell--home .home-focus-controls .home-focus-btn { width: 36px; height: 36px; }
+.mobile-shell--home .home-focus-controls .home-focus-mode { display: none; }
+.mobile-shell--home .home-widget[data-size='small'][data-widget-id='focus'] { min-height: 228px; }
+.mobile-shell--home .home-widget[data-widget-id='weather'] { min-height: 228px; }
 .mobile-shell--home .home-layout-help { font-size: 12px; }
 .mobile-shell--home .home-picker { width: min(300px, calc(100vw - 32px)) !important; }
 .mobile-shell--home .home-tool { white-space: nowrap; }
-@media (max-width: 350px) {
- .mobile-shell--home .home-widget-grid { --widget-columns: 1; }
-}
+.mobile-shell--home .home-widget-body .home-task-row { height: 40px !important; }
+.mobile-shell--home .home-widget-body .home-task-row:nth-child(n+4) { display: none !important; }
+.mobile-shell--home .home-screen--editing .home-widget-body { opacity: .4; }
+@media (max-width: 350px) { .mobile-shell--home .home-widget-grid { --widget-columns: 1; } }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
  :root[data-theme='dark'] [data-glass] { background: var(--surface-solid) !important; }
@@ -50,3 +63,25 @@
 }
 
 :root[data-theme='dark'] .home-composer input { color: var(--ink) !important; }
+
+.actual-desktop .shell-sidebar { background: #FAF7F4; border-color: #ECE6E1; }
+.actual-desktop .shell-photo { background-position: 70% 62%; }
+@media (min-width:1240px) { .actual-desktop .home-widget-grid { --widget-columns:4; } }
+@media (min-width:900px) and (max-width:1239px) { .actual-desktop .home-widget-grid { --widget-columns:2; } }
+@media (min-width:701px) and (max-width:899px) { .actual-desktop .home-widget-grid { --widget-columns:1; } }
+
+.home-widget-meta { font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.home-widget[data-widget-id='weather'] .home-widget-meta { color:white; }
+.home-mobile-open { display:grid; place-items:center; width:36px; height:36px; flex:none; margin:-6px -8px -6px 0; opacity:.8; }
+.mobile-shell--home .home-widget[data-widget-id='cal'] { min-height:238px; }
+.mobile-shell--home .home-widget-drag-bar { overflow:visible; }
+.mobile-shell--home .weather-card-body--compact .weather-forecast { display:none; }
+.mobile-shell--home .weather-card-body--compact .weather-current strong { font-size:26px; }
+.mobile-shell--home .weather-card-body--compact .weather-location { font-size:12px; }
+.mobile-shell--home .weather-card-body--compact .weather-card-footer { margin-top:8px; }
+
+.mobile-shell--home .home-layout-toolbar { order:3; margin:0; }
+.mobile-shell--home .home-layout-toolbar > div:first-child { display:none !important; }
+.mobile-shell--home .home-screen:not(.home-screen--editing) .home-layout-toolbar .home-tool { width:100%; display:flex; justify-content:center; border-radius:20px; border:1.5px dashed #cfc9d4; background:transparent; color:var(--ink-soft); font-size:14px; }
+.mobile-shell--home .home-screen { padding-top:24px !important; }
+.mobile-shell--home .home-screen--editing .home-layout-toolbar { order:-1; flex-wrap:nowrap; justify-content:flex-end; }
