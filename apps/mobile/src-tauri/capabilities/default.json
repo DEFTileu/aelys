@@ -4,5 +4,10 @@
   "description": "Minimal Aelys mobile permissions",
   "windows": ["main"],
   "platforms": ["android", "iOS"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default", "allow-runtime-policy", "allow-native-status",
+    "allow-native-health", "allow-native-biometric-status", "allow-native-login", "allow-native-resume",
+    "allow-native-logout", "allow-native-operation", "allow-native-ai-events",
+    "allow-native-ai-events-close"
+  ]
 }

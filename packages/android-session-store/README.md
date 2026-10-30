@@ -1,0 +1,17 @@
+# Android session store — Phase 0 spike
+
+ADR-006 remains PROPOSED. This is an internal native component, not a complete or security-validated authentication flow. It has no JavaScript API, invoke handler, or frontend permissions. Tauri 2.12.5 applies plugin IPC authorization before its Android mobile fallback; the app must not add grants for this plugin. Verify denial in the assembled release app.
+
+## Integration
+
+Add this crate as a path dependency in the mobile Rust manifest and register `.plugin(tauri_plugin_aelys_session_store::init())` before the application setup that accesses it. With `tauri::Manager` in scope, obtain an owned handle using `app.state::<tauri_plugin_aelys_session_store::AndroidSessionStore>().inner().clone()`. The default runtime is Tauri's Wry; other runtimes can use `AndroidSessionStore<R>` explicitly. `init` manages the handle on all platforms. Non-Android operations return `UNSUPPORTED_PLATFORM` after input validation.
+
+`read(&str) -> Result<Option<String>, String>`, `write(&str, &str) -> Result<(), String>`, and `delete(&str) -> Result<(), String>` are async. Only canonical HTTPS origins are accepted (for example `https://example.com`, no trailing slash, default port, userinfo, path, query or fragment); callers must canonicalize and validate their configured backend consistently. Records must contain 1–65536 UTF-8 bytes. Errors contain fixed codes only; Android bridge errors are intentionally collapsed to `STORE_ERROR`. Missing records return `None` only when the store is otherwise healthy. No secret values belong in caller logs.
+
+Calls are serialized on one process-wide worker with a queue of 32. A full queue fails rather than blocking the UI. Dropping or timing out a Rust future does not cancel already submitted Android work; callers must treat its outcome as uncertain and must not assume a delete or write was cancelled. The caller must await successful durable deletion before beginning refresh rotation, serialize higher-level session operations, and require reauthentication after uncertain rotation or storage outcomes.
+
+## Storage and open validation
+
+AES-256-GCM uses a non-exportable Android Keystore key and a provider-generated IV; canonical origin is authenticated data and its SHA-256 digest names the file. The envelope is one version byte, 12-byte IV and ciphertext/tag, under `noBackupFilesDir`. Writes sync the temporary file, atomically rename it, and sync the directory; deletion removes the record and syncs the directory. A durable in-progress marker protects interrupted mutations; a leftover marker or temporary file or missing key in an initialized store fails closed. A failure during a filesystem operation is reported as uncertain, not as success; actual filesystem durability, key invalidation, restart, backup exclusion, device support and release IPC isolation still require device testing. Key loss is not automatically repaired. Keystore hardware backing is not asserted.
+
+Instrumented tests use an isolated alias, directory and synthetic data; they must run on a disposable emulator/device. They exercise encryption, random IVs, tampering, AAD binding, deletion, simulated lost key and interrupted writes. They do not prove hardware invalidation or power-loss durability. Native app integration, authorization, network behavior, rotation, recovery policy and full device tests belong to the parent Phase 0 work.

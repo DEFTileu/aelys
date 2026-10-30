@@ -1,5 +1,6 @@
 use aelys_runtime::adapter::{AdapterKind, AgentAdapter, ProcessCommandProbe, VendorAdapter};
 use serde::Serialize;
+mod native;
 
 #[derive(Debug, Serialize)]
 struct RuntimeStatus {
@@ -32,9 +33,27 @@ fn runtime_capabilities() -> Vec<aelys_runtime::adapter::AdapterCapabilities> {
 
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            use tauri::Manager;
+            app.manage(native::NativeStorage::new(app.handle()));
+            Ok(())
+        })
+        .manage(native::NativeState::default())
+        .manage(native::NativeAIStreams::default())
         .invoke_handler(tauri::generate_handler![
             runtime_status,
-            runtime_capabilities
+            runtime_capabilities,
+            native::native_status,
+            native::native_health,
+            native::native_biometric_status,
+            native::native_biometric_set,
+            native::native_keychain_authorize,
+            native::native_login,
+            native::native_resume,
+            native::native_logout,
+            native::native_operation,
+            native::native_ai_events,
+            native::native_ai_events_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aelys desktop application");

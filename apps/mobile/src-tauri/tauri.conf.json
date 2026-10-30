@@ -5,15 +5,24 @@
   "identifier": "com.aelys.mobile",
   "build": {
     "beforeDevCommand": "pnpm --dir ../web dev --host 0.0.0.0",
-    "beforeBuildCommand": "pnpm --dir ../web build",
+    "beforeBuildCommand": "node scripts/prepare-android.mjs && pnpm --dir ../web build",
     "devUrl": "http://127.0.0.1:5173",
     "frontendDist": "../../web/dist"
   },
   "app": {
-    "windows": [{"label": "main", "title": "Aelys"}],
+    "windows": [
+      {
+        "label": "main",
+        "title": "Aelys"
+      }
+    ],
     "security": {
-      "csp": "default-src 'self' http://127.0.0.1:5173; connect-src 'self' http://127.0.0.1:5173 https: wss:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; base-uri 'self'"
+      "csp": "default-src 'self' http://127.0.0.1:5173; connect-src 'self' http://127.0.0.1:5173 https: wss:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'none'"
     }
   },
-  "bundle": {"active": false, "targets": "all", "createUpdaterArtifacts": false}
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "createUpdaterArtifacts": false
+  }
 }

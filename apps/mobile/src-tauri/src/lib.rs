@@ -1,4 +1,6 @@
+use aelys_native_transport as native;
 use serde::Serialize;
+use tauri::Manager;
 
 #[derive(Debug, Serialize)]
 struct MobileRuntimePolicy {
@@ -16,9 +18,29 @@ fn runtime_policy() -> MobileRuntimePolicy {
     }
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![runtime_policy])
+        .plugin(tauri_plugin_aelys_session_store::init())
+        .setup(|app| {
+            app.manage(native::NativeStorage::new(app.handle()));
+            Ok(())
+        })
+        .manage(native::NativeState::default())
+        .manage(native::NativeAIStreams::default())
+        .invoke_handler(tauri::generate_handler![
+            runtime_policy,
+            native::native_status,
+            native::native_health,
+            native::native_biometric_status,
+            native::native_biometric_set,
+            native::native_login,
+            native::native_resume,
+            native::native_logout,
+            native::native_operation,
+            native::native_ai_events,
+            native::native_ai_events_close
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Aelys mobile application");
 }

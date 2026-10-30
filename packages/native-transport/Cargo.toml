@@ -1,0 +1,29 @@
+[package]
+name = "aelys-native-transport"
+version = "0.1.0"
+edition = "2021"
+description = "Bounded native Aelys session and domain transport"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2.5.8"
+tokio = { version = "1", features = ["sync", "macros", "rt"] }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "native-tls-no-alpn"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7.0"
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSObject", "NSString", "NSError"] }
+block2 = "0.6.2"
+core-foundation = "0.10.1"
+security-framework-sys = "2.17.0"
+
+[target.'cfg(target_os = "android")'.dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
+tauri-plugin-aelys-session-store = { path = "../android-session-store" }
