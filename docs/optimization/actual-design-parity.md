@@ -107,3 +107,17 @@ change OPEN decisions, send external messages or migrate personal data.
   owner-present follow-up after unlocking the Mac.
 - Backend concurrency contract commit: `5705504`. UI work remains on
   `codex/actual-design-rebuild`; no remote push or merge was performed.
+
+### Native installation follow-up
+
+The owner reported missing animation. Inspection found the running installed
+Mac app dated 19:15, while the parity bundle was dated 22:32. The installed
+executable matched the earlier icon-installation hash, not the parity build.
+The app was on its locked entry screen with no editor draft open. It was quit
+normally, backed up under ~/Applications/Aelys-backups, and replaced with the
+latest bundle using the same local ad-hoc hardened-runtime signing approach.
+Strict deep signature verification passed. Installed and source executable
+hashes matched after signing. Launch was observed in the native window (star
+intro), followed by the real Touch ID entry screen. No biometric, password or
+Keychain approval was supplied by the agent. Launch animation runs once per
+app start, not on each route change; reduced-motion preference is respected.
