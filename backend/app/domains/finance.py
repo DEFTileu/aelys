@@ -9,7 +9,14 @@ from pydantic import Field, field_validator, model_validator
 from sqlalchemy import Numeric, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .common import APIModel, OwnerScoped, db_dependency, get_owned, owner_dependency, save
+from .common import (
+    APIModel,
+    OwnerScoped,
+    db_dependency,
+    get_owned,
+    owner_dependency,
+    save,
+)
 
 
 class MoneyType(StrEnum):
@@ -71,7 +78,7 @@ class TransactionCreate(APIModel):
     @field_validator("amount", mode="before")
     @classmethod
     def amount_decimal(cls, v):
-        if isinstance(v, float): raise ValueError("amount must be decimal or string")
+        if isinstance(v, float): raise ValueError("amount must be decimal or string")  # noqa: TRY004 - Pydantic needs ValueError for structured money validation
         value=Decimal(str(v))
         if value == 0: raise ValueError("amount cannot be zero")
         return value

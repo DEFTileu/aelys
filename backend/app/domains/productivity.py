@@ -10,7 +10,19 @@ from pydantic import Field, model_validator
 from sqlalchemy import JSON, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .common import APIModel, Base, OwnerScoped, ConflictError, db_dependency, get_owned, now_utc, owner_dependency, save, soft_delete, update_version
+from .common import (
+    APIModel,
+    Base,
+    ConflictError,
+    OwnerScoped,
+    db_dependency,
+    get_owned,
+    now_utc,
+    owner_dependency,
+    save,
+    soft_delete,
+    update_version,
+)
 
 
 class Note(OwnerScoped):

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from .cursor import CursorCodec
 from .errors import SyncException, SyncResetRequired
@@ -34,7 +35,7 @@ class PullResponse:
 class BootstrapResponse:
     records: tuple[Mapping[str, Any], ...]
     cursor: str
-    next_page_token: Optional[str]
+    next_page_token: str | None
     has_more: bool
 
 
@@ -99,10 +100,10 @@ class SyncService:
         current = self.store.status(context).current_commit_seq
         return PushResponse(tuple(results), self._cursor_for_result(owner_id, current))
 
-    def _cursor_for_result(self, owner_id: str, commit_seq: Optional[int]) -> str:
+    def _cursor_for_result(self, owner_id: str, commit_seq: int | None) -> str:
         return self.cursors.encode(kind="pull", owner_id=owner_id, commit_seq=commit_seq or 0)
 
-    def pull(self, owner_id: str, device_id: str, cursor: Optional[str], limit: int = 200) -> PullResponse:
+    def pull(self, owner_id: str, device_id: str, cursor: str | None, limit: int = 200) -> PullResponse:
         context = self._context(owner_id, device_id)
         if limit < 1 or limit > MAX_BATCH_OPERATIONS:
             raise SyncException(SyncErrorCode.VALIDATION_ERROR, "limit is outside the allowed bounds", {}, 422)
@@ -137,8 +138,8 @@ class SyncService:
         self,
         owner_id: str,
         device_id: str,
-        scope: Optional[str] = None,
-        page_token: Optional[str] = None,
+        scope: str | None = None,
+        page_token: str | None = None,
         limit: int = 200,
     ) -> BootstrapResponse:
         context = self._context(owner_id, device_id)

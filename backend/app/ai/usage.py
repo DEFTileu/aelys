@@ -21,7 +21,7 @@ class UsageTracker:
         return record
 
     def total(self) -> Decimal:
-        return sum((r.estimated_cost for r in self._records), Decimal("0"))
+        return sum((r.estimated_cost for r in self._records), Decimal(0))
 
     def records(self) -> tuple[UsageRecord, ...]:
         return tuple(self._records)

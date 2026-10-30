@@ -1,11 +1,22 @@
 from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import Field
 from sqlalchemy import JSON, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
-from .common import APIModel, OwnerScoped, db_dependency, get_owned, now_utc, owner_dependency, save
+
+from .common import (
+    APIModel,
+    OwnerScoped,
+    db_dependency,
+    get_owned,
+    now_utc,
+    owner_dependency,
+    save,
+)
 
 
 class ActivityEvent(OwnerScoped):

@@ -1,15 +1,19 @@
+import base64
+import json
+from datetime import UTC, datetime, timedelta
+
 import pytest
-import base64, json
-from datetime import datetime, timedelta, timezone
+from app.agents.api import _verify_attestation, _verify_trusted_provenance
+from app.core import db
+from app.core.config import get_settings
+from app.core.db import Base
+from app.core.models import Device
+from app.main import app
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from app.main import app
-from app.core.db import Base
-from app.core import db
-from app.agents.api import _verify_attestation, _verify_trusted_provenance
-from app.core.config import get_settings
-from app.core.models import Device
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+
 @pytest.fixture
 async def client(tmp_path, monkeypatch):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/test.db")
@@ -52,7 +56,7 @@ async def test_logout_revokes_bound_access_and_refresh_session(client):
 def test_attestation_rejects_mutated_unsigned_request():
     key=Ed25519PrivateKey.generate(); public=key.public_key().public_bytes_raw()
     device_id="device-attestation-test"
-    issued=datetime.now(timezone.utc); expires=issued+timedelta(minutes=5)
+    issued=datetime.now(UTC); expires=issued+timedelta(minutes=5)
     request={"request_id":"request-1","device_id":device_id,"issued_at":issued.isoformat(),"expires_at":expires.isoformat(),"nonce":[1]*32,"body":{"type":"isolation_attestation","payload":{}}}
     signed_payload=json.dumps(request,separators=(",",":"),ensure_ascii=False)
     envelope={"request":request,"signed_payload":signed_payload,"public_key":list(public),"signature":list(key.sign(signed_payload.encode()))}

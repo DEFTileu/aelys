@@ -1,0 +1,8 @@
+# Keep local and CI diagnostics reproducible with backend[quality].
+required-version = "==0.17.3"
+target-version = "py312"
+
+[lint.flake8-bugbear]
+# FastAPI inspects these per-route declarations; they are not request-local
+# mutable data. B008 still checks ordinary calls used as Python defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File"]

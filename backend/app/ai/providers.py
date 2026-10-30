@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Mapping, Protocol
+from typing import Any, Protocol
 
-from .errors import ProviderError, redact_error
-from .models import ProviderRequest, ProviderResponse, ProviderKind, Usage
+from .errors import ProviderError, RunCancelled, redact_error
+from .models import ProviderKind, ProviderRequest, ProviderResponse, Usage
 from .secrets import SecretRef, SecretStore
 
 
@@ -43,7 +44,9 @@ class _BaseAdapter:
     async def _post(self, path: str, payload: Mapping[str, Any]) -> HttpResponse:
         try:
             response = await self._transport.post(self._base_url + path, headers=self._headers(), json=payload)
-        except Exception as exc:
+        except RunCancelled:
+            raise
+        except Exception as exc:  # noqa: BLE001 - provider implementations expose only sanitized failures
             raise ProviderError(f"provider request failed: {redact_error(exc)}") from None
         if response.status >= 400:
             raise ProviderError(f"provider returned status {response.status}")
@@ -72,6 +75,8 @@ class ClaudeAdapter(_BaseAdapter):
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:
         self.last_usage = Usage()
         async for item in self._transport.stream(self._base_url + "/v1/messages", headers=self._headers(), json=self._payload(request)):
+            if item.get("type") == "error" or item.get("error"):
+                raise ProviderError("provider stream failed")
             if item.get("usage"):
                 self.last_usage = _usage(item)
             if item.get("type") == "content_block_delta":
@@ -97,6 +102,8 @@ class OpenRouterAdapter(_BaseAdapter):
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:
         self.last_usage = Usage()
         async for item in self._transport.stream(self._base_url + "/api/v1/chat/completions", headers=self._headers(), json=self._payload(request)):
+            if item.get("error"):
+                raise ProviderError("provider stream failed")
             if item.get("usage"):
                 self.last_usage = _usage(item)
             choices = item.get("choices", [])

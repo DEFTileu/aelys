@@ -21,7 +21,8 @@
 | ADR-017 | SQLite macOS/Android, IndexedDB Web | PROPOSED | Offline data и синхронизация |
 | ADR-018 | SSE AI events, outbound WS Mac runtime | PROPOSED | Event streams + reconnect/poll fallback |
 | ADR-019 | Apache-2.0 | PROPOSED | Прежде чем публиковать LICENSE, утвердить |
-| ADR-020 | Gmail в MVP как живая интеграция | OPEN | OAuth и объём прав пока не утверждены |
+| ADR-020 | Gmail: чтение писем и работа с черновиками | DECIDED (owner, 2026-10-29) | OAuth для readonly + compose; отправка не разрешена и не реализована |
+| ADR-021 | Telegram Business / Secretary Mode: читать входящие разрешённых чатов и автоматически отвечать от имени владельца | DECIDED (owner, 2026-10-29) | Одноразовая привязка владельца, права Telegram + Policy Engine; личные данные Aelys недоступны клиентам; автоответ включается владельцем |
 | ADR-021 | Политика backup, включая локальные agent sessions | OPEN | Не нарушать local-only по умолчанию |
 | ADR-022 | Framework/SDK для Agent Harness | OPEN | Выбирать после capability spike |
 | ADR-023 | Автоматические внешние операции (git push, send email и т. п.) | OPEN | Не включать в проектный доступ автоматически |

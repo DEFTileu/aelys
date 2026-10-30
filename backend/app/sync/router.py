@@ -7,12 +7,14 @@ implementation that is not present in this repository slice yet.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping, Optional
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .errors import SyncException
 from .service import SyncService
+
 
 def build_router(
     service: SyncService,
@@ -53,7 +55,7 @@ def build_router(
     @router.get("/pull")
     async def pull(
         device_id: str,
-        cursor: Optional[str] = None,
+        cursor: str | None = None,
         limit: int = Query(200, ge=1, le=200),
         owner_id: str = Depends(owner_id_dependency),
     ):
@@ -66,8 +68,8 @@ def build_router(
     @router.get("/bootstrap")
     async def bootstrap(
         device_id: str,
-        scope: Optional[str] = None,
-        page_token: Optional[str] = None,
+        scope: str | None = None,
+        page_token: str | None = None,
         limit: int = Query(200, ge=1, le=200),
         owner_id: str = Depends(owner_id_dependency),
     ):

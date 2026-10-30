@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
+from app.ai import api as ai_api
+from app.ai.providers import HttpResponse
 from app.core import db
 from app.core.db import Base
 from app.core.models import Task
 from app.main import app
-from app.ai import api as ai_api
-from app.ai.providers import HttpResponse
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 class CountingTransport:

@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
+
 
 class ErrorBody(BaseModel):
     code: str; message: str; details: dict = Field(default_factory=dict)

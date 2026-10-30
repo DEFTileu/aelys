@@ -8,7 +8,6 @@ import hashlib
 import hmac
 import json
 from dataclasses import dataclass
-from typing import Optional
 
 from .errors import SyncException
 from .models import SyncErrorCode
@@ -19,8 +18,8 @@ class DecodedCursor:
     kind: str
     owner_id: str
     commit_seq: int
-    snapshot_seq: Optional[int] = None
-    after_resource_id: Optional[str] = None
+    snapshot_seq: int | None = None
+    after_resource_id: str | None = None
 
 
 class CursorCodec:
@@ -37,8 +36,8 @@ class CursorCodec:
         kind: str,
         owner_id: str,
         commit_seq: int,
-        snapshot_seq: Optional[int] = None,
-        after_resource_id: Optional[str] = None,
+        snapshot_seq: int | None = None,
+        after_resource_id: str | None = None,
     ) -> str:
         body = json.dumps(
             {"k": kind, "o": owner_id, "s": commit_seq, "b": snapshot_seq, "a": after_resource_id},

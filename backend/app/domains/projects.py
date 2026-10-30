@@ -9,7 +9,16 @@ from pydantic import Field, model_validator
 from sqlalchemy import JSON, String, UniqueConstraint, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .common import APIModel, OwnerScoped, db_dependency, get_owned, owner_dependency, save, soft_delete, update_version
+from .common import (
+    APIModel,
+    OwnerScoped,
+    db_dependency,
+    get_owned,
+    owner_dependency,
+    save,
+    soft_delete,
+    update_version,
+)
 
 
 class ProjectStatus(StrEnum):

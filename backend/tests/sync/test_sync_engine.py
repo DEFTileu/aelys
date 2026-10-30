@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from typing import Optional
 from uuid import uuid4
 
 from backend.app.sync.cursor import CursorCodec
@@ -20,8 +19,11 @@ from backend.app.sync.models import (
     SyncStatus,
 )
 from backend.app.sync.service import SyncService
-from backend.app.sync.validation import MAX_OPERATION_BYTES, parse_batch, parse_operation
-
+from backend.app.sync.validation import (
+    MAX_OPERATION_BYTES,
+    parse_batch,
+    parse_operation,
+)
 
 OWNER = "owner-1"
 DEVICE = str(uuid4())
@@ -67,7 +69,7 @@ class FakeStore:
             return result
         if operation.action is not OperationAction.CREATE and operation.base_version != current_version:
             branches: tuple[dict, ...] = ()
-            conflict_id: Optional[str] = None
+            conflict_id: str | None = None
             if operation.resource_kind == "note" and operation.action is OperationAction.UPDATE:
                 conflict_id = str(uuid4())
                 body = operation.patch.get("markdown_body", operation.patch.get("body"))
@@ -136,10 +138,10 @@ class FakeStore:
 def operation(
     *,
     resource_kind: str = "task",
-    resource_id: Optional[str] = None,
+    resource_id: str | None = None,
     action: str = "create",
     base_version: int = 0,
-    patch: Optional[dict] = None,
+    patch: dict | None = None,
     device_id: str = DEVICE,
 ) -> dict:
     return {

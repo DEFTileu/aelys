@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Protocol
 
 from .errors import PolicyDenied
@@ -10,7 +10,7 @@ from .models import PermissionContext, ToolCall
 
 
 class PolicyEngine(Protocol):
-    def authorize(self, tool: "ToolDescriptor", call: ToolCall, context: PermissionContext) -> None: ...
+    def authorize(self, tool: ToolDescriptor, call: ToolCall, context: PermissionContext) -> None: ...
 
 
 class ToolDescriptor(Protocol):
@@ -21,7 +21,7 @@ class ToolDescriptor(Protocol):
 
 class ServerPolicyEngine:
     def authorize(self, tool: ToolDescriptor, call: ToolCall, context: PermissionContext) -> None:
-        if context.expires_at and context.expires_at <= datetime.now(timezone.utc):
+        if context.expires_at and context.expires_at <= datetime.now(UTC):
             raise PolicyDenied("policy expired")
         if tool.required_scope not in context.scopes:
             raise PolicyDenied("tool scope is not granted")

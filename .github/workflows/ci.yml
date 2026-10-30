@@ -27,11 +27,17 @@ jobs:
       - run: .venv/bin/python -m pip install --upgrade pip
       - run: .venv/bin/pip install -e 'backend[test,quality]'
       - run: PYTHONPATH=backend .venv/bin/python -m compileall -q backend/app
-      - run: .venv/bin/ruff check --select E9,F backend/app backend/tests
+      - run: .venv/bin/ruff check backend/app backend/tests
       - run: .venv/bin/mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs
       - run: .venv/bin/bandit -q -r backend/app -ll
       - run: .venv/bin/pip-audit
       - run: PYTHONPATH=backend .venv/bin/pytest -q backend/tests
+      - run: PYTHONPATH=backend .venv/bin/pytest -q backend/tests/ai_automation/test_ai_api.py backend/tests/ai_automation/test_ai_event_commit.py
+        env:
+          AELYS_TEST_AI_POSTGRES_ADMIN_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/postgres
+      - run: .venv/bin/ruff check scripts/start_local.py scripts/tests
+      - run: .venv/bin/mypy --ignore-missing-imports --check-untyped-defs scripts/start_local.py
+      - run: .venv/bin/pytest -q scripts/tests/test_start_local.py
       - run: cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head
       - run: cd backend && PYTHONPATH=. ../.venv/bin/alembic check
       - run: AELYS_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/aelys_ci cd backend && AELYS_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/aelys_ci PYTHONPATH=. ../.venv/bin/alembic upgrade head

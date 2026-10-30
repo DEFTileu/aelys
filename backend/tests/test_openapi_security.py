@@ -13,4 +13,4 @@ def test_http_responses_include_baseline_security_headers():
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Referrer-Policy"] == "no-referrer"
-    assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
+    assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=(self)"

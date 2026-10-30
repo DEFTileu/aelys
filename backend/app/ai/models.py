@@ -6,11 +6,12 @@ is the small contract shared by transports, routing, tools, and run orchestratio
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 from uuid import UUID, uuid4
 
 
@@ -63,7 +64,7 @@ class ProviderRequest:
     model: str
     messages: tuple[ChatMessage, ...]
     max_tokens: int = 1024
-    temperature: Decimal = Decimal("0")
+    temperature: Decimal = Decimal(0)
     tools: tuple[Mapping[str, Any], ...] = ()
     stream: bool = False
 
@@ -123,7 +124,7 @@ class UsageRecord:
     model: str
     usage: Usage
     estimated_cost: Decimal
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(frozen=True)
@@ -150,4 +151,4 @@ class RunEvent:
     payload: Mapping[str, Any]
     sequence: int
     event_id: str
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from typing import Any, Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any
 from uuid import UUID, uuid4
 
 from ..ai.errors import PolicyDenied, redact_error
@@ -12,7 +13,6 @@ from ..ai.models import PermissionContext, ToolCall
 from ..ai.policy import PolicyEngine
 from ..ai.tools import ToolRegistry
 from .models import AutomationEvent, AutomationExecution, AutomationRule, Condition
-
 
 AuditHook = Callable[[Mapping[str, Any]], Awaitable[None]]
 
@@ -89,7 +89,7 @@ class AutomationEngine:
                         results.append({"tool": action.tool_name, "status": "would_execute"})
                     else:
                         results.append(await self.registry.invoke(call, context))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - custom actions fail with redacted audit metadata
                 status, error = "failed", redact_error(exc)
             execution = AutomationExecution(uuid4(), rule.rule_id, event.event_id, status, rule.dry_run, tuple(results), error)
             self._executions.append(execution)

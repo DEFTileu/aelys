@@ -1,13 +1,31 @@
 from __future__ import annotations
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, JSON, BigInteger, Index
+
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
+
 from .db import Base
+from .money import ExactMoney
+
 
 def uid() -> str: return str(uuid.uuid4())
-def now() -> datetime: return datetime.now(timezone.utc)
+def now() -> datetime: return datetime.now(UTC)
 
 class Owned(Base):
     __abstract__ = True
@@ -128,14 +146,15 @@ class FinanceCategory(Owned):
     name: Mapped[str] = mapped_column(String(200)); kind: Mapped[str] = mapped_column(String(30), default="expense")
 class FinanceTransaction(Owned):
     __tablename__ = "finance_transactions"
-    account_id: Mapped[str] = mapped_column(String(36), ForeignKey("finance_accounts.id")); category_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("finance_categories.id")); amount: Mapped[Decimal] = mapped_column(Numeric(20,4)); currency: Mapped[str] = mapped_column(String(3)); type: Mapped[str] = mapped_column(String(20)); occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); notes: Mapped[str] = mapped_column(Text, default=""); idempotency_key: Mapped[str | None] = mapped_column(String(100), unique=True); related_transfer_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    account_id: Mapped[str] = mapped_column(String(36), ForeignKey("finance_accounts.id")); category_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("finance_categories.id")); amount: Mapped[Decimal] = mapped_column(ExactMoney()); currency: Mapped[str] = mapped_column(String(3)); type: Mapped[str] = mapped_column(String(20)); occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); notes: Mapped[str] = mapped_column(Text, default=""); idempotency_key: Mapped[str | None] = mapped_column(String(100), unique=True); related_transfer_id: Mapped[str | None] = mapped_column(String(36), index=True)
 class FinanceBudget(Owned):
     __tablename__ = "finance_budgets"
-    category_id: Mapped[str | None] = mapped_column(String(36)); currency: Mapped[str] = mapped_column(String(3)); period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True)); period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True)); limit_amount: Mapped[Decimal] = mapped_column(Numeric(20,4))
+    category_id: Mapped[str | None] = mapped_column(String(36)); currency: Mapped[str] = mapped_column(String(3)); period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True)); period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True)); limit_amount: Mapped[Decimal] = mapped_column(ExactMoney())
 
 class FocusSession(Owned):
     __tablename__ = "focus_sessions"
     task_id: Mapped[str | None] = mapped_column(String(36)); project_id: Mapped[str | None] = mapped_column(String(36)); started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); elapsed_seconds: Mapped[int] = mapped_column(Integer, default=0); mode: Mapped[str] = mapped_column(String(30), default="pomodoro"); status: Mapped[str] = mapped_column(String(20), default="active")
+    __table_args__ = (Index("uq_focus_active_owner", "owner_id", unique=True, sqlite_where=text("status = 'active' AND deleted_at IS NULL"), postgresql_where=text("status = 'active' AND deleted_at IS NULL")),)
 
 class MailMessage(Owned):
     __tablename__ = "mail_messages"
@@ -146,9 +165,35 @@ class MailDraft(Owned):
 class MailAccount(Owned):
     __tablename__ = "mail_accounts"
     provider: Mapped[str] = mapped_column(String(30), default="local_import"); external_id: Mapped[str | None] = mapped_column(String(200)); credentials_ref: Mapped[str | None] = mapped_column(String(100)); connection_status: Mapped[str] = mapped_column(String(30), default="local_import")
+
+class GmailCredential(Base):
+    __tablename__ = "gmail_credentials"
+    account_id: Mapped[str] = mapped_column(String(36), ForeignKey("mail_accounts.id"), primary_key=True)
+    encrypted_tokens: Mapped[str] = mapped_column(Text)
+
+class GmailOAuthState(Base):
+    __tablename__ = "gmail_oauth_states"
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("auth_sessions.id"))
+    encrypted_verifier: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+class GmailDraftLink(Base):
+    __tablename__ = "gmail_draft_links"
+    draft_id: Mapped[str] = mapped_column(String(36), ForeignKey("mail_drafts.id"), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(36), ForeignKey("mail_accounts.id"))
+    remote_id: Mapped[str | None] = mapped_column(String(200))
+    state: Mapped[str] = mapped_column(String(30), default="ready")
+    __table_args__ = (UniqueConstraint("account_id", "remote_id", name="uq_gmail_account_remote_draft"),)
 class TaskReminder(Owned):
     __tablename__ = "task_reminders"
     task_id: Mapped[str] = mapped_column(String(36)); notify_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); channel: Mapped[str] = mapped_column(String(30), default="in_app"); reminder_status: Mapped[str] = mapped_column(String(20), default="pending"); idempotency_key: Mapped[str] = mapped_column(String(100), unique=True)
+class CalendarReminder(Owned):
+    __tablename__ = "calendar_reminders"
+    event_id: Mapped[str] = mapped_column(String(36), ForeignKey("calendar_events.id")); notify_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); channel: Mapped[str] = mapped_column(String(30), default="in_app"); reminder_status: Mapped[str] = mapped_column(String(20), default="pending"); idempotency_key: Mapped[str] = mapped_column(String(100), unique=True)
+    offset_seconds: Mapped[int | None] = mapped_column(Integer)
+    occurrence_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 class AIProvider(Owned):
     __tablename__ = "ai_providers"
@@ -168,7 +213,7 @@ class AIMessage(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid); conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_conversations.id")); role: Mapped[str] = mapped_column(String(20)); content: Mapped[str] = mapped_column(Text); source_refs_json: Mapped[list] = mapped_column(JSON, default=list); created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 class AIRun(Owned):
     __tablename__ = "ai_runs"
-    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_conversations.id")); prompt_message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_messages.id"), nullable=True); provider_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_providers.id"), nullable=True); provider: Mapped[str] = mapped_column(String(50)); model: Mapped[str] = mapped_column(String(150)); status: Mapped[str] = mapped_column(String(30), default="queued"); idempotency_key: Mapped[str | None] = mapped_column(String(150), nullable=True); request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True); tool_scope_json: Mapped[dict] = mapped_column(JSON, default=dict); token_counts: Mapped[dict] = mapped_column(JSON, default=dict); cost_estimate: Mapped[Decimal] = mapped_column(Numeric(20,8), default=Decimal("0")); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_conversations.id")); prompt_message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_messages.id"), nullable=True); provider_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_providers.id"), nullable=True); provider: Mapped[str] = mapped_column(String(50)); model: Mapped[str] = mapped_column(String(150)); status: Mapped[str] = mapped_column(String(30), default="queued"); idempotency_key: Mapped[str | None] = mapped_column(String(150), nullable=True); request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True); tool_scope_json: Mapped[dict] = mapped_column(JSON, default=dict); token_counts: Mapped[dict] = mapped_column(JSON, default=dict); cost_estimate: Mapped[Decimal] = mapped_column(Numeric(20,8), default=Decimal(0)); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (Index("ix_ai_run_owner_idempotency", "owner_id", "idempotency_key", unique=True),)
 
 class AIRunEvent(Base):
@@ -235,3 +280,6 @@ class DeviceSyncCursor(Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid); owner_id: Mapped[str] = mapped_column(String(36)); action: Mapped[str] = mapped_column(String(100)); actor: Mapped[str] = mapped_column(String(100)); scope: Mapped[str] = mapped_column(String(200)); decision: Mapped[str] = mapped_column(String(30)); outcome: Mapped[str] = mapped_column(String(30)); correlation_id: Mapped[str] = mapped_column(String(36)); redacted_metadata: Mapped[dict] = mapped_column(JSON, default=dict); created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+# Register integration tables in the shared metadata for migrations and tests.
+import app.integrations.telegram_models  # noqa: F401 - register integration tables

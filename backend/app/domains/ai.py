@@ -6,10 +6,11 @@ arguments in an audit record.
 """
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, AsyncIterator, Protocol
+from typing import Any, Protocol
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -17,7 +18,15 @@ from pydantic import Field
 from sqlalchemy import JSON, Numeric, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .common import APIModel, OwnerScoped, db_dependency, get_owned, now_utc, owner_dependency, save
+from .common import (
+    APIModel,
+    OwnerScoped,
+    db_dependency,
+    get_owned,
+    now_utc,
+    owner_dependency,
+    save,
+)
 
 
 class ProviderKind(StrEnum):
@@ -66,7 +75,7 @@ class AIRun(OwnerScoped):
     prompt_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     input_tokens: Mapped[int] = mapped_column(default=0, nullable=False)
     output_tokens: Mapped[int] = mapped_column(default=0, nullable=False)
-    cost_estimate: Mapped[Decimal] = mapped_column(Numeric(20, 8), default=Decimal("0"), nullable=False)
+    cost_estimate: Mapped[Decimal] = mapped_column(Numeric(20, 8), default=Decimal(0), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)

@@ -5,6 +5,12 @@ does not expose an action callback that bypasses policy authorization.
 """
 
 from .engine import AutomationEngine
-from .models import Action, AutomationEvent, AutomationExecution, AutomationRule, Condition
+from .models import (
+    Action,
+    AutomationEvent,
+    AutomationExecution,
+    AutomationRule,
+    Condition,
+)
 
 __all__ = ["Action", "AutomationEngine", "AutomationEvent", "AutomationExecution", "AutomationRule", "Condition"]

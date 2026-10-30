@@ -8,14 +8,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from collections.abc import Awaitable, Callable
-from typing import AsyncIterator, Mapping, Protocol
+from typing import Protocol
 from uuid import UUID
 
 from .errors import AIError, BudgetExceeded, ProviderError, RunCancelled, redact_error
-from .models import ChatMessage, ModelSpec, ProviderKind, ProviderRequest, ProviderResponse, RoutingRequest, Usage
+from .models import (
+    ChatMessage,
+    ModelSpec,
+    ProviderKind,
+    ProviderRequest,
+    ProviderResponse,
+    RoutingRequest,
+    Usage,
+)
 from .router import ModelRouter
 from .usage import UsageRecord, UsageTracker
 
@@ -87,7 +95,7 @@ class AIExecutionService:
             yield self._event("ai.run.cancelled", {"run_id": str(run_id)})
         except (AIError, BudgetExceeded) as exc:
             yield self._event("ai.run.failed", {"run_id": str(run_id), "code": getattr(exc, "code", "AI_ERROR"), "message": redact_error(exc)})
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - untrusted adapters terminate runs through redacted events
             yield self._event("ai.run.failed", {"run_id": str(run_id), "code": "AI_ERROR", "message": redact_error(exc)})
 
     @staticmethod

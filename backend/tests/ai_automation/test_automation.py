@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import unittest
 from uuid import uuid4
 
 from app.ai.models import PermissionContext
@@ -7,10 +9,6 @@ from app.ai.policy import ServerPolicyEngine
 from app.ai.tools import ToolDescriptor, ToolRegistry
 from app.automation.engine import AutomationEngine
 from app.automation.models import Action, AutomationEvent, AutomationRule, Condition
-
-
-import asyncio
-import unittest
 
 
 class AutomationTests(unittest.TestCase):

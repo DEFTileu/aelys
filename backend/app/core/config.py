@@ -1,6 +1,8 @@
 from functools import lru_cache
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./aelys.db"
@@ -8,6 +10,10 @@ class Settings(BaseSettings):
     provider_encryption_key: str | None = Field(default=None, min_length=32)
     access_token_minutes: int = 15
     refresh_token_days: int = 30
+    browser_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
+    gmail_client_id: str | None = None
+    gmail_client_secret: str | None = Field(default=None, repr=False)
+    gmail_redirect_uri: str | None = None
     runtime_signing_key: str | None = None
     runtime_trust_public_key: str | None = None
     runtime_trust_manifest: str | None = None

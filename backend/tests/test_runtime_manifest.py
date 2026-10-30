@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from app.agents.trust import build_signed_manifest, digest_file, verify_signed_manifest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
 def test_runtime_manifest_helper_signs_and_verifies_release_digests(tmp_path):

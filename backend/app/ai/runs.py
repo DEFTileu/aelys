@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable, Mapping
+from typing import Any
 from uuid import UUID, uuid4
 
 from .errors import RunCancelled, redact_error
@@ -89,7 +90,7 @@ class AIRunManager:
             except RunCancelled:
                 state.status = RunStatus.CANCELLED
                 await self._emit(run_id, "ai.run.cancelled", {})
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - runner failures are recorded without raw exception details
                 state.status = RunStatus.FAILED
                 await self._emit(run_id, "ai.run.failed", {"code": "AI_ERROR", "message": redact_error(exc)})
 

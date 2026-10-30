@@ -6,7 +6,7 @@
 
 | Feature | Сразу в модульном ядре | Внешнее подключение |
 |---|---|---|
-| Mail | message/thread/draft/search/import API | Gmail OAuth / IMAP later, timing OPEN |
+| Mail | message/thread/draft/search/import API | Gmail OAuth read/drafts approved 2026-10-29; IMAP later |
 | Calendar | native Aelys events / recurrence | Google Calendar later |
 | Telegram | command/notification adapter abstraction | Реальный Bot API обязателен для рабочего бота |
 | GitHub | repository association, manual links | OAuth, repo webhooks later |
@@ -23,8 +23,8 @@ Internal entities: MailAccount, MailMessage, MailThread (or thread identifier), 
 - Extract due date/task with source message reference.
 - Draft a response. **Sending** is an external action requiring separate scope.
 
-### Gmail integration (OPEN for MVP)
-If approved: OAuth scopes minimized (read-only first), incremental sync/backfill, pagination, refresh/revocation, webhook/polling semantics, quota/backoff, secure token storage, thread and attachment support, no blanket model access to inbox. Separate step for send scope. Mail retention/classification settings required.
+### Gmail integration (read/drafts approved 2026-10-29)
+Owner approved Gmail reading and draft management. Implemented path uses browser-bound OAuth state + PKCE, encrypted refresh/access tokens, explicit paginated import and explicit draft publication. Sending is unavailable. Incremental mirroring, labels/deletions, attachments, background refresh, retention controls and production OAuth verification remain unfinished. See SELF_HOSTING.md for setup and limitations.
 
 ### Offline mail
 Cached messages and drafts are available offline; new incoming mail and actual sending require network. Deferred send must never silently execute without the user having granted explicit send permission.
@@ -70,6 +70,27 @@ Not all providers implement writes. Capabilities must be explicit and feature-ga
 
 ## 6. Decision gates
 
-Before live Gmail: owner confirms read/draft/send scopes and sync/retention policy.
-Before live Telegram: owner confirms bot-only contact model and notification categories.
+Gmail read/drafts approved by owner 2026-10-29; sending remains unapproved. The UI discloses manual imports and retention of loaded local mail after disconnect. Background sync/retention controls require further design.
+Telegram Business incoming read/reply was approved by owner 2026-10-29. Live setup requires the owner’s bot/account connection; notification categories for the separate personal command bot remain OPEN.
 Before any bank connections: separate security and data sensitivity review.
+
+### Telegram Business / Secretary Mode (owner approved 2026-10-29)
+
+Owner requested a bot that reads incoming business chats and replies automatically
+on the connected account's behalf. Implemented in the Phase 3 Telegram adapter
+slice: encrypted write-only token, single-owner deep-link binding, local Bot API
+long polling with durable cursor/receipts/lease, BusinessConnection ownership and
+fresh `can_reply` checks, scoped AI generation and policy-checked sends. The owner
+selects the allowed chats in Telegram, configures a BYOK provider/persona in Aelys,
+and enables automatic replies explicitly. Draft/manual reply remains available.
+
+This is a Business/Secretary bot, not an unrestricted personal-account client.
+Customers cannot access owner Notes/Tasks/Mail/Finance or Mac tools. Only private
+plain-text incoming messages are handled; unsupported media, forwarded messages
+and bot echoes are ignored. No campaigns, proactive messages or Telegram Stars/
+profile/gift operations are implemented. Notification categories and the separate
+personal `/task`/`note`/`today` command adapter remain outside this slice.
+
+See [TELEGRAM_BUSINESS.md](TELEGRAM_BUSINESS.md) for actual setup and retention.
+A real token, connected Telegram account and configured AI key are still required
+for live acceptance; automated tests do not substitute for that external check.

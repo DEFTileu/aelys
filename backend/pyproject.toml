@@ -3,11 +3,11 @@ name = "aelys-backend"
 version = "0.1.0"
 description = "Aelys modular backend"
 requires-python = ">=3.12"
-dependencies = ["fastapi", "uvicorn[standard]", "pydantic-settings", "sqlalchemy[asyncio]", "greenlet", "asyncpg", "psycopg[binary]", "aiosqlite", "alembic", "cryptography", "python-multipart", "httpx"]
+dependencies = ["fastapi", "uvicorn[standard]", "pydantic-settings", "sqlalchemy[asyncio]", "greenlet", "asyncpg", "psycopg[binary]", "aiosqlite", "alembic", "cryptography", "python-multipart", "httpx", "python-dateutil>=2.9,<3"]
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-asyncio", "httpx"]
-quality = ["ruff", "bandit", "pip-audit", "mypy"]
+quality = ["ruff==0.17.3", "bandit", "pip-audit", "mypy"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

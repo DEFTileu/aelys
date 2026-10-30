@@ -21,18 +21,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.inspection import inspect
 
 from .models import (
-    AIConversation, AIMessage, AIProvider, AIRun, ActivityEvent, AutomationExecution,
-    AutomationRule, CalendarEvent, FinanceAccount, FinanceBudget, FinanceCategory,
-    FinanceTransaction, FocusSession, HistoryEntry, MailAccount, MailDraft,
-    MailMessage, Note, NoteRevision, Notification, Project, Resource, ResourceLink,
-    Task, TaskReminder,
+    ActivityEvent,
+    AIConversation,
+    AIMessage,
+    AIProvider,
+    AIRun,
+    AutomationExecution,
+    AutomationRule,
+    CalendarEvent,
+    CalendarReminder,
+    FinanceAccount,
+    FinanceBudget,
+    FinanceCategory,
+    FinanceTransaction,
+    FocusSession,
+    HistoryEntry,
+    MailAccount,
+    MailDraft,
+    MailMessage,
+    Note,
+    NoteRevision,
+    Notification,
+    Project,
+    Resource,
+    ResourceLink,
+    Task,
+    TaskReminder,
 )
 
 EXPORT_VERSION = 1
 MAGIC = b"AELYS-EXPORT-1\n"
 
 EXPORT_MODELS = (
-    Project, Resource, ResourceLink, Note, Task, CalendarEvent,
+    Project, Resource, ResourceLink, Note, Task, CalendarEvent, CalendarReminder,
     FinanceAccount, FinanceCategory, FinanceTransaction, FinanceBudget,
     FocusSession, MailAccount, MailMessage, MailDraft, TaskReminder,
     AIProvider, AIConversation, AIRun, ActivityEvent, Notification,
@@ -94,7 +115,7 @@ async def build_owner_export(db: AsyncSession, owner_email: str) -> dict[str, An
         "owner": {"id": owner.id, "email": owner.email},
         "privacy": {
             "encrypted": True,
-            "excluded": ["auth_sessions", "devices", "ai_provider_secrets", "project_grants", "raw_mac_agent_sessions", "credentials"],
+            "excluded": ["auth_sessions", "devices", "ai_provider_secrets", "gmail_credentials", "gmail_oauth_states", "gmail_draft_links", "telegram_integrations", "telegram_business_connections", "telegram_business_messages", "telegram_update_receipts", "project_grants", "raw_mac_agent_sessions", "credentials"],
         },
         "exported_at": datetime.now().astimezone().isoformat(),
         "tables": tables,

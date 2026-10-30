@@ -38,6 +38,8 @@ export interface OfflineStore {
   getCache<T>(key: string): Promise<T | undefined>;
   setCache<T>(key: string, value: T, ttlMs?: number): Promise<void>;
   removeCache(key: string): Promise<void>;
+  /** Remove the built-in collection key and its query variants, without touching entities or outbox. */
+  invalidateCache?(root: string): Promise<void>;
 }
 
 /** Optional durable entity capability. Kept separate so existing adapters remain compatible. */
@@ -226,6 +228,19 @@ export class IndexedDbOfflineStore implements OfflineStore, EntityStore {
     const database = await this.database;
     const transaction = database.transaction("cache", "readwrite");
     transaction.objectStore("cache").delete(key);
+    await transactionDone(transaction);
+  }
+
+  public async invalidateCache(root: string): Promise<void> {
+    const database = await this.database;
+    const transaction = database.transaction("cache", "readwrite");
+    const store = transaction.objectStore("cache");
+    const request = store.getAllKeys();
+    request.onsuccess = () => {
+      for (const key of request.result) {
+        if (typeof key === "string" && (key === root || key.startsWith(`${root}?`))) store.delete(key);
+      }
+    };
     await transactionDone(transaction);
   }
 

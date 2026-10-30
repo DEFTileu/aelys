@@ -115,3 +115,41 @@ No schema migration should add transcript/body/embedding to cloud `agent_session
 - PostgreSQL FTS on allowed notes and imported mails; private Mac session FTS only local.
 - Foreign keys and owner checks are mandatory; implement soft-deleted resource filtering consistently.
 - Alembic migration(s) + seed minimal single-user config + integration tests for versioning/constraints.
+
+## Phase 3 persistence follow-through (2026-10-29)
+
+- `calendar_reminders`: Owned/versioned, `event_id` FK, `notify_at`,
+  `channel=in_app`, `reminder_status`, unique `idempotency_key`, nullable
+  `offset_seconds` and `occurrence_at` for forward-compatible recurring schedules.
+  Delivery/cancellation uses conditional version transitions; notifications have
+  a unique reminder+occurrence dedup key. Included in owner export/restore.
+- FocusSession has a partial unique index on `owner_id` while status is active
+  and the row is not deleted, covering concurrent device starts at the DB layer.
+- Finance transaction amount and budget limit use ExactMoney: NUMERIC(20,4) on
+  PostgreSQL and VARCHAR(40) on SQLite. SQLite NUMERIC affinity otherwise binds
+  Decimal through binary float; migration 0019 prevents future precision loss.
+  Historical values already rounded by an older SQLite database cannot be
+  reconstructed by this migration. No cloud schema for private agent data or
+  secrets changes in this phase.
+- Migrations: 0017 calendar reminders; 0018 active-owner Focus uniqueness;
+  0019 exact SQLite money; 0020 recurring-reminder cursor/offset.
+
+### Implemented Telegram Business persistence (migration 0022)
+
+- `telegram_integrations`: one connector per owner, encrypted write-only token,
+  bot identity/capability, explicit assistant/provider settings, numeric bound
+  Telegram owner, hashed expiring challenge, durable update cursor and worker lease.
+- `telegram_business_connections`: Telegram connection ID, integration/owner scope,
+  enabled state and only the supported reply/read rights.
+- `telegram_business_messages`: owner/versioned integration/connection/chat/message
+  identity, minimal text/direction/time, editable draft and send state. Composite
+  remote identity is unique. Message text, draft, chat label and business persona
+  use AES-GCM encrypted text fields; raw updates are never persisted.
+- `telegram_update_receipts`: unique `(integration_id,update_id)`; receipt commits
+  with message ingestion and cursor. No content or credentials in the receipt.
+
+Business content is erased after seven days, on incoming deletion/revocation, or
+on explicit disconnect. Connector tables are not part of general owner export
+or offline sync. AI run audits retain counts/cost and metadata, without Telegram
+message content in `ai_messages`. These are implemented schema details; other
+PROPOSED entities in this document remain proposals.

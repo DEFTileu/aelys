@@ -91,6 +91,12 @@ class FakeObjectStore {
     this.transaction.add(() => request.succeed([...this.records.values()].map((record) => structuredClone(record))));
     return request;
   }
+
+  public getAllKeys(): FakeRequest<IDBValidKey[]> {
+    const request = new FakeRequest<IDBValidKey[]>();
+    this.transaction.add(() => request.succeed([...this.records.keys()]));
+    return request;
+  }
 }
 
 class FakeDatabase {
@@ -147,6 +153,19 @@ function request(key: EntityKey): OutboxRequest {
 }
 
 describe("IndexedDbOfflineStore entities", () => {
+  it("invalidates only a collection and its query variants across reopen", async () => {
+    const factory = new FakeIndexedDb();
+    const first = new IndexedDbOfflineStore("invalidate-test", 2, factory as unknown as IDBFactory);
+    for (const key of ["tasks", "tasks?project_id=a", "tasks?project_id=b", "tasks-extra", "notes?project_id=a"]) await first.setCache(key, key);
+    const pending = await first.setEntityAndEnqueue("pending:tasks:1", { pending: true }, request("1"));
+    await first.invalidateCache("tasks");
+    expect(factory.transactions.at(-1)?.storeNames).toEqual(["cache"]);
+    const reopened = new IndexedDbOfflineStore("invalidate-test", 2, factory as unknown as IDBFactory);
+    for (const key of ["tasks", "tasks?project_id=a", "tasks?project_id=b"]) await expect(reopened.getCache(key)).resolves.toBeUndefined();
+    for (const key of ["tasks-extra", "notes?project_id=a"]) await expect(reopened.getCache(key)).resolves.toBe(key);
+    await expect(reopened.getEntity("pending:tasks:1")).resolves.toEqual(pending.entity);
+    await expect(reopened.listOutbox()).resolves.toEqual([pending.outbox]);
+  });
   it("migrates a version-1 database and keeps an entity across store instances", async () => {
     const factory = new FakeIndexedDb();
     factory.seedVersionOne("migration-test");

@@ -8,9 +8,12 @@ import type {
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
   ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession,
   SyncAckRequest, SyncAckResponse, SyncBootstrapResponse, SyncPullResponse, SyncPushRequest, SyncPushResponse, SyncStatusResponse,
-  TaskIn, TaskOut, TaskReminder, TokenResponse, TransactionIn, Id,
+  TaskIn, TaskOut, TaskReminder, CalendarReminder, CalendarReminderIn, TokenResponse, TransactionIn, Id,
 } from "./types";
 import type { EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
+import type { DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
+
+import type { TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
 
 export type QueryValue = string | number | boolean | null | undefined;
 export type Query = Readonly<Record<string, QueryValue>>;
@@ -24,6 +27,8 @@ export interface RequestOptions {
   readonly idempotencyKey?: string;
   readonly cacheKey?: string;
   readonly cacheTtlMs?: number;
+  /** Disable cached GET fallback while still caching successful responses. */
+  readonly allowCacheFallback?: boolean;
   readonly queueOnOffline?: boolean;
   /** Persist this optimistic entity together with the offline outbox entry. */
   readonly offlineEntityKey?: EntityKey;
@@ -69,6 +74,14 @@ export class OfflineQueuedError extends NetworkError {
   }
 }
 
+export class OfflineWriteUnavailableError extends NetworkError {
+  public readonly code = "OFFLINE_WRITE_UNAVAILABLE";
+  public constructor(cause?: unknown) {
+    super("This operation requires a connection. Its result is unconfirmed; reload before retrying.", cause);
+    this.name = "OfflineWriteUnavailableError";
+  }
+}
+
 function makeIdempotencyKey(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   return `aelys-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -84,6 +97,30 @@ function encodeQuery(query: Query | undefined): string {
   for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== null) params.set(key, String(value));
   const result = params.toString();
   return result ? `?${result}` : "";
+}
+
+function queryCacheSuffix(query: Query | undefined): string {
+  if (!query) return "";
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== null) params.set(key, String(value));
+  params.sort();
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+const mutationFamilies: readonly [string, readonly string[]][] = [
+  ["/api/v1/projects", ["projects"]], ["/api/v1/notes", ["notes"]], ["/api/v1/tasks", ["tasks"]],
+  ["/api/v1/calendar", ["calendar-events", "calendar-occurrences"]], ["/api/v1/focus", ["focus-sessions"]],
+  ["/api/v1/finance", ["finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary"]],
+  ["/api/v1/mail", ["mail-accounts", "mail-messages", "mail-drafts"]],
+  ["/api/v1/notifications", ["notifications"]], ["/api/v1/ai/providers", ["ai-providers"]],
+  ["/api/v1/agents", ["agent-devices", "agent-sessions"]], ["/api/v1/automations", ["automations"]],
+  ["/api/v1/sync/push", ["projects", "notes", "tasks", "calendar-events", "calendar-occurrences", "focus-sessions", "finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary", "mail-accounts", "mail-messages", "mail-drafts"]],
+];
+
+function affectedCacheFamilies(path: string): readonly string[] {
+  const families = mutationFamilies.filter(([prefix]) => path === prefix || path.startsWith(`${prefix}/`)).flatMap(([, roots]) => roots);
+  return families.length ? [...new Set([...families, "activity", "history", "sync-status"])] : [];
 }
 
 function responseBody(value: unknown): { code: string; message: string; details: JsonObject; requestId?: string } {
@@ -115,11 +152,16 @@ export class ApiClient {
   private readonly getTokenValue: (() => string | undefined | Promise<string | undefined>) | undefined;
   private readonly timeoutMs: number;
   private tokenValue: string | undefined;
+  private cacheWork: Promise<void> = Promise.resolve();
+  private readonly cacheGenerations = new Map<string, number>();
+  private readonly blockedCacheFamilies = new Set<string>();
 
   public constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.fetchImpl = options.fetch ?? globalThis.fetch;
-    if (!this.fetchImpl) throw new Error("fetch is not available in this runtime");
+    const fetchImpl = options.fetch ?? globalThis.fetch;
+    if (!fetchImpl) throw new Error("fetch is not available in this runtime");
+    // Native browser fetch requires the global receiver, not this ApiClient.
+    this.fetchImpl = fetchImpl.bind(globalThis);
     this.offlineStore = options.offlineStore;
     this.getTokenValue = options.getToken;
     this.tokenValue = options.token;
@@ -132,12 +174,13 @@ export class ApiClient {
   public async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     if (!path.startsWith("/")) throw new Error("API path must start with '/'");
     const method = options.method ?? "GET";
+    const cacheFamily = method === "GET" && options.cacheKey ? this.cacheFamily(options.cacheKey) : undefined;
+    const generation = cacheFamily ? this.cacheGenerations.get(cacheFamily) ?? 0 : 0;
     const queryString = encodeQuery(options.query);
     const url = `${this.baseUrl}${path}${queryString}`;
     const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
     const safeHeaders: Record<string, string> = { ...options.headers };
-    delete safeHeaders.Authorization;
-    delete safeHeaders.authorization;
+    for (const key of Object.keys(safeHeaders)) if (key.toLowerCase() === "authorization") delete safeHeaders[key];
     const headers: Record<string, string> = { Accept: "application/json", ...safeHeaders };
     if (token) headers.Authorization = `Bearer ${token}`;
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
@@ -151,11 +194,29 @@ export class ApiClient {
     signal?.addEventListener("abort", abort, { once: true });
     try {
       const response = await this.fetchImpl(url, { method, headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal });
-      return await this.parseResponse<T>(response, options.cacheKey, options.cacheTtlMs);
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      const networkError = error instanceof NetworkError ? error : new NetworkError("Network request failed", error);
+      const value = await this.parseResponse<T>(response);
       if (method === "GET" && options.cacheKey && this.offlineStore) {
+        await this.withCacheWork(async () => {
+          if (!cacheFamily || (this.cacheGenerations.get(cacheFamily) ?? 0) === generation) {
+            await this.offlineStore?.setCache(options.cacheKey as string, value, options.cacheTtlMs);
+          }
+        });
+      } else if (method !== "GET") {
+        await this.invalidateAfterWrite(path);
+      }
+      return value;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        // An offline reverse proxy may return 502/503 rather than throw fetch.
+        // Authorization/validation failures must never reveal cached data.
+        if (method === "GET" && error.status >= 500 && options.allowCacheFallback !== false && options.cacheKey && this.offlineStore && (!cacheFamily || !this.blockedCacheFamilies.has(cacheFamily))) {
+          const cached = await this.offlineStore.getCache<T>(options.cacheKey);
+          if (cached !== undefined) return cached;
+        }
+        throw error;
+      }
+      const networkError = error instanceof NetworkError ? error : new NetworkError("Network request failed", error);
+      if (method === "GET" && options.allowCacheFallback !== false && options.cacheKey && this.offlineStore && (!cacheFamily || !this.blockedCacheFamilies.has(cacheFamily))) {
         const cached = await this.offlineStore.getCache<T>(options.cacheKey);
         if (cached !== undefined) return cached;
       }
@@ -166,10 +227,44 @@ export class ApiClient {
           : await this.offlineStore.enqueue(request);
         throw new OfflineQueuedError(entry.id, entry.request);
       }
+      if (method !== "GET" && options.queueOnOffline === false) throw new OfflineWriteUnavailableError(networkError);
       throw networkError;
     } finally {
       globalThis.clearTimeout(timer);
       signal?.removeEventListener("abort", abort);
+    }
+  }
+
+  private cacheFamily(key: string): string | undefined {
+    return mutationFamilies.flatMap(([, roots]) => roots).concat(["activity", "history", "sync-status"])
+      .find((root) => key === root || key.startsWith(`${root}?`));
+  }
+
+  private async withCacheWork(work: () => Promise<void>): Promise<void> {
+    const next = this.cacheWork.then(work);
+    this.cacheWork = next.catch(() => {});
+    await next;
+  }
+
+  private async invalidateAfterWrite(path: string): Promise<void> {
+    if (!this.offlineStore) return;
+    const roots = affectedCacheFamilies(path);
+    for (const root of roots) {
+      this.cacheGenerations.set(root, (this.cacheGenerations.get(root) ?? 0) + 1);
+      this.blockedCacheFamilies.add(root);
+    }
+    const generations = roots.map((root) => this.cacheGenerations.get(root));
+    try {
+      await this.withCacheWork(async () => {
+        for (const [index, root] of roots.entries()) {
+          if (!this.offlineStore?.invalidateCache) continue;
+          await this.offlineStore.invalidateCache(root);
+          if (this.cacheGenerations.get(root) === generations[index]) this.blockedCacheFamilies.delete(root);
+        }
+      });
+    } catch {
+      // The server has committed. Keep affected fallbacks disabled in this client,
+      // rather than reporting a failed write that could be retried as a duplicate.
     }
   }
 
@@ -205,7 +300,10 @@ export class ApiClient {
           await this.offlineStore.updateOutbox(entry.id, { attempts: entry.attempts + 1, nextAttemptAt: Date.now() + Math.min(300_000, 2 ** Math.min(entry.attempts, 8) * 1_000) });
           break;
         }
-        await this.offlineStore.removeOutbox(entry.id);
+        // Validation, auth and version conflicts need user resolution. Never
+        // silently discard a durable command merely because the API rejected it.
+        retained += 1;
+        break;
       }
     }
     return { applied, retained };
@@ -243,36 +341,57 @@ export class ApiClient {
   public tasks(query?: Query, options?: RequestOptions) { return this.request<readonly TaskOut[]>("/api/v1/tasks", this.read({ ...options, query }, "tasks")); }
   public createTask(body: TaskIn, options?: RequestOptions) { return this.request<TaskOut>("/api/v1/tasks", this.write(body, options)); }
   public task(itemId: Id, options?: RequestOptions) { return this.request<TaskOut>(`/api/v1/tasks/${encodeURIComponent(itemId)}`, this.read(options)); }
-  public updateTask(itemId: Id, body: TaskIn, options?: RequestOptions) { return this.request<TaskOut>(`/api/v1/tasks/${encodeURIComponent(itemId)}`, this.write(body, options, "PATCH")); }
+  public updateTask(itemId: Id, body: TaskPatch, options?: RequestOptions) { return this.request<TaskOut>(`/api/v1/tasks/${encodeURIComponent(itemId)}`, this.write(body, options, "PATCH")); }
   public deleteTask(itemId: Id, query?: Query, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/tasks/${encodeURIComponent(itemId)}`, this.write(undefined, { ...options, query }, "DELETE")); }
   public taskReminders(taskId: Id, options?: RequestOptions) { return this.request<readonly TaskReminder[]>(`/api/v1/tasks/${encodeURIComponent(taskId)}/reminders`, this.read(options)); }
   public createTaskReminder(taskId: Id, body: ReminderIn, options?: RequestOptions) { return this.request<TaskReminder>(`/api/v1/tasks/${encodeURIComponent(taskId)}/reminders`, this.write(body, options)); }
   public calendarEvents(query?: Query, options?: RequestOptions) { return this.request<readonly EventOut[]>("/api/v1/calendar/events", this.read({ ...options, query }, "calendar-events")); }
-  public createCalendarEvent(body: EventIn, options?: RequestOptions) { return this.request<EventOut>("/api/v1/calendar/events", this.write(body, options)); }
+  public calendarOccurrences(startsAt: string, endsAt: string, options?: RequestOptions) { return this.request<readonly EventOccurrence[]>("/api/v1/calendar/occurrences", this.read({ ...options, query: { starts_at: startsAt, ends_at: endsAt } }, "calendar-occurrences")); }
+  public createCalendarEvent(body: EventIn, options?: RequestOptions) { return this.request<EventOut>("/api/v1/calendar/events", this.write(body, { queueOnOffline: false, ...options })); }
   public calendarEvent(itemId: Id, options?: RequestOptions) { return this.request<EventOut>(`/api/v1/calendar/events/${encodeURIComponent(itemId)}`, this.read(options)); }
-  public updateCalendarEvent(itemId: Id, body: EventIn, options?: RequestOptions) { return this.request<EventOut>(`/api/v1/calendar/events/${encodeURIComponent(itemId)}`, this.write(body, options, "PATCH")); }
-  public deleteCalendarEvent(itemId: Id, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/calendar/events/${encodeURIComponent(itemId)}`, this.write(undefined, options, "DELETE")); }
+  public updateCalendarEvent(itemId: Id, body: EventPatch, options?: RequestOptions) { return this.request<EventOut>(`/api/v1/calendar/events/${encodeURIComponent(itemId)}`, this.write(body, { queueOnOffline: false, ...options }, "PATCH")); }
+  public deleteCalendarEvent(itemId: Id, version: number, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/calendar/events/${encodeURIComponent(itemId)}`, this.write(undefined, { queueOnOffline: false, ...options, query: { version } }, "DELETE")); }
+  public calendarReminders(eventId: Id, options?: RequestOptions) { return this.request<readonly CalendarReminder[]>(`/api/v1/calendar/events/${encodeURIComponent(eventId)}/reminders`, this.read(options)); }
+  public createCalendarReminder(eventId: Id, body: CalendarReminderIn, options?: RequestOptions) { return this.request<CalendarReminder>(`/api/v1/calendar/events/${encodeURIComponent(eventId)}/reminders`, this.write(body, { queueOnOffline: false, ...options })); }
+  public cancelCalendarReminder(eventId: Id, reminderId: Id, version: number, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/calendar/events/${encodeURIComponent(eventId)}/reminders/${encodeURIComponent(reminderId)}`, this.write(undefined, { queueOnOffline: false, ...options, query: { version } }, "DELETE")); }
+  public dispatchCalendarReminders(options?: RequestOptions) { return this.request<{ readonly delivered: number }>("/api/v1/calendar/reminders/dispatch", this.write(undefined, { ...options, queueOnOffline: false })); }
   public focusSessions(options?: RequestOptions) { return this.request<readonly FocusOut[]>("/api/v1/focus/sessions", this.read(options, "focus-sessions")); }
-  public startFocusSession(body: FocusIn, options?: RequestOptions) { return this.request<FocusOut>("/api/v1/focus/sessions", this.write(body, options)); }
-  public stopFocusSession(itemId: Id, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/stop`, this.write(undefined, options)); }
+  public startFocusSession(body: FocusIn, options?: RequestOptions) { return this.request<FocusOut>("/api/v1/focus/sessions", this.write(body, { queueOnOffline: false, ...options })); }
+  public stopFocusSession(itemId: Id, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/stop`, this.write(undefined, { queueOnOffline: false, ...options })); }
 
   public financeAccounts(options?: RequestOptions) { return this.request<readonly FinanceAccount[]>("/api/v1/finance/accounts", this.read(options, "finance-accounts")); }
-  public createFinanceAccount(body: FinanceAccountIn, options?: RequestOptions) { return this.request<FinanceAccount>("/api/v1/finance/accounts", this.write(body, options)); }
+  public createFinanceAccount(body: FinanceAccountIn, options?: RequestOptions) { return this.request<FinanceAccount>("/api/v1/finance/accounts", this.write(body, { queueOnOffline: false, ...options })); }
   public financeCategories(options?: RequestOptions) { return this.request<readonly FinanceCategory[]>("/api/v1/finance/categories", this.read(options, "finance-categories")); }
-  public createFinanceCategory(body: FinanceCategoryIn, options?: RequestOptions) { return this.request<FinanceCategory>("/api/v1/finance/categories", this.write(body, options)); }
+  public createFinanceCategory(body: FinanceCategoryIn, options?: RequestOptions) { return this.request<FinanceCategory>("/api/v1/finance/categories", this.write(body, { queueOnOffline: false, ...options })); }
   public financeBudgets(options?: RequestOptions) { return this.request<readonly FinanceBudget[]>("/api/v1/finance/budgets", this.read(options, "finance-budgets")); }
-  public createFinanceBudget(body: FinanceBudgetIn, options?: RequestOptions) { return this.request<FinanceBudget>("/api/v1/finance/budgets", this.write(body, options)); }
+  public createFinanceBudget(body: FinanceBudgetIn, options?: RequestOptions) { return this.request<FinanceBudget>("/api/v1/finance/budgets", this.write(body, { queueOnOffline: false, ...options })); }
   public financeTransactions(options?: RequestOptions) { return this.request<readonly FinanceTransaction[]>("/api/v1/finance/transactions", this.read(options, "finance-transactions")); }
-  public createFinanceTransaction(body: TransactionIn, options?: RequestOptions) { return this.request<FinanceTransaction>("/api/v1/finance/transactions", this.write(body, options)); }
-  public createFinanceTransfer(body: FinanceTransferIn, options?: RequestOptions) { return this.request<FinanceTransfer>("/api/v1/finance/transfers", this.write(body, options)); }
+  public createFinanceTransaction(body: TransactionIn, options?: RequestOptions) { return this.request<FinanceTransaction>("/api/v1/finance/transactions", this.write(body, { queueOnOffline: false, ...options })); }
+  public createFinanceTransfer(body: FinanceTransferIn, options?: RequestOptions) { return this.request<FinanceTransfer>("/api/v1/finance/transfers", this.write(body, { queueOnOffline: false, ...options })); }
   public financeSummary(options?: RequestOptions) { return this.request<FinanceSummary>("/api/v1/finance/summary", this.read(options, "finance-summary")); }
 
   public mailAccounts(options?: RequestOptions) { return this.request<readonly MailAccount[]>("/api/v1/mail/accounts", this.read(options, "mail-accounts")); }
+  public gmailStatus() { return this.request<{ readonly configured: boolean }>("/api/v1/mail/gmail/status"); }
+  public connectGmail() { return this.request<{ readonly authorization_url: string }>("/api/v1/mail/gmail/connect", this.write(undefined, { queueOnOffline: false })); }
+  public syncGmail(id: Id, pageToken?: string) { return this.request<{ readonly imported: number; readonly next_page_token: string | null }>(`/api/v1/mail/gmail/${encodeURIComponent(id)}/sync`, this.write(undefined, { queueOnOffline: false, query: { page_token: pageToken } })); }
+  public importGmailDrafts(id: Id, pageToken?: string) { return this.request<{ readonly imported: number; readonly next_page_token: string | null }>(`/api/v1/mail/gmail/${encodeURIComponent(id)}/drafts/import`, this.write(undefined, { queueOnOffline: false, query: { page_token: pageToken } })); }
+  public publishGmailDraft(accountId: Id, draftId: Id, version: number) { return this.request<{ readonly saved: boolean }>(`/api/v1/mail/gmail/${encodeURIComponent(accountId)}/drafts/${encodeURIComponent(draftId)}`, this.write({ version }, { queueOnOffline: false })); }
+  public disconnectGmail(id: Id) { return this.request<{ readonly disconnected: boolean; readonly provider_revoked: boolean }>(`/api/v1/mail/gmail/${encodeURIComponent(id)}/disconnect`, this.write(undefined, { queueOnOffline: false })); }
   public createMailAccount(body: MailAccountIn, options?: RequestOptions) { return this.request<MailAccount>("/api/v1/mail/accounts", this.write(body, options)); }
   public mailMessages(query?: Query, options?: RequestOptions) { return this.request<readonly MailMessage[]>("/api/v1/mail/messages", this.read({ ...options, query }, "mail-messages")); }
   public importMailMessage(body: MessageIn, options?: RequestOptions) { return this.request<MailMessage>("/api/v1/mail/messages", this.write(body, options)); }
   public mailDrafts(options?: RequestOptions) { return this.request<readonly MailDraft[]>("/api/v1/mail/drafts", this.read(options, "mail-drafts")); }
   public createMailDraft(body: DraftIn, options?: RequestOptions) { return this.request<MailDraft>("/api/v1/mail/drafts", this.write(body, options)); }
+  public updateMailDraft(id: Id, body: DraftPatch, options?: RequestOptions) { return this.request<MailDraft>(`/api/v1/mail/drafts/${encodeURIComponent(id)}`, this.write(body, options, "PATCH")); }
+  public deleteMailDraft(id: Id, version: number, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/mail/drafts/${encodeURIComponent(id)}`, this.write(undefined, { ...options, query: { version } }, "DELETE")); }
+  public async importEml(file: File): Promise<MailMessage> {
+    const body = new FormData(); body.append("file", file);
+    const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
+    const response = await this.fetchImpl(`${this.baseUrl}/api/v1/mail/import/eml`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body });
+    const value = await this.parseResponse<MailMessage>(response);
+    await this.invalidateAfterWrite("/api/v1/mail/import/eml");
+    return value;
+  }
   public search(q: string, scope?: string, options?: RequestOptions) { return this.request<SearchResponse>("/api/v1/search", this.read({ ...options, query: { ...options?.query, q, scope } })); }
   public activity(options?: RequestOptions) { return this.request<readonly ActivityEvent[]>("/api/v1/activity", this.read(options, "activity")); }
   public history(options?: RequestOptions) { return this.request<readonly HistoryEntry[]>("/api/v1/history", this.read(options, "history")); }
@@ -286,8 +405,21 @@ export class ApiClient {
   public syncAck(body: SyncAckRequest, options?: RequestOptions) { return this.request<SyncAckResponse>("/api/v1/sync/ack", this.write(body, options)); }
   public syncBootstrap(query?: Query, options?: RequestOptions) { return this.request<SyncBootstrapResponse>("/api/v1/sync/bootstrap", this.read({ ...options, query })); }
 
+  public telegramStatus(options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/status", this.read(options)); }
+  public connectTelegram(body: { readonly bot_token: string }, options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/connect", this.write(body, { ...options, queueOnOffline: false })); }
+  public telegramBinding(options?: RequestOptions) { return this.request<{ readonly url: string; readonly expires_at: string }>("/api/v1/integrations/telegram/binding", this.write({}, { ...options, queueOnOffline: false })); }
+  public updateTelegramSettings(body: TelegramSettingsPatch, options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/settings", this.write(body, { ...options, queueOnOffline: false }, "PATCH")); }
+  public disconnectTelegram(options?: RequestOptions) { return this.request<{ readonly disconnected: true }>("/api/v1/integrations/telegram/disconnect", this.write({}, { ...options, queueOnOffline: false })); }
+  public syncTelegram(options?: RequestOptions) { return this.request<{ readonly processed: number }>("/api/v1/integrations/telegram/sync", this.write({}, { ...options, queueOnOffline: false })); }
+  public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
+  public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
+  public sendTelegramMessage(id: string, body: { readonly version: number; readonly text: string }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/send`, this.write(body, { ...options, queueOnOffline: false })); }
+
   public aiProviders(options?: RequestOptions) { return this.request<readonly AIProvider[]>("/api/v1/ai/providers", this.read(options, "ai-providers")); }
   public createAIProvider(body: ProviderIn, options?: RequestOptions) { return this.request<AIProvider>("/api/v1/ai/providers", this.write(body, options)); }
+  public updateAIProvider(id: Id, body: ProviderPatch) { return this.request<AIProvider>(`/api/v1/ai/providers/${encodeURIComponent(id)}`, this.write(body, { queueOnOffline: false }, "PATCH")); }
+  public probeAIProvider(id: Id) { return this.request<ProviderProbe>(`/api/v1/ai/providers/${encodeURIComponent(id)}/probe`, this.write(undefined, { queueOnOffline: false })); }
+  public aiConversations(options?: RequestOptions) { return this.request<readonly AIConversation[]>("/api/v1/ai/conversations", this.read(options)); }
   public setAIProviderSecret(providerId: Id, body: { readonly api_key: string }, options?: RequestOptions) { return this.request<AIProviderSecretResponse>(`/api/v1/ai/providers/${encodeURIComponent(providerId)}/secret`, this.write(body, { ...options, queueOnOffline: false }, "PUT")); }
   public deleteAIProviderSecret(providerId: Id, options?: RequestOptions) { return this.request<{ readonly deleted: boolean; readonly provider_id: Id }>(`/api/v1/ai/providers/${encodeURIComponent(providerId)}/secret`, this.write(undefined, { ...options, queueOnOffline: false }, "DELETE")); }
   public createAIConversation(body: ConversationIn, options?: RequestOptions) { return this.request<AIConversation>("/api/v1/ai/conversations", this.write(body, options)); }
@@ -332,6 +464,8 @@ export class ApiClient {
     return response;
   }
 
-  private read(options?: RequestOptions, cacheKey?: string): RequestOptions { return { ...options, method: "GET", cacheKey: options?.cacheKey ?? cacheKey }; }
+  private read(options?: RequestOptions, cacheKey?: string): RequestOptions {
+    return { ...options, method: "GET", cacheKey: options?.cacheKey ?? (cacheKey === undefined ? undefined : `${cacheKey}${queryCacheSuffix(options?.query)}`) };
+  }
   private write(body: unknown, options?: RequestOptions, method: HttpMethod = "POST"): RequestOptions { return { ...options, method, body }; }
 }

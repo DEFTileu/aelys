@@ -26,6 +26,8 @@ export interface LoginRequest {
   readonly email: string;
   readonly password: string;
 }
+export interface BrowserAuthStatus { readonly initialized: boolean; readonly can_resume: boolean; }
+export interface BrowserSession { readonly access_token: string; readonly device_id: Id | null; readonly token_type: string; }
 export interface RefreshRequest {
   readonly refresh_token: string;
 }
@@ -179,6 +181,7 @@ export interface TaskOut {
   readonly id: Id;
   readonly version: number;
 }
+export interface TaskPatch extends TaskIn { readonly version?: number; }
 export interface ReminderIn {
   readonly task_id: Id;
   readonly notify_at: IsoDateTime;
@@ -202,6 +205,7 @@ export interface EventIn {
   readonly project_id?: Id | null;
   readonly linked_task_id?: Id | null;
   readonly rrule?: string | null;
+  readonly reminder_at?: IsoDateTime | null;
 }
 export interface EventOut {
   readonly title: string;
@@ -214,6 +218,24 @@ export interface EventOut {
   readonly linked_task_id: Id | null;
   readonly rrule: string | null;
   readonly id: Id;
+  readonly version: number;
+}
+export interface EventPatch extends EventIn { readonly version: number; }
+export interface EventOccurrence extends EventOut {
+  readonly occurrence_id: string;
+  readonly series_starts_at: IsoDateTime;
+  readonly series_ends_at: IsoDateTime;
+}
+export interface CalendarReminderIn {
+  readonly event_id: Id;
+  readonly notify_at: IsoDateTime;
+  readonly channel?: string;
+  readonly idempotency_key: string;
+}
+export interface CalendarReminder extends CalendarReminderIn {
+  readonly id: Id;
+  readonly owner_id: Id;
+  readonly reminder_status: string;
   readonly version: number;
 }
 export interface FocusIn {
@@ -315,8 +337,9 @@ export interface FinanceTransfer {
   readonly credit: FinanceTransaction;
 }
 export interface FinanceSummary {
-  readonly total: DecimalString;
+  readonly total: DecimalString | null;
   readonly count: number;
+  readonly currencies: readonly { readonly currency: string; readonly balance: DecimalString; readonly income: DecimalString; readonly expense: DecimalString }[];
 }
 
 export interface MailAccountIn {
@@ -370,6 +393,7 @@ export interface MailDraft {
   readonly status: string;
   readonly version: number;
 }
+export interface DraftPatch extends DraftIn { readonly version: number; }
 
 export interface SearchResult {
   readonly kind?: string;
@@ -499,7 +523,10 @@ export interface AIProvider extends ProviderIn {
   readonly id: Id;
   readonly enabled: boolean;
   readonly model_policy?: JsonObject;
+  readonly has_secret?: boolean;
 }
+export interface ProviderPatch { readonly enabled?: boolean; readonly model_policy?: JsonObject; }
+export interface ProviderProbe { readonly connected: boolean; readonly code: string; }
 export interface SecretIn { readonly api_key: string; }
 export interface ConversationIn {
   readonly project_id?: Id | null;

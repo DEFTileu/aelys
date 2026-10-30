@@ -1,7 +1,11 @@
 from __future__ import annotations
-import base64, hashlib
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+import base64
+import hashlib
+
 from app.core.config import get_settings
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 
 def _key(key_material: str | None = None) -> bytes:
     settings = get_settings()

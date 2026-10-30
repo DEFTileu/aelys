@@ -4,8 +4,8 @@
 
 | Приоритет | Вопрос | Безопасный временный вариант | Что блокирует |
 |---|---|---|---|
-| P0 | Mail MVP: живая Gmail-интеграция, IMAP, ручной импорт или сначала локальная модель? | Локальная модель + импорт `.eml`; OAuth как отдельный milestone | Реальная доставка и отправка писем |
-| P0 | Telegram MVP: уже действующий бот или только контракт и прототип? | Текстовые команды и callback, без массовых рассылок | Полный релиз Telegram-модуля |
+| P0 | Gmail read/drafts подтверждены владельцем 2026-10-29; production OAuth verification, фоновые обновления и retention ещё открыты | Явная загрузка по 25 писем, локальные копии сохраняются после disconnect; отправка отсутствует | Production Gmail и автоматическая синхронизация |
+| P0 | Telegram Business read/reply подтверждён владельцем 2026-10-29; live token/account acceptance и отдельные personal commands/notification categories ещё открыты | Secretary Mode, разрешённые личные чаты, автоответ только после настройки владельцем | Полный релиз Telegram-модуля |
 | P0 | Android Tauri 2 соответствует требованиям фонового sync/push/secure storage? | Исследовательский APK-spike; fallback Capacitor | Финальная архитектура Android |
 | P0 | Sandbox для macOS CLI: что реально изолируем технически? | Не запускать unattended CLI до прохода security tests | Автономный remote control |
 | P1 | Backup: делать ли зашифрованную резервную копию Mac-only histories? Куда, каким ключом, срок хранения? | Нет облачного backup сессий; ручной локальный экспорт только по разрешению | Recovery сессий |

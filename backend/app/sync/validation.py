@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
-from typing import Any, Mapping
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from .errors import SyncException
@@ -101,12 +102,12 @@ def _parse_datetime(value: Any) -> datetime:
     if not isinstance(value, str):
         raise _error("client_timestamp must be an ISO8601 string")
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise _error("client_timestamp must be a valid ISO8601 instant") from exc
     if parsed.tzinfo is None:
         raise _error("client_timestamp must include a timezone")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def parse_operation(raw: Mapping[str, Any]) -> OperationEnvelope:

@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import AsyncIterator, Protocol, Any
+from typing import Any, Protocol
 
 from .secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
 
@@ -43,7 +44,7 @@ class ModelRouter:
             candidates = [m for m in candidates if m.name == manual]
         if not candidates:
             raise ValueError("MODEL_UNAVAILABLE")
-        return sorted(candidates, key=lambda m: (0 if task_kind == "reasoning" and "reasoning" in m.capabilities else 1, Decimal(str(m.cost_per_1k)), m.provider, m.name))[0]
+        return min(candidates, key=lambda m: (0 if task_kind == "reasoning" and "reasoning" in m.capabilities else 1, Decimal(str(m.cost_per_1k)), m.provider, m.name))
 
 
 class Provider(Protocol):

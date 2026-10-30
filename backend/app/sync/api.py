@@ -1,18 +1,22 @@
 from __future__ import annotations
-import json, uuid
+
+import json
+import uuid
 from datetime import datetime
 from enum import Enum
+
+from app.core.db import get_db
+from app.core.models import ClientOperation, DeviceSyncCursor, SyncChange, SyncRecord
+from app.core.security import current_principal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.db import get_db
-from app.core.models import ClientOperation, DeviceSyncCursor, SyncChange, SyncRecord
-from app.core.security import current_principal
+
 from .cursor import CursorCodec
 from .models import SyncErrorCode
-from .validation import validate_patch, SyncException
+from .validation import SyncException, validate_patch
 
 router=APIRouter()
 ALLOWED={"project","note","task","event","finance_transaction","focus_session","mail_message","mail_draft","ai_message"}

@@ -1,21 +1,50 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from backend.app.domains.ai import (
+    ConversationCreate,
+    ProviderCreate,
+    RunCreate,
+    create_conversation,
+    create_provider,
+    create_run,
+)
 from backend.app.domains.common import Base, ConflictError, NotFoundError
-from backend.app.domains.finance import AccountCreate, TransactionCreate, create_account, create_transaction
-from backend.app.domains.mail import MailAccountCreate, MessageImport, create_account as create_mail_account, import_message
-from backend.app.domains.productivity import Note, NoteCreate, NoteRevision, TaskCreate, create_note, create_task
-from backend.app.domains.projects import ProjectCreate, ProjectPatch, ProjectService, ResourceCreate
+from backend.app.domains.finance import (
+    AccountCreate,
+    TransactionCreate,
+    create_account,
+    create_transaction,
+)
+from backend.app.domains.mail import MailAccountCreate, MessageImport, import_message
+from backend.app.domains.mail import create_account as create_mail_account
+from backend.app.domains.productivity import (
+    EventCreate,
+    Note,
+    NoteCreate,
+    NoteRevision,
+    ReminderCreate,
+    TaskCreate,
+    create_event,
+    create_note,
+    create_reminder,
+    create_task,
+)
+from backend.app.domains.projects import (
+    ProjectCreate,
+    ProjectPatch,
+    ProjectService,
+    ResourceCreate,
+)
 from backend.app.domains.sync import InMemorySyncStore, SyncAction, SyncOperation
-from backend.app.domains.productivity import EventCreate, ReminderCreate, create_event, create_reminder
-from backend.app.domains.ai import ConversationCreate, ProviderCreate, RunCreate, create_conversation, create_provider, create_run
 
 
 @pytest.fixture()
@@ -57,7 +86,7 @@ def test_notes_keep_revision_and_tasks_support_owner_scoping(session: Session):
 def test_finance_rejects_float_and_replays_idempotency(session: Session):
     account = create_account(AccountCreate(name="Cash", currency="KZT"), session, "owner-a")
     session.commit()
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         TransactionCreate(account_id=account.id, amount=1.25, currency="KZT", transaction_type="expense", occurred_on="2026-10-28", idempotency_key="float")
     payload = TransactionCreate(account_id=account.id, amount=Decimal("10.20"), currency="KZT", transaction_type="expense", occurred_on="2026-10-28", idempotency_key="tx-1")
     first = create_transaction(payload, session, "owner-a")
@@ -69,7 +98,7 @@ def test_finance_rejects_float_and_replays_idempotency(session: Session):
 
 def test_mail_is_local_import_and_does_not_return_secret_reference(session: Session):
     account = create_mail_account(MailAccountCreate(), session, "owner-a")
-    message = import_message(MessageImport(account_id=account.id, sender="a@example.test", received_at=datetime.now(timezone.utc), body_text="hello"), session, "owner-a")
+    message = import_message(MessageImport(account_id=account.id, sender="a@example.test", received_at=datetime.now(UTC), body_text="hello"), session, "owner-a")
     assert account.provider == "local_import"
     assert message.sync_origin == "local_import"
     assert not hasattr(message, "api_key")
@@ -89,8 +118,8 @@ def test_sync_is_idempotent_and_blocks_private_agent_payloads():
 
 def test_calendar_reminder_and_ai_provider_contracts(session: Session):
     task = create_task(TaskCreate(title="Review contract"), session, "owner-a")
-    event = create_event(EventCreate(title="Review", starts_at=datetime.now(timezone.utc), ends_at=datetime.now(timezone.utc) + timedelta(hours=1)), session, "owner-a")
-    reminder = create_reminder(task.id, ReminderCreate(task_id=task.id, notify_at=datetime.now(timezone.utc), idempotency_key="rem-1"), session, "owner-a")
+    event = create_event(EventCreate(title="Review", starts_at=datetime.now(UTC), ends_at=datetime.now(UTC) + timedelta(hours=1)), session, "owner-a")
+    reminder = create_reminder(task.id, ReminderCreate(task_id=task.id, notify_at=datetime.now(UTC), idempotency_key="rem-1"), session, "owner-a")
     assert reminder.task_id == task.id and event.owner_id == "owner-a"
     provider = create_provider(ProviderCreate(kind="claude", model_policy={"default_model": "claude-test"}, secret_ref="vault://owner-a/claude"), session, "owner-a")
     conversation = create_conversation(ConversationCreate(title="Daily"), session, "owner-a")

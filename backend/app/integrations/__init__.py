@@ -1,0 +1,1 @@
+"""External integration persistence models."""

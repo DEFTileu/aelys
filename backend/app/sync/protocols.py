@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Protocol
 
 from .models import (
     ApplyResult,
@@ -32,7 +32,7 @@ class SyncStore(Protocol):
 
     def get_operation_receipt(
         self, owner_id: str, operation_id: str
-    ) -> Optional[tuple[str, ApplyResult]]:
+    ) -> tuple[str, ApplyResult] | None:
         """Return ``(device_id, result)`` for an already recorded operation."""
 
     def apply_operation(
@@ -45,16 +45,16 @@ class SyncStore(Protocol):
         owner_id: str,
         after_commit_seq: int,
         limit: int,
-        snapshot_commit_seq: Optional[int] = None,
+        snapshot_commit_seq: int | None = None,
     ) -> PullPage:
         """Read committed changes in stable order, bounded by a snapshot if set."""
 
     def bootstrap_records(
         self,
         owner_id: str,
-        scope: Optional[str],
+        scope: str | None,
         snapshot_commit_seq: int,
-        after_resource_id: Optional[str],
+        after_resource_id: str | None,
         limit: int,
     ) -> BootstrapPage:
         """Read a stable snapshot page; ordering is store-defined and repeatable."""

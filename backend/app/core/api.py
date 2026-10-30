@@ -1,16 +1,41 @@
 from __future__ import annotations
+
 import secrets
-from datetime import timezone
+from datetime import UTC
+
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from .config import get_settings
 from .db import get_db
 from .models import AuditLog, AuthSession, Device, Project, ProjectGrant, User, now
-from .schemas import DeviceEnroll, DeviceResponse, LoginRequest, ProjectCreate, ProjectResponse, TokenResponse
-from .security import current_principal, create_token, decode_refresh_token, hash_password, token_hash, verify_password, decode_token
+from .schemas import (
+    DeviceEnroll,
+    DeviceResponse,
+    LoginRequest,
+    ProjectCreate,
+    ProjectResponse,
+    TokenResponse,
+)
+from .security import (
+    create_token,
+    current_principal,
+    decode_refresh_token,
+    decode_token,
+    hash_password,
+    token_hash,
+    verify_password,
+)
 
 router = APIRouter()
+
+async def lock_owner_initialization(db: AsyncSession) -> None:
+    """All bootstrap transports serialize first-owner creation using one lock."""
+    if db.get_bind().dialect.name == "sqlite":
+        await db.execute(text("BEGIN IMMEDIATE"))
+    elif db.get_bind().dialect.name == "postgresql":
+        await db.execute(text("SELECT pg_advisory_xact_lock(71802341)"))
 
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
@@ -33,13 +58,17 @@ async def refresh(body: dict, db: AsyncSession = Depends(get_db)):
     session=(await db.execute(session_query)).scalar_one_or_none()
     if not session:
         raise HTTPException(401,detail={"code":"UNAUTHORIZED","message":"Refresh session revoked or expired"})
-    expires=session.expires_at.replace(tzinfo=timezone.utc) if session.expires_at.tzinfo is None else session.expires_at
+    expires=session.expires_at.replace(tzinfo=UTC) if session.expires_at.tzinfo is None else session.expires_at
     if expires <= now(): raise HTTPException(401,detail={"code":"UNAUTHORIZED","message":"Refresh session revoked or expired"})
     device_id = claims.get("device_id")
     if device_id:
         device = await db.get(Device, device_id)
         if not device or device.revoked_at or device.owner_id != user.id: raise HTTPException(401, detail={"code":"DEVICE_REVOKED","message":"Device credential revoked"})
-    session.revoked_at=now(); new_session_id=secrets.token_urlsafe(24); new_refresh=create_token(user.id,"refresh",get_settings().refresh_token_days*86400,device_id,new_session_id); db.add(AuthSession(id=new_session_id,owner_id=user.id,device_id=device_id,refresh_token_hash=token_hash(new_refresh),expires_at=now()+__import__("datetime").timedelta(days=get_settings().refresh_token_days))); await db.commit()
+    claimed = await db.execute(update(AuthSession).where(AuthSession.id == session.id, AuthSession.revoked_at.is_(None), AuthSession.refresh_token_hash == token_hash(raw_refresh)).values(revoked_at=now()))
+    if int(getattr(claimed, "rowcount", 0) or 0) != 1:
+        await db.rollback()
+        raise HTTPException(401, detail={"code":"UNAUTHORIZED","message":"Refresh token already used"})
+    new_session_id=secrets.token_urlsafe(24); new_refresh=create_token(user.id,"refresh",get_settings().refresh_token_days*86400,device_id,new_session_id); db.add(AuthSession(id=new_session_id,owner_id=user.id,device_id=device_id,refresh_token_hash=token_hash(new_refresh),expires_at=now()+__import__("datetime").timedelta(days=get_settings().refresh_token_days))); await db.commit()
     return TokenResponse(access_token=create_token(user.id,"access",get_settings().access_token_minutes*60,device_id,new_session_id), refresh_token=new_refresh)
 
 @router.post("/auth/logout")
@@ -60,6 +89,7 @@ async def logout(authorization: str | None = Header(default=None), principal=Dep
 @router.post("/auth/bootstrap", response_model=TokenResponse, include_in_schema=False)
 async def bootstrap(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """First-owner setup endpoint; disable or protect it after initial enrollment."""
+    await lock_owner_initialization(db)
     if (await db.execute(select(User))).first(): raise HTTPException(409, detail={"code":"ALREADY_INITIALIZED","message":"Owner already exists"})
     user = User(email=body.email, password_hash=hash_password(body.password)); db.add(user); await db.commit()
     session_id=secrets.token_urlsafe(24); refresh=create_token(user.id,"refresh",30*86400,session_id=session_id); db.add(AuthSession(id=session_id,owner_id=user.id,refresh_token_hash=token_hash(refresh),expires_at=now()+__import__("datetime").timedelta(days=30))); await db.commit()

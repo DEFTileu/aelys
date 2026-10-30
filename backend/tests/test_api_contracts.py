@@ -1,13 +1,16 @@
 import base64
+
 import pytest
+from app.core import db
+from app.core.db import Base
+from app.core.models import AgentRun, ProjectGrant, now
+from app.main import app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
-from app.main import app
-from app.core.db import Base
-from app.core.models import AgentRun, ProjectGrant, now
-from app.core import db
+
+
 @pytest.mark.asyncio
 async def test_public_contracts_and_remote_run_policy(tmp_path, monkeypatch):
     engine=create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/api.db"); factory=async_sessionmaker(engine,expire_on_commit=False)
@@ -116,21 +119,20 @@ async def test_public_contracts_and_remote_run_policy(tmp_path, monkeypatch):
         assert tombstone_ack.status_code==200
         retained=await c.get("/api/v1/sync/bootstrap",headers=sync_h)
         assert any(item["resource_id"]==tombstone_id and item["deleted"] is True for item in retained.json()["resources"])
-        with TestClient(app) as sync_client:
-            with sync_client.websocket_connect("/api/v1/agents/channel", headers={"Authorization":f"Bearer {device['access_token']}"}) as socket:
-                assert socket.receive_json()["type"]=="ready"
-                socket.send_json({"type":"heartbeat"}); assert socket.receive_json()["type"]=="heartbeat_ack"
-                socket.send_json({"type":"credential_lease","run_id":run_id,"project_id":project["id"],"grant_id":grant.json()["id"],"provider":"unsupported"})
-                assert socket.receive_json()=={"type":"error","code":"VALIDATION_ERROR"}
-                socket.send_json({"type":"credential_lease","run_id":run_id,"project_id":project["id"],"grant_id":grant.json()["id"],"provider":"claude_api_key"})
-                channel_lease=socket.receive_json()
-                assert channel_lease["type"]=="credential_lease_ack" and channel_lease["lease"]["provider"]=="claude_api_key"
-                revoked=sync_client.post(f"/api/v1/devices/{device['device_id']}/revoke",headers=h)
-                assert revoked.status_code==200
-                socket.send_json({"type":"heartbeat"})
-                try:
-                    socket.receive_json()
-                    raise AssertionError("revoked runtime channel remained active")
-                except WebSocketDisconnect as exc:
-                    assert exc.code==4403
+        with TestClient(app) as sync_client, sync_client.websocket_connect("/api/v1/agents/channel", headers={"Authorization":f"Bearer {device['access_token']}"}) as socket:
+            assert socket.receive_json()["type"]=="ready"
+            socket.send_json({"type":"heartbeat"}); assert socket.receive_json()["type"]=="heartbeat_ack"
+            socket.send_json({"type":"credential_lease","run_id":run_id,"project_id":project["id"],"grant_id":grant.json()["id"],"provider":"unsupported"})
+            assert socket.receive_json()=={"type":"error","code":"VALIDATION_ERROR"}
+            socket.send_json({"type":"credential_lease","run_id":run_id,"project_id":project["id"],"grant_id":grant.json()["id"],"provider":"claude_api_key"})
+            channel_lease=socket.receive_json()
+            assert channel_lease["type"]=="credential_lease_ack" and channel_lease["lease"]["provider"]=="claude_api_key"
+            revoked=sync_client.post(f"/api/v1/devices/{device['device_id']}/revoke",headers=h)
+            assert revoked.status_code==200
+            socket.send_json({"type":"heartbeat"})
+            try:
+                socket.receive_json()
+                raise AssertionError("revoked runtime channel remained active")
+            except WebSocketDisconnect as exc:
+                assert exc.code==4403
     await engine.dispose()

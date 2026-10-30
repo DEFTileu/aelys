@@ -1,6 +1,8 @@
 import pytest
+from app.ai.service import EncryptedMemorySecretStore, Model, ModelRouter, sse_events
 from app.sync.api import Operation
-from app.ai.service import Model, ModelRouter, EncryptedMemorySecretStore, sse_events
+
+
 def test_sync_rejects_private_agent_content():
     with pytest.raises(ValueError):
         Operation(device_id="d", resource_kind="agent_session", resource_id="r", action="create", patch={"transcript":"secret"})

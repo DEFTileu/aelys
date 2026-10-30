@@ -717,7 +717,7 @@ async def dispatch(
             execution.finished_at = now()
             await db.commit()
             raise _http_error(422, "ACTION_FAILED", message) from None
-        except Exception:
+        except Exception:  # noqa: BLE001 - unexpected action failures remain audited and rolled back
             # Keep unexpected handler failures auditable without returning
             # implementation details. The nested savepoint has already
             # removed any partial domain writes.

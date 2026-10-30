@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from decimal import Decimal
-from typing import Iterable
 
 from .errors import BudgetExceeded, ModelUnavailable
-from .models import Capability, ModelSpec, PrivacyClass, RoutingDecision, RoutingRequest, TaskKind
+from .models import (
+    Capability,
+    ModelSpec,
+    PrivacyClass,
+    RoutingDecision,
+    RoutingRequest,
+    TaskKind,
+)
 
 
 class ModelRouter:

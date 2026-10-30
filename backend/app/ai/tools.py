@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Mapping
+from typing import Any
 
 from .errors import ToolValidationError, redact_error
 from .models import PermissionContext, ToolCall
 from .policy import PolicyEngine
-
 
 Validator = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 Handler = Callable[[Mapping[str, Any]], Awaitable[Mapping[str, Any]]]
@@ -48,7 +48,7 @@ class ToolRegistry:
         descriptor = self.descriptor(call.name)
         try:
             return descriptor.validator(call.arguments)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - registered tool implementations cross a redaction boundary
             raise ToolValidationError(redact_error(exc)) from None
 
     def authorize(self, call: ToolCall, context: PermissionContext) -> None:
@@ -60,5 +60,5 @@ class ToolRegistry:
         args = self.validate(call)
         try:
             return await descriptor.handler(args)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - registered tool implementations cross a redaction boundary
             raise RuntimeError(f"tool failed: {redact_error(exc)}") from None

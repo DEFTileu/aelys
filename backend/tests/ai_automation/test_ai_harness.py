@@ -5,7 +5,19 @@ from decimal import Decimal
 from uuid import uuid4
 
 from app.ai.errors import BudgetExceeded, PolicyDenied
-from app.ai.models import Capability, ChatMessage, ModelSpec, PermissionContext, PrivacyClass, ProviderKind, ProviderRequest, RoutingRequest, TaskKind, ToolCall, Usage
+from app.ai.models import (
+    Capability,
+    ChatMessage,
+    ModelSpec,
+    PermissionContext,
+    PrivacyClass,
+    ProviderKind,
+    ProviderRequest,
+    RoutingRequest,
+    TaskKind,
+    ToolCall,
+    Usage,
+)
 from app.ai.policy import ServerPolicyEngine
 from app.ai.providers import ClaudeAdapter, HttpResponse
 from app.ai.router import ModelRouter
@@ -63,7 +75,7 @@ class AIHarnessTests(unittest.TestCase):
             ModelSpec(ProviderKind.OPENROUTER, "reasoner", frozenset({Capability.REASONING, Capability.TOOL_CALLING}), 16000, Decimal("0.10"), Decimal("0.10"), privacy_classes=frozenset({PrivacyClass.PERSONAL, PrivacyClass.SENSITIVE})),
         ]
         router = ModelRouter(models)
-        decision = router.choose(RoutingRequest(TaskKind.TOOL_ACTION, frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.SENSITIVE, request_budget=Decimal("1")))
+        decision = router.choose(RoutingRequest(TaskKind.TOOL_ACTION, frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.SENSITIVE, request_budget=Decimal(1)))
         self.assertEqual(decision.model, "reasoner")
         with self.assertRaises(BudgetExceeded):
             router.choose(RoutingRequest(TaskKind.REASONING, frozenset({Capability.REASONING}), context_tokens=10000, request_budget=Decimal("0.0001")))

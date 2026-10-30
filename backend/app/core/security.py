@@ -1,8 +1,16 @@
 from __future__ import annotations
-import base64, hashlib, hmac, json, secrets, time
+
+import base64
+import hashlib
+import hmac
+import json
+import secrets
+import time
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from .config import get_settings
 from .db import get_db
 from .models import AuthSession, Device, User

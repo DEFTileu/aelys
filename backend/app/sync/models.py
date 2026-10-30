@@ -6,10 +6,11 @@ can later be mirrored by Pydantic models at the FastAPI boundary.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Mapping, Optional
+from typing import Any
 
 
 class SyncErrorCode(str, Enum):
@@ -42,8 +43,8 @@ class AuthorizationContext:
     owner_id: str
     device_id: str
     actor_type: str = "device"
-    project_scope: Optional[frozenset[str]] = None
-    policy_id: Optional[str] = None
+    project_scope: frozenset[str] | None = None
+    policy_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -58,7 +59,7 @@ class OperationEnvelope:
     patch: Mapping[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, raw: Mapping[str, Any]) -> "OperationEnvelope":
+    def from_dict(cls, raw: Mapping[str, Any]) -> OperationEnvelope:
         from .validation import parse_operation
 
         return parse_operation(raw)
@@ -77,7 +78,7 @@ class Change:
     resource_id: str
     version: int
     operation: OperationAction
-    payload: Optional[Mapping[str, Any]]
+    payload: Mapping[str, Any] | None
     tombstone: bool = False
 
 
@@ -94,12 +95,12 @@ class ServerRecord:
 class OperationResult:
     operation_id: str
     status: OperationStatus
-    version: Optional[int] = None
-    cursor: Optional[str] = None
-    error_code: Optional[SyncErrorCode] = None
-    message: Optional[str] = None
-    server_record: Optional[ServerRecord] = None
-    conflict_id: Optional[str] = None
+    version: int | None = None
+    cursor: str | None = None
+    error_code: SyncErrorCode | None = None
+    message: str | None = None
+    server_record: ServerRecord | None = None
+    conflict_id: str | None = None
     branches: tuple[Mapping[str, Any], ...] = ()
 
 
@@ -116,7 +117,7 @@ class BootstrapPage:
     records: tuple[ServerRecord, ...]
     snapshot_commit_seq: int
     has_more: bool
-    next_after: Optional[str] = None
+    next_after: str | None = None
 
 
 @dataclass(frozen=True)
@@ -132,10 +133,10 @@ class SyncStatus:
 @dataclass(frozen=True)
 class ApplyResult:
     status: OperationStatus
-    version: Optional[int] = None
-    commit_seq: Optional[int] = None
-    server_record: Optional[ServerRecord] = None
-    error_code: Optional[SyncErrorCode] = None
-    message: Optional[str] = None
-    conflict_id: Optional[str] = None
+    version: int | None = None
+    commit_seq: int | None = None
+    server_record: ServerRecord | None = None
+    error_code: SyncErrorCode | None = None
+    message: str | None = None
+    conflict_id: str | None = None
     branches: tuple[Mapping[str, Any], ...] = ()

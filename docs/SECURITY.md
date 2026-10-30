@@ -103,3 +103,64 @@ Sending excerpts to external model constitutes disclosure to provider. Must be s
 4. Revoke device disables commands and sync; replay requests rejected.
 5. Prompt injection in email cannot trigger external send or start agent.
 6. State-changing requests logged with actor/resource/policy decision without raw secrets.
+
+### Browser session implementation (2026-10-29)
+
+The web shell gates every module behind one owner sign-in/setup flow. Short-lived
+access credentials remain in tab sessionStorage; the device-bound rotating
+refresh credential is HttpOnly, SameSite=Strict and scoped to the browser-auth
+path. HTTPS sets Secure; only plain-HTTP loopback is exempt for local development.
+Refresh/session status is validated against the owner, device, hashed credential,
+expiry and revocation in the database. Cross-site POSTs and unexpected origins
+are rejected; a non-simple custom header is mandatory. No credentialed CORS is
+enabled. Bootstrap transports share a database lock to keep first setup single
+owner. Logout remains possible after access expiry and revokes the session.
+An offline sign-out marker prevents accidental cookie restoration when the
+server cannot receive logout; the server credential can only be revoked once
+connectivity is available or it expires. No password or refresh credential goes
+into localStorage, IndexedDB, API caches, logs or outboxes.
+
+### Optional dashboard weather (2026-10-29)
+
+Weather access is opt-in via city selection or a location button that explains
+which provider receives the request. Automatic geolocation resumes only for a
+previously selected automatic mode with an already-granted browser permission.
+Denied/prompt permission never causes an automatic prompt. Browser positions are
+rounded to 0.1° before persistence or third-party forecast requests; exact
+positions stay transient in the browser callback. Only Open-Meteo's fixed HTTPS
+geocoding/forecast hosts are called, without owner tokens, cookies or referrer.
+Manual city mode and disabling weather invalidate pending location responses.
+No location data is stored in the owner DB, export, outbox, or telemetry. The
+same-origin geolocation Permissions-Policy allows the requested browser feature;
+camera and microphone remain denied. Actual browser/OS consent is still required.
+
+### Telegram Business connector (2026-10-29)
+
+Only the authenticated Aelys owner configures a write-only bot credential. The
+credential and business contents (including drafts, persona and chat labels)
+are encrypted with the existing AES-GCM secret mechanism. Validation errors never
+return raw token input. Telegram transport avoids credential-bearing HTTPX request
+logs and suppresses Telegram URL diagnostics. No raw updates are logged or stored.
+Connector tables are excluded from general export, sync and offline outboxes.
+
+A 10-minute one-use hashed binding challenge ties the owner to a numeric Telegram
+user through a private bot chat. BusinessConnection.user must match that identity;
+a customer's message never authenticates as owner or grants a tool scope. Only
+fixed Telegram HTTPS endpoints are contacted. No token-bearing webhook URL is
+exposed. An existing webhook is reported without taking it over.
+
+AI receives a bounded context of the same business conversation plus the owner's
+business instructions, no personal modules or tools. The explicit auto-reply
+setting or owner's draft request authorizes that data transfer to the selected
+BYOK provider. AI usage follows the shared harness budget and is recorded without
+business text in AI chat history. External replies pass ServerPolicyEngine,
+recheck current Telegram connection/rights, the 24-hour reply window, pause and
+owner activity, and claim the message version before sending. Duplicate updates
+and workers cannot duplicate a send. Transport ambiguity or interrupted sending
+becomes unknown, never blindly retried. Telegram 429 cooldown is retained.
+
+Seven-day bounded retention, incoming deletions, business revocation and explicit
+disconnect erase cached business contents. Automatic replies are restricted to
+recent incoming messages with rate limits, and forwarded/media/bot messages are
+ignored. No account/profile/gift/Stars administration, proactive broadcast or
+personal Mac execution is provided by this connector.
