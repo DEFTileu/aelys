@@ -67,3 +67,8 @@
 
 .nl-editor-body .nl-organization input { width:auto; min-width:130px; max-width:100%; padding:7px 10px; border:1px solid var(--line); border-radius:9px; color:var(--ink); background:var(--surface-soft); font:13px var(--font-ui); }
 @media(min-width:701px) and (max-width:1199px) { .nl-grid { grid-template-columns:160px minmax(0,1fr); } .nl-folders { display:block; } .nl-editor { grid-column:1 / -1; } }
+.pv-status { text-transform:capitalize; color:#0E7A57; background:#DCF5EC; }
+.pv-status[data-status='archived'] { color:var(--muted); background:var(--surface-soft); }
+.pv-next-row { display:flex; align-items:baseline; justify-content:space-between; gap:8px; min-width:0; }
+.pv-next-row strong { min-width:0; }
+.pv-next-row small { flex:none; }
