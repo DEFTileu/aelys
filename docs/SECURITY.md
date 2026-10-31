@@ -120,6 +120,14 @@ server cannot receive logout; the server credential can only be revoked once
 connectivity is available or it expires. No password or refresh credential goes
 into localStorage, IndexedDB, API caches, logs or outboxes.
 
+The owner explicitly requested local login/password `1` / `1` on 2026-10-31.
+Browser login/setup permits only that exact short pair when the peer IP,
+request hostname and supplied Origin are loopback. It does not bypass stored
+password verification, owner uniqueness, device enrollment, CSRF or revocation.
+Remote requests and generic/native authentication retain the eight-character
+minimum. The local account is created once; subsequent runs do not reset or
+replace an existing owner. Its password is stored only as a password hash.
+
 ### Optional dashboard weather (2026-10-29)
 
 Weather access is opt-in via city selection or a location button that explains

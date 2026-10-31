@@ -146,6 +146,26 @@ describe('entry gate', () => {
 })
 
 describe('password entry for each local web launch', () => {
+  it('accepts the requested short local login without changing the production form', async () => {
+    vi.spyOn(localBrowserLogin, 'localBrowserLaunchId').mockReturnValue('local-launch')
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => String(input).endsWith('/status') ? json({ initialized: true, can_resume: false }) : json(session()))
+    vi.stubGlobal('fetch', fetchImpl)
+    const { host, mounted } = await mount()
+    const username = host.querySelector<HTMLInputElement>('#aelys-entry-email')!
+    const password = host.querySelector<HTMLInputElement>('#aelys-entry-password')!
+    expect(username.type).toBe('text')
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      set.call(username, '1'); username.dispatchEvent(new Event('input', { bubbles: true }))
+      set.call(password, '1'); password.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(password.minLength).toBe(1)
+    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(mounted).toHaveBeenCalledOnce()
+    const request = fetchImpl.mock.calls.find(([input]) => String(input).endsWith('/login'))!
+    expect(JSON.parse(request[1]!.body as string)).toEqual({ email: '1', password: '1' })
+  })
+
   it('blocks old access tokens and cookie restoration after restarting the dev server', async () => {
     const launch = vi.spyOn(localBrowserLogin, 'localBrowserLaunchId').mockReturnValue('first-launch')
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/status') ? json({ initialized: true, can_resume: true }) : json(session()))

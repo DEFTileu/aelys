@@ -112,6 +112,47 @@ async def test_loopback_development_cookie_and_vite_proxy_origin(client):
 
 
 @pytest.mark.asyncio
+async def test_local_one_one_account_uses_normal_owner_password_and_sessions(client):
+    transport = ASGITransport(app=app, client=('127.0.0.1', 12345))
+    async with AsyncClient(transport=transport, base_url='http://127.0.0.1:5187', headers={'X-Aelys-Browser': '1', 'Origin': 'http://127.0.0.1:5187'}) as local:
+        credentials = {'email': '1', 'password': '1'}
+        created = await local.post(f'{PREFIX}/bootstrap', json=credentials)
+        assert created.status_code == 200, created.text
+        assert (await local.post(f'{PREFIX}/logout')).status_code == 200
+        logged_in = await local.post(f'{PREFIX}/login', json=credentials)
+        assert logged_in.status_code == 200
+        auth = {'Authorization': f"Bearer {logged_in.json()['access_token']}"}
+        assert (await local.get('/api/v1/me', headers=auth)).json()['email'] == '1'
+        assert (await local.post(f'{PREFIX}/login', json={'email': '1', 'password': '2'})).status_code == 422
+        async with db.SessionLocal() as session:
+            owner = (await session.execute(select(User))).scalar_one()
+            assert owner.email == '1' and owner.password_hash != '1'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('peer', 'origin'), [
+    ('203.0.113.10', 'http://127.0.0.1:5187'),
+    ('127.0.0.1', 'https://aelys.example.test'),
+])
+async def test_one_one_credentials_rejected_outside_loopback(client, peer, origin):
+    async with AsyncClient(transport=ASGITransport(app=app, client=(peer, 12345)), base_url=origin, headers={'X-Aelys-Browser': '1', 'Origin': origin}) as remote:
+        for operation in ('bootstrap', 'login'):
+            response = await remote.post(f'{PREFIX}/{operation}', json={'email': '1', 'password': '1'})
+            assert response.status_code == 422
+    assert (await client.get(f'{PREFIX}/status')).json()['initialized'] is False
+
+
+@pytest.mark.asyncio
+async def test_local_one_one_does_not_override_an_existing_owner(client):
+    assert (await client.post(f'{PREFIX}/bootstrap', json=CREDENTIALS)).status_code == 200
+    async with AsyncClient(transport=ASGITransport(app=app, client=('127.0.0.1', 12345)), base_url='http://localhost', headers={'X-Aelys-Browser': '1'}) as local:
+        credentials = {'email': '1', 'password': '1'}
+        assert (await local.post(f'{PREFIX}/bootstrap', json=credentials)).status_code == 409
+        assert (await local.post(f'{PREFIX}/login', json=credentials)).status_code == 401
+        assert (await local.post('/api/v1/auth/login', json=credentials)).status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_browser_and_native_bootstrap_share_the_owner_lock(client):
     results = await asyncio.gather(client.post(f'{PREFIX}/bootstrap', json=CREDENTIALS), client.post('/api/v1/auth/bootstrap', json=CREDENTIALS))
     assert sorted(response.status_code for response in results) == [200, 409]

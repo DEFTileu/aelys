@@ -10,6 +10,7 @@ import { navigate } from '../lib/router'
 import { KeychainAccessRecovery } from './KeychainAccessRecovery'
 import { LaunchIntro } from './LaunchIntro'
 import { TouchIdIcon } from './TouchIdIcon'
+import { localBrowserLaunchId } from '../lib/localBrowserLogin'
 
 type AuthState = 'checking' | 'ready' | 'login' | 'setup' | 'connection' | 'biometric'
 
@@ -26,6 +27,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
   const generation = useRef(0)
   const explicitReauthentication = useRef(false)
   const nativeHost = isNativeHost()
+  const localLogin = !!localBrowserLaunchId()
   const androidHost = nativeHost && /Android/i.test(navigator.userAgent)
   useEffect(() => {
     const update = () => { generation.current += 1; setPassword(''); setNotice(''); if (isNativeHost()) { setState('checking'); setRetry((value) => value + 1) } else setState(getAccessToken() ? 'ready' : 'login') }
@@ -162,10 +164,10 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
           </div>
         </> : <>
           <h1>{state === 'setup' ? 'Создать аккаунт' : 'Войти в Aelys'}</h1>
-          <p className="auth-description">{state === 'setup' ? 'Один аккаунт для ваших устройств.' : 'Введите email и пароль аккаунта.'}</p>
+          <p className="auth-description">{state === 'setup' ? 'Один аккаунт для ваших устройств.' : localLogin ? 'Введите логин и пароль.' : 'Введите email и пароль аккаунта.'}</p>
           <form className="auth-form" onSubmit={authenticate}>
-            <label htmlFor="aelys-entry-email">Email<input id="aelys-entry-email" autoFocus required disabled={busy} type="email" autoComplete="username" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            <label htmlFor="aelys-entry-password">Пароль<input id="aelys-entry-password" required disabled={busy} type="password" minLength={8} autoComplete={state === 'setup' ? 'new-password' : 'current-password'} placeholder={state === 'setup' ? 'Не менее 8 символов' : 'Пароль аккаунта'} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+            <label htmlFor="aelys-entry-email">{localLogin ? 'Логин' : 'Email'}<input id="aelys-entry-email" autoFocus required disabled={busy} type={localLogin ? 'text' : 'email'} autoComplete="username" placeholder={localLogin ? 'Логин' : 'you@example.com'} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+            <label htmlFor="aelys-entry-password">Пароль<input id="aelys-entry-password" required disabled={busy} type="password" minLength={localLogin && email === '1' ? 1 : 8} autoComplete={state === 'setup' ? 'new-password' : 'current-password'} placeholder={state === 'setup' && !localLogin ? 'Не менее 8 символов' : 'Пароль аккаунта'} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
             <button type="submit" className={`auth-submit${keychainDenied ? ' auth-submit--secondary' : ''}`} disabled={busy}>{busy ? 'Открываем…' : state === 'setup' ? 'Создать аккаунт' : 'Войти'}</button>
           </form>
           {nativeHost && canUnlock && state === 'login' && <button type="button" className="auth-text-action auth-return" disabled={busy} onClick={() => { setNotice(''); setPassword(''); setState('biometric') }}>Вернуться к Touch ID</button>}

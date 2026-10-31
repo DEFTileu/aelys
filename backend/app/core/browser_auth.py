@@ -1,10 +1,12 @@
 """Single-entry browser authentication with revocable device-bound refresh cookies."""
 import secrets
 from datetime import UTC, timedelta
+from ipaddress import ip_address
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +14,6 @@ from .api import lock_owner_initialization
 from .config import get_settings
 from .db import get_db
 from .models import AuthSession, Device, User, now
-from .schemas import LoginRequest
 from .security import (
     create_token,
     decode_refresh_token,
@@ -35,6 +36,28 @@ class BrowserSession(BaseModel):
     access_token: str
     device_id: str | None
     token_type: str = "bearer"
+
+
+class BrowserLoginRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=1, description="At least 8 characters, except the owner-selected 1/1 account on loopback requests.")
+
+
+def validate_browser_password(body: BrowserLoginRequest, request: Request) -> None:
+    if len(body.password) >= 8:
+        return
+    # The owner's requested 1/1 account is a loopback-only exception. It still
+    # uses the stored password hash, owner lock, CSRF checks and device sessions.
+    try:
+        local_peer = request.client is not None and ip_address(request.client.host).is_loopback
+    except ValueError:
+        local_peer = False
+    local_hosts = {"localhost", "127.0.0.1", "::1"}
+    origin = request.headers.get("origin")
+    local_origin = not origin or urlsplit(origin).hostname in local_hosts
+    if body.email == "1" and body.password == "1" and local_peer and request.url.hostname in local_hosts and local_origin:
+        return
+    raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Пароль должен содержать не менее 8 символов"})
 
 
 def browser_request(request: Request) -> None:
@@ -99,7 +122,8 @@ async def start_browser_session(user: User, request: Request, response: Response
 
 
 @router.post("/login", response_model=BrowserSession, dependencies=[Depends(browser_request)])
-async def login(body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(body: BrowserLoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    validate_browser_password(body, request)
     user = (await db.execute(select(User).where(User.email == body.email))).scalar_one_or_none()
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "Неверный email или пароль"})
@@ -107,7 +131,8 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
 
 
 @router.post("/bootstrap", response_model=BrowserSession, dependencies=[Depends(browser_request)])
-async def bootstrap(body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+async def bootstrap(body: BrowserLoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    validate_browser_password(body, request)
     # Serialize first-owner creation; do not create two owners on concurrent setup.
     await lock_owner_initialization(db)
     if (await db.execute(select(User.id).limit(1))).first():

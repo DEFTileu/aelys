@@ -238,6 +238,13 @@ screen; credentials and owner records remain in the backend database. No
 default password is generated or reset by the launcher. Keep the same database
 and `AELYS_SECRET_KEY` between launches.
 
+For the owner-requested local account, the login and password can both be `1`.
+The development Web form accepts that login. The browser API permits this exact
+short pair only when the peer IP, request hostname and supplied Origin are all
+loopback. It still checks the stored password hash and cannot replace an
+existing owner. Other passwords retain the eight-character minimum; native and
+non-browser authentication contracts are unchanged.
+
 Page reloads during the same Web-server run keep the current session, including
 normal access-token renewal. A new dev-server generation requires password
 entry before old access tokens or refresh cookies can reopen the UI. This uses
