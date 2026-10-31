@@ -29,6 +29,25 @@ describe('MobileShell', () => {
     expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(document.activeElement).toBe(trigger)
     await click(trigger); await click(host.querySelector<HTMLElement>('.mobile-shell__backdrop')!); expect(host.querySelector('[role="dialog"]')).toBeNull()
   })
+  it('keeps the Home header to one line: logo, search, notifications and avatar', async () => {
+    const host = await render()
+    const header = host.querySelector('.mobile-shell__header')!
+    expect([...header.children].map(node => node.getAttribute('aria-label') ?? node.textContent)).toEqual(['All apps', 'Search', 'Notifications /', 'Profile and settings'])
+    expect(header.querySelector('.mobile-shell__logo svg, .mobile-shell__logo img, .mobile-shell__logo [class*="mark"]')).not.toBeNull()
+    expect(host.querySelector('.mobile-shell__weather')).toBeNull()
+    expect(header.nextElementSibling?.tagName).toBe('MAIN')
+  })
+  it('pins the AI bar and reserves its height in the content padding', async () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(104)
+    const host = await render()
+    const shell = host.querySelector<HTMLElement>('.mobile-shell--home')!
+    expect(shell.style.getPropertyValue('--mobile-bar-height')).toBe('104px')
+    const bar = host.querySelector('.mobile-shell__bottom')!
+    expect(bar.querySelector('form.mobile-shell__ask')).not.toBeNull()
+    expect(bar.parentElement).toBe(shell)
+    await click(button(host, 'Profile and settings'))
+    expect(host.querySelector('.mobile-shell--home')).toBeNull()
+  })
   it('navigates between modules through the app sheet and returns home', async () => {
     const host = await render(); await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Finances'))
     expect(location.pathname).toBe('/finance'); expect(host.textContent).toContain('Content /finance'); expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(host.querySelector('.mobile-shell__wallpaper')).toBeNull()

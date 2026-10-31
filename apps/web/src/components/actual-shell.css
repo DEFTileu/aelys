@@ -31,7 +31,10 @@
 .mobile-shell--home .home-screen { padding: 0 16px !important; gap: 12px !important; }
 .mobile-shell--home .home-screen > div:has(h2) { flex-wrap: wrap; }
 .mobile-shell--home .home-screen h2 { font-size: 20px !important; }
-.mobile-shell--home .home-widget-grid { --widget-columns: 2; gap: 16px; grid-auto-rows: 176px; align-items: stretch; }
+/* Square cells: (viewport - 32 gutters - 12 gap) / 2. Only S is half width; M and L span both columns. */
+.mobile-shell--home .home-widget-grid { --widget-columns: 2; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; grid-auto-rows: calc((100vw - 44px) / 2); align-items: stretch; }
+/* Mobile cards are solid so the wallpaper only shows in the hero and the Weather card. */
+.mobile-shell--home .home-widget:not([data-widget-id='weather']) { background: var(--surface-solid) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border-color: var(--line) !important; }
 .mobile-shell--home .home-widget { min-height: 0; padding: 16px !important; border-radius: 22px !important; }
 .mobile-shell--home .home-widget [data-widget-heading] { height: 28px !important; margin-bottom: 8px !important; }
 .mobile-shell--home .home-widget [data-widget-heading] > span:first-child { display: none !important; }
@@ -41,7 +44,6 @@
 .mobile-shell--home .home-layout-help { font-size: 12px; }
 .mobile-shell--home .home-tool { white-space: nowrap; }
 .mobile-shell--home .home-screen--editing .home-widget-body { opacity: .4; }
-@media (max-width: 350px) { .mobile-shell--home .home-widget-grid { --widget-columns: 1; } }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
  :root[data-theme='dark'] [data-glass] { background: var(--surface-solid) !important; }
