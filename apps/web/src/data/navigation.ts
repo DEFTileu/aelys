@@ -24,6 +24,7 @@ export const appNav: NavItem[] = [
 ]
 
 export const utilityNav: NavItem[] = [
+  { label: 'Utilities', path: '/utilities', icon: 'grid' },
   { label: 'Search', path: '/search', icon: 'search' },
   { label: 'Settings', path: '/settings', icon: 'settings' },
 ]

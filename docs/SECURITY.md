@@ -181,3 +181,18 @@ personal Mac execution is provided by this connector.
 - Queries use bound SQLAlchemy parameters; the few raw `text()` statements are constants with bound values. Only auth endpoints, the Gmail OAuth callback and `/healthz` are reachable without a principal.
 - AI providers receive only the conversation the owner typed (no automatic retrieval of tasks, notes or mail); tools are write-only (`create_task`, `create_note`) and scope-checked; Telegram history is limited to the target chat, and externally authored text is fenced as `<untrusted_data>` and redacted before any provider call. Provider hosts are allow-listed and keys are AES-GCM encrypted.
 - The legacy `X-Owner-ID` owner fallback was removed (it was unmounted but would have been an authentication bypass).
+
+### Local Utilities (2026-10-31)
+
+Utilities remains behind the existing owner AuthGate. Passwords use Web Crypto
+with rejection sampling and require every selected character group; unavailable
+secure randomness fails closed. Inputs, generated passwords and decoded text
+stay in component memory, without API, sync, storage, telemetry, or AI tools.
+Clipboard writes require an explicit click and report failures; the system
+clipboard may outlive the view. Decoded HTML is displayed only in a textarea,
+never parsed as markup. Text transformations reject malformed encodings and
+unpaired surrogates, limit input to 65,536 UTF-16 code units, and report fixed
+errors without echoing sensitive input. Basic HTML entities are deliberately
+limited to five named entities and numeric references. These tools do not
+provide encryption or a password vault. Native packaged acceptance is separate
+from shared web build and responsive browser verification.

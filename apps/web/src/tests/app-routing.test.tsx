@@ -24,6 +24,7 @@ vi.mock('../views/TasksView', async () => {
   await controls.tasksReady
   return { TasksView: ({ apiStatus }: { apiStatus: string }) => <div>Tasks: {apiStatus}</div> }
 })
+vi.mock('../views/UtilitiesView', () => ({ UtilitiesView: () => <div>Local Utilities</div> }))
 vi.mock('../views/FinanceView', () => { throw new Error('chunk unavailable') })
 vi.mock('../views/SettingsView', () => ({ SettingsView: ({ apiStatus, theme, onToggleTheme }: { apiStatus: string; theme: string; onToggleTheme: () => void }) => <button onClick={onToggleTheme}>Settings: {apiStatus} {theme}</button> }))
 
@@ -67,6 +68,9 @@ it('defers protected routes, keeps the shell through loading and recovers from a
   expect(host.querySelector('[role="alert"]')).toBeNull()
   await act(async () => { host.querySelector('button')!.click() })
   expect(host.textContent).toContain('Settings: error dark')
+  expect(host.querySelector('[data-testid="shell"]')).toBe(shell)
+  await act(async () => { navigate('/utilities') })
+  expect(host.textContent).toContain('Local Utilities')
   expect(host.querySelector('[data-testid="shell"]')).toBe(shell)
   expect(controls.shellMounted).toHaveBeenCalledTimes(1)
 })

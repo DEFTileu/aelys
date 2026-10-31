@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { BookOpen, Calendar, CalendarPlus, Folder, House, Mail, MessageSquareText, NotebookText, Plus, Search, Settings, Sparkles, SquareCheck, SquarePen, Wallet, type AelysIconComponent } from '../icons'
+import { Blocks, BookOpen, Calendar, CalendarPlus, Folder, House, Mail, MessageSquareText, NotebookText, Plus, Search, Settings, Sparkles, SquareCheck, SquarePen, Wallet, type AelysIconComponent } from '../icons'
 import { askAelys } from '../lib/desktopStore'
 import { kindLabels, openSearchUrl, resultUrl, searchKinds, useSearchResults, type SearchKind } from '../lib/searchNavigation'
 import type { RoutePath } from '../types'
@@ -11,6 +11,7 @@ const pages: { label: string; icon: AelysIconComponent; route: RoutePath; color:
   { label: 'Tasks', icon: SquareCheck, route: '/tasks', color: 'blue' }, { label: 'Calendar', icon: Calendar, route: '/calendar', color: 'red' },
   { label: 'Projects', icon: Folder, route: '/projects', color: 'green' }, { label: 'Notes', icon: NotebookText, route: '/notes', color: 'orange' },
   { label: 'Mail', icon: Mail, route: '/mail', color: 'blue' }, { label: 'Finances', icon: Wallet, route: '/finance', color: 'green' },
+  { label: 'Utilities', icon: Blocks, route: '/utilities', color: 'violet' },
   { label: 'Knowledge base', icon: BookOpen, route: '/knowledge', color: 'violet' }, { label: 'Settings', icon: Settings, route: '/settings', color: 'gray' },
 ]
 const kindIcons: Record<SearchKind, AelysIconComponent> = { task: SquareCheck, note: NotebookText, mail: Mail }

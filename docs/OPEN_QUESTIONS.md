@@ -15,7 +15,8 @@
 | P1 | Синхронизация конфликтующего Markdown: ручное слияние или CRDT в следующих версиях? | Branch/version conflict с сохранением обеих версий | Collaborative editor / сложное merge |
 | P1 | Конкретная технология agent loop: SDK или собственный adapter loop? | Capability spike, abstraction-first | Runtime implementation |
 | P1 | Лицензия: Apache-2.0 окончательно? | Держать proposed, не объявлять окончательно | Публичный release |
-| P2 | Голос, Uni Hub, Infra Monitor, Utilities — нужны ли в roadmap после MVP? | Backlog, не обязательная разработка | Future releases |
+| P2 | Utilities: какие дополнительные форматы и настройки нужны после первой локальной поставки? | Реализовать показанный владельцу набор (PRD §2.13); история и менеджер паролей не включены | Следующие версии Utilities |
+| P2 | Голос, Uni Hub, Infra Monitor — нужны ли в roadmap после MVP? | Backlog, не обязательная разработка | Future releases |
 | P2 | Нужны ли версии Linux/Windows после macOS? | Нет в MVP | Cross-desktop strategy |
 | P2 | Нужна ли интеграция с Google Calendar/GitHub в первом релизе? | Позже, отдельные адаптеры | External automation |
 | P2 | Хочет ли пользователь публичную документацию на английском дополнительно? | Исходные инженерные документы на русском | Community adoption |

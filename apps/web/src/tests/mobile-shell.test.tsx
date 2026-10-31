@@ -33,6 +33,7 @@ describe('MobileShell', () => {
     const host = await render(); await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Finances'))
     expect(location.pathname).toBe('/finance'); expect(host.textContent).toContain('Content /finance'); expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(host.querySelector('.mobile-shell__wallpaper')).toBeNull()
     await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Tasks')); expect(location.pathname).toBe('/tasks')
+    await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Utilities')); expect(location.pathname).toBe('/utilities'); expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Utilities')
     await click(button(host, 'Back to Home')); expect(location.pathname).toBe('/')
   })
   it('uses the selected wallpaper on home and routes the composer to AI', async () => {

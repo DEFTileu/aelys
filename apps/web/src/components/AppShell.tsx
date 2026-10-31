@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
+import { Blocks, BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
 import { WALLPAPERS, accentColors } from '../data/desktop/settings'
 import { requestCustomizeHome, useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { getSharedApiClient } from '../lib/api'
@@ -48,6 +48,7 @@ const NAV: NavItem[] = [
   { id: 'mail', label: 'Mail', icon: Mail, route: '/mail' },
   { id: 'finance', label: 'Finances', icon: Wallet, route: '/finance' },
   { id: 'kb', label: 'Knowledge base', icon: BookOpen, route: '/knowledge' },
+  { id: 'utilities', label: 'Utilities', icon: Blocks, route: '/utilities' },
   { id: 'widgets', label: 'Widgets', icon: LayoutGrid, route: '/', customize: true },
 ]
 
@@ -62,6 +63,7 @@ const MODULE_TITLES: Partial<Record<RoutePath, string>> = {
   '/mail': 'Mail',
   '/finance': 'Finances',
   '/timer': 'Timer',
+  '/utilities': 'Utilities',
   '/developer': 'Developer Hub',
   '/automation': 'Automation',
   '/search': 'Search',
