@@ -370,3 +370,5 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
 .home-finance-row > span:nth-child(2) { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .home-finance-row b { font-weight:500; }
 @media(max-width:700px) { .home-finance-total { flex-wrap:wrap; gap:0 5px; } .home-finance-total strong { font-size:20px; line-height:28px; } .home-finance-row b { overflow-wrap:anywhere; } }
+.weather-hourly { display: flex; gap: 10px; justify-content: space-between; margin-top: 6px; }
+.weather-hourly > div { display: grid; justify-items: center; gap: 2px; font-size: 11px; }

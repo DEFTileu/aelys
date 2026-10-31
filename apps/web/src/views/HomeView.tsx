@@ -46,7 +46,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
     setData((current) => ({ ...current, states: Object.fromEntries(['today', 'cal', 'proj', 'notes', 'fin', 'focus', 'mail', 'kb', 'activity'].map((id) => [id, 'loading'])) }))
-    void Promise.allSettled([client.tasks(), client.calendarOccurrences(today.toISOString(), tomorrow.toISOString()), client.projects(), client.notes(), client.financeTransactions(), client.focusSessions(), client.mailMessages(), client.activity()]).then(([tasks, events, projects, notes, finance, focusSessions, mail, activity]) => {
+    void Promise.allSettled([client.tasks(), client.calendarOccurrences(today.toISOString(), tomorrow.toISOString()), client.projects(), client.notes(), client.financeTransactions(), client.focusSessions(), client.mailMessages(), client.activity(), client.financeBudgets()]).then(([tasks, events, projects, notes, finance, focusSessions, mail, activity, budgets]) => {
       if (!active) return
       setData({
         tasks: tasks.status === 'fulfilled' ? tasks.value : [],
@@ -55,6 +55,8 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
         notes: notes.status === 'fulfilled' ? notes.value : [],
         finance: finance.status === 'fulfilled' ? finance.value : [],
         mail: mail.status === 'fulfilled' ? mail.value : [],
+        // Budgets only add a row to Finances; a failed load simply omits it.
+        budgets: budgets.status === 'fulfilled' ? budgets.value : [],
         activity: activity.status === 'fulfilled' ? activity.value : [],
         states: { today: tasks.status === 'fulfilled' ? 'ready' : 'error', cal: events.status === 'fulfilled' ? 'ready' : 'error', proj: projects.status === 'fulfilled' ? 'ready' : 'error', notes: notes.status === 'fulfilled' ? 'ready' : 'error', fin: finance.status === 'fulfilled' ? 'ready' : 'error', focus: focusSessions.status === 'fulfilled' ? 'ready' : 'error', mail: mail.status === 'fulfilled' ? 'ready' : 'error', activity: activity.status === 'fulfilled' ? 'ready' : 'error', kb: notes.status === 'fulfilled' ? 'ready' : 'error' },
       })

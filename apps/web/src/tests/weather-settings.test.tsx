@@ -18,7 +18,7 @@ describe('weather settings and shared displays', () => {
   it('selects a city and updates both displays from one real-contract forecast', async () => {
     const fetchImpl = vi.fn(async (input: URL) => input.hostname.startsWith('geocoding')
       ? json({ results: [{ id: 1, name: 'Алматы', country: 'Казахстан', latitude: 43.25, longitude: 76.9 }] })
-      : json({ current: { temperature_2m: 13, apparent_temperature: 12, weather_code: 0, wind_speed_10m: 5, is_day: 1 }, daily: { time: [1793203200], weather_code: [0], temperature_2m_min: [5], temperature_2m_max: [13] } }))
+      : json({ current: { temperature_2m: 13, apparent_temperature: 12, weather_code: 0, wind_speed_10m: 5, is_day: 1 }, daily: { time: [1793203200], weather_code: [0], temperature_2m_min: [5], temperature_2m_max: [13] }, hourly: { time: [Math.floor(Date.now() / 1000) + 600, Math.floor(Date.now() / 1000) + 4200], weather_code: [0, 3], temperature_2m: [13, 14] } }))
     vi.stubGlobal('fetch', fetchImpl)
     const host = await mount()
     const field = host.querySelector<HTMLInputElement>('input[type="search"]')!
@@ -31,6 +31,8 @@ describe('weather settings and shared displays', () => {
     expect(host.querySelector('.weather-card-body--s .weather-forecast')).toBeNull()
     expect(host.querySelector('.weather-card-body--m .weather-details')?.textContent).toContain('Feels like 12°C')
     expect(host.querySelector('.weather-card-body--m .weather-forecast')).toBeNull()
+    expect(host.querySelector('.weather-card-body--s .weather-hourly')).toBeNull()
+    expect(host.querySelector('.weather-card-body--m .weather-hourly')?.textContent).toContain('14°')
     expect(host.querySelector('.weather-card-body--l .weather-forecast')).not.toBeNull()
     expect(fetchImpl.mock.calls.filter(([url]) => url.hostname === 'api.open-meteo.com')).toHaveLength(1)
     expect(JSON.parse(localStorage.getItem(WEATHER_STORAGE_KEY)!).location.name).toBe('Алматы')

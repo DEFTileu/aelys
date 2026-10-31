@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 
 export type WeatherLocation = { name: string; latitude: number; longitude: number; mode: 'city' | 'auto' }
 export type City = WeatherLocation & { id: number; region: string }
-export type Forecast = { locationKey: string; fetchedAt: number; temperature: number; apparent: number; code: number; wind: number; isDay: boolean; days: { date: string; code: number; min: number; max: number }[] }
+export type Forecast = { locationKey: string; fetchedAt: number; temperature: number; apparent: number; code: number; wind: number; isDay: boolean; days: { date: string; code: number; min: number; max: number }[]; hours?: { time: string; code: number; temperature: number }[] }
 type WeatherState = { location: WeatherLocation | null; forecast: Forecast | null; status: 'empty' | 'loading' | 'ready' | 'error'; notice: string; settingsOpen: boolean; locating: boolean }
 export const WEATHER_STORAGE_KEY = 'aelys.weather.v1'
 const FRESH_FOR = 30 * 60_000
@@ -19,7 +19,7 @@ function validLocation(value: unknown): value is WeatherLocation {
 function validForecast(value: unknown): value is Forecast {
   if (!value || typeof value !== 'object') return false
   const item = value as Forecast
-  return typeof item.locationKey === 'string' && finite(item.fetchedAt) && finite(item.temperature) && finite(item.apparent) && finite(item.wind) && finite(item.code) && typeof item.isDay === 'boolean' && Array.isArray(item.days) && item.days.every((day) => typeof day.date === 'string' && finite(day.code) && finite(day.min) && finite(day.max))
+  return typeof item.locationKey === 'string' && finite(item.fetchedAt) && finite(item.temperature) && finite(item.apparent) && finite(item.wind) && finite(item.code) && typeof item.isDay === 'boolean' && Array.isArray(item.days) && item.days.every((day) => typeof day.date === 'string' && finite(day.code) && finite(day.min) && finite(day.max)) && (item.hours === undefined || (Array.isArray(item.hours) && item.hours.every((hour) => typeof hour.time === 'string' && finite(hour.code) && finite(hour.temperature))))
 }
 function readState(): WeatherState {
   const initial: WeatherState = { location: null, forecast: null, status: 'empty', notice: '', settingsOpen: false, locating: false }
@@ -72,16 +72,22 @@ export async function fetchForecast(location: WeatherLocation): Promise<Forecast
   if (running) return running
   const flight = (async () => {
     const url = new URL('https://api.open-meteo.com/v1/forecast')
-    url.search = new URLSearchParams({ latitude: String(round(location.latitude)), longitude: String(round(location.longitude)), current: 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day', daily: 'weather_code,temperature_2m_max,temperature_2m_min', forecast_days: '3', timezone: 'auto', timeformat: 'unixtime', temperature_unit: 'celsius', wind_speed_unit: 'kmh' }).toString()
+    url.search = new URLSearchParams({ latitude: String(round(location.latitude)), longitude: String(round(location.longitude)), current: 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day', hourly: 'temperature_2m,weather_code', daily: 'weather_code,temperature_2m_max,temperature_2m_min', forecast_days: '5', timezone: 'auto', timeformat: 'unixtime', temperature_unit: 'celsius', wind_speed_unit: 'kmh' }).toString()
     const body = await requestJson(url)
     const current = body.current as Record<string, unknown> | undefined
     const daily = body.daily as Record<string, unknown> | undefined
     if (!current || ![current.temperature_2m, current.apparent_temperature, current.weather_code, current.wind_speed_10m, current.is_day].every(finite)) throw new Error('The weather service returned incomplete data.')
     if (!daily || ![daily.time, daily.weather_code, daily.temperature_2m_min, daily.temperature_2m_max].every(Array.isArray)) throw new Error('Forecast is unavailable.')
     const times = daily.time as unknown[]; const codes = daily.weather_code as unknown[]; const mins = daily.temperature_2m_min as unknown[]; const maxes = daily.temperature_2m_max as unknown[]
-    const days = times.slice(0, 3).flatMap((date, index) => finite(date) && finite(codes[index]) && finite(mins[index]) && finite(maxes[index]) ? [{ date: new Date((date + (finite(body.utc_offset_seconds) ? body.utc_offset_seconds : 0)) * 1000).toISOString(), code: codes[index] as number, min: mins[index] as number, max: maxes[index] as number }] : [])
+    const days = times.slice(0, 5).flatMap((date, index) => finite(date) && finite(codes[index]) && finite(mins[index]) && finite(maxes[index]) ? [{ date: new Date((date + (finite(body.utc_offset_seconds) ? body.utc_offset_seconds : 0)) * 1000).toISOString(), code: codes[index] as number, min: mins[index] as number, max: maxes[index] as number }] : [])
     if (!days.length) throw new Error('Forecast is unavailable.')
-    return { locationKey: key, fetchedAt: Date.now(), temperature: current.temperature_2m as number, apparent: current.apparent_temperature as number, code: current.weather_code as number, wind: current.wind_speed_10m as number, isDay: current.is_day === 1, days }
+    // Hourly data is optional: a missing or malformed series only hides the hourly strip. Times are shifted to the location's clock like days.
+    const hourly = body.hourly as Record<string, unknown> | undefined
+    const offset = finite(body.utc_offset_seconds) ? body.utc_offset_seconds : 0
+    const hours = hourly && [hourly.time, hourly.temperature_2m, hourly.weather_code].every(Array.isArray)
+      ? (hourly.time as unknown[]).flatMap((time, index) => finite(time) && time * 1000 > Date.now() - 3_600_000 && finite((hourly.temperature_2m as unknown[])[index]) && finite((hourly.weather_code as unknown[])[index]) ? [{ time: new Date((time + offset) * 1000).toISOString(), code: (hourly.weather_code as number[])[index], temperature: (hourly.temperature_2m as number[])[index] }] : []).slice(0, 6)
+      : []
+    return { locationKey: key, fetchedAt: Date.now(), temperature: current.temperature_2m as number, apparent: current.apparent_temperature as number, code: current.weather_code as number, wind: current.wind_speed_10m as number, isDay: current.is_day === 1, days, hours }
   })().finally(() => { flights.delete(key) })
   flights.set(key, flight)
   return flight

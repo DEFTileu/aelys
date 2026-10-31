@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { ChevronRight } from '../../icons'
-import type { ActivityEvent, EventOut, FinanceTransaction, FocusOut, MailMessage, NoteOut, ProjectResponse, TaskOut } from '@aelys/shared'
+import type { ActivityEvent, EventOut, FinanceBudget, FinanceTransaction, FocusOut, MailMessage, NoteOut, ProjectResponse, TaskOut } from '@aelys/shared'
 import { accentOf } from '../../data/desktop/home'
 import { useWeather } from '../../lib/weather'
 import { navigate } from '../../lib/router'
@@ -9,7 +9,7 @@ import type { ApiStatus } from '../../types'
 import { WidgetFrame, type WidgetFrameControls } from './WidgetFrame'
 import { WidgetBody, isDone } from './widgetBodies'
 
-export type HomeData = { tasks: readonly TaskOut[]; events: readonly EventOut[]; projects: readonly ProjectResponse[]; notes: readonly NoteOut[]; finance: readonly FinanceTransaction[]; mail?: readonly MailMessage[]; activity?: readonly ActivityEvent[]; focusSessions?: readonly FocusOut[]; states?: Partial<Record<WidgetId, ApiStatus>> }
+export type HomeData = { tasks: readonly TaskOut[]; events: readonly EventOut[]; projects: readonly ProjectResponse[]; notes: readonly NoteOut[]; finance: readonly FinanceTransaction[]; mail?: readonly MailMessage[]; budgets?: readonly FinanceBudget[]; activity?: readonly ActivityEvent[]; focusSessions?: readonly FocusOut[]; states?: Partial<Record<WidgetId, ApiStatus>> }
 export type FocusTimer = { left: number; running: boolean; paused: boolean; live: boolean; disabled: boolean; toggle: () => void; reset: () => void }
 
 export type HomeWidgetProps = {

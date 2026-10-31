@@ -1,7 +1,7 @@
 // One layout per widget size. Only fields that exist in HomeData are rendered; missing data omits the element.
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { ChevronRight, Pause, Play, Plus, RotateCcw, Check } from '../../icons'
-import type { FocusOut, TaskOut } from '@aelys/shared'
+import type { FocusOut, NoteOut, TaskOut } from '@aelys/shared'
 import { FOCUS_SESSION_SECONDS, accentOf } from '../../data/desktop/home'
 import { ageLabel, dayLabel } from '../../lib/format'
 import { formatMoney, sumDecimals } from '../../lib/money'
@@ -195,13 +195,16 @@ function Projects({ size, data }: BodyProps) {
 
 function Notes({ id, size, data }: BodyProps) {
   const route: RoutePath = id === 'kb' ? '/knowledge' : '/notes'
-  const notes = [...data.notes].sort((a, b) => Date.parse((b as { updated_at?: string }).updated_at ?? '') - Date.parse((a as { updated_at?: string }).updated_at ?? '') || 0)
+  const updated = (note: NoteOut) => Date.parse(note.updated_at ?? '') || 0
+  const notes = [...data.notes].sort((a, b) => updated(b) - updated(a))
   if (!notes.length) return <Empty text="No notes yet." action={{ label: 'New note', route }} />
-  const card = (note: typeof notes[number], lines = 3) => <button type="button" key={note.id} className="home-btn home-note-row wb-note" onClick={() => navigate(route)}><strong>{note.title || 'Untitled'}</strong><small style={{ WebkitLineClamp: lines }}>{excerpt(note.markdown_body) || 'Empty note'}</small>{(note as { updated_at?: string }).updated_at && <time className="wb-muted" dateTime={(note as { updated_at?: string }).updated_at}>{ageLabel((note as { updated_at?: string }).updated_at!)}</time>}</button>
-  if (size === 'S') return card(notes[0], 5)
+  const card = (note: NoteOut, lines = 3) => <button type="button" key={note.id} className="home-btn home-note-row wb-note" onClick={() => navigate(route)}><strong>{note.title || 'Untitled'}</strong><small style={{ WebkitLineClamp: lines }}>{excerpt(note.markdown_body) || 'Empty note'}</small>{note.updated_at && <time className="wb-muted" dateTime={note.updated_at}>{ageLabel(note.updated_at)}</time>}</button>
+  if (size === 'S') return card(notes[0]!, 5)
   if (size === 'M') return <div className="wb-cards">{notes.slice(0, 2).map(note => card(note, 4))}</div>
   const count = size === 'Tall' ? 3 : 5
-  return <div className="wb-col">{notes.slice(0, count).map(note => card(note, 2))}{size === 'L' && <button type="button" className="home-btn wb-action" onClick={() => navigate(route)}><Plus size={16} />New</button>}</div>
+  const pinned = size === 'L' ? notes.find(note => note.pinned) : undefined
+  const recent = notes.filter(note => note !== pinned).slice(0, pinned ? count - 1 : count)
+  return <div className="wb-col">{pinned && <><Group>Pinned</Group>{card(pinned, 3)}<Group>Recent</Group></>}{recent.map(note => card(note, 2))}{size === 'L' && <button type="button" className="home-btn wb-action" onClick={() => navigate(route)}><Plus size={16} />New</button>}</div>
 }
 
 function Finances({ size, data }: BodyProps) {
@@ -221,17 +224,30 @@ function Finances({ size, data }: BodyProps) {
   const max = Math.max(1, ...days.map(day => day.units))
   const bars = <div className="wb-bars" aria-label="Activity, last 7 days">{days.map(day => <div key={day.start} title={new Date(day.start).toLocaleDateString('en', { weekday: 'short' })}><i style={{ height: `${Math.max(4, day.units / max * 100)}%` }} /></div>)}</div>
   if (size === 'M') return <div className="wb-col">{head}{bars}{others}</div>
-  const types = [...new Set(items.map(item => item.type))]
-  return <div className="wb-col">{head}{bars}<Group>By type</Group>{types.map(type => <div key={type} className="wb-row"><span className="wb-grow">{type}</span><b>{formatMoney(sumDecimals(items.filter(item => item.type === type).map(item => item.amount)))} {primary}</b></div>)}{others}</div>
+  // Categories and the budget use only the primary currency, so currencies are never summed.
+  const spent = (item: typeof items[number]) => { const units = sumDecimals([item.amount]); return units < 0n ? -units : units }
+  const expenses = items.filter(item => item.type === 'expense')
+  const byCategory = new Map<string, bigint>(); expenses.forEach(item => { const name = item.category_name || 'Uncategorized'; byCategory.set(name, (byCategory.get(name) ?? 0n) + spent(item)) })
+  const categories = [...byCategory.entries()].sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0)).slice(0, 3)
+  const now = Date.now()
+  const budget = (data.budgets ?? []).filter(item => item.currency === primary && Date.parse(item.period_start) <= now && now < Date.parse(item.period_end)).sort((a, b) => Number(a.category_id !== null) - Number(b.category_id !== null))[0]
+  const budgetRow = budget && (() => {
+    const used = expenses.filter(item => (budget.category_id === null || item.category_id === budget.category_id) && Date.parse(item.occurred_at) >= Date.parse(budget.period_start) && Date.parse(item.occurred_at) < Date.parse(budget.period_end)).reduce((sum, item) => sum + spent(item), 0n)
+    const limit = sumDecimals([budget.limit_amount])
+    const name = budget.category_id === null ? 'Budget' : data.finance.find(item => item.category_id === budget.category_id)?.category_name ?? 'Budget'
+    return <div className="wb-proj"><div className="wb-row"><span className="wb-grow wb-strong">{name}</span><span className="wb-muted">{formatMoney(used)} / {formatMoney(limit)} {primary}</span></div><Bar pct={limit > 0n ? Number(used * 100n / limit) : 0} color={used > limit ? '#C9302C' : accentOf('green').c} /></div>
+  })()
+  return <div className="wb-col">{head}{bars}{categories.length > 0 && <><Group>Categories</Group>{categories.map(([name, units]) => <div key={name} className="wb-row"><span className="wb-grow">{name}</span><b>{formatMoney(units)} {primary}</b></div>)}</>}{budgetRow}{others}</div>
 }
 
 function MailBody({ size, data }: BodyProps) {
   const mail = data.mail ?? []
-  if (!mail.length) return <Empty text="No imported mail yet." action={{ label: 'Open Mail', route: '/mail' }} />
+  const unread = mail.filter(item => item.is_read === false)
+  if (!mail.length || (!unread.length && size !== 'L')) return <Empty text="Inbox is clear" action={{ label: 'Import', route: '/mail' }} />
   const row = (item: typeof mail[number], preview: boolean) => <button className="home-btn home-mail-row wb-mailrow" type="button" key={item.id} onClick={() => navigate('/mail')}><span className="home-mail-avatar">{senderName(item.sender)[0]?.toUpperCase()}</span><span className="wb-grow"><strong>{senderName(item.sender)}</strong><small>{item.subject || '(No subject)'}</small>{preview && <small className="wb-clamp">{excerpt(item.body, 90)}</small>}</span><time className="wb-muted">{ageLabel(item.received_at)}</time></button>
-  if (size === 'S') return <div className="wb-col"><div className="wb-big"><b>{mail.length}</b><span>recent</span></div><div className="wb-avatars">{mail.slice(0, 4).map(item => <span key={item.id} className="home-mail-avatar">{senderName(item.sender)[0]?.toUpperCase()}</span>)}</div></div>
-  const count = size === 'M' ? 3 : size === 'Tall' ? 5 : 6
-  return <div className="wb-col">{mail.slice(0, count).map(item => row(item, size === 'L'))}</div>
+  if (size === 'S') return <div className="wb-col"><div className="wb-big"><b>{unread.length}</b><span>unread</span></div><div className="wb-avatars">{unread.slice(0, 4).map(item => <span key={item.id} className="home-mail-avatar">{senderName(item.sender)[0]?.toUpperCase()}</span>)}</div></div>
+  if (size === 'L') return <div className="wb-col">{mail.slice(0, 6).map(item => row(item, true))}</div>
+  return <div className="wb-col">{unread.slice(0, size === 'M' ? 3 : 5).map(item => row(item, false))}</div>
 }
 
 function Activity({ size, data }: BodyProps) {

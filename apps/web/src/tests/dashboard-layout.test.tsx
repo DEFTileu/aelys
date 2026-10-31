@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from '../views/HomeView'
 import { HOME_LAYOUT_KEY, WIDGET_SIZES, WIDGET_IDS, saveLayout, readLayout } from '../views/desktop/homeLayout'
 
-const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), focusSessions: vi.fn(), mailMessages: vi.fn(), activity: vi.fn(), createTask: vi.fn() }))
+const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), financeBudgets: vi.fn(), focusSessions: vi.fn(), resumeFocusSession: vi.fn(), mailMessages: vi.fn(), activity: vi.fn(), createTask: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 let root: ReturnType<typeof createRoot> | undefined
 beforeEach(() => {
@@ -50,7 +50,7 @@ describe('dashboard widgets', () => {
 
   it.each(WIDGET_IDS.filter(id => id !== 'weather'))('renders a different layout for %s at S, M and L', async (id) => {
     const at = (hours: number) => new Date(Date.now() + hours * 3600000).toISOString()
-    const records = Array.from({ length: 12 }, (_, index) => ({ id: `record-${index}`, title: `Record ${index}`, name: `Project ${index}`, status: 'todo', due_at: at(index), starts_at: at(index + 1), ends_at: at(index + 1.5), markdown_body: 'Note preview', currency: 'KZT', amount: '1.5', type: 'income', occurred_at: at(-index), notes: '', sender: 'Sender', subject: 'Subject', body: 'Body', received_at: at(-index), event_kind: 'task.created', actor_kind: 'owner', project_id: null, elapsed_seconds: 60 }))
+    const records = Array.from({ length: 12 }, (_, index) => ({ id: `record-${index}`, title: `Record ${index}`, name: `Project ${index}`, status: 'todo', due_at: at(index), starts_at: at(index + 1), ends_at: at(index + 1.5), markdown_body: 'Note preview', currency: 'KZT', amount: '1.5', type: index % 2 ? 'expense' : 'income', category_name: 'Food', is_read: false, pinned: index === 1, occurred_at: at(-index), notes: '', sender: 'Sender', subject: 'Subject', body: 'Body', received_at: at(-index), event_kind: 'task.created', actor_kind: 'owner', project_id: null, elapsed_seconds: 60 }))
     Object.entries(client).forEach(([key, method]) => method.mockResolvedValue(key === 'focusSessions' ? [] : key === 'createTask' ? {} : records))
     const html: string[] = []
     for (const [span, height] of [[1, 264], [2, 264], [2, 544]]) {
@@ -86,6 +86,54 @@ describe('dashboard widgets', () => {
     expect(text).toContain('KZT')
     expect(text).not.toContain('115')
     expect(text).toContain('1 more currency')
+  })
+
+  it('Finances L shows categories and one budget row only in the budget currency', async () => {
+    saveLayout([['fin', 2, 544]])
+    const now = Date.now()
+    const tx = (id: string, currency: string, amount: string, name: string | null) => ({ id, currency, amount, type: 'expense', category_id: name ? 'c1' : null, category_name: name, occurred_at: new Date(now).toISOString(), notes: '' })
+    client.financeTransactions.mockResolvedValue([tx('a', 'KZT', '-10', 'Food'), tx('b', 'KZT', '-5', 'Food'), tx('c', 'KZT', '-2', null), tx('d', 'USD', '-100', 'Travel')])
+    const budget = (currency: string, limit: string) => ({ id: 'b', category_id: null, currency, period_start: new Date(now - 86400000).toISOString(), period_end: new Date(now + 86400000).toISOString(), limit_amount: limit })
+    client.financeBudgets.mockResolvedValue([budget('USD', '500')])
+    const none = await mount()
+    expect(none.grid.querySelector('[data-widget-id="fin"]')!.textContent).toContain('Food'); expect(none.grid.querySelector('[data-widget-id="fin"]')!.textContent).not.toContain('Travel'); expect(none.grid.querySelector('[data-widget-id="fin"]')!.textContent).not.toContain('Budget')
+    await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ''
+    client.financeBudgets.mockResolvedValue([budget('KZT', '100')])
+    const withBudget = await mount()
+    const text = withBudget.grid.querySelector('[data-widget-id="fin"]')!.textContent!
+    expect(text).toContain('Uncategorized'); expect(text).toContain('15.00 KZT'); expect(text).toContain('Budget17.00 / 100.00 KZT'); expect(text).not.toContain('Travel')
+  })
+
+  it('Mail counts only unread messages and shows Inbox is clear with Import otherwise', async () => {
+    const message = (id: string, is_read: boolean) => ({ id, sender: `Sender ${id}`, subject: `Subject ${id}`, body: 'b', received_at: new Date().toISOString(), is_read })
+    saveLayout([['mail', 1, 264]])
+    client.mailMessages.mockResolvedValue([message('1', false), message('2', true), message('3', false)])
+    const unread = await mount()
+    expect(unread.grid.querySelector('[data-widget-id="mail"]')!.textContent).toContain('2unread')
+    await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ''
+    client.mailMessages.mockResolvedValue([message('2', true)])
+    const clear = await mount()
+    const empty = clear.grid.querySelector('[data-widget-id="mail"] .wb-empty')!
+    expect(empty.textContent).toContain('Inbox is clear'); expect(empty.textContent).toContain('Import'); expect(empty.querySelectorAll('button')).toHaveLength(1)
+  })
+
+  it('Notes L shows the pinned note first', async () => {
+    saveLayout([['notes', 2, 544]])
+    client.notes.mockResolvedValue([{ id: 'n1', title: 'Recent one', markdown_body: 'x', updated_at: '2026-10-30T10:00:00Z' }, { id: 'n2', title: 'Pinned one', markdown_body: 'y', pinned: true, updated_at: '2026-01-01T10:00:00Z' }])
+    const { grid } = await mount()
+    const text = grid.querySelector('[data-widget-id="notes"]')!.textContent!
+    expect(text.indexOf('Pinned')).toBeGreaterThanOrEqual(0); expect(text.indexOf('Pinned one')).toBeLessThan(text.indexOf('Recent one'))
+  })
+
+  it('Focus shows a paused session as Resume and the toggle calls resume', async () => {
+    saveLayout([['focus', 2, 264]])
+    client.focusSessions.mockResolvedValue([{ id: 'f1', version: 4, status: 'paused', mode: 'pomodoro', started_at: new Date(Date.now() - 600_000).toISOString(), elapsed_seconds: 125, paused_seconds: 300, task_id: null }])
+    client.resumeFocusSession.mockResolvedValue({})
+    const { grid } = await mount()
+    const card = grid.querySelector('[data-widget-id="focus"]')!
+    expect(card.textContent).toContain('02:05'); expect(card.textContent).toContain('Paused')
+    await click(card.querySelector<HTMLElement>('[aria-label="Resume focus"]')!)
+    expect(client.resumeFocusSession).toHaveBeenCalledWith('f1', 4)
   })
 
   it('adds a task from the Today L quick-add field', async () => {
