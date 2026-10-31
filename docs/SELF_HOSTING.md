@@ -219,8 +219,8 @@ Open the web app directly (locally `http://127.0.0.1:5173`). A new instance offe
 first-owner setup; an initialized instance offers sign-in using its existing
 email/password. All modules become available after this single entry step;
 Settings is no longer the place to initialize a session. Existing accounts and
-data are preserved. Sessions restore from an HttpOnly cookie on reopening, and
-access tokens renew automatically. Default lifetimes are 15 minutes for access
+data are preserved. Production sessions restore from an HttpOnly cookie on reopening,
+and access tokens renew automatically. Default lifetimes are 15 minutes for access
 and 30 days for refresh, using the existing auth settings.
 
 Serve `/api/v1` and `/healthz` through the same origin as the web app. Vite already
@@ -230,6 +230,22 @@ reverse proxy sends an Origin different from the backend's own origin, set
 loopback origins on port 5173); this is a CSRF allowlist, not a CORS bypass.
 Keep `AELYS_SECRET_KEY` stable in the backend environment so restarts preserve
 sessions. Signing out works from Settings; revoked devices cannot restore.
+
+Local Web development (`pnpm dev` or the Vite server started by
+`./scripts/start_local.sh`) asks for the same owner email and password after
+each restart of the Web server. Create that single account once on the setup
+screen; credentials and owner records remain in the backend database. No
+default password is generated or reset by the launcher. Keep the same database
+and `AELYS_SECRET_KEY` between launches.
+
+Page reloads during the same Web-server run keep the current session, including
+normal access-token renewal. A new dev-server generation requires password
+entry before old access tokens or refresh cookies can reopen the UI. This uses
+a non-secret, backend-scoped generation marker in tab sessionStorage; passwords
+remain outside browser storage. It applies only to loopback Web development,
+not native clients or production builds. Reusing an already running Web server
+does not create a new generation. The Vite proxy preserves the browser Host so
+sign-in also works on the launcher's fallback ports without a broader CSRF allowlist.
 
 ## Dashboard layout and weather
 

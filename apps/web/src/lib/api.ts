@@ -2,10 +2,12 @@ import type { ApiConfig } from '../types'
 import { ApiClient, ApiError as SharedApiError, IndexedDbOfflineStore, type BrowserAuthStatus, type BrowserSession } from '@aelys/shared'
 import { isNativeHost, loadNativeTransport, nativeBackendOrigin } from './nativeTransport'
 import { createNativeFetch } from './nativeClient'
+import { localBrowserLaunchId } from './localBrowserLogin'
 
 const API_BASE_STORAGE_KEY = 'aelys.apiBaseUrl'
 const ACCESS_TOKEN_STORAGE_KEY = 'aelys.accessToken'
 const SIGNED_OUT_KEY = 'aelys.signedOut'
+const LOCAL_LAUNCH_STORAGE_KEY = 'aelys.localPasswordLaunch'
 const DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 export const SESSION_EVENT = 'aelys:session-changed'
 
@@ -37,18 +39,32 @@ let sharedClient: ApiClient | undefined
 let sharedClientKey = ''
 let refreshFlight: Promise<boolean> | undefined
 
+function localLaunchAuthenticated(): boolean {
+  const launchId = localBrowserLaunchId()
+  if (!launchId) return true
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(LOCAL_LAUNCH_STORAGE_KEY) || 'null')
+    return saved?.launchId === launchId && saved?.origin === sharedOrigin(getApiConfig().baseUrl)
+  } catch { return false }
+}
+
 export function getAccessToken(): string | undefined {
-  if (window.localStorage.getItem(SIGNED_OUT_KEY)) return undefined
+  if (window.localStorage.getItem(SIGNED_OUT_KEY) || !localLaunchAuthenticated()) return undefined
   return window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || undefined
 }
 
 export function clearAccessToken(notify = true): void {
   window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+  window.sessionStorage.removeItem(LOCAL_LAUNCH_STORAGE_KEY)
   sharedClient = undefined; sharedClientKey = ''
   if (notify) window.dispatchEvent(new Event(SESSION_EVENT))
 }
 
-function acceptSession(session: BrowserSession, notify: boolean): void {
+function acceptSession(session: BrowserSession, notify: boolean, passwordLogin = false): void {
+  const launchId = localBrowserLaunchId()
+  if (launchId && passwordLogin) {
+    window.sessionStorage.setItem(LOCAL_LAUNCH_STORAGE_KEY, JSON.stringify({ launchId, origin: sharedOrigin(getApiConfig().baseUrl) }))
+  }
   window.localStorage.removeItem(SIGNED_OUT_KEY)
   window.sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, session.access_token)
   if (notify) window.dispatchEvent(new Event(SESSION_EVENT))
@@ -72,13 +88,13 @@ export function isSignedOut(): boolean { return !!window.localStorage.getItem(SI
 export function clearNativeSignedOut(): void { window.localStorage.removeItem(SIGNED_OUT_KEY) }
 
 export async function resumeBrowserSession(): Promise<boolean> {
-  if (isSignedOut()) return false
+  if (isSignedOut() || !localLaunchAuthenticated()) return false
   if (!refreshFlight) {
     const origin = sharedOrigin(getApiConfig().baseUrl)
     const refresh = async () => {
       try {
         const session = await browserRequest<BrowserSession>('refresh', {})
-        if (isSignedOut() || origin !== sharedOrigin(getApiConfig().baseUrl)) return false
+        if (isSignedOut() || !localLaunchAuthenticated() || origin !== sharedOrigin(getApiConfig().baseUrl)) return false
         acceptSession(session, false)
         return true
       } catch (error) {
@@ -184,11 +200,11 @@ export async function logout(): Promise<void> {
 }
 
 export async function login(email: string, password: string): Promise<void> {
-  acceptSession(await browserRequest<BrowserSession>('login', { email, password }), true)
+  acceptSession(await browserRequest<BrowserSession>('login', { email, password }), true, true)
 }
 
 export async function bootstrapOwner(email: string, password: string): Promise<void> {
-  acceptSession(await browserRequest<BrowserSession>('bootstrap', { email, password }), true)
+  acceptSession(await browserRequest<BrowserSession>('bootstrap', { email, password }), true, true)
 }
 
 export class ApiError extends Error {

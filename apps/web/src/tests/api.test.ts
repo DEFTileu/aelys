@@ -57,7 +57,7 @@ describe('API health verification', () => {
   })
 
   it('proxies health checks to the same backend as API requests', () => {
-    expect(viteConfig.server?.proxy?.['/api']).toBe('http://127.0.0.1:8000')
+    expect(viteConfig.server?.proxy?.['/api']).toEqual({ target: 'http://127.0.0.1:8000', changeOrigin: false })
     expect(viteConfig.server?.proxy?.['/healthz']).toBe(viteConfig.server?.proxy?.['/api'])
   })
 })
