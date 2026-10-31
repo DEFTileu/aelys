@@ -23,6 +23,7 @@ Each boundary needs authentication, authorization, minimized payloads, rate limi
 
 - Secure user authentication; session lifetimes, refresh/revoke and optional MFA planned.
 - Device enrollment and independent revocation with key rotation; helper cannot present itself as arbitrary device.
+- Passwordless key-bound devices, one-time setup tokens and QR pairing (ADR-025): [QR_PAIRING_AUTH_PROPOSAL.md](QR_PAIRING_AUTH_PROPOSAL.md).
 - TLS for communication; prevent replay (nonces/expiring leases), bind commands to authenticated owner/device/project.
 - Strict origin/CORS/CSRF rules if cookies used; avoid wildcard origins with credentials.
 

@@ -27,6 +27,7 @@
 | ADR-022 | Framework/SDK для Agent Harness | OPEN | Выбирать после capability spike |
 | ADR-023 | Автоматические внешние операции (git push, send email и т. п.) | OPEN | Не включать в проектный доступ автоматически |
 | ADR-024 | UI/UX, VPS, домен, брендинг | DEFERRED | Не блокируют model/API design |
+| ADR-025 | Вход без пароля: ключи устройств, setup token, привязка по QR | DECIDED (owner, 2026-10-31) | Пароль остаётся запасным; браузер — устройство пониженного доверия; восстановление через команду на сервере. См. [QR_PAIRING_AUTH_PROPOSAL.md](QR_PAIRING_AUTH_PROPOSAL.md) |
 
 ## Правило при конфликтах требований
 
