@@ -3,13 +3,14 @@ from __future__ import annotations
 import secrets
 from datetime import UTC
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
 from .db import get_db
 from .models import AuditLog, AuthSession, Device, Project, ProjectGrant, User, now
+from .ratelimit import enforce
 from .schemas import (
     DeviceEnroll,
     DeviceResponse,
@@ -39,8 +40,15 @@ async def lock_owner_initialization(db: AsyncSession, *, password: bool = True) 
     elif db.get_bind().dialect.name == "postgresql":
         await db.execute(text("SELECT pg_advisory_xact_lock(71802341)"))
 
+def guard_password_login(request: Request, email: str) -> None:
+    """Shared by every password sign-in transport: honour the switch, then throttle by address and by account."""
+    if not get_settings().password_login_enabled:
+        raise HTTPException(403, detail={"code": "PASSWORD_LOGIN_DISABLED", "message": "Password sign-in is disabled; use a paired device"})
+    enforce(request, "password-login", (30, 600), email.strip().lower(), (8, 600))
+
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    guard_password_login(request, body.email)
     user = (await db.execute(select(User).where(User.email == body.email))).scalar_one_or_none()
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, detail={"code":"UNAUTHORIZED","message":"Invalid credentials"})
@@ -52,7 +60,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 @router.post("/auth/refresh", response_model=TokenResponse)
-async def refresh(body: dict, db: AsyncSession = Depends(get_db)):
+async def refresh(body: dict, request: Request, db: AsyncSession = Depends(get_db)):
+    enforce(request, "refresh", (300, 600))
     claims = decode_refresh_token(body.get("refresh_token", "")); user = await db.get(User, claims["sub"])
     if not user: raise HTTPException(401, detail={"code":"UNAUTHORIZED","message":"Unknown owner"})
     raw_refresh=body.get("refresh_token",""); session_query=select(AuthSession).where(AuthSession.owner_id==user.id,AuthSession.refresh_token_hash==token_hash(raw_refresh),AuthSession.revoked_at.is_(None))
@@ -89,8 +98,9 @@ async def logout(authorization: str | None = Header(default=None), principal=Dep
     return {"logged_out": True}
 
 @router.post("/auth/bootstrap", response_model=TokenResponse, include_in_schema=False)
-async def bootstrap(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def bootstrap(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """First-owner setup endpoint; disable or protect it after initial enrollment."""
+    enforce(request, "bootstrap", (10, 600))
     await lock_owner_initialization(db)
     if (await db.execute(select(User))).first(): raise HTTPException(409, detail={"code":"ALREADY_INITIALIZED","message":"Owner already exists"})
     user = User(email=body.email, password_hash=hash_password(body.password)); db.add(user); await db.commit()

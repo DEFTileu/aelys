@@ -16,7 +16,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,7 @@ from .api import lock_owner_initialization
 from .config import get_settings
 from .db import get_db
 from .models import AuditLog, AuthSession, Device, DeviceChallenge, PairingSession, SetupToken, User, now
+from .ratelimit import enforce
 from .schemas import TokenResponse
 from .security import create_token, current_principal, token_hash
 
@@ -201,7 +202,8 @@ async def announce_first_run_token() -> None:
 
 
 @router.post("/auth/setup/claim", response_model=DeviceSession)
-async def claim_setup(body: SetupClaim, db: AsyncSession = Depends(get_db)):
+async def claim_setup(body: SetupClaim, request: Request, db: AsyncSession = Depends(get_db)):
+    enforce(request, "setup-claim", (10, 600))
     public_key = normalize_public_key(body.public_key)
     await lock_owner_initialization(db, password=False)
     row = (await db.execute(select(SetupToken).where(SetupToken.token_hash == token_hash(body.token)))).scalar_one_or_none()
@@ -234,7 +236,8 @@ async def claim_setup(body: SetupClaim, db: AsyncSession = Depends(get_db)):
 # ---- key-bound device login --------------------------------------------------
 
 @router.post("/auth/device/challenge", response_model=ChallengeResponse)
-async def device_challenge(body: ChallengeRequest, db: AsyncSession = Depends(get_db)):
+async def device_challenge(body: ChallengeRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    enforce(request, "device-challenge", (120, 60), body.device_id, (30, 60))
     device = await db.get(Device, body.device_id)
     if not device or device.revoked_at or not device.public_key:
         raise _error(401, "UNAUTHORIZED", "Unknown or revoked device")
@@ -249,7 +252,8 @@ async def device_challenge(body: ChallengeRequest, db: AsyncSession = Depends(ge
 
 
 @router.post("/auth/device/login", response_model=DeviceSession)
-async def device_login(body: DeviceLogin, db: AsyncSession = Depends(get_db)):
+async def device_login(body: DeviceLogin, request: Request, db: AsyncSession = Depends(get_db)):
+    enforce(request, "device-login", (120, 60), body.challenge_id, (10, 60))
     challenge = await db.get(DeviceChallenge, body.challenge_id)
     if not challenge or challenge.used_at or _aware(challenge.expires_at) <= now():
         raise _error(401, "UNAUTHORIZED", "Challenge is invalid or expired")
@@ -335,8 +339,9 @@ async def pairing_invite(body: PairingCreate, principal=Depends(trusted_device),
 
 
 @router.post("/pairing/request")
-async def pairing_request(body: PairingRequestBody, db: AsyncSession = Depends(get_db)):
+async def pairing_request(body: PairingRequestBody, request: Request, db: AsyncSession = Depends(get_db)):
     """A new device offers a QR (web or desktop without a camera); a trusted phone scans and approves it."""
+    enforce(request, "pairing-request", (20, 600))
     public_key = normalize_public_key(body.public_key)
     await _purge_expired(db)
     active = (await db.execute(select(func.count()).select_from(PairingSession).where(PairingSession.kind == "request", PairingSession.state.in_(("pending", "claimed", "approved")), PairingSession.expires_at > now()))).scalar_one()
@@ -349,8 +354,9 @@ async def pairing_request(body: PairingRequestBody, db: AsyncSession = Depends(g
 
 
 @router.post("/pairing/{pairing_id}/claim")
-async def pairing_claim(pairing_id: str, body: PairingClaim, db: AsyncSession = Depends(get_db)):
+async def pairing_claim(pairing_id: str, body: PairingClaim, request: Request, db: AsyncSession = Depends(get_db)):
     """The new device scanned a trusted device's QR and presents its key."""
+    enforce(request, "pairing-claim", (30, 600), pairing_id, (20, 600))
     row = await _load_pairing(db, pairing_id)
     if row.kind != "invite":
         raise _error(409, "WRONG_PAIRING_KIND", "This pairing was started by the new device")
@@ -417,8 +423,9 @@ async def pairing_reject(pairing_id: str, body: PairingSecret, principal=Depends
 
 
 @router.post("/pairing/{pairing_id}/finish", response_model=DeviceSession)
-async def pairing_finish(pairing_id: str, body: PairingFinish, db: AsyncSession = Depends(get_db)):
+async def pairing_finish(pairing_id: str, body: PairingFinish, request: Request, db: AsyncSession = Depends(get_db)):
     """The new device polls this; once approved it signs the pairing id to prove it holds the key and gets its first session."""
+    enforce(request, "pairing-finish", (300, 600), pairing_id, (120, 600))
     row = await _load_pairing(db, pairing_id)
     if row.state in ("pending", "claimed"):
         raise _error(409, "PAIRING_PENDING", "Waiting for the owner to approve")

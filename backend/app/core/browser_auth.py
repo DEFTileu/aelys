@@ -8,10 +8,11 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .api import lock_owner_initialization
+from .api import guard_password_login, lock_owner_initialization
 from .config import get_settings
 from .db import get_db
 from .models import AuthSession, Device, User, now
+from .ratelimit import enforce
 from .schemas import LoginRequest
 from .security import (
     create_token,
@@ -100,6 +101,7 @@ async def start_browser_session(user: User, request: Request, response: Response
 
 @router.post("/login", response_model=BrowserSession, dependencies=[Depends(browser_request)])
 async def login(body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    guard_password_login(request, body.email)
     user = (await db.execute(select(User).where(User.email == body.email))).scalar_one_or_none()
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "Неверный email или пароль"})
@@ -108,6 +110,7 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
 
 @router.post("/bootstrap", response_model=BrowserSession, dependencies=[Depends(browser_request)])
 async def bootstrap(body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    enforce(request, "bootstrap", (10, 600))
     # Serialize first-owner creation; do not create two owners on concurrent setup.
     await lock_owner_initialization(db)
     if (await db.execute(select(User.id).limit(1))).first():
@@ -120,6 +123,7 @@ async def bootstrap(body: LoginRequest, request: Request, response: Response, db
 
 @router.post("/refresh", response_model=BrowserSession, dependencies=[Depends(browser_request)])
 async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    enforce(request, "refresh", (300, 600))
     session = await cookie_session(request, db)
     if not session:
         raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "Войдите в Aelys"})

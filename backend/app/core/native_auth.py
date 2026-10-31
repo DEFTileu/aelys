@@ -15,7 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .api import lock_owner_initialization
+from .api import guard_password_login, lock_owner_initialization
+from .ratelimit import enforce
 from .config import get_settings
 from .db import get_db
 from .models import AuditLog, AuthSession, Device, User, now
@@ -99,7 +100,8 @@ async def status(db: AsyncSession = Depends(get_db)) -> NativeStatus:
 
 
 @router.post("/login", response_model=NativeSession)
-async def login(body: NativeLogin, db: AsyncSession = Depends(get_db)) -> NativeSession:
+async def login(body: NativeLogin, request: Request, db: AsyncSession = Depends(get_db)) -> NativeSession:
+    guard_password_login(request, body.email)
     user = (await db.execute(select(User).where(User.email == body.email))).scalar_one_or_none()
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         raise denied()
@@ -107,7 +109,8 @@ async def login(body: NativeLogin, db: AsyncSession = Depends(get_db)) -> Native
 
 
 @router.post("/bootstrap", response_model=NativeSession)
-async def bootstrap(body: NativeLogin, db: AsyncSession = Depends(get_db)) -> NativeSession:
+async def bootstrap(body: NativeLogin, request: Request, db: AsyncSession = Depends(get_db)) -> NativeSession:
+    enforce(request, "bootstrap", (10, 600))
     await lock_owner_initialization(db)
     if (await db.execute(select(User.id).limit(1))).first():
         raise HTTPException(409, detail={"code": "ALREADY_INITIALIZED", "message": "Owner already exists"})
@@ -118,7 +121,8 @@ async def bootstrap(body: NativeLogin, db: AsyncSession = Depends(get_db)) -> Na
 
 
 @router.post("/refresh", response_model=NativeSession)
-async def refresh(body: NativeRefresh, db: AsyncSession = Depends(get_db)) -> NativeSession:
+async def refresh(body: NativeRefresh, request: Request, db: AsyncSession = Depends(get_db)) -> NativeSession:
+    enforce(request, "refresh", (300, 600))
     claims = decode_refresh_token(body.refresh_token)
     owner_id, device_id, session_id = claims.get("sub"), claims.get("device_id"), claims.get("sid")
     if not isinstance(owner_id, str) or not owner_id or not isinstance(device_id, str) or not device_id or not isinstance(session_id, str) or not session_id:
