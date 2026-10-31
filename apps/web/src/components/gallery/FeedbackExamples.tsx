@@ -27,21 +27,21 @@ export function FeedbackExamples() {
   return (
     <div className="feedback-examples">
       <div className="feedback-actions">
-        <button ref={opener} className="button button--quiet" type="button" onClick={() => { dialog.current?.showModal(); dialog.current?.querySelector('input')?.focus() }}>Открыть диалог</button>
-        <button className="button button--quiet" type="button" onClick={showToast}>Показать уведомление</button>
+        <button ref={opener} className="button button--quiet" type="button" onClick={() => { dialog.current?.showModal(); dialog.current?.querySelector('input')?.focus() }}>Open dialog</button>
+        <button className="button button--quiet" type="button" onClick={showToast}>Show notification</button>
       </div>
-      <div className="feedback-status" role="status">{saved ? 'Пример обновлён' : ''}</div>
-      {toast && <div className="feedback-toast" role="status"><span>Пример уведомления</span><button type="button" onClick={dismissToast} aria-label="Закрыть уведомление">×</button></div>}
+      <div className="feedback-status" role="status">{saved ? 'Example updated' : ''}</div>
+      {toast && <div className="feedback-toast" role="status"><span>Notification example</span><button type="button" onClick={dismissToast} aria-label="Close notification">×</button></div>}
       <div className="feedback-disclosures">
-        <details><summary>Что показывает этот пример?</summary><p>Диалог и уведомление работают только в этой галерее.</p></details>
-        <details><summary>Как закрыть диалог?</summary><p>Нажмите Escape или используйте кнопку закрытия.</p></details>
+        <details><summary>What does this example show?</summary><p>The dialog and notification work only in this gallery.</p></details>
+        <details><summary>How do I close the dialog?</summary><p>Press Escape or use the close button.</p></details>
       </div>
       <dialog ref={dialog} className="feedback-dialog" aria-labelledby={titleId} onClose={() => opener.current?.focus()}>
         <form onSubmit={(event) => { event.preventDefault(); setSaved(true); dialog.current?.close() }}>
-          <div className="feedback-dialog-heading"><h3 id={titleId}>Пример диалога</h3><button type="button" onClick={() => dialog.current?.close()} aria-label="Закрыть диалог">×</button></div>
-          <label htmlFor={inputId}>Название проекта</label>
+          <div className="feedback-dialog-heading"><h3 id={titleId}>Dialog example</h3><button type="button" onClick={() => dialog.current?.close()} aria-label="Close dialog">×</button></div>
+          <label htmlFor={inputId}>Project name</label>
           <input id={inputId} value={name} onChange={(event) => setName(event.target.value)} />
-          <div className="feedback-dialog-actions"><button className="button button--quiet" type="button" onClick={() => dialog.current?.close()}>Отмена</button><button className="button button--primary" type="submit">Сохранить</button></div>
+          <div className="feedback-dialog-actions"><button className="button button--quiet" type="button" onClick={() => dialog.current?.close()}>Cancel</button><button className="button button--primary" type="submit">Save</button></div>
         </form>
       </dialog>
     </div>
@@ -64,10 +64,10 @@ export function MotionExamples() {
 
   return (
     <div className="motion-examples">
-      <div className="motion-controls"><button className="button button--quiet motion-preview" type="button" onClick={() => setReplay((value) => value + 1)}>Повторить анимацию</button><button className="button button--quiet motion-preview" type="button" onClick={startLoading} disabled={pending}>{pending ? 'Выполняется пример…' : 'Запустить пример'}</button></div>
-      <div key={replay} className={replay ? 'motion-card motion-card--enter' : 'motion-card'}><strong>Карточка примера</strong><span>Появление за 500 мс</span></div>
+      <div className="motion-controls"><button className="button button--quiet motion-preview" type="button" onClick={() => setReplay((value) => value + 1)}>Replay animation</button><button className="button button--quiet motion-preview" type="button" onClick={startLoading} disabled={pending}>{pending ? 'Running example…' : 'Run example'}</button></div>
+      <div key={replay} className={replay ? 'motion-card motion-card--enter' : 'motion-card'}><strong>Example card</strong><span>Appears in 500 ms</span></div>
       {pending && <div className="motion-skeleton" aria-hidden="true"><span /><span /></div>}
-      <div className="motion-status" role="status">{pending ? 'Пример выполняется…' : complete ? 'Пример завершён' : ''}</div>
+      <div className="motion-status" role="status">{pending ? 'Example is running…' : complete ? 'Example finished' : ''}</div>
     </div>
   )
 }

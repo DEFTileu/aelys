@@ -7,7 +7,7 @@ import { getDesktopState, setSettings } from '../lib/desktopStore'
 import { WALLPAPERS } from '../data/desktop/settings'
 
 vi.mock('../components/NotificationCenter', () => ({ NotificationCenter: ({ route }: { route: string }) => <button>Notifications {route}</button> }))
-vi.mock('../components/Weather', () => ({ WeatherPill: () => <button>Live weather</button>, WeatherSettingsDialog: () => null }))
+vi.mock('../components/Weather', () => ({ WeatherSettingsDialog: () => null }))
 
 let root: ReturnType<typeof createRoot> | undefined
 function TestShell() {

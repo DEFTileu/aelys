@@ -19,7 +19,7 @@ describe('Telegram settings', () => {
   it('clears the write-only token on success and distinguishes a pending business connection', async () => {
     client.connectTelegram.mockResolvedValue(status)
     const host = await mount()
-    expect(host.textContent).toContain('подключение Telegram Business ожидается')
+    expect(host.textContent).toContain('Telegram Business connection pending')
     const field = host.querySelector<HTMLInputElement>('input[type=password]')!
     await input(field, 'secret-token')
     await act(async () => field.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
@@ -34,9 +34,9 @@ describe('Telegram settings', () => {
     try {
       client.telegramMessages.mockResolvedValue([message])
       const host = await mount()
-      const response = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Текст ответа'))!
+      const response = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Reply text'))!
       await input(response, 'Мой ответ')
-      const persona = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Инструкции'))!
+      const persona = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Assistant instructions'))!
       await input(persona, 'Мои инструкции')
       client.telegramStatus.mockResolvedValue({ ...status, version: 4, instructions: 'Старые инструкции' })
       client.telegramMessages.mockResolvedValue([{ ...message, version: 5, draft_status: 'ready', draft_text: 'Новый черновик' }])
@@ -54,14 +54,14 @@ describe('Telegram settings', () => {
     const host = await mount(); const select = host.querySelector<HTMLButtonElement>('[role=combobox]')!
     await act(async () => select.click())
     await act(async () => document.querySelector<HTMLElement>('[role=option][id$="option-1"]')!.click())
-    const model = [...host.querySelectorAll('input')].find((item) => item.closest('label')?.textContent?.includes('Модель'))!
+    const model = [...host.querySelectorAll('input')].find((item) => item.closest('label')?.textContent?.includes('Model'))!
     await input(model, 'model-a')
-    const persona = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Инструкции'))!
+    const persona = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Assistant instructions'))!
     await input(persona, 'Будь вежлив')
     const check = host.querySelector<HTMLInputElement>('input[type=checkbox]')!
-    expect(host.textContent).toContain('Читать и отвечать автоматически')
-    expect(host.textContent).toContain('автоматически отвечает от вашего имени')
-    expect(host.textContent).toContain('API-ключом')
+    expect(host.textContent).toContain('Read and reply automatically')
+    expect(host.textContent).toContain('replies automatically on your behalf')
+    expect(host.textContent).toContain('API key')
     expect(check.checked).toBe(false)
     await act(async () => check.click())
     expect(client.updateTelegramSettings).toHaveBeenCalledWith({ version: 3, auto_reply: true, provider_id: 'provider-1', model: 'model-a', instructions: 'Будь вежлив' })
@@ -71,7 +71,7 @@ describe('Telegram settings', () => {
     client.telegramMessages.mockResolvedValue([message])
     const host = await mount()
     const disclosures = [...host.querySelectorAll('details')]
-    const setup = disclosures.find((item) => item.querySelector('summary')?.textContent?.includes('Как подключить'))!
+    const setup = disclosures.find((item) => item.querySelector('summary')?.textContent?.includes('How to connect'))!
     const conversation = disclosures.find((item) => item.querySelector('summary')?.textContent?.includes('Клиент'))!
     expect(setup.open).toBe(false); expect(conversation.open).toBe(false)
     await act(async () => conversation.querySelector('summary')!.click())
@@ -85,11 +85,11 @@ describe('Telegram settings', () => {
     const host = await mount()
     expect(client.syncTelegram).not.toHaveBeenCalled(); expect(client.draftTelegramMessage).not.toHaveBeenCalled(); expect(client.sendTelegramMessage).not.toHaveBeenCalled()
     expect(host.querySelector('script')).toBeNull(); expect(host.textContent).toContain('<script>test</script>')
-    await click(host, 'Создать черновик')
+    await click(host, 'Create draft')
     expect(client.draftTelegramMessage).toHaveBeenCalledWith('m1', { version: 4 })
     const response = [...host.querySelectorAll('textarea')].find((item) => item.value === 'Ответ')!
     await input(response, 'Исправленный ответ')
-    await click(host, 'Отправить ответ'); await click(host, 'Отправить ответ')
+    await click(host, 'Send reply'); await click(host, 'Send reply')
     expect(client.sendTelegramMessage).toHaveBeenCalledTimes(2)
     const first = client.sendTelegramMessage.mock.calls[0]; const second = client.sendTelegramMessage.mock.calls[1]
     expect(first[0]).toBe('m1'); expect(first[1]).toEqual({ version: 5, text: 'Исправленный ответ' })

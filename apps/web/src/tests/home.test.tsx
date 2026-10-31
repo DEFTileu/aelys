@@ -17,7 +17,6 @@ describe('HomeView', () => {
     root = createRoot(host)
     await act(async () => { root?.render(<HomeView apiStatus="offline" />) })
     expect(host.textContent).toContain('My day')
-    expect(host.textContent).toContain('9 widgets')
     expect(host.textContent).toContain('Records unavailable.')
     expect(host.textContent).toContain('OFFLINE_WRITE_UNAVAILABLE')
     expect(host.textContent).not.toContain('No tasks yet.')

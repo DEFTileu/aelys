@@ -287,7 +287,6 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
 .home-widget[data-drop-target] { outline: 3px solid var(--accent,#6A4CF2); box-shadow: 0 0 0 6px rgba(106,76,242,.12); }
 .home-layout-help { margin: 0; color: #625D69; font-size: 13px; }
 .home-picker { max-height: min(70vh,600px); overflow-y: auto; }
-.weather-pill { padding: 0 14px; gap: 8px; font-size: 14px; font-weight: 600; color: #655126; }
 .weather-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 .weather-empty p { margin: 0; }
 .weather-action { border: 1px solid rgba(255,255,255,.5); border-radius: 10px; background: rgba(255,255,255,.18); color: inherit; display: flex; align-items: center; gap: 7px; padding: 8px 12px; cursor: pointer; }

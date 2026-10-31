@@ -137,14 +137,14 @@ describe('entry gate token screen', () => {
 
   it('asks a fresh server for its setup token first and hides password creation when the server disallows it', async () => {
     const { host } = await mountGate({ initialized: false, can_resume: false, password_setup: false })
-    expect(host.textContent).toContain('Токен установки')
-    expect(host.textContent).not.toContain('Создать аккаунт с паролем')
+    expect(host.textContent).toContain('Setup token')
+    expect(host.textContent).not.toContain('Create account with password')
     expect(host.querySelector('input[type=email]')).toBeNull()
   })
 
   it('offers password creation as the secondary path only while the server still allows it', async () => {
     const { host } = await mountGate({ initialized: false, can_resume: false, password_setup: true })
-    expect(host.textContent).toContain('Создать аккаунт с паролем')
+    expect(host.textContent).toContain('Create account with password')
   })
 
   it('unlocks the workspace after a valid token and shows a clear message for a bad one', async () => {
@@ -162,7 +162,7 @@ describe('entry gate token screen', () => {
     }
     await type(host.querySelector('#aelys-entry-token')!, 'token-0123456789abcdefghij')
     await submit()
-    expect(host.textContent).toContain('Токен недействителен')
+    expect(host.textContent).toContain('The token is invalid')
     expect(mounted).not.toHaveBeenCalled()
     await submit()
     expect(host.textContent).toContain('Private workspace')
@@ -178,11 +178,11 @@ describe('entry gate token screen', () => {
       if (path === 'auth/device/login') return json({ access_token: 'again', refresh_token: 'r', device_id: 'device-1', token_type: 'bearer' })
       return undefined
     })
-    expect(host.textContent).toContain('Войти с этим устройством')
-    expect(host.textContent).toContain('Войти по токену установки')
+    expect(host.textContent).toContain('Sign in with this device')
+    expect(host.textContent).toContain('Sign in with a setup token')
     expect(mounted).not.toHaveBeenCalled()
     await act(async () => {
-      [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Войти с этим устройством'))!.click()
+      [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Sign in with this device'))!.click()
       await new Promise((resolve) => setTimeout(resolve, 50)) // signing and two requests settle asynchronously
     })
     expect(host.textContent).toContain('Private workspace')

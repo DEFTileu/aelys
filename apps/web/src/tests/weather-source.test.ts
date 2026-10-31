@@ -38,7 +38,7 @@ describe('weather source and consent', () => {
     await weather.detectWeatherLocation()
     const stored = localStorage.getItem(weather.WEATHER_STORAGE_KEY)!
     expect(stored).not.toContain('43.2566723'); expect(stored).not.toContain('76.9286135')
-    expect(JSON.parse(stored).location).toEqual({ name: 'Текущее местоположение', latitude: 43.3, longitude: 76.9, mode: 'auto' })
+    expect(JSON.parse(stored).location).toEqual({ name: 'Current location', latitude: 43.3, longitude: 76.9, mode: 'auto' })
     const url = fetchImpl.mock.calls[0]![0]
     expect(url.searchParams.get('latitude')).toBe('43.3'); expect(url.searchParams.get('longitude')).toBe('76.9')
     expect(fetchImpl.mock.calls[0]![1]).toMatchObject({ credentials: 'omit', referrerPolicy: 'no-referrer' })
@@ -97,6 +97,6 @@ describe('weather source and consent', () => {
   it('rejects incomplete provider data instead of inventing values', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ current: { temperature_2m: null } })))
     const weather = await import('../lib/weather')
-    await expect(weather.fetchForecast(city)).rejects.toThrow('неполные данные')
+    await expect(weather.fetchForecast(city)).rejects.toThrow('incomplete data')
   })
 })

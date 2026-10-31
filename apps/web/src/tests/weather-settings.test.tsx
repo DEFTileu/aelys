@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { WeatherCard, WeatherPill, WeatherSettingsContent } from '../components/Weather'
+import { WeatherCard, WeatherSettingsContent } from '../components/Weather'
 import { disableWeather, WEATHER_STORAGE_KEY } from '../lib/weather'
 
 let root: ReturnType<typeof createRoot> | undefined
@@ -10,7 +10,7 @@ beforeEach(() => { localStorage.clear(); disableWeather() })
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; vi.unstubAllGlobals(); localStorage.clear() })
 async function mount() {
   const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
-  await act(async () => root!.render(<><WeatherSettingsContent /><WeatherCard /><WeatherPill /></>))
+  await act(async () => root!.render(<><WeatherSettingsContent /><WeatherCard /></>))
   return host
 }
 
@@ -24,10 +24,9 @@ describe('weather settings and shared displays', () => {
     const field = host.querySelector<HTMLInputElement>('input[type="search"]')!
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, 'Алматы'); field.dispatchEvent(new Event('input', { bubbles: true })) })
     await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
-    expect(host.querySelector('[aria-label="Найденные города"]')?.textContent).toContain('Казахстан')
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Найденные города"] button')!.click())
+    expect(host.querySelector('[aria-label="Matching cities"]')?.textContent).toContain('Казахстан')
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Matching cities"] button')!.click())
     expect(host.querySelector('.weather-current')?.textContent).toContain('13°C')
-    expect(host.querySelector('[aria-label="Погода: Алматы, 13°C. Изменить город"]')).not.toBeNull()
     expect(fetchImpl.mock.calls.filter(([url]) => url.hostname === 'api.open-meteo.com')).toHaveLength(1)
     expect(JSON.parse(localStorage.getItem(WEATHER_STORAGE_KEY)!).location.name).toBe('Алматы')
   })
@@ -37,8 +36,8 @@ describe('weather settings and shared displays', () => {
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } })
     const host = await mount()
     expect(getCurrentPosition).not.toHaveBeenCalled()
-    await act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Использовать моё местоположение'))!.click())
-    expect(host.textContent).toContain('Доступ к местоположению запрещён')
+    await act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Use my location'))!.click())
+    expect(host.textContent).toContain('Location access is blocked')
     expect(host.querySelector<HTMLInputElement>('input[type="search"]')?.disabled).toBe(false)
     expect(getCurrentPosition).toHaveBeenCalledTimes(1)
     expect(localStorage.getItem(WEATHER_STORAGE_KEY)).not.toContain('auto')

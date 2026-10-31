@@ -10,8 +10,6 @@ import { DEFAULT_LAYOUT, MOBILE_DEFAULT_LAYOUT, WIDGET_CATALOG, WIDGET_IDS, read
 import { HomeWidget, type HomeData, type FocusTimer } from './desktop/homeWidgets'
 import { automaticWidgetSize, widgetColumns } from './desktop/automaticWidgetSize'
 import { useWeather } from '../lib/weather'
-import { localBrowserLaunchId } from '../lib/localBrowserLogin'
-import { createDashboardDemo } from '../data/desktop/dashboardDemo'
 
 // Orb gradient from the design; the AppShell hero stays outside this view.
 const ORB = 'radial-gradient(circle at 32% 28%,#fff 0,rgba(235,225,255,.9) 9%,transparent 28%),radial-gradient(circle at 72% 72%,#FF7AD9 0,transparent 48%),radial-gradient(circle at 24% 72%,#46D2FF 0,transparent 46%),radial-gradient(circle at 50% 50%,#6E4CF5 0,#2A1590 82%)'
@@ -20,24 +18,6 @@ const EMPTY_DATA: HomeData = { tasks: [], events: [], projects: [], notes: [], f
 
 export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const mobile = useWindowWidth() <= 700
-  const demoAvailable = !!localBrowserLaunchId()
-  const [demoRequested, setDemoRequested] = useState(() => new URLSearchParams(window.location.search).get('demo') === '1')
-  const demo = demoAvailable && demoRequested
-  const [demoData, setDemoData] = useState(createDashboardDemo)
-  const [demoElapsed, setDemoElapsed] = useState(754)
-  const [demoRunning, setDemoRunning] = useState(false)
-  const toggleDemo = () => {
-    const next = !demo
-    const url = new URL(window.location.href)
-    if (next) url.searchParams.set('demo', '1'); else url.searchParams.delete('demo')
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
-    setDemoRequested(next); setDemoRunning(false); setTaskNotice('')
-  }
-  useEffect(() => {
-    if (!demo || !demoRunning) return
-    const interval = window.setInterval(() => setDemoElapsed(value => value + 1), 1000)
-    return () => window.clearInterval(interval)
-  }, [demo, demoRunning])
   const grid = useRef<HTMLElement>(null)
   const [gridWidth, setGridWidth] = useState(0)
   const { forecast } = useWeather()
@@ -68,14 +48,13 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const [taskNotice, setTaskNotice] = useState('')
   const [layoutNotice, setLayoutNotice] = useState('')
   const [liveData, setData] = useState<HomeData>(EMPTY_DATA)
-  const data = demo ? demoData : liveData
+  const data = liveData
   const [focusSession, setFocusSession] = useState<FocusOut | null>(null)
   const [focusTick, setFocusTick] = useState(0)
   const [focusBusy, setFocusBusy] = useState(false)
   const focusLock = useRef(false)
   const focusStart = useRef<{ body: FocusIn; key: string } | null>(null)
   useEffect(() => {
-    if (demo) return
     let active = true
     const client = getSharedApiClient()
     const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -96,10 +75,9 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
       if (focusSessions.status === 'fulfilled') setFocusSession(focusSessions.value.find((item) => item.status === 'active') ?? null)
     })
     return () => { active = false }
-  }, [apiStatus, demo])
+  }, [apiStatus])
   useEffect(() => { if (!focusSession) return; const timer = window.setInterval(() => setFocusTick((value) => value + 1), 1000); return () => window.clearInterval(timer) }, [focusSession])
   const changeFocus = async (stopOnly = false) => {
-    if (demo) { if (stopOnly) { setDemoRunning(false); setDemoElapsed(0) } else setDemoRunning(value => !value); return }
     if (focusLock.current || apiStatus !== 'ready' || (stopOnly && !focusSession)) return
     focusLock.current = true; setFocusBusy(true); setTaskNotice('')
     try {
@@ -115,17 +93,15 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     finally { focusLock.current = false; setFocusBusy(false) }
   }
   const focus = useMemo<FocusTimer>(() => {
-    if (demo) return { left: demoElapsed, running: demoRunning, disabled: false, toggle: () => setDemoRunning(value => !value), reset: () => { setDemoRunning(false); setDemoElapsed(0) } }
     const elapsed = focusSession ? Math.max(0, Math.floor((Date.now() - new Date(focusSession.started_at).getTime()) / 1000)) : 0
     return { left: focusSession ? elapsed : 0, running: !!focusSession, disabled: focusBusy || apiStatus !== 'ready', toggle: () => { void changeFocus() }, reset: () => { void changeFocus(true) } }
-  }, [focusSession, focusTick, focusBusy, apiStatus, demo, demoElapsed, demoRunning])
+  }, [focusSession, focusTick, focusBusy, apiStatus])
   // The sidebar Widgets item sets this flag and navigates here.
   useEffect(() => { if (takeCustomizeHome()) { if(mobile) navigate('/widgets'); else setEditing(true) } }, [customizeHome])
   const ask = (text: string) => { const value = text.trim(); if (value) { setDraft(''); askAelys(value) } }
 
   const toggleTask = async (task: TaskOut) => {
     setTaskNotice('')
-    if (demo) { setDemoData(current => ({ ...current, tasks: current.tasks.map(item => item.id === task.id ? { ...item, status: item.status === 'completed' ? 'todo' : 'completed' } : item) })); return }
     if (apiStatus !== 'ready') { setTaskNotice('OFFLINE_WRITE_UNAVAILABLE: Connect before changing a task.'); return }
     try {
       const { id, ...body } = task
@@ -134,7 +110,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     } catch { setTaskNotice('Could not confirm the task change. Check your owner session and connection.') }
   }
 
-  const commit = (next: LayoutEntry[]) => { if (!editing) return; setLayout(next); setLayoutNotice(saveLayout(next, mobile) ? '' : 'Не удалось сохранить расположение. Разрешите локальное хранилище браузера.') }
+  const commit = (next: LayoutEntry[]) => { if (!editing) return; setLayout(next); setLayoutNotice(saveLayout(next, mobile) ? '' : 'Could not save the layout. Allow local browser storage') }
   const onMyDay = layout.map(([id]) => id)
   const available = WIDGET_IDS.filter((id) => !onMyDay.includes(id))
   const addWidget = (id: WidgetId) => {
@@ -155,10 +131,6 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const availableWidth = gridWidth || Math.max(248, window.innerWidth - (mobile ? 32 : 312))
 
   return <div className={`home-screen${editing ? ' home-screen--editing' : ''}`} style={{ padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-    {demoAvailable && <section className="home-demo-banner" aria-label="Демонстрационные данные">
-      <div><strong>{demo ? 'Демо-данные' : 'Посмотреть виджеты с примерами'}</strong><p>{demo ? 'Вымышленные записи только на Dashboard. Задачи и таймер можно попробовать; изменения не сохраняются в базу.' : 'Примеры задач, календаря, заметок, проектов и финансов.'}</p></div>
-      <button type="button" className="home-btn home-tool" aria-pressed={demo} onClick={toggleDemo}>{demo ? 'Показать мои данные' : 'Показать демо'}</button>
-    </section>}
     {homeToggles[2] && <section aria-label="Ask Aelys" data-glass="" style={{ padding: 16, borderRadius: 24, background: 'rgba(255,255,255,.72)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,.35)', boxShadow: '0 8px 28px rgba(40,30,30,.10)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div aria-hidden="true" style={{ width: 48, height: 48, flex: 'none', borderRadius: '50%', background: ORB, boxShadow: '0 0 20px rgba(130,100,255,.5)' }} />
@@ -175,7 +147,6 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     <div ref={layoutToolbar} className="home-layout-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 10 }}>
         <h2 style={{ margin: 0, fontSize: 22, lineHeight: '30px', fontWeight: 600, letterSpacing: '-.01em' }}>My day</h2>
-        <span style={{ fontSize: 13, lineHeight: '18px', fontWeight: 500, color: '#4F4A56' }}>{visibleLayout.length} widgets</span>
       </div>
       {editing
         ? <>
@@ -204,14 +175,14 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
         : <button type="button" className="home-btn home-tool" onClick={() => mobile ? navigate('/widgets') : setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />{mobile ? 'Customize home' : 'Customize'}</button>}
     </div>
 
-    {!demo && apiStatus !== 'ready' && <p role="status">{apiStatus === 'loading' ? 'Loading workspace…' : 'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}
+    {apiStatus !== 'ready' && <p role="status">{apiStatus === 'loading' ? 'Loading workspace…' : 'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}
     {taskNotice && <p role="status">{taskNotice}</p>}
     {layoutNotice && <p role="status">{layoutNotice}</p>}
-    {editing && <p className="home-layout-help">Виджеты подбирают размер автоматически под доступное место и содержимое. При желании можно закрепить размер; Auto вернёт автоподбор.</p>}
+    {editing && <p className="home-layout-help">Widgets size themselves to the available space and content. You can pin a size; Auto restores automatic sizing.</p>}
     {homeToggles[1] && <section ref={grid} aria-label="Dashboard widgets" className={`home-widget-grid${editing ? ' home-widget-grid--editing' : ''}`} style={{ '--widget-columns': widgetColumns(availableWidth, mobile) } as CSSProperties}>
       {visibleLayout.map(([id, savedSpan, savedHeight], index) => {
-        const { span, height } = savedSpan === 0 ? automaticWidgetSize(id, availableWidth, mobile, data, demo || !!forecast) : normalizeWidgetSize(savedSpan, savedHeight)
-        return <HomeWidget key={id} id={id} span={span} index={index} count={visibleLayout.length} editing={editing} mobile={mobile} demo={demo} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onMove={(delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta)} onRemove={() => removeWidget(layout.findIndex(([widgetId]) => widgetId === id))} frame={{ id, title: WIDGET_CATALOG[id].title, span, height, automatic: savedSpan === 0, onAuto: () => autoWidget(id), onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta), onSize: (width, nextHeight) => sizeWidget(id, width, nextHeight) }} />
+        const { span, height } = savedSpan === 0 ? automaticWidgetSize(id, availableWidth, mobile, data, !!forecast) : normalizeWidgetSize(savedSpan, savedHeight)
+        return <HomeWidget key={id} id={id} span={span} index={index} count={visibleLayout.length} editing={editing} mobile={mobile} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onMove={(delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta)} onRemove={() => removeWidget(layout.findIndex(([widgetId]) => widgetId === id))} frame={{ id, title: WIDGET_CATALOG[id].title, span, height, automatic: savedSpan === 0, onAuto: () => autoWidget(id), onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta), onSize: (width, nextHeight) => sizeWidget(id, width, nextHeight) }} />
       })}
     </section>}
     <div style={{ height: 12 }} />

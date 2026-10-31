@@ -7,7 +7,7 @@ import { navigate } from '../lib/router'
 import type { ApiStatus, RoutePath } from '../types'
 import { AelysMark } from './AelysMark'
 import { NotificationCenter } from './NotificationCenter'
-import { WeatherPill, WeatherSettingsDialog } from './Weather'
+import { WeatherSettingsDialog } from './Weather'
 import './mobile-shell.css'
 
 type App = { label: string; route: RoutePath; icon: AelysIconComponent; color: string }
@@ -27,7 +27,6 @@ const APPS: App[] = [
   { label: 'Developer Hub', route: '/developer', icon: Terminal, color: 'gray' },
   { label: 'Automation', route: '/automation', icon: Workflow, color: 'blue' },
   { label: 'Widgets', route: '/widgets', icon: LayoutGrid, color: 'violet' },
-  { label: 'Components', route: '/components', icon: LayoutGrid, color: 'gray' },
 ]
 
 
@@ -75,7 +74,6 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
       {!isHome && <button ref={trigger} className="mobile-shell__circle" type="button" aria-label="All apps" aria-expanded={appsOpen} onClick={() => setAppsOpen(true)}><LayoutGrid size={18} /></button>}
       <button className="mobile-shell__profile" type="button" aria-label="Profile and settings" onClick={() => go('/settings')}><User size={18} /></button>
     </header>
-    {isHome && <div className="mobile-shell__weather"><WeatherPill /></div>}
     {!chromeOnly && <main className="mobile-shell__content">{children}</main>}
     <div className="mobile-shell__bottom">
       {isHome && <form className="mobile-shell__ask" onSubmit={submit}><label className="mobile-shell__ask-field"><span className="mobile-shell__sr-only">Ask Aelys</span><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask or search" /><button className="mobile-shell__add" type="button" aria-label="Add task" onClick={() => { window.history.pushState({},'', '/tasks?create=1'); window.dispatchEvent(new PopStateEvent('popstate')) }}><Plus size={20} /></button></label><button className="mobile-shell__orb" type="submit" aria-label={draft.trim() ? 'Send to Aelys' : 'Open AI Chat'}>{draft.trim() ? <ArrowUp size={21} /> : <Sparkles size={21} />}</button></form>}

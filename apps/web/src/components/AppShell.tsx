@@ -8,7 +8,7 @@ import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
 import { CommandPalette } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
-import { WeatherPill, WeatherSettingsDialog } from './Weather'
+import { WeatherSettingsDialog } from './Weather'
 import { AelysMark } from './AelysMark'
 import { MobileShell } from './MobileShell'
 import './actual-shell.css'
@@ -164,7 +164,6 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
               <span style={{ flex: 1, textAlign: 'left' }}>Search or run a command</span>
               <kbd style={{ height: 24, padding: '0 8px', borderRadius: 7, background: '#F1EDEA', fontSize: 12, lineHeight: '24px', color: '#3A3640', fontFamily: 'inherit' }}>⌘K</kbd>
             </button>
-            <WeatherPill />
             <button type="button" className="shell-btn shell-pill actual-theme" title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} onClick={onToggleTheme}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
             <NotificationCenter apiStatus={apiStatus} route={route} />
           </div>}

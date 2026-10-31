@@ -32,7 +32,7 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   render() {
-    if (this.state.failed) return <div role="alert">Не удалось загрузить раздел. Проверьте соединение и выберите другой раздел в меню.</div>
+    if (this.state.failed) return <div role="alert">Could not load this section. Check your connection and pick another section from the menu.</div>
     return this.props.children
   }
 }
@@ -63,7 +63,7 @@ export default function App() {
   const [theme, toggleTheme] = useTheme()
   // The gallery contains only isolated examples. It never mounts owner/session
   // or health clients and cannot reveal protected workspace data.
-  if (route === '/components') return <RouteErrorBoundary key={route}><Suspense fallback={<div role="status">Загрузка компонентов…</div>}><ComponentsView theme={theme} onToggleTheme={toggleTheme} /></Suspense></RouteErrorBoundary>
+  if (import.meta.env.DEV && route === '/components') return <RouteErrorBoundary key={route}><Suspense fallback={<div role="status">Loading components…</div>}><ComponentsView theme={theme} onToggleTheme={toggleTheme} /></Suspense></RouteErrorBoundary>
   return <WorkspaceApp route={route} theme={theme} toggleTheme={toggleTheme} />
 }
 
@@ -72,5 +72,5 @@ function WorkspaceApp({ route, theme, toggleTheme }: { route: RoutePath; theme: 
   const moduleKey = route.slice(1)
   const screens: Partial<Record<RoutePath, ReactElement>> = { '/': <HomeView apiStatus={apiStatus} />, '/mail': <MailView apiStatus={apiStatus} />, '/ai': <AiView apiStatus={apiStatus} />, '/tasks': <TasksView apiStatus={apiStatus} />, '/calendar': <CalendarView apiStatus={apiStatus} />, '/projects': <ProjectsView apiStatus={apiStatus} />, '/notes': <NotesView apiStatus={apiStatus} />, '/knowledge': <KnowledgeView apiStatus={apiStatus} />, '/widgets': <MobileCustomizeView theme={theme} onToggleTheme={toggleTheme} />, '/finance': <FinanceView apiStatus={apiStatus} />, '/utilities': <UtilitiesView />, '/timer': <TimerView apiStatus={apiStatus} />, '/search': <SearchView apiStatus={apiStatus} />, '/settings': <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> }
   const content = screens[route] ?? <ModuleView moduleKey={moduleKey} apiStatus={apiStatus} />
-  return <AuthGate apiStatus={apiStatus}><AppShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme}><RouteErrorBoundary key={route}><Suspense fallback={<div role="status">Загрузка раздела…</div>}>{content}</Suspense></RouteErrorBoundary></AppShell></AuthGate>
+  return <AuthGate apiStatus={apiStatus}><AppShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme}><RouteErrorBoundary key={route}><Suspense fallback={<div role="status">Loading section…</div>}>{content}</Suspense></RouteErrorBoundary></AppShell></AuthGate>
 }

@@ -9,7 +9,7 @@ type SelectProps = {
   label: string; value: string; onChange: (value: string) => void; options: SelectOption[]
   placeholder?: string; disabled?: boolean; error?: string; hideLabel?: boolean
 }
-export function SelectField({ label, value, onChange, options, placeholder = 'Выберите вариант', disabled = false, error, hideLabel = false }: SelectProps) {
+export function SelectField({ label, value, onChange, options, placeholder = 'Choose an option', disabled = false, error, hideLabel = false }: SelectProps) {
   const id = useId()
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -115,7 +115,7 @@ export function SelectField({ label, value, onChange, options, placeholder = 'В
           onMouseDown={event => event.preventDefault()} onClick={() => choose(index)}>
           <span>{option.label}</span>{option.value === value && <Check size={16} aria-hidden="true" />}
         </div>)}
-        {!options.length && <div className="aelys-select-empty">Нет вариантов</div>}
+        {!options.length && <div className="aelys-select-empty">No options</div>}
       </div>,document.body)}
     </div>
     {error && <span id={`${id}-error`} className="aelys-selection-error">{error}</span>}
@@ -174,18 +174,18 @@ export function MultiSelect({ label, value, onChange, options, disabled = false 
       onClick={() => { setOpen(!visible); setQuery('') }} onKeyDown={event => {
         if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setQuery('') }
       }}>
-      <span id={`${id}-summary`}>{selected.length ? `${selected.length} выбрано` : 'Выберите разделы'}</span><ChevronDown size={17} />
+      <span id={`${id}-summary`}>{selected.length ? `${selected.length} selected` : 'Choose sections'}</span><ChevronDown size={17} />
     </button>
-    {selected.length > 0 && <div className="aelys-multiselect__chips" aria-label="Выбранные разделы">
-      {selected.map(option => <span className="aelys-selection-chip" key={option.value}>{option.label}<button type="button" aria-label={`Убрать ${option.label}`} disabled={disabled || option.disabled} onClick={() => change(option, false)}><X size={12} /></button></span>)}
+    {selected.length > 0 && <div className="aelys-multiselect__chips" aria-label="Selected sections">
+      {selected.map(option => <span className="aelys-selection-chip" key={option.value}>{option.label}<button type="button" aria-label={`Remove ${option.label}`} disabled={disabled || option.disabled} onClick={() => change(option, false)}><X size={12} /></button></span>)}
     </div>}
     {visible && <div id={`${id}-panel`} className="aelys-multiselect__panel" role="dialog" aria-labelledby={`${id}-label`}>
-      <div className="aelys-multiselect__search"><Search size={16} /><input ref={search} type="search" value={query} onChange={event => setQuery(event.target.value)} aria-label={`Поиск: ${label}`} placeholder="Найти раздел" /></div>
-      <fieldset className="aelys-multiselect__options"><legend className="aelys-visually-hidden">Варианты: {label}</legend>
+      <div className="aelys-multiselect__search"><Search size={16} /><input ref={search} type="search" value={query} onChange={event => setQuery(event.target.value)} aria-label={`Search: ${label}`} placeholder="Find section" /></div>
+      <fieldset className="aelys-multiselect__options"><legend className="aelys-visually-hidden">Options: {label}</legend>
         {matches.map(option => <Checkbox key={option.value} label={option.label} disabled={option.disabled} checked={value.includes(option.value)} onChange={checked => change(option, checked)} />)}
-        {!matches.length && <p role="status">Ничего не найдено</p>}
+        {!matches.length && <p role="status">Nothing found</p>}
       </fieldset>
-      <div className="aelys-multiselect__footer"><button type="button" disabled={!value.some(item => options.some(option => option.value === item && !option.disabled))} onClick={() => onChange(value.filter(item => options.some(option => option.value === item && option.disabled)))}>Сбросить выбор</button><button type="button" onClick={close}>Готово</button></div>
+      <div className="aelys-multiselect__footer"><button type="button" disabled={!value.some(item => options.some(option => option.value === item && !option.disabled))} onClick={() => onChange(value.filter(item => options.some(option => option.value === item && option.disabled)))}>Clear selection</button><button type="button" onClick={close}>Done</button></div>
     </div>}
   </div>
 }

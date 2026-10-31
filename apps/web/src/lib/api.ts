@@ -79,7 +79,7 @@ async function browserRequest<T>(path: string, body?: unknown): Promise<T> {
     signal: AbortSignal.timeout(10_000),
   })
   const value = await response.json().catch(() => undefined)
-  if (!response.ok) throw new SharedApiError(response.status, value?.detail?.code ?? 'AUTH_UNAVAILABLE', value?.detail?.message ?? 'Не удалось подключиться к Aelys')
+  if (!response.ok) throw new SharedApiError(response.status, value?.detail?.code ?? 'AUTH_UNAVAILABLE', value?.detail?.message ?? 'Could not connect to Aelys')
   return value as T
 }
 
@@ -107,15 +107,15 @@ async function deviceRequest<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body), signal: AbortSignal.timeout(10_000),
   })
   const value = await response.json().catch(() => undefined)
-  if (!response.ok) throw new SharedApiError(response.status, value?.detail?.code ?? 'AUTH_UNAVAILABLE', value?.detail?.message ?? 'Не удалось подключиться к Aelys')
+  if (!response.ok) throw new SharedApiError(response.status, value?.detail?.code ?? 'AUTH_UNAVAILABLE', value?.detail?.message ?? 'Could not connect to Aelys')
   return value as T
 }
 
 /** Registers this browser as a key-bound device with a one-time setup token; no password is involved. */
 export async function claimSetupToken(token: string, displayName: string): Promise<void> {
-  if (isNativeHost() || !webCryptoAvailable()) throw new SharedApiError(400, 'DEVICE_KEY_UNAVAILABLE', 'Этот браузер не может хранить ключ устройства.')
+  if (isNativeHost() || !webCryptoAvailable()) throw new SharedApiError(400, 'DEVICE_KEY_UNAVAILABLE', 'This browser cannot store the device key.')
   const key = await generateDeviceKey()
-  const session = await deviceRequest<DeviceSessionResponse>('auth/setup/claim', { token: token.trim(), public_key: key.publicKey, platform: 'web', display_name: displayName.trim() || 'Браузер' })
+  const session = await deviceRequest<DeviceSessionResponse>('auth/setup/claim', { token: token.trim(), public_key: key.publicKey, platform: 'web', display_name: displayName.trim() || 'Browser' })
   await identityStore.save({ deviceId: session.device_id, origin: sharedOrigin(getApiConfig().baseUrl), publicKey: key.publicKey, privateKey: key.privateKey })
   acceptSession(session, true, true)
 }

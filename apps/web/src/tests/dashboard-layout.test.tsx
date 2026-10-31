@@ -256,7 +256,7 @@ describe('dashboard customization', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Quota exceeded') })
     const select = host.querySelector<HTMLSelectElement>('[aria-label="Size of Today"]')!
     await act(async () => { select.value = '2x1'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-    expect(host.textContent).toContain('Не удалось сохранить расположение')
+    expect(host.textContent).toContain('Could not save the layout')
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
   })
 })
