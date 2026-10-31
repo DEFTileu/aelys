@@ -150,6 +150,8 @@ export interface NoteOut {
   readonly project_id: Id | null;
   readonly id: Id;
   readonly version: number;
+  // Absent when talking to a backend that predates the field.
+  readonly updated_at?: IsoDateTime | null;
 }
 export interface NoteRevision {
   readonly id: Id;

@@ -53,3 +53,19 @@ async def test_note_organization_is_versioned_and_legacy_updates_preserve_it(tmp
         assert changed.json()['folder'] is None and changed.json()['tags'] == []
         assert [revision['body'] for revision in (await client.get(path + '/revisions')).json()] == ['', 'body']
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_note_responses_expose_the_last_update_instant(tmp_path, monkeypatch):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/updated-at.db")
+    async with engine.begin() as connection:
+        await connection.run_sync(db.Base.metadata.create_all)
+    monkeypatch.setattr(db, 'SessionLocal', async_sessionmaker(engine, expire_on_commit=False))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        owner = await client.post('/api/v1/auth/bootstrap', json={'email': 'note-updated@example.test', 'password': 'synthetic-note-password'})
+        client.headers['Authorization'] = f"Bearer {owner.json()['access_token']}"
+        created = (await client.post('/api/v1/notes', json={'title': 'Dated', 'markdown_body': 'body'})).json()
+        assert created['updated_at']
+        listed = (await client.get('/api/v1/notes')).json()
+        assert listed[0]['updated_at'] == created['updated_at']
+    await engine.dispose()

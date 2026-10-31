@@ -81,7 +81,7 @@ class NoteIn(BaseModel):
         if any(not tag or len(tag) > 80 for tag in tags):
             raise ValueError("Tags must be 1 to 80 characters")
         return list(dict.fromkeys(tags))
-class NoteOut(NoteIn): model_config=ConfigDict(from_attributes=True); id: str; version: int
+class NoteOut(NoteIn): model_config=ConfigDict(from_attributes=True); id: str; version: int; updated_at: datetime | None = None
 class TaskIn(BaseModel):
     title: str
     description: str = ""

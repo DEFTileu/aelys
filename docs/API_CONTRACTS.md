@@ -374,3 +374,7 @@ atomically and returns `409 VERSION_CONFLICT` if another edit won the race.
 Owner isolation and legacy calls without a version remain compatible. The
 updated detail panel supplies its selected version and preserves the draft on
 conflict; a client-side preflight alone is not the concurrency guarantee.
+
+### Note last-update instant (2026-10-31)
+
+`NoteOut` now includes an optional `updated_at` (ISO 8601 date-time, the existing `Owned.updated_at` column). It is additive: older clients ignore it, and the web client falls back to the version badge when a backend omits it. No migration, no write-path change.
