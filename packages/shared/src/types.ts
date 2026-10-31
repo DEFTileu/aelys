@@ -673,6 +673,37 @@ export interface AutomationRuleIn {
   readonly policy_ref: string;
   readonly rate_limit?: JsonObject;
   readonly enabled?: boolean;
+  /** Send true when creating from a reviewed /automations/draft proposal: policy is then enforced at creation. */
+  readonly reviewed_draft?: boolean;
+}
+export interface AutomationDraftIn {
+  /** Provide exactly one of description or rule. */
+  readonly description?: string;
+  readonly rule?: AutomationRuleIn;
+}
+export interface AutomationDraft {
+  readonly source: "structured" | "ai" | "parser";
+  /** Proposed rule; never saved by the draft call. */
+  readonly rule: AutomationRuleIn & { readonly conditions: JsonObject; readonly actions: readonly JsonObject[]; readonly rate_limit: JsonObject; readonly enabled: boolean };
+  readonly policy: {
+    readonly policy_ref: string;
+    readonly registered: boolean;
+    readonly allowed: boolean;
+    readonly issues: readonly string[];
+  };
+  readonly saved: false;
+}
+export type AutomationRunStatus = "success" | "skipped" | "blocked_by_policy" | "failed" | "running";
+export interface AutomationRun {
+  readonly id: Id;
+  readonly rule_id: Id;
+  readonly rule_name: string;
+  readonly event_id: string;
+  readonly status: AutomationRunStatus;
+  readonly error_code: string | null;
+  readonly attempt: number;
+  readonly started_at: IsoDateTime;
+  readonly finished_at: IsoDateTime | null;
 }
 export interface AutomationRule extends AutomationRuleIn {
   readonly id: Id;

@@ -419,3 +419,29 @@ conflict; a client-side preflight alone is not the concurrency guarantee.
   `agent.session.stop` is written and the response is
   `{session_id, status: "stop_requested", run_ids}`. Sessions are linked to runs
   by device+project+adapter+grant policy, since the index has no run id.
+
+### Automation drafts and recent runs
+
+- `POST /api/v1/automations/draft` body `{description}` or `{rule}` (exactly
+  one) returns a PROPOSED rule and never saves or executes anything:
+  `{source: "structured"|"ai"|"parser", rule, policy: {policy_ref, registered,
+  allowed, issues[]}, saved: false}`. For `description` the owner's enabled AI
+  provider (BYOK, budget-checked, usage recorded as an AI run) is asked first;
+  the text is sent as `<untrusted_data>`-fenced content, the reply is accepted
+  only if it parses into the strict rule schema, and the model can never pick
+  the policy (always `safe`). Without a usable provider a deterministic parser
+  handles sentences like `When a task is created in project "Home", create a
+  notification "Review it"` (triggers `task|note` created/added/completed;
+  actions `create_task|create_notification`; quoted title required). Anything
+  else is `422 DRAFT_UNSUPPORTED`. The policy engine preflight reports
+  unregistered policies, unauthorised actions and foreign projects in `issues`.
+- `POST /api/v1/automations` accepts optional `reviewed_draft: true`. When set
+  the same preflight is enforced at creation (`403 POLICY_DENIED` listing the
+  issues); without it behaviour is unchanged and dispatch remains the
+  authoritative gate.
+- `GET /api/v1/automations/runs?limit=` (default 20, max 100) lists recent
+  executions across the owner's rules, newest first:
+  `{id, rule_id, rule_name, event_id, status, error_code, attempt, started_at,
+  finished_at}`. `status` is `success` (completed), `skipped` (rate limited),
+  `blocked_by_policy` (failed with `POLICY_DENIED`), `failed`, or `running`
+  while in flight. No schema change.

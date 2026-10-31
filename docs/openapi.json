@@ -5069,6 +5069,94 @@
         }
       }
     },
+    "/api/v1/automations/draft": {
+      "post": {
+        "summary": "Draft Rule",
+        "description": "Propose a rule for review. Nothing is saved or executed here.",
+        "operationId": "draft_rule_api_v1_automations_draft_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/automations/runs": {
+      "get": {
+        "summary": "Recent Runs",
+        "description": "Recent executions across the owner's rules, newest first.",
+        "operationId": "recent_runs_api_v1_automations_runs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/automations": {
       "get": {
         "summary": "List Rules",
@@ -6025,6 +6113,37 @@
           "delete"
         ],
         "title": "Action"
+      },
+      "AutomationDraftIn": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AutomationDraftIn",
+        "description": "Either a structured rule or a plain-text description; exactly one."
       },
       "BindingOut": {
         "properties": {
@@ -8615,6 +8734,11 @@
             "type": "boolean",
             "title": "Enabled",
             "default": true
+          },
+          "reviewed_draft": {
+            "type": "boolean",
+            "title": "Reviewed Draft",
+            "default": false
           }
         },
         "additionalProperties": false,

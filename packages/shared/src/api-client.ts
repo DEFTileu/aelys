@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
-  AIRun, AIRunIn, AutomationDispatchResponse, AutomationDryRunResponse, AutomationEventIn, AutomationExecution, AutomationRule,
+  AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceCategory,
   FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
@@ -444,6 +444,8 @@ export class ApiClient {
 
   public automations(options?: RequestOptions) { return this.request<readonly AutomationRule[]>("/api/v1/automations", this.read(options, "automations")); }
   public createAutomation(body: AutomationRuleIn, options?: RequestOptions) { return this.request<AutomationRule>("/api/v1/automations", this.write(body, options)); }
+  public draftAutomation(body: AutomationDraftIn, options?: RequestOptions) { return this.request<AutomationDraft>("/api/v1/automations/draft", this.write(body, { queueOnOffline: false, ...options })); }
+  public automationRuns(limit?: number, options?: RequestOptions) { return this.request<readonly AutomationRun[]>("/api/v1/automations/runs", this.read({ ...options, query: limit === undefined ? undefined : { limit } }, "automations")); }
   public updateAutomation(ruleId: Id, body: JsonObject, options?: RequestOptions) { return this.request<AutomationRule>(`/api/v1/automations/${encodeURIComponent(ruleId)}`, this.write(body, options, "PATCH")); }
   public deleteAutomation(ruleId: Id, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/automations/${encodeURIComponent(ruleId)}`, this.write(undefined, options, "DELETE")); }
   public automationExecutions(ruleId: Id, options?: RequestOptions) { return this.request<readonly AutomationExecution[]>(`/api/v1/automations/${encodeURIComponent(ruleId)}/executions`, this.read(options)); }
