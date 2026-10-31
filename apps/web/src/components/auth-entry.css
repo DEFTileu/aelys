@@ -4,20 +4,10 @@
   --entry-line: rgba(255,255,255,.35);
   --entry-accent: #fff;
   --entry-tint: rgba(255,255,255,.14);
-  min-height: 100vh; min-height: 100dvh;
-  display: grid; grid-template-rows: 1fr auto;
-  padding: 32px 24px max(22px, env(safe-area-inset-bottom));
   color: var(--entry-ink);
-  background: linear-gradient(180deg, rgba(20,14,50,.14), rgba(20,14,50,.34)), url('/backgrounds/aelys/actual-wallpaper.png') 70% 55% / cover no-repeat, #3b2f86;
   font-family: Inter, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
   font-size: 14px; line-height: 1.5;
 }
-.auth-stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-width: 0; padding: 32px 0; }
-.auth-brand { display: flex; align-items: center; gap: 12px; max-width: min(360px, 100%); color: #fff; text-shadow: 0 2px 14px rgba(30,15,70,.45); }
-.auth-brand img { height: auto; filter: drop-shadow(0 4px 12px rgba(30,15,70,.35)); }
-.auth-brand span { display: flex; flex-direction: column; }
-.auth-brand strong { font-size: 24px; line-height: 28px; font-weight: 700; }
-.auth-brand small { font-size: 13px; line-height: 18px; color: rgba(255,255,255,.92); }
 .auth-panel { box-sizing: border-box; width: min(360px, 100%); min-width: 0; padding: 24px; text-align: center; border: 1px solid rgba(255,255,255,.32); border-radius: 28px; background: rgba(28,18,58,.38); box-shadow: 0 24px 60px rgba(20,10,40,.35), inset 0 1px 0 rgba(255,255,255,.25); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); }
 .auth-emblem { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 16px; color: #fff; border: 1px solid rgba(255,255,255,.45); border-radius: 18px; background: rgba(255,255,255,.16); }
 .auth-emblem:has(.auth-fingerprint) { width: 92px; height: 92px; border-radius: 28px; }
@@ -58,7 +48,6 @@
 .auth-entry .keychain-recovery__button { margin-top: 14px; width: 100%; min-height: 44px; color: #fff; border-color: transparent; background: #6246df; box-shadow: none; }
 .auth-entry .keychain-recovery__button:hover:not(:disabled) { background: #5336cb; }
 .auth-entry button:disabled { cursor: default; opacity: .65; }
-@media (max-width: 480px) { .auth-entry { padding: 20px 16px max(18px, env(safe-area-inset-bottom)); } .auth-stage { padding: 24px 0; gap: 18px; } }
 
 .auth-emblem:has(.auth-fingerprint) { cursor:pointer; padding:0; }
 .auth-emblem:has(.auth-fingerprint):hover:not(:disabled) { background:rgba(255,255,255,.24); }

@@ -3,7 +3,6 @@ import { ApiError } from '@aelys/shared'
 import { bootstrapOwner, browserAuthStatus, clearNativeSignedOut, getAccessToken, getApiConfig, getSharedApiClient, isSignedOut, login, resumeBrowserSession, saveApiBaseUrl, SESSION_EVENT } from '../lib/api'
 import type { ApiStatus } from '../types'
 import './auth-entry.css'
-import { AelysMark } from './AelysMark'
 import { Icon } from './Icon'
 import { isKeychainAccessRequired, isNativeHost, KEYCHAIN_ACCESS_NOTICE, loadNativeTransport, nativeBackendOrigin, NATIVE_SESSION_EXPIRED_EVENT } from '../lib/nativeTransport'
 import { navigate } from '../lib/router'
@@ -142,9 +141,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
     } finally { setBusy(false) }
   }
   const keychainDenied = notice === KEYCHAIN_ACCESS_NOTICE
-  return <><LaunchIntro />{state === 'ready' ? children : <main className="auth-entry">
-    <div className="auth-stage">
-      <header className="auth-brand"><AelysMark size={52} /><span><strong>Aelys</strong><small>С возвращением</small></span></header>
+  const panel = <div className="auth-entry">
       <section className="auth-panel" aria-label="Вход в Aelys" aria-busy={busy}>
         {state === 'biometric' ? <button type="button" className={`auth-emblem${busy ? ' auth-emblem--pending' : ''}`} aria-label="Открыть с Touch ID" disabled={busy} onClick={() => void unlock()}><TouchIdIcon pending={busy} /></button> : <div className={`auth-emblem${state === 'checking' || busy ? ' auth-emblem--pending' : ''}`} aria-hidden="true"><Icon name={state === 'connection' ? 'cloud-off' : 'lock'} size={36} strokeWidth={1.5} /></div>}
         {state === 'checking' ? <>
@@ -176,6 +173,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
         </div>}
       </section>
     </div>
+  const footer = <div className="auth-entry auth-entry--foot">
     <footer className="auth-footer">
       {connectionOpen && <form className="auth-server-form auth-form" aria-label="Подключение к серверу" onSubmit={(event) => { event.preventDefault(); if (busy) return; saveApiBaseUrl(baseUrl); setConnectionOpen(false); setState('checking'); setRetry((value) => value + 1) }}>
         <div className="auth-server-heading"><h2>Сервер Aelys</h2><button type="button" className="auth-close" aria-label="Закрыть настройки сервера" disabled={busy} onClick={() => setConnectionOpen(false)}><Icon name="x" size={18} /></button></div>
@@ -186,5 +184,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       <a href="/components" aria-disabled={busy} onClick={(event) => { event.preventDefault(); if (!busy) navigate('/components') }}>Компоненты</a>
       {state !== 'checking' && <button type="button" disabled={busy} aria-expanded={connectionOpen} onClick={() => setConnectionOpen((value) => !value)}><Icon name="sliders" size={14} />Адрес сервера</button>}
     </footer>
-  </main>}</>
+  </div>
+  // One persistent scene: it plays the introduction, then either docks into the entry card or fades out when signed in.
+  return <>{state === 'ready' && children}<LaunchIntro resolved={state !== 'checking'} locked={state !== 'ready'} footer={footer}>{panel}</LaunchIntro></>
 }

@@ -27,7 +27,9 @@ function button(host: HTMLElement, label: string) { return [...host.querySelecto
 describe('native biometric entry', () => {
   it('shows the visual introduction without unlocking the session', async () => {
     const host = await mount()
-    expect(host.querySelector('.launch-intro')?.getAttribute('aria-hidden')).toBe('true')
+    // The introduction and the entry card are one scene; its decorative layers stay hidden from assistive tech.
+    expect(host.querySelector('.launch-intro__backdrop')?.getAttribute('aria-hidden')).toBe('true')
+    expect(host.querySelector('.launch-stage__hero')?.getAttribute('aria-hidden')).toBe('true')
     expect(button(host, 'Открыть с Touch ID')).toBeDefined()
     expect(native.resume).not.toHaveBeenCalled()
     expect(host.textContent).not.toContain('Защищённые данные')

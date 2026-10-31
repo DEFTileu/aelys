@@ -1,20 +1,44 @@
-.launch-intro { position:fixed; inset:0; z-index:100; overflow:hidden; pointer-events:none; background:radial-gradient(ellipse 70% 55% at 50% 60%,#2D1E66 0,#160E38 55%,#0B0720 100%); animation:launch-out .6s ease-in 2.4s both; }
-.launch-intro__sunrise,.launch-intro__light { position:absolute; inset:0; }
+/* Continuous launch scene: intro hero -> lock screen (ACTUAL launch, variant C). */
+.launch-intro { position:fixed; inset:0; z-index:100; overflow:hidden; pointer-events:none; background:radial-gradient(ellipse 70% 55% at 50% 60%,#2D1E66 0,#160E38 55%,#0B0720 100%); }
+.launch-intro--lock { pointer-events:auto; }
+.launch-intro--out { animation:launch-leave .6s cubic-bezier(.4,0,.2,1) both; }
+.launch-intro__backdrop, .launch-intro__sunrise, .launch-intro__light, .launch-intro__dim { position:absolute; inset:0; }
 .launch-intro__sunrise { background:linear-gradient(180deg,#3B2F86 0%,#8C6CC8 34%,#EBA79A 66%,#F7D5B8 100%); animation:launch-reveal .9s ease-in-out .8s both; }
 .launch-intro__scenery { position:absolute; inset:-4%; background:url('/backgrounds/aelys/actual-wallpaper.png') 70% 55% / cover no-repeat; animation:launch-scenery 1.8s cubic-bezier(.2,.7,.2,1) 1.5s both; }
 .launch-intro__light { background:radial-gradient(ellipse 45% 40% at 50% 46%,rgba(255,255,255,.55),rgba(255,255,255,0) 70%),linear-gradient(180deg,rgba(20,14,50,.15),rgba(20,14,50,.35)); animation:launch-reveal .9s ease-out 1.6s both; }
-.launch-intro__content { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; color:white; text-shadow:0 2px 18px rgba(30,15,70,.45); }
-.launch-intro__mark { animation:launch-float 1.4s ease-in-out 2s infinite alternate; }
-.launch-intro__mark img { display:block; width:188px; height:154px; overflow:visible; }
-.launch-intro__name { display:flex; font-size:46px; font-weight:700; line-height:1; }
-.launch-intro__name > span { display:inline-block; animation:launch-letter .6s cubic-bezier(.2,.9,.3,1.2) both; }
-.launch-intro__welcome { font-size:14px; line-height:20px; margin-top:-6px; font-weight:500; color:rgba(255,255,255,.92); animation:launch-reveal .6s ease-out 2.25s both; }
+.launch-intro__dim { z-index:3; background:linear-gradient(180deg,rgba(20,12,48,.22),rgba(20,12,48,.42)); opacity:0; transition:opacity 900ms ease; }
+.launch-intro--lock .launch-intro__dim { opacity:1; }
 .launch-intro__stars { position:absolute; inset:0; }
 .launch-intro__stars span { position:absolute; border-radius:50%; background:#fff; box-shadow:0 0 8px rgba(255,255,255,.8); animation:launch-twinkle 1.6s ease-in-out infinite,launch-out .7s ease-in both; }
+
+.launch-stage { position:absolute; inset:0; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; padding:72px 16px 76px; overflow-y:auto; scrollbar-width:none; pointer-events:none; transition:gap 900ms cubic-bezier(.65,0,.2,1); }
+.launch-stage::-webkit-scrollbar { display:none; }
+.launch-intro--lock .launch-stage { gap:22px; }
+.launch-stage__hero { flex:none; display:flex; flex-direction:column; align-items:center; gap:20px; color:#fff; text-shadow:0 2px 18px rgba(30,15,70,.45); transition:gap 900ms cubic-bezier(.65,0,.2,1); }
+.launch-intro--lock .launch-stage__hero { gap:10px; }
+.launch-intro__mark { width:188px; height:154px; transition:width 900ms cubic-bezier(.65,0,.2,1),height 900ms cubic-bezier(.65,0,.2,1); animation:launch-float 1.4s ease-in-out 2s infinite alternate; }
+.launch-intro--lock .launch-intro__mark { width:76px; height:62px; }
+.launch-intro__mark img { display:block; width:100%; height:100%; overflow:visible; }
+.launch-intro__name { display:flex; font-size:46px; font-weight:700; line-height:1; transition:font-size 900ms cubic-bezier(.65,0,.2,1); }
+.launch-intro--lock .launch-intro__name { font-size:28px; }
+.launch-intro__name > span { display:inline-block; animation:launch-letter .6s cubic-bezier(.2,.9,.3,1.2) both; }
+.launch-intro__welcome { font-size:14px; line-height:20px; margin-top:-6px; font-weight:500; color:rgba(255,255,255,.92); text-shadow:0 1px 10px rgba(30,15,70,.5); animation:launch-reveal .6s ease-out 2.25s both; transition:font-size 900ms cubic-bezier(.65,0,.2,1),margin 900ms cubic-bezier(.65,0,.2,1); }
+.launch-intro--lock .launch-intro__welcome { font-size:13px; margin-top:-2px; }
+
+.launch-stage__card { display:grid; grid-template-rows:0fr; width:min(360px,100%); flex:none; pointer-events:none; transition:grid-template-rows 900ms cubic-bezier(.65,0,.2,1); }
+.launch-intro--lock .launch-stage__card { grid-template-rows:1fr; pointer-events:auto; }
+.launch-stage__card-inner { min-height:0; overflow:hidden; opacity:0; transform:translateY(28px) scale(.96); transition:opacity 600ms ease 300ms,transform 800ms cubic-bezier(.2,.8,.2,1) 250ms; }
+.launch-intro--lock .launch-stage__card-inner { opacity:1; transform:none; }
+.launch-intro--lock .launch-stage__card-inner[data-settled] { overflow:visible; }
+.launch-stage__foot { position:absolute; left:0; right:0; bottom:max(22px,env(safe-area-inset-bottom)); z-index:5; display:flex; justify-content:center; padding:0 16px; opacity:0; }
+.launch-intro--lock .launch-stage__foot { animation:launch-reveal .6s ease-out .4s both; }
+@media (max-height:640px) { .launch-stage { justify-content:flex-start; padding-top:24px; padding-bottom:64px; } .launch-intro--lock .launch-intro__mark { width:56px; height:46px; } .launch-stage__foot { bottom:12px; } }
+
 @keyframes launch-reveal { from { opacity:0; } to { opacity:1; } }
 @keyframes launch-scenery { from { opacity:0; transform:scale(1.18); } to { opacity:1; transform:scale(1); } }
 @keyframes launch-float { to { transform:translateY(-6px); } }
 @keyframes launch-letter { from { opacity:0; transform:translateY(22px) rotate(8deg); filter:blur(4px); } to { opacity:1; transform:none; filter:blur(0); } }
 @keyframes launch-twinkle { 0%,100% { opacity:.15; transform:scale(.6); } 50% { opacity:1; transform:scale(1); } }
 @keyframes launch-out { to { opacity:0; visibility:hidden; } }
-@media(prefers-reduced-motion:reduce) { .launch-intro { display:none; } }
+@keyframes launch-leave { to { opacity:0; transform:scale(1.04); } }
+@media (prefers-reduced-motion:reduce) { .launch-intro, .launch-intro * { animation-duration:.01ms !important; animation-delay:0s !important; transition-duration:.01ms !important; transition-delay:0s !important; } }
