@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from '../views/HomeView'
-import { HOME_LAYOUT_KEY, MOBILE_HOME_LAYOUT_KEY, LEGACY_HOME_LAYOUT_KEY, LEGACY_MOBILE_HOME_LAYOUT_KEY, WIDGET_SIZES, WIDGET_IDS, saveLayout, normalizeWidgetSize, readLayout, reorderLayout, type LayoutEntry } from '../views/desktop/homeLayout'
+import { HOME_LAYOUT_KEY, MOBILE_HOME_LAYOUT_KEY, PREVIOUS_HOME_LAYOUT_KEY, LEGACY_HOME_LAYOUT_KEY, LEGACY_MOBILE_HOME_LAYOUT_KEY, WIDGET_SIZES, WIDGET_IDS, saveLayout, normalizeWidgetSize, readLayout, reorderLayout, type LayoutEntry } from '../views/desktop/homeLayout'
 
 const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), focusSessions: vi.fn(), mailMessages: vi.fn(), activity: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
@@ -34,6 +34,46 @@ async function mount() {
 }
 
 describe('dashboard customization', () => {
+  it('adapts automatically on first load and container resize without saving calculated dimensions', async () => {
+    let resize: (() => void) | undefined
+    vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { resize = callback } observe() {} disconnect() {} })
+    client.tasks.mockResolvedValue(Array.from({ length: 8 }, (_, index) => ({ id: `task-${index}`, title: `Task ${index}`, status: 'todo', due_at: null })))
+    const { grid } = await mount()
+    const today = grid.querySelector<HTMLElement>('[data-widget-id="today"]')!
+    const focus = grid.querySelector<HTMLElement>('[data-widget-id="focus"]')!
+    expect(today.dataset.sizing).toBe('auto')
+    expect(today.dataset.rows).toBe('3')
+    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(8)
+    let width = 1280
+    Object.defineProperty(grid, 'clientWidth', { get: () => width })
+    await act(async () => resize?.())
+    expect(grid.style.getPropertyValue('--widget-columns')).toBe('4')
+    expect(focus.dataset.size).toBe('1x1')
+    width = 550
+    await act(async () => resize?.())
+    expect(grid.style.getPropertyValue('--widget-columns')).toBe('2')
+    expect(focus.dataset.size).toBe('2x1')
+    width = 288
+    await act(async () => resize?.())
+    expect(grid.style.getPropertyValue('--widget-columns')).toBe('1')
+    expect(focus.dataset.size).toBe('1x1')
+    expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
+  })
+
+  it('lets a pinned size return to automatic and persists that choice after reopening', async () => {
+    const { host, grid } = await mount(); await customize(host)
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="Size of Today"]')!
+    expect(select.value).toBe('auto')
+    await act(async () => { select.value = '1x3'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(grid.querySelector<HTMLElement>('[data-widget-id="today"]')!.dataset.sizing).toBe('manual')
+    await act(async () => { select.value = 'auto'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(readLayout()[0]).toEqual(['today', 0])
+    await act(async () => root!.unmount()); root = undefined
+    const restored = await mount()
+    const today = restored.grid.querySelector<HTMLElement>('[data-widget-id="today"]')!
+    expect(today.dataset.sizing).toBe('auto')
+    expect(today.dataset.size).toBe('1x1')
+  })
   it('saves all six tile formats for every widget', async () => {
     saveLayout(WIDGET_IDS.map(id => [id, 1, 176]))
     const { host, grid } = await mount(); await customize(host)
@@ -87,6 +127,7 @@ describe('dashboard customization', () => {
   })
 
   it('adapts the visible records during resize preview and restores them on cancellation', async () => {
+    saveLayout([['today', 1, 176]])
     client.tasks.mockResolvedValue(Array.from({ length: 12 }, (_, index) => ({ id: `task-${index}`, title: `Task ${index}`, status: 'todo', due_at: null })))
     const { host, grid } = await mount(); await customize(host)
     const card = grid.querySelector('[data-widget-id="today"]')!
@@ -94,7 +135,7 @@ describe('dashboard customization', () => {
     expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
     await act(async () => { pointer(handle, 'pointerdown', 200, 176); pointer(handle, 'pointermove', 200, 560) })
     expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(10)
-    expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
+    expect(readLayout()).toEqual([['today', 1, 176]])
     await act(async () => pointer(handle, 'pointercancel', 200, 560))
     expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
   })
@@ -152,7 +193,7 @@ describe('dashboard customization', () => {
   it('offers preset sizes and button and keyboard alternatives for reordering', async () => {
     const { host } = await mount(); await customize(host)
     const select = host.querySelector<HTMLSelectElement>('[aria-label="Size of Today"]')!
-    expect([...select.options].map((option) => option.value)).toEqual(WIDGET_SIZES.map(size => size.id))
+    expect([...select.options].map((option) => option.value)).toEqual(['auto', ...WIDGET_SIZES.map(size => size.id)])
     for (const { id: value, span, height } of WIDGET_SIZES) {
       await act(async () => { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })) })
       expect(readLayout()[0]).toEqual(['today', span, height])
@@ -221,11 +262,18 @@ describe('dashboard customization', () => {
 })
 
 describe('layout durability and validation', () => {
-  it.each([false, true])('migrates v1 presets once, including full width (mobile=%s)', mobile => {
+  it('adopts automatic sizing for existing v2 layouts without restoring removed widgets or changing order', () => {
+    localStorage.setItem(PREVIOUS_HOME_LAYOUT_KEY, JSON.stringify([['focus', 2, 560], ['today', 1, 368]]))
+    expect(readLayout()).toEqual([['focus', 0], ['today', 0]])
+    expect(localStorage.getItem(PREVIOUS_HOME_LAYOUT_KEY)).toBe(JSON.stringify([['focus', 2, 560], ['today', 1, 368]]))
+    saveLayout([['today', 1, 560]])
+    expect(readLayout()).toEqual([['today', 1, 560]])
+  })
+  it.each([false, true])('adopts automatic sizing from v1 while preserving widget order (mobile=%s)', mobile => {
     const legacyKey = mobile ? LEGACY_MOBILE_HOME_LAYOUT_KEY : LEGACY_HOME_LAYOUT_KEY
     localStorage.setItem(legacyKey, JSON.stringify([['today', 1, 264], ['cal', 2, 264], ['focus', 2, 544], ['activity', 4, 264]]))
     const migrated = readLayout(mobile)
-    expect(migrated).toEqual([['today', 1, 176], ['cal', 2, 176], ['focus', 2, 368], ['activity', 4, 176]])
+    expect(migrated).toEqual([['today', 0], ['cal', 0], ['focus', 0], ['activity', 0]])
     saveLayout(migrated, mobile)
     localStorage.setItem(legacyKey, '[]')
     expect(readLayout(mobile)).toEqual(migrated)
@@ -248,7 +296,7 @@ describe('layout durability and validation', () => {
   })
   it('migrates legacy tuples, removes duplicates and rejects unknown/invalid cards', () => {
     localStorage.setItem(LEGACY_HOME_LAYOUT_KEY, JSON.stringify([['today', 10], ['cal', 0, 9999], ['today', 1], ['unknown', 2], ['fin', null], ['focus', 2, 384]]))
-    expect(readLayout()).toEqual([['today', 4, 176], ['cal', 2, 368], ['focus', 2, 176]])
+    expect(readLayout()).toEqual([['today', 0], ['cal', 0], ['focus', 0]])
   })
   it('reorders by insertion while keeping sizes and hidden entries attached to their widgets', () => {
     const layout: LayoutEntry[] = [['today', 2, 368], ['activity', 4, 176], ['cal', 1, 176], ['focus', 1, 176]]

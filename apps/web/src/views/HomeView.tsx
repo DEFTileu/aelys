@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ArrowRight, Check, LayoutGrid, Plus, RotateCcw } from '../icons'
 import { HOME_CHIPS, accentOf } from '../data/desktop/home'
 import { askAelys, takeCustomizeHome, useDesktopState, useWindowWidth } from '../lib/desktopStore'
@@ -8,6 +8,8 @@ import type { FocusIn, FocusOut, TaskOut } from '@aelys/shared'
 import type { ApiStatus } from '../types'
 import { DEFAULT_LAYOUT, MOBILE_DEFAULT_LAYOUT, WIDGET_CATALOG, WIDGET_IDS, readLayout, reorderLayout, saveLayout, normalizeWidgetSize, type LayoutEntry, type WidgetId } from './desktop/homeLayout'
 import { HomeWidget, type HomeData, type FocusTimer } from './desktop/homeWidgets'
+import { automaticWidgetSize, widgetColumns } from './desktop/automaticWidgetSize'
+import { useWeather } from '../lib/weather'
 
 // Orb gradient from the design; the AppShell hero stays outside this view.
 const ORB = 'radial-gradient(circle at 32% 28%,#fff 0,rgba(235,225,255,.9) 9%,transparent 28%),radial-gradient(circle at 72% 72%,#FF7AD9 0,transparent 48%),radial-gradient(circle at 24% 72%,#46D2FF 0,transparent 46%),radial-gradient(circle at 50% 50%,#6E4CF5 0,#2A1590 82%)'
@@ -16,6 +18,9 @@ const EMPTY_DATA: HomeData = { tasks: [], events: [], projects: [], notes: [], f
 
 export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const mobile = useWindowWidth() <= 700
+  const grid = useRef<HTMLElement>(null)
+  const [gridWidth, setGridWidth] = useState(0)
+  const { forecast } = useWeather()
   const [desktopLayout, setDesktopLayout] = useState<LayoutEntry[]>(() => readLayout())
   const [mobileLayout, setMobileLayout] = useState<LayoutEntry[]>(() => readLayout(true))
   const layout = mobile ? mobileLayout : desktopLayout
@@ -25,6 +30,20 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   useEffect(() => { if (mobile && editing) layoutToolbar.current?.scrollIntoView?.({ block:'nearest' }) }, [mobile, editing])
   const [picker, setPicker] = useState(false)
   const { customizeHome, homeToggles } = useDesktopState()
+  useEffect(() => {
+    const node = grid.current
+    if (!node) return
+    const measure = () => {
+      const style = getComputedStyle(node)
+      const width = node.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0)
+      if (width > 0) setGridWidth(width)
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
+    observer?.observe(node)
+    window.addEventListener('resize', measure)
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure) }
+  }, [homeToggles[1], mobile])
   const [draft, setDraft] = useState('')
   const [taskNotice, setTaskNotice] = useState('')
   const [layoutNotice, setLayoutNotice] = useState('')
@@ -94,7 +113,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const onMyDay = layout.map(([id]) => id)
   const available = WIDGET_IDS.filter((id) => !onMyDay.includes(id))
   const addWidget = (id: WidgetId) => {
-    commit([...layout.filter(([w]) => w !== 'activity'), [id, 1, 176], ...layout.filter(([w]) => w === 'activity')])
+    commit([...layout.filter(([w]) => w !== 'activity'), [id, 0], ...layout.filter(([w]) => w === 'activity')])
     setPicker(false)
   }
   const moveWidget = (index: number, delta: -1 | 1) => {
@@ -103,10 +122,12 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     commit(reorderLayout(layout, layout[index][0], layout[target][0]))
   }
   const sizeWidget = (id: WidgetId, span: number, height: number) => { const size = normalizeWidgetSize(span, height); commit(layout.map((entry) => entry[0] === id ? [id, size.span, size.height] : entry)) }
+  const autoWidget = (id: WidgetId) => commit(layout.map(entry => entry[0] === id ? [id, 0] : entry))
   const removeWidget = (index: number) => commit(layout.filter((_, i) => i !== index))
   const resetLayout = () => { commit((mobile ? MOBILE_DEFAULT_LAYOUT : DEFAULT_LAYOUT).map((entry) => [...entry] as LayoutEntry)); setPicker(false) }
 
   const visibleLayout = homeToggles[3] ? layout : layout.filter(([id]) => id !== 'activity')
+  const availableWidth = gridWidth || Math.max(248, window.innerWidth - (mobile ? 32 : 312))
 
   return <div className={`home-screen${editing ? ' home-screen--editing' : ''}`} style={{ padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
     {homeToggles[2] && <section aria-label="Ask Aelys" data-glass="" style={{ padding: 16, borderRadius: 24, background: 'rgba(255,255,255,.72)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,.35)', boxShadow: '0 8px 28px rgba(40,30,30,.10)' }}>
@@ -157,9 +178,12 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     {apiStatus !== 'ready' && <p role="status">{apiStatus === 'loading' ? 'Loading workspace…' : 'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}
     {taskNotice && <p role="status">{taskNotice}</p>}
     {layoutNotice && <p role="status">{layoutNotice}</p>}
-    {editing && <p className="home-layout-help">Размер — ширина × высота в ячейках. Выберите формат от 1 × 1 до 2 × 3 или потяните за угол. Стрелки на углу меняют ширину и высоту.</p>}
-    {homeToggles[1] && <section aria-label="Dashboard widgets" className={`home-widget-grid${editing ? ' home-widget-grid--editing' : ''}`}>
-      {visibleLayout.map(([id, span, height], index) => <HomeWidget key={id} id={id} span={span} index={index} count={visibleLayout.length} editing={editing} mobile={mobile} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onMove={(delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta)} onRemove={() => removeWidget(layout.findIndex(([widgetId]) => widgetId === id))} frame={{ id, title: WIDGET_CATALOG[id].title, span, height, onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta), onSize: (width, nextHeight) => sizeWidget(id, width, nextHeight) }} />)}
+    {editing && <p className="home-layout-help">Виджеты подбирают размер автоматически под доступное место и содержимое. При желании можно закрепить размер; Auto вернёт автоподбор.</p>}
+    {homeToggles[1] && <section ref={grid} aria-label="Dashboard widgets" className={`home-widget-grid${editing ? ' home-widget-grid--editing' : ''}`} style={{ '--widget-columns': widgetColumns(availableWidth, mobile) } as CSSProperties}>
+      {visibleLayout.map(([id, savedSpan, savedHeight], index) => {
+        const { span, height } = savedSpan === 0 ? automaticWidgetSize(id, availableWidth, mobile, data, !!forecast) : normalizeWidgetSize(savedSpan, savedHeight)
+        return <HomeWidget key={id} id={id} span={span} index={index} count={visibleLayout.length} editing={editing} mobile={mobile} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onMove={(delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta)} onRemove={() => removeWidget(layout.findIndex(([widgetId]) => widgetId === id))} frame={{ id, title: WIDGET_CATALOG[id].title, span, height, automatic: savedSpan === 0, onAuto: () => autoWidget(id), onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta), onSize: (width, nextHeight) => sizeWidget(id, width, nextHeight) }} />
+      })}
     </section>}
     <div style={{ height: 12 }} />
   </div>

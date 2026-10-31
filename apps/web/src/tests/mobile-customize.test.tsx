@@ -31,7 +31,7 @@ it('offers the same six formats for every mobile widget and restores the selecte
  await mount()
  const formats=WIDGET_SIZES.filter(size=>size.span<=2)
  for(const group of host.querySelectorAll('[role="radiogroup"]')) {
-  expect([...group.querySelectorAll('button')].map(button=>button.textContent)).toEqual(formats.map(size=>size.label))
+  expect([...group.querySelectorAll('button')].map(button=>button.textContent)).toEqual(['Auto',...formats.map(size=>size.label)])
  }
  const today=host.querySelector('[role="radiogroup"][aria-label="Size of Today"]')!
  for(const size of formats) {
@@ -40,4 +40,8 @@ it('offers the same six formats for every mobile widget and restores the selecte
  }
  await act(async()=>root!.unmount());root=undefined;await mount()
  expect(host.querySelector('[aria-label="Size of Today"] [aria-checked="true"]')?.textContent).toBe('2 × 3')
+ await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Size of Today"] button')!.click())
+ expect(JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!).find((entry:string[])=>entry[0]==='today')).toEqual(['today',0])
+ await act(async()=>root!.unmount());root=undefined;await mount()
+ expect(host.querySelector('[aria-label="Size of Today"] [aria-checked="true"]')?.textContent).toBe('Auto')
 })

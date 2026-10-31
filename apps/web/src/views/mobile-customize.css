@@ -27,6 +27,7 @@
 .mobile-customize__sizes { flex:1; min-width:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3px; padding:3px; background:var(--line); border-radius:14px; }
 .mobile-customize__sizes button { flex:1; height:44px; min-width:0; font-size:13px; font-weight:600; border-radius:11px; }
 .mobile-customize__sizes [aria-checked=true] { background:var(--surface-solid); color:var(--purple-deep); }
+.mobile-customize__sizes button:first-child { grid-column:1 / -1; }
 .mobile-customize__action { display:flex; align-items:center; gap:12px; min-height:56px; border-top:1px solid var(--line); }
 .mobile-customize__action strong { flex:1; font-weight:500; }
 .mobile-customize .actual-appearance-content { padding:16px !important; }

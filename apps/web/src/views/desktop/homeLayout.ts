@@ -3,11 +3,14 @@ import { BookOpen, Calendar, CloudSun, Folder, Mail, NotebookText, SquareCheck, 
 import type { AccentKey } from '../../data/desktop/home'
 import type { RoutePath } from '../../types'
 
-export const HOME_LAYOUT_KEY = 'aelys.desktop.home.v2'
+export const HOME_LAYOUT_KEY = 'aelys.desktop.home.v3'
+export const PREVIOUS_HOME_LAYOUT_KEY = 'aelys.desktop.home.v2'
+export const PREVIOUS_MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v2'
 export const LEGACY_HOME_LAYOUT_KEY = 'aelys.desktop.home.v1'
 export const LEGACY_MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v1'
 
 export type WidgetId = 'today' | 'cal' | 'focus' | 'weather' | 'proj' | 'notes' | 'fin' | 'kb' | 'mail' | 'activity'
+/** A zero span means automatic; positive spans are explicit size overrides. */
 export type LayoutEntry = [WidgetId, number, number?]
 
 export type WidgetDefinition = {
@@ -54,24 +57,22 @@ export function normalizeWidgetSize(span: number, height = WIDGET_GRID_ROW): { s
   return { span: size.span, height: size.height, rows: size.rows }
 }
 
-export const DEFAULT_LAYOUT: LayoutEntry[] = [['today', 1, 176], ['cal', 1, 176], ['focus', 1, 176], ['weather', 1, 176], ['proj', 1, 176], ['notes', 1, 176], ['fin', 1, 176], ['kb', 1, 176], ['activity', 4, 176]]
-export const MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v2'
-export const MOBILE_DEFAULT_LAYOUT: LayoutEntry[] = [['today', 2, 176], ['focus', 1, 176], ['weather', 1, 176], ['cal', 2, 176], ['mail', 2, 176], ['notes', 1, 176], ['fin', 1, 176], ['proj', 2, 176]]
+export const DEFAULT_LAYOUT: LayoutEntry[] = ['today', 'cal', 'focus', 'weather', 'proj', 'notes', 'fin', 'kb', 'activity'].map(id => [id as WidgetId, 0])
+export const MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v3'
+export const MOBILE_DEFAULT_LAYOUT: LayoutEntry[] = ['today', 'focus', 'weather', 'cal', 'mail', 'notes', 'fin', 'proj'].map(id => [id as WidgetId, 0])
 
 export function readLayout(mobile = false): LayoutEntry[] {
   try {
     const current = window.localStorage.getItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY)
-    const legacy = current === null
-    const stored: unknown = JSON.parse(current ?? window.localStorage.getItem(mobile ? LEGACY_MOBILE_HOME_LAYOUT_KEY : LEGACY_HOME_LAYOUT_KEY) ?? 'null')
+    const stored: unknown = JSON.parse(current ?? window.localStorage.getItem(mobile ? PREVIOUS_MOBILE_HOME_LAYOUT_KEY : PREVIOUS_HOME_LAYOUT_KEY) ?? window.localStorage.getItem(mobile ? LEGACY_MOBILE_HOME_LAYOUT_KEY : LEGACY_HOME_LAYOUT_KEY) ?? 'null')
     if (Array.isArray(stored)) {
       const seen = new Set<string>()
       return stored.flatMap((entry): LayoutEntry[] => {
         if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Object.hasOwn(WIDGET_CATALOG, entry[0]) || seen.has(entry[0]) || !Number.isFinite(entry[1])) return []
         seen.add(entry[0])
-        const height = Number.isFinite(entry[2]) ? entry[2] : legacy ? 264 : WIDGET_GRID_ROW
-        // v1's tall preset always occupied two columns; preserve that intent.
-        const tall = legacy && Math.abs(height - 544) < Math.abs(height - 264)
-        const size = normalizeWidgetSize(tall ? 2 : entry[1], legacy ? tall ? 368 : 176 : height)
+        // Existing layouts adopt automatic sizing while retaining order/removals.
+        if (current === null || entry[1] === 0) return [[entry[0] as WidgetId, 0]]
+        const size = normalizeWidgetSize(entry[1], Number.isFinite(entry[2]) ? entry[2] : WIDGET_GRID_ROW)
         return [[entry[0] as WidgetId, size.span, size.height]]
       })
     }
@@ -83,7 +84,7 @@ export function readLayout(mobile = false): LayoutEntry[] {
 
 export function saveLayout(layout: LayoutEntry[], mobile = false) {
   try {
-    window.localStorage.setItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY, JSON.stringify(layout.map(([id, span, height]) => { const size = normalizeWidgetSize(span, height); return [id, size.span, size.height] })))
+    window.localStorage.setItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY, JSON.stringify(layout.map(([id, span, height]) => { if (span === 0) return [id, 0]; const size = normalizeWidgetSize(span, height); return [id, size.span, size.height] })))
     return true
   } catch {
     // Let the UI distinguish a durable change from a session-only preview.

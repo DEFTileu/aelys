@@ -256,13 +256,19 @@ sign-in also works on the launcher's fallback ports without a broader CSRF allow
 
 ## Dashboard layout and weather
 
-On Home, drag a widget by its header/grip to reorder it, or drag the lower-right
-corner to change width and height. Neither gesture requires Customize. The same
-handles support arrow keys: the header reorders, the corner changes dimensions.
-Customize remains for adding/removing built-in widgets and resetting the layout.
-Layout changes save immediately in this browser (`aelys.desktop.home.v1`), including
-while offline; they do not currently sync to other devices. Legacy layouts remain
-readable. A storage failure is shown instead of claiming a durable save.
+Home widgets automatically select width and height from the available Dashboard
+space and record count. Empty widgets stay compact; populated lists grow up to
+three rows. Resizing the window or sidebar recomputes the grid without saving
+calculated dimensions. No size selection is needed.
+
+Customize enables optional manual sizing, reordering, adding/removing widgets and
+resetting the layout. The resize corner and move handle also support arrow keys.
+Choose Auto to return an individual widget to automatic sizing. Mobile offers
+the same Auto option in Customize Home / Widgets. Layout changes save locally in
+`aelys.desktop.home.v3` / `aelys.mobile.home.v3`, including while offline; they do
+not currently sync to other devices. Older layouts retain their widget order
+and removals while adopting automatic sizing. Their original storage is kept.
+A storage failure is shown instead of claiming a durable save.
 
 For weather, click the city/temperature pill at the top, the weather widget's
 city button, or Settings → **Погода и город**. Search for a city and select the

@@ -8,6 +8,8 @@ export type WidgetFrameControls = {
   title: string
   span: number
   height?: number
+  automatic?: boolean
+  onAuto?: () => void
   onDrop: (source: WidgetId, target: WidgetId) => void
   onMove: (delta: -1 | 1) => void
   onSize: (span: number, height: number) => void
@@ -95,7 +97,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
   }
   const pointerHandlers = { onPointerMove: move, onPointerUp: () => finish(false), onPointerCancel: () => finish(true), onLostPointerCapture: () => finish(true) }
   const currentPreset = WIDGET_SIZES.find(item => item.span === size.span && item.height === size.height) ?? WIDGET_SIZES[0]
-  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-size={WIDGET_SIZES.find(item => item.span === activeSize.span && item.height === activeSize.height)?.id ?? currentPreset.id} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, height: activeSize.height, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
+  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-size={WIDGET_SIZES.find(item => item.span === activeSize.span && item.height === activeSize.height)?.id ?? currentPreset.id} data-sizing={controls.automatic ? 'auto' : 'manual'} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, height: activeSize.height, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
     {editing && <button type="button" className="home-btn home-remove-widget" aria-label={`Remove ${controls.title}`} onClick={onRemove}><span aria-hidden="true">−</span></button>}
     <div className="home-widget-drag-bar" onPointerDown={event => {
       if (editing && !(event.target as HTMLElement).closest('button,a,input,select,textarea')) begin(event, 'move')
@@ -110,7 +112,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
       <div className="home-widget-edit-tools" role="group" aria-label={`${controls.title} widget controls`}>
         <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} earlier`} title="Move earlier" disabled={!canMoveEarlier} onClick={() => controls.onMove(-1)}><ChevronUp size={16} /></button>
         <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} later`} title="Move later" disabled={!canMoveLater} onClick={() => controls.onMove(1)}><ChevronDown size={16} /></button>
-        <StyledSelect aria-label={`Size of ${controls.title}`} title="Width × height in tiles" value={currentPreset.id} onChange={event => { const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>
+        <StyledSelect aria-label={`Size of ${controls.title}`} title="Auto or width × height in tiles" value={controls.automatic ? 'auto' : currentPreset.id} onChange={event => { if (event.target.value === 'auto') { controls.onAuto?.(); return }; const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{controls.onAuto && <option value="auto">Auto</option>}{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>
       </div>
       <button type="button" className="home-btn home-resize-handle" aria-label={`Resize ${controls.title}`} title="Drag to resize to a tile" onPointerDown={event => begin(event, 'resize')} {...pointerHandlers} onKeyDown={event => {
         if (event.key === 'Escape') { finish(true); return }
