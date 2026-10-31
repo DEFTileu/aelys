@@ -77,7 +77,18 @@ may invite, inspect, approve or reject.
 ## Not done yet
 
 - Native key storage (Secure Enclave, Android Keystore), camera scanning and QR display UI,
-  shared-client methods, browser WebCrypto flow.
+  and the native-app setup-token screens.
+
+## Web client (implemented 2026-10-31)
+
+The web app registers itself with a setup token: a non-extractable WebCrypto P-256 key is
+generated in the browser and kept in IndexedDB bound to the server origin; the server returns
+a session, and no refresh credential is stored. Later sessions are renewed by signing a server
+challenge, so there is no password or stored secret in `localStorage`/`sessionStorage` beyond the
+short-lived access token. After an explicit sign-out the login screen offers "sign in with this
+device". An unknown or revoked device deletes its local key. `GET /auth/browser/status` and
+`/auth/native/status` report `password_setup` so clients show password creation only while the
+server allows it. Browser-held keys remain a lower-trust class; QR scanning is not wired in the UI.
 - Server certificate pinning carried in the QR; the client must compose the QR with the
   server URL and pin.
 - Refresh-token reuse detection that revokes the device, device trust tiers, a recovery key,

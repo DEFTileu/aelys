@@ -2,6 +2,7 @@ import type { ApiConfig } from '../types'
 import { ApiClient, ApiError as SharedApiError, IndexedDbOfflineStore, type BrowserAuthStatus, type BrowserSession } from '@aelys/shared'
 import { isNativeHost, loadNativeTransport, nativeBackendOrigin } from './nativeTransport'
 import { createNativeFetch } from './nativeClient'
+import { generateDeviceKey, indexedDbIdentityStore, signWithDeviceKey, webCryptoAvailable, type DeviceIdentity, type IdentityStore } from './deviceKey'
 
 const API_BASE_STORAGE_KEY = 'aelys.apiBaseUrl'
 const ACCESS_TOKEN_STORAGE_KEY = 'aelys.accessToken'
@@ -67,6 +68,76 @@ async function browserRequest<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export function browserAuthStatus(): Promise<BrowserAuthStatus> { return browserRequest('status') }
+
+// ---- key-bound device sign-in (setup token, challenge/response) -------------------------------------
+
+interface DeviceSessionResponse extends BrowserSession { readonly device_id: string }
+
+let identityStore: IdentityStore = indexedDbIdentityStore
+/** Tests replace the IndexedDB-backed store with an in-memory one. */
+export function setIdentityStore(store: IdentityStore): void { identityStore = store }
+
+async function currentIdentity(): Promise<DeviceIdentity | undefined> {
+  if (isNativeHost() || !webCryptoAvailable()) return undefined
+  const identity = await identityStore.load()
+  return identity && identity.origin === sharedOrigin(getApiConfig().baseUrl) ? identity : undefined
+}
+
+export async function hasDeviceIdentity(): Promise<boolean> { return !!(await currentIdentity()) }
+
+async function deviceRequest<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${getApiConfig().baseUrl}/${path}`, {
+    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(10_000),
+  })
+  const value = await response.json().catch(() => undefined)
+  if (!response.ok) throw new SharedApiError(response.status, value?.detail?.code ?? 'AUTH_UNAVAILABLE', value?.detail?.message ?? 'Не удалось подключиться к Aelys')
+  return value as T
+}
+
+/** Registers this browser as a key-bound device with a one-time setup token; no password is involved. */
+export async function claimSetupToken(token: string, displayName: string): Promise<void> {
+  if (isNativeHost() || !webCryptoAvailable()) throw new SharedApiError(400, 'DEVICE_KEY_UNAVAILABLE', 'Этот браузер не может хранить ключ устройства.')
+  const key = await generateDeviceKey()
+  const session = await deviceRequest<DeviceSessionResponse>('auth/setup/claim', { token: token.trim(), public_key: key.publicKey, platform: 'web', display_name: displayName.trim() || 'Браузер' })
+  await identityStore.save({ deviceId: session.device_id, origin: sharedOrigin(getApiConfig().baseUrl), publicKey: key.publicKey, privateKey: key.privateKey })
+  acceptSession(session, true)
+}
+
+/** Proves possession of this device's key to the server. False when there is no usable identity. */
+export async function deviceLogin(): Promise<boolean> {
+  const identity = await currentIdentity()
+  if (!identity) return false
+  const origin = identity.origin
+  let challenge: { challenge_id: string; nonce: string }
+  try {
+    challenge = await deviceRequest('auth/device/challenge', { device_id: identity.deviceId })
+  } catch (error) {
+    // The server no longer knows this device (revoked or wiped): the key is useless, so forget it.
+    if (error instanceof SharedApiError && error.status === 401) { await identityStore.clear(); return false }
+    throw error
+  }
+  try {
+    const signature = await signWithDeviceKey(identity.privateKey, `aelys-device-login-v1\n${identity.deviceId}\n${challenge.nonce}`)
+    const session = await deviceRequest<DeviceSessionResponse>('auth/device/login', { challenge_id: challenge.challenge_id, signature })
+    if (origin !== sharedOrigin(getApiConfig().baseUrl)) return false
+    acceptSession(session, false)
+    return true
+  } catch (error) {
+    if (error instanceof SharedApiError && error.status === 401) return false
+    throw error
+  }
+}
+
+/** Explicit "sign in with this device" after a sign-out; a failed attempt keeps the sign-out in force. */
+export async function signInWithThisDevice(): Promise<boolean> {
+  const wasSignedOut = isSignedOut()
+  window.localStorage.removeItem(SIGNED_OUT_KEY)
+  const ok = await deviceLogin()
+  if (ok) window.dispatchEvent(new Event(SESSION_EVENT))
+  else if (wasSignedOut) window.localStorage.setItem(SIGNED_OUT_KEY, '1')
+  return ok
+}
 export function isSignedOut(): boolean { return !!window.localStorage.getItem(SIGNED_OUT_KEY) }
 /** Call only after native password authentication has succeeded. */
 export function clearNativeSignedOut(): void { window.localStorage.removeItem(SIGNED_OUT_KEY) }
@@ -77,6 +148,8 @@ export async function resumeBrowserSession(): Promise<boolean> {
     const origin = sharedOrigin(getApiConfig().baseUrl)
     const refresh = async () => {
       try {
+        // A browser registered as a device renews its session by signing, not with a stored credential.
+        if (await hasDeviceIdentity() && await deviceLogin()) return true
         const session = await browserRequest<BrowserSession>('refresh', {})
         if (isSignedOut() || origin !== sharedOrigin(getApiConfig().baseUrl)) return false
         acceptSession(session, false)
@@ -177,9 +250,16 @@ export async function logout(): Promise<void> {
     }
     return
   }
+  const keyBound = await hasDeviceIdentity()
+  const token = getAccessToken()
   // Persist intent even when the network is down and the cookie cannot be revoked.
   window.localStorage.setItem(SIGNED_OUT_KEY, '1')
   clearAccessToken()
+  if (keyBound) {
+    // A key-bound session has no cookie; revoke it with its own bearer. The key stays for the next explicit sign-in.
+    if (token) await fetch(`${getApiConfig().baseUrl}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) }).catch(() => undefined)
+    return
+  }
   await browserRequest('logout', {})
 }
 

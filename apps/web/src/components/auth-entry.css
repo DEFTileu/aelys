@@ -59,3 +59,7 @@
 @keyframes touch-id-pulse { from { opacity:.7; transform:scale(.9); } to { opacity:0; transform:scale(1.5); } }
 @keyframes touch-id-draw { from { stroke-dashoffset:1; } to { stroke-dashoffset:0; } }
 @media(prefers-reduced-motion:reduce) { .auth-touch-id__pulse { animation:none; opacity:.4; } .auth-touch-id__stroke { animation:none; } }
+.auth-form input.auth-token { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .02em; }
+.auth-panel .auth-field-help { margin: 12px 0 0; text-align: left; }
+.auth-panel .auth-field-help code { color: #fff; background: rgba(255,255,255,.14); padding: 1px 5px; border-radius: 6px; font-size: 11px; overflow-wrap: anywhere; }
+.auth-panel > .auth-text-action { margin-top: 8px; }

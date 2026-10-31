@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '@aelys/shared'
-import { bootstrapOwner, browserAuthStatus, clearNativeSignedOut, getAccessToken, getApiConfig, getSharedApiClient, isSignedOut, login, resumeBrowserSession, saveApiBaseUrl, SESSION_EVENT } from '../lib/api'
+import { bootstrapOwner, browserAuthStatus, claimSetupToken, clearNativeSignedOut, getAccessToken, getApiConfig, getSharedApiClient, hasDeviceIdentity, isSignedOut, login, resumeBrowserSession, saveApiBaseUrl, SESSION_EVENT, signInWithThisDevice } from '../lib/api'
 import type { ApiStatus } from '../types'
 import './auth-entry.css'
 import { Icon } from './Icon'
@@ -12,6 +12,20 @@ import { TouchIdIcon } from './TouchIdIcon'
 
 type AuthState = 'checking' | 'ready' | 'login' | 'setup' | 'connection' | 'biometric'
 
+function defaultDeviceName(): string {
+  const platform = typeof navigator === 'undefined' ? '' : (navigator.platform || '').trim()
+  return platform ? `Браузер (${platform})` : 'Браузер'
+}
+
+function claimMessage(error: unknown): string {
+  const code = error instanceof ApiError ? error.code : ''
+  if (code === 'INVALID_SETUP_TOKEN') return 'Токен недействителен, уже использован или истёк. Выпустите новый на сервере.'
+  if (code === 'RATE_LIMITED') return 'Слишком много попыток. Подождите немного и повторите.'
+  if (code === 'ALREADY_INITIALIZED') return 'Владелец уже создан. Войдите или используйте токен восстановления.'
+  if (code === 'DEVICE_KEY_UNAVAILABLE' || code === 'INVALID_PUBLIC_KEY') return 'Этот браузер не может хранить ключ устройства. Откройте Aelys по HTTPS или на localhost.'
+  return error instanceof ApiError ? error.message : 'Не удалось подключить устройство. Проверьте соединение и повторите.'
+}
+
 export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; children: ReactNode }) {
   const [state, setState] = useState<AuthState>('checking')
   const [email, setEmail] = useState('')
@@ -22,6 +36,12 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
   const [retry, setRetry] = useState(0)
   const [connectionOpen, setConnectionOpen] = useState(false)
   const [baseUrl, setBaseUrl] = useState(() => getApiConfig().baseUrl)
+  // A fresh server is claimed with a setup token; password creation is offered only while the server still allows it.
+  const [tokenMode, setTokenMode] = useState(false)
+  const [token, setToken] = useState('')
+  const [deviceName, setDeviceName] = useState(defaultDeviceName)
+  const [passwordSetup, setPasswordSetup] = useState(true)
+  const [deviceKnown, setDeviceKnown] = useState(false)
   const generation = useRef(0)
   const explicitReauthentication = useRef(false)
   const nativeHost = isNativeHost()
@@ -68,7 +88,11 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
         }
         if (getAccessToken()) { await getSharedApiClient().me(); publish('ready'); return }
         const status = await browserAuthStatus()
-        if (!status.initialized) { publish('setup'); return }
+        if (alive && generation.current === run) setPasswordSetup(status.password_setup !== false)
+        if (!status.initialized) { if (alive && generation.current === run) setTokenMode(true); publish('setup'); return }
+        const known = await hasDeviceIdentity()
+        if (alive && generation.current === run) setDeviceKnown(known)
+        if (known && !isSignedOut() && await resumeBrowserSession()) { publish('ready'); return }
         if (status.can_resume && !isSignedOut() && await resumeBrowserSession()) { publish('ready'); return }
         publish('login')
       } catch (error) {
@@ -140,6 +164,28 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       }
     } finally { setBusy(false) }
   }
+  const claim = async (event: FormEvent) => {
+    event.preventDefault()
+    if (busy) return
+    const run = generation.current
+    const base = getApiConfig().baseUrl
+    setBusy(true); setNotice('')
+    try {
+      await claimSetupToken(token, deviceName)
+      if (run === generation.current && base === getApiConfig().baseUrl) { setToken(''); setTokenMode(false); setState('ready') }
+    } catch (error) {
+      if (run === generation.current) setNotice(claimMessage(error))
+    } finally { setBusy(false) }
+  }
+  const useThisDevice = async () => {
+    if (busy) return
+    setBusy(true); setNotice('')
+    try {
+      if (await signInWithThisDevice()) setState('ready')
+      else setNotice('Не удалось войти с этим устройством. Возможно, его отключили от аккаунта: войдите паролем или токеном.')
+    } catch { setNotice('Не удалось подключиться к серверу. Проверьте соединение и повторите.') }
+    finally { setBusy(false); setDeviceKnown(await hasDeviceIdentity()) }
+  }
   const keychainDenied = notice === KEYCHAIN_ACCESS_NOTICE
   const panel = <div className="auth-entry">
       <section className="auth-panel" aria-label="Вход в Aelys" aria-busy={busy}>
@@ -157,14 +203,26 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
             <button type="button" className={`auth-submit${keychainDenied ? ' auth-submit--secondary' : ''}`} disabled={busy} onClick={() => void unlock()}>{busy ? 'Открываем…' : 'Открыть с Touch ID'}</button>
             <button type="button" className="auth-text-action" disabled={busy} onClick={() => { setNotice(''); setState('login') }}>Войти с паролем</button>
           </div>
+        </> : (state === 'setup' || state === 'login') && tokenMode ? <>
+          <h1>Токен установки</h1>
+          <p className="auth-description">{state === 'setup' ? 'Введите одноразовый токен, который сервер вывел в консоль при первом запуске.' : 'Токен восстановления добавит это устройство к вашему аккаунту.'}</p>
+          <form className="auth-form" onSubmit={claim}>
+            <label htmlFor="aelys-entry-token">Токен<input id="aelys-entry-token" className="auth-token" autoFocus required disabled={busy} type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="Вставьте токен" value={token} onChange={(event) => setToken(event.target.value)} /></label>
+            <label htmlFor="aelys-entry-device-name">Название устройства<input id="aelys-entry-device-name" required disabled={busy} maxLength={200} autoComplete="off" value={deviceName} onChange={(event) => setDeviceName(event.target.value)} /></label>
+            <button type="submit" className="auth-submit" disabled={busy || token.trim().length < 20}>{busy ? 'Проверяем…' : 'Подключить устройство'}</button>
+          </form>
+          <p className="auth-field-help">Новый токен: <code>python -m app.core.admin setup-token</code>{state === 'login' ? ' --recovery' : ''}. Он действует 30 минут и подходит один раз.</p>
+          {(state === 'login' || passwordSetup) && <button type="button" className="auth-text-action" disabled={busy} onClick={() => { setNotice(''); setToken(''); setTokenMode(false) }}>{state === 'login' ? 'Назад ко входу' : 'Создать аккаунт с паролем'}</button>}
         </> : <>
           <h1>{state === 'setup' ? 'Создать аккаунт' : 'Войти в Aelys'}</h1>
           <p className="auth-description">{state === 'setup' ? 'Один аккаунт для ваших устройств.' : 'Введите email и пароль аккаунта.'}</p>
+          {state === 'login' && deviceKnown && <button type="button" className="auth-submit" disabled={busy} onClick={() => void useThisDevice()}>{busy ? 'Входим…' : 'Войти с этим устройством'}</button>}
           <form className="auth-form" onSubmit={authenticate}>
             <label htmlFor="aelys-entry-email">Email<input id="aelys-entry-email" autoFocus required disabled={busy} type="email" autoComplete="username" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
             <label htmlFor="aelys-entry-password">Пароль<input id="aelys-entry-password" required disabled={busy} type="password" minLength={8} autoComplete={state === 'setup' ? 'new-password' : 'current-password'} placeholder={state === 'setup' ? 'Не менее 8 символов' : 'Пароль аккаунта'} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
             <button type="submit" className={`auth-submit${keychainDenied ? ' auth-submit--secondary' : ''}`} disabled={busy}>{busy ? 'Открываем…' : state === 'setup' ? 'Создать аккаунт' : 'Войти'}</button>
           </form>
+          {!nativeHost && (state === 'login' || state === 'setup') && <button type="button" className="auth-text-action" disabled={busy} onClick={() => { setNotice(''); setTokenMode(true) }}>{state === 'login' ? 'Войти по токену установки' : 'У меня есть токен установки'}</button>}
           {nativeHost && canUnlock && state === 'login' && <button type="button" className="auth-text-action auth-return" disabled={busy} onClick={() => { setNotice(''); setPassword(''); setState('biometric') }}>Вернуться к Touch ID</button>}
         </>}
         {notice && <div className="auth-notice" role="alert">
