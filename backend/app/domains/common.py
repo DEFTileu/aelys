@@ -144,9 +144,8 @@ def db_dependency() -> Any:
 
 
 def owner_dependency(request: Request) -> str:
+    # Fail closed: only an identity set by the application core counts. A client-supplied header must never name the owner.
     owner = getattr(request.state, "owner_id", None)
-    if owner is None:
-        owner = request.headers.get("X-Owner-ID")
     if not owner:
         raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "Owner context required"})
     return owner

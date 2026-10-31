@@ -6,8 +6,8 @@ application with the `/api/v1` prefix already present in each router.
 
 The application core must override `common.db_dependency` with the configured
 SQLAlchemy `Session` dependency and populate `request.state.owner_id` from
-authenticated identity. `X-Owner-ID` exists only as a test/development
-fallback and must not be trusted in production. Domain services accept an
+authenticated identity. There is no header fallback: a client-supplied
+owner header is never trusted. Domain services accept an
 explicit `owner_id`, so core authorization can be tested without FastAPI.
 
 `Base.metadata` includes the domain tables. Alembic migrations must import all
