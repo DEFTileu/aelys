@@ -270,6 +270,16 @@ not currently sync to other devices. Older layouts retain their widget order
 and removals while adopting automatic sizing. Their original storage is kept.
 A storage failure is shown instead of claiming a durable save.
 
+For a populated Dashboard preview in local Web development, click **Показать
+демо** above the widgets or open `http://127.0.0.1:5173/?demo=1` (use your actual
+Web port). The banner explicitly labels fictional records. Tasks can be checked
+and the focus timer can run in memory; examples never enter the backend,
+offline cache or outbox. **Показать мои данные** restores live records. Reloading
+with `?demo=1` resets the examples. This preview applies only to Dashboard;
+other module pages keep showing actual records. Production/native clients
+ignore the demo query. Weather examples are marked as fictional and do not
+change the configured city or call a forecast provider.
+
 For weather, click the city/temperature pill at the top, the weather widget's
 city button, or Settings → **Погода и город**. Search for a city and select the
 correct country/region, or click **Использовать моё местоположение** and grant

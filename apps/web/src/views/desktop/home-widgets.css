@@ -1,4 +1,10 @@
 /* Content adapts to its card, including when the sidebar changes available width. */
+.home-demo-banner { display: flex; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-solid); }
+.home-demo-banner > div { flex: 1; min-width: 0; }
+.home-demo-banner strong { font-size: 14px; }
+.home-demo-banner p { margin: 4px 0 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.home-demo-banner button { flex: none; white-space: nowrap; }
+@media (max-width: 700px) { .home-demo-banner { flex-direction: column; align-items: stretch; } .home-demo-banner button { align-self: flex-start; } }
 .home-widget { container: widget / inline-size; }
 .home-widget .home-widget-drag-bar { display: flex; flex-direction: column; min-width: 0; overflow: visible; }
 .home-widget [data-widget-heading] { flex: none; min-width: 0; }
