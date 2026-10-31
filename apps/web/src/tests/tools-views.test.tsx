@@ -6,7 +6,7 @@ import { AutomationView } from '../views/AutomationView'
 import { DeveloperView } from '../views/DeveloperView'
 import { isMacPlatform } from '../data/navigation'
 
-const client = vi.hoisted(() => ({ agentSessions: vi.fn(), projects: vi.fn(), automations: vi.fn(), automationExecutions: vi.fn(), updateAutomation: vi.fn() }))
+const client = vi.hoisted(() => ({ agentSessions: vi.fn(), projects: vi.fn(), automations: vi.fn(), automationExecutions: vi.fn(), updateAutomation: vi.fn(), stopAgentSession: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
@@ -50,8 +50,30 @@ describe('DeveloperView', () => {
     client.agentSessions.mockResolvedValue([{ id: 's1', adapter: 'codex_cli', state: 'active', project_id: 'p1', opaque_local_session_ref: 'private-reference', started_at: '2026-10-30T10:00:00Z', last_activity_at: '2026-10-30T10:05:00Z', message_count: 4 }])
     await mount(<DeveloperView apiStatus="ready" />)
     expect(host.textContent).toContain('codex_cli'); expect(host.textContent).toContain('Active · 1'); expect(host.textContent).toContain('Aelys')
-    expect(host.textContent).toContain('4 messages exchanged'); expect(host.textContent).toContain('Full transcript is stored on this Mac only.')
+    expect(host.textContent).toContain('Full transcript is stored on this Mac only.')
     expect(host.textContent).not.toContain('private-reference'); expect(host.textContent).not.toContain('Open folder')
+  })
+  const real = { id: 's1', adapter: 'codex_cli', state: 'active', project_id: null, opaque_local_session_ref: 'r', started_at: new Date(Date.now() - 125 * 60_000).toISOString(), last_activity_at: '2026-10-30T10:05:00Z', message_count: 4, workspace_path: '/Users/me/work/aelys', sandbox: 'workspace-write', network: 'allowlist', events: [{ kind: 'tool', message: 'ran tests', at: '2026-10-30T10:01:00Z' }] }
+  it('shows the reported workspace path, sandbox, network, running time and events', async () => {
+    client.agentSessions.mockResolvedValue([real])
+    await mount(<DeveloperView apiStatus="ready" />)
+    expect(host.querySelector('.tl-detail')!.textContent).toContain('/Users/me/work/aelys'); expect(host.textContent).toContain('workspace-write'); expect(host.textContent).toContain('Allowlist')
+    expect(host.textContent).toContain('Running for2h 5m'); expect(host.querySelector('[aria-label="Event log"]')!.textContent).toContain('ran tests')
+  })
+  const stopButton = () => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Stop')!
+  it('stops an active session and shows the policy error inline', async () => {
+    client.agentSessions.mockResolvedValue([real]); client.stopAgentSession.mockRejectedValueOnce(new ApiError(403, 'POLICY_DENIED', 'Stopping is not allowed.'))
+    await mount(<DeveloperView apiStatus="ready" />)
+    await act(async () => stopButton().click())
+    expect(client.stopAgentSession).toHaveBeenCalledWith('s1', expect.objectContaining({ queueOnOffline: false })); expect(host.textContent).toContain('POLICY_DENIED: Stopping is not allowed.')
+    client.stopAgentSession.mockRejectedValueOnce(new ApiError(409, 'NO_ACTIVE_RUN', 'No active run.'))
+    await act(async () => stopButton().click()); expect(host.textContent).toContain('NO_ACTIVE_RUN')
+  })
+  it('disables Stop for sessions that are not active', async () => {
+    client.agentSessions.mockResolvedValue([{ ...real, state: 'ended' }])
+    await mount(<DeveloperView apiStatus="ready" />)
+    await act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent === 'All')!.click())
+    expect(stopButton().disabled).toBe(true)
   })
   it('does not claim the Mac is offline when no sessions exist', async () => {
     await mount(<DeveloperView apiStatus="ready" />)

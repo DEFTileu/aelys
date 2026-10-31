@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AgentSession, ProjectResponse } from '@aelys/shared'
 import { ApiError } from '@aelys/shared'
-import { Lock, Terminal } from '../icons'
+import { Lock, Square, Terminal } from '../icons'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
@@ -18,6 +18,9 @@ function span(session: AgentSession): string {
   return seconds >= 3600 ? `${Math.floor(seconds / 3600)}h ${Math.floor(seconds / 60) % 60}m` : `${Math.floor(seconds / 60)}m`
 }
 
+const NETWORK = { blocked: 'Blocked', allowlist: 'Allowlist', open: 'Open' } as const
+const stopError = (error: unknown) => error instanceof ApiError ? `${error.code}: ${error.message}` : 'Could not stop the session. Check your connection.'
+
 export function DeveloperView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [sessions, setSessions] = useState<readonly AgentSession[]>([])
   const [projects, setProjects] = useState<readonly ProjectResponse[]>([])
@@ -25,6 +28,8 @@ export function DeveloperView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [blocked, setBlocked] = useState(false)
   const [selected, setSelected] = useState('')
   const [showAll, setShowAll] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [stopNotice, setStopNotice] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -41,13 +46,16 @@ export function DeveloperView({ apiStatus }: { apiStatus: ApiStatus }) {
   const activeCount = sessions.filter((session) => session.state === 'active').length
   const visible = showAll ? sessions : sessions.filter((session) => session.state === 'active')
   const current = visible.find((session) => session.id === selected) ?? visible[0]
-  // The API never returns a filesystem path or the local session reference, so the project name stands in for the path line.
-  const where = (session: AgentSession) => projects.find((project) => project.id === session.project_id)?.name ?? 'No linked project'
-  const log = current ? [
-    { t: current.started_at, k: 'start', m: `Session started with ${current.adapter}` },
-    ...(current.message_count !== null ? [{ t: current.last_activity_at, k: 'msgs', m: `${current.message_count} messages exchanged` }] : []),
-    { t: current.last_activity_at, k: 'state', m: current.state },
-  ] : []
+  // Prefer the path the Mac reports; the linked project name is only a fallback label.
+  const where = (session: AgentSession) => session.workspace_path || (projects.find((project) => project.id === session.project_id)?.name ?? 'No linked project')
+  const log = current?.events ?? []
+  const stop = async (session: AgentSession) => {
+    if (stopping) return
+    setStopping(true); setStopNotice('')
+    try { await getSharedApiClient().stopAgentSession(session.id, { queueOnOffline: false }); setStopNotice('Stop requested.'); await load() }
+    catch (error) { setStopNotice(stopError(error)) }
+    finally { setStopping(false) }
+  }
 
   return <div className="tl connected-workspace">
     <div className="tl-bar"><div className="tl-seg" role="tablist" aria-label="Session filter">
@@ -65,12 +73,14 @@ export function DeveloperView({ apiStatus }: { apiStatus: ApiStatus }) {
         {current && <section className="tl-detail" aria-label="Session detail">
           <div className="tl-detail__head"><h2>{current.adapter}</h2><div className="tl-mono tl-muted" style={{ fontSize: 13 }}>{where(current)}</div></div>
           <div className="tl-facts">
-            <div><span className="tl-muted">Sandbox</span><b>Not reported</b></div>
-            <div><span className="tl-muted">Network</span><b>Not reported</b></div>
+            <div><span className="tl-muted">Sandbox</span><b>{current.sandbox || 'Not reported'}</b></div>
+            <div><span className="tl-muted">Network</span><b>{current.network ? NETWORK[current.network] ?? current.network : 'Not reported'}</b></div>
             <div><span className="tl-muted">{current.state === 'active' ? 'Running for' : 'Ran for'}</span><b>{span(current)}</b></div>
           </div>
-          <div className="tl-log tl-mono" aria-label="Event log">{log.map((line, index) => <div key={index}><span>{clockOf(line.t)}</span><span>{line.k}</span><span>{line.m}</span></div>)}</div>
-          <div className="tl-foot"><Lock size={14} aria-hidden="true" />Full transcript is stored on this Mac only.</div>
+          <div className="tl-log tl-mono" aria-label="Event log">{log.length ? log.map((line, index) => <div key={index}><span>{clockOf(line.at)}</span><span>{line.kind}</span><span>{line.message}</span></div>) : <div><span>No events reported yet.</span></div>}</div>
+          {stopNotice && <p className="tl-note" role="status">{stopNotice}</p>}
+          <div className="tl-foot"><Lock size={14} aria-hidden="true" />Full transcript is stored on this Mac only.<span style={{ flex: 1 }} />
+            <button type="button" className="tl-icon-btn" style={{ width: 'auto', height: 36, borderRadius: 12, padding: '0 12px', gap: 6 }} disabled={current.state !== 'active' || stopping || apiStatus !== 'ready'} onClick={() => void stop(current)}><Square size={14} aria-hidden="true" />Stop</button></div>
         </section>}
       </div>}
   </div>
