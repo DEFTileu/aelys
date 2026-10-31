@@ -9,17 +9,20 @@ function WeatherIcon({ code, day = true, size = 24 }: { code: number; day?: bool
 }
 const temperature = (value: number) => `${Math.round(value)}°C`
 
-export function WeatherCard({ compact = false }: { compact?: boolean }) {
+export function WeatherCard({ size = 'S' }: { size?: 'S' | 'M' | 'L' | 'Tall' }) {
   const { location, forecast, status, notice } = useWeather()
   if (!location) return <div className="weather-empty"><button type="button" className="weather-action" onClick={openWeatherSettings}><MapPin size={15} aria-hidden="true" />Set location</button></div>
-  return <div className={`weather-card-body${compact ? ' weather-card-body--compact' : ''}`}>
+  const today = forecast?.days[0]
+  return <div className={`weather-card-body weather-card-body--${size.toLowerCase()}`}>
     <button type="button" className="home-btn weather-location" onClick={openWeatherSettings}><MapPin size={14} /><span>{location.name}</span></button>
     {forecast ? <>
       <div className="weather-current"><WeatherIcon code={forecast.code} day={forecast.isDay} size={38} /><strong>{temperature(forecast.temperature)}</strong></div>
-      <div className="weather-description">{weatherDescription(forecast.code)} · feels like {temperature(forecast.apparent)}</div>
-      <div className="weather-forecast">{forecast.days.map((day) => <div key={day.date}><small>{new Date(day.date).toLocaleDateString('en', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}</small><WeatherIcon code={day.code} size={17} /><span>{Math.round(day.max)}° / {Math.round(day.min)}°</span></div>)}</div>
-      <small className="weather-updated">{status === 'error' ? 'Saved forecast · ' : status === 'loading' ? 'Updating · ' : ''}{new Date(forecast.fetchedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small>
-    </> : <p role="status">{status === 'loading' ? 'Loading weather…' : notice || 'Weather is unavailable.'}</p>}
+      <div className="weather-description">{weatherDescription(forecast.code)}</div>
+      {size !== 'S' && <div className="weather-details"><span>Feels like {temperature(forecast.apparent)}</span><span>Wind {Math.round(forecast.wind)} km/h</span>{today && <span>H {Math.round(today.max)}° · L {Math.round(today.min)}°</span>}</div>}
+      {(size === 'L' || size === 'Tall') && <div className="weather-forecast">{forecast.days.slice(0, 5).map((day) => <div key={day.date}><small>{new Date(day.date).toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</small><WeatherIcon code={day.code} size={17} /><span>{Math.round(day.max)}° / {Math.round(day.min)}°</span></div>)}</div>}
+      {size !== 'S' && <small className="weather-updated">{status === 'error' ? 'Saved forecast · ' : status === 'loading' ? 'Updating · ' : ''}{new Date(forecast.fetchedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small>}
+    </> : status === 'loading' ? <p role="status">Loading weather…</p> : <div className="wb-empty"><span>Can’t load</span><button type="button" className="home-btn wb-action" onClick={() => void refreshWeather(true)}>Retry</button></div>}
+    {notice && !forecast && <small className="weather-updated">{notice}</small>}
     <div className="weather-card-footer"><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a><button type="button" className="home-btn" aria-label="Refresh weather" disabled={status === 'loading'} onClick={() => void refreshWeather(true)}><RefreshCw size={14} /></button></div>
   </div>
 }

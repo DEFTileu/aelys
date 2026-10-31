@@ -10,7 +10,7 @@ beforeEach(() => { localStorage.clear(); disableWeather() })
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; vi.unstubAllGlobals(); localStorage.clear() })
 async function mount() {
   const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
-  await act(async () => root!.render(<><WeatherSettingsContent /><WeatherCard /></>))
+  await act(async () => root!.render(<><WeatherSettingsContent /><WeatherCard /><WeatherCard size="M" /><WeatherCard size="L" /></>))
   return host
 }
 
@@ -27,6 +27,11 @@ describe('weather settings and shared displays', () => {
     expect(host.querySelector('[aria-label="Matching cities"]')?.textContent).toContain('Казахстан')
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Matching cities"] button')!.click())
     expect(host.querySelector('.weather-current')?.textContent).toContain('13°C')
+    expect(host.querySelector('.weather-card-body--s .weather-details')).toBeNull()
+    expect(host.querySelector('.weather-card-body--s .weather-forecast')).toBeNull()
+    expect(host.querySelector('.weather-card-body--m .weather-details')?.textContent).toContain('Feels like 12°C')
+    expect(host.querySelector('.weather-card-body--m .weather-forecast')).toBeNull()
+    expect(host.querySelector('.weather-card-body--l .weather-forecast')).not.toBeNull()
     expect(fetchImpl.mock.calls.filter(([url]) => url.hostname === 'api.open-meteo.com')).toHaveLength(1)
     expect(JSON.parse(localStorage.getItem(WEATHER_STORAGE_KEY)!).location.name).toBe('Алматы')
   })

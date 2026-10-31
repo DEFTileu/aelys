@@ -15,8 +15,8 @@ it('persists mobile order, sizes and removal without changing desktop layout',as
  let saved=JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!)
  expect(saved[0][0]).toBe('focus')
  const today=Array.from(host.querySelectorAll('li')).find(x=>x.textContent?.includes('Today'))!
- await act(async()=>Array.from(today.querySelectorAll('button')).find(x=>x.textContent==='2 × 3')!.click())
- saved=JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!);expect(saved.find((x:string[])=>x[0]==='today')).toEqual(['today',2,560])
+ await act(async()=>Array.from(today.querySelectorAll('button')).find(x=>x.textContent==='L')!.click())
+ saved=JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!);expect(saved.find((x:string[])=>x[0]==='today')).toEqual(['today',2,544])
  await click('Remove Today');await click('Add Today')
  expect(JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!).at(-1)[0]).toBe('today')
  expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)).toEqual([['cal',1,264]])
@@ -27,11 +27,11 @@ it('reports persistence failures and keeps the confirmed layout',async()=>{
  await mount();vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw new Error('blocked')})
  await click('Remove Today');expect(host.querySelector('ol')!.textContent).toContain('Today');expect(host.textContent).toContain('Could not save')
 })
-it('offers the same six formats for every mobile widget and restores the selected format',async()=>{
+it('offers the same four formats for every mobile widget and restores the selected format',async()=>{
  await mount()
- const formats=WIDGET_SIZES.filter(size=>size.span<=2)
+ const formats=WIDGET_SIZES
  for(const group of host.querySelectorAll('[role="radiogroup"]')) {
-  expect([...group.querySelectorAll('button')].map(button=>button.textContent)).toEqual(['Auto',...formats.map(size=>size.label)])
+  expect([...group.querySelectorAll('button')].map(button=>button.textContent)).toEqual(formats.map(size=>size.label))
  }
  const today=host.querySelector('[role="radiogroup"][aria-label="Size of Today"]')!
  for(const size of formats) {
@@ -39,9 +39,5 @@ it('offers the same six formats for every mobile widget and restores the selecte
   expect(JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!).find((entry:string[])=>entry[0]==='today')).toEqual(['today',size.span,size.height])
  }
  await act(async()=>root!.unmount());root=undefined;await mount()
- expect(host.querySelector('[aria-label="Size of Today"] [aria-checked="true"]')?.textContent).toBe('2 × 3')
- await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Size of Today"] button')!.click())
- expect(JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!).find((entry:string[])=>entry[0]==='today')).toEqual(['today',0])
- await act(async()=>root!.unmount());root=undefined;await mount()
- expect(host.querySelector('[aria-label="Size of Today"] [aria-checked="true"]')?.textContent).toBe('Auto')
+ expect(host.querySelector('[aria-label="Size of Today"] [aria-checked="true"]')?.textContent).toBe('Tall')
 })

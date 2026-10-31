@@ -5,29 +5,29 @@ import { normalizeWidgetSize, WIDGET_GRID_ROW, WIDGET_GRID_GAP, WIDGET_SIZES, ty
 
 export type WidgetFrameControls = {
   id: WidgetId
+  /** Unique per card: a widget may appear twice at different sizes. */
+  itemKey: string
   title: string
   span: number
   height?: number
-  automatic?: boolean
-  onAuto?: () => void
-  onDrop: (source: WidgetId, target: WidgetId) => void
+  onDrop: (source: string, target: string) => void
   onMove: (delta: -1 | 1) => void
   onSize: (span: number, height: number) => void
 }
 
-type Gesture = { kind: 'move' | 'resize'; x: number; y: number; width: number; height: number; column: number; gap: number; columns: number; row: number; moved: boolean; target?: WidgetId }
+type Gesture = { kind: 'move' | 'resize'; x: number; y: number; width: number; height: number; column: number; gap: number; columns: number; row: number; moved: boolean; target?: string }
 
 /** Editing is explicit. Both pointer previews and persisted sizes use tile units. */
-export function WidgetFrame({ controls, style, children, editing, onRemove, canMoveEarlier, canMoveLater }: {
+export function WidgetFrame({ controls, style, children, editing, onRemove, canMoveEarlier = true, canMoveLater = true }: {
   controls: WidgetFrameControls; style: CSSProperties; children: ReactNode | ((size: ReturnType<typeof normalizeWidgetSize>) => ReactNode); editing: boolean
-  onRemove: () => void; canMoveEarlier: boolean; canMoveLater: boolean
+  onRemove: () => void; canMoveEarlier?: boolean; canMoveLater?: boolean; onLongPress?: () => void
 }) {
   const article = useRef<HTMLElement>(null)
   const gesture = useRef<Gesture | null>(null)
-  const previewRef = useRef<{ span: number; height: number; rows: number } | null>(null)
+  const previewRef = useRef<ReturnType<typeof normalizeWidgetSize> | null>(null)
   const [moving, setMoving] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const [preview, setPreview] = useState<{ span: number; height: number; rows: number } | null>(null)
+  const [preview, setPreview] = useState<ReturnType<typeof normalizeWidgetSize> | null>(null)
   const size = normalizeWidgetSize(controls.span, controls.height)
   const activeSize = preview ?? size
   const clearTargets = () => article.current?.parentElement?.querySelectorAll('[data-drop-target]').forEach(card => card.removeAttribute('data-drop-target'))
@@ -64,19 +64,19 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
         const distance = (candidate: typeof item) => Math.hypot((Math.min(drag.columns, candidate.span) * (drag.column + drag.gap) - drag.gap) - (drag.width + dx), (candidate.rows * (drag.row + drag.gap) - drag.gap) - (drag.height + dy))
         return distance(item) < distance(best) ? item : best
       }, available[0])
-      const next = { span: nearest.span, height: nearest.height, rows: nearest.rows }
+      const next = normalizeWidgetSize(nearest.span, nearest.height)
       previewRef.current = next; setPreview(next)
     } else {
       setMoving(true); setOffset({ x: dx, y: dy })
       const grid = article.current?.parentElement
       if (!grid) return
-      const cards = [...grid.querySelectorAll<HTMLElement>('[data-widget-id]')]
+      const cards = [...grid.querySelectorAll<HTMLElement>('[data-widget-key]')]
       const target = cards.find(card => {
         if (card === article.current) return false
         const rect = card.getBoundingClientRect()
         return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
       })
-      drag.target = target?.dataset.widgetId as WidgetId | undefined
+      drag.target = target?.dataset.widgetKey
       cards.forEach(card => card.toggleAttribute('data-drop-target', card === target))
       const viewport = grid.closest('.shell-main') ?? document.scrollingElement
       if (viewport) {
@@ -91,13 +91,13 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
     const next = previewRef.current
     if (editing && !cancelled && drag?.moved) {
       if (drag.kind === 'resize' && next) controls.onSize(next.span, next.height)
-      if (drag.kind === 'move' && drag.target && drag.target !== controls.id) controls.onDrop(controls.id, drag.target)
+      if (drag.kind === 'move' && drag.target && drag.target !== controls.itemKey) controls.onDrop(controls.itemKey, drag.target)
     }
     cancel()
   }
   const pointerHandlers = { onPointerMove: move, onPointerUp: () => finish(false), onPointerCancel: () => finish(true), onLostPointerCapture: () => finish(true) }
   const currentPreset = WIDGET_SIZES.find(item => item.span === size.span && item.height === size.height) ?? WIDGET_SIZES[0]
-  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-size={WIDGET_SIZES.find(item => item.span === activeSize.span && item.height === activeSize.height)?.id ?? currentPreset.id} data-sizing={controls.automatic ? 'auto' : 'manual'} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, height: activeSize.height, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
+  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-widget-key={controls.itemKey} data-size-key={activeSize.key} data-size={WIDGET_SIZES.find(item => item.span === activeSize.span && item.height === activeSize.height)?.id ?? currentPreset.id} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
     {editing && <button type="button" className="home-btn home-remove-widget" aria-label={`Remove ${controls.title}`} onClick={onRemove}><span aria-hidden="true">−</span></button>}
     <div className="home-widget-drag-bar" onPointerDown={event => {
       if (editing && !(event.target as HTMLElement).closest('button,a,input,select,textarea')) begin(event, 'move')
@@ -112,16 +112,14 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
       <div className="home-widget-edit-tools" role="group" aria-label={`${controls.title} widget controls`}>
         <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} earlier`} title="Move earlier" disabled={!canMoveEarlier} onClick={() => controls.onMove(-1)}><ChevronUp size={16} /></button>
         <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} later`} title="Move later" disabled={!canMoveLater} onClick={() => controls.onMove(1)}><ChevronDown size={16} /></button>
-        <StyledSelect aria-label={`Size of ${controls.title}`} title="Auto or width × height in tiles" value={controls.automatic ? 'auto' : currentPreset.id} onChange={event => { if (event.target.value === 'auto') { controls.onAuto?.(); return }; const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{controls.onAuto && <option value="auto">Auto</option>}{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>
+        <StyledSelect aria-label={`Size of ${controls.title}`} title="Widget size" value={currentPreset.id} onChange={event => { const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>
       </div>
       <button type="button" className="home-btn home-resize-handle" aria-label={`Resize ${controls.title}`} title="Drag to resize to a tile" onPointerDown={event => begin(event, 'resize')} {...pointerHandlers} onKeyDown={event => {
         if (event.key === 'Escape') { finish(true); return }
         if (!['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) return
         event.preventDefault()
-        const widths = [1, 2, 4]
-        const widthIndex = widths.indexOf(size.span)
-        const span = event.key === 'ArrowLeft' ? widths[Math.max(0, widthIndex - 1)] : event.key === 'ArrowRight' ? widths[Math.min(widths.length - 1, widthIndex + 1)] : size.span
-        const rows = event.key === 'ArrowUp' ? Math.max(1, size.rows - 1) : event.key === 'ArrowDown' ? Math.min(3, size.rows + 1) : size.rows
+        const span = event.key === 'ArrowLeft' ? 1 : event.key === 'ArrowRight' ? 2 : size.span
+        const rows = event.key === 'ArrowUp' ? 1 : event.key === 'ArrowDown' ? 2 : size.rows
         const next = normalizeWidgetSize(span, rows * (WIDGET_GRID_GAP + WIDGET_GRID_ROW) - WIDGET_GRID_GAP)
         controls.onSize(next.span, next.height)
       }}><Scaling size={18} aria-hidden="true" /></button>
