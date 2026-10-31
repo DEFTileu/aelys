@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FocusIn, FocusOut, ProjectResponse, TaskOut } from '@aelys/shared'
 import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
-import { Play, RotateCcw, Square, SquareCheck } from '../icons'
+import { Pause, Play, RotateCcw, Square, SquareCheck } from '../icons'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
@@ -11,7 +11,7 @@ import './tools.css'
 type Mode = 'focus' | 'break' | 'stopwatch'
 const MODES: readonly { id: Mode; label: string }[] = [{ id: 'focus', label: 'Focus' }, { id: 'break', label: 'Break' }, { id: 'stopwatch', label: 'Stopwatch' }]
 const PRESETS: Record<Mode, readonly number[]> = { focus: [25, 50, 90], break: [5, 10, 15], stopwatch: [] }
-// The API has no break or pause concept: breaks are a local countdown that is never saved.
+// The API has no break concept: breaks are a local countdown that is never saved. Focus and stopwatch sessions can pause.
 const API_MODE: Record<'focus' | 'stopwatch', string> = { focus: 'pomodoro', stopwatch: 'stopwatch' }
 
 const pad = (value: number) => String(value).padStart(2, '0')
@@ -34,7 +34,8 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [linksNotice, setLinksNotice] = useState('')
   const [now, setNow] = useState(Date.now)
   const pendingStart = useRef<{ key: string; body: FocusIn } | null>(null)
-  const active = sessions.find((session) => session.status === 'active')
+  const active = sessions.find((session) => session.status === 'active' || session.status === 'paused')
+  const paused = active?.status === 'paused'
   const load = useCallback(async () => {
     try {
       const client = getSharedApiClient()
@@ -47,14 +48,14 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
     } catch (error) { setNotice(errorText(error)); setStatus(navigator.onLine ? 'error' : 'offline') }
   }, [])
   useEffect(() => { void load() }, [load, apiStatus])
-  const ticking = !!active || breakStart !== null
+  const ticking = (!!active && !paused) || breakStart !== null
   useEffect(() => {
     if (!ticking) return
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [ticking])
 
-  const elapsed = active ? Math.max(0, Math.floor((now - new Date(active.started_at).getTime()) / 1000)) : 0
+  const elapsed = !active ? 0 : paused ? active.elapsed_seconds : Math.max(0, Math.floor((now - new Date(active.started_at).getTime()) / 1000) - (active.paused_seconds ?? 0))
   const secondsOf = (session: FocusOut) => session.id === active?.id ? elapsed : session.elapsed_seconds
   const shown: Mode = active ? (active.mode === 'stopwatch' ? 'stopwatch' : 'focus') : mode
   const breakLeft = breakStart === null ? preset * 60 : Math.max(0, preset * 60 - Math.floor((now - breakStart) / 1000))
@@ -79,14 +80,21 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
     } catch (error) { setNotice(errorText(error)); await load() }
     finally { setBusy(false) }
   }
-  const stop = async () => {
-    if (breakStart !== null && !active) { setBreakStart(null); return }
+  // A stale version means another device changed the session: show the notice and reload the real state.
+  const change = async (run: (id: string, version: number) => Promise<unknown>) => {
     if (!active || busy) return
     setBusy(true); setNotice('')
-    try { await getSharedApiClient().stopFocusSession(active.id, { queueOnOffline: false, query: { version: active.version } }); await load() }
-    catch (error) { setNotice(errorText(error)) }
+    try { await run(active.id, active.version); await load() }
+    catch (error) { setNotice(errorText(error)); if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') await load() }
     finally { setBusy(false) }
   }
+  const stop = async () => {
+    if (breakStart !== null && !active) { setBreakStart(null); return }
+    await change((id, version) => getSharedApiClient().stopFocusSession(id, { queueOnOffline: false, query: { version } }))
+  }
+  const pause = () => change((id, version) => getSharedApiClient().pauseFocusSession(id, version))
+  const resume = () => change((id, version) => getSharedApiClient().resumeFocusSession(id, version))
+  const primary = paused ? { label: 'Resume', Icon: Play, run: resume } : active ? { label: 'Pause', Icon: Pause, run: pause } : breakRunning ? { label: 'Stop', Icon: Square, run: stop } : { label: 'Start', Icon: Play, run: start }
 
   const today = new Date().toDateString()
   const todays = sessions.filter((session) => new Date(session.started_at).toDateString() === today)
@@ -109,7 +117,7 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
         <div className="tl-ring" style={{ background: `conic-gradient(#f06a58 ${filled}%, #efe9e4 0)` }}><div>
           <span className="tl-ring__phase">{MODES.find((item) => item.id === shown)?.label}</span>
           <span className="tl-ring__time" aria-label="Elapsed focus time">{clock(time)}</span>
-          <span className="tl-muted">{active ? `Started ${new Date(active.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : breakRunning ? 'Break in progress' : 'Ready'}</span>
+          <span className="tl-muted">{paused ? 'Paused' : active ? `Started ${new Date(active.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : breakRunning ? 'Break in progress' : 'Ready'}</span>
         </div></div>
         {PRESETS[shown].length > 0 && <div className="tl-chips" role="radiogroup" aria-label="Duration">{PRESETS[shown].map((minutes) => <button key={minutes} type="button" role="radio" aria-checked={preset === minutes} disabled={locked} onClick={() => setPreset(minutes)}>{minutes}</button>)}</div>}
         {shown !== 'break' && <label className="tl-task"><SquareCheck size={18} aria-hidden="true" />
@@ -120,8 +128,8 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
           {projectName && <span className="tl-muted">{projectName}</span>}</label>}
         {linksNotice && <p className="tl-note" role="status">{linksNotice}</p>}
         <div className="tl-actions">
-          <button type="button" className="tl-primary" disabled={mode === 'break' ? false : busy || writeBlocked} onClick={() => void (running ? stop() : start())}>{running ? <Square size={18} aria-hidden="true" /> : <Play size={18} aria-hidden="true" />}{running ? 'Stop' : 'Start'}</button>
-          <button type="button" className="tl-icon-btn" aria-label="Reset" disabled={running || (breakStart === null && !pendingStart.current)} onClick={() => { pendingStart.current = null; setBreakStart(null); setNotice('') }}><RotateCcw size={18} aria-hidden="true" /></button>
+          <button type="button" className="tl-primary" disabled={mode === 'break' ? false : busy || writeBlocked} onClick={() => void primary.run()}><primary.Icon size={18} aria-hidden="true" />{primary.label}</button>
+          <button type="button" className="tl-icon-btn" aria-label="Reset" disabled={busy || (!active && breakStart === null && !pendingStart.current)} onClick={() => { if (active) { void stop(); return } pendingStart.current = null; setBreakStart(null); setNotice('') }}><RotateCcw size={18} aria-hidden="true" /></button>
         </div>
       </section>
       <div className="tl-stack">
@@ -132,7 +140,7 @@ export function TimerView({ apiStatus }: { apiStatus: ApiStatus }) {
         </section>
         <section className="tl-card" aria-label="Sessions"><h2>Sessions</h2>
           {recent.length ? recent.map((session) => <div className="tl-sess" key={session.id}>
-            <span className="tl-dot" style={{ background: session.status === 'active' ? '#f06a58' : session.status === 'completed' ? '#14966c' : '#8c869a' }} />
+            <span className="tl-dot" style={{ background: session.status === 'active' ? '#f06a58' : session.status === 'paused' ? '#e0a21b' : session.status === 'completed' ? '#14966c' : '#8c869a' }} />
             <div className="tl-sess__body"><div className="tl-sess__title">{taskTitle(session)}</div><div className="tl-muted">{new Date(session.started_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {session.status}</div></div>
             <span className="tl-sess__dur">{duration(secondsOf(session))}</span></div>) : <p className="tl-note">No focus sessions yet. Start one to see it here.</p>}
         </section>

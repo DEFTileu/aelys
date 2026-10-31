@@ -93,3 +93,5 @@
   [data-widget-heading] { gap: 5px !important; }
   [data-widget-heading] > span:first-child { display: none !important; }
 }
+.wb-presets { display: flex; gap: 6px; margin-top: 8px; }
+.wb-presets .wb-chip { margin-top: 0; }

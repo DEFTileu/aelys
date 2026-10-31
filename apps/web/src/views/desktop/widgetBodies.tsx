@@ -1,6 +1,6 @@
 // One layout per widget size. Only fields that exist in HomeData are rendered; missing data omits the element.
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { ChevronRight, Play, Plus, Square, Check } from '../../icons'
+import { ChevronRight, Pause, Play, Plus, RotateCcw, Check } from '../../icons'
 import type { FocusOut, TaskOut } from '@aelys/shared'
 import { FOCUS_SESSION_SECONDS, accentOf } from '../../data/desktop/home'
 import { ageLabel, dayLabel } from '../../lib/format'
@@ -149,20 +149,23 @@ function Ring({ pct, children }: { pct: number; children: ReactNode }) {
 const clock = (seconds: number) => `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`
 function Focus({ size, focus, data }: BodyProps) {
   const pct = Math.min(100, Math.round((focus.left / FOCUS_SESSION_SECONDS) * 100))
-  const toggle = <button type="button" className="home-btn home-focus-toggle" disabled={focus.disabled} title={focus.running ? 'Stop' : 'Start'} aria-label={focus.running ? 'Stop focus' : 'Start focus'} onClick={focus.toggle}>{focus.running ? <Square size={16} /> : <Play size={16} />}</button>
-  const ring = <Ring pct={pct}><div className="home-focus-time">{clock(focus.left)}</div><small className="wb-muted">Elapsed focus</small></Ring>
+  const verb = focus.running ? 'Pause' : focus.paused ? 'Resume' : 'Start'
+  const toggle = <><button type="button" className="home-btn home-focus-toggle" disabled={focus.disabled} title={verb} aria-label={`${verb} focus`} onClick={focus.toggle}>{focus.running ? <Pause size={16} /> : <Play size={16} />}</button>
+    {focus.live && <button type="button" className="home-btn home-focus-toggle" disabled={focus.disabled} title="Stop" aria-label="Stop focus" onClick={focus.reset}><RotateCcw size={16} /></button>}</>
+  const ring = <Ring pct={pct}><div className="home-focus-time">{clock(focus.left)}</div><small className="wb-muted">{focus.paused ? 'Paused' : 'Elapsed focus'}</small></Ring>
   if (size === 'S' || size === 'Tall') return <div className="home-focus-body wb-center">{ring}{toggle}</div>
   const sessions = data.focusSessions ?? []
-  const active = sessions.find(item => item.status === 'active')
+  const active = sessions.find(item => item.status === 'active' || item.status === 'paused')
   const linked = active?.task_id ? data.tasks.find(task => task.id === active.task_id) : undefined
   const info = <div className="wb-col wb-grow">
     <small className="wb-muted">Linked task</small>
     <div className="wb-strong">{linked?.title ?? 'No task linked'}</div>
+    {!focus.live && <div className="wb-presets" aria-label="Duration presets">{[25, 50, 90].map(minutes => <span key={minutes} className="wb-chip">{minutes}</span>)}</div>}
     <div className="wb-actions">{toggle}<button type="button" className="home-btn wb-action" onClick={() => navigate('/timer')}>Open Timer<ChevronRight size={16} /></button></div>
   </div>
   if (size === 'M') return <div className="wb-split">{ring}{info}</div>
   const todayStart = dayStart()
-  const seconds = (session: FocusOut) => session.status === 'active' ? focus.left : session.elapsed_seconds
+  const seconds = (session: FocusOut) => session.id === active?.id ? focus.left : session.elapsed_seconds
   const today = sessions.filter(session => Date.parse(session.started_at) >= todayStart)
   const week = Array.from({ length: 7 }, (_, index) => { const start = dayStart(index - 6); return { start, total: sessions.filter(session => Date.parse(session.started_at) >= start && Date.parse(session.started_at) < start + 86400000).reduce((sum, session) => sum + seconds(session), 0) } })
   const max = Math.max(1, ...week.map(day => day.total))

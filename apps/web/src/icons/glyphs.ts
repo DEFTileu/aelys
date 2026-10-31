@@ -64,6 +64,7 @@ export const glyphs = {
   X: 'm6 6 12 12M18 6 6 18',
   Check: 'm4.5 12 5 5L20 6',
   Play: 'M7 4.5 20 12 7 19.5v-15Z',
+  Pause: 'M8 5v14M16 5v14',
   Square: 'M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z',
   RefreshCw: 'M20 10a8 8 0 0 0-13-5L3 9m0-5v5h5m-4 5a8 8 0 0 0 13 5l4-4m0 5v-5h-5',
   RotateCcw: 'M4 10a8 8 0 1 1 1.5 8M3 4v6h6',

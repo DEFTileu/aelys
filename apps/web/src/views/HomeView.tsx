@@ -13,6 +13,7 @@ import { HomeWidget, type HomeData, type FocusTimer } from './desktop/homeWidget
 // Orb gradient from the design; the AppShell hero stays outside this view.
 const ORB = 'radial-gradient(circle at 32% 28%,#fff 0,rgba(235,225,255,.9) 9%,transparent 28%),radial-gradient(circle at 72% 72%,#FF7AD9 0,transparent 48%),radial-gradient(circle at 24% 72%,#46D2FF 0,transparent 46%),radial-gradient(circle at 50% 50%,#6E4CF5 0,#2A1590 82%)'
 
+const isLive = (item: FocusOut) => item.status === 'active' || item.status === 'paused'
 const EMPTY_DATA: HomeData = { tasks: [], events: [], projects: [], notes: [], finance: [] }
 
 export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
@@ -58,29 +59,32 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
         states: { today: tasks.status === 'fulfilled' ? 'ready' : 'error', cal: events.status === 'fulfilled' ? 'ready' : 'error', proj: projects.status === 'fulfilled' ? 'ready' : 'error', notes: notes.status === 'fulfilled' ? 'ready' : 'error', fin: finance.status === 'fulfilled' ? 'ready' : 'error', focus: focusSessions.status === 'fulfilled' ? 'ready' : 'error', mail: mail.status === 'fulfilled' ? 'ready' : 'error', activity: activity.status === 'fulfilled' ? 'ready' : 'error', kb: notes.status === 'fulfilled' ? 'ready' : 'error' },
       })
       if (focusSessions.status === 'fulfilled') setData((current) => ({ ...current, focusSessions: focusSessions.value }))
-      if (focusSessions.status === 'fulfilled') setFocusSession(focusSessions.value.find((item) => item.status === 'active') ?? null)
+      if (focusSessions.status === 'fulfilled') setFocusSession(focusSessions.value.find(isLive) ?? null)
     })
     return () => { active = false }
   }, [apiStatus, reload])
-  useEffect(() => { if (!focusSession) return; const timer = window.setInterval(() => setFocusTick((value) => value + 1), 1000); return () => window.clearInterval(timer) }, [focusSession])
+  useEffect(() => { if (!focusSession || focusSession.status === 'paused') return; const timer = window.setInterval(() => setFocusTick((value) => value + 1), 1000); return () => window.clearInterval(timer) }, [focusSession])
   const changeFocus = async (stopOnly = false) => {
     if (focusLock.current || apiStatus !== 'ready' || (stopOnly && !focusSession)) return
     focusLock.current = true; setFocusBusy(true); setTaskNotice('')
     try {
       const client = getSharedApiClient()
-      if (focusSession) await client.stopFocusSession(focusSession.id, { queueOnOffline: false, query: { version: focusSession.version } })
+      if (focusSession && stopOnly) await client.stopFocusSession(focusSession.id, { queueOnOffline: false, query: { version: focusSession.version } })
+      else if (focusSession) await (focusSession.status === 'paused' ? client.resumeFocusSession : client.pauseFocusSession).call(client, focusSession.id, focusSession.version)
       else {
         focusStart.current ??= { body: { started_at: new Date().toISOString(), mode: 'pomodoro' }, key: crypto.randomUUID() }
         await client.startFocusSession(focusStart.current.body, { queueOnOffline: false, idempotencyKey: focusStart.current.key })
         focusStart.current = null
       }
-      setFocusSession((await client.focusSessions()).find((item) => item.status === 'active') ?? null)
+      const sessions = await client.focusSessions()
+      setFocusSession(sessions.find(isLive) ?? null); setData((current) => ({ ...current, focusSessions: sessions }))
     } catch { setTaskNotice('Focus action could not be confirmed. Open Timer and refresh before retrying.') }
     finally { focusLock.current = false; setFocusBusy(false) }
   }
   const focus = useMemo<FocusTimer>(() => {
-    const elapsed = focusSession ? Math.max(0, Math.floor((Date.now() - new Date(focusSession.started_at).getTime()) / 1000)) : 0
-    return { left: focusSession ? elapsed : 0, running: !!focusSession, disabled: focusBusy || apiStatus !== 'ready', toggle: () => { void changeFocus() }, reset: () => { void changeFocus(true) } }
+    const paused = focusSession?.status === 'paused'
+    const elapsed = !focusSession ? 0 : paused ? focusSession.elapsed_seconds : Math.max(0, Math.floor((Date.now() - new Date(focusSession.started_at).getTime()) / 1000) - (focusSession.paused_seconds ?? 0))
+    return { left: elapsed, running: !!focusSession && !paused, paused, live: !!focusSession, disabled: focusBusy || apiStatus !== 'ready', toggle: () => { void changeFocus() }, reset: () => { void changeFocus(true) } }
   }, [focusSession, focusTick, focusBusy, apiStatus])
   // The sidebar Widgets item sets this flag and navigates here.
   useEffect(() => { if (takeCustomizeHome()) { setEditing(true); if (!mobile) setSheet(true) } }, [customizeHome])
