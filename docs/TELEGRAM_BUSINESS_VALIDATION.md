@@ -96,3 +96,23 @@ Telegram, configure AI/persona and enable automatic replies. Tokens should not
 be pasted into this chat. Run one real inbound/reply and revoke-rights test after
 setup before relying on the assistant. Production/PG/multi-host acceptance and
 independent personal bot notification decisions remain open.
+
+## Active development checkout follow-up — 2026-10-31
+
+Selected task: Phase 3 task 5, Telegram adapter, manual reply regression.
+The running web process on port 5173 serves the desktop-design worktree, while
+the backend on port 8000 runs from the primary checkout. The initial fix in the
+primary checkout therefore did not reach the active web page. Applied the same
+inbound-only reply controls and sanitized error explanations here, preserving
+this checkout's English UI. Owner-originated messages remain visible as history.
+The API contract and permission checks are unchanged; no real message was sent.
+Assumption: preserve the documented inbound-only manual reply contract. Existing
+OPEN integration acceptance decisions remain OPEN.
+
+Validation: `pnpm --filter @aelys/web exec vitest run src/tests/telegram-settings.test.tsx`
+(10 passed), `pnpm --filter @aelys/web typecheck` and `git diff --check` (passed).
+A direct HTTP read of `/src/views/TelegramSettings.tsx` from port 5173 confirmed
+the outgoing-message explanation, actionable error text and inbound-only controls
+are present in the served module. No backend restart is needed for this change.
+Next acceptance step: reload Settings → Telegram and select a recent inbound
+message after verifying the bot's reply permissions in Telegram Business.

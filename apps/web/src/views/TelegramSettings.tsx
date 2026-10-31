@@ -14,6 +14,12 @@ function errorNotice(error: unknown): string {
     TELEGRAM_TOKEN_INVALID: 'The bot token is invalid. Check the token in BotFather.',
     TELEGRAM_VERSION_CONFLICT: 'Settings changed. Refresh and try again.',
     TELEGRAM_DELIVERY_UNKNOWN: 'The send result is unknown. Check the Telegram chat before sending again.',
+    TELEGRAM_MESSAGE_UNAVAILABLE: 'Replies are available only for incoming messages. Select a message from the other person and make sure the connection is active.',
+    TELEGRAM_REPLY_DENIED: 'The bot cannot reply in this chat. Check the connection and reply permissions in Telegram Business settings.',
+    TELEGRAM_REPLY_WINDOW_EXPIRED: 'The Telegram reply window (24 hours) has expired. Wait for a new incoming message.',
+    TELEGRAM_PAUSED: 'The connection is paused. Resume it before drafting or sending a reply.',
+    TELEGRAM_RATE_LIMITED: 'Telegram has limited requests. Wait before trying again.',
+    ALREADY_SENT: 'A reply has already been sent to this message. Select a new incoming message.',
     PROVIDER_REQUIRED: 'Choose an AI provider with a saved API key for automatic replies.',
     BINDING_REQUIRED: 'Link the owner and connect the bot to Telegram Business.',
     INSTRUCTIONS_REQUIRED: 'Enter assistant instructions before turning on automatic replies.',
@@ -83,6 +89,7 @@ export function TelegramSettings() {
     setDrafts((current) => ({ ...current, [item.id]: item.draft_text ?? '' }))
   }
   const send = (message: TelegramBusinessMessage) => {
+    if (message.direction !== 'inbound' || message.deleted_at) return
     const text = drafts[message.id] ?? message.draft_text ?? ''
     if (!text.trim()) return
     const signature = JSON.stringify([message.version, text])
@@ -151,10 +158,13 @@ export function TelegramSettings() {
       {messages.map((message) => <details className="provider-row actual-settings-disclosure" key={message.id}>
         <summary>{message.chat_title} · {message.direction}</summary><p>{message.sent_at}{message.deleted_at ? ' · deleted' : ''}</p>
         <div className="mail-body">{message.text}</div>
-        <p>Draft: {message.draft_status}{message.draft_error_code ? ' · draft failed' : ''}</p>
-        <div className="settings-form"><label>Reply text<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
-          <div className="provider-actions"><button className="button button--quiet" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Create draft</button>
-            <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Send reply</button></div></div>
+        {message.direction === 'owner' && <p>Your outgoing message. Select an incoming message from the other person to reply.</p>}
+        {message.direction === 'inbound' && <>
+          <p>Draft: {message.draft_status}{message.draft_error_code ? ' · draft failed' : ''}</p>
+          <div className="settings-form"><label>Reply text<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
+            <div className="provider-actions"><button className="button button--quiet" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Create draft</button>
+              <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Send reply</button></div></div>
+        </>}
       </details>)}
     </section>}
   </div></div>
