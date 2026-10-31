@@ -28,7 +28,7 @@ async def client(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_one_entry_cookie_restore_rotation_logout_and_modules(client):
-    assert (await client.get(f'{PREFIX}/status')).json() == {'initialized': False, 'can_resume': False}
+    assert (await client.get(f'{PREFIX}/status')).json() == {'initialized': False, 'can_resume': False, 'password_setup': True}
     created = await client.post(f'{PREFIX}/bootstrap', json=CREDENTIALS)
     assert created.status_code == 200, created.text
     assert set(created.json()) == {'access_token', 'device_id', 'token_type'}
@@ -37,7 +37,7 @@ async def test_one_entry_cookie_restore_rotation_logout_and_modules(client):
     original_refresh = client.cookies.get(COOKIE)
     original_access = created.json()['access_token']
     auth = {'Authorization': f'Bearer {original_access}'}
-    assert (await client.get(f'{PREFIX}/status')).json() == {'initialized': True, 'can_resume': True}
+    assert (await client.get(f'{PREFIX}/status')).json() == {'initialized': True, 'can_resume': True, 'password_setup': True}
     for path in ['/tasks', '/finance/accounts', '/calendar/events', '/mail/messages', '/ai/providers']:
         assert (await client.get(f'/api/v1{path}', headers=auth)).status_code == 200
     rotated = await client.post(f'{PREFIX}/refresh')

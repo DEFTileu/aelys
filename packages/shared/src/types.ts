@@ -26,7 +26,8 @@ export interface LoginRequest {
   readonly email: string;
   readonly password: string;
 }
-export interface BrowserAuthStatus { readonly initialized: boolean; readonly can_resume: boolean; }
+// password_setup is absent on servers that predate setup tokens, where password setup was always available.
+export interface BrowserAuthStatus { readonly initialized: boolean; readonly can_resume: boolean; readonly password_setup?: boolean; }
 export interface BrowserSession { readonly access_token: string; readonly device_id: Id | null; readonly token_type: string; }
 export interface RefreshRequest {
   readonly refresh_token: string;

@@ -29,7 +29,7 @@ async def client(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_native_rotation_crud_restart_and_logout(client):
-    assert (await client.get(f"{PREFIX}/status")).json() == {"initialized": False}
+    assert (await client.get(f"{PREFIX}/status")).json() == {"initialized": False, "password_setup": True}
     created = await client.post(f"{PREFIX}/bootstrap", json=LOGIN)
     assert created.status_code == 200, created.text
     assert "no-store" in created.headers["cache-control"]
@@ -42,7 +42,7 @@ async def test_native_rotation_crud_restart_and_logout(client):
     task = await client.post("/api/v1/tasks", headers=auth, json={"title": "Native task"})
     assert task.status_code == 200, task.text
     assert (await client.get("/api/v1/tasks", headers=auth)).json()[0]["id"] == task.json()["id"]
-    assert (await client.get(f"{PREFIX}/status")).json() == {"initialized": True}
+    assert (await client.get(f"{PREFIX}/status")).json() == {"initialized": True, "password_setup": True}
     rotated = (await client.post(f"{PREFIX}/refresh", json={"refresh_token": first["refresh_token"]})).json()
     assert rotated["refresh_token"] != first["refresh_token"]
     assert rotated["device_id"] == first["device_id"]

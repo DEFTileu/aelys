@@ -54,6 +54,8 @@ class NativeRefresh(BaseModel):
 
 class NativeStatus(BaseModel):
     initialized: bool
+    # Whether the server still lets a first owner be created with a password (off by default).
+    password_setup: bool = False
 
 
 class NativeSession(BaseModel):
@@ -96,7 +98,7 @@ async def start_session(user: User, body: NativeLogin, db: AsyncSession) -> Nati
 
 @router.get("/status", response_model=NativeStatus)
 async def status(db: AsyncSession = Depends(get_db)) -> NativeStatus:
-    return NativeStatus(initialized=(await db.execute(select(User.id).limit(1))).first() is not None)
+    return NativeStatus(initialized=(await db.execute(select(User.id).limit(1))).first() is not None, password_setup=get_settings().password_bootstrap_enabled)
 
 
 @router.post("/login", response_model=NativeSession)

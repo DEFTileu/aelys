@@ -5933,6 +5933,11 @@
           "can_resume": {
             "type": "boolean",
             "title": "Can Resume"
+          },
+          "password_setup": {
+            "type": "boolean",
+            "title": "Password Setup",
+            "default": false
           }
         },
         "type": "object",
@@ -7628,6 +7633,11 @@
           "initialized": {
             "type": "boolean",
             "title": "Initialized"
+          },
+          "password_setup": {
+            "type": "boolean",
+            "title": "Password Setup",
+            "default": false
           }
         },
         "type": "object",

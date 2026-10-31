@@ -115,6 +115,17 @@ async def test_device_login_needs_a_fresh_valid_signature_and_refresh_still_rota
 
 
 @pytest.mark.asyncio
+async def test_status_tells_clients_whether_password_setup_is_still_offered(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), 'password_bootstrap_enabled', False)
+    assert (await client.get(f'{B}/auth/browser/status')).json() == {'initialized': False, 'can_resume': False, 'password_setup': False}
+    assert (await client.get(f'{B}/auth/native/status')).json() == {'initialized': False, 'password_setup': False}
+    monkeypatch.setattr(get_settings(), 'password_bootstrap_enabled', True)
+    assert (await client.get(f'{B}/auth/browser/status')).json()['password_setup'] is True
+    await claim_owner(client)
+    assert (await client.get(f'{B}/auth/browser/status')).json()['initialized'] is True
+
+
+@pytest.mark.asyncio
 async def test_unanswered_challenges_are_capped_per_device(client):
     _, session = await claim_owner(client)
     codes = [(await client.post(f'{B}/auth/device/challenge', json={'device_id': session['device_id']})).status_code for _ in range(11)]

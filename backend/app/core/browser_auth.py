@@ -30,6 +30,8 @@ COOKIE_PATH = "/api/v1/auth/browser"
 class BrowserStatus(BaseModel):
     initialized: bool
     can_resume: bool
+    # Whether the server still lets a first owner be created with a password (off by default).
+    password_setup: bool = False
 
 
 class BrowserSession(BaseModel):
@@ -83,7 +85,7 @@ async def cookie_session(request: Request, db: AsyncSession) -> AuthSession | No
 async def status(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
     initialized = (await db.execute(select(User.id).limit(1))).first() is not None
-    return BrowserStatus(initialized=initialized, can_resume=await cookie_session(request, db) is not None)
+    return BrowserStatus(initialized=initialized, can_resume=await cookie_session(request, db) is not None, password_setup=get_settings().password_bootstrap_enabled)
 
 
 async def start_browser_session(user: User, request: Request, response: Response, db: AsyncSession) -> BrowserSession:
