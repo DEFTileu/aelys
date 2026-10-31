@@ -1,13 +1,13 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiClient, type TelegramBusinessMessage, type TelegramStatus } from '@aelys/shared'
+import { ApiClient, ApiError, type TelegramBusinessMessage, type TelegramStatus } from '@aelys/shared'
 import { TelegramSettings } from '../views/TelegramSettings'
 
 const client = vi.hoisted(() => ({ telegramStatus: vi.fn(), telegramMessages: vi.fn(), aiProviders: vi.fn(), connectTelegram: vi.fn(), telegramBinding: vi.fn(), updateTelegramSettings: vi.fn(), disconnectTelegram: vi.fn(), syncTelegram: vi.fn(), draftTelegramMessage: vi.fn(), sendTelegramMessage: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 const status: TelegramStatus = { configured: true, id: 'bot', version: 3, bot_username: 'example_bot', bot_name: 'Example', business_capable: true, enabled: true, auto_reply: false, owner_telegram_id: null, provider_id: null, model: null, instructions: '', last_polled_at: null, last_error_code: null, connections: [] }
-const message: TelegramBusinessMessage = { id: 'm1', version: 4, business_connection_id: 'c1', chat_id: 5, telegram_message_id: 6, sender_id: 7, chat_title: 'Клиент', text: '<script>test</script>', sent_at: '2026-10-29', direction: 'incoming', draft_text: null, draft_status: 'none', draft_error_code: null, deleted_at: null }
+const message: TelegramBusinessMessage = { id: 'm1', version: 4, business_connection_id: 'c1', chat_id: 5, telegram_message_id: 6, sender_id: 7, chat_title: 'Клиент', text: '<script>test</script>', sent_at: '2026-10-29', direction: 'inbound', draft_text: null, draft_status: 'none', draft_error_code: null, deleted_at: null }
 let root: ReturnType<typeof createRoot> | undefined
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.resetAllMocks(); client.telegramStatus.mockResolvedValue(status); client.telegramMessages.mockResolvedValue([]); client.aiProviders.mockResolvedValue([]) })
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = '' })
@@ -16,6 +16,29 @@ async function click(host: HTMLElement, text: string) { await act(async () => [.
 async function input(element: HTMLInputElement | HTMLTextAreaElement, value: string) { await act(async () => { const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })) }) }
 
 describe('Telegram settings', () => {
+  it('shows owner messages as history without draft or send controls', async () => {
+    client.telegramMessages.mockResolvedValue([{ ...message, direction: 'owner' }])
+    const host = await mount()
+    const conversation = [...host.querySelectorAll('details')].find((item) => item.querySelector('summary')?.textContent?.includes('Клиент'))!
+    expect(conversation.textContent).toContain(message.text)
+    expect(conversation.textContent).toContain('Ваше исходящее сообщение')
+    expect(conversation.querySelector('textarea')).toBeNull()
+    expect(conversation.querySelector('button')).toBeNull()
+    expect(client.draftTelegramMessage).not.toHaveBeenCalled()
+    expect(client.sendTelegramMessage).not.toHaveBeenCalled()
+  })
+  it.each([
+    [409, 'TELEGRAM_MESSAGE_UNAVAILABLE', 'Ответ доступен только для входящего сообщения'],
+    [403, 'TELEGRAM_REPLY_DENIED', 'разрешение на ответы в настройках Telegram Business'],
+    [403, 'TELEGRAM_REPLY_WINDOW_EXPIRED', 'Окно ответа Telegram (24 часа) истекло'],
+  ])('explains HTTP %s %s without displaying provider error content', async (status, code, expected) => {
+    client.telegramMessages.mockResolvedValue([{ ...message, draft_text: 'Ответ' }])
+    client.sendTelegramMessage.mockRejectedValue(new ApiError(status, code, 'private-provider-content'))
+    const host = await mount()
+    await click(host, 'Отправить ответ')
+    expect(host.querySelector('[role=status]')?.textContent).toContain(expected)
+    expect(host.textContent).not.toContain('private-provider-content')
+  })
   it('clears the write-only token on success and distinguishes a pending business connection', async () => {
     client.connectTelegram.mockResolvedValue(status)
     const host = await mount()

@@ -35,6 +35,20 @@ describe('private offline cache namespaces', () => {
     expect(mocks.client.mock.calls[0][0].offlineStore).toBeUndefined()
   })
 
+  it('keeps a per-owner offline store for native sessions once the owner is known', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true })
+    try {
+      const api = await import('../lib/api')
+      api.getSharedApiClient()
+      expect(mocks.client.mock.calls[0][0].offlineStore).toBeUndefined()
+      api.setNativeCacheOwner('owner-one')
+      api.getSharedApiClient()
+      expect(mocks.store).toHaveBeenCalledTimes(1)
+      expect(mocks.store.mock.calls[0][0]).toBe(`aelys-shared-v3:${encodeURIComponent('http://127.0.0.1:8000')}:owner-one`)
+      expect(mocks.client.mock.calls[1][0].offlineStore).toBeDefined()
+    } finally { delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ }
+  })
+
   it('does not send a new server or owner credential from an old client', async () => {
     const api = await import('../lib/api')
     sessionStorage.setItem('aelys.accessToken', token('owner-one'))
