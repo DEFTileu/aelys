@@ -1,7 +1,7 @@
 import { StyledSelect } from '../../components/controls/StyledSelect'
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, GripVertical, Scaling } from '../../icons'
-import { normalizeWidgetSize, WIDGET_GRID_GAP, WIDGET_SIZES, type WidgetId } from './homeLayout'
+import { normalizeWidgetSize, WIDGET_GRID_ROW, WIDGET_GRID_GAP, WIDGET_SIZES, type WidgetId } from './homeLayout'
 
 export type WidgetFrameControls = {
   id: WidgetId
@@ -17,7 +17,7 @@ type Gesture = { kind: 'move' | 'resize'; x: number; y: number; width: number; h
 
 /** Editing is explicit. Both pointer previews and persisted sizes use tile units. */
 export function WidgetFrame({ controls, style, children, editing, onRemove, canMoveEarlier, canMoveLater }: {
-  controls: WidgetFrameControls; style: CSSProperties; children: ReactNode; editing: boolean
+  controls: WidgetFrameControls; style: CSSProperties; children: ReactNode | ((size: ReturnType<typeof normalizeWidgetSize>) => ReactNode); editing: boolean
   onRemove: () => void; canMoveEarlier: boolean; canMoveLater: boolean
 }) {
   const article = useRef<HTMLElement>(null)
@@ -57,7 +57,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
     drag.moved = true
     if (drag.kind === 'resize') {
       // Compare actual pixel distances to preset rectangles. No freeform height.
-      const available = WIDGET_SIZES.filter(item => item.span <= drag.columns || drag.columns === 1 && item.id !== 'full')
+      const available = WIDGET_SIZES.filter(item => drag.columns === 1 ? item.span === size.span : item.span <= drag.columns)
       const nearest = available.reduce((best, item) => {
         const distance = (candidate: typeof item) => Math.hypot((Math.min(drag.columns, candidate.span) * (drag.column + drag.gap) - drag.gap) - (drag.width + dx), (candidate.rows * (drag.row + drag.gap) - drag.gap) - (drag.height + dy))
         return distance(item) < distance(best) ? item : best
@@ -95,7 +95,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
   }
   const pointerHandlers = { onPointerMove: move, onPointerUp: () => finish(false), onPointerCancel: () => finish(true), onLostPointerCapture: () => finish(true) }
   const currentPreset = WIDGET_SIZES.find(item => item.span === size.span && item.height === size.height) ?? WIDGET_SIZES[0]
-  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-size={WIDGET_SIZES.find(item => item.span === activeSize.span && item.height === activeSize.height)?.id ?? currentPreset.id} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, height: activeSize.height, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
+  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-size={WIDGET_SIZES.find(item => item.span === activeSize.span && item.height === activeSize.height)?.id ?? currentPreset.id} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, height: activeSize.height, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
     {editing && <button type="button" className="home-btn home-remove-widget" aria-label={`Remove ${controls.title}`} onClick={onRemove}><span aria-hidden="true">−</span></button>}
     <div className="home-widget-drag-bar" onPointerDown={event => {
       if (editing && !(event.target as HTMLElement).closest('button,a,input,select,textarea')) begin(event, 'move')
@@ -104,19 +104,23 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
         if (['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) { event.preventDefault(); controls.onMove(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1) }
         if (event.key === 'Escape') finish(true)
       }}><GripVertical size={16} aria-hidden="true" /></button>}
-      {children}
+      {typeof children === 'function' ? children(activeSize) : children}
     </div>
     {editing && <>
       <div className="home-widget-edit-tools" role="group" aria-label={`${controls.title} widget controls`}>
         <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} earlier`} title="Move earlier" disabled={!canMoveEarlier} onClick={() => controls.onMove(-1)}><ChevronUp size={16} /></button>
         <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} later`} title="Move later" disabled={!canMoveLater} onClick={() => controls.onMove(1)}><ChevronDown size={16} /></button>
-        <StyledSelect aria-label={`Size of ${controls.title}`} value={currentPreset.id} onChange={event => { const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>
+        <StyledSelect aria-label={`Size of ${controls.title}`} title="Width × height in tiles" value={currentPreset.id} onChange={event => { const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>
       </div>
       <button type="button" className="home-btn home-resize-handle" aria-label={`Resize ${controls.title}`} title="Drag to resize to a tile" onPointerDown={event => begin(event, 'resize')} {...pointerHandlers} onKeyDown={event => {
         if (event.key === 'Escape') { finish(true); return }
         if (!['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) return
         event.preventDefault()
-        const next = event.key === 'ArrowDown' ? WIDGET_SIZES[2] : event.key === 'ArrowUp' ? (size.span === 1 ? WIDGET_SIZES[0] : WIDGET_SIZES[1]) : event.key === 'ArrowLeft' ? WIDGET_SIZES[0] : (size.span >= 2 ? WIDGET_SIZES[3] : WIDGET_SIZES[1])
+        const widths = [1, 2, 4]
+        const widthIndex = widths.indexOf(size.span)
+        const span = event.key === 'ArrowLeft' ? widths[Math.max(0, widthIndex - 1)] : event.key === 'ArrowRight' ? widths[Math.min(widths.length - 1, widthIndex + 1)] : size.span
+        const rows = event.key === 'ArrowUp' ? Math.max(1, size.rows - 1) : event.key === 'ArrowDown' ? Math.min(3, size.rows + 1) : size.rows
+        const next = normalizeWidgetSize(span, rows * (WIDGET_GRID_GAP + WIDGET_GRID_ROW) - WIDGET_GRID_GAP)
         controls.onSize(next.span, next.height)
       }}><Scaling size={18} aria-hidden="true" /></button>
     </>}

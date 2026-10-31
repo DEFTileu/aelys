@@ -267,9 +267,9 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
 .settings-panels { display: flex; gap: 4px; margin: 0 28px 20px; width: fit-content; }
 
 /* Direct dashboard gestures use the existing card surfaces and accent. */
-.home-widget-grid { --widget-columns: 4; display: grid; grid-template-columns: repeat(var(--widget-columns), minmax(0,1fr)); grid-auto-rows: 124px; grid-auto-flow: row dense; gap: 16px; align-items: stretch; border-radius: 28px; }
-.home-widget-grid > .home-widget { grid-column: span min(var(--widget-span,1),var(--widget-columns)); grid-row: span var(--widget-rows,2); min-height: 0; }
-.home-widget-grid--editing { padding: 16px; margin: -16px; background-color: rgba(255,255,255,.12); background-image: linear-gradient(to right,rgba(106,76,242,.13) 1px,transparent 1px),linear-gradient(to bottom,rgba(106,76,242,.13) 1px,transparent 1px); background-size: calc((100% - 16px) / var(--widget-columns)) 140px; background-position: 16px 16px; }
+.home-widget-grid { --widget-columns: 4; display: grid; grid-template-columns: repeat(var(--widget-columns), minmax(0,1fr)); grid-auto-rows: 176px; grid-auto-flow: row dense; gap: 16px; align-items: stretch; border-radius: 28px; }
+.home-widget-grid > .home-widget { grid-column: span min(var(--widget-span,1),var(--widget-columns)); grid-row: span var(--widget-rows,1); min-height: 0; }
+.home-widget-grid--editing { padding: 16px; margin: -16px; background-color: rgba(255,255,255,.12); background-image: linear-gradient(to right,rgba(106,76,242,.13) 1px,transparent 1px),linear-gradient(to bottom,rgba(106,76,242,.13) 1px,transparent 1px); background-size: calc((100% - 16px) / var(--widget-columns)) 192px; background-position: 16px 16px; }
 .home-widget-drag-bar { height: 100%; overflow: auto; scrollbar-width: thin; }
 .home-widget--editing .home-widget-drag-bar { padding-bottom: 46px; cursor: grab; touch-action: none; }
 .home-widget--editing [data-widget-heading] { padding-left: 18px; }
@@ -347,7 +347,6 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
 .home-widget-meta { flex-shrink:1; }
 .home-widget [data-widget-heading] > span:nth-child(2) { flex-shrink:0; max-width:70%; }
 .home-widget[data-widget-id='cal'] [data-widget-heading] > span:nth-child(2) { max-width:55%; }
-.home-widget[data-widget-id='activity'] { height:auto !important; grid-row:span 1; }
 
 .home-note-row { display:flex; align-items:center; gap:12px; height:38px; min-width:0; text-align:left; }
 .home-note-row > span:last-child { min-width:0; flex:1; }

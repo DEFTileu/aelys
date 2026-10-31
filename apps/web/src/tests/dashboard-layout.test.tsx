@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from '../views/HomeView'
-import { HOME_LAYOUT_KEY, MOBILE_HOME_LAYOUT_KEY, saveLayout, normalizeWidgetSize, readLayout, reorderLayout, type LayoutEntry } from '../views/desktop/homeLayout'
+import { HOME_LAYOUT_KEY, MOBILE_HOME_LAYOUT_KEY, LEGACY_HOME_LAYOUT_KEY, LEGACY_MOBILE_HOME_LAYOUT_KEY, WIDGET_SIZES, WIDGET_IDS, saveLayout, normalizeWidgetSize, readLayout, reorderLayout, type LayoutEntry } from '../views/desktop/homeLayout'
 
 const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), focusSessions: vi.fn(), mailMessages: vi.fn(), activity: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
@@ -26,14 +26,78 @@ async function mount() {
   const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
   await act(async () => root!.render(<HomeView apiStatus="ready" />))
   const grid = host.querySelector<HTMLElement>('[aria-label="Dashboard widgets"]')!
-  grid.style.gridTemplateColumns = '200px 200px 200px 200px'; grid.style.columnGap = '16px'
+  grid.style.gridTemplateColumns = '200px 200px 200px 200px'; grid.style.columnGap = '16px'; grid.style.gridAutoRows = '176px'
   const rect = (left: number, top: number, width: number, height: number) => ({ left, top, right: left + width, bottom: top + height, width, height, x: left, y: top, toJSON: () => ({}) })
   vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 848, 560))
-  ;[...grid.children].forEach((card, index) => vi.spyOn(card, 'getBoundingClientRect').mockReturnValue(rect(index % 4 * 216, Math.floor(index / 4) * 256, 200, 264)))
+  ;[...grid.children].forEach((card, index) => vi.spyOn(card, 'getBoundingClientRect').mockReturnValue(rect(index % 4 * 216, Math.floor(index / 4) * 256, 200, 176)))
   return { host, grid }
 }
 
 describe('dashboard customization', () => {
+  it('saves all six tile formats for every widget', async () => {
+    saveLayout(WIDGET_IDS.map(id => [id, 1, 176]))
+    const { host, grid } = await mount(); await customize(host)
+    for (const id of WIDGET_IDS) {
+      const card = grid.querySelector<HTMLElement>(`[data-widget-id="${id}"]`)!
+      const select = card.querySelector<HTMLSelectElement>('select')!
+      for (const size of WIDGET_SIZES.filter(size => size.span <= 2)) {
+        await act(async () => { select.value = size.id; select.dispatchEvent(new Event('change', { bubbles: true })) })
+        expect(card.dataset.size).toBe(size.id)
+        expect(card.dataset.rows).toBe(String(size.rows))
+        expect(readLayout().find(([key]) => key === id)).toEqual([id, size.span, size.height])
+      }
+    }
+  })
+
+  it('changes width and height independently with keyboard resizing', async () => {
+    const { host } = await mount(); await customize(host)
+    const handle = host.querySelector('[aria-label="Resize Today"]')!
+    for (const [key, span, height] of [['ArrowDown', 1, 368], ['ArrowDown', 1, 560], ['ArrowRight', 2, 560], ['ArrowLeft', 1, 560], ['ArrowUp', 1, 368]] as const) {
+      await act(async () => handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })))
+      expect(readLayout()[0]).toEqual(['today', span, height])
+    }
+  })
+
+  it('preserves saved width when resizing vertically in a collapsed one-column grid', async () => {
+    saveLayout([['today', 2, 176]])
+    const { host, grid } = await mount(); await customize(host)
+    grid.style.gridTemplateColumns = '848px'
+    const handle = host.querySelector('[aria-label="Resize Today"]')!
+    await act(async () => { pointer(handle, 'pointerdown', 200, 176); pointer(handle, 'pointermove', 200, 368) })
+    await act(async () => pointer(handle, 'pointerup', 200, 368))
+    expect(readLayout()[0]).toEqual(['today', 2, 368])
+  })
+
+  it.each([
+    ['today', '.home-task-row'], ['cal', '.home-event-title'], ['proj', '.home-records > div'],
+    ['notes', '.home-note-row'], ['kb', '.home-note-row'], ['fin', '.home-finance-row'],
+    ['mail', '.home-mail-row'], ['activity', '.home-activity > div'],
+  ])('adapts %s records to all three heights', async (id, selector) => {
+    const records = Array.from({ length: 12 }, (_, index) => ({ id: `record-${index}`, title: `Record ${index}`, name: `Project ${index}`, status: 'todo', due_at: null, starts_at: '2026-10-31T10:00:00Z', ends_at: '2026-10-31T11:00:00Z', markdown_body: 'Note preview', currency: 'KZT', amount: '0.0001', notes: '', sender: 'Sender', subject: 'Subject', received_at: '2026-10-31T10:00:00Z', event_kind: 'task.created', actor_kind: 'owner', occurred_at: '2026-10-31T10:00:00Z' }))
+    Object.entries(client).forEach(([key, method]) => method.mockResolvedValue(key === 'focusSessions' ? [] : records))
+    saveLayout(WIDGET_IDS.map(key => [key, 1, 176]))
+    const { host, grid } = await mount(); await customize(host)
+    const card = grid.querySelector(`[data-widget-id="${id}"]`)!
+    const select = card.querySelector<HTMLSelectElement>('select')!
+    for (const [size, expected] of [['1x1', id === 'fin' ? 1 : 2], ['1x2', 6], ['1x3', 10]] as const) {
+      await act(async () => { select.value = size; select.dispatchEvent(new Event('change', { bubbles: true })) })
+      expect(card.querySelectorAll(selector)).toHaveLength(expected)
+    }
+    if (id === 'fin') expect(card.querySelector('.home-finance-total strong')?.textContent).toBe('0.0012')
+  })
+
+  it('adapts the visible records during resize preview and restores them on cancellation', async () => {
+    client.tasks.mockResolvedValue(Array.from({ length: 12 }, (_, index) => ({ id: `task-${index}`, title: `Task ${index}`, status: 'todo', due_at: null })))
+    const { host, grid } = await mount(); await customize(host)
+    const card = grid.querySelector('[data-widget-id="today"]')!
+    const handle = host.querySelector('[aria-label="Resize Today"]')!
+    expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
+    await act(async () => { pointer(handle, 'pointerdown', 200, 176); pointer(handle, 'pointermove', 200, 560) })
+    expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(10)
+    expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
+    await act(async () => pointer(handle, 'pointercancel', 200, 560))
+    expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(2)
+  })
   it('locks editing controls and does not move or save when dragging a heading', async () => {
     const { host, grid } = await mount()
     expect(host.querySelector('[aria-label="Move Today"]')).toBeNull()
@@ -62,34 +126,34 @@ describe('dashboard customization', () => {
   })
 
   it('snaps pointer resize to the grid and restores the saved size after remount', async () => {
-    localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 1, 264], ['cal', 2, 264]]))
+    localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 1, 176], ['cal', 2, 176]]))
     const { host, grid } = await mount(); await customize(host)
     const resize = host.querySelector('[aria-label="Resize Today"]')!
-    await act(async () => pointer(resize, 'pointerdown', 200, 264))
-    await act(async () => pointer(resize, 'pointermove', 410, 350))
-    await act(async () => pointer(resize, 'pointerup', 410, 350))
-    expect(readLayout()[0]).toEqual(['today', 2, 264])
-    expect((grid.children[0] as HTMLElement).style.height).toBe('264px')
+    await act(async () => pointer(resize, 'pointerdown', 200, 176))
+    await act(async () => pointer(resize, 'pointermove', 410, 230))
+    await act(async () => pointer(resize, 'pointerup', 410, 230))
+    expect(readLayout()[0]).toEqual(['today', 2, 176])
+    expect((grid.children[0] as HTMLElement).style.height).toBe('176px')
     await act(async () => root!.unmount()); root = undefined
     const restored = await mount()
-    expect((restored.grid.children[0] as HTMLElement).style.height).toBe('264px')
+    expect((restored.grid.children[0] as HTMLElement).style.height).toBe('176px')
     expect((restored.grid.children[0] as HTMLElement).style.getPropertyValue('--widget-span')).toBe('2')
   })
 
-  it('snaps a large vertical pointer resize to four rows', async () => {
+  it('snaps a large vertical pointer resize to three rows', async () => {
     const { host } = await mount(); await customize(host)
     const resize = host.querySelector('[aria-label="Resize Today"]')!
-    await act(async () => pointer(resize, 'pointerdown', 200, 264))
+    await act(async () => pointer(resize, 'pointerdown', 200, 176))
     await act(async () => pointer(resize, 'pointermove', 410, 600))
     await act(async () => pointer(resize, 'pointerup', 410, 600))
-    expect(readLayout()[0]).toEqual(['today', 2, 544])
+    expect(readLayout()[0]).toEqual(['today', 2, 560])
   })
 
   it('offers preset sizes and button and keyboard alternatives for reordering', async () => {
     const { host } = await mount(); await customize(host)
     const select = host.querySelector<HTMLSelectElement>('[aria-label="Size of Today"]')!
-    expect([...select.options].map((option) => option.value)).toEqual(['small', 'wide', 'large', 'full'])
-    for (const [value, span, height] of [['wide', 2, 264], ['large', 2, 544], ['full', 4, 264], ['small', 1, 264]] as const) {
+    expect([...select.options].map((option) => option.value)).toEqual(WIDGET_SIZES.map(size => size.id))
+    for (const { id: value, span, height } of WIDGET_SIZES) {
       await act(async () => { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })) })
       expect(readLayout()[0]).toEqual(['today', span, height])
     }
@@ -117,19 +181,19 @@ describe('dashboard customization', () => {
   it('cancels pointer resize on pointercancel and Escape', async () => {
     const { host, grid } = await mount(); await customize(host)
     const resize = host.querySelector('[aria-label="Resize Today"]')!
-    await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 600) })
+    await act(async () => { pointer(resize, 'pointerdown', 200, 176); pointer(resize, 'pointermove', 410, 600) })
     await act(async () => pointer(resize, 'pointercancel', 410, 600))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect((grid.children[0] as HTMLElement).style.height).toBe('264px')
-    await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 600) })
+    expect((grid.children[0] as HTMLElement).style.height).toBe('176px')
+    await act(async () => { pointer(resize, 'pointerdown', 200, 176); pointer(resize, 'pointermove', 410, 600) })
     await act(async () => resize.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     await act(async () => pointer(resize, 'pointerup', 410, 600))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect((grid.children[0] as HTMLElement).style.height).toBe('264px')
-    await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 600) })
+    expect((grid.children[0] as HTMLElement).style.height).toBe('176px')
+    await act(async () => { pointer(resize, 'pointerdown', 200, 176); pointer(resize, 'pointermove', 410, 600) })
     await act(async () => pointer(resize, 'lostpointercapture', 410, 600))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect((grid.children[0] as HTMLElement).style.height).toBe('264px')
+    expect((grid.children[0] as HTMLElement).style.height).toBe('176px')
   })
 
   it('Done cancels a gesture and removes editing affordances', async () => {
@@ -150,16 +214,25 @@ describe('dashboard customization', () => {
     const { host } = await mount(); await customize(host)
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Quota exceeded') })
     const select = host.querySelector<HTMLSelectElement>('[aria-label="Size of Today"]')!
-    await act(async () => { select.value = 'wide'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => { select.value = '2x1'; select.dispatchEvent(new Event('change', { bubbles: true })) })
     expect(host.textContent).toContain('Не удалось сохранить расположение')
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
   })
 })
 
 describe('layout durability and validation', () => {
+  it.each([false, true])('migrates v1 presets once, including full width (mobile=%s)', mobile => {
+    const legacyKey = mobile ? LEGACY_MOBILE_HOME_LAYOUT_KEY : LEGACY_HOME_LAYOUT_KEY
+    localStorage.setItem(legacyKey, JSON.stringify([['today', 1, 264], ['cal', 2, 264], ['focus', 2, 544], ['activity', 4, 264]]))
+    const migrated = readLayout(mobile)
+    expect(migrated).toEqual([['today', 1, 176], ['cal', 2, 176], ['focus', 2, 368], ['activity', 4, 176]])
+    saveLayout(migrated, mobile)
+    localStorage.setItem(legacyKey, '[]')
+    expect(readLayout(mobile)).toEqual(migrated)
+  })
   it('keeps desktop and mobile layouts durable and independent', () => {
-    const desktop: LayoutEntry[] = [['today', 2, 544]]
-    const mobile: LayoutEntry[] = [['mail', 2, 264], ['focus', 1, 264]]
+    const desktop: LayoutEntry[] = [['today', 2, 368]]
+    const mobile: LayoutEntry[] = [['mail', 2, 176], ['focus', 1, 176]]
     expect(readLayout(true).map(([id]) => id)).toEqual(['today', 'focus', 'weather', 'cal', 'mail', 'notes', 'fin', 'proj'])
     saveLayout(desktop); saveLayout(mobile, true)
     expect(readLayout()).toEqual(desktop)
@@ -167,19 +240,19 @@ describe('layout durability and validation', () => {
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).not.toEqual(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY))
   })
   it('normalizes legacy sizes to the nearest supported width and row height', () => {
-    expect(normalizeWidgetSize(1, 264)).toEqual({ span: 1, height: 264, rows: 2 })
-    expect(normalizeWidgetSize(2, 384)).toEqual({ span: 2, height: 264, rows: 2 })
-    expect(normalizeWidgetSize(3.6, 720)).toEqual({ span: 2, height: 544, rows: 4 })
-    expect(normalizeWidgetSize(1, 544)).toEqual({ span: 2, height: 544, rows: 4 })
-    expect(normalizeWidgetSize(1.8, 264)).toEqual({ span: 2, height: 264, rows: 2 })
+    expect(normalizeWidgetSize(1, 176)).toEqual({ span: 1, height: 176, rows: 1 })
+    expect(normalizeWidgetSize(2, 384)).toEqual({ span: 2, height: 368, rows: 2 })
+    expect(normalizeWidgetSize(3.6, 720)).toEqual({ span: 4, height: 176, rows: 1 })
+    expect(normalizeWidgetSize(1, 368)).toEqual({ span: 1, height: 368, rows: 2 })
+    expect(normalizeWidgetSize(1.8, 176)).toEqual({ span: 2, height: 176, rows: 1 })
   })
   it('migrates legacy tuples, removes duplicates and rejects unknown/invalid cards', () => {
-    localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 10], ['cal', 0, 9999], ['today', 1], ['unknown', 2], ['fin', null], ['focus', 2, 384]]))
-    expect(readLayout()).toEqual([['today', 4, 264], ['cal', 2, 544], ['focus', 2, 264]])
+    localStorage.setItem(LEGACY_HOME_LAYOUT_KEY, JSON.stringify([['today', 10], ['cal', 0, 9999], ['today', 1], ['unknown', 2], ['fin', null], ['focus', 2, 384]]))
+    expect(readLayout()).toEqual([['today', 4, 176], ['cal', 2, 368], ['focus', 2, 176]])
   })
   it('reorders by insertion while keeping sizes and hidden entries attached to their widgets', () => {
-    const layout: LayoutEntry[] = [['today', 2, 544], ['activity', 4, 264], ['cal', 1, 264], ['focus', 1, 264]]
-    expect(reorderLayout(layout, 'today', 'focus')).toEqual([['activity', 4, 264], ['cal', 1, 264], ['focus', 1, 264], ['today', 2, 544]])
-    expect(layout[0]).toEqual(['today', 2, 544])
+    const layout: LayoutEntry[] = [['today', 2, 368], ['activity', 4, 176], ['cal', 1, 176], ['focus', 1, 176]]
+    expect(reorderLayout(layout, 'today', 'focus')).toEqual([['activity', 4, 176], ['cal', 1, 176], ['focus', 1, 176], ['today', 2, 368]])
+    expect(layout[0]).toEqual(['today', 2, 368])
   })
 })

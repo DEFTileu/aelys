@@ -94,7 +94,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const onMyDay = layout.map(([id]) => id)
   const available = WIDGET_IDS.filter((id) => !onMyDay.includes(id))
   const addWidget = (id: WidgetId) => {
-    commit([...layout.filter(([w]) => w !== 'activity'), [id, 1, 264], ...layout.filter(([w]) => w === 'activity')])
+    commit([...layout.filter(([w]) => w !== 'activity'), [id, 1, 176], ...layout.filter(([w]) => w === 'activity')])
     setPicker(false)
   }
   const moveWidget = (index: number, delta: -1 | 1) => {
@@ -157,7 +157,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     {apiStatus !== 'ready' && <p role="status">{apiStatus === 'loading' ? 'Loading workspace…' : 'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}
     {taskNotice && <p role="status">{taskNotice}</p>}
     {layoutNotice && <p role="status">{layoutNotice}</p>}
-    {editing && <p className="home-layout-help">Переносите виджеты по сетке. Выберите размер карточки или потяните за угол.</p>}
+    {editing && <p className="home-layout-help">Размер — ширина × высота в ячейках. Выберите формат от 1 × 1 до 2 × 3 или потяните за угол. Стрелки на углу меняют ширину и высоту.</p>}
     {homeToggles[1] && <section aria-label="Dashboard widgets" className={`home-widget-grid${editing ? ' home-widget-grid--editing' : ''}`}>
       {visibleLayout.map(([id, span, height], index) => <HomeWidget key={id} id={id} span={span} index={index} count={visibleLayout.length} editing={editing} mobile={mobile} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onMove={(delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta)} onRemove={() => removeWidget(layout.findIndex(([widgetId]) => widgetId === id))} frame={{ id, title: WIDGET_CATALOG[id].title, span, height, onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(layout.findIndex(([widgetId]) => widgetId === id), delta), onSize: (width, nextHeight) => sizeWidget(id, width, nextHeight) }} />)}
     </section>}
