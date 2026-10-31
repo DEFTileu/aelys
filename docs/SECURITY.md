@@ -165,3 +165,11 @@ disconnect erase cached business contents. Automatic replies are restricted to
 recent incoming messages with rate limits, and forwarded/media/bot messages are
 ignored. No account/profile/gift/Stars administration, proactive broadcast or
 personal Mac execution is provided by this connector.
+
+### Security review (2026-10-31)
+
+- Rate limits (in-process, per address and per account/pairing): password sign-in 30 per address and 8 per account per 10 minutes, setup claim 10, pairing request/claim/finish and device challenge/login with their own windows; 429 with `Retry-After`. Set `AELYS_TRUSTED_PROXY_COUNT` to the number of reverse proxies (default 0 ignores `X-Forwarded-For`, so it cannot be spoofed). Limits are per server process.
+- Password owner creation is off by default (`AELYS_PASSWORD_BOOTSTRAP_ENABLED=false`); password sign-in for an existing owner stays on (`AELYS_PASSWORD_LOGIN_ENABLED`) until a key-bound device exists.
+- Queries use bound SQLAlchemy parameters; the few raw `text()` statements are constants with bound values. Only auth endpoints, the Gmail OAuth callback and `/healthz` are reachable without a principal.
+- AI providers receive only the conversation the owner typed (no automatic retrieval of tasks, notes or mail); tools are write-only (`create_task`, `create_note`) and scope-checked; Telegram history is limited to the target chat, and externally authored text is fenced as `<untrusted_data>` and redacted before any provider call. Provider hosts are allow-listed and keys are AES-GCM encrypted.
+- The legacy `X-Owner-ID` owner fallback was removed (it was unmounted but would have been an authentication bypass).

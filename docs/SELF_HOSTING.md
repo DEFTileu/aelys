@@ -311,3 +311,7 @@ ignore it in a meta element. The API (and same-origin QA server) already emits
 `X-Frame-Options: DENY`. Configure the production static web server to send
 `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY` on
 HTML responses; the client meta policy alone cannot enforce embedding protection.
+
+## First owner without a password
+
+By default the server no longer creates an owner from an email and password. On an empty server it prints a one-time setup token to the console (`python -m app.core.admin setup-token` prints another). Claim it with `POST /api/v1/auth/setup/claim` (see `QR_PAIRING_AUTH_PROPOSAL.md`). The app screens for this are not built yet; until they are, a fresh install that wants the old first-run screen must set `AELYS_PASSWORD_BOOTSTRAP_ENABLED=true`. Existing owners are unaffected.

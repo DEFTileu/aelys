@@ -9,10 +9,12 @@ are not**.
 
 ## Decisions taken (defaults proposed to and accepted by the owner)
 
-1. Passwords stay as an optional fallback for existing installs. New installs and
-   public hosts set `AELYS_PASSWORD_BOOTSTRAP_ENABLED=false`; ownership is then
-   claimed only with a setup token. Switching the fallback off for an existing
-   owner is a later, explicit step (needs one key-bound device and the recovery path).
+1. Passwords stay as an optional fallback for existing owners. Creating an owner with a
+   password is **off by default** (`AELYS_PASSWORD_BOOTSTRAP_ENABLED=false`, owner
+   instruction 2026-10-31); ownership is claimed only with a setup token. Password
+   sign-in for an existing owner stays on (`AELYS_PASSWORD_LOGIN_ENABLED`) because no
+   client can pair yet; switching it off is a later, explicit step (needs one key-bound
+   device and the recovery path).
 2. A browser is a lower-trust device class (non-extractable WebCrypto key; XSS can
    still use it). Planned: shorter sessions, QR re-pairing, no secrets export, no agent
    execution. Not enforced yet.
@@ -80,5 +82,6 @@ may invite, inspect, approve or reject.
   server URL and pin.
 - Refresh-token reuse detection that revokes the device, device trust tiers, a recovery key,
   and an explicit switch to disable password login for an existing owner.
-- Rate limiting by client address (the server sees only the proxy address today) and an
-  external security review before this is called production-grade.
+- A shared rate-limit store for multi-instance deployments (limits are per process today;
+  `AELYS_TRUSTED_PROXY_COUNT` must be set behind a reverse proxy) and an external security
+  review before this is called production-grade.
