@@ -213,3 +213,5 @@
   .tasks-due { grid-column:3; grid-row:1; margin:0; text-align:right; max-width:100px; }
   .tasks-priority { grid-column:3; grid-row:2; justify-self:end; }
 }
+.tasks-due { display: inline-flex; align-items: center; gap: 4px; }
+.tasks-group-date { float: right; font-weight: 400; }

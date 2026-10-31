@@ -2,7 +2,9 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
 import { WALLPAPERS, accentColors } from '../data/desktop/settings'
 import { requestCustomizeHome, useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
+import { getSharedApiClient } from '../lib/api'
 import { navigate } from '../lib/router'
+import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
 import { CommandPalette } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
@@ -77,8 +79,22 @@ export function AppShell(props: { route: RoutePath; apiStatus: ApiStatus; theme:
   return <DesktopShell {...props} mobile={width <= 700} />
 }
 
+// Open tasks due today or earlier, the same set as the Tasks "Today" tab. Refreshes on navigation so completing tasks updates it.
+function useTodayTaskCount(apiStatus: ApiStatus, route: RoutePath): number {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (apiStatus !== 'ready') return
+    let active = true
+    const today = dateKey(new Date().toISOString())!
+    getSharedApiClient().tasks().then((tasks) => { if (active) setCount(tasks.filter((task) => !isCompleted(task) && !!task.due_at && dateKey(task.due_at)! <= today).length) }).catch(() => { if (active) setCount(0) })
+    return () => { active = false }
+  }, [apiStatus, route])
+  return count
+}
+
 function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile }: { mobile: boolean; route: RoutePath; apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void; children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const todayTasks = useTodayTaskCount(apiStatus, route)
   const settings = useDesktopState()
 
   useEffect(() => {
@@ -111,7 +127,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             {NAV.map((item) => {
               const on = item.id === screen
               const Icon = item.icon
-              const badge = item.badge
+              const badge = item.id === 'tasks' ? (todayTasks > 0 ? String(todayTasks) : undefined) : item.badge
               // Widgets opens Home in Customize mode; the flag is set before navigating so Home picks it up on mount.
               const open = () => { if (item.customize) requestCustomizeHome(); go(item.route) }
               return <button key={item.id} type="button" className={`shell-btn shell-nav-item${on ? ' shell-nav-item--on' : ''}`} aria-label={item.label} aria-current={on ? 'page' : undefined} onClick={open} style={on ? { background: 'var(--accent-soft)' } : undefined}>

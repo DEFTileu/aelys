@@ -1,7 +1,7 @@
 import { StyledSelect } from '../components/controls/StyledSelect'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ApiError, type ProjectResponse, type TaskOut } from '@aelys/shared'
-import { Calendar, CalendarDays, Check, Ellipsis, Flag, Folder, Inbox, SquareCheck, Plus, RefreshCw, Search, X } from '../icons'
+import { Calendar, CalendarDays, Check, Clock, Ellipsis, Flag, Folder, Inbox, SquareCheck, Plus, RefreshCw, Search, X } from '../icons'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import { TaskEditor } from './tasks/TaskEditor'
@@ -309,11 +309,11 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
         <header className="tasks-list-heading"><div><h3>{heading}</h3>{view === 'inbox' && <p>Without a due date</p>}{view === 'upcoming' && <p>After today</p>}</div>{!quickOpen && newDraft.title && <button type="button" className="tasks-quiet" onClick={openQuick}>Resume new task</button>}</header>
         {hiddenDrafts > 0 && <div className="tasks-draft-shelf"><span>Unsent edits</span>{[...editDrafts.current.values()].map(saved => <button type="button" key={saved.task.id} onClick={() => setEditor(saved)}>{saved.draft.title || saved.task.title}</button>)}</div>}
         {groups.map(group => <section className="tasks-date-group" key={group.key} aria-label={groupTitle(group.key)}>
-          <h4>{groupTitle(group.key)} <span>{group.tasks.length}</span></h4>
+          <h4>{groupTitle(group.key)} <span>{group.tasks.length}</span>{group.key === today && <time className="tasks-group-date" dateTime={today}>{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</time>}</h4>
           <ul>{group.tasks.map(task => <li data-task-row={task.id} className={`tasks-item${isCompleted(task) ? ' tasks-item--done' : ''}`} key={task.id}>
             <button type="button" role="checkbox" aria-checked={isCompleted(task)} aria-label={`${isCompleted(task) ? 'Reopen' : 'Complete'} ${task.title}`} className="tasks-check" disabled={pending || !writeAllowed} onClick={() => void toggle(task)}><span>{isCompleted(task) && <Check size={14} />}</span></button>
             <button type="button" className="tasks-open" aria-label={`Open task: ${task.title}`} data-task-editor-trigger onClick={() => openEditor(task)} disabled={pending}><span className="tasks-label"><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}</span></button><span className="tasks-row-meta">{task.project_id && <span><Folder size={13} />{projectName(task)}</span>}{task.status === 'in_progress' && <span>In progress</span>}</span>
-            <time className={isOverdue(task) ? 'tasks-due tasks-due--overdue' : 'tasks-due'} dateTime={task.due_at ?? undefined}>{task.due_at ? new Intl.DateTimeFormat(undefined, dateKey(task.due_at) === today ? { hour:'2-digit', minute:'2-digit', hour12:false } : { month:'short', day:'numeric' }).format(new Date(task.due_at)) : 'No date'}</time>
+            <time className={isOverdue(task) ? 'tasks-due tasks-due--overdue' : 'tasks-due'} dateTime={task.due_at ?? undefined}>{task.due_at && dateKey(task.due_at) === today && <Clock size={12} aria-hidden="true" />}{task.due_at ? new Intl.DateTimeFormat(undefined, dateKey(task.due_at) === today ? { hour:'2-digit', minute:'2-digit', hour12:false } : { month:'short', day:'numeric' }).format(new Date(task.due_at)) : 'No date'}</time>
             <button type="button" className="tasks-icon tasks-priority" data-priority={task.priority >= 3 ? 'high' : task.priority === 2 ? 'medium' : 'low'} title={`${PRIORITIES[task.priority] ?? task.priority} priority`} aria-label={`Change priority: ${task.title}`} onClick={() => openEditor(task)} disabled={pending}>{task.priority > 0 && <Flag size={15} />}</button>
             <button type="button" className="tasks-icon tasks-row-more" aria-label={`Task details: ${task.title}`} onClick={() => openEditor(task)} disabled={pending}><Ellipsis size={18} /></button>
           </li>)}</ul>
