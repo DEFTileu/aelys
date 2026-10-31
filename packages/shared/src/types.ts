@@ -260,8 +260,13 @@ export interface FocusOut {
   readonly mode: string;
   readonly ended_at: IsoDateTime | null;
   readonly elapsed_seconds: number;
+  /** "active" | "paused" | "completed" */
   readonly status: string;
   readonly version: number;
+  /** Set while status is "paused". */
+  readonly paused_at?: IsoDateTime | null;
+  /** Accumulated paused time, excluded from elapsed_seconds. */
+  readonly paused_seconds?: number;
 }
 
 export interface FinanceAccountIn {

@@ -358,6 +358,8 @@ export class ApiClient {
   public focusSessions(options?: RequestOptions) { return this.request<readonly FocusOut[]>("/api/v1/focus/sessions", this.read(options, "focus-sessions")); }
   public startFocusSession(body: FocusIn, options?: RequestOptions) { return this.request<FocusOut>("/api/v1/focus/sessions", this.write(body, { queueOnOffline: false, ...options })); }
   public stopFocusSession(itemId: Id, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/stop`, this.write(undefined, { queueOnOffline: false, ...options })); }
+  public pauseFocusSession(itemId: Id, version?: number, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/pause`, this.write(undefined, { queueOnOffline: false, ...options, query: version === undefined ? undefined : { version } })); }
+  public resumeFocusSession(itemId: Id, version?: number, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/resume`, this.write(undefined, { queueOnOffline: false, ...options, query: version === undefined ? undefined : { version } })); }
 
   public financeAccounts(options?: RequestOptions) { return this.request<readonly FinanceAccount[]>("/api/v1/finance/accounts", this.read(options, "finance-accounts")); }
   public createFinanceAccount(body: FinanceAccountIn, options?: RequestOptions) { return this.request<FinanceAccount>("/api/v1/finance/accounts", this.write(body, { queueOnOffline: false, ...options })); }

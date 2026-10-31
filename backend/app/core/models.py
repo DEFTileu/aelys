@@ -194,7 +194,8 @@ class FinanceBudget(Owned):
 class FocusSession(Owned):
     __tablename__ = "focus_sessions"
     task_id: Mapped[str | None] = mapped_column(String(36)); project_id: Mapped[str | None] = mapped_column(String(36)); started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); elapsed_seconds: Mapped[int] = mapped_column(Integer, default=0); mode: Mapped[str] = mapped_column(String(30), default="pomodoro"); status: Mapped[str] = mapped_column(String(20), default="active")
-    __table_args__ = (Index("uq_focus_active_owner", "owner_id", unique=True, sqlite_where=text("status = 'active' AND deleted_at IS NULL"), postgresql_where=text("status = 'active' AND deleted_at IS NULL")),)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); paused_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    __table_args__ = (Index("uq_focus_active_owner", "owner_id", unique=True, sqlite_where=text("status IN ('active', 'paused') AND deleted_at IS NULL"), postgresql_where=text("status IN ('active', 'paused') AND deleted_at IS NULL")),)
 
 class MailMessage(Owned):
     __tablename__ = "mail_messages"

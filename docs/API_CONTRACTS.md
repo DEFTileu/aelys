@@ -384,3 +384,16 @@ conflict; a client-side preflight alone is not the concurrency guarantee.
 ### Note last-update instant (2026-10-31)
 
 `NoteOut` now includes an optional `updated_at` (ISO 8601 date-time, the existing `Owned.updated_at` column). It is additive: older clients ignore it, and the web client falls back to the version badge when a backend omits it. No migration, no write-path change.
+
+## Desktop design backend additions (2026-10-31)
+
+### Focus pause/resume
+
+- `POST /api/v1/focus/sessions/{id}/pause?version=N` and `/resume?version=N`
+  (version optional, `409 VERSION_CONFLICT` when stale; repeating the same
+  transition is a no-op; wrong state returns `409 INVALID_STATE`).
+- `FocusOut` gains `paused_at` (set while `status = "paused"`) and
+  `paused_seconds` (accumulated pauses). `status` is `active | paused |
+  completed`. `elapsed_seconds` = wall time minus pauses and is frozen while
+  paused. A paused session still occupies the owner's single timer slot and
+  can be stopped. Migration `0025_focus_pause`.

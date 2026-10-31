@@ -234,6 +234,9 @@ class MailMessageOut(MessageIn):
     @classmethod
     def received_utc(cls, value: datetime) -> datetime:
         return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+def focus_elapsed(started_at: datetime, paused_seconds: int, until: datetime) -> int:
+    """Focused seconds: wall time minus accumulated pauses."""
+    return max(0, int((until - started_at).total_seconds()) - paused_seconds)
 class FocusIn(BaseModel):
     task_id: str | None = None
     project_id: str | None = None
@@ -252,8 +255,10 @@ class FocusOut(FocusIn):
     elapsed_seconds: int
     status: str
     version: int
+    paused_at: datetime | None = None
+    paused_seconds: int = 0
 
-    @field_validator("started_at", "ended_at")
+    @field_validator("started_at", "ended_at", "paused_at")
     @classmethod
     def focus_utc(cls, value: datetime | None) -> datetime | None:
         return None if value is None else value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
@@ -261,7 +266,9 @@ class FocusOut(FocusIn):
     @model_validator(mode="after")
     def active_elapsed(self):
         if self.status == "active" and self.ended_at is None:
-            self.elapsed_seconds = max(self.elapsed_seconds, int((datetime.now(UTC) - self.started_at).total_seconds()))
+            self.elapsed_seconds = max(self.elapsed_seconds, focus_elapsed(self.started_at, self.paused_seconds, datetime.now(UTC)))
+        elif self.status == "paused" and self.paused_at is not None:
+            self.elapsed_seconds = focus_elapsed(self.started_at, self.paused_seconds, self.paused_at)
         return self
 class MailAccountIn(BaseModel): provider: str = "local_import"; external_id: str | None = None
 class ReminderIn(BaseModel): task_id: str; notify_at: datetime; channel: str = "in_app"; idempotency_key: str
@@ -743,7 +750,7 @@ async def start_focus(body:FocusIn, principal=Depends(current_principal), db:Asy
         if existing.task_id != body.task_id or existing.project_id != body.project_id or existing.mode != body.mode or utc(existing.started_at) != body.started_at:
             raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Focus start key is bound to another request"})
         return existing
-    active=(await db.execute(select(FocusSession).where(FocusSession.owner_id==user.id,FocusSession.status=="active"))).scalar_one_or_none()
+    active=(await db.execute(select(FocusSession).where(FocusSession.owner_id==user.id,FocusSession.status.in_(("active","paused"))))).scalar_one_or_none()
     if active: raise HTTPException(409,detail={"code":"TIMER_ACTIVE","message":"Only one active focus session is allowed"})
     item=FocusSession(id=item_id,owner_id=user.id,**body.model_dump()); db.add(item)
     try:
@@ -766,11 +773,37 @@ async def stop_focus(item_id:str,version:int | None=Query(default=None,ge=1),pri
     if version is not None and item.version != version:
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Focus session changed. Reload before stopping."})
     ended_at = datetime.now(UTC)
-    result = await db.execute(update(FocusSession).where(FocusSession.id == item_id, FocusSession.owner_id == user.id, FocusSession.version == item.version, FocusSession.status == "active").values(ended_at=ended_at, elapsed_seconds=max(0, int((ended_at-utc(item.started_at)).total_seconds())), status="completed", version=item.version + 1))
+    paused_seconds = item.paused_seconds + (int((ended_at - utc(item.paused_at)).total_seconds()) if item.status == "paused" and item.paused_at else 0)
+    result = await db.execute(update(FocusSession).where(FocusSession.id == item_id, FocusSession.owner_id == user.id, FocusSession.version == item.version, FocusSession.status.in_(("active", "paused"))).values(ended_at=ended_at, paused_at=None, paused_seconds=paused_seconds, elapsed_seconds=focus_elapsed(utc(item.started_at), paused_seconds, ended_at), status="completed", version=item.version + 1))
     if int(getattr(result, "rowcount", 0) or 0) != 1:
         await db.rollback()
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
     await db.commit(); await db.refresh(item); return item
+async def _toggle_focus_pause(item_id: str, version: int | None, pausing: bool, user_id: str, db: AsyncSession):
+    item = await owner_obj(FocusSession, item_id, user_id, db)
+    source, target = ("active", "paused") if pausing else ("paused", "active")
+    if item.status == target:
+        return item  # idempotent repeat
+    if item.status != source:
+        raise HTTPException(409, detail={"code": "INVALID_STATE", "message": f"Focus session is {item.status}"})
+    if version is not None and item.version != version:
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Focus session changed. Reload."})
+    now = datetime.now(UTC)
+    if pausing:
+        values = {"paused_at": now, "elapsed_seconds": focus_elapsed(utc(item.started_at), item.paused_seconds, now)}
+    else:
+        values = {"paused_at": None, "paused_seconds": item.paused_seconds + (max(0, int((now - utc(item.paused_at)).total_seconds())) if item.paused_at else 0)}
+    result = await db.execute(update(FocusSession).where(FocusSession.id == item_id, FocusSession.owner_id == user_id, FocusSession.version == item.version, FocusSession.status == source).values(status=target, version=item.version + 1, **values))
+    if int(getattr(result, "rowcount", 0) or 0) != 1:
+        await db.rollback()
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
+    await db.commit(); await db.refresh(item); return item
+@router.post("/focus/sessions/{item_id}/pause", response_model=FocusOut)
+async def pause_focus(item_id:str,version:int | None=Query(default=None,ge=1),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    return await _toggle_focus_pause(item_id, version, True, principal[0].id, db)
+@router.post("/focus/sessions/{item_id}/resume", response_model=FocusOut)
+async def resume_focus(item_id:str,version:int | None=Query(default=None,ge=1),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    return await _toggle_focus_pause(item_id, version, False, principal[0].id, db)
 @router.post("/mail/import/eml", response_model=MailMessageOut)
 async def import_eml(file: UploadFile = File(), principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
     from .eml import parse_eml
