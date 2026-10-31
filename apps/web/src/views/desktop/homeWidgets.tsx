@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { Check, ChevronRight, FileText, FolderOpen, Play, Square, type AelysIconComponent } from '../../icons'
 import type { ActivityEvent, EventOut, FinanceTransaction, MailMessage, NoteOut, ProjectResponse, TaskOut } from '@aelys/shared'
 import { FOCUS_SESSION_SECONDS, accentOf, type AccentKey } from '../../data/desktop/home'
+import { ageLabel } from '../../lib/format'
 import { formatMoney, sumDecimals } from '../../lib/money'
 import { useWeather } from '../../lib/weather'
 import { navigate } from '../../lib/router'
@@ -31,7 +32,7 @@ function WidgetBody({ id, span, mobile, large, focus, data, onToggleTask }: { id
 
   if (id === 'proj') return <div className="home-records" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},minmax(0,1fr))`, gap: '12px 20px' }}>{data.projects.slice(0, mobile && !large ? 2 : 3).map((project) => { const own = data.tasks.filter((task) => task.project_id === project.id); const pct = own.length ? Math.round(own.filter(completed).length / own.length * 100) : 0; const ready = data.states?.today === 'ready'; return <div key={project.id} style={{ display: 'flex', gap: 12, alignItems: 'center' }}><IconTile color="violet" icon={FolderOpen} box={mobile ? 36 : 40} iconSize={18} radius={12} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ display: 'flex', fontSize: 14, lineHeight: '20px', fontWeight: 500 }}><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span><span style={{ fontSize: mobile ? 13 : 12, color: 'var(--muted)' }}>{ready && own.length ? `${pct}%` : project.status}</span></div><div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ready && own.length ? `${own.length} ${own.length === 1 ? 'task' : 'tasks'}` : project.description || 'No description yet.'}</div>{!ready ? <small>Task progress unavailable</small> : <Progress pct={pct} color={accentOf('violet').c} />}</div></div> })}{data.projects.length === 0 && <Empty>No projects yet.</Empty>}</div>
   if (id === 'notes' || id === 'kb') return <div className="home-records" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},minmax(0,1fr))`, gap: '6px 20px' }}>{data.notes.slice(0, mobile && span === 1 ? 1 : 4).map((note) => <button type="button" className="home-btn home-note-row" key={note.id} onClick={() => navigate(id === 'kb' ? '/knowledge' : '/notes')}>
-    {!mobile && <IconTile color={id === 'kb' ? 'violet' : 'orange'} icon={FileText} box={32} />}<span><strong>{note.title}</strong>{mobile && <small>{note.markdown_body || 'Empty note'}</small>}</span>
+    {!mobile && <IconTile color={id === 'kb' ? 'violet' : 'orange'} icon={FileText} box={32} />}<span className="home-note-text"><strong>{note.title}</strong>{mobile && <small>{note.markdown_body || 'Empty note'}</small>}</span>{note.updated_at && <time className="home-note-time" dateTime={note.updated_at}>{ageLabel(note.updated_at)}</time>}
   </button>)}{data.notes.length === 0 && <Empty>No notes yet.</Empty>}</div>
   if (id === 'fin') {
     const currencies = [...new Set(data.finance.map(item => item.currency))]

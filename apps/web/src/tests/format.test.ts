@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { dayLabel } from '../lib/format'
+import { ageLabel, dayLabel } from '../lib/format'
+
+describe('ageLabel', () => {
+  const now = new Date(2026, 9, 28, 12, 0)
+
+  it('uses minutes, hours and days, then a short date', () => {
+    expect(ageLabel(new Date(2026, 9, 28, 11, 59, 40).toISOString(), now)).toBe('now')
+    expect(ageLabel(new Date(2026, 9, 28, 11, 55).toISOString(), now)).toBe('5m ago')
+    expect(ageLabel(new Date(2026, 9, 28, 10, 0).toISOString(), now)).toBe('2h ago')
+    expect(ageLabel(new Date(2026, 9, 25, 12, 0).toISOString(), now)).toBe('3d ago')
+    expect(ageLabel(new Date(2026, 9, 10, 12, 0).toISOString(), now)).toBe('Oct 10')
+  })
+})
 
 describe('dayLabel', () => {
   const now = new Date(2026, 9, 28, 12, 0)
