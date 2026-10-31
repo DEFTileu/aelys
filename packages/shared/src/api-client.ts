@@ -2,9 +2,9 @@ import type {
   ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
-  DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceCategory,
+  DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
   FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
-  MailAccountIn, MailDraft, MailMessage, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
+  MailAccountIn, MailDraft, MailMessage, MailMessageReadIn, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
   ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession, AgentSessionStopResponse,
   SyncAckRequest, SyncAckResponse, SyncBootstrapResponse, SyncPullResponse, SyncPushRequest, SyncPushResponse, SyncStatusResponse,
@@ -334,6 +334,10 @@ export class ApiClient {
   public createNote(body: NoteIn, options?: RequestOptions) { return this.request<NoteOut>("/api/v1/notes", this.write(body, options)); }
   public note(itemId: Id, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.read(options)); }
   public updateNote(itemId: Id, body: NoteIn, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.write(body, options, "PATCH")); }
+  public setNotePinned(note: NoteOut, pinned: boolean, options?: RequestOptions) {
+    const body: NoteIn = { title: note.title, markdown_body: note.markdown_body, parent_id: note.parent_id, project_id: note.project_id, folder: note.folder ?? null, tags: note.tags ?? [], pinned };
+    return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(note.id)}`, this.write(body, { ...options, query: { version: note.version } }, "PATCH"));
+  }
   public deleteNote(itemId: Id, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.write(undefined, options, "DELETE")); }
   public noteRevisions(itemId: Id, options?: RequestOptions) { return this.request<readonly NoteRevision[]>(`/api/v1/notes/${encodeURIComponent(itemId)}/revisions`, this.read(options)); }
   public restoreNote(itemId: Id, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}/restore`, this.write(undefined, options)); }
@@ -365,7 +369,9 @@ export class ApiClient {
   public createFinanceAccount(body: FinanceAccountIn, options?: RequestOptions) { return this.request<FinanceAccount>("/api/v1/finance/accounts", this.write(body, { queueOnOffline: false, ...options })); }
   public financeCategories(options?: RequestOptions) { return this.request<readonly FinanceCategory[]>("/api/v1/finance/categories", this.read(options, "finance-categories")); }
   public createFinanceCategory(body: FinanceCategoryIn, options?: RequestOptions) { return this.request<FinanceCategory>("/api/v1/finance/categories", this.write(body, { queueOnOffline: false, ...options })); }
+  /** Pass `{ query: { month: "2026-10", currency: "USD" } }` to filter. */
   public financeBudgets(options?: RequestOptions) { return this.request<readonly FinanceBudget[]>("/api/v1/finance/budgets", this.read(options, "finance-budgets")); }
+  public putFinanceBudget(body: FinanceBudgetPut, options?: RequestOptions) { return this.request<FinanceBudget>("/api/v1/finance/budgets", this.write(body, { queueOnOffline: false, ...options }, "PUT")); }
   public createFinanceBudget(body: FinanceBudgetIn, options?: RequestOptions) { return this.request<FinanceBudget>("/api/v1/finance/budgets", this.write(body, { queueOnOffline: false, ...options })); }
   public financeTransactions(options?: RequestOptions) { return this.request<readonly FinanceTransaction[]>("/api/v1/finance/transactions", this.read(options, "finance-transactions")); }
   public createFinanceTransaction(body: TransactionIn, options?: RequestOptions) { return this.request<FinanceTransaction>("/api/v1/finance/transactions", this.write(body, { queueOnOffline: false, ...options })); }
@@ -381,6 +387,7 @@ export class ApiClient {
   public disconnectGmail(id: Id) { return this.request<{ readonly disconnected: boolean; readonly provider_revoked: boolean }>(`/api/v1/mail/gmail/${encodeURIComponent(id)}/disconnect`, this.write(undefined, { queueOnOffline: false })); }
   public createMailAccount(body: MailAccountIn, options?: RequestOptions) { return this.request<MailAccount>("/api/v1/mail/accounts", this.write(body, options)); }
   public mailMessages(query?: Query, options?: RequestOptions) { return this.request<readonly MailMessage[]>("/api/v1/mail/messages", this.read({ ...options, query }, "mail-messages")); }
+  public setMailMessageRead(messageId: Id, body: MailMessageReadIn, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/mail/messages/${encodeURIComponent(messageId)}`, this.write(body, { queueOnOffline: false, ...options }, "PATCH")); }
   public importMailMessage(body: MessageIn, options?: RequestOptions) { return this.request<MailMessage>("/api/v1/mail/messages", this.write(body, options)); }
   public mailDrafts(options?: RequestOptions) { return this.request<readonly MailDraft[]>("/api/v1/mail/drafts", this.read(options, "mail-drafts")); }
   public createMailDraft(body: DraftIn, options?: RequestOptions) { return this.request<MailDraft>("/api/v1/mail/drafts", this.write(body, options)); }

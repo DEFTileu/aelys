@@ -68,6 +68,7 @@ class NoteIn(BaseModel):
     project_id: str | None = None
     folder: str | None = Field(default=None, max_length=120)
     tags: list[str] = Field(default_factory=list, max_length=50)
+    pinned: bool = False
 
     @field_validator("folder")
     @classmethod
@@ -202,6 +203,7 @@ class FinanceTransactionOut(StrictModel):
     idempotency_key: str | None
     related_transfer_id: str | None
     version: int
+    category_name: str | None = None
 
 class TransferOut(StrictModel):
     transfer_id: str
@@ -222,6 +224,26 @@ class FinanceBudgetOut(FinanceBudgetIn):
     id: str
     owner_id: str
     version: int
+class MessageReadIn(StrictModel): is_read: bool; version: int | None = Field(default=None, ge=1)
+class BudgetPutIn(StrictModel):
+    category_id: str | None = None
+    currency: str = Field(min_length=3, max_length=3, pattern="^[A-Za-z]{3}$")
+    month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    limit_amount: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+
+    @field_validator("currency")
+    @classmethod
+    def upper_currency(cls, value: str) -> str: return value.upper()
+
+    @field_validator("limit_amount", mode="before")
+    @classmethod
+    def budget_decimal(cls, value):
+        if isinstance(value, float):
+            raise ValueError("limit_amount must be a decimal string")  # noqa: TRY004 - Pydantic needs ValueError for structured money validation
+        return value
+def month_bounds(month: str) -> tuple[datetime, datetime]:
+    year, number = int(month[:4]), int(month[5:7])
+    return datetime(year, number, 1, tzinfo=UTC), datetime(year + number // 12, number % 12 + 1, 1, tzinfo=UTC)
 class DraftIn(BaseModel): account_id: str | None = None; thread_id: str | None = None; recipients: list[str] = []; subject: str = ""; content: str = ""
 class DraftPatch(DraftIn): version: int = Field(ge=1)
 class MessageIn(BaseModel): account_id: str | None = None; thread_id: str | None = None; sender: str; recipients: list[str] = []; subject: str; body: str = ""; received_at: datetime; sync_origin: str = "import"
@@ -229,6 +251,8 @@ class MailMessageOut(MessageIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
     owner_id: str
+    is_read: bool = False
+    version: int = 1
 
     @field_validator("received_at")
     @classmethod
@@ -372,7 +396,7 @@ async def update_note(item_id:str, body:NoteIn, version: int | None = Query(defa
     changed_body = body.markdown_body != item.markdown_body
     values = body.model_dump()
     # Older clients do not send organization fields; preserve them on update.
-    for field in ("folder", "tags"):
+    for field in ("folder", "tags", "pinned"):
         if field not in body.model_fields_set:
             values.pop(field)
     result = await db.execute(update(Note).where(
@@ -626,11 +650,28 @@ async def create_budget(body:FinanceBudgetIn,principal=Depends(current_principal
     if body.period_end <= body.period_start: raise HTTPException(422, detail={"code":"VALIDATION_ERROR","message":"period_end must be after period_start"})
     return await create_personal_record(FinanceBudget, body, user.id, idempotency_key, db)
 @router.get("/finance/budgets", response_model=list[FinanceBudgetOut])
-async def budgets(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; return list((await db.execute(select(FinanceBudget).where(FinanceBudget.owner_id==user.id,FinanceBudget.deleted_at.is_(None)))).scalars())
+async def budgets(month:str|None=Query(default=None,pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),currency:str|None=Query(default=None,min_length=3,max_length=3),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    user,_=principal; q=select(FinanceBudget).where(FinanceBudget.owner_id==user.id,FinanceBudget.deleted_at.is_(None))
+    if month: q=q.where(FinanceBudget.period_start==month_bounds(month)[0])
+    if currency: q=q.where(FinanceBudget.currency==currency.upper())
+    return list((await db.execute(q)).scalars())
+@router.put("/finance/budgets", response_model=FinanceBudgetOut)
+async def put_budget(body:BudgetPutIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    """Upsert the one monthly budget for (category, currency, month); category None is the overall budget."""
+    user,_=principal; await owned_ref(FinanceCategory, body.category_id, user.id, db)
+    start,end=month_bounds(body.month)
+    same_category=FinanceBudget.category_id.is_(None) if body.category_id is None else FinanceBudget.category_id==body.category_id
+    # shortcut: select-then-write without a unique index (legacy POST may hold duplicates); fine for a single user, add a unique key if budgets go multi-writer.
+    item=(await db.execute(select(FinanceBudget).where(FinanceBudget.owner_id==user.id,FinanceBudget.deleted_at.is_(None),same_category,FinanceBudget.currency==body.currency,FinanceBudget.period_start==start).order_by(FinanceBudget.created_at))).scalars().first()
+    if item: item.limit_amount=body.limit_amount; item.version+=1
+    else:
+        item=FinanceBudget(owner_id=user.id,category_id=body.category_id,currency=body.currency,period_start=start,period_end=end,limit_amount=body.limit_amount); db.add(item)
+    await db.commit(); await db.refresh(item); return item
 @router.get("/finance/transactions", response_model=list[FinanceTransactionOut])
 async def transactions(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; return list((await db.execute(select(FinanceTransaction).where(FinanceTransaction.owner_id==user.id,FinanceTransaction.deleted_at.is_(None)).order_by(FinanceTransaction.occurred_at.desc()))).scalars())
+    user,_=principal; rows=list((await db.execute(select(FinanceTransaction).where(FinanceTransaction.owner_id==user.id,FinanceTransaction.deleted_at.is_(None)).order_by(FinanceTransaction.occurred_at.desc()))).scalars())
+    names=dict((await db.execute(select(FinanceCategory.id,FinanceCategory.name).where(FinanceCategory.owner_id==user.id))).all())
+    return [FinanceTransactionOut.model_validate(row).model_copy(update={"category_name":names.get(row.category_id or "")}) for row in rows]
 @router.post("/finance/transactions", response_model=FinanceTransactionOut)
 async def create_transaction(body:TransactionIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db), idempotency_key: str | None = Header(default=None, max_length=100)):
     user,_=principal
@@ -834,6 +875,17 @@ async def import_message(body:MessageIn, principal=Depends(current_principal), d
 @router.get("/mail/messages", response_model=list[MailMessageOut])
 async def mail_messages(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; return list((await db.execute(select(MailMessage).where(MailMessage.owner_id==user.id,MailMessage.deleted_at.is_(None)).order_by(MailMessage.received_at.desc()))).scalars())
+@router.patch("/mail/messages/{item_id}", response_model=MailMessageOut)
+async def mark_message_read(item_id:str, body:MessageReadIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
+    user,_=principal; item=await owner_obj(MailMessage,item_id,user.id,db)
+    if body.version is not None and item.version != body.version:
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Message changed. Reload."})
+    if item.is_read == body.is_read: return item  # idempotent: no version churn
+    result = await db.execute(update(MailMessage).where(MailMessage.id==item_id, MailMessage.owner_id==user.id, MailMessage.version==item.version).values(is_read=body.is_read, version=item.version+1))
+    if int(getattr(result, "rowcount", 0) or 0) != 1:
+        await db.rollback()
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the message. Reload."})
+    await db.commit(); await db.refresh(item); return item
 @router.post("/mail/accounts")
 async def create_mail_account(body:MailAccountIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; item=MailAccount(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item

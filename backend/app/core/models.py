@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -143,6 +144,7 @@ class Note(Owned):
     project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"))
     folder: Mapped[str | None] = mapped_column(String(120), nullable=True)
     tags: Mapped[list] = mapped_column(JSON, default=list, server_default="[]", nullable=False)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
 
 class NoteRevision(Base):
     __tablename__ = "note_revisions"
@@ -200,6 +202,7 @@ class FocusSession(Owned):
 class MailMessage(Owned):
     __tablename__ = "mail_messages"
     account_id: Mapped[str | None] = mapped_column(String(36)); thread_id: Mapped[str | None] = mapped_column(String(100)); sender: Mapped[str] = mapped_column(String(320)); recipients: Mapped[list] = mapped_column(JSON, default=list); subject: Mapped[str] = mapped_column(String(500)); body: Mapped[str] = mapped_column(Text, default=""); received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); sync_origin: Mapped[str] = mapped_column(String(30), default="import")
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
 class MailDraft(Owned):
     __tablename__ = "mail_drafts"
     account_id: Mapped[str | None] = mapped_column(String(36)); thread_id: Mapped[str | None] = mapped_column(String(100)); recipients: Mapped[list] = mapped_column(JSON, default=list); subject: Mapped[str] = mapped_column(String(500), default=""); content: Mapped[str] = mapped_column(Text, default=""); status: Mapped[str] = mapped_column(String(20), default="draft")

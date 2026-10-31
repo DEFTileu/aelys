@@ -141,10 +141,14 @@ export interface NoteIn {
   readonly markdown_body?: string;
   readonly parent_id?: Id | null;
   readonly project_id?: Id | null;
+  /** Omit to keep the stored value on update. */
+  readonly pinned?: boolean;
 }
 export interface NoteOut {
   readonly folder?: string | null;
   readonly tags?: readonly string[];
+  /** Absent when talking to a backend that predates the field. */
+  readonly pinned?: boolean;
   readonly title: string;
   readonly markdown_body: string;
   readonly parent_id: Id | null;
@@ -310,6 +314,14 @@ export interface FinanceBudget {
   readonly owner_id: Id;
   readonly version: number;
 }
+/** Monthly budget upsert; category_id null is the overall budget for the month. */
+export interface FinanceBudgetPut {
+  readonly category_id?: Id | null;
+  readonly currency: string;
+  /** YYYY-MM */
+  readonly month: string;
+  readonly limit_amount: DecimalString;
+}
 export interface TransactionIn {
   readonly account_id: Id;
   readonly category_id?: Id | null;
@@ -333,6 +345,8 @@ export interface FinanceTransaction {
   readonly owner_id: Id;
   readonly version: number;
   readonly related_transfer_id: Id | null;
+  /** Filled by the list endpoint; null when uncategorised. */
+  readonly category_name?: string | null;
 }
 export interface FinanceTransferIn {
   readonly from_account_id: Id;
@@ -386,6 +400,13 @@ export interface MailMessage {
   readonly sync_origin: string;
   readonly id: Id;
   readonly owner_id: Id;
+  /** Absent when talking to a backend that predates the field. */
+  readonly is_read?: boolean;
+  readonly version?: number;
+}
+export interface MailMessageReadIn {
+  readonly is_read: boolean;
+  readonly version?: number;
 }
 export interface DraftIn {
   readonly account_id?: Id | null;

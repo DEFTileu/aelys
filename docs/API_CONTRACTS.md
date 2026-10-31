@@ -445,3 +445,23 @@ conflict; a client-side preflight alone is not the concurrency guarantee.
   finished_at}`. `status` is `success` (completed), `skipped` (rate limited),
   `blocked_by_policy` (failed with `POLICY_DENIED`), `failed`, or `running`
   while in flight. No schema change.
+
+### Widget data flags (2026-10-31)
+
+All additive; migration `0027_note_pinned_mail_read`.
+
+- Notes: `NoteIn`/`NoteOut.pinned` (bool, default false). `PATCH /notes/{id}?version=N`
+  with `pinned` toggles it (version-checked, bumps `version`); clients that omit
+  `pinned` keep the stored value.
+- Mail: `MailMessageOut.is_read` (default false for imported/synced mail) and
+  `version`. `PATCH /mail/messages/{id}` body `{is_read, version?}` marks
+  read/unread; stale `version` is `409 VERSION_CONFLICT`, repeating the current
+  value is a no-op that does not bump `version`.
+- Finance budgets: `PUT /finance/budgets` body `{category_id|null, currency,
+  month: "YYYY-MM", limit_amount: "decimal string"}` upserts the single budget for
+  (owner, category, currency, month) (UTC month bounds; `null` category = overall
+  budget) and returns the existing `FinanceBudgetOut`. Floats are rejected.
+  `GET /finance/budgets` accepts optional `month` and `currency` filters. The
+  legacy `POST /finance/budgets` is unchanged.
+- Finance categories: `GET /finance/transactions` rows carry `category_name`
+  (null when uncategorised); `GET /finance/categories` already lists names.
