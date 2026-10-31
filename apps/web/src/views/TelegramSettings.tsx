@@ -14,6 +14,12 @@ function errorNotice(error: unknown): string {
     TELEGRAM_TOKEN_INVALID: 'Токен бота недействителен. Проверьте токен в BotFather.',
     TELEGRAM_VERSION_CONFLICT: 'Настройки изменились. Обновите данные и повторите действие.',
     TELEGRAM_DELIVERY_UNKNOWN: 'Результат отправки неизвестен. Проверьте чат Telegram перед повторной отправкой.',
+    TELEGRAM_MESSAGE_UNAVAILABLE: 'Ответ доступен только для входящего сообщения. Выберите сообщение собеседника; подключение должно быть активно.',
+    TELEGRAM_REPLY_DENIED: 'Бот не может отвечать в этом чате. Проверьте подключение и разрешение на ответы в настройках Telegram Business.',
+    TELEGRAM_REPLY_WINDOW_EXPIRED: 'Окно ответа Telegram (24 часа) истекло. Дождитесь нового сообщения собеседника.',
+    TELEGRAM_PAUSED: 'Подключение приостановлено. Возобновите его перед подготовкой или отправкой ответа.',
+    TELEGRAM_RATE_LIMITED: 'Telegram ограничил частоту запросов. Подождите перед повторной попыткой.',
+    ALREADY_SENT: 'На это сообщение уже отправлен ответ. Выберите новое входящее сообщение.',
     PROVIDER_REQUIRED: 'Выберите AI-провайдер с сохранённым API-ключом для автоматических ответов.',
     BINDING_REQUIRED: 'Привяжите владельца и подключите бота к Telegram Business.',
     INSTRUCTIONS_REQUIRED: 'Введите инструкции для помощника перед включением автоматических ответов.',
@@ -83,6 +89,7 @@ export function TelegramSettings() {
     setDrafts((current) => ({ ...current, [item.id]: item.draft_text ?? '' }))
   }
   const send = (message: TelegramBusinessMessage) => {
+    if (message.direction !== 'inbound' || message.deleted_at) return
     const text = drafts[message.id] ?? message.draft_text ?? ''
     if (!text.trim()) return
     const signature = JSON.stringify([message.version, text])
@@ -151,10 +158,13 @@ export function TelegramSettings() {
       {messages.map((message) => <details className="provider-row actual-settings-disclosure" key={message.id}>
         <summary>{message.chat_title} · {message.direction}</summary><p>{message.sent_at}{message.deleted_at ? ' · удалено' : ''}</p>
         <div className="mail-body">{message.text}</div>
-        <p>Черновик: {message.draft_status}{message.draft_error_code ? ' · ошибка создания' : ''}</p>
-        <div className="settings-form"><label>Текст ответа<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
-          <div className="provider-actions"><button className="button button--quiet" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Создать черновик</button>
-            <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Отправить ответ</button></div></div>
+        {message.direction === 'owner' && <p>Ваше исходящее сообщение. Для ответа выберите входящее сообщение собеседника.</p>}
+        {message.direction === 'inbound' && <>
+          <p>Черновик: {message.draft_status}{message.draft_error_code ? ' · ошибка создания' : ''}</p>
+          <div className="settings-form"><label>Текст ответа<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
+            <div className="provider-actions"><button className="button button--quiet" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Создать черновик</button>
+              <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Отправить ответ</button></div></div>
+        </>}
       </details>)}
     </section>}
   </div></div>

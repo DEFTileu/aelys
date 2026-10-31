@@ -212,6 +212,26 @@ async def test_edit_and_delete_erase_draft_and_content(setup):
 
 
 @pytest.mark.asyncio
+async def test_owner_message_cannot_be_drafted_or_sent(setup):
+    client, sessions, fake = setup
+    item, _row = await seed_message(client, sessions, fake)
+    await ingest(sessions, item['id'], message(3, sender=OWNER, message_id=8), fake)
+    rows = (await client.get(PREFIX + '/messages')).json()
+    row = next(row for row in rows if row['direction'] == 'owner')
+    fake.calls.clear()
+    for action, body in [
+        ('draft', {'version': row['version']}),
+        ('send', {'version': row['version'], 'text': 'хехехе\n'}),
+    ]:
+        response = await client.post(f"{PREFIX}/messages/{row['id']}/{action}", json=body)
+        assert response.status_code == 409
+        assert response.json()['detail']['code'] == 'TELEGRAM_MESSAGE_UNAVAILABLE'
+    assert not fake.calls and not fake.sent
+    current = (await client.get(PREFIX + '/messages')).json()
+    assert next(value for value in current if value['id'] == row['id']) == row
+
+
+@pytest.mark.asyncio
 async def test_reply_rights_and_window_are_enforced(setup):
     client, sessions, fake = setup
     _item, row = await seed_message(client, sessions, fake)
