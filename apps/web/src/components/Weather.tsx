@@ -24,7 +24,7 @@ export function WeatherCard({ compact = false }: { compact?: boolean }) {
     <button type="button" className="home-btn weather-location" onClick={openWeatherSettings}><MapPin size={14} /><span>{location.name}</span></button>
     {forecast ? <>
       <div className="weather-current"><WeatherIcon code={forecast.code} day={forecast.isDay} size={38} /><strong>{temperature(forecast.temperature)}</strong></div>
-      <div>{weatherDescription(forecast.code)} · ощущается {temperature(forecast.apparent)}</div>
+      <div className="weather-description">{weatherDescription(forecast.code)} · ощущается {temperature(forecast.apparent)}</div>
       <div className="weather-forecast">{forecast.days.map((day) => <div key={day.date}><small>{new Date(day.date).toLocaleDateString('ru', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}</small><WeatherIcon code={day.code} size={17} /><span>{Math.round(day.max)}° / {Math.round(day.min)}°</span></div>)}</div>
       <small className="weather-updated">{status === 'error' ? 'Сохранённый прогноз · ' : status === 'loading' ? 'Обновляем · ' : ''}{new Date(forecast.fetchedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small>
     </> : <p role="status">{status === 'loading' ? 'Загружаем погоду…' : notice || 'Погода недоступна.'}</p>}

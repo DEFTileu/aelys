@@ -25,7 +25,16 @@ from . import db as database
 from .api import lock_owner_initialization
 from .config import get_settings
 from .db import get_db
-from .models import AuditLog, AuthSession, Device, DeviceChallenge, PairingSession, SetupToken, User, now
+from .models import (
+    AuditLog,
+    AuthSession,
+    Device,
+    DeviceChallenge,
+    PairingSession,
+    SetupToken,
+    User,
+    now,
+)
 from .ratelimit import enforce
 from .schemas import TokenResponse
 from .security import create_token, current_principal, token_hash

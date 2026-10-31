@@ -263,11 +263,17 @@ The generated `docs/openapi.json` is the mounted schema.
 ### Implemented browser entry/session transport
 
 `GET /api/v1/auth/browser/status` is public and returns only
-`{initialized, can_resume}`; it never exposes the owner's email or credentials.
-`POST /auth/browser/bootstrap` and `/auth/browser/login` accept `LoginRequest`,
+`{initialized, can_resume, password_setup}`; it never exposes the owner's email or credentials.
+`POST /auth/browser/bootstrap` and `/auth/browser/login` accept `BrowserLoginRequest`,
 create a web device, and return `{access_token, device_id, token_type}`.
+The fields remain `{email, password}`. Passwords require at least eight
+characters, with the owner-approved exact `1` / `1` exception only when the
+peer IP, request hostname and supplied Origin are loopback. This still verifies
+the stored owner password hash. Other short inputs return `422 VALIDATION_ERROR`;
+generic/native `LoginRequest` retains its eight-character schema minimum.
 Bootstrap shares the first-owner lock with native `/auth/bootstrap`; an existing
-owner returns `409 ALREADY_INITIALIZED` and cannot be replaced.
+owner returns `409 ALREADY_INITIALIZED` and cannot be replaced. Operator password
+bootstrap/login switches and rate limits also apply to the loopback exception.
 
 `POST /auth/browser/refresh` and `/auth/browser/logout` use the HttpOnly
 `aelys_refresh` cookie (path `/api/v1/auth/browser`, SameSite=Strict, Secure except

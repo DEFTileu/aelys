@@ -216,11 +216,12 @@ records. Their mutation controls require a connection and report
 ## Browser sign-in
 
 Open the web app directly (locally `http://127.0.0.1:5173`). A new instance offers
-first-owner setup; an initialized instance offers sign-in using its existing
-email/password. All modules become available after this single entry step;
+first-owner setup with a setup token; password setup requires explicitly enabling
+`AELYS_PASSWORD_BOOTSTRAP_ENABLED=true`. An initialized instance offers device-key
+entry or sign-in using its existing email/password. All modules become available after this single entry step;
 Settings is no longer the place to initialize a session. Existing accounts and
-data are preserved. Sessions restore from an HttpOnly cookie on reopening, and
-access tokens renew automatically. Default lifetimes are 15 minutes for access
+data are preserved. Production sessions restore from an HttpOnly cookie on reopening,
+and access tokens renew automatically. Default lifetimes are 15 minutes for access
 and 30 days for refresh, using the existing auth settings.
 
 Serve `/api/v1` and `/healthz` through the same origin as the web app. Vite already
@@ -231,15 +232,56 @@ loopback origins on port 5173); this is a CSRF allowlist, not a CORS bypass.
 Keep `AELYS_SECRET_KEY` stable in the backend environment so restarts preserve
 sessions. Signing out works from Settings; revoked devices cannot restore.
 
+Local Web development (`pnpm dev` or the Vite server started by
+`./scripts/start_local.sh`) asks for the same owner email and password after
+each restart of the Web server. With password bootstrap enabled, create that
+single account once on the setup screen; credentials and owner records remain in the backend database. No
+default password is generated or reset by the launcher. Keep the same database
+and `AELYS_SECRET_KEY` between launches.
+
+For the owner-requested local account, the login and password can both be `1`.
+The development Web form accepts that login. The browser API permits this exact
+short pair only when the peer IP, request hostname and supplied Origin are all
+loopback. It still checks the stored password hash and cannot replace an
+existing owner. Other passwords retain the eight-character minimum; native and
+non-browser authentication contracts are unchanged.
+
+Page reloads during the same Web-server run keep the current session, including
+normal access-token renewal. A new dev-server generation requires password
+entry before old access tokens or refresh cookies can reopen the UI. Explicit
+setup-token registration or device-key entry also unlocks the current launch; a
+saved device key cannot resume a new launch automatically. This uses
+a non-secret, backend-scoped generation marker in tab sessionStorage; passwords
+remain outside browser storage. It applies only to loopback Web development,
+not native clients or production builds. Reusing an already running Web server
+does not create a new generation. The Vite proxy preserves the browser Host so
+sign-in also works on the launcher's fallback ports without a broader CSRF allowlist.
+
 ## Dashboard layout and weather
 
-On Home, drag a widget by its header/grip to reorder it, or drag the lower-right
-corner to change width and height. Neither gesture requires Customize. The same
-handles support arrow keys: the header reorders, the corner changes dimensions.
-Customize remains for adding/removing built-in widgets and resetting the layout.
-Layout changes save immediately in this browser (`aelys.desktop.home.v1`), including
-while offline; they do not currently sync to other devices. Legacy layouts remain
-readable. A storage failure is shown instead of claiming a durable save.
+Home widgets automatically select width and height from the available Dashboard
+space and record count. Empty widgets stay compact; populated lists grow up to
+three rows. Resizing the window or sidebar recomputes the grid without saving
+calculated dimensions. No size selection is needed.
+
+Customize enables optional manual sizing, reordering, adding/removing widgets and
+resetting the layout. The resize corner and move handle also support arrow keys.
+Choose Auto to return an individual widget to automatic sizing. Mobile offers
+the same Auto option in Customize Home / Widgets. Layout changes save locally in
+`aelys.desktop.home.v3` / `aelys.mobile.home.v3`, including while offline; they do
+not currently sync to other devices. Older layouts retain their widget order
+and removals while adopting automatic sizing. Their original storage is kept.
+A storage failure is shown instead of claiming a durable save.
+
+For a populated Dashboard preview in local Web development, click **Показать
+демо** above the widgets or open `http://127.0.0.1:5173/?demo=1` (use your actual
+Web port). The banner explicitly labels fictional records. Tasks can be checked
+and the focus timer can run in memory; examples never enter the backend,
+offline cache or outbox. **Показать мои данные** restores live records. Reloading
+with `?demo=1` resets the examples. This preview applies only to Dashboard;
+other module pages keep showing actual records. Production/native clients
+ignore the demo query. Weather examples are marked as fictional and do not
+change the configured city or call a forecast provider.
 
 For weather, click the city/temperature pill at the top, the weather widget's
 city button, or Settings → **Погода и город**. Search for a city and select the

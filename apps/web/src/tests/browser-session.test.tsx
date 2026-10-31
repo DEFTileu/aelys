@@ -3,13 +3,14 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@aelys/shared'
 import { AuthGate } from '../components/AuthGate'
-import { browserAuthStatus, clearAccessToken, getAccessToken, getSharedApiClient, login, logout, resumeBrowserSession } from '../lib/api'
+import { browserAuthStatus, clearAccessToken, getAccessToken, getSharedApiClient, login, logout, resumeBrowserSession, saveApiBaseUrl } from '../lib/api'
+import * as localBrowserLogin from '../lib/localBrowserLogin'
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
 const session = (access_token = 'renewed-access') => ({ access_token, device_id: 'browser-device', token_type: 'bearer' })
 let root: ReturnType<typeof createRoot> | undefined
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); clearAccessToken(false) })
-afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; vi.unstubAllGlobals(); localStorage.clear(); sessionStorage.clear() })
+afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear(); sessionStorage.clear() })
 
 async function mount() {
   const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
@@ -141,5 +142,81 @@ describe('entry gate', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ detail: { code: 'UNAUTHORIZED', message: 'Wrong password' } }, 401)))
     await expect(login('owner@example.test', 'wrong-password')).rejects.toBeInstanceOf(ApiError)
     expect(getAccessToken()).toBeUndefined()
+  })
+})
+
+describe('password entry for each local web launch', () => {
+  it('accepts the requested short local login without changing the production form', async () => {
+    vi.spyOn(localBrowserLogin, 'localBrowserLaunchId').mockReturnValue('local-launch')
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => String(input).endsWith('/status') ? json({ initialized: true, can_resume: false }) : json(session()))
+    vi.stubGlobal('fetch', fetchImpl)
+    const { host, mounted } = await mount()
+    const username = host.querySelector<HTMLInputElement>('#aelys-entry-email')!
+    const password = host.querySelector<HTMLInputElement>('#aelys-entry-password')!
+    expect(username.type).toBe('text')
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      set.call(username, '1'); username.dispatchEvent(new Event('input', { bubbles: true }))
+      set.call(password, '1'); password.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(password.minLength).toBe(1)
+    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(mounted).toHaveBeenCalledOnce()
+    const request = fetchImpl.mock.calls.find(([input]) => String(input).endsWith('/login'))!
+    expect(JSON.parse(request[1]!.body as string)).toEqual({ email: '1', password: '1' })
+  })
+
+  it('blocks old access tokens and cookie restoration after restarting the dev server', async () => {
+    const launch = vi.spyOn(localBrowserLogin, 'localBrowserLaunchId').mockReturnValue('first-launch')
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/status') ? json({ initialized: true, can_resume: true }) : json(session()))
+    vi.stubGlobal('fetch', fetchImpl)
+    await login('owner@example.test', 'password-example')
+    expect(getAccessToken()).toBe('renewed-access')
+    launch.mockReturnValue('next-launch')
+    expect(getAccessToken()).toBeUndefined()
+    expect(await resumeBrowserSession()).toBe(false)
+    const { host, mounted } = await mount()
+    expect(host.textContent).toContain('Войти в Aelys')
+    expect(mounted).not.toHaveBeenCalled()
+    expect(fetchImpl.mock.calls.some(([input]) => /\/(refresh|me)$/.test(String(input)))).toBe(false)
+  })
+
+  it('accepts the same password again and keeps refresh and page reload working within that launch', async () => {
+    const launch = vi.spyOn(localBrowserLogin, 'localBrowserLaunchId').mockReturnValue('first-launch')
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL) => json(session()))
+    vi.stubGlobal('fetch', fetchImpl)
+    await login('owner@example.test', 'password-example')
+    launch.mockReturnValue('next-launch')
+    await login('owner@example.test', 'password-example')
+    sessionStorage.removeItem('aelys.accessToken')
+    expect(await resumeBrowserSession()).toBe(true)
+    const first = await mount()
+    expect(first.mounted).toHaveBeenCalledOnce()
+    await act(async () => root!.unmount()); root = undefined
+    const reload = await mount()
+    expect(reload.mounted).toHaveBeenCalledOnce()
+    expect(fetchImpl.mock.calls.filter(([input]) => String(input).endsWith('/login'))).toHaveLength(2)
+    expect(Object.values(localStorage).join('')).not.toContain('password-example')
+    expect(Object.values(sessionStorage).join('')).not.toContain('password-example')
+  })
+
+  it('does not unlock a new launch with an incorrect password', async () => {
+    vi.spyOn(localBrowserLogin, 'localBrowserLaunchId').mockReturnValue('local-launch')
+    vi.stubGlobal('fetch', vi.fn(async () => json({ detail: { code: 'UNAUTHORIZED', message: 'Wrong password' } }, 401)))
+    await expect(login('owner@example.test', 'wrong-password')).rejects.toBeInstanceOf(ApiError)
+    expect(getAccessToken()).toBeUndefined()
+    expect(await resumeBrowserSession()).toBe(false)
+  })
+
+  it('requires password entry again after signing out or changing the backend', async () => {
+    vi.spyOn(localBrowserLogin, 'localBrowserLaunchId').mockReturnValue('local-launch')
+    vi.stubGlobal('fetch', vi.fn(async () => json(session())))
+    await login('owner@example.test', 'password-example')
+    saveApiBaseUrl('https://another.example.test/api/v1')
+    expect(getAccessToken()).toBeUndefined()
+    expect(await resumeBrowserSession()).toBe(false)
+    await login('owner@example.test', 'password-example')
+    await logout()
+    expect(await resumeBrowserSession()).toBe(false)
   })
 })

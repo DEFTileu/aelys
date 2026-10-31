@@ -1,0 +1,71 @@
+/* Content adapts to its card, including when the sidebar changes available width. */
+.home-demo-banner { display: flex; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-solid); }
+.home-demo-banner > div { flex: 1; min-width: 0; }
+.home-demo-banner strong { font-size: 14px; }
+.home-demo-banner p { margin: 4px 0 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.home-demo-banner button { flex: none; white-space: nowrap; }
+@media (max-width: 700px) { .home-demo-banner { flex-direction: column; align-items: stretch; } .home-demo-banner button { align-self: flex-start; } }
+.home-widget { container: widget / inline-size; }
+.home-widget .home-widget-drag-bar { display: flex; flex-direction: column; min-width: 0; overflow: visible; }
+.home-widget [data-widget-heading] { flex: none; min-width: 0; }
+.home-widget .home-widget-body { flex: 1; min-height: 0; min-width: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.home-widget .home-records { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px 20px; }
+.home-widget .home-records > * { min-width: 0; }
+.home-widget .home-note-row { height: auto; min-height: 40px; }
+.home-widget .home-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-widget .home-activity { grid-template-columns: minmax(0,1fr); gap: 12px; }
+.home-widget .home-activity > div { flex-wrap: wrap; gap: 4px 10px; }
+.home-widget .home-activity time { margin-left: 46px; }
+.home-widget .home-finance-total { flex-wrap: wrap; }
+.home-widget .home-finance-total strong, .home-widget .home-finance-row b { overflow-wrap: anywhere; min-width: 0; }
+.home-widget .home-finance-total--long strong { font-size: clamp(12px,6cqi,24px); white-space: nowrap; max-width: 100%; overflow-x: auto; }
+.home-widget .home-focus-time, .home-widget .weather-current strong { white-space: nowrap; overflow-wrap: normal; }
+.home-widget .home-focus-body { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 20px; height: 100%; min-height: min-content; }
+.home-widget .home-focus-ring { flex: none; width: 128px; height: 128px; }
+.home-widget .home-focus-controls > button { min-width: 44px; height: 44px; }
+.home-widget[data-rows='1'] .home-focus-body { flex-direction: row; gap: 10px; }
+.home-widget[data-rows='1'] .home-focus-ring { width: 76px; height: 76px; padding: 5px !important; }
+.home-widget[data-rows='1'] .home-focus-time { font-size: 20px !important; font-variant-numeric: tabular-nums; }
+.home-widget[data-rows='1'] .home-focus-time + div { display: none; }
+.home-widget .weather-empty { gap: 8px; }
+.home-widget .weather-action { min-height: 44px; }
+.home-widget[data-rows='1'] .weather-empty > svg, .home-widget[data-rows='1'] .weather-empty > p { display: none; }
+.home-widget[data-rows='1'] .weather-empty { height: 100%; justify-content: center; }
+.home-widget .weather-card-body--compact { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 4px 8px; }
+.home-widget .weather-card-body--compact .weather-location { grid-column: 1; overflow: hidden; }
+.home-widget .weather-location span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-widget .weather-card-body--compact .weather-current { grid-column: 1; margin: 0; }
+.home-widget .weather-card-body--compact .weather-current strong { font-size: 26px; }
+.home-widget .weather-card-body--compact > :is(.weather-forecast,.weather-updated,.weather-description) { display: none; }
+.home-widget .weather-card-body--compact .weather-card-footer { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; gap: 0; margin: 0; }
+.home-widget .weather-card-footer button { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
+.home-widget .weather-card-body:not(.weather-card-body--compact) .weather-forecast { flex-wrap: wrap; }
+
+@container widget (min-width: 360px) {
+  .home-widget-body > .home-records, .home-widget-body > .home-activity { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .home-focus-body { flex-direction: row !important; }
+}
+@container widget (max-width: 280px) {
+  .home-widget-meta { display: none; }
+  [data-widget-heading] > span:nth-child(2) { flex-shrink: 1 !important; max-width: none !important; }
+  .home-focus-controls .home-focus-mode { display: none; }
+  .home-mail-row time { display: none; }
+  .home-finance-total strong { font-size: 22px; line-height: 28px; }
+}
+@container widget (max-width: 190px) {
+  [data-widget-heading] { gap: 5px !important; }
+  [data-widget-heading] > span:first-child { display: none !important; }
+  .home-link { font-size: 0; gap: 0; }
+  .home-widget[data-rows='1'] .home-focus-ring { width: 64px; height: 64px; }
+  .home-widget[data-rows='1'] .home-focus-time { font-size: 17px !important; }
+  .home-widget[data-rows='1'] .home-focus-controls > [aria-label='Finish focus'] { display: none; }
+  .home-focus-controls { gap: 4px !important; }
+  .home-mail-avatar, .home-note-row > span:first-child:not(.home-note-text) { display: none; }
+  .home-task-row { gap: 6px !important; }
+  .home-task-row > span:last-child { display: none; }
+  .home-widget[data-rows='1'] .home-event-range { display: none; }
+  .weather-current > svg { width: 24px; height: 24px; flex: none; }
+  .weather-card-body--compact .weather-current { gap: 4px; }
+  .weather-card-body--compact .weather-current strong { font-size: 20px !important; }
+  .weather-card-body--compact .weather-card-footer { width: 44px; }
+}

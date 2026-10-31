@@ -2,6 +2,7 @@ import { act, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthGate } from '../components/AuthGate'
+import * as localBrowserLogin from '../lib/localBrowserLogin'
 import { claimSetupToken, clearAccessToken, deviceLogin, getAccessToken, hasDeviceIdentity, logout, resumeBrowserSession, setIdentityStore, signInWithThisDevice } from '../lib/api'
 import { generateDeviceKey, signWithDeviceKey, type DeviceIdentity, type IdentityStore } from '../lib/deviceKey'
 
@@ -187,4 +188,22 @@ describe('entry gate token screen', () => {
     expect(host.textContent).toContain('Private workspace')
     expect(mounted).toHaveBeenCalledTimes(1)
   })
+})
+
+
+it('requires a new local launch to enter explicitly even with a saved device key', async () => {
+  const launch = vi.spyOn(localBrowserLogin, 'localBrowserLaunchId').mockReturnValue('launch-one')
+  const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/challenge')
+    ? json({ nonce: 'challenge', expires_at: '2026-12-01T00:00:00Z' })
+    : json({ access_token: 'device-access', device_id: 'device-one', token_type: 'bearer' }))
+  vi.stubGlobal('fetch', fetchImpl)
+  await claimSetupToken('token', 'Local device')
+  expect(getAccessToken()).toBe('device-access')
+  launch.mockReturnValue('launch-two')
+  expect(getAccessToken()).toBeUndefined()
+  fetchImpl.mockClear()
+  expect(await resumeBrowserSession()).toBe(false)
+  expect(fetchImpl).not.toHaveBeenCalled()
+  expect(await signInWithThisDevice()).toBe(true)
+  expect(getAccessToken()).toBe('device-access')
 })

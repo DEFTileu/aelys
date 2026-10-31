@@ -16,10 +16,10 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .api import guard_password_login, lock_owner_initialization
-from .ratelimit import enforce
 from .config import get_settings
 from .db import get_db
 from .models import AuditLog, AuthSession, Device, User, now
+from .ratelimit import enforce
 from .security import (
     create_token,
     decode_refresh_token,

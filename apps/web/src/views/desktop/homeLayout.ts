@@ -3,9 +3,14 @@ import { BookOpen, Calendar, CloudSun, Folder, Mail, NotebookText, SquareCheck, 
 import type { AccentKey } from '../../data/desktop/home'
 import type { RoutePath } from '../../types'
 
-export const HOME_LAYOUT_KEY = 'aelys.desktop.home.v1'
+export const HOME_LAYOUT_KEY = 'aelys.desktop.home.v3'
+export const PREVIOUS_HOME_LAYOUT_KEY = 'aelys.desktop.home.v2'
+export const PREVIOUS_MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v2'
+export const LEGACY_HOME_LAYOUT_KEY = 'aelys.desktop.home.v1'
+export const LEGACY_MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v1'
 
 export type WidgetId = 'today' | 'cal' | 'focus' | 'weather' | 'proj' | 'notes' | 'fin' | 'kb' | 'mail' | 'activity'
+/** A zero span means automatic; positive spans are explicit size overrides. */
 export type LayoutEntry = [WidgetId, number, number?]
 
 export type WidgetDefinition = {
@@ -32,35 +37,42 @@ export const WIDGET_CATALOG: Record<WidgetId, WidgetDefinition> = {
 
 export const WIDGET_IDS = Object.keys(WIDGET_CATALOG) as WidgetId[]
 
-export const WIDGET_GRID_ROW = 124
+export const WIDGET_GRID_ROW = 176
 export const WIDGET_GRID_GAP = 16
 export const WIDGET_SIZES = [
-  { id: 'small', label: 'Small', span: 1, rows: 2, height: 264 },
-  { id: 'wide', label: 'Wide', span: 2, rows: 2, height: 264 },
-  { id: 'large', label: 'Large', span: 2, rows: 4, height: 544 },
-  { id: 'full', label: 'Full width', span: 4, rows: 2, height: 264 },
+  { id: '1x1', label: '1 × 1', span: 1, rows: 1, height: 176 },
+  { id: '1x2', label: '1 × 2', span: 1, rows: 2, height: 368 },
+  { id: '1x3', label: '1 × 3', span: 1, rows: 3, height: 560 },
+  { id: '2x1', label: '2 × 1', span: 2, rows: 1, height: 176 },
+  { id: '2x2', label: '2 × 2', span: 2, rows: 2, height: 368 },
+  { id: '2x3', label: '2 × 3', span: 2, rows: 3, height: 560 },
+  { id: '4x1', label: '4 × 1', span: 4, rows: 1, height: 176 },
 ] as const
 
 /** Legacy freeform dimensions are snapped to the nearest supported tile. */
-export function normalizeWidgetSize(span: number, height = 264): { span: number; height: number; rows: number } {
+export function normalizeWidgetSize(span: number, height = WIDGET_GRID_ROW): { span: number; height: number; rows: number } {
   const width = [1, 2, 4].reduce((best, value) => Math.abs(value - span) < Math.abs(best - span) ? value : best, 1)
-  const tall = Math.abs(height - 544) < Math.abs(height - 264)
-  return { span: tall ? 2 : width, height: tall ? 544 : 264, rows: tall ? 4 : 2 }
+  const available = WIDGET_SIZES.filter(size => size.span === width)
+  const size = available.reduce((best, value) => Math.abs(value.height - height) < Math.abs(best.height - height) ? value : best)
+  return { span: size.span, height: size.height, rows: size.rows }
 }
 
-export const DEFAULT_LAYOUT: LayoutEntry[] = [['today', 1, 264], ['cal', 1, 264], ['focus', 1, 264], ['weather', 1, 264], ['proj', 1, 264], ['notes', 1, 264], ['fin', 1, 264], ['kb', 1, 264], ['activity', 4, 264]]
-export const MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v1'
-export const MOBILE_DEFAULT_LAYOUT: LayoutEntry[] = [['today', 2, 264], ['focus', 1, 264], ['weather', 1, 264], ['cal', 2, 264], ['mail', 2, 264], ['notes', 1, 264], ['fin', 1, 264], ['proj', 2, 264]]
+export const DEFAULT_LAYOUT: LayoutEntry[] = ['today', 'cal', 'focus', 'weather', 'proj', 'notes', 'fin', 'kb', 'activity'].map(id => [id as WidgetId, 0])
+export const MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v3'
+export const MOBILE_DEFAULT_LAYOUT: LayoutEntry[] = ['today', 'focus', 'weather', 'cal', 'mail', 'notes', 'fin', 'proj'].map(id => [id as WidgetId, 0])
 
 export function readLayout(mobile = false): LayoutEntry[] {
   try {
-    const stored: unknown = JSON.parse(window.localStorage.getItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY) || 'null')
+    const current = window.localStorage.getItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY)
+    const stored: unknown = JSON.parse(current ?? window.localStorage.getItem(mobile ? PREVIOUS_MOBILE_HOME_LAYOUT_KEY : PREVIOUS_HOME_LAYOUT_KEY) ?? window.localStorage.getItem(mobile ? LEGACY_MOBILE_HOME_LAYOUT_KEY : LEGACY_HOME_LAYOUT_KEY) ?? 'null')
     if (Array.isArray(stored)) {
       const seen = new Set<string>()
       return stored.flatMap((entry): LayoutEntry[] => {
         if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Object.hasOwn(WIDGET_CATALOG, entry[0]) || seen.has(entry[0]) || !Number.isFinite(entry[1])) return []
         seen.add(entry[0])
-        const size = normalizeWidgetSize(entry[1], Number.isFinite(entry[2]) ? entry[2] : 264)
+        // Existing layouts adopt automatic sizing while retaining order/removals.
+        if (current === null || entry[1] === 0) return [[entry[0] as WidgetId, 0]]
+        const size = normalizeWidgetSize(entry[1], Number.isFinite(entry[2]) ? entry[2] : WIDGET_GRID_ROW)
         return [[entry[0] as WidgetId, size.span, size.height]]
       })
     }
@@ -72,7 +84,7 @@ export function readLayout(mobile = false): LayoutEntry[] {
 
 export function saveLayout(layout: LayoutEntry[], mobile = false) {
   try {
-    window.localStorage.setItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY, JSON.stringify(layout.map(([id, span, height]) => { const size = normalizeWidgetSize(span, height); return [id, size.span, size.height] })))
+    window.localStorage.setItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY, JSON.stringify(layout.map(([id, span, height]) => { if (span === 0) return [id, 0]; const size = normalizeWidgetSize(span, height); return [id, size.span, size.height] })))
     return true
   } catch {
     // Let the UI distinguish a durable change from a session-only preview.

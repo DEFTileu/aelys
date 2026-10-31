@@ -2,11 +2,13 @@ import type { ApiConfig } from '../types'
 import { ApiClient, ApiError as SharedApiError, IndexedDbOfflineStore, type BrowserAuthStatus, type BrowserSession } from '@aelys/shared'
 import { isNativeHost, loadNativeTransport, nativeBackendOrigin } from './nativeTransport'
 import { createNativeFetch } from './nativeClient'
+import { localBrowserLaunchId } from './localBrowserLogin'
 import { generateDeviceKey, indexedDbIdentityStore, signWithDeviceKey, webCryptoAvailable, type DeviceIdentity, type IdentityStore } from './deviceKey'
 
 const API_BASE_STORAGE_KEY = 'aelys.apiBaseUrl'
 const ACCESS_TOKEN_STORAGE_KEY = 'aelys.accessToken'
 const SIGNED_OUT_KEY = 'aelys.signedOut'
+const LOCAL_LAUNCH_STORAGE_KEY = 'aelys.localPasswordLaunch'
 const DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 export const SESSION_EVENT = 'aelys:session-changed'
 
@@ -38,18 +40,32 @@ let sharedClient: ApiClient | undefined
 let sharedClientKey = ''
 let refreshFlight: Promise<boolean> | undefined
 
+function localLaunchAuthenticated(): boolean {
+  const launchId = localBrowserLaunchId()
+  if (!launchId) return true
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(LOCAL_LAUNCH_STORAGE_KEY) || 'null')
+    return saved?.launchId === launchId && saved?.origin === sharedOrigin(getApiConfig().baseUrl)
+  } catch { return false }
+}
+
 export function getAccessToken(): string | undefined {
-  if (window.localStorage.getItem(SIGNED_OUT_KEY)) return undefined
+  if (window.localStorage.getItem(SIGNED_OUT_KEY) || !localLaunchAuthenticated()) return undefined
   return window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) || undefined
 }
 
 export function clearAccessToken(notify = true): void {
   window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+  window.sessionStorage.removeItem(LOCAL_LAUNCH_STORAGE_KEY)
   sharedClient = undefined; sharedClientKey = ''
   if (notify) window.dispatchEvent(new Event(SESSION_EVENT))
 }
 
-function acceptSession(session: BrowserSession, notify: boolean): void {
+function acceptSession(session: BrowserSession, notify: boolean, explicitEntry = false): void {
+  const launchId = localBrowserLaunchId()
+  if (launchId && explicitEntry) {
+    window.sessionStorage.setItem(LOCAL_LAUNCH_STORAGE_KEY, JSON.stringify({ launchId, origin: sharedOrigin(getApiConfig().baseUrl) }))
+  }
   window.localStorage.removeItem(SIGNED_OUT_KEY)
   window.sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, session.access_token)
   if (notify) window.dispatchEvent(new Event(SESSION_EVENT))
@@ -101,7 +117,7 @@ export async function claimSetupToken(token: string, displayName: string): Promi
   const key = await generateDeviceKey()
   const session = await deviceRequest<DeviceSessionResponse>('auth/setup/claim', { token: token.trim(), public_key: key.publicKey, platform: 'web', display_name: displayName.trim() || 'Браузер' })
   await identityStore.save({ deviceId: session.device_id, origin: sharedOrigin(getApiConfig().baseUrl), publicKey: key.publicKey, privateKey: key.privateKey })
-  acceptSession(session, true)
+  acceptSession(session, true, true)
 }
 
 /** Proves possession of this device's key to the server. False when there is no usable identity. */
@@ -121,7 +137,7 @@ export async function deviceLogin(): Promise<boolean> {
     const signature = await signWithDeviceKey(identity.privateKey, `aelys-device-login-v1\n${identity.deviceId}\n${challenge.nonce}`)
     const session = await deviceRequest<DeviceSessionResponse>('auth/device/login', { challenge_id: challenge.challenge_id, signature })
     if (origin !== sharedOrigin(getApiConfig().baseUrl)) return false
-    acceptSession(session, false)
+    acceptSession(session, false, true)
     return true
   } catch (error) {
     if (error instanceof SharedApiError && error.status === 401) return false
@@ -143,7 +159,7 @@ export function isSignedOut(): boolean { return !!window.localStorage.getItem(SI
 export function clearNativeSignedOut(): void { window.localStorage.removeItem(SIGNED_OUT_KEY) }
 
 export async function resumeBrowserSession(): Promise<boolean> {
-  if (isSignedOut()) return false
+  if (isSignedOut() || !localLaunchAuthenticated()) return false
   if (!refreshFlight) {
     const origin = sharedOrigin(getApiConfig().baseUrl)
     const refresh = async () => {
@@ -151,7 +167,7 @@ export async function resumeBrowserSession(): Promise<boolean> {
         // A browser registered as a device renews its session by signing, not with a stored credential.
         if (await hasDeviceIdentity() && await deviceLogin()) return true
         const session = await browserRequest<BrowserSession>('refresh', {})
-        if (isSignedOut() || origin !== sharedOrigin(getApiConfig().baseUrl)) return false
+        if (isSignedOut() || !localLaunchAuthenticated() || origin !== sharedOrigin(getApiConfig().baseUrl)) return false
         acceptSession(session, false)
         return true
       } catch (error) {
@@ -264,11 +280,11 @@ export async function logout(): Promise<void> {
 }
 
 export async function login(email: string, password: string): Promise<void> {
-  acceptSession(await browserRequest<BrowserSession>('login', { email, password }), true)
+  acceptSession(await browserRequest<BrowserSession>('login', { email, password }), true, true)
 }
 
 export async function bootstrapOwner(email: string, password: string): Promise<void> {
-  acceptSession(await browserRequest<BrowserSession>('bootstrap', { email, password }), true)
+  acceptSession(await browserRequest<BrowserSession>('bootstrap', { email, password }), true, true)
 }
 
 export class ApiError extends Error {

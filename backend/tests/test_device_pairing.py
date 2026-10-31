@@ -73,7 +73,7 @@ def bearer(session):
 
 @pytest.mark.asyncio
 async def test_setup_token_creates_a_passwordless_owner_once(client):
-    key, session = await claim_owner(client)
+    _key, session = await claim_owner(client)
     me = (await client.get(f'{B}/me', headers=bearer(session))).json()
     assert me['device_id'] == session['device_id'] and me['email'] is None
     reused = await client.post(f'{B}/auth/setup/claim', json={'token': 'x' * 32, 'public_key': Key().public, 'platform': 'macos', 'display_name': 'Other'})
@@ -134,7 +134,7 @@ async def test_unanswered_challenges_are_capped_per_device(client):
 
 @pytest.mark.asyncio
 async def test_revoked_devices_and_unknown_devices_cannot_log_in(client):
-    key, session = await claim_owner(client)
+    _key, session = await claim_owner(client)
     assert (await client.post(f'{B}/devices/{session["device_id"]}/revoke', headers=bearer(session))).status_code == 200
     assert (await client.post(f'{B}/auth/device/challenge', json={'device_id': session['device_id']})).status_code == 401
     assert (await client.post(f'{B}/auth/device/challenge', json={'device_id': 'missing'})).status_code == 401
@@ -235,7 +235,7 @@ async def test_pairing_resists_reuse_guessing_and_expiry(client):
 
 @pytest.mark.asyncio
 async def test_recovery_token_adds_a_device_to_the_existing_owner(client):
-    first_key, first = await claim_owner(client)
+    _first_key, first = await claim_owner(client)
     owner_id = (await client.get(f'{B}/me', headers=bearer(first))).json()['id']
     recovered_key = Key()
     response = await client.post(f'{B}/auth/setup/claim', json={'token': await setup_token('recovery'), 'public_key': recovered_key.public, 'platform': 'macos', 'display_name': 'New Mac'})
