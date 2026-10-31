@@ -52,14 +52,12 @@ describe('dashboard widgets', () => {
     const at = (hours: number) => new Date(Date.now() + hours * 3600000).toISOString()
     const records = Array.from({ length: 12 }, (_, index) => ({ id: `record-${index}`, title: `Record ${index}`, name: `Project ${index}`, status: 'todo', due_at: at(index), starts_at: at(index + 1), ends_at: at(index + 1.5), markdown_body: 'Note preview', currency: 'KZT', amount: '1.5', type: 'income', occurred_at: at(-index), notes: '', sender: 'Sender', subject: 'Subject', body: 'Body', received_at: at(-index), event_kind: 'task.created', actor_kind: 'owner', project_id: null, elapsed_seconds: 60 }))
     Object.entries(client).forEach(([key, method]) => method.mockResolvedValue(key === 'focusSessions' ? [] : key === 'createTask' ? {} : records))
-    saveLayout(WIDGET_IDS.map(key => [key, 1, 264]))
-    const { host, grid } = await mount(); await customize(host)
-    const card = grid.querySelector<HTMLElement>(`[data-widget-id="${id}"]`)!
-    const select = card.querySelector<HTMLSelectElement>('select')!
     const html: string[] = []
-    for (const size of ['1x1', '2x1', '2x2']) {
-      await choose(select, size)
-      html.push(card.querySelector('.home-widget-body')!.innerHTML)
+    for (const [span, height] of [[1, 264], [2, 264], [2, 544]]) {
+      saveLayout([[id, span, height]])
+      const { grid } = await mount()
+      html.push(grid.querySelector('.home-widget-body')!.innerHTML)
+      await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ''
     }
     expect(new Set(html).size).toBe(3)
   })
@@ -102,28 +100,61 @@ describe('dashboard widgets', () => {
   })
 })
 
+const press = async (node: Element, key: string, shiftKey = false) => act(async () => { node.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true })) })
+const card = (host: HTMLElement, id: string) => host.querySelector<HTMLElement>(`[data-widget-id="${id}"]`)!
+
 describe('dashboard customization', () => {
+  it('has no arrow buttons, size dropdown or edit tools on the card', async () => {
+    const { host, grid } = await mount(); await customize(host)
+    expect(grid.querySelector('select, .home-widget-edit-tools, [aria-label$="earlier"], [aria-label$="later"], [aria-label^="Move"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Remove Today"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Resize Today"]')).not.toBeNull()
+  })
+
+  it('dims and disables card bodies while editing', async () => {
+    const { host, grid } = await mount()
+    expect(grid.querySelector('.home-widget-body[inert]')).toBeNull()
+    await customize(host)
+    const bodies = [...grid.querySelectorAll('.home-widget-body')]
+    expect(bodies.length).toBe(8)
+    expect(bodies.every(body => body.hasAttribute('inert'))).toBe(true)
+    expect(grid.classList.contains('home-widget-grid--editing')).toBe(true)
+  })
+
+  it('moves with arrows, resizes with Shift+arrows through S, M, L and Tall, and removes with Delete', async () => {
+    const { host } = await mount(); await customize(host)
+    expect(card(host, 'today').tabIndex).toBe(0)
+    await press(card(host, 'today'), 'ArrowRight')
+    expect(readLayout().slice(0, 2).map(([id]) => id)).toEqual(['focus', 'today'])
+    await press(card(host, 'today'), 'ArrowLeft')
+    expect(readLayout()[0][0]).toBe('today')
+    for (const [key, span, height] of [['ArrowDown', 2, 544], ['ArrowLeft', 1, 544], ['ArrowUp', 1, 264], ['ArrowRight', 2, 264]] as const) {
+      await press(card(host, 'today'), key, true)
+      expect(readLayout()[0]).toEqual(['today', span, height])
+    }
+    await press(card(host, 'today'), 'Delete')
+    expect(card(host, 'today')).toBeNull()
+    expect(readLayout().some(([id]) => id === 'today')).toBe(false)
+  })
+
   it('saves all four sizes for every widget', async () => {
     saveLayout(WIDGET_IDS.map(id => [id, 1, 264]))
-    const { host, grid } = await mount(); await customize(host)
+    const { host } = await mount(); await customize(host)
     for (const id of WIDGET_IDS) {
-      const card = grid.querySelector<HTMLElement>(`[data-widget-id="${id}"]`)!
-      const select = card.querySelector<HTMLSelectElement>('select')!
-      expect([...select.options].map(option => option.value)).toEqual(WIDGET_SIZES.map(size => size.id))
-      for (const size of WIDGET_SIZES) {
-        await choose(select, size.id)
-        expect(card.dataset.size).toBe(size.id)
-        expect(card.dataset.rows).toBe(String(size.rows))
-        expect(readLayout().find(([key]) => key === id)).toEqual([id, size.span, size.height])
+      for (const [key, size] of [['ArrowRight', WIDGET_SIZES[1]], ['ArrowDown', WIDGET_SIZES[2]], ['ArrowLeft', WIDGET_SIZES[3]], ['ArrowUp', WIDGET_SIZES[0]]] as const) {
+        await press(card(host, id), key, true)
+        expect(card(host, id).dataset.size).toBe(size.id)
+        expect(card(host, id).dataset.rows).toBe(String(size.rows))
+        expect(readLayout().find(([entry]) => entry === id)).toEqual([id, size.span, size.height])
       }
     }
   })
 
-  it('snaps keyboard resizing to S, M, L and Tall', async () => {
+  it('snaps resize-handle keyboard input to S, M, L and Tall', async () => {
     const { host } = await mount(); await customize(host)
     const handle = host.querySelector('[aria-label="Resize Today"]')!
     for (const [key, span, height] of [['ArrowDown', 2, 544], ['ArrowLeft', 1, 544], ['ArrowUp', 1, 264], ['ArrowRight', 2, 264]] as const) {
-      await act(async () => handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })))
+      await press(handle, key)
       expect(readLayout()[0]).toEqual(['today', span, height])
     }
   })
@@ -138,38 +169,38 @@ describe('dashboard customization', () => {
     expect(readLayout()[0]).toEqual(['today', 1, 544])
   })
 
-  it('adapts the visible body during resize preview and restores it on cancellation', async () => {
+  it('adapts the visible body and shows a size badge during resize preview, then restores on cancellation', async () => {
     saveLayout([['today', 1, 264]])
     client.tasks.mockResolvedValue(tasks(12))
-    const { host, grid } = await mount(); await customize(host)
-    const card = grid.querySelector('[data-widget-id="today"]')!
+    const { host } = await mount(); await customize(host)
+    const today = card(host, 'today')
     const handle = host.querySelector('[aria-label="Resize Today"]')!
-    expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(0)
+    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(0)
     await act(async () => { pointer(handle, 'pointerdown', 200, 264); pointer(handle, 'pointermove', 480, 544) })
-    expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(12)
+    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(12)
+    expect(today.querySelector('.home-size-badge')?.textContent).toBe('L · 2×2')
     expect(readLayout()).toEqual([['today', 1, 264]])
     await act(async () => pointer(handle, 'pointercancel', 480, 544))
-    expect(card.querySelectorAll('[role="checkbox"]')).toHaveLength(0)
+    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(0)
+    expect(today.querySelector('.home-size-badge')).toBeNull()
   })
 
-  it('locks editing controls and does not move or save when dragging a heading', async () => {
+  it('does not move or save when dragging outside editing mode', async () => {
     const { host, grid } = await mount()
-    for (const label of ['Move Today', 'Resize Today', 'Remove Today', 'Size of Today']) expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull()
+    for (const label of ['Resize Today', 'Remove Today']) expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull()
     const heading = grid.querySelector('[data-widget-id="today"] [data-widget-heading]')!
     await act(async () => { pointer(heading, 'pointerdown', 15, 25); pointer(heading, 'pointermove', 300, 100); pointer(heading, 'pointerup', 300, 100) })
     expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['today', 'focus'])
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    await customize(host)
-    for (const label of ['Move Today', 'Resize Today', 'Remove Today']) expect(host.querySelector(`[aria-label="${label}"]`)).not.toBeNull()
   })
 
-  it('moves a widget by pointer in Customize and persists the order', async () => {
+  it('moves a widget by dragging the card body, with a dashed drop target, and persists the order', async () => {
     const { host, grid } = await mount(); await customize(host)
-    const handle = host.querySelector('[aria-label="Move Today"]')!
-    await act(async () => pointer(handle, 'pointerdown', 15, 25))
-    await act(async () => pointer(handle, 'pointermove', 300, 100))
+    const today = card(host, 'today')
+    await act(async () => pointer(today, 'pointerdown', 15, 25))
+    await act(async () => pointer(today, 'pointermove', 300, 100))
     expect(grid.children[1]?.hasAttribute('data-drop-target')).toBe(true)
-    await act(async () => pointer(handle, 'pointerup', 300, 100))
+    await act(async () => pointer(today, 'pointerup', 300, 100))
     expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['focus', 'today'])
     expect(readLayout().slice(0, 2).map(([id]) => id)).toEqual(['focus', 'today'])
   })
@@ -197,69 +228,85 @@ describe('dashboard customization', () => {
     expect(readLayout()[0]).toEqual(['today', 2, 544])
   })
 
-  it('offers preset sizes and button and keyboard alternatives for reordering', async () => {
-    const { host } = await mount(); await customize(host)
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="Size of Today"]')!
-    expect([...select.options].map((option) => option.textContent)).toEqual(['S', 'M', 'L', 'Tall'])
-    for (const { id: value, span, height } of WIDGET_SIZES) {
-      await choose(select, value)
-      expect(readLayout()[0]).toEqual(['today', span, height])
-    }
-    await click(host.querySelector<HTMLButtonElement>('[aria-label="Move Today later"]')!)
-    expect(readLayout()[1]?.[0]).toBe('today')
-    const handle = host.querySelector('[aria-label="Move Today"]')!
-    await act(async () => handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })))
-    expect(readLayout()[0]?.[0]).toBe('today')
-  })
-
-  it('removes and adds a widget in Customize and persists both changes', async () => {
+  it('removes a card with the minus badge and adds it back from the Add widget sheet', async () => {
     const { host, grid } = await mount(); await customize(host)
     await click(host.querySelector<HTMLButtonElement>('[aria-label="Remove Today"]')!)
     expect(grid.querySelector('[data-widget-id="today"]')).toBeNull()
     expect(readLayout().some(([id]) => id === 'today')).toBe(false)
-    await click(button(host, 'Widget'))
-    await click([...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((node) => node.textContent?.includes('Today'))!)
-    expect(grid.querySelector('[data-widget-id="today"]')).not.toBeNull()
-    expect(readLayout().find(([id]) => id === 'today')).toEqual(['today', 2, 264])
+    await click(button(host, 'Add widget'))
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"][aria-label="Add widget"]')!
+    expect(dialog).not.toBeNull()
+    expect(dialog.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe('M')
+    await click([...dialog.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(node => node.textContent?.includes('Today'))!)
+    await click([...dialog.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Add')!)
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(readLayout().at(-1)).toEqual(['today', 2, 264])
+    expect(card(host, 'today').hasAttribute('data-new')).toBe(true)
     await click(button(host, 'Done'))
     expect(host.querySelector('[aria-label="Remove Today"]')).toBeNull()
   })
 
-  it('lets the same widget be added twice with unique keys', async () => {
+  it('lets the same widget be added twice at different sizes with unique keys', async () => {
     const { host, grid } = await mount(); await customize(host)
-    await click(button(host, 'Widget'))
-    await click([...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((node) => node.textContent?.includes('Calendar'))!)
+    await click(button(host, 'Add widget'))
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
+    expect([...dialog.querySelectorAll('[role="option"]')].find(node => node.textContent?.includes('Calendar'))?.textContent).toContain('On Home')
+    await click([...dialog.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(node => node.textContent?.includes('Calendar'))!)
+    await click([...dialog.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(node => node.textContent === 'S')!)
+    await click([...dialog.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Add')!)
     const cards = [...grid.querySelectorAll<HTMLElement>('[data-widget-id="cal"]')]
-    expect(cards).toHaveLength(2)
-    expect(new Set(cards.map(card => card.dataset.widgetKey)).size).toBe(2)
+    expect(cards.map(node => node.dataset.sizeKey)).toEqual(['M', 'S'])
+    expect(new Set(cards.map(node => node.dataset.widgetKey)).size).toBe(2)
+    expect(readLayout().filter(([id]) => id === 'cal')).toHaveLength(2)
     await click(cards[1].querySelector<HTMLButtonElement>('[aria-label="Remove Calendar"]')!)
     expect(grid.querySelectorAll('[data-widget-id="cal"]')).toHaveLength(1)
+  })
+
+  it('filters the Add widget list by search and closes with Cancel or Escape without changing the layout', async () => {
+    const { host } = await mount(); await customize(host)
+    await click(button(host, 'Add widget'))
+    const search = host.querySelector<HTMLInputElement>('[aria-label="Search widgets"]')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'mail'); search.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect([...host.querySelectorAll('[role="option"]')].map(node => node.textContent)).toEqual(['MailOn Home'])
+    await click([...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(node => node.textContent === 'Cancel')!)
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    await click(button(host, 'Add widget'))
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Remove Today"]')).not.toBeNull()
+    expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
+  })
+
+  it('leaves edit mode with Escape', async () => {
+    const { host } = await mount(); await customize(host)
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    expect(host.querySelector('[aria-label="Remove Today"]')).toBeNull()
   })
 
   it('cancels pointer resize on pointercancel, Escape and lost capture', async () => {
     const { host, grid } = await mount(); await customize(host)
     const resize = host.querySelector('[aria-label="Resize Today"]')!
-    const card = grid.children[0] as HTMLElement
+    const today = grid.children[0] as HTMLElement
     await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 688) })
     await act(async () => pointer(resize, 'pointercancel', 410, 688))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect(card.dataset.sizeKey).toBe('M')
+    expect(today.dataset.sizeKey).toBe('M')
     await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 688) })
-    await act(async () => resize.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    await press(resize, 'Escape')
     await act(async () => pointer(resize, 'pointerup', 410, 688))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
     await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 688) })
     await act(async () => pointer(resize, 'lostpointercapture', 410, 688))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect(card.dataset.sizeKey).toBe('M')
+    expect(today.dataset.sizeKey).toBe('M')
   })
 
   it('Done cancels a gesture and removes editing affordances', async () => {
     const { host, grid } = await mount(); await customize(host)
-    const handle = host.querySelector('[aria-label="Move Today"]')!
-    await act(async () => { pointer(handle, 'pointerdown', 15, 25); pointer(handle, 'pointermove', 300, 100) })
+    const today = card(host, 'today')
+    await act(async () => { pointer(today, 'pointerdown', 15, 25); pointer(today, 'pointermove', 300, 100) })
     await click(button(host, 'Done'))
-    for (const label of ['Move Today', 'Resize Today', 'Remove Today', 'Size of Today']) expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull()
+    for (const label of ['Resize Today', 'Remove Today']) expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull()
     expect(grid.querySelector('[data-drop-target]')).toBeNull()
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
     expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['today', 'focus'])
@@ -268,8 +315,22 @@ describe('dashboard customization', () => {
   it('reports a blocked local save instead of claiming the layout is durable', async () => {
     const { host } = await mount(); await customize(host)
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Quota exceeded') })
-    await choose(host.querySelector<HTMLSelectElement>('[aria-label="Size of Today"]')!, '2x2')
+    await press(card(host, 'today'), 'ArrowDown', true)
     expect(host.textContent).toContain('Could not save the layout')
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
+  })
+
+  it('enters the same edit mode on mobile with a long press', async () => {
+    vi.useFakeTimers()
+    const width = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    try {
+      const { host, grid } = await mount()
+      expect(host.querySelector('[aria-label="Remove Today"]')).toBeNull()
+      await act(async () => pointer(card(host, 'today'), 'pointerdown', 15, 25))
+      await act(async () => { vi.advanceTimersByTime(600) })
+      expect(host.querySelector('[aria-label="Remove Today"]')).not.toBeNull()
+      expect(grid.classList.contains('home-widget-grid--editing')).toBe(true)
+    } finally { vi.useRealTimers(); Object.defineProperty(window, 'innerWidth', { configurable: true, value: width }) }
   })
 })

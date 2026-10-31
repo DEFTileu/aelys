@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Check, LayoutGrid, Plus, RotateCcw } from '../icons'
-import { HOME_CHIPS, accentOf } from '../data/desktop/home'
+import { AddWidgetSheet } from './desktop/AddWidgetSheet'
+import { HOME_CHIPS } from '../data/desktop/home'
 import { askAelys, takeCustomizeHome, useDesktopState, useWindowWidth } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
 import { getSharedApiClient } from '../lib/api'
 import type { FocusIn, FocusOut, TaskOut } from '@aelys/shared'
 import type { ApiStatus } from '../types'
-import { DEFAULT_LAYOUT, MOBILE_DEFAULT_LAYOUT, WIDGET_CATALOG, WIDGET_IDS, DEFAULT_SIZES, layoutKey, newLayoutEntry, readLayout, reorderLayout, saveLayout, normalizeWidgetSize, type LayoutEntry, type WidgetId } from './desktop/homeLayout'
+import { DEFAULT_LAYOUT, MOBILE_DEFAULT_LAYOUT, WIDGET_CATALOG, layoutKey, pendingHighlight, newLayoutEntry, readLayout, reorderLayout, saveLayout, normalizeWidgetSize, type LayoutEntry, type SizeKey, type WidgetId } from './desktop/homeLayout'
 import { HomeWidget, type HomeData, type FocusTimer } from './desktop/homeWidgets'
 
 // Orb gradient from the design; the AppShell hero stays outside this view.
@@ -21,9 +22,11 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const layout = mobile ? mobileLayout : desktopLayout
   const setLayout = mobile ? setMobileLayout : setDesktopLayout
   const [editing, setEditing] = useState(false)
+  const grid = useRef<HTMLElement>(null)
   const layoutToolbar = useRef<HTMLDivElement>(null)
   useEffect(() => { if (mobile && editing) layoutToolbar.current?.scrollIntoView?.({ block:'nearest' }) }, [mobile, editing])
-  const [picker, setPicker] = useState(false)
+  const [sheet, setSheet] = useState(false)
+  const [highlight, setHighlight] = useState(pendingHighlight.key)
   const { customizeHome, homeToggles } = useDesktopState()
   const [draft, setDraft] = useState('')
   const [taskNotice, setTaskNotice] = useState('')
@@ -80,7 +83,24 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     return { left: focusSession ? elapsed : 0, running: !!focusSession, disabled: focusBusy || apiStatus !== 'ready', toggle: () => { void changeFocus() }, reset: () => { void changeFocus(true) } }
   }, [focusSession, focusTick, focusBusy, apiStatus])
   // The sidebar Widgets item sets this flag and navigates here.
-  useEffect(() => { if (takeCustomizeHome()) { if(mobile) navigate('/widgets'); else setEditing(true) } }, [customizeHome])
+  useEffect(() => { if (takeCustomizeHome()) { setEditing(true); if (!mobile) setSheet(true) } }, [customizeHome])
+  // Escape leaves edit mode; an open sheet or an active drag handles Escape itself first.
+  useEffect(() => {
+    if (!editing) return
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !sheet) setEditing(false) }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [editing, sheet])
+  // A newly added card scrolls into view with a short highlight.
+  useEffect(() => {
+    if (!highlight) return
+    pendingHighlight.key = ''
+    const node = grid.current?.querySelector<HTMLElement>(`[data-widget-key="${highlight}"]`)
+    node?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+    node?.setAttribute('data-new', '')
+    const timer = window.setTimeout(() => { node?.removeAttribute('data-new'); setHighlight('') }, 1600)
+    return () => window.clearTimeout(timer)
+  }, [highlight, layout])
   const ask = (text: string) => { const value = text.trim(); if (value) { setDraft(''); askAelys(value) } }
 
   const toggleTask = async (task: TaskOut) => {
@@ -104,9 +124,10 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   }
 
   const commit = (next: LayoutEntry[]) => { if (!editing) return; setLayout(next); setLayoutNotice(saveLayout(next, mobile) ? '' : 'Could not save the layout. Allow local browser storage') }
-  const addWidget = (id: WidgetId) => {
-    commit([...layout, newLayoutEntry(id, DEFAULT_SIZES[id], layout)])
-    setPicker(false)
+  const addWidget = (id: WidgetId, size: SizeKey) => {
+    const entry = newLayoutEntry(id, size, layout)
+    commit([...layout, entry])
+    setHighlight(layoutKey(entry)); setSheet(false)
   }
   const moveWidget = (key: string, delta: -1 | 1) => {
     const index = layout.findIndex((entry) => layoutKey(entry) === key)
@@ -115,7 +136,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   }
   const sizeWidget = (key: string, span: number, height: number) => { const size = normalizeWidgetSize(span, height); commit(layout.map((entry) => layoutKey(entry) === key ? (entry[3] ? [entry[0], size.span, size.height, entry[3]] : [entry[0], size.span, size.height]) as LayoutEntry : entry)) }
   const removeWidget = (key: string) => commit(layout.filter((entry) => layoutKey(entry) !== key))
-  const resetLayout = () => { commit((mobile ? MOBILE_DEFAULT_LAYOUT : DEFAULT_LAYOUT).map((entry) => [...entry] as LayoutEntry)); setPicker(false) }
+  const resetLayout = () => commit((mobile ? MOBILE_DEFAULT_LAYOUT : DEFAULT_LAYOUT).map((entry) => [...entry] as LayoutEntry))
 
   const visibleLayout = homeToggles[3] ? layout : layout.filter(([id]) => id !== 'activity')
 
@@ -138,42 +159,26 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
         <h2 style={{ margin: 0, fontSize: 22, lineHeight: '30px', fontWeight: 600, letterSpacing: '-.01em' }}>My day</h2>
       </div>
       {editing
-        ? <>
-          <button type="button" className="home-btn home-tool" onClick={() => { setEditing(false); setPicker(false) }} style={{ padding: '0 16px', fontSize: 14 }}><Check size={18} aria-hidden="true" />Done</button>
-          <div style={{ position: 'relative' }}>
-            <button type="button" className="home-btn home-add" aria-haspopup="menu" aria-expanded={picker} onClick={() => setPicker((value) => !value)}><Plus size={18} aria-hidden="true" />Widget</button>
-            {picker && <div role="menu" aria-label="Add to My day" className="home-picker" style={{ position: 'absolute', right: 0, top: 48, zIndex: 20, width: 300, padding: 8, borderRadius: 16, background: '#fff', boxShadow: '0 18px 50px rgba(20,10,30,.22)', border: '1px solid #EFEAE6' }}>
-              <div style={{ fontSize: 12, lineHeight: '16px', fontWeight: 600, color: '#625D69', padding: '6px 10px' }}>Add to My day</div>
-              {WIDGET_IDS.map((id) => {
-                const def = WIDGET_CATALOG[id]
-                const { c, soft } = accentOf(def.color)
-                return <button key={id} type="button" role="menuitem" className="home-btn home-picker-item" onClick={() => addWidget(id)}>
-                  <span style={{ width: 32, height: 32, flex: 'none', borderRadius: 9, background: soft, color: c, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><def.icon size={16} aria-hidden="true" /></span>
-                  <span style={{ flex: 1, minWidth: 0, display: 'grid' }}>
-                    <span style={{ fontSize: 14, lineHeight: '20px', fontWeight: 500 }}>{def.title}</span>
-                    <span style={{ fontSize: 12, lineHeight: '16px', color: '#625D69' }}>{def.description}</span>
-                  </span>
-                  <Plus size={16} color="#5132D6" aria-hidden="true" />
-                </button>
-              })}
-              <button type="button" role="menuitem" className="home-btn home-picker-item home-picker-reset" onClick={resetLayout}><RotateCcw size={16} aria-hidden="true" />Reset to default layout</button>
-            </div>}
-          </div>
+? <>
+          <button type="button" className="home-btn home-tool" aria-label="Reset layout" title="Reset to the default layout" onClick={resetLayout}><RotateCcw size={16} aria-hidden="true" /></button>
+          <button type="button" className="home-btn home-add" aria-haspopup="dialog" onClick={() => setSheet(true)}><Plus size={18} aria-hidden="true" />Add widget</button>
+          <button type="button" className="home-btn home-tool home-done" onClick={() => { setEditing(false); setSheet(false) }} style={{ padding: '0 16px', fontSize: 14 }}><Check size={18} aria-hidden="true" />Done</button>
         </>
-        : <button type="button" className="home-btn home-tool" onClick={() => mobile ? navigate('/widgets') : setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />{mobile ? 'Customize home' : 'Customize'}</button>}
+        : <button type="button" className="home-btn home-tool" onClick={() => setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />{mobile ? 'Customize home' : 'Customize'}</button>}
     </div>
 
     {apiStatus !== 'ready' && <p role="status">{apiStatus === 'loading' ? 'Loading workspace…' : 'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}
     {taskNotice && <p role="status">{taskNotice}</p>}
     {layoutNotice && <p role="status">{layoutNotice}</p>}
     {editing && <p className="home-layout-help">Drag a card to move it, drag its corner to resize to S, M, L or Tall.</p>}
-    {homeToggles[1] && <section aria-label="Dashboard widgets" className={`home-widget-grid${editing ? ' home-widget-grid--editing' : ''}`}>
+    {homeToggles[1] && <section ref={grid} aria-label="Dashboard widgets" className={`home-widget-grid${editing ? ' home-widget-grid--editing' : ''}`}>
       {visibleLayout.map((entry) => {
         const [id, span, height] = entry
         const key = layoutKey(entry)
-        return <HomeWidget key={key} id={id} editing={editing} mobile={mobile} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onAddTask={addTask} onRetry={() => setReload((value) => value + 1)} onRemove={() => removeWidget(key)} frame={{ id, itemKey: key, title: WIDGET_CATALOG[id].title, span, height, onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(key, delta), onSize: (width, nextHeight) => sizeWidget(key, width, nextHeight) }} />
+        return <HomeWidget key={key} id={id} editing={editing} mobile={mobile} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onAddTask={addTask} onRetry={() => setReload((value) => value + 1)} onRemove={() => removeWidget(key)} onLongPress={mobile ? () => setEditing(true) : undefined} frame={{ id, itemKey: key, title: WIDGET_CATALOG[id].title, span, height, onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(key, delta), onSize: (width, nextHeight) => sizeWidget(key, width, nextHeight) }} />
       })}
     </section>}
     <div style={{ height: 12 }} />
+    {sheet && <AddWidgetSheet layout={layout} onAdd={addWidget} onClose={() => setSheet(false)} />}
   </div>
 }

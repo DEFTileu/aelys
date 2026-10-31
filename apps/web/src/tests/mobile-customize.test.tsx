@@ -1,43 +1,57 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { MobileCustomizeView } from '../views/MobileCustomizeView'
-import { HOME_LAYOUT_KEY, MOBILE_HOME_LAYOUT_KEY, WIDGET_SIZES } from '../views/desktop/homeLayout'
-vi.mock('../views/desktop/SettingsScreen',()=>({SettingsScreen:()=> <p>Appearance controls</p>}))
-let root:ReturnType<typeof createRoot>|undefined
-let host:HTMLDivElement
-afterEach(()=>{act(()=>root?.unmount());root=undefined;document.body.innerHTML='';localStorage.clear();vi.restoreAllMocks()})
-async function mount() { host=document.createElement('div');document.body.append(host);root=createRoot(host);await act(async()=>root!.render(<MobileCustomizeView theme="light" onToggleTheme={()=>{}}/>)) }
-async function click(label:string){const button=Array.from(host.querySelectorAll('button')).find(x=>x.getAttribute('aria-label')===label||x.textContent===label)!;expect(button).toBeTruthy();await act(async()=>button.click())}
-it('persists mobile order, sizes and removal without changing desktop layout',async()=>{
- localStorage.setItem(HOME_LAYOUT_KEY,JSON.stringify([['cal',1,264]]));await mount()
- await click('Move Today down')
- let saved=JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!)
- expect(saved[0][0]).toBe('focus')
- const today=Array.from(host.querySelectorAll('li')).find(x=>x.textContent?.includes('Today'))!
- await act(async()=>Array.from(today.querySelectorAll('button')).find(x=>x.textContent==='L')!.click())
- saved=JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!);expect(saved.find((x:string[])=>x[0]==='today')).toEqual(['today',2,544])
- await click('Remove Today');await click('Add Today')
- expect(JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!).at(-1)[0]).toBe('today')
- expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)).toEqual([['cal',1,264]])
- await act(async()=>root!.unmount());root=undefined;await mount()
- expect(host.querySelector('ol li:last-child')?.textContent).toContain('Today')
+import { HOME_LAYOUT_KEY, MOBILE_HOME_LAYOUT_KEY, layoutKey, pendingHighlight, readLayout } from '../views/desktop/homeLayout'
+
+let root: ReturnType<typeof createRoot> | undefined
+let host: HTMLDivElement
+const width = window.innerWidth
+beforeEach(() => { Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 }); window.history.replaceState({}, '', '/widgets'); pendingHighlight.key = '' })
+afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; localStorage.clear(); vi.restoreAllMocks(); Object.defineProperty(window, 'innerWidth', { configurable: true, value: width }) })
+async function mount() { host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root!.render(<MobileCustomizeView />)) }
+const buttons = () => [...host.querySelectorAll<HTMLButtonElement>('button')]
+const press = async (predicate: (button: HTMLButtonElement) => boolean) => { const button = buttons().find(predicate)!; expect(button).toBeTruthy(); await act(async () => button.click()) }
+
+it('opens the Add widget sheet full-screen instead of a list-form customize screen', async () => {
+  await mount()
+  expect(host.querySelector('.add-widget-backdrop--full [role="dialog"][aria-label="Add widget"]')).not.toBeNull()
+  expect(host.querySelector('[role="tablist"], ol, .mobile-customize')).toBeNull()
+  expect(host.querySelector('[aria-label^="Move"], [aria-label^="Size of"]')).toBeNull()
 })
-it('reports persistence failures and keeps the confirmed layout',async()=>{
- await mount();vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw new Error('blocked')})
- await click('Remove Today');expect(host.querySelector('ol')!.textContent).toContain('Today');expect(host.textContent).toContain('Could not save')
+
+it('adds a widget to the mobile layout only, at the chosen size, and returns Home with a highlight request', async () => {
+  localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['cal', 1, 264]]))
+  await mount()
+  await press(button => button.textContent === 'L')
+  await press(button => button.textContent === 'Add')
+  const saved = readLayout(true)
+  expect(saved.at(-1)).toEqual(['today', 2, 544, expect.stringMatching(/^today-/)])
+  expect(pendingHighlight.key).toBe(layoutKey(saved.at(-1)!))
+  expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)!)).toEqual([['cal', 1, 264]])
+  expect(window.location.pathname).toBe('/')
 })
-it('offers the same four formats for every mobile widget and restores the selected format',async()=>{
- await mount()
- const formats=WIDGET_SIZES
- for(const group of host.querySelectorAll('[role="radiogroup"]')) {
-  expect([...group.querySelectorAll('button')].map(button=>button.textContent)).toEqual(formats.map(size=>size.label))
- }
- const today=host.querySelector('[role="radiogroup"][aria-label="Size of Today"]')!
- for(const size of formats) {
-  await act(async()=>[...today.querySelectorAll('button')].find(button=>button.textContent===size.label)!.click())
-  expect(JSON.parse(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)!).find((entry:string[])=>entry[0]==='today')).toEqual(['today',size.span,size.height])
- }
- await act(async()=>root!.unmount());root=undefined;await mount()
- expect(host.querySelector('[aria-label="Size of Today"] [aria-checked="true"]')?.textContent).toBe('Tall')
+
+it('adds a new widget at the default size M without a duplicate key', async () => {
+  await mount()
+  const option = [...host.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(node => node.textContent?.includes('Knowledge'))!
+  await act(async () => option.click())
+  await press(button => button.textContent === 'Add')
+  expect(readLayout(true).at(-1)).toEqual(['kb', 2, 264])
+})
+
+it('closes back to Home with Cancel and changes nothing', async () => {
+  await mount()
+  await press(button => button.textContent === 'Cancel')
+  expect(window.location.pathname).toBe('/')
+  expect(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY)).toBeNull()
+})
+
+it('reports persistence failures and stays on the sheet', async () => {
+  await mount()
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+  await press(button => button.textContent === 'Add')
+  expect(host.textContent).toContain('Could not save')
+  expect(window.location.pathname).toBe('/widgets')
+  expect(host.querySelector('[role="dialog"]')).not.toBeNull()
 })

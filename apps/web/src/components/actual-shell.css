@@ -39,7 +39,6 @@
 .mobile-shell--home .home-widget [data-widget-heading] > span:last-of-type { display: none; }
 .mobile-shell--home .home-widget [data-widget-heading] > button { margin-left: auto; }
 .mobile-shell--home .home-layout-help { font-size: 12px; }
-.mobile-shell--home .home-picker { width: min(300px, calc(100vw - 32px)) !important; }
 .mobile-shell--home .home-tool { white-space: nowrap; }
 .mobile-shell--home .home-screen--editing .home-widget-body { opacity: .4; }
 @media (max-width: 350px) { .mobile-shell--home .home-widget-grid { --widget-columns: 1; } }

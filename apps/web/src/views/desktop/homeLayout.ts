@@ -70,6 +70,9 @@ export const newLayoutEntry = (id: WidgetId, size: SizeKey, layout: readonly Lay
   return layout.some(entry => entry[0] === id) ? [id, span, height, `${id}-${Date.now().toString(36)}${layout.length}`] : [id, span, height]
 }
 
+/** Set by the Add widget sheet so Home can scroll to and highlight the card it just created. */
+export const pendingHighlight = { key: '' }
+
 export const DEFAULT_LAYOUT: LayoutEntry[] = (['today', 'focus', 'weather', 'cal', 'proj', 'fin', 'notes', 'mail'] as WidgetId[]).map(sized)
 export const MOBILE_DEFAULT_LAYOUT: LayoutEntry[] = (['today', 'focus', 'weather', 'cal', 'mail', 'notes', 'fin', 'proj'] as WidgetId[]).map(sized)
 

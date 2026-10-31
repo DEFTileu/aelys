@@ -110,9 +110,6 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
 .home-tool:hover { background: #F6F3F0; }
 .home-add { flex: none; white-space: nowrap; height: 40px; padding: 0 16px; border-radius: 12px; background: #6A4CF2; color: #fff; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; box-shadow: 0 4px 12px rgba(106, 76, 242, .3); }
 .home-add:hover { background: #5B3DE6; }
-.home-picker-item { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px; font-size: 14px; text-align: left; }
-.home-picker-item:hover { background: #F4F0EC; }
-.home-picker-reset { margin-top: 4px; padding: 10px; border-top: 1px solid #EFEAE6; border-radius: 0; gap: 10px; font-size: 13px; color: #4F4A56; }
 .home-widget { position: relative; min-width: 0; padding: 18px; border-radius: 20px; backdrop-filter: blur(var(--glass-blur, 20px)); -webkit-backdrop-filter: blur(var(--glass-blur, 20px)); box-shadow: 0 8px 24px rgba(40, 30, 30, .07); overflow: hidden; transition: box-shadow .15s; }
 .home-link { flex: none; white-space: nowrap; }
 .home-link:hover { opacity: .75; }
@@ -271,22 +268,24 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
 .home-widget-grid > .home-widget { grid-column: span min(var(--widget-span,1),var(--widget-columns)); grid-row: span var(--widget-rows,1); min-height: 0; }
 .home-widget-grid--editing { padding: 16px; margin: -16px; background-color: rgba(255,255,255,.12); background-image: linear-gradient(to right,rgba(106,76,242,.13) 1px,transparent 1px),linear-gradient(to bottom,rgba(106,76,242,.13) 1px,transparent 1px); background-size: calc((100% - 16px) / var(--widget-columns)) 280px; background-position: 16px 16px; }
 .home-widget-drag-bar { height: 100%; overflow: auto; scrollbar-width: thin; }
-.home-widget--editing .home-widget-drag-bar { padding-bottom: 46px; cursor: grab; touch-action: none; }
-.home-widget--editing [data-widget-heading] { padding-left: 18px; }
 .home-widget:not(.home-widget--editing) [data-widget-heading] { cursor: default; }
-.home-drag-handle { position: absolute; top: 14px; left: 2px; width: 36px; height: 44px; display: grid; place-items: center; color: inherit; opacity: .55; cursor: grab; touch-action: none; z-index: 2; }
-.home-remove-widget { position: absolute; top: -12px; left: -12px; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: #45434C; color: #fff; box-shadow: 0 2px 8px #0002; z-index: 5; font-size: 25px; line-height: 1; }
-.home-widget-edit-tools { position: absolute; bottom: 8px; left: 8px; right: 50px; z-index: 3; display: flex; gap: 3px; padding: 3px; border-radius: 12px; background: rgba(255,255,255,.95); color: #3A3640; }
-.home-widget-edit-tools .home-control { width: 32px; height: 36px; min-width: 28px; background: transparent; color: inherit; }
-.home-widget-edit-tools select { min-width: 0; width: 100%; min-height: 36px; border: 0; background: transparent; color: inherit; font: 12px var(--font-ui); }
-.home-resize-handle { position: absolute; bottom: 2px; right: 2px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px 0 26px 0; background: rgba(255,255,255,.85); color: #625D69; cursor: nwse-resize; touch-action: none; z-index: 4; }
-.home-resize-handle:hover, .home-resize-handle:focus-visible, .home-drag-handle:hover, .home-drag-handle:focus-visible { opacity: 1; color: var(--accent,#6A4CF2); outline-offset: -2px; }
-.home-widget--editing { overflow: visible; outline: 1px solid rgba(106,76,242,.28); }
+.home-widget--editing { overflow: visible; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; box-shadow: 0 10px 30px rgba(20,10,30,.08); outline: none; }
+.home-widget--editing:focus-visible { outline: 2px solid var(--accent,#6A4CF2); outline-offset: 2px; }
+.home-widget--editing .home-widget-body { opacity: .55; }
 .home-widget--editing .home-widget-drag-bar { border-radius: 16px; }
-.home-widget--moving { opacity: .65; outline: 2px solid var(--accent,#6A4CF2); cursor: grabbing; }
-.home-widget[data-drop-target] { outline: 3px solid var(--accent,#6A4CF2); box-shadow: 0 0 0 6px rgba(106,76,242,.12); }
+.home-remove-widget { position: absolute; top: -8px; left: -8px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: #D93636; box-shadow: 0 2px 8px rgba(20,10,30,.18); z-index: 5; font-size: 16px; font-weight: 700; line-height: 1; cursor: pointer; touch-action: manipulation; }
+.home-remove-widget::after { content: ''; position: absolute; inset: -9px; }
+.home-resize-handle { position: absolute; bottom: 6px; right: 6px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; background: transparent; color: #6A4CF2; cursor: nwse-resize; touch-action: none; z-index: 4; }
+.home-resize-handle::after { content: ''; position: absolute; inset: -9px; }
+.home-resize-handle:hover, .home-resize-handle:focus-visible { background: rgba(106,76,242,.12); outline: 2px solid #6A4CF2; outline-offset: 1px; }
+.home-widget--moving { opacity: .75; cursor: grabbing; box-shadow: 0 18px 40px rgba(20,10,30,.25); }
+.home-widget--resizing { outline: 2px solid #6A4CF2; background-color: rgba(106,76,242,.08); }
+.home-size-badge { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 6px 12px; border-radius: 12px; background: #6A4CF2; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; box-shadow: 0 6px 18px rgba(106,76,242,.4); z-index: 6; pointer-events: none; }
+.home-widget[data-drop-target] { outline: 2px dashed #6A4CF2; outline-offset: 2px; background-color: rgba(106,76,242,.06); }
+.home-widget[data-new] { animation: home-widget-new 1.6s ease-out; }
+@keyframes home-widget-new { 0%,60% { box-shadow: 0 0 0 4px rgba(106,76,242,.45), 0 10px 30px rgba(20,10,30,.12); } 100% { box-shadow: 0 8px 24px rgba(40,30,30,.07); } }
+@media (prefers-reduced-motion: reduce) { .home-widget[data-new] { animation: none; outline: 2px solid #6A4CF2; } }
 .home-layout-help { margin: 0; color: #625D69; font-size: 13px; }
-.home-picker { max-height: min(70vh,600px); overflow-y: auto; }
 .weather-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 .weather-empty p { margin: 0; }
 .weather-action { border: 1px solid rgba(255,255,255,.5); border-radius: 10px; background: rgba(255,255,255,.18); color: inherit; display: flex; align-items: center; gap: 7px; padding: 8px 12px; cursor: pointer; }

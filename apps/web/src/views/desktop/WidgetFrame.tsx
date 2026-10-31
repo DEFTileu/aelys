@@ -1,7 +1,5 @@
-import { StyledSelect } from '../../components/controls/StyledSelect'
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
-import { ChevronDown, ChevronUp, GripVertical, Scaling } from '../../icons'
-import { normalizeWidgetSize, WIDGET_GRID_ROW, WIDGET_GRID_GAP, WIDGET_SIZES, type WidgetId } from './homeLayout'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { normalizeWidgetSize, WIDGET_GRID_GAP, WIDGET_GRID_ROW, WIDGET_SIZES, type WidgetId, type WidgetSize } from './homeLayout'
 
 export type WidgetFrameControls = {
   id: WidgetId
@@ -16,27 +14,31 @@ export type WidgetFrameControls = {
 }
 
 type Gesture = { kind: 'move' | 'resize'; x: number; y: number; width: number; height: number; column: number; gap: number; columns: number; row: number; moved: boolean; target?: string }
+const ARROWS = ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown']
+const LONG_PRESS_MS = 500
 
-/** Editing is explicit. Both pointer previews and persisted sizes use tile units. */
-export function WidgetFrame({ controls, style, children, editing, onRemove, canMoveEarlier = true, canMoveLater = true }: {
-  controls: WidgetFrameControls; style: CSSProperties; children: ReactNode | ((size: ReturnType<typeof normalizeWidgetSize>) => ReactNode); editing: boolean
-  onRemove: () => void; canMoveEarlier?: boolean; canMoveLater?: boolean; onLongPress?: () => void
+/** Direct manipulation: drag the card to move, drag the corner to resize (snaps to S / M / L / Tall). */
+export function WidgetFrame({ controls, style, children, editing, onRemove, onLongPress }: {
+  controls: WidgetFrameControls; style: CSSProperties; children: ReactNode | ((size: WidgetSize) => ReactNode); editing: boolean
+  onRemove: () => void; onLongPress?: () => void
 }) {
   const article = useRef<HTMLElement>(null)
   const gesture = useRef<Gesture | null>(null)
-  const previewRef = useRef<ReturnType<typeof normalizeWidgetSize> | null>(null)
+  const previewRef = useRef<WidgetSize | null>(null)
+  const press = useRef<{ timer: number; x: number; y: number } | null>(null)
   const [moving, setMoving] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const [preview, setPreview] = useState<ReturnType<typeof normalizeWidgetSize> | null>(null)
+  const [preview, setPreview] = useState<WidgetSize | null>(null)
   const size = normalizeWidgetSize(controls.span, controls.height)
   const activeSize = preview ?? size
   const clearTargets = () => article.current?.parentElement?.querySelectorAll('[data-drop-target]').forEach(card => card.removeAttribute('data-drop-target'))
+  const clearPress = () => { if (press.current) window.clearTimeout(press.current.timer); press.current = null }
   const cancel = () => {
     gesture.current = null; previewRef.current = null; clearTargets()
     setMoving(false); setOffset({ x: 0, y: 0 }); setPreview(null)
   }
   useEffect(() => { if (!editing) cancel() }, [editing])
-  useEffect(() => () => { clearTargets() }, [])
+  useEffect(() => () => { clearTargets(); clearPress() }, [])
   const begin = (event: PointerEvent<HTMLElement>, kind: Gesture['kind']) => {
     if (!editing || event.button !== 0 || gesture.current) return
     const node = article.current
@@ -49,16 +51,17 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
     const padding = (Number.parseFloat(grid.paddingLeft) || 0) + (Number.parseFloat(grid.paddingRight) || 0)
     const column = (node.parentElement.getBoundingClientRect().width - padding - gap * (columns - 1)) / columns
     gesture.current = { kind, x: event.clientX, y: event.clientY, width: rect.width, height: rect.height, column, gap, columns, row: Number.parseFloat(grid.gridAutoRows) || ((rect.height + gap) / size.rows - gap), moved: false }
-    event.currentTarget.setPointerCapture(event.pointerId)
+    node.setPointerCapture?.(event.pointerId)
   }
   const move = (event: PointerEvent<HTMLElement>) => {
+    if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 8) clearPress()
     const drag = gesture.current
     if (!editing || !drag) return
     const dx = event.clientX - drag.x; const dy = event.clientY - drag.y
     if (!drag.moved && Math.hypot(dx, dy) < 5) return
     drag.moved = true
     if (drag.kind === 'resize') {
-      // Compare actual pixel distances to preset rectangles. No freeform height.
+      // Compare actual pixel distances to the four presets. No freeform height.
       const available = WIDGET_SIZES.filter(item => drag.columns === 1 ? item.span === size.span : item.span <= drag.columns)
       const nearest = available.reduce((best, item) => {
         const distance = (candidate: typeof item) => Math.hypot((Math.min(drag.columns, candidate.span) * (drag.column + drag.gap) - drag.gap) - (drag.width + dx), (candidate.rows * (drag.row + drag.gap) - drag.gap) - (drag.height + dy))
@@ -87,6 +90,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
     }
   }
   const finish = (cancelled: boolean) => {
+    clearPress()
     const drag = gesture.current
     const next = previewRef.current
     if (editing && !cancelled && drag?.moved) {
@@ -95,34 +99,40 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, canM
     }
     cancel()
   }
-  const pointerHandlers = { onPointerMove: move, onPointerUp: () => finish(false), onPointerCancel: () => finish(true), onLostPointerCapture: () => finish(true) }
-  const currentPreset = WIDGET_SIZES.find(item => item.span === size.span && item.height === size.height) ?? WIDGET_SIZES[0]
-  return <article ref={article} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}`} aria-label={controls.title} data-widget-id={controls.id} data-widget-key={controls.itemKey} data-size-key={activeSize.key} data-size={WIDGET_SIZES.find(item => item.span === activeSize.span && item.height === activeSize.height)?.id ?? currentPreset.id} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties} onKeyDown={event => { if (editing && event.key === 'Escape' && gesture.current) { event.preventDefault(); finish(true) } }}>
+  /** Absolute targets: left/right pick the column span, up/down the row span. */
+  const resizeByKey = (key: string) => {
+    const span = key === 'ArrowLeft' ? 1 : key === 'ArrowRight' ? 2 : size.span
+    const rows = key === 'ArrowUp' ? 1 : key === 'ArrowDown' ? 2 : size.rows
+    const next = normalizeWidgetSize(span, rows * (WIDGET_GRID_GAP + WIDGET_GRID_ROW) - WIDGET_GRID_GAP)
+    controls.onSize(next.span, next.height)
+  }
+  const onCardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (!editing) return
+    if (event.key === 'Escape' && gesture.current) { event.preventDefault(); event.nativeEvent.stopPropagation(); finish(true); return }
+    if (event.target !== event.currentTarget) return
+    if (ARROWS.includes(event.key)) {
+      event.preventDefault()
+      if (event.shiftKey) resizeByKey(event.key)
+      else controls.onMove(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1)
+    } else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); onRemove() }
+  }
+  return <article ref={article} tabIndex={editing ? 0 : undefined} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}${preview ? ' home-widget--resizing' : ''}`} aria-label={controls.title} aria-description={editing ? 'Arrow keys move, Shift and arrow keys resize, Delete removes' : undefined} data-widget-id={controls.id} data-widget-key={controls.itemKey} data-size-key={activeSize.key} data-size={activeSize.id} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties}
+    onPointerDown={event => {
+      if ((event.target as HTMLElement).closest('button,a,input,select,textarea')) return
+      if (editing) { begin(event, 'move'); return }
+      if (onLongPress && event.button === 0) { clearPress(); press.current = { x: event.clientX, y: event.clientY, timer: window.setTimeout(() => { press.current = null; onLongPress() }, LONG_PRESS_MS) } }
+    }}
+    onPointerMove={move} onPointerUp={() => finish(false)} onPointerCancel={() => finish(true)} onLostPointerCapture={() => finish(true)} onKeyDown={onCardKeyDown}>
     {editing && <button type="button" className="home-btn home-remove-widget" aria-label={`Remove ${controls.title}`} onClick={onRemove}><span aria-hidden="true">−</span></button>}
-    <div className="home-widget-drag-bar" onPointerDown={event => {
-      if (editing && !(event.target as HTMLElement).closest('button,a,input,select,textarea')) begin(event, 'move')
-    }} {...pointerHandlers}>
-      {editing && <button type="button" className="home-btn home-drag-handle" aria-label={`Move ${controls.title}`} title="Drag to move" onPointerDown={event => begin(event, 'move')} onKeyDown={event => {
-        if (['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) { event.preventDefault(); controls.onMove(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1) }
-        if (event.key === 'Escape') finish(true)
-      }}><GripVertical size={16} aria-hidden="true" /></button>}
-      {typeof children === 'function' ? children(activeSize) : children}
-    </div>
+    <div className="home-widget-drag-bar">{typeof children === 'function' ? children(activeSize) : children}</div>
     {editing && <>
-      <div className="home-widget-edit-tools" role="group" aria-label={`${controls.title} widget controls`}>
-        <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} earlier`} title="Move earlier" disabled={!canMoveEarlier} onClick={() => controls.onMove(-1)}><ChevronUp size={16} /></button>
-        <button type="button" className="home-btn home-control" aria-label={`Move ${controls.title} later`} title="Move later" disabled={!canMoveLater} onClick={() => controls.onMove(1)}><ChevronDown size={16} /></button>
-        <StyledSelect aria-label={`Size of ${controls.title}`} title="Widget size" value={currentPreset.id} onChange={event => { const next = WIDGET_SIZES.find(item => item.id === event.target.value)!; controls.onSize(next.span, next.height) }}>{WIDGET_SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>
-      </div>
-      <button type="button" className="home-btn home-resize-handle" aria-label={`Resize ${controls.title}`} title="Drag to resize to a tile" onPointerDown={event => begin(event, 'resize')} {...pointerHandlers} onKeyDown={event => {
-        if (event.key === 'Escape') { finish(true); return }
-        if (!['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) return
-        event.preventDefault()
-        const span = event.key === 'ArrowLeft' ? 1 : event.key === 'ArrowRight' ? 2 : size.span
-        const rows = event.key === 'ArrowUp' ? 1 : event.key === 'ArrowDown' ? 2 : size.rows
-        const next = normalizeWidgetSize(span, rows * (WIDGET_GRID_GAP + WIDGET_GRID_ROW) - WIDGET_GRID_GAP)
-        controls.onSize(next.span, next.height)
-      }}><Scaling size={18} aria-hidden="true" /></button>
+      {preview && <span className="home-size-badge" role="status">{preview.key} · {preview.span}×{preview.rows}</span>}
+      <button type="button" className="home-btn home-resize-handle" aria-label={`Resize ${controls.title}`} title="Drag to resize" onPointerDown={event => begin(event, 'resize')} onKeyDown={event => {
+        if (event.key === 'Escape') return
+        if (!ARROWS.includes(event.key)) return
+        event.preventDefault(); event.stopPropagation()
+        resizeByKey(event.key)
+      }}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M13 4 4 13M13 8.5 8.5 13" /></svg></button>
     </>}
   </article>
 }
