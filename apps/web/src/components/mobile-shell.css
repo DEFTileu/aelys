@@ -1,4 +1,4 @@
-.mobile-shell { font-size: 14px; line-height: 22px; position: relative; min-height: 100dvh; min-width: 0; overflow-x: clip; background: var(--canvas, #f5f0eb); color: var(--ink, #1c1b22); padding: env(safe-area-inset-top) 0 calc(80px + env(safe-area-inset-bottom)); }
+.mobile-shell { font-size: 14px; line-height: 20px; position: relative; min-height: 100dvh; min-width: 0; overflow-x: clip; background: var(--canvas, #f5f0eb); color: var(--ink, #1c1b22); padding: env(safe-area-inset-top) 0 calc(80px + env(safe-area-inset-bottom)); }
 .mobile-shell *, .mobile-shell *::before, .mobile-shell *::after { box-sizing: border-box; }
 .mobile-shell--home { padding-bottom: calc(128px + env(safe-area-inset-bottom)); }
 .mobile-shell__wallpaper { position: absolute; inset: 0 0 auto; height: 460px; background-size: cover; background-position: 80% top; pointer-events: none; }
