@@ -31,6 +31,7 @@ from app.core.models import (
     TaskReminder,
 )
 from app.core.security import current_principal
+from app.domains import capture
 from app.domains.recurrence import occurrences, parse_rule, utc
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -349,9 +350,8 @@ async def notes(principal=Depends(current_principal), db:AsyncSession=Depends(ge
 @router.post("/notes", response_model=NoteOut)
 async def create_note(body:NoteIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,device=principal
-    await owned_ref(Project, body.project_id, user.id, db)
-    await owned_ref(Note, body.parent_id, user.id, db)
-    item=Note(owner_id=user.id,**body.model_dump()); db.add(item); await db.flush(); db.add(NoteRevision(note_id=item.id,base_version=0,revision_no=1,body=item.markdown_body,source_device_id=device.id if device else None)); await db.commit(); await db.refresh(item); return item
+    item = await capture.create_note(db, user.id, source_device_id=device.id if device else None, **body.model_dump())
+    await db.commit(); await db.refresh(item); return item
 @router.get("/notes/{item_id}", response_model=NoteOut)
 async def get_note(item_id:str, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; return await owner_obj(Note,item_id,user.id,db)
@@ -402,9 +402,8 @@ async def tasks(project_id:str|None=None, principal=Depends(current_principal), 
 @router.post("/tasks", response_model=TaskOut)
 async def create_task(body:TaskIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal
-    await owned_ref(Project, body.project_id, user.id, db)
-    await owned_ref(Task, body.parent_task_id, user.id, db)
-    item=Task(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
+    item = await capture.create_task(db, user.id, **body.model_dump())
+    await db.commit(); await db.refresh(item); return item
 @router.get("/tasks/{item_id}", response_model=TaskOut)
 async def get_task(item_id:str, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; return await owner_obj(Task,item_id,user.id,db)
