@@ -397,3 +397,25 @@ conflict; a client-side preflight alone is not the concurrency guarantee.
   completed`. `elapsed_seconds` = wall time minus pauses and is frozen while
   paused. A paused session still occupies the owner's single timer slot and
   can be stopped. Migration `0025_focus_pause`.
+
+### Agent session display metadata and stop
+
+- `AgentSession` (`GET /agents/sessions`) gains optional, non-secret display
+  fields reported by the Mac over `metadata_batch`: `workspace_path` (absolute
+  path label, <=500 chars, no `..`/control characters; never read by the
+  backend), `sandbox` (scope label, <=80), `network` (`blocked|allowlist|open`)
+  and `events` (`[{kind, message, at}]`, newest 200 kept, messages redacted of
+  token/key/password/Bearer patterns and truncated to 300 chars; metadata only,
+  no transcripts or file contents). Omitting them in a batch keeps stored
+  values; invalid values reject the item with `VALIDATION_ERROR`. Migration
+  `0026_agent_session_display`.
+- `POST /api/v1/agents/sessions/{id}/stop` asks the Mac runtime to stop the
+  session through the existing run-cancel path. It fails closed: `404` for
+  unknown/foreign sessions, `403 POLICY_DENIED` without a project and an
+  active, isolation-validated grant, `403 DEVICE_REVOKED`, and `409
+  NO_ACTIVE_RUN` when the device has no queued/running run for that project
+  and adapter. On success queued runs become `cancelled`, running ones get
+  `cancellation_requested` (delivered via run heartbeat), an audit row
+  `agent.session.stop` is written and the response is
+  `{session_id, status: "stop_requested", run_ids}`. Sessions are linked to runs
+  by device+project+adapter+grant policy, since the index has no run id.

@@ -4768,6 +4768,49 @@
         }
       }
     },
+    "/api/v1/agents/sessions/{session_id}/stop": {
+      "post": {
+        "summary": "Stop Agent Session",
+        "description": "Ask the Mac runtime to stop a session by cancelling its active run(s); fails closed.",
+        "operationId": "stop_agent_session_api_v1_agents_sessions__session_id__stop_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agents/sessions/search": {
       "post": {
         "summary": "Search Sessions",

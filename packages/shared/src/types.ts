@@ -607,6 +607,23 @@ export interface AgentSession {
   readonly last_activity_at: IsoDateTime | null;
   readonly message_count: number | null;
   readonly state: string;
+  /** Display-only metadata reported by the Mac; absent/null for older runtimes. */
+  readonly workspace_path?: string | null;
+  readonly sandbox?: string | null;
+  readonly network?: AgentNetworkMode | null;
+  /** Metadata-only timeline (max 200, redacted); never transcripts. */
+  readonly events?: readonly AgentSessionEvent[];
+}
+export type AgentNetworkMode = "blocked" | "allowlist" | "open";
+export interface AgentSessionEvent {
+  readonly kind: string;
+  readonly message: string;
+  readonly at: IsoDateTime;
+}
+export interface AgentSessionStopResponse {
+  readonly session_id: Id;
+  readonly status: "stop_requested";
+  readonly run_ids: readonly Id[];
 }
 export interface SessionSearch {
   readonly query: string;

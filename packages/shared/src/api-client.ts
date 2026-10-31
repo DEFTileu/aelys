@@ -6,7 +6,7 @@ import type {
   FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
   MailAccountIn, MailDraft, MailMessage, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
-  ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession,
+  ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession, AgentSessionStopResponse,
   SyncAckRequest, SyncAckResponse, SyncBootstrapResponse, SyncPullResponse, SyncPushRequest, SyncPushResponse, SyncStatusResponse,
   TaskIn, TaskOut, TaskReminder, CalendarReminder, CalendarReminderIn, TokenResponse, TransactionIn, Id,
 } from "./types";
@@ -434,6 +434,7 @@ export class ApiClient {
 
   public agentDevices(options?: RequestOptions) { return this.request<readonly AgentDevice[]>("/api/v1/agents/devices", this.read(options, "agent-devices")); }
   public agentSessions(query?: Query, options?: RequestOptions) { return this.request<readonly AgentSession[]>("/api/v1/agents/sessions", this.read({ ...options, query }, "agent-sessions")); }
+  public stopAgentSession(sessionId: Id, options?: RequestOptions) { return this.request<AgentSessionStopResponse>(`/api/v1/agents/sessions/${encodeURIComponent(sessionId)}/stop`, this.write(undefined, { queueOnOffline: false, ...options })); }
   public searchAgentSessions(body: SessionSearch, options?: RequestOptions) { return this.request<SessionSearchResponse>("/api/v1/agents/sessions/search", this.write(body, options)); }
   public createAgentRun(body: AgentRunIn, options?: RequestOptions) { return this.request<AgentRun>("/api/v1/agents/runs", this.write(body, options)); }
   public issueCredentialLease(runId: Id, body: CredentialLeaseIn, options?: RequestOptions) { return this.request<CredentialLeaseResponse>(`/api/v1/agents/runs/${encodeURIComponent(runId)}/credential-lease`, this.write(body, options)); }
