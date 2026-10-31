@@ -37,6 +37,15 @@ function sharedOrigin(baseUrl: string): string {
 
 let sharedClient: ApiClient | undefined
 let sharedClientKey = ''
+// Native sessions live in Rust, so the JS side only learns the owner from native status.
+let nativeOwner: string | null = null
+
+/** Namespace hint for the native offline cache; never authentication. */
+export function setNativeCacheOwner(owner: string | null | undefined): void {
+  const next = owner && owner.length <= 200 ? owner : null
+  if (next === nativeOwner) return
+  nativeOwner = next; sharedClient = undefined; sharedClientKey = ''
+}
 let refreshFlight: Promise<boolean> | undefined
 
 function localLaunchAuthenticated(): boolean {
@@ -56,7 +65,7 @@ export function getAccessToken(): string | undefined {
 export function clearAccessToken(notify = true): void {
   window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
   window.sessionStorage.removeItem(LOCAL_LAUNCH_STORAGE_KEY)
-  sharedClient = undefined; sharedClientKey = ''
+  nativeOwner = null; sharedClient = undefined; sharedClientKey = ''
   if (notify) window.dispatchEvent(new Event(SESSION_EVENT))
 }
 
@@ -142,10 +151,29 @@ function cacheOwner(token = getAccessToken()): string | null {
  * when a user changes servers in Settings. Legacy unscoped caches are not read.
  * Namespace is not authorization; 401/403 still cannot fall back to cached data.
  */
+function openOfflineStore(origin: string, owner: string | null): IndexedDbOfflineStore | undefined {
+  if (!owner) return undefined
+  try { return new IndexedDbOfflineStore(`aelys-shared-v3:${encodeURIComponent(origin)}:${encodeURIComponent(owner)}`) } catch { return undefined }
+}
+
+/** Retry queued offline writes on start, reconnect, focus and every 30 s. */
+export function startOutboxReplay(): () => void {
+  let running = false
+  const run = () => {
+    if (running) return
+    running = true
+    void getSharedApiClient().replayOutbox().catch(() => {}).finally(() => { running = false })
+  }
+  run()
+  const timer = window.setInterval(run, 30_000)
+  window.addEventListener('online', run); window.addEventListener('focus', run)
+  return () => { window.clearInterval(timer); window.removeEventListener('online', run); window.removeEventListener('focus', run) }
+}
+
 export function getSharedApiClient(): ApiClient {
   const native = isNativeHost()
   const origin = native ? nativeBackendOrigin(getApiConfig().baseUrl) : sharedOrigin(getApiConfig().baseUrl)
-  const owner = cacheOwner()
+  const owner = native ? nativeOwner : cacheOwner()
   const partition = JSON.stringify([native ? 'native' : 'browser', origin, owner])
   if (!sharedClient || sharedClientKey !== partition) {
     if (native) {
@@ -155,14 +183,11 @@ export function getSharedApiClient(): ApiClient {
         return createNativeFetch(await nativeFetchPromise, origin)(input, init)
       }
       // ApiClient methods carry the stable `/api/v1` prefix themselves.
-      sharedClient = new ApiClient({ baseUrl: origin, fetch: nativeFetch })
+      sharedClient = new ApiClient({ baseUrl: origin, fetch: nativeFetch, offlineStore: openOfflineStore(origin, owner) })
       sharedClientKey = partition
       return sharedClient
     }
-    let offlineStore: IndexedDbOfflineStore | undefined
-    if (owner) {
-      try { offlineStore = new IndexedDbOfflineStore(`aelys-shared-v3:${encodeURIComponent(origin)}:${encodeURIComponent(owner)}`) } catch { offlineStore = undefined }
-    }
+    const offlineStore = openOfflineStore(origin, owner)
     const partitionToken = () => sharedOrigin(getApiConfig().baseUrl) === origin && cacheOwner() === owner ? getAccessToken() : undefined
     sharedClient = new ApiClient({ baseUrl: origin, getToken: partitionToken, fetch: authenticatedFetch, offlineStore })
     sharedClientKey = partition
