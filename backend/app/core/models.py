@@ -63,6 +63,44 @@ class Device(Owned):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+class SetupToken(Base):
+    """One-time secret printed by the server console; only its hash is stored."""
+    __tablename__ = "setup_tokens"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(16))  # first_owner | recovery
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class DeviceChallenge(Base):
+    """Single-use nonce a key-bound device must sign to obtain a session."""
+    __tablename__ = "device_challenges"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"), index=True)
+    nonce: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class PairingSession(Base):
+    """Short-lived QR pairing of a new device; the raw secret lives only in the QR, never here."""
+    __tablename__ = "pairing_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    kind: Mapped[str] = mapped_column(String(10))  # invite (trusted shows QR) | request (new device shows QR)
+    state: Mapped[str] = mapped_column(String(12), default="pending")  # pending|claimed|approved|rejected|consumed|locked
+    owner_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    created_by_device_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("devices.id"))
+    secret_hash: Mapped[str] = mapped_column(String(64))
+    platform: Mapped[str | None] = mapped_column(String(20))
+    display_name: Mapped[str | None] = mapped_column(String(200))
+    public_key: Mapped[str | None] = mapped_column(String(255))
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    device_id: Mapped[str | None] = mapped_column(String(36))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class Project(Owned):
     __tablename__ = "projects"
     name: Mapped[str] = mapped_column(String(200))

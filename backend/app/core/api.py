@@ -30,8 +30,10 @@ from .security import (
 
 router = APIRouter()
 
-async def lock_owner_initialization(db: AsyncSession) -> None:
+async def lock_owner_initialization(db: AsyncSession, *, password: bool = True) -> None:
     """All bootstrap transports serialize first-owner creation using one lock."""
+    if password and not get_settings().password_bootstrap_enabled:
+        raise HTTPException(403, detail={"code": "BOOTSTRAP_DISABLED", "message": "Password setup is disabled; claim ownership with a setup token"})
     if db.get_bind().dialect.name == "sqlite":
         await db.execute(text("BEGIN IMMEDIATE"))
     elif db.get_bind().dialect.name == "postgresql":

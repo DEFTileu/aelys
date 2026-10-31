@@ -436,6 +436,499 @@
         }
       }
     },
+    "/api/v1/auth/setup/claim": {
+      "post": {
+        "summary": "Claim Setup",
+        "operationId": "claim_setup_api_v1_auth_setup_claim_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupClaim"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSession"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/device/challenge": {
+      "post": {
+        "summary": "Device Challenge",
+        "operationId": "device_challenge_api_v1_auth_device_challenge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/device/login": {
+      "post": {
+        "summary": "Device Login",
+        "operationId": "device_login_api_v1_auth_device_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceLogin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSession"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/register-key": {
+      "post": {
+        "summary": "Register Key",
+        "description": "Migrate a password session to a key-bound device; the key must sign over the owner and itself.",
+        "operationId": "register_key_api_v1_devices_register_key_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSession"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pairing/invite": {
+      "post": {
+        "summary": "Pairing Invite",
+        "description": "A trusted device offers a QR; the raw secret stays in the QR and only its hash is registered.",
+        "operationId": "pairing_invite_api_v1_pairing_invite_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/pairing/request": {
+      "post": {
+        "summary": "Pairing Request",
+        "description": "A new device offers a QR (web or desktop without a camera); a trusted phone scans and approves it.",
+        "operationId": "pairing_request_api_v1_pairing_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pairing/{pairing_id}/claim": {
+      "post": {
+        "summary": "Pairing Claim",
+        "description": "The new device scanned a trusted device's QR and presents its key.",
+        "operationId": "pairing_claim_api_v1_pairing__pairing_id__claim_post",
+        "parameters": [
+          {
+            "name": "pairing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pairing Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingClaim"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pairing/{pairing_id}/inspect": {
+      "post": {
+        "summary": "Pairing Inspect",
+        "description": "What the trusted device shows before the owner confirms: who is asking and a key fingerprint.",
+        "operationId": "pairing_inspect_api_v1_pairing__pairing_id__inspect_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pairing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pairing Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingSecret"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pairing/{pairing_id}/approve": {
+      "post": {
+        "summary": "Pairing Approve",
+        "description": "The owner typed the six digits shown on the new device; only then is the device registered.",
+        "operationId": "pairing_approve_api_v1_pairing__pairing_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pairing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pairing Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingApprove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pairing/{pairing_id}/reject": {
+      "post": {
+        "summary": "Pairing Reject",
+        "operationId": "pairing_reject_api_v1_pairing__pairing_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pairing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pairing Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingSecret"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pairing/{pairing_id}/finish": {
+      "post": {
+        "summary": "Pairing Finish",
+        "description": "The new device polls this; once approved it signs the pairing id to prove it holds the key and gets its first session.",
+        "operationId": "pairing_finish_api_v1_pairing__pairing_id__finish_post",
+        "parameters": [
+          {
+            "name": "pairing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pairing Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingFinish"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSession"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/browser/status": {
       "get": {
         "tags": [
@@ -5533,6 +6026,44 @@
         ],
         "title": "CalendarReminderOut"
       },
+      "ChallengeRequest": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Device Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id"
+        ],
+        "title": "ChallengeRequest"
+      },
+      "ChallengeResponse": {
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "title": "Challenge Id"
+          },
+          "nonce": {
+            "type": "string",
+            "title": "Nonce"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "challenge_id",
+          "nonce",
+          "expires_at"
+        ],
+        "title": "ChallengeResponse"
+      },
       "ConnectIn": {
         "properties": {
           "bot_token": {
@@ -5772,6 +6303,26 @@
         ],
         "title": "DeviceEnroll"
       },
+      "DeviceLogin": {
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Challenge Id"
+          },
+          "signature": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Signature"
+          }
+        },
+        "type": "object",
+        "required": [
+          "challenge_id",
+          "signature"
+        ],
+        "title": "DeviceLogin"
+      },
       "DeviceResponse": {
         "properties": {
           "id": {
@@ -5807,6 +6358,34 @@
           "revoked_at"
         ],
         "title": "DeviceResponse"
+      },
+      "DeviceSession": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "refresh_token",
+          "device_id"
+        ],
+        "title": "DeviceSession"
       },
       "DraftIn": {
         "properties": {
@@ -6679,6 +7258,39 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "KeyRegister": {
+        "properties": {
+          "public_key": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Public Key"
+          },
+          "platform": {
+            "type": "string",
+            "pattern": "^(web|macos|android|helper)$",
+            "title": "Platform"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "proof": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Proof"
+          }
+        },
+        "type": "object",
+        "required": [
+          "public_key",
+          "platform",
+          "display_name",
+          "proof"
+        ],
+        "title": "KeyRegister"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -7269,6 +7881,137 @@
           "action"
         ],
         "title": "Operation"
+      },
+      "PairingApprove": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Secret"
+          },
+          "sas": {
+            "type": "string",
+            "pattern": "^\\d{6}$",
+            "title": "Sas"
+          }
+        },
+        "type": "object",
+        "required": [
+          "secret",
+          "sas"
+        ],
+        "title": "PairingApprove"
+      },
+      "PairingClaim": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Secret"
+          },
+          "public_key": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Public Key"
+          },
+          "platform": {
+            "type": "string",
+            "pattern": "^(web|macos|android|helper)$",
+            "title": "Platform"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "secret",
+          "public_key",
+          "platform",
+          "display_name"
+        ],
+        "title": "PairingClaim"
+      },
+      "PairingCreate": {
+        "properties": {
+          "secret_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Secret Hash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "secret_hash"
+        ],
+        "title": "PairingCreate"
+      },
+      "PairingFinish": {
+        "properties": {
+          "signature": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Signature"
+          }
+        },
+        "type": "object",
+        "required": [
+          "signature"
+        ],
+        "title": "PairingFinish"
+      },
+      "PairingRequestBody": {
+        "properties": {
+          "secret_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Secret Hash"
+          },
+          "public_key": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Public Key"
+          },
+          "platform": {
+            "type": "string",
+            "pattern": "^(web|macos|android|helper)$",
+            "title": "Platform"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "secret_hash",
+          "public_key",
+          "platform",
+          "display_name"
+        ],
+        "title": "PairingRequestBody"
+      },
+      "PairingSecret": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Secret"
+          }
+        },
+        "type": "object",
+        "required": [
+          "secret"
+        ],
+        "title": "PairingSecret"
       },
       "ProjectCreate": {
         "properties": {
@@ -7923,6 +8666,40 @@
           "version"
         ],
         "title": "SettingsIn"
+      },
+      "SetupClaim": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 20,
+            "title": "Token"
+          },
+          "public_key": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Public Key"
+          },
+          "platform": {
+            "type": "string",
+            "pattern": "^(web|macos|android|helper)$",
+            "title": "Platform"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "public_key",
+          "platform",
+          "display_name"
+        ],
+        "title": "SetupClaim"
       },
       "StatusOut": {
         "properties": {

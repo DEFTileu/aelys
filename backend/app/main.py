@@ -17,6 +17,8 @@ from .core import models  # noqa: F401 - register domain metadata
 from .core.api import router as core_router
 from .core.browser_auth import router as browser_auth_router
 from .core.db import Base, engine
+from .core.device_auth import announce_first_run_token
+from .core.device_auth import router as device_auth_router
 from .core.native_auth import router as native_auth_router
 from .domains.api import router as domain_router
 from .domains.gmail import router as gmail_router
@@ -26,6 +28,8 @@ from .sync.api import router as sync_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from .integrations.telegram_service import connector_loop
+    with suppress(Exception):  # a missing schema must not stop startup; the console token is a convenience
+        await announce_first_run_token()
     worker = asyncio.create_task(connector_loop(), name="telegram-business")
     try:
         yield
@@ -76,6 +80,7 @@ async def value_error(_: Request, exc: ValueError):
 async def healthz(): return {"status":"ok"}
 
 app.include_router(core_router, prefix="/api/v1")
+app.include_router(device_auth_router, prefix="/api/v1")
 app.include_router(browser_auth_router, prefix="/api/v1")
 app.include_router(native_auth_router, prefix="/api/v1")
 app.include_router(domain_router, prefix="/api/v1")
