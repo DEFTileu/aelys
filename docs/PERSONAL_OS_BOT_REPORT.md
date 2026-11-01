@@ -686,5 +686,17 @@ is another checkout and is not this acceptance stand.
 
 Completed stage commits before Stage 7: `baa5496`, `0dbc531`, `b32b775`,
 `cb6bffb`, `443fa65`, `6f93f8d`, `2f730ae`, `b0942f1`, `a9068ec`, `723b4a0`.
-Stage 7 is the subsequent atomic `feat(calendar)` commit; final ledger records
-its hash after creation. No acceptance depends on a claim of live credentials.
+Stage 7 is committed as **05e07e7** (`feat(calendar): import Google Calendar
+with read-only consent`). No acceptance depends on a claim of live credentials.
+
+
+| Stage | Commits |
+|---|---|
+| 0 — merged base | `baa5496` |
+| 1 — shared change-log | `0dbc531` |
+| 2 — reminders | `b32b775` |
+| 3 — dialogue/shared AI loop | `cb6bffb`, `443fa65` |
+| 4 — ephemeral media | `6f93f8d`, `2f730ae` |
+| 5 — explicit memory | `b0942f1` |
+| 6 — work history/matrix | `a9068ec`, `723b4a0` |
+| 7 — readonly Google Calendar | `05e07e7` |
