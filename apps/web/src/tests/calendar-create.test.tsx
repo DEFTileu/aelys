@@ -48,7 +48,7 @@ describe('calendar event creation', () => {
     client.calendarOccurrences.mockResolvedValue([event]); client.calendarReminders.mockResolvedValue([])
     const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
     await act(async () => root?.render(<CalendarView apiStatus="ready" />))
-    const toggle = [...host.querySelectorAll('button')].find(button => button.textContent === 'Show weekends')!
+    const toggle = [...host.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === 'Show weekends')!
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
     await act(async () => toggle.click())
     expect(host.querySelector('.cl-show-weekends')).not.toBeNull()
