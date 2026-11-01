@@ -81,6 +81,10 @@ export const glyphs = {
   CircleCheck: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-4 9 3 3 5-6',
   CircleCheckBig: 'M21 10.5a9 9 0 1 1-4.5-7.2M9 11l3 3 9-9',
   Archive: 'M3.5 4h17v4h-17ZM5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8m-9 4h4',
+  FileUp: 'M6 3h8l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm8 0v5h5m-7 9v-6m-3 3 3-3 3 3',
+  MailOpen: 'M3 10 12 4l9 6v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9Zm0 0 9 6 9-6',
+  Reply: 'M9 8 4 13l5 5m-5-5h10a6 6 0 0 1 6 6v1',
+  ShieldCheck: 'M5 7 12 4l7 3v5c0 3-4 6-7 8-3-2-7-5-7-8Zm4 5 2 2 4-4',
   Trash2: 'M3.5 6h17M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m-6 5v6m4-6v6',
 } as const
 

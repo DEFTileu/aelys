@@ -1,0 +1,89 @@
+/* Mail, matched to the ACTUAL design: mailboxes panel, message list and reader. Desktop layer; mobile rules stay in actual-mail-finance.css. */
+@media (min-width: 701px) {
+  .actual-mail { padding: 0 28px 28px; }
+  .actual-mail :where(button, input, textarea) { font: inherit; }
+  .actual-mail .actual-mail-grid { grid-template-columns: 220px 340px minmax(0, 1fr); gap: 16px; height: calc(100vh - 196px); min-height: 532px; }
+  .actual-mail .actual-panel { border: 1px solid var(--pg-line); border-radius: 20px; background: var(--pg-card); box-shadow: var(--pg-shadow); }
+  .actual-mail .button { height: 36px; min-height: 0; line-height: 22px; padding: 0 12px; border: 1px solid var(--pg-line-btn); border-radius: 10px; background: var(--pg-card); color: var(--pg-ink); display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .actual-mail .button:hover:not(:disabled) { background: var(--pg-hover); }
+  .actual-mail .button--primary { box-shadow: none; border-color: var(--pg-violet); background: var(--pg-violet); color: #fff; }
+  .actual-mail .button--primary:hover:not(:disabled) { background: var(--pg-violet-hover); }
+  .actual-mail .button--quiet { background: var(--pg-card); }
+
+  /* Mailboxes */
+  .actual-mail .actual-folders { gap: 2px; padding: 12px; overflow-y: auto; }
+  .actual-mail .actual-import { height: 40px; margin-bottom: 12px; justify-content: center; flex: none; }
+  .actual-mail .actual-folder-heading { padding: 4px 10px 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--pg-ink-3); }
+  .actual-mail .actual-folders nav + .actual-folder-heading { padding: 16px 10px 8px; }
+  .actual-mail .actual-folders nav { gap: 2px; }
+  .actual-mail .actual-folders nav button { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--pg-ink); font-size: 14px; font-weight: 500; }
+  .actual-mail .actual-folder-name { flex: 1; text-align: left; font-size: 14px; color: inherit; }
+  .actual-mail .actual-folders nav button > span:last-child { font-size: 12px; font-weight: 400; color: var(--pg-mute); }
+  .actual-mail .actual-folders nav button[aria-pressed='true'] { background: #EEEAFD; color: var(--pg-acc); }
+  :root[data-theme='dark'] .actual-mail .actual-folders nav button[aria-pressed='true'], :root[data-theme='dark'] .actual-mail .actual-mail-row[aria-pressed='true'] { background: rgba(139, 108, 240, .22); }
+  .actual-mail .actual-mail-account { display: flex; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--pg-field); }
+  .actual-mail .actual-account-icon { width: 32px; height: 32px; flex: none; border-radius: 9px; background: var(--pg-card); color: #D93636; display: flex; align-items: center; justify-content: center; }
+  .actual-mail .actual-mail-account > div { min-width: 0; display: block; }
+  .actual-mail .actual-mail-account strong { display: block; font-size: 13px; font-weight: 600; line-height: 22px; color: var(--pg-ink); }
+  .actual-mail .actual-mail-account span:not(.actual-account-icon) { display: block; font-size: 12px; line-height: 16px; color: var(--pg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .actual-mail .actual-mail-account small { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 11px; line-height: 16px; color: var(--pg-mute); }
+  .actual-mail .actual-mail-account small.actual-account-ok { color: #0E7A57; }
+  :root[data-theme='dark'] .actual-mail .actual-mail-account small.actual-account-ok { color: #5FD7A8; }
+  .actual-mail .actual-account-ok i { width: 6px; height: 6px; border-radius: 50%; background: #14966C; }
+  .actual-mail .actual-topline--panel { margin: 12px 0 0; justify-content: flex-start; }
+  .actual-mail .actual-topline--panel .button { height: 30px; font-size: 12px; }
+  .actual-mail .actual-mail-tools summary { font-size: 12px; color: var(--pg-mute); }
+  .actual-mail .actual-mail-policy { display: flex; gap: 8px; margin: auto 0 0; padding: 12px 10px 4px; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
+  .actual-mail .actual-mail-policy svg { flex: none; margin-top: 1px; }
+
+  /* List */
+  .actual-mail .actual-mail-list { gap: 0; padding: 12px; min-height: 0; }
+  .actual-mail .actual-mobile-mail-actions, .actual-mail .actual-mobile-folders, .actual-mail .actual-folder-select { display: none; }
+  .actual-mail .actual-search { height: 40px; padding: 0 6px 0 12px; border-radius: 12px; background: var(--pg-field); display: flex; align-items: center; gap: 8px; flex: none; color: var(--pg-mute); margin-bottom: 8px; }
+  .actual-mail .actual-search input { flex: 1; min-width: 0; height: auto; padding: 0; border: 0; outline: 0; background: transparent; color: var(--pg-ink); font-size: 13px; }
+  .actual-mail .actual-compose-icon { width: 28px; height: 28px; flex: none; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--pg-ink-2); display: flex; align-items: center; justify-content: center; }
+  .actual-mail .actual-compose-icon:hover { background: var(--pg-hover); }
+  .actual-mail .actual-mail-row { display: flex; gap: 10px; align-items: flex-start; width: 100%; margin-bottom: 2px; padding: 12px 10px; border: 0; border-radius: 14px; background: transparent; text-align: left; color: var(--pg-ink); flex: none; }
+  .actual-mail .actual-mail-row:hover { filter: brightness(.98); }
+  .actual-mail .actual-mail-row[aria-pressed='true'] { background: #EEEAFD; }
+  .actual-mail .actual-avatar { width: 36px; height: 36px; flex: none; border-radius: 50%; background: #EDE7FB; color: var(--pg-acc); font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  :root[data-theme='dark'] .actual-mail .actual-avatar { background: rgba(139, 108, 240, .22); }
+  .actual-mail .actual-mail-row-text { display: block; flex: 1; min-width: 0; gap: 0; font-size: 13px; line-height: 18px; }
+  .actual-mail .actual-row-top { display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 20px; font-weight: 500; }
+  .actual-mail .actual-mail-row--unread .actual-row-top, .actual-mail .actual-mail-row--unread .actual-row-subject { font-weight: 600; }
+  .actual-mail .actual-row-top strong { flex: 1; min-width: 0; font-size: 14px; font-weight: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .actual-mail .actual-row-top time { font-size: 12px; font-weight: 400; color: var(--pg-mute); }
+  .actual-mail .actual-unread-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #2F6FE4; }
+  .actual-mail .actual-row-subject { display: block; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .actual-mail .actual-row-snippet { display: flex; gap: 6px; align-items: center; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
+  .actual-mail .actual-row-snippet em { flex: none; padding: 0 6px; border-radius: 6px; background: var(--pg-warn-bg); color: var(--pg-warn); font-style: normal; font-weight: 600; }
+  .actual-mail .actual-row-snippet small { flex: 1; min-width: 0; font-size: 12px; color: var(--pg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .actual-mail .actual-empty { padding: 32px 12px; text-align: center; font-size: 13px; color: var(--pg-mute); }
+
+  /* Reader */
+  .actual-mail .actual-mail-reader { display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden; }
+  .actual-mail .actual-back { display: none; }
+  .actual-mail .actual-mail-reader article { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .actual-mail .actual-reader-head { padding: 20px 24px 16px; border-bottom: 1px solid var(--pg-rule); flex: none; }
+  .actual-mail .actual-reader-head h2 { min-height: 38px; margin: 0; padding: 3px 0 0; font-size: 22px; line-height: 30px; font-weight: 600; color: var(--pg-ink); }
+  .actual-mail .actual-sender { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; }
+  .actual-mail .actual-sender p { flex: 1; min-width: 0; margin: 0; }
+  .actual-mail .actual-sender strong { display: block; font-size: 14px; font-weight: 600; line-height: 22px; color: var(--pg-ink); }
+  .actual-mail .actual-sender p span { display: block; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
+  .actual-mail .actual-acc-chip { height: 24px; padding: 0 9px; border-radius: 12px; background: var(--pg-chip); font-size: 12px; line-height: 24px; color: var(--pg-ink-3); }
+  .actual-mail .actual-sender time { padding: 0; border: 0; font-size: 12px; color: var(--pg-mute); }
+  .actual-mail .actual-mail-reader .mail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px; font-size: 15px; line-height: 24px; white-space: pre-wrap; color: #2A2732; }
+  :root[data-theme='dark'] .actual-mail .actual-mail-reader .mail-body { color: var(--pg-ink); }
+  .actual-mail .actual-reply { flex: none; margin: 0 16px 16px; padding: 12px; border-radius: 16px; background: var(--pg-field); border: 1px solid var(--pg-line); }
+  .actual-mail .actual-reply-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--pg-ink); }
+  .actual-mail .actual-reply-heading strong { font-weight: 600; }
+  .actual-mail .actual-reply-heading svg { color: var(--pg-ink-3); }
+  .actual-mail .actual-reply-heading em[data-state='none'] { background: var(--pg-chip); color: var(--pg-ink-3); }
+  .actual-mail .actual-reply-heading em { height: 22px; padding: 0 8px; border-radius: 11px; background: var(--pg-tint); color: var(--pg-acc); font-size: 11px; line-height: 22px; font-weight: 600; font-style: normal; }
+  .actual-mail .actual-reply textarea { width: 100%; min-height: 108px; padding: 10px 12px; border: 1px solid var(--pg-line); border-radius: 12px; background: var(--pg-card); color: var(--pg-ink); font-size: 14px; line-height: 22px; resize: vertical; outline: 0; }
+  .actual-mail .actual-reply-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .actual-mail .actual-reply-actions > span { flex: 1; min-width: 120px; font-size: 12px; color: var(--pg-mute); }
+  .actual-mail .actual-reply-details { height: auto; margin-left: auto; padding: 0 4px; border: 0; background: none; color: var(--pg-mute); font-size: 12px; text-decoration: underline; }
+  .actual-mail .actual-reader-none { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin: 0; color: var(--pg-mute); font-size: 14px; }
+  .actual-mail .actual-reader-none svg { color: #A29DA8; }
+}

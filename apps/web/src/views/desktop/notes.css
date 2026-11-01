@@ -2,7 +2,7 @@
 @media (min-width: 701px) {
   .notes-live { padding: 0 28px 28px; }
   .notes-live :where(button, input, textarea) { font: inherit; }
-  .notes-live .nl-grid { grid-template-columns: 220px 320px minmax(0, 1fr); gap: 16px; height: calc(100vh - 168px); min-height: 560px; }
+  .notes-live .nl-grid { grid-template-columns: 220px 320px minmax(0, 1fr); gap: 16px; height: calc(100vh - 196px); min-height: 532px; }
   .notes-live .nl-card { border: 1px solid var(--pg-line); border-radius: 20px; background: var(--pg-card); box-shadow: var(--pg-shadow); backdrop-filter: none; }
   .notes-live .nl-btn { height: 36px; min-height: 0; padding: 0 12px; border: 1px solid var(--pg-line-btn); border-radius: 10px; background: var(--pg-card); color: var(--pg-ink); font-size: 13px; font-weight: 500; gap: 6px; }
   .notes-live .nl-btn--primary { border: 0; background: var(--pg-violet); color: #fff; }
