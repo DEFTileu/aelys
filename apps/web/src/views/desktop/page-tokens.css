@@ -1,0 +1,54 @@
+/* Module-page tokens: the ACTUAL design's inline palette, with its dark mapping (assets/aelys-dark.css). */
+:root {
+  --pg-card: #fff;
+  --pg-glass: rgba(255, 255, 255, .88);
+  --pg-line: #EDE8E3;
+  --pg-line-soft: #ECE7E3;
+  --pg-line-btn: #E7E2DE;
+  --pg-rule: #F0EBE7;
+  --pg-field: #F7F4F1;
+  --pg-seg: #EFEAE5;
+  --pg-chip: #F4F0EC;
+  --pg-tint: #F3F0FE;
+  --pg-ink: #1C1B22;
+  --pg-ink-2: #3A3640;
+  --pg-ink-3: #4F4A56;
+  --pg-mute: #625D69;
+  --pg-acc: #5132D6;
+  --pg-violet: #6A4CF2;
+  --pg-violet-hover: #5B3DE6;
+  --pg-disabled: #CFC9D4;
+  --pg-disabled-ink: #fff;
+  --pg-red: #C9302C;
+  --pg-red-bg: #FDE8E7;
+  --pg-hover: rgba(128, 118, 140, .14);
+  --pg-shadow: 0 1px 2px rgba(40, 30, 30, .04), 0 8px 24px rgba(40, 30, 30, .05);
+  --pg-check-bd: #BDB7C2;
+  --pg-warn-bg: #FDF1D9;
+  --pg-warn: #8A5A00;
+}
+:root[data-theme='dark'] {
+  --pg-card: #201D28;
+  --pg-glass: rgba(32, 29, 40, .86);
+  --pg-line: #34303D;
+  --pg-line-soft: #34303D;
+  --pg-line-btn: #34303D;
+  --pg-rule: #34303D;
+  --pg-field: #2A2733;
+  --pg-seg: #2A2733;
+  --pg-chip: #2A2733;
+  --pg-tint: #2F2752;
+  --pg-ink: #F1EEF6;
+  --pg-ink-2: #CBC6D5;
+  --pg-ink-3: #CBC6D5;
+  --pg-mute: #A6A0B2;
+  --pg-acc: #B9A8FF;
+  --pg-disabled: #3A3546;
+  --pg-disabled-ink: #A6A0B2;
+  --pg-red: #FF8A84;
+  --pg-red-bg: rgba(240, 115, 98, .18);
+  --pg-shadow: 0 1px 2px rgba(40, 30, 30, .04), 0 8px 24px rgba(40, 30, 30, .05);
+  --pg-check-bd: #BDB7C2;
+  --pg-warn-bg: rgba(239, 178, 62, .18);
+  --pg-warn: #F4C46B;
+}

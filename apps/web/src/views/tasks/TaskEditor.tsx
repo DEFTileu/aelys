@@ -1,4 +1,4 @@
-import { StyledSelect } from '../../components/controls/StyledSelect'
+import { Check, Trash2, X } from '../../icons'
 import { useEffect, useId, useRef, type FormEvent, type ReactNode } from 'react'
 import type { ProjectResponse, TaskOut } from '@aelys/shared'
 import type { TaskDraft } from './taskModel'
@@ -50,23 +50,6 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
         if (!pendingRef.current) onCloseRef.current()
         return
       }
-      if (event.key !== 'Tab') return
-      const dialog = dialogRef.current
-      if (!dialog) return
-      const items = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
-        .filter((element) => element.getClientRects().length > 0)
-      const first = items[0]
-      const last = items[items.length - 1]
-      if (!first || !last) {
-        event.preventDefault()
-        dialog.focus()
-      } else if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
-        event.preventDefault()
-        first.focus()
-      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => {
@@ -101,60 +84,58 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
     if (!pending && !saveDisabled) onSave()
   }
 
-  return <div className="task-editor__backdrop" onClick={(event) => {
-    if (event.target === event.currentTarget && !pending) onClose()
-  }}>
-    <div ref={dialogRef} className="task-editor__dialog" role="dialog" aria-modal="true" aria-labelledby={headingId} data-task-id={task.id} tabIndex={-1}>
+  return <>
+    <div className="task-editor__backdrop" onClick={() => { if (!pending) onClose() }} />
+    <aside ref={dialogRef} className="task-editor__dialog" role="dialog" aria-labelledby={headingId} data-task-id={task.id} tabIndex={-1}>
       <form className="task-editor__form" onSubmit={submit}>
         <header className="task-editor__header">
           <h2 id={headingId}>Task details</h2>{dirty && <span className="task-editor__unsaved">Unsaved</span>}
-          <button className="task-editor__close" type="button" aria-label="Close task editor" disabled={pending} onClick={onClose}>×</button>
+          <button className="task-editor__close" type="button" aria-label="Close task editor" title="Close (Esc) \u2014 changes are kept" disabled={pending} onClick={onClose}><X size={18} /></button>
         </header>
-        <div className="task-editor__body">
-          <button className="task-editor__complete" type="button" role="checkbox" aria-checked={value.status === 'completed'} disabled={pending} onClick={() => patch({ status: value.status === 'completed' ? 'todo' : 'completed' })}><span>{value.status === 'completed' ? '✓' : ''}</span>Completed</button>
-          {error && <p ref={errorRef} tabIndex={-1} className="task-editor__error" role="alert">{error}</p>}
-          <label className="task-editor__field">Task title
-            <input ref={titleRef} aria-label="Task title" type="text" value={value.title} required disabled={pending} onChange={(event) => patch({ title: event.target.value })} />
+        <button className="task-editor__complete" type="button" role="checkbox" aria-checked={value.status === 'completed'} disabled={pending} onClick={() => patch({ status: value.status === 'completed' ? 'todo' : 'completed' })}><span>{value.status === 'completed' && <Check size={12} />}</span>Completed</button>
+        {error && <p ref={errorRef} tabIndex={-1} className="task-editor__error" role="alert">{error}</p>}
+        <label className="task-editor__field"><span>Title</span>
+          <input ref={titleRef} aria-label="Task title" type="text" value={value.title} required disabled={pending} onChange={(event) => patch({ title: event.target.value })} />
+        </label>
+        <label className="task-editor__field"><span>Description</span>
+          <textarea aria-label="Description" placeholder="Add details, links or a checklist" value={value.description} disabled={pending} onChange={(event) => patch({ description: event.target.value })} />
+        </label>
+        <div className="task-editor__date-fields">
+          <label className="task-editor__field"><span>Date</span>
+            <input aria-label="Due date" type="date" value={value.dueDate} disabled={pending} aria-describedby={dateHelpId} onChange={(event) => patch({ dueDate: event.target.value, ...(event.target.value ? {} : { dueTime: '' }) })} />
           </label>
-          <label className="task-editor__field">Description
-            <textarea aria-label="Description" rows={4} value={value.description} disabled={pending} onChange={(event) => patch({ description: event.target.value })} />
+          <label className="task-editor__field"><span>Time</span>
+            <input aria-label="Due time" type="time" value={value.dueTime} disabled={pending || !value.dueDate} aria-describedby={dateHelpId} onChange={(event) => patch({ dueTime: event.target.value })} />
           </label>
-          <div className="task-editor__date-fields">
-            <label className="task-editor__field">Due date
-              <input aria-label="Due date" type="date" value={value.dueDate} disabled={pending} aria-describedby={dateHelpId} onChange={(event) => patch({ dueDate: event.target.value, ...(event.target.value ? {} : { dueTime: '' }) })} />
-            </label>
-            <label className="task-editor__field">Due time
-              <input aria-label="Due time" type="time" value={value.dueTime} disabled={pending || !value.dueDate} aria-describedby={dateHelpId} onChange={(event) => patch({ dueTime: event.target.value })} />
-            </label>
-          </div>
-          <p id={dateHelpId} className="task-editor__help">Times shown in {timeZone}. If no time is selected, the due time defaults to 23:59.</p>
-          <div className="task-editor__field">Priority
-            <div className="task-editor__priorities" role="radiogroup" aria-label="Priority">{[['0','None'],['3','High'],['2','Medium'],['1','Low']].map(([priority, label]) => <button type="button" role="radio" aria-checked={value.priority === priority} key={priority} disabled={pending} onClick={() => patch({ priority })}>{label}</button>)}{!knownPriority && <span>Current priority ({value.priority})</span>}</div>
-          </div>
-          <div className="task-editor__field">Project
-            <StyledSelect aria-label="Project" value={value.projectId} disabled={pending || projectsUnavailable} onChange={(event) => patch({ projectId: event.target.value })}>
-              <option value="">None</option>
-              {!knownProject && <option value={value.projectId}>Current project ({value.projectId})</option>}
-              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </StyledSelect>
-          </div>
-          {projectsUnavailable && <p className="task-editor__help">Projects are unavailable. The current project will be preserved.</p>}
-          {notice}
-          <details className="task-editor__advanced"><summary>More options</summary><div className="task-editor__field">Status
-            <StyledSelect aria-label="Status" value={value.status} disabled={pending} onChange={(event) => patch({ status: event.target.value })}>
-              {!knownStatus && <option value={value.status}>Current status ({value.status})</option>}
-              <option value="todo">To do</option><option value="in_progress">In progress</option><option value="completed">Completed</option>
-            </StyledSelect>
-          </div></details>
         </div>
+        <p id={dateHelpId} className="task-editor__sr">Times shown in {timeZone}. If no time is selected, the due time defaults to 23:59.</p>
+        <div className="task-editor__field"><span>Priority</span>
+          <div className="task-editor__priorities" role="radiogroup" aria-label="Priority">{[['0', 'None'], ['1', 'Low'], ['2', 'Medium'], ['3', 'High']].map(([priority, label]) => <button type="button" role="radio" aria-checked={value.priority === priority} key={priority} disabled={pending} onClick={() => patch({ priority })}>{label}</button>)}{!knownPriority && <span>Current priority ({value.priority})</span>}</div>
+        </div>
+        <label className="task-editor__field"><span>Project</span>
+          <select aria-label="Project" value={value.projectId} disabled={pending || projectsUnavailable} onChange={(event) => patch({ projectId: event.target.value })}>
+            <option value="">No project</option>
+            {!knownProject && <option value={value.projectId}>Current project ({value.projectId})</option>}
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+        </label>
+        {projectsUnavailable && <p className="task-editor__help">Projects are unavailable. The current project will be preserved.</p>}
+        {(value.status === 'in_progress' || !knownStatus) && <label className="task-editor__field"><span>Status</span>
+          <select aria-label="Status" value={value.status} disabled={pending} onChange={(event) => patch({ status: event.target.value })}>
+            {!knownStatus && <option value={value.status}>Current status ({value.status})</option>}
+            <option value="todo">To do</option><option value="in_progress">In progress</option><option value="completed">Completed</option>
+          </select>
+        </label>}
+        {notice}
         <footer className="task-editor__footer">
           {confirmDelete && <span className="task-editor__confirm" role="status">Delete this task?</span>}
-          <button className="task-editor__delete" type="button" disabled={pending || deleteDisabled} onClick={onDelete}>{confirmDelete ? 'Confirm delete' : 'Delete'}</button>
+          <button className="task-editor__delete" type="button" disabled={pending || deleteDisabled} onClick={onDelete}><Trash2 size={16} />{confirmDelete ? 'Confirm delete' : 'Delete'}</button>
           {confirmDelete && <button className="task-editor__secondary" type="button" disabled={pending} onClick={onCancelDelete}>Cancel</button>}
+          <span className="task-editor__grow" />
           {dirty && <button className="task-editor__secondary" type="button" disabled={pending} onClick={onRevert}>Revert</button>}
-          <button className="task-editor__save" type="submit" disabled={pending || saveDisabled}>{pending ? 'Saving' : 'Save changes'}</button>
+          <button className="task-editor__save" type="submit" data-dirty={dirty ? 'true' : 'false'} disabled={pending || saveDisabled}>{pending ? 'Saving' : 'Save'}</button>
         </footer>
       </form>
-    </div>
-  </div>
+    </aside>
+  </>
 }

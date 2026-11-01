@@ -123,11 +123,11 @@ export function groupTasksByDay(tasks: readonly TaskOut[]): readonly { key: stri
   }))
 }
 
-export interface QuickTokens { title: string; dueDate?: string; priority?: string; projectId?: string }
+export interface QuickTokens { title: string; dueDate?: string; dueTime?: string; priority?: string; projectId?: string }
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 const localKey = (date: Date) => `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 
-/** Pulls `@date`, `!p1`..`!p3` and `#project` tokens out of quick-add text. Unmatched tokens stay in the title.
+/** Pulls `@date` (today, tomorrow, a weekday or YYYY-MM-DD), `@HH:MM`, `!p1`..`!p3` and `#project` tokens out of quick-add text. Unmatched tokens stay in the title.
  *  Unless `final`, a token still being typed (no trailing whitespace) is left alone. p1 is the highest priority. */
 export function parseQuickTokens(text: string, projects: readonly { id: string; name: string }[], now = new Date(), final = true): QuickTokens {
   const out: QuickTokens = { title: '' }
@@ -138,7 +138,9 @@ export function parseQuickTokens(text: string, projects: readonly { id: string; 
     if (mark === '@') {
       const date = new Date(now.getFullYear(), now.getMonth(), now.getDate())
       const day = lower.length >= 3 ? DAYS.findIndex(name => name.startsWith(lower)) : -1
-      if (lower === 'today') out.dueDate = localKey(date)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(lower)) out.dueDate = lower
+      else if (/^([01]?\d|2[0-3]):[0-5]\d$/.test(lower)) out.dueTime = lower.padStart(5, '0')
+      else if (lower === 'today') out.dueDate = localKey(date)
       else if (lower === 'tomorrow') { date.setDate(date.getDate() + 1); out.dueDate = localKey(date) }
       else if (day >= 0) { date.setDate(date.getDate() + (day - date.getDay() + 6) % 7 + 1); out.dueDate = localKey(date) }
       else return whole

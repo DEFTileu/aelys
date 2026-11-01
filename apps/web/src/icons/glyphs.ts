@@ -77,6 +77,10 @@ export const glyphs = {
   Send: 'M3 10.5 21 3l-7.5 18-3-7.5-7.5-3Zm7.5 3L21 3',
   External: 'M14 3.5h6.5V10m-.5-6-9 9M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4',
   Lock: 'M7.5 10V7a4.5 4.5 0 0 1 9 0v3M6 10h12a1 1 0 0 1 1 1v9H5v-9a1 1 0 0 1 1-1Zm6 4v3',
+  CirclePlus: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 5v8m-4-4h8',
+  CircleCheck: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-4 9 3 3 5-6',
+  CircleCheckBig: 'M21 10.5a9 9 0 1 1-4.5-7.2M9 11l3 3 9-9',
+  Trash2: 'M3.5 6h17M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m-6 5v6m4-6v6',
 } as const
 
 export type GlyphName = keyof typeof glyphs

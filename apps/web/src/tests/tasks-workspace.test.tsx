@@ -26,6 +26,11 @@ function button(name: string): HTMLButtonElement {
   if (!match) throw new Error(`Button not found: ${name}`)
   return match
 }
+// Matrix, All tasks and the extra filters live in the toolbar's overflow menu.
+async function openMore() {
+  const more = host.querySelector<HTMLButtonElement>('[aria-label="More views and filters"]')!
+  if (more.getAttribute('aria-expanded') !== 'true') await act(async () => more.click())
+}
 function field(name: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
   const direct = [...host.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')].find((item) => item.getAttribute('aria-label') === name)
   const labels = [...host.querySelectorAll('label')].filter((item) => [...item.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim() === name))
@@ -34,7 +39,10 @@ function field(name: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelec
   if (!result) throw new Error(`Field not found: ${name}`)
   return result
 }
-async function click(name: string) { await act(async () => { if (name === 'New task') field('Add a task').focus(); else button(name).click() }) }
+async function click(name: string) {
+  if (name !== 'New task' && ['All tasks', 'Matrix', 'High priority', 'Overdue', 'Clear filters', 'Refresh tasks'].includes(name)) await openMore()
+  await act(async () => { if (name === 'New task') field('Add a task').focus(); else button(name).click() })
+}
 async function setField(name: string, value: string) {
   const element = field(name)
   const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
@@ -114,21 +122,20 @@ describe('Tasks workspace', () => {
     expect(row('Important urgent')).toBeNull()
   })
 
-  it('applies search, project and priority filters to the matrix and includes it in keyboard tabs', async () => {
+  it('applies search, project and priority filters to the matrix', async () => {
     client.tasks.mockResolvedValue([
       task({ id: 'match', title: 'Matrix match', priority: 2 }),
       task({ id: 'low', title: 'Low priority', priority: 1 }),
       task({ id: 'other', title: 'Other project', priority: 2, project_id: null }),
     ])
-    await mount(); await key(button('Inbox'), 'End')
-    expect(button('Matrix').getAttribute('aria-selected')).toBe('true')
-    expect(document.activeElement).toBe(button('Matrix'))
-    await click('Filter'); await setField('Filter by project', project.id); await setField('Filter by priority', '2')
+    await mount(); await click('Matrix')
+    expect(button('Matrix').getAttribute('aria-pressed')).toBe('true')
+    await setField('Filter by project', project.id); await setField('Filter by priority', '2')
     expect(row('Matrix match')).not.toBeNull(); expect(row('Low priority')).toBeNull(); expect(row('Other project')).toBeNull()
     await setField('Search tasks', 'missing'); expect(row('Matrix match')).toBeNull()
-    expect(host.textContent).toContain('No matches in this view')
+    expect(host.textContent).toContain('No tasks match your filters')
     await setField('Search tasks', 'match'); expect(row('Matrix match')).not.toBeNull()
-    await key(button('Matrix'), 'ArrowRight')
+    await click('Inbox')
     expect(button('Inbox').getAttribute('aria-selected')).toBe('true')
   })
 
@@ -142,11 +149,11 @@ describe('Tasks workspace', () => {
     await setField('Description', 'Matrix parked draft'); await click('Close task editor')
     await click('Complete Plan launch')
     expect(field('Description').value).toBe('Matrix parked draft')
-    await click('Compare latest'); await click('Keep my draft'); await submit('Save changes')
+    await click('Compare latest'); await click('Keep my draft'); await submit('Save')
     expect(client.updateTask).toHaveBeenLastCalledWith(original.id, expect.objectContaining({ version: 7, description: 'Matrix parked draft' }), { queueOnOffline: false })
     client.tasks.mockImplementation(async (_query, options) => { if (options?.allowCacheFallback === false) throw new NetworkError('offline'); return [latest] })
     await click('Refresh tasks'); expect(button('Complete Latest title').disabled).toBe(true)
-    await click('Open task: Latest title'); expect(button('Save changes').disabled).toBe(true)
+    await click('Open task: Latest title'); expect(button('Save').disabled).toBe(true)
   })
   it('defaults to Today and separates active tasks from Completed', async () => {
     const now = new Date(); now.setHours(12, 0, 0, 0)
@@ -168,7 +175,7 @@ describe('Tasks workspace', () => {
     client.createTask.mockImplementation(async () => { client.tasks.mockResolvedValue([created]); return created })
     await mount()
     await click('New task')
-    await setField('New task title', 'Buy paper')
+    await setField('Add a task', 'Buy paper')
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Buy paper', due_at: null }), expect.objectContaining({ queueOnOffline: false }))
     expect(row('Buy paper')).not.toBeNull()
@@ -178,15 +185,12 @@ describe('Tasks workspace', () => {
     client.createTask.mockResolvedValue(task())
     await mount()
     await click('New task')
-    await setField('New task title', 'Timed task !p1 #ori ')
-    await click('Add details')
-    await setField('New due date', '2026-11-17')
-    await setField('New due time', '14:35')
+    await setField('Add a task', 'Timed task !p1 #ori @2026-11-17 @14:35 ')
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Timed task', due_at: new Date(2026, 10, 17, 14, 35).toISOString(), due_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, priority: 3, project_id: project.id }), expect.objectContaining({ queueOnOffline: false }))
   })
 
-  it.each(['Open task: Plan launch', 'Change priority: Plan launch', 'Task details: Plan launch'])('opens the editor from %s', async (trigger) => {
+  it.each(['Open task: Plan launch'])('opens the editor from %s', async (trigger) => {
     client.tasks.mockResolvedValue([task()])
     await mount()
     await click(trigger)
@@ -211,9 +215,8 @@ describe('Tasks workspace', () => {
     await setField('Due time', '14:35')
     await click('High')
     await setField('Project', project.id)
-    await setField('Status', 'in_progress')
-    await submit('Save changes')
-    expect(client.updateTask).toHaveBeenCalledWith(original.id, expect.objectContaining({ title: 'Launch ready', description: 'Updated notes', due_at: new Date(2026, 10, 17, 14, 35).toISOString(), priority: 3, project_id: project.id, status: 'in_progress', parent_task_id: original.parent_task_id, rrule: original.rrule, version: 4 }), expect.objectContaining({ queueOnOffline: false }))
+    await submit('Save')
+    expect(client.updateTask).toHaveBeenCalledWith(original.id, expect.objectContaining({ title: 'Launch ready', description: 'Updated notes', due_at: new Date(2026, 10, 17, 14, 35).toISOString(), priority: 3, project_id: project.id, status: 'todo', parent_task_id: original.parent_task_id, rrule: original.rrule, version: 4 }), expect.objectContaining({ queueOnOffline: false }))
   })
 
   it('reverts unsaved edits and confirms deletion against a fresh version', async () => {
@@ -239,7 +242,7 @@ describe('Tasks workspace', () => {
 
   it('creates with inline date, priority and project options', async () => {
     client.createTask.mockResolvedValue(task())
-    await mount(); await click('New task'); await setField('New task title', 'Inline @tomorrow !p1 #orion ')
+    await mount(); await click('New task'); await setField('Add a task', 'Inline @tomorrow !p1 #orion ')
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(23, 59, 0, 0)
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Inline', due_at: tomorrow.toISOString(), priority: 3, project_id: project.id }), expect.anything())
@@ -272,7 +275,6 @@ describe('Tasks workspace', () => {
     expect(row('Beta')).not.toBeNull()
     expect(row('Gamma')).toBeNull()
     await setField('Search tasks', '')
-    await click('Filter')
     await setField('Filter by project', project.id)
     await setField('Filter by status', 'active')
     await click('High priority')
@@ -293,12 +295,12 @@ describe('Tasks workspace', () => {
     await key(search, 'q')
     expect(host.querySelector('[aria-label="New task title"]')).toBeNull()
     await key(document.body, 'q')
-    await setField('New task title', 'Draft from keyboard')
-    await key(field('New task title'), 'Escape')
+    await setField('Add a task', 'Draft from keyboard')
+    await key(field('Add a task'), 'Escape')
     expect(host.querySelector('[aria-label="New task title"]')).toBeNull()
     await key(document.body, 'q')
-    expect(field('New task title').value).toBe('Draft from keyboard')
-    const title = field('New task title')
+    expect(field('Add a task').value).toBe('Draft from keyboard')
+    const title = field('Add a task')
     const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
     await act(async () => {
       title.dispatchEvent(enter)
@@ -317,7 +319,7 @@ describe('Tasks workspace', () => {
     await mount()
     await click('Open task: Plan launch')
     await setField('Task title', 'My draft')
-    await submit('Save changes')
+    await submit('Save')
     expect(field('Task title').value).toBe('My draft')
     expect(dialog()).not.toBeNull()
     expect(host.textContent).toMatch(/conflict/i)
@@ -327,7 +329,7 @@ describe('Tasks workspace', () => {
     expect(host.textContent).toContain('Server title')
     expect(field('Task title').value).toBe('My draft')
     await click('Keep my draft')
-    await submit('Save changes')
+    await submit('Save')
     expect(client.updateTask).toHaveBeenLastCalledWith(original.id, expect.objectContaining({ title: 'My draft', version: 7 }), expect.objectContaining({ queueOnOffline: false }))
   })
 
@@ -351,7 +353,7 @@ describe('Tasks workspace', () => {
     expect(client.task).toHaveBeenCalledWith(original.id)
     expect(field('Description').value).toBe('Parked description')
     await click('Keep my draft')
-    await submit('Save changes')
+    await submit('Save')
     expect(client.updateTask).toHaveBeenLastCalledWith(original.id, expect.objectContaining({
       description: 'Parked description', due_at: original.due_at, due_timezone: original.due_timezone,
       parent_task_id: latest.parent_task_id, rrule: latest.rrule, version: latest.version,
@@ -364,15 +366,15 @@ describe('Tasks workspace', () => {
     client.updateTask.mockRejectedValue(new Error('Network unavailable'))
     await mount()
     await click('New task')
-    await setField('New task title', 'Unsent task')
+    await setField('Add a task', 'Unsent task')
     await submit('Add task')
-    expect(field('New task title').value).toBe('Unsent task')
+    expect(field('Add a task').value).toBe('Unsent task')
     expect(host.textContent).toMatch(/network|connection|offline/i)
     expect(host.textContent).not.toMatch(/task saved|task created/i)
-    await click('Close quick add')
+    await act(async () => field('Add a task').blur())
     await click('Open task: Plan launch')
     await setField('Description', 'Unsent edit')
-    await submit('Save changes')
+    await submit('Save')
     expect(field('Description').value).toBe('Unsent edit')
     expect(dialog()).not.toBeNull()
     expect(host.textContent).toMatch(/network|connection|offline/i)
@@ -390,7 +392,7 @@ describe('Tasks workspace', () => {
     expect(host.textContent).toMatch(/cached|cache/i)
     expect(button('Complete Plan launch').disabled).toBe(true)
     await click('Open task: Plan launch')
-    expect(button('Save changes').disabled).toBe(true)
+    expect(button('Save').disabled).toBe(true)
     expect(client.updateTask).not.toHaveBeenCalled()
   })
 
@@ -407,9 +409,9 @@ describe('Tasks workspace', () => {
       .mockResolvedValueOnce(task({ title: 'Possibly created' }))
     await mount()
     await click('New task')
-    await setField('New task title', 'Possibly created')
+    await setField('Add a task', 'Possibly created')
     await submit('Add task')
-    expect(field('New task title').value).toBe('Possibly created')
+    expect(field('Add a task').value).toBe('Possibly created')
     expect(button('Add task').disabled).toBe(true)
     expect(client.createTask).toHaveBeenCalledTimes(1)
     expect(host.textContent).toMatch(/unconfirmed|unknown|could not confirm|may have|no save confirmation/i)
@@ -418,7 +420,7 @@ describe('Tasks workspace', () => {
     expect(button('Add task').disabled).toBe(true)
     expect(client.createTask).toHaveBeenCalledTimes(1)
     await click('Allow another attempt')
-    expect(field('New task title').value).toBe('Possibly created')
+    expect(field('Add a task').value).toBe('Possibly created')
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledTimes(2)
   })
@@ -428,11 +430,11 @@ describe('Tasks workspace', () => {
       .mockResolvedValueOnce(task({ title: 'Corrected' }))
     await mount()
     await click('New task')
-    await setField('New task title', 'Original')
+    await setField('Add a task', 'Original')
     await submit('Add task')
-    expect(field('New task title').value).toBe('Original')
+    expect(field('Add a task').value).toBe('Original')
     expect(button('Add task').disabled).toBe(false)
-    await setField('New task title', 'Corrected')
+    await setField('Add a task', 'Corrected')
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledTimes(2)
   })
@@ -449,7 +451,7 @@ describe('Tasks workspace', () => {
     expect(host.textContent).not.toMatch(/changes saved|task updated|task saved/i)
     expect(button('Complete Plan launch').disabled).toBe(true)
     await click('Open task: Plan launch')
-    expect(button('Save changes').disabled).toBe(true)
+    expect(button('Save').disabled).toBe(true)
     expect(client.updateTask).not.toHaveBeenCalled()
   })
 
@@ -462,7 +464,7 @@ describe('Tasks workspace', () => {
     const complete = button('Complete Plan launch')
     expect(complete.disabled).toBe(true)
     await click('Open task: Plan launch')
-    expect(button('Save changes').disabled).toBe(true)
+    expect(button('Save').disabled).toBe(true)
     expect(client.createTask).not.toHaveBeenCalled()
     expect(client.updateTask).not.toHaveBeenCalled()
   })
@@ -506,7 +508,7 @@ describe('Tasks workspace', () => {
     expect(row('Plan launch')).toBeNull()
     expect(host.textContent).toMatch(/session ended/i)
     await click('New task')
-    await setField('New task title', 'Private draft')
+    await setField('Add a task', 'Private draft')
     expect(button('Add task').disabled).toBe(true)
   })
 
@@ -519,7 +521,7 @@ describe('Tasks workspace', () => {
     await setField('Description', 'Keep this draft')
     await act(async () => field('Description').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true })))
     expect(dialog()).not.toBeNull()
-    await submit('Save changes')
+    await submit('Save')
     expect(document.activeElement).toBe(dialog())
     await act(async () => rejectWrite(new ApiError(422, 'VALIDATION_ERROR', 'Rejected')))
     expect(field('Description').value).toBe('Keep this draft')
@@ -527,43 +529,40 @@ describe('Tasks workspace', () => {
     expect(dialog()?.contains(document.activeElement)).toBe(true)
   })
 
-  it('shows Add and option chips only once typing starts, and chips are removable', async () => {
+  it('reflects typed tokens in the date, priority and project selects and enables Add', async () => {
     await mount()
-    expect(host.querySelector('[aria-label="Add task"]')).toBeNull()
-    expect(host.querySelector('.tasks-quick-chips')).toBeNull()
-    await click('New task')
-    await setField('New task title', 'Call Sam !p1 #ori ')
-    expect(host.querySelector('[aria-label="Add task"]')).not.toBeNull()
-    expect(field('New task title').value).toBe('Call Sam ')
-    expect(host.querySelector('.tasks-quick-chips')?.textContent).toContain('High')
-    expect(host.querySelector('.tasks-quick-chips')?.textContent).toContain('Orion')
-    await click('Remove priority')
-    expect(host.querySelector('.tasks-quick-chips')?.textContent).not.toContain('High')
-    await setField('New task title', '')
-    expect(host.querySelector('[aria-label="Add task"]')).toBeNull()
+    expect(button('Add task').disabled).toBe(true)
+    await setField('Add a task', 'Call Sam !p1 #ori @tomorrow ')
+    expect(button('Add task').disabled).toBe(false)
+    expect(field('Add a task').value).toBe('Call Sam ')
+    expect((field('Priority') as HTMLSelectElement).selectedOptions[0].textContent).toBe('High')
+    expect((field('Project') as HTMLSelectElement).selectedOptions[0].textContent).toBe('Orion')
+    expect((field('Date') as HTMLSelectElement).selectedOptions[0].textContent).toBe('Tomorrow')
+    await setField('Priority', '0')
+    expect((field('Priority') as HTMLSelectElement).selectedOptions[0].textContent).toBe('No priority')
+    await setField('Add a task', '')
+    expect(button('Add task').disabled).toBe(true)
   })
 
   it('parses tokens still in the field when submitting', async () => {
     client.createTask.mockResolvedValue(task())
     await mount(); await click('New task')
-    await setField('New task title', 'Plan trip !p2 #Ori')
+    await setField('Add a task', 'Plan trip !p2 #Ori')
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Plan trip', priority: 2, project_id: project.id }), expect.anything())
   })
 
-  it('keeps priority and project filters in a popover with an active-count badge', async () => {
-    client.tasks.mockResolvedValue([task()])
+  it('filters inline by priority and project and resets them', async () => {
+    client.tasks.mockResolvedValue([task(), task({ id: 'other', title: 'Other', priority: 1, project_id: null })])
     await mount()
-    expect(host.querySelector('[aria-label="Filter by priority"]')).toBeNull()
-    expect(button('Filter').querySelector('b')).toBeNull()
-    await click('Filter')
-    expect(host.querySelector('[role="dialog"][aria-label="Filter tasks"]')).not.toBeNull()
-    await setField('Filter by priority', '3')
+    expect(host.querySelector('.tasks-reset')).toBeNull()
+    await setField('Filter by priority', '2')
+    expect(row('Plan launch')).not.toBeNull(); expect(row('Other')).toBeNull()
     await setField('Filter by project', project.id)
-    expect(button('Filter').querySelector('b')?.textContent).toBe('2')
-    await act(async () => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
-    expect(host.querySelector('[aria-label="Filter tasks"]')).toBeNull()
-    expect(button('Filter').querySelector('b')?.textContent).toBe('2')
+    expect(button('Reset')).not.toBeNull()
+    await click('Reset')
+    expect(host.querySelector('.tasks-reset')).toBeNull()
+    expect((field('Filter by priority') as HTMLSelectElement).value).toBe('all')
   })
 
 })

@@ -29,23 +29,21 @@ describe('search destination intents', () => {
     await route('/tasks?task=one')
     expect(host.querySelector<HTMLInputElement>('[aria-label="Task title"]')?.value).toBe('Unsaved one')
     await route('/tasks?create=1')
-    await fill('New task title', 'New draft')
+    await fill('Add a task', 'New draft')
     await route('/tasks?task=two')
     await route('/tasks?create=1')
-    expect(host.querySelector<HTMLInputElement>('[aria-label="New task title"]')?.value).toBe('New draft')
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Add a task"]')?.value).toBe('New draft')
     await route('/tasks?task=one')
     expect(host.querySelector<HTMLInputElement>('[aria-label="Task title"]')?.value).toBe('Unsaved one')
   })
-  it('uses the styled task picker and preserves its native change contract', async () => {
+  it('uses the design\u2019s native project select in the task details', async () => {
     history.replaceState({}, '', '/tasks?task=one')
     client.projects.mockResolvedValue([{ id: 'project-1', name: 'Orion', description: '', status: 'active', version: 1 }])
     await mount(<TasksView apiStatus="ready" />)
-    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Project"]')!
-    const trigger = [...host.querySelectorAll<HTMLButtonElement>('[role="combobox"]')].find(button => button.getAttribute('aria-labelledby') && document.getElementById(button.getAttribute('aria-labelledby')!)?.textContent === 'Project')!
-    await act(async () => trigger.click())
-    await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === 'Orion')!.click())
+    const select = host.querySelector<HTMLSelectElement>('[role="dialog"] select[aria-label="Project"]')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, 'project-1'); select.dispatchEvent(new Event('change', { bubbles: true })) })
     expect(select.value).toBe('project-1')
-    expect(trigger.textContent).toContain('Orion')
+    expect(select.selectedOptions[0].textContent).toBe('Orion')
   })
   it('opens a calendar create draft on mount and keeps it on repeated intents', async () => {
     history.replaceState({}, '', '/calendar?create=1')
