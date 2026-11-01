@@ -204,3 +204,10 @@ remains UntrustedData; Google readonly consent grants no AI write permissions.
 The Business secretary receives none of these personal calendar records. The
 Google worker uses server Policy Engine checks for local import writes and each
 external read; no Google event write tool exists.
+
+Owner-approved Business media viewing follow-up: received photo/voice/audio
+metadata is encrypted and exposed only through the owner Messages preview path.
+It grants no model permissions and is not a provider attachment or transcription
+input. Business generate_draft rejects media-bearing targets as preview-only;
+new media still suppresses an older stale auto-reply. Personal media/BYOK handling
+is unchanged. The secretary still has no personal domain/memory tools.

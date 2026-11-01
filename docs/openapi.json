@@ -6651,6 +6651,58 @@
           }
         }
       }
+    },
+    "/api/v1/integrations/telegram/messages/{message_id}/media": {
+      "get": {
+        "tags": [
+          "Telegram Business"
+        ],
+        "summary": "Message Media",
+        "operationId": "message_media_api_v1_integrations_telegram_messages__message_id__media_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {},
+              "image/gif": {},
+              "audio/ogg": {},
+              "audio/mpeg": {},
+              "audio/mp4": {},
+              "audio/wav": {},
+              "audio/flac": {},
+              "audio/webm": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7194,6 +7246,19 @@
             "maxLength": 4096,
             "minLength": 1,
             "title": "Text"
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 4503599627370496.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id"
           }
         },
         "additionalProperties": false,
@@ -8806,6 +8871,36 @@
         ],
         "title": "MemoryFactPatch"
       },
+      "MessageMediaOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "voice",
+              "audio"
+            ],
+            "title": "Kind"
+          },
+          "file_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "file_size"
+        ],
+        "title": "MessageMediaOut"
+      },
       "MessageOut": {
         "properties": {
           "id": {
@@ -8904,6 +8999,38 @@
               }
             ],
             "title": "Deleted At"
+          },
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageMediaOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reply_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Message Id"
+          },
+          "reply_to_telegram_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Telegram Message Id"
           }
         },
         "type": "object",

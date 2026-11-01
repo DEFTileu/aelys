@@ -427,6 +427,47 @@ export class ApiClient {
   public syncTelegram(options?: RequestOptions) { return this.request<{ readonly processed: number }>("/api/v1/integrations/telegram/sync", this.write({}, { ...options, queueOnOffline: false })); }
   public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
   public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
+  /** Private media is downloaded only to memory, with no cache/outbox/token in its URL. */
+  public async telegramMessageMedia(id: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+    const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
+    const headers: Record<string,string> = { Accept: "image/*,audio/*" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timer = globalThis.setTimeout(() => controller.abort(), 60_000);
+    const abort = () => controller.abort();
+    options?.signal?.addEventListener("abort", abort, { once:true });
+    if (options?.signal?.aborted) controller.abort();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/media`, {method:"GET", headers, signal:controller.signal, cache:"no-store"});
+      if (!response.ok) return await this.parseResponse<never>(response);
+      const type = (response.headers.get("Content-Type") ?? "").split(";")[0]!.trim().toLowerCase();
+      if (!["image/jpeg","image/png","image/webp","image/gif","audio/ogg","audio/mpeg","audio/mp4","audio/wav","audio/flac","audio/webm"].includes(type)) throw new ApiError(415,"TELEGRAM_MEDIA_UNSUPPORTED","Unsupported media format");
+      const limit=20*1024*1024;
+      const length=response.headers.get("Content-Length");
+      if (length !== null && (!/^\d+$/.test(length) || Number(length)>limit)) throw new ApiError(413,"TELEGRAM_MEDIA_TOO_LARGE","Media exceeds the preview limit");
+      reader=response.body?.getReader();
+      if (!reader) throw new ApiError(422,"TELEGRAM_MEDIA_UNAVAILABLE","Media is unavailable");
+      const chunks:ArrayBuffer[]=[];
+      let size=0;
+      while (true) {
+        const part=await reader.read(); if(part.done)break;
+        size+=part.value.byteLength;
+        if(size>limit)throw new ApiError(413,"TELEGRAM_MEDIA_TOO_LARGE","Media exceeds the preview limit");
+        chunks.push(Uint8Array.from(part.value).buffer);
+      }
+      if(size===0)throw new ApiError(422,"TELEGRAM_MEDIA_UNAVAILABLE","Media is empty");
+      return new Blob(chunks,{type});
+    } catch(error) {
+      if(error instanceof ApiError)throw error;
+      throw new NetworkError("Media download failed",error);
+    } finally {
+      void reader?.cancel().catch(()=>undefined);
+      globalThis.clearTimeout(timer);
+      options?.signal?.removeEventListener("abort",abort);
+      controller.abort();
+    }
+  }
   public telegramChats(options?: RequestOptions) { return this.request<readonly TelegramChatAvailability[]>("/api/v1/integrations/telegram/chats", this.read({ ...options, cacheKey: undefined })); }
   public sendTelegramChatMessage(body: TelegramChatSendIn, options: RequestOptions & { readonly idempotencyKey: string }) { return this.request<TelegramBusinessMessage>("/api/v1/integrations/telegram/chats/send", this.write(body, { ...options, queueOnOffline: false })); }
   public sendTelegramMessage(id: string, body: { readonly version: number; readonly text: string }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/send`, this.write(body, { ...options, queueOnOffline: false })); }

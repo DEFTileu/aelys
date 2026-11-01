@@ -159,10 +159,10 @@ async def chats(db: AsyncSession, item: TelegramIntegration) -> list[dict[str, A
     ]
 
 
-def fingerprint(connection_id: str, chat_id: int, body: str) -> str:
+def fingerprint(connection_id: str, chat_id: int, body: str, reply_to_message_id: int | None = None) -> str:
     # HMAC prevents a content-free receipt becoming an offline dictionary of short messages.
     payload = json.dumps(
-        [connection_id, chat_id, body], ensure_ascii=False, separators=(",", ":")
+        [connection_id, chat_id, body] + ([reply_to_message_id] if reply_to_message_id is not None else []), ensure_ascii=False, separators=(",", ":")
     )
     return hmac.new(
         get_settings().secret_key.encode(), payload.encode(), hashlib.sha256
@@ -226,9 +226,10 @@ async def send_chat(
     chat_id: int,
     body: str,
     key: str,
+    reply_to_message_id: int | None = None,
 ) -> TelegramBusinessMessage:
     authorize(item)
-    digest = fingerprint(connection_id, chat_id, body)
+    digest = fingerprint(connection_id, chat_id, body, reply_to_message_id)
     old = (
         await db.execute(
             select(TelegramChatSend).where(
@@ -252,6 +253,15 @@ async def send_chat(
         raise service.error(
             422, "VALIDATION_ERROR", "Сообщение должно содержать от 1 до 4096 символов."
         )
+    if reply_to_message_id is not None:
+        from sqlalchemy import or_
+        target=(await db.execute(select(TelegramBusinessMessage.id).where(
+            TelegramBusinessMessage.owner_id==item.owner_id,TelegramBusinessMessage.integration_id==item.id,
+            TelegramBusinessMessage.business_connection_id==connection_id,TelegramBusinessMessage.chat_id==chat_id,
+            TelegramBusinessMessage.deleted_at.is_(None),or_(TelegramBusinessMessage.telegram_message_id==reply_to_message_id,
+                TelegramBusinessMessage.reply_message_id==reply_to_message_id)))).first()
+        if target is None:
+            raise service.error(404,'TELEGRAM_REPLY_TARGET_UNAVAILABLE','Сообщение для ответа недоступно в этом чате.')
     state = availability(item, connection, incoming.sent_at)
     if not state["can_send"]:
         raise service.error(
@@ -330,9 +340,8 @@ async def send_chat(
             )
         authorize(item)
         try:
-            sent = await client.send_message(
-                chat_id, body, business_connection_id=connection_id
-            )
+            reply_arguments={"reply_to_message_id":reply_to_message_id} if reply_to_message_id is not None else {}
+            sent = await client.send_message(chat_id, body, business_connection_id=connection_id, **reply_arguments)
             if (
                 not service.integer(sent.get("message_id"))
                 or sent["message_id"] <= 0
@@ -412,6 +421,7 @@ async def send_chat(
                 sent_at=now(),
                 direction="owner",
                 draft_status="none",
+                reply_to_telegram_message_id=reply_to_message_id,
             )
             try:
                 async with db.begin_nested():
@@ -421,6 +431,9 @@ async def send_chat(
                 outgoing = (
                     await db.execute(select(TelegramBusinessMessage).where(*conditions))
                 ).scalar_one()
+        if reply_to_message_id is not None and outgoing.reply_to_telegram_message_id is None:
+            outgoing.reply_to_telegram_message_id = reply_to_message_id
+            outgoing.version += 1
         active.message_id = outgoing.id
         active.send_status = "sent"
         active.version += 1

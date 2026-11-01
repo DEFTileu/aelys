@@ -2,6 +2,8 @@ import { ApiError, type TelegramBusinessMessage } from '@aelys/shared'
 
 // API messages and provider text can contain secrets; only display a constrained error code.
 const NOTICES: Record<string, string> = {
+  TELEGRAM_REPLY_TARGET_UNAVAILABLE: 'The selected message is no longer available. Cancel the reply or select another message.',
+  TELEGRAM_MEDIA_PREVIEW_ONLY: 'Media is available for you to view. Write a reply manually.',
   TELEGRAM_MESSAGE_UNAVAILABLE: 'Replies are available only for incoming messages. Select a message from the other person; the connection must be active.',
   TELEGRAM_REPLY_DENIED: 'The bot cannot reply in this chat. Check the connection and reply permissions in Telegram Business settings.',
   TELEGRAM_REPLY_WINDOW_EXPIRED: 'The Telegram reply window (24 hours) has expired. Wait for a new message from the other person.',
@@ -42,7 +44,7 @@ export function sendIdempotencyKey(store: Record<string, { signature: string; ke
 
 export const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
 
-export type ChatLine = { id: string; mine: boolean; text: string; at: string; byAelys: boolean; deleted: boolean }
+export type ChatLine = { remoteId?: number | null; replyToId?: number | null; media?: TelegramBusinessMessage['media']; id: string; mine: boolean; text: string; at: string; byAelys: boolean; deleted: boolean }
 export type Chat = {
   id: string; businessConnectionId: string; chatId: number; title: string; messages: readonly TelegramBusinessMessage[]; lines: readonly ChatLine[]
   /** Newest incoming message: the one replies are sent against. */
@@ -66,9 +68,9 @@ export function groupChats(messages: readonly TelegramBusinessMessage[]): Chat[]
     const lines: ChatLine[] = []
     for (const m of sorted) {
       if (m.deleted_at) { lines.push({ id: m.id, mine: m.direction !== 'inbound', text: 'Message deleted', at: m.sent_at, byAelys: false, deleted: true }); continue }
-      lines.push({ id: m.id, mine: m.direction !== 'inbound', text: m.text || 'Message without text', at: m.sent_at, byAelys: false, deleted: false })
+      lines.push({ id: m.id, remoteId: m.telegram_message_id, replyToId: m.reply_to_telegram_message_id, media: m.media, mine: m.direction !== 'inbound', text: m.text || (m.media?.kind === 'photo' ? 'Photo' : m.media ? 'Audio message' : 'Message without text'), at: m.sent_at, byAelys: false, deleted: false })
       // A sent draft is the reply Aelys wrote; show it unless the owner's echo of the same text is already in the chat.
-      if (m.direction === 'inbound' && m.draft_status === 'sent' && m.draft_text && !sorted.some((o) => o.direction !== 'inbound' && o.text === m.draft_text && timeOf(o) >= timeOf(m))) lines.push({ id: `${m.id}:reply`, mine: true, text: m.draft_text, at: m.sent_at, byAelys: true, deleted: false })
+      if (m.direction === 'inbound' && m.draft_status === 'sent' && m.draft_text && !sorted.some((o) => o.direction !== 'inbound' && o.text === m.draft_text && timeOf(o) >= timeOf(m))) lines.push({ id: `${m.id}:reply`, remoteId: m.reply_message_id, mine: true, text: m.draft_text, at: m.sent_at, byAelys: true, deleted: false })
     }
     const live = sorted.filter((m) => !m.deleted_at)
     const incoming = live.filter((m) => m.direction === 'inbound')
@@ -89,12 +91,13 @@ export function groupChats(messages: readonly TelegramBusinessMessage[]): Chat[]
 /** The ready draft on the chat's newest incoming message, if there is one to review. */
 export function draftOf(chat: Chat): TelegramBusinessMessage | null {
   const t = chat.target
-  return t && chat.needsReply && t.draft_status === 'ready' && t.draft_text?.trim() ? t : null
+  return t && !t.media && chat.needsReply && t.draft_status === 'ready' && t.draft_text?.trim() ? t : null
 }
 
 /** A successful send clears its entry; intentional identical messages then get new keys. */
-export function chatSendIdempotencyKey(store: Record<string, { signature: string; key: string }>, chatId: string, text: string): string {
+export function chatSendIdempotencyKey(store: Record<string, { signature: string; key: string }>, chatId: string, text: string, replyToId?: number): string {
+  const signature = replyToId === undefined ? text : JSON.stringify([text, replyToId])
   let entry = store[chatId]
-  if (!entry || entry.signature !== text) { entry = { signature: text, key: globalThis.crypto.randomUUID() }; store[chatId] = entry }
+  if (!entry || entry.signature !== signature) { entry = { signature, key: globalThis.crypto.randomUUID() }; store[chatId] = entry }
   return entry.key
 }

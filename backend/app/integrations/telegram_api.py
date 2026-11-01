@@ -3,6 +3,7 @@ import hmac
 import re
 import secrets
 from datetime import datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from app.ai.crypto import decrypt_secret, encrypt_secret
@@ -100,6 +101,11 @@ class BindingOut(BaseModel):
     expires_at: datetime
 
 
+class MessageMediaOut(BaseModel):
+    kind: Literal['photo','voice','audio']
+    file_size: int | None
+
+
 class MessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -117,6 +123,9 @@ class MessageOut(BaseModel):
     draft_status: str
     draft_error_code: str | None
     deleted_at: datetime | None
+    media: MessageMediaOut | None = None
+    reply_message_id: int | None = None
+    reply_to_telegram_message_id: int | None = None
 
     @field_validator("sent_at", "deleted_at")
     @classmethod
@@ -275,6 +284,7 @@ class ChatSendIn(BaseModel):
     business_connection_id: str = Field(min_length=1,max_length=256)
     chat_id: int = Field(strict=True,gt=0,le=2**52)
     text: str = Field(min_length=1,max_length=4096)
+    reply_to_message_id: int | None = Field(default=None,strict=True,gt=0,le=2**52)
 
 
 class ChatOut(BaseModel):
@@ -298,6 +308,17 @@ async def send_chat(body: ChatSendIn,response: Response,idempotency_key: str=Hea
     response.headers["Cache-Control"]="no-store"
     item=await service.get_integration(db,principal[0].id)
     try:
-        return await telegram_chat.send_chat(db,item,body.business_connection_id,body.chat_id,body.text,idempotency_key)
+        return await telegram_chat.send_chat(db,item,body.business_connection_id,body.chat_id,body.text,idempotency_key,body.reply_to_message_id)
     except TelegramError as exc:
         raise service.error(503,service.remote_code(exc),"Telegram недоступен.") from None
+
+
+@router.get("/messages/{message_id}/media", response_class=Response,
+            responses={200:{"content":{"image/jpeg":{},"image/png":{},"image/webp":{},"image/gif":{},"audio/ogg":{},"audio/mpeg":{},"audio/mp4":{},"audio/wav":{},"audio/flac":{},"audio/webm":{}}}})
+async def message_media(message_id: str,principal=Depends(current_principal),db: AsyncSession=Depends(get_db)):
+    from .telegram_business_media import preview_media
+    item,message=await owned_message(db,principal[0].id,message_id)
+    content,content_type=await preview_media(db,item,message)
+    return Response(content,media_type=content_type,headers={"Cache-Control":"no-store",
+        "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox",
+        "Content-Disposition":"inline"})

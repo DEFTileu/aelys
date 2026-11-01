@@ -74,3 +74,15 @@
 
 .msg__send:disabled { cursor: not-allowed; }
 .msg__send:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 3px; }
+
+.msg__reply { border: 0; background: transparent; color: var(--pg-acc); font: inherit; cursor: pointer; min-height: 44px; padding: 6px 10px; }
+.msg__reply:disabled { color: var(--pg-mute); cursor: not-allowed; }
+.msg__reply:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+.msg__reply-target { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-left: 3px solid var(--pg-violet); background: var(--pg-card); border-radius: 10px; margin-bottom: 8px; }
+.msg__reply-target > div { min-width: 0; flex: 1; }
+.msg__reply-target p { margin: 4px 0 0; max-height: 3em; overflow: hidden; overflow-wrap: anywhere; }
+.msg__quote { border-left: 3px solid var(--pg-violet); padding: 4px 8px; margin: 0 0 8px; background: color-mix(in srgb, var(--pg-card) 50%, transparent); max-height: 3em; overflow: hidden; overflow-wrap: anywhere; }
+.msg__media { max-width: 100%; }
+.msg__media img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 10px; }
+.msg__media audio { display: block; width: 280px; max-width: 100%; }
+.msg__media p { margin: 8px 0; font-size: 13px; }

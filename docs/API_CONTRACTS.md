@@ -620,3 +620,34 @@ payloads and token-bearing URLs are never returned in error messages or logs.
   incoming message. Manual chat claims/activity suppress stale automatic replies.
   Policy, owner/device isolation, fresh permissions, pause, cooldown and window
   checks remain authoritative. Disconnect purges receipts before messages.
+
+### Explicit Telegram reply and private media viewing (2026-11-01)
+
+The secretary `/messages/{id}/send` path now sends ordinary text by default: the
+internal inbound draft target is not a Telegram quote target. Independent
+`POST /chats/send` additionally accepts optional positive `reply_to_message_id`
+(the Telegram remote ID of an existing message in this same owner/connection/chat,
+including known secretary sends). Omit it for ordinary messages. An explicit
+reply must resolve locally to an undeleted same-chat message; otherwise
+`404 TELEGRAM_REPLY_TARGET_UNAVAILABLE`. The durable receipt HMAC binds the
+optional target. A key used for a reply cannot silently become a plain send.
+
+MessageOut adds `reply_message_id` (existing secretary outbound remote ID),
+nullable `reply_to_telegram_message_id` and nullable `media:{kind:photo|voice|audio,
+file_size:number|null}`. File IDs, paths, filenames, bot tokens and download URLs
+are excluded. Received caption/quote reference and encrypted metadata persist in
+Business message storage, under its existing seven-day TTL; raw bytes never do.
+Business media is visible only to the owner and does not enter AI processing.
+
+`GET /integrations/telegram/messages/{id}/media` returns a bounded binary photo
+or audio response for an authenticated active owner/Business connection. Limits:
+photo 10 MiB, voice/audio 20 MiB. Fixed Telegram getFile/download paths are used
+only on the backend; authority, message deletion and metadata are rechecked after
+I/O. Headers: no-store, nosniff, inline and a sandboxed `default-src 'none'` CSP.
+Content is identified by supported image/audio signatures; HTML/SVG/unknown
+formats are rejected. Codes include `TELEGRAM_MEDIA_TOO_LARGE` (413),
+`TELEGRAM_MEDIA_UNSUPPORTED` (415), `TELEGRAM_MEDIA_UNAVAILABLE` (422), policy
+403 and deleted/foreign/not-present 404. Viewing does not grant message-send or
+model access. Shared clients download capped blobs with authorization headers,
+no cache/outbox, and the UI revokes in-memory object URLs on unmount/change.
+Migration 0036 adds two nullable fields; encryption-key rotation covers metadata.

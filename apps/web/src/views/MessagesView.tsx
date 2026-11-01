@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '@aelys/shared'
 import type { TelegramChatAvailability, TelegramBusinessMessage, TelegramStatus } from '@aelys/shared'
 import { ArrowUp, Check, ChevronLeft, RotateCcw, Search, Send, Sparkles } from '../icons'
+import { TelegramMediaPreview } from '../components/TelegramMediaPreview'
 import { PageSkeleton } from '../components/PageSkeleton'
 import { getSharedApiClient } from '../lib/api'
 import { navigate } from '../lib/router'
@@ -47,6 +48,7 @@ function useCompact() {
 export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [status, setStatus] = useState<TelegramStatus | null>(null)
   const [availability, setAvailability] = useState<readonly TelegramChatAvailability[]>([])
+  const [replies, setReplies] = useState<Record<string, { remoteId: number; text: string } | undefined>>({})
   const [uncertain, setUncertain] = useState<Record<string, string>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [messages, setMessages] = useState<readonly TelegramBusinessMessage[]>([])
@@ -92,13 +94,15 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
   const cur = chats.find((chat) => chat.id === current) ?? list[0] ?? chats[0] ?? null
   const draft = cur ? draftOfLive(cur) : null
   const text = cur ? drafts[cur.id] ?? '' : ''
+  const reply = cur ? replies[cur.id] : undefined
+  const replyUnavailable = !!reply && !cur?.lines.some(line => line.remoteId === reply.remoteId && !line.deleted)
   const setText = (value: string) => { if (cur) setDrafts(all => ({ ...all, [cur.id]: value })) }
   const permission = cur ? availability.find(chat => chat.business_connection_id === cur.businessConnectionId && chat.chat_id === cur.chatId) : undefined
   const expiresAt = permission?.reply_window_expires_at ? Date.parse(permission.reply_window_expires_at) : NaN
   const available = () => apiStatus === 'ready' && !!status?.enabled && permission?.can_send === true && Number.isFinite(expiresAt) && expiresAt > Date.now()
   const deliveryUncertain = !!cur && uncertain[cur.id] === text.trim()
-  const canSend = available() && !busy && !deliveryUncertain
-  const unavailableReason = deliveryUncertain ? 'The send result is unknown. Check the Telegram chat before composing another message.' : apiStatus !== 'ready' ? 'Connect to the API before sending.' : !permission ? 'Refresh the chat to check sending permissions.' : !status?.enabled ? 'The Telegram connection is paused.' : Number.isFinite(expiresAt) && expiresAt <= now ? 'The Telegram reply window (24 hours) has expired. Wait for a new message from the other person.' : !permission.can_send ? telegramErrorNotice(new ApiError(409, permission.send_disabled_code ?? 'TELEGRAM_REPLY_DENIED', '')) : ''
+  const canSend = available() && !busy && !deliveryUncertain && !replyUnavailable
+  const unavailableReason = replyUnavailable ? 'The selected message is no longer available. Cancel the reply or select another message.' : deliveryUncertain ? 'The send result is unknown. Check the Telegram chat before composing another message.' : apiStatus !== 'ready' ? 'Connect to the API before sending.' : !permission ? 'Refresh the chat to check sending permissions.' : !status?.enabled ? 'The Telegram connection is paused.' : Number.isFinite(expiresAt) && expiresAt <= now ? 'The Telegram reply window (24 hours) has expired. Wait for a new message from the other person.' : !permission.can_send ? telegramErrorNotice(new ApiError(409, permission.send_disabled_code ?? 'TELEGRAM_REPLY_DENIED', '')) : ''
   useEffect(() => {
     if (!Number.isFinite(expiresAt)) return
     const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, expiresAt - Date.now()))
@@ -131,16 +135,17 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
   }
   const sendDraft = () => { if (cur && draft) sendTo(draft, draft.draft_text ?? '', cur, true) }
   const sendOwn = () => {
-    if (!cur || !text.trim() || !available() || working.current || deliveryUncertain || text.length > 4096) return
-    if (cur.target && editing.has(cur.target.id) && cur.target.draft_status === 'ready') { sendTo(cur.target, text.trim(), cur, false); return }
-    const from = cur, body = text.trim()
+    if (!cur || !text.trim() || !available() || working.current || deliveryUncertain || replyUnavailable || text.length > 4096) return
+    if (!reply && cur.target && editing.has(cur.target.id) && cur.target.draft_status === 'ready') { sendTo(cur.target, text.trim(), cur, false); return }
+    const from = cur, body = text.trim(), replyTarget = reply?.remoteId
     setCurrent(from.id)
     void run(async () => {
-      const key = chatSendIdempotencyKey(sendKeys.current, from.id, body)
+      const key = chatSendIdempotencyKey(sendKeys.current, from.id, body, replyTarget)
       try {
-        const outgoing = await getSharedApiClient().sendTelegramChatMessage({ business_connection_id: from.businessConnectionId, chat_id: from.chatId, text: body }, { idempotencyKey: key })
+        const outgoing = await getSharedApiClient().sendTelegramChatMessage({ business_connection_id: from.businessConnectionId, chat_id: from.chatId, text: body, ...(replyTarget === undefined ? {} : { reply_to_message_id: replyTarget }) }, { idempotencyKey: key })
         replace(outgoing)
         delete sendKeys.current[from.id]
+        setReplies(all => all[from.id]?.remoteId === replyTarget ? { ...all, [from.id]: undefined } : all)
         setDrafts(all => all[from.id]?.trim() === body ? { ...all, [from.id]: '' } : all)
       } catch (error) {
         if (error instanceof ApiError && ['TELEGRAM_DELIVERY_UNKNOWN', 'TELEGRAM_SEND_IN_PROGRESS'].includes(error.code)) setUncertain(all => ({ ...all, [from.id]: body }))
@@ -212,12 +217,16 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
           </div>
           <div className="msg__lines">
             {cur.lines.map((line) => <div key={line.id} className={`msg__line${line.mine ? ' is-out' : ''}`}>
-              <div className={`msg__bubble${line.deleted ? ' is-deleted' : ''}`}>{line.text}</div>
-              <div className="msg__meta">{line.byAelys ? <><Sparkles size={11} />Sent by Aelys ·<span>{whenLabel(line.at)}</span></> : whenLabel(line.at)}</div>
+              <div className={`msg__bubble${line.deleted ? ' is-deleted' : ''}`}>
+                {line.replyToId && <div className="msg__quote">{cur.lines.find(source => source.remoteId === line.replyToId && !source.deleted)?.text ?? 'Earlier message'}</div>}
+                {line.media && <TelegramMediaPreview messageId={line.id} version={cur.messages.find(message => message.id === line.id)?.version ?? 1} kind={line.media.kind}/>}
+                {(!line.media || cur.messages.find(message => message.id === line.id)?.text) && line.text}
+              </div>
+              <div className="msg__meta">{line.byAelys ? <><Sparkles size={11} />Sent by Aelys ·<span>{whenLabel(line.at)}</span></> : whenLabel(line.at)}{!line.deleted && !!line.remoteId && <button type="button" className="msg__reply" disabled={busy || !available() || deliveryUncertain} aria-label="Reply to message" onClick={() => setReplies(all => ({ ...all, [cur.id]: { remoteId: line.remoteId!, text: line.text } }))}>Reply</button>}</div>
             </div>)}
           </div>
           <div className="msg__bottom">
-            {cur.target && !cur.target.deleted_at && (draft || generating || failed || (cur.needsReply && cur.target.draft_status !== 'ready')) && <div className="msg__draft">
+            {cur.target && !cur.target.media && !cur.target.deleted_at && (draft || generating || failed || (cur.needsReply && cur.target.draft_status !== 'ready')) && <div className="msg__draft">
               <div className="msg__draft-title"><Sparkles size={12} />Aelys draft</div>
               <div className="msg__draft-text">{draft ? draft.draft_text : generating ? 'Aelys is writing a reply…' : failed ? 'Aelys could not write a draft. Try again.' : cur.target.draft_status === 'handoff' ? (cur.target.owner_note || 'Aelys left this one for you.') : 'No draft yet.'}</div>
               {!draft && cur.target.owner_note && cur.target.draft_status !== 'handoff' && <div className="msg__draft-note">{cur.target.owner_note}</div>}
@@ -229,6 +238,7 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
                 {!compact && draft && <><span className="msg__grow" /><span className="msg__hint">⌘↵ send · J / K next chat</span></>}
               </div>
             </div>}
+            {reply && <div className="msg__reply-target" aria-label="Replying to message"><div><strong>Replying to</strong><p>{reply.text}</p></div><button type="button" className="msg__btn" aria-label="Cancel reply" onClick={() => setReplies(all => ({ ...all, [cur.id]: undefined }))}>Cancel reply</button></div>}
             <div className="msg__composer">
               <input maxLength={4096} aria-describedby={unavailableReason ? 'chat-send-unavailable' : undefined} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendOwn() } }} placeholder="Write a reply…" aria-label="Write a reply" />
               <button type="button" aria-label="Send message" disabled={!canSend || !text.trim() || text.length > 4096} className={`msg__send${canSend && text.trim() ? ' is-on' : ''}`} onClick={sendOwn}><ArrowUp size={14} /></button>

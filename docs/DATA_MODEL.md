@@ -189,3 +189,10 @@ message text, raw Telegram response or credential. The existing encrypted
 TelegramBusinessMessage row represents a confirmed owner send. Not a sync resource
 or export table; purged on integration disconnect/replacement. Abandoned sending
 receipts become unknown and never replay network transport.
+
+Business message viewing (migration 0036): nullable `media_metadata` uses the
+existing EncryptedText store for file_id/kind/size/MIME/name only. Bytes and resolved
+paths are never stored. A safe computed media descriptor exposes kind/size only.
+Nullable `reply_to_telegram_message_id` stores a same-chat remote quote reference,
+without persisting a second copy of quoted text. Both fields are erased with the
+existing Business deletion/retention policy. No new sync/export resource.

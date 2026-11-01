@@ -61,14 +61,15 @@ async def rotate() -> int:
                                 if integration["status_text"] is not None else None),
             })
         messages = (await db.execute(text(
-            "SELECT id, chat_title, text, draft_text, owner_note FROM telegram_business_messages"
+            "SELECT id, chat_title, text, draft_text, owner_note, media_metadata FROM telegram_business_messages"
         ))).mappings().all()
         for message in messages:
             await db.execute(text(
                 "UPDATE telegram_business_messages SET chat_title = :chat_title, "
-                "text = :message_text, draft_text = :draft_text, owner_note = :owner_note WHERE id = :id"
+                "text = :message_text, draft_text = :draft_text, owner_note = :owner_note, media_metadata = :media WHERE id = :id"
             ), {
                 "id": message["id"],
+                "media": encrypt_secret(decrypt_secret(message["media_metadata"], old_key), new_key) if message["media_metadata"] is not None else None,
                 "owner_note": (encrypt_secret(decrypt_secret(message["owner_note"], old_key), new_key)
                                if message["owner_note"] is not None else None),
                 "chat_title": encrypt_secret(decrypt_secret(message["chat_title"], old_key), new_key),

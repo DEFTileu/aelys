@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -96,7 +98,7 @@ async def clear_messages(db: AsyncSession, integration_id: str, connection_id: s
     filters = [TelegramBusinessMessage.integration_id == integration_id]
     if connection_id is not None:
         filters.append(TelegramBusinessMessage.business_connection_id == connection_id)
-    await db.execute(update(TelegramBusinessMessage).where(*filters).values(text="", chat_title="", draft_text=None, owner_note=None, draft_status="none", draft_error_code=None, deleted_at=now(), version=TelegramBusinessMessage.version + 1))
+    await db.execute(update(TelegramBusinessMessage).where(*filters).values(text="", chat_title="", draft_text=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, draft_status="none", draft_error_code=None, deleted_at=now(), version=TelegramBusinessMessage.version + 1))
 
 
 async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None:
@@ -186,7 +188,7 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
     if payload.get("deleted_business_messages"):
         ids = raw.get("message_ids")
         if isinstance(ids, list):
-            await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.business_connection_id == connection_id, TelegramBusinessMessage.chat_id == chat["id"], TelegramBusinessMessage.telegram_message_id.in_([value for value in ids[:1000] if integer(value)])).values(text="", chat_title="", draft_text=None, owner_note=None, deleted_at=now(), draft_status="none", version=TelegramBusinessMessage.version + 1))
+            await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.business_connection_id == connection_id, TelegramBusinessMessage.chat_id == chat["id"], TelegramBusinessMessage.telegram_message_id.in_([value for value in ids[:1000] if integer(value)])).values(text="", chat_title="", draft_text=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, deleted_at=now(), draft_status="none", version=TelegramBusinessMessage.version + 1))
         return None
     sender = mapping(raw.get("from"))
     if not integer(raw.get("message_id")) or not integer(raw.get("date")) or not integer(sender.get("id")):
@@ -196,11 +198,19 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
     if sender.get("is_bot") or raw.get("sender_business_bot"):
         return None
     direction = "owner" if sender["id"] == item.owner_telegram_id else "inbound"
+    from .telegram_business_media import parse_business_media
+    media = parse_business_media(raw)
+    media_metadata = json.dumps(asdict(media),separators=(',',':')) if media is not None else None
+    reply_id = mapping(raw.get("reply_to_message")).get("message_id")
+    reply_id = reply_id if isinstance(reply_id,int) and integer(reply_id) and reply_id > 0 else None
     text = raw.get("text")
+    if media is not None and (not isinstance(text,str) or not text.strip()):
+        caption = raw.get("caption")
+        text = caption if isinstance(caption,str) and len(caption)<=4096 else ""
     forwarded = raw.get("forward_origin") or raw.get("forward_from") or raw.get("forward_from_chat")
     if direction == "owner" and (forwarded or not isinstance(text, str) or not text.strip()):
         text = ""
-    elif forwarded or not isinstance(text, str) or not text.strip() or len(text) > 4096:
+    elif forwarded or not isinstance(text, str) or (not text.strip() and media is None) or len(text) > 4096:
         return None
     if direction == "inbound" and sender["id"] != chat["id"]:
         return None
@@ -212,14 +222,17 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
         return None
     stored = (await db.execute(select(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.business_connection_id == connection_id, TelegramBusinessMessage.chat_id == chat["id"], TelegramBusinessMessage.telegram_message_id == raw["message_id"]))).scalar_one_or_none()
     if stored:
-        if stored.deleted_at or stored.text == text:
+        if reply_id is None:
+            reply_id = stored.reply_to_telegram_message_id
+        if stored.deleted_at or (stored.text == text and stored.media_metadata == media_metadata and stored.reply_to_telegram_message_id == reply_id):
             return None
         stored.owner_note = None
+        stored.media_metadata = media_metadata; stored.reply_to_telegram_message_id = reply_id
         stored.text = text; stored.edited_at = now(); stored.version += 1
         if stored.draft_status not in {"sent", "sending", "unknown"}:
             stored.draft_text = None; stored.draft_status = "none"; stored.draft_error_code = None
     else:
-        db.add(TelegramBusinessMessage(owner_id=item.owner_id, integration_id=item.id, business_connection_id=connection_id, chat_id=chat["id"], telegram_message_id=raw["message_id"], sender_id=sender["id"], chat_title=str(chat.get("first_name") or chat.get("title") or chat.get("username") or chat["id"])[:200], text=text, sent_at=sent_at, direction=direction))
+        db.add(TelegramBusinessMessage(owner_id=item.owner_id, integration_id=item.id, business_connection_id=connection_id, chat_id=chat["id"], telegram_message_id=raw["message_id"], sender_id=sender["id"], chat_title=str(chat.get("first_name") or chat.get("title") or chat.get("username") or chat["id"])[:200], text=text, sent_at=sent_at, direction=direction, media_metadata=media_metadata, reply_to_telegram_message_id=reply_id))
     await db.flush()
 
     return None
@@ -327,6 +340,8 @@ async def check_automatic_reply_current(db: AsyncSession, item: TelegramIntegrat
 
 
 async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: TelegramBusinessMessage, version: int, *, automatic: bool = False) -> TelegramBusinessMessage:
+    if message.media_metadata:
+        raise error(409, "TELEGRAM_MEDIA_PREVIEW_ONLY", "Медиа доступно для просмотра владельцу; ответьте вручную.")
     from .telegram_ai import TelegramAIError, generate_business_draft
     if not item.enabled or not item.encrypted_token or message.deleted_at or message.direction != "inbound":
         raise error(409, "TELEGRAM_MESSAGE_UNAVAILABLE", "Сообщение недоступно для ответа.")
@@ -439,7 +454,7 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
             await db.commit()
             raise error(409, "TELEGRAM_PAUSED", "Telegram-ассистент приостановлен.")
         try:
-            sent = await client.send_message(message.chat_id, text, business_connection_id=connection.id, reply_to_message_id=message.telegram_message_id)
+            sent = await client.send_message(message.chat_id, text, business_connection_id=connection.id)
         except TelegramError as exc:
             ambiguous = exc.code in {"timeout", "network_error", "invalid_response"} or (isinstance(exc.code, int) and exc.code >= 500)
             if exc.code == 429:
@@ -590,7 +605,7 @@ async def connector_iteration() -> None:
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.draft_status == "sending", TelegramBusinessMessage.updated_at < now() - timedelta(minutes=3)).values(draft_status="unknown", draft_error_code="TELEGRAM_DELIVERY_UNKNOWN", version=TelegramBusinessMessage.version + 1))
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.draft_status == "generating", TelegramBusinessMessage.updated_at < now() - timedelta(minutes=3)).values(draft_status="failed", draft_error_code="AI_INTERRUPTED", version=TelegramBusinessMessage.version + 1))
         # Minimal retention: expired business message contents are erased.
-        await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.deleted_at.is_(None), TelegramBusinessMessage.sent_at < now() - timedelta(days=7)).values(text="", draft_text=None, owner_note=None, chat_title="", deleted_at=now(), version=TelegramBusinessMessage.version + 1))
+        await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.deleted_at.is_(None), TelegramBusinessMessage.sent_at < now() - timedelta(days=7)).values(text="", draft_text=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, chat_title="", deleted_at=now(), version=TelegramBusinessMessage.version + 1))
         await db.commit()
     for integration_id in ids:
         await poll_integration_safely(integration_id)

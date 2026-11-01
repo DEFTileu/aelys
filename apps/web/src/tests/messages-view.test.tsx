@@ -149,4 +149,27 @@ describe('manual chat composer', () => {
     } finally {vi.useRealTimers()}
   })
 
+  it('lets the owner select a quote and sends that remote target only when selected',async()=>{
+    client.sendTelegramChatMessage.mockResolvedValue(msg({id:'quoted-send',direction:'owner',text:'Quoted answer',telegram_message_id:501,reply_to_telegram_message_id:1,sent_at:iso(0)}))
+    await mount();await act(async()=>host.querySelector<HTMLButtonElement>('.msg__reply')!.click())
+    expect(host.querySelector('[aria-label="Replying to message"]')?.textContent).toContain(aidana.text)
+    await type('Quoted answer');await act(async()=>host.querySelector<HTMLButtonElement>('.msg__send')!.click())
+    expect(client.sendTelegramChatMessage).toHaveBeenCalledWith({business_connection_id:'c',chat_id:1,text:'Quoted answer',reply_to_message_id:1},expect.anything())
+    expect(host.querySelector('[aria-label="Replying to message"]')).toBeNull()
+    expect(host.querySelector('.msg__quote')?.textContent).toContain(aidana.text)
+    expect(client.sendTelegramMessage).not.toHaveBeenCalled()
+  })
+  it('cancels a quote without clearing the composed message',async()=>{
+    client.sendTelegramChatMessage.mockResolvedValue(msg({id:'plain-send',direction:'owner',text:'Plain text',telegram_message_id:501,sent_at:iso(0)}))
+    await mount();await act(async()=>host.querySelector<HTMLButtonElement>('.msg__reply')!.click());await type('Plain text')
+    await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Cancel reply"]')!.click())
+    await act(async()=>host.querySelector<HTMLButtonElement>('.msg__send')!.click())
+    expect(client.sendTelegramChatMessage).toHaveBeenCalledWith({business_connection_id:'c',chat_id:1,text:'Plain text'},expect.anything())
+  })
+  it('shows received photo and audio controls without sending them to AI',async()=>{
+    client.telegramMessages.mockResolvedValue([msg({media:{kind:'photo',file_size:32},text:'Photo caption'}),msg({id:'voice',telegram_message_id:2,media:{kind:'voice',file_size:32},text:''})])
+    await mount();expect(host.textContent).toContain('View photo');expect(host.textContent).toContain('Load voice message')
+    expect(host.querySelector('.msg__draft')).toBeNull();expect(client.draftTelegramMessage).not.toHaveBeenCalled()
+  })
+
 })

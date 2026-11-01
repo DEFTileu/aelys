@@ -1,4 +1,5 @@
 """Persistence for Telegram Business; raw updates and plaintext tokens are excluded."""
+import json
 from datetime import date, datetime
 
 from app.ai.crypto import decrypt_secret, encrypt_secret
@@ -106,6 +107,22 @@ class TelegramBusinessMessage(Owned):
     draft_status: Mapped[str] = mapped_column(String(24), default="none")
     draft_error_code: Mapped[str | None] = mapped_column(String(80))
     reply_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    reply_to_telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    media_metadata: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+
+    @property
+    def media(self) -> dict | None:
+        if not self.media_metadata or self.deleted_at:
+            return None
+        try:
+            value=json.loads(self.media_metadata)
+            if value.get('kind') not in {'photo','voice','audio'}:
+                return None
+            size=value.get('file_size')
+            return {'kind':value['kind'],'file_size':size if type(size) is int and 0<=size<=2**52 else None}
+        except (ValueError,TypeError,AttributeError):
+            return None
+
 
 
 class TelegramUpdateReceipt(Base):
