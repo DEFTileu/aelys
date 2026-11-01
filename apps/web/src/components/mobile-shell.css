@@ -20,7 +20,7 @@
 .mobile-shell__nav { display: flex; align-items: stretch; justify-content: space-around; min-width: 0; }
 .mobile-shell__nav button { flex: 1 1 0; min-width: 0; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; border-radius: 12px; background: transparent; color: var(--muted, #625d69); font: inherit; font-size: 10px; cursor: pointer; }
 .mobile-shell__nav button[aria-current='page'] { color: var(--accent, #6a4cf2); font-weight: 700; }
-.mobile-shell button:focus-visible, .mobile-shell input:focus-visible { outline: 2px solid #6a4cf2; outline-offset: 2px; }
+.mobile-shell button:focus-visible, :where(.mobile-shell input):focus-visible { outline: 2px solid #6a4cf2; outline-offset: 2px; }
 .mobile-shell__overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; }
 .mobile-shell__backdrop { position: absolute; inset: 0; background: rgba(20,14,30,.35); }
 .mobile-shell__sheet { position: relative; width: 100%; max-height: min(86dvh, 900px); overflow-y: auto; overscroll-behavior: contain; padding: 10px 18px calc(28px + env(safe-area-inset-bottom)); border-radius: 28px 28px 0 0; background: var(--canvas); color: var(--ink); box-shadow: 0 -12px 40px #140a1e40; }
