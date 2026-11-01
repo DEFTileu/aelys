@@ -52,10 +52,10 @@ If code and this file disagree, this file wins. If this file and a reference des
 Status colors: success `#0E7A57`, warning `#8A5A00`, danger `#C9302C`. Each status color is used on its soft tint.
 
 ### Dark
-`assets/aelys-dark.css` (in the design project) maps every light literal to its dark value. Use only the literals listed above so the mapping keeps working. Main dark values: canvas `#141219`, surface `#201D28`, soft `#2A2733`, line `#34303D`, ink `#F1EEF6`, muted `#A6A0B2`, primary text `#B9A8FF`.
+`assets/aelys-dark.css` (in the design project) maps every light literal to its dark value. Use only the literals listed above so the mapping keeps working. Main dark values: canvas `#141219`, surface `#201D28`, soft `#2A2733`, line `#34303D`, ink `#F1EEF6`, ink-2 `#CBC6D5`, muted `#A6A0B2`, primary text `#B9A8FF`, sidebar `#18161E`. Glass cards are `rgba(32,29,40,.86)` with a `rgba(255,255,255,.08)` edge; the Weather photo card keeps its light edge.
 
 ## 3. Typography
-Font: **Inter** (bundled locally), tabular numerals on. Mono: **JetBrains Mono**, used only for paths, logs and code.
+Font: **Inter** (bundled locally), tabular numerals on, optical sizing off so large text keeps the widths of the reference's static Inter. Mono: **JetBrains Mono**, used only for paths, logs and code.
 
 | Role | Desktop | Mobile |
 |---|---|---|
@@ -74,7 +74,7 @@ All UI copy is in English. A Russian string in the build is a bug.
 - Spacing scale: 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40.
 - Page padding: 28 desktop, 16 mobile. Card padding: 18. Section gap: 16–24.
 - Radius: chips 8–10 · buttons/inputs 12 · rows/sub-cards 14 · cards/widgets **20** · modals 24 · avatars full.
-- Card shadow: `0 10px 30px rgba(20,10,30,.05)`. Popover: `0 18px 50px rgba(20,10,30,.22)`. Modal: `0 30px 80px rgba(20,10,30,.3)`.
+- Card shadow: `0 8px 24px rgba(40,30,30,.07)` (measured in the reference). Popover: `0 18px 50px rgba(20,10,30,.22)`. Modal: `0 30px 80px rgba(20,10,30,.3)`.
 - Hit targets: at least 36 desktop and 44 mobile.
 
 ## 5. Components (canonical specs)
@@ -92,47 +92,49 @@ All UI copy is in English. A Russian string in the build is a bug.
 ## 6. Home & widgets
 
 ### Grid
-- Desktop: 4 columns, square cell **264 × 264**, gap **16**. Below 1180px: 2 columns.
+- Desktop: `repeat(4, minmax(0,1fr))`, gap **16**, `align-items: start`, rows size to their content. At 1440 a column is 271.25 wide. The 264 and 544 figures below are **minimum heights**, not fixed cells: a card grows only when its content needs it (for example Focus is 268 tall). Below 1240px: 2 columns. Below 900px: 1 column and the sidebar narrows to 200.
 - Mobile: 2 columns, cell = (viewport − 32 − 12) / 2, gap 12.
 
 ### Sizes (the only sizes that exist)
-| Size | Cells | Desktop px | Purpose |
+| Size | Cells | Desktop min height | Purpose |
 |---|---|---|---|
-| S | 1×1 | 264 × 264 | Glance: one number or the next item |
-| M | 2×1 | 544 × 264 | Scan: short list or timeline |
-| L | 2×2 | 544 × 544 | Act: full list, controls, history |
-| Tall | 1×2 | 264 × 544 | Optional: S header + list |
+| S | 1×1 | 264 | The reference card: one column of content |
+| M | 2×1 | 264 | The same content across two columns |
+| L | 2×2 | 544 | M plus more rows and extras |
+| Tall | 1×2 | 544 | S plus more rows |
+| Full | 4×1 | auto | Recent activity only: one row of four tiles |
 
-**Each size renders a different layout.** It is not the same list with more rows. Per-widget content for each size is defined in `Aelys Widgets & Utilities.dc.html` §1:
+**Content follows the reference.** S and Tall draw one column, M and L two (Full draws four). L and Tall add rows and the extras the reference does not have:
 
-- **Today:** S shows count left, progress and next task. M shows a 4-row list. L shows Overdue/Today/Tomorrow groups and quick add.
-- **Calendar:** S shows the next event with an "In 25 min" chip. M shows today as a horizontal timeline with a now-line. L shows the month grid and agenda.
-- **Focus:** S shows the ring and one button. M adds presets and the linked task. L adds the session dots, today's total and the week bars.
-- **Weather (photo card):** S shows the current conditions. M adds the next 6 hours. L adds 5 days. With no location set, it shows one "Set location" button and no placeholder copy.
-- **Finances:** S shows the balance and week delta. M adds daily bars. L adds categories and one budget. Currencies are never summed.
-- **Projects:** S shows one pinned project with a ring. M shows 3 projects with bars. L adds each project's next task.
-- **Notes:** S shows the last note excerpt. M shows 2 cards. L shows the pinned note, the recent list and a New button.
-- **Mail:** S shows the unread count and avatars. M shows 3 unread. L shows the inbox with previews.
+- **Today:** up to five tasks (eleven on L and Tall) with checkboxes; L and Tall add a quick-add field. Overdue tasks are included, finished ones stay until the day ends.
+- **Calendar:** today's events as tinted bars; L adds the month grid, Tall lists eight events.
+- **Focus:** the ring with Start/Pause/Resume, Stop and a shortcut to Timer; M and L put the ring and controls side by side; L and Tall add the linked task, today's total and the week bars.
+- **Weather (photo card):** conditions plus four forecast columns; L and Tall add the five-day list. With no location set it shows one "Set location" button.
+- **Projects:** three projects with a progress bar (eight on L and Tall).
+- **Notes and Knowledge base:** four latest notes (ten on L and Tall); pinned notes come first on L.
+- **Finances:** balance, the change this week, seven bars and the top expense categories; L adds the budget. Currencies are never summed.
+- **Mail:** latest unread messages with the unread count in the heading.
+- **Recent activity:** the latest events as tiles (four across on Full).
 
 ### Rules
 - Size is **only** what the user picked. There is **no Auto sizing**: a card must not grow because a record was added.
-- The default layout is Today M, Focus S, Weather S, Calendar M, Projects M, Finances M, Notes S, Mail S.
+- The default layout is the reference: Today, Calendar, Focus, Weather, Projects, Notes, Finances and Knowledge base at S, then Recent activity at Full. Mail is available from Customize. A stored copy of the previous default follows this one.
 - Empty state is one muted line plus one action. A widget never shows an error paragraph; show "Can't load · Retry".
 
 ### Customize
 - Enter with the "Customize" button or a long-press (mobile). Exit with Done or Esc.
 - **Move:** drag the card body. Other cards reflow, and the drop target shows a dashed primary outline.
 - **Resize:** drag the bottom-right corner. It snaps to S/M/L/Tall with a live outline and a size badge.
-- **Remove:** tap the "−" badge at top-left.
+- **Remove:** tap the × badge at top-right.
 - **Add:** the "Add widget" sheet. Pick a widget on the left and a size preview on the right (default M), then press Add.
 - **Keyboard:** arrows move, Shift+arrows resize, Delete removes.
 - **Banned:** ↑/↓ buttons, size dropdowns, "Auto", per-card toolbars, form-based Customize on mobile.
-- Bodies are dimmed (55%) and inert while editing. Changes save instantly.
+- Edit mode draws a 1.5px dashed primary outline, a move icon in place of the icon tile, a round × at the top right and the resize handle in the bottom-right corner. Bodies are inert but keep full contrast. Changes save instantly.
 
 ## 7. Shell
-- Sidebar 240: logo block on top, nav, profile at the bottom. Nav item height 44, radius 12. The active item gets a primary-soft fill and primary-deep text.
-- Top-right cluster: search pill (⌘K), theme, notifications. There is no weather pill in the header.
-- Home hero is 220–280 tall: photo with a gradient into the canvas, and the composer sits on the boundary. Desktop module pages show a 230 tall photo band with the date, a white 30/38 title and a subtitle, then the plain canvas.
+- Sidebar 240 (200 below 900px): logo block on top, nav, profile at the bottom. Nav item height 42, radius 12, 20px icons, 24 × 20 count badge. The profile shows the signed-in owner's name and email; a neutral fallback is used when there is no usable name. The active item gets a primary-soft fill and primary-deep text.
+- Top-right cluster: search pill (⌘K), theme, notifications. ⌘1 to ⌘9 open the first nine pages, as the command palette shows. There is no weather pill in the header.
+- Home hero is 276 tall (56 top padding): date, 36/44 greeting and the sub line over a 420 tall photo that fades into the canvas, with the composer on the boundary. The greeting uses the owner's name, or "there". Desktop module pages show a 230 tall photo band with the date, a white 30/38 title and a subtitle, then the plain canvas.
 - Mobile: header with logo, search, notifications and avatar (max 3 icons). No bottom nav. The AI bar is pinned at the bottom of Home, and page content gets bottom padding equal to its height so nothing hides under it.
 
 ## 8. Utilities
