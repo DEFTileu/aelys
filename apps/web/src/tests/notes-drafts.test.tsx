@@ -38,10 +38,27 @@ describe('note drafts', () => {
     await click('← All notes'); expect(host.querySelector('.notes-live--editing')).toBeNull()
     await click('All notes'); await click('Alpha'); expect(body().textContent).toBe('Alpha draft')
   })
-  it('keeps the editor draft when opening and cancelling creation', async () => {
-    await mount(); await change('Note body', 'Unsaved body'); await click('New note'); await change('New note title', 'New'); await click('Cancel')
+  const created = { id: '3', title: '', markdown_body: '', version: 1, parent_id: null, project_id: null, folder: null, tags: [], updated_at: new Date().toISOString() }
+  it('creates an empty Untitled note at the top of the list like the design, selects it and focuses the title', async () => {
+    client.createNote.mockResolvedValue(created)
+    await mount(); await change('Note body', 'Unsaved body')
+    await act(async () => { button('New note').click(); await new Promise((resolve) => setTimeout(resolve, 80)) })
+    expect(client.createNote).toHaveBeenCalledWith({ title: '', markdown_body: '' }, expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
+    const rows = [...host.querySelectorAll('.nl-note')]
+    expect(rows).toHaveLength(3)
+    expect(rows[0]!.className).toContain('nl-note--active')
+    expect(rows[0]!.textContent).toContain('Untitled'); expect(rows[0]!.textContent).toContain('Just now'); expect(rows[0]!.textContent).toContain('No content yet')
+    expect(input('Note title').value).toBe(''); expect(document.activeElement).toBe(input('Note title'))
+    expect(host.querySelector('.nl-editor-actions')!.textContent).toContain('0 words')
+    expect(host.querySelector('form.nl-form')).toBeNull()
+    await click('Alpha')
     expect(body().textContent).toBe('Unsaved body')
-    expect(input('Note title').value).toBe('Alpha')
+  })
+  it('puts the new note in the open folder and under the active tag', async () => {
+    client.notes.mockResolvedValue([{ ...first, folder: 'Work', tags: ['plan'] }])
+    client.createNote.mockResolvedValue({ ...created, folder: 'Work', tags: ['plan'] })
+    await mount(); await click('Work'); await click('#plan'); await click('New note')
+    expect(client.createNote).toHaveBeenCalledWith({ title: '', markdown_body: '', folder: 'Work', tags: ['plan'] }, expect.anything())
   })
   it('keeps separate drafts across selection and search', async () => {
     await mount(); await change('Note body', 'Alpha draft'); await click('Beta'); await change('Note body', 'Beta draft')
@@ -117,7 +134,7 @@ describe('note drafts', () => {
     await act(async () => finish({ ...first, markdown_body: 'Draft', version: 2 }))
     await act(async () => root.render(<NotesView apiStatus="offline" />))
     expect(body().textContent).toBe('Draft'); expect(button('Save changes').disabled).toBe(true)
-    await click('New note'); expect(host.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true)
+    await click('New note'); expect(host.textContent).toContain('OFFLINE_WRITE_UNAVAILABLE')
     expect(client.createNote).not.toHaveBeenCalled()
   })
   it('preserves newer edits during a save and across a reload', async () => {
@@ -137,11 +154,10 @@ describe('note drafts', () => {
   })
   it('does not blindly retry an ambiguous create', async () => {
     client.createNote.mockRejectedValue(new Error('network'))
-    await mount(); await click('New note'); await change('New note title', 'New')
-    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
-    expect(client.createNote).toHaveBeenCalledWith({ title: 'New', markdown_body: '' }, expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
-    expect(input('New note title').value).toBe('New'); expect(host.textContent).toContain('may have succeeded')
-    expect(host.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true)
+    await mount(); await click('New note')
+    expect(host.textContent).toContain('may have succeeded')
+    await click('New note')
+    expect(client.createNote).toHaveBeenCalledTimes(1)
   })
   it('renders stored markdown as sanitized rich text and saves markdown back without saving by itself', async () => {
     client.notes.mockResolvedValue([{ ...first, markdown_body: '**hello** <script>bad()</script>\n\n- [ ] task\n- [x] done' }, second])
@@ -190,11 +206,11 @@ it('saves folder and tags with the note and filters saved organization', async (
 
 it('opens create and note intents on mount and same-route popstate', async () => {
   window.history.replaceState({}, '', '/notes?create=1')
-  await mount(); expect(input('New note title')).toBeTruthy()
-  await click('Cancel')
+  client.createNote.mockResolvedValue({ id: '3', title: '', markdown_body: '', version: 1, parent_id: null, project_id: null, folder: null, tags: [] })
+  await mount(); expect(client.createNote).toHaveBeenCalledTimes(1); expect(input('Note title').value).toBe('')
   await act(async () => { window.history.pushState({}, '', '/notes?note=2'); window.dispatchEvent(new PopStateEvent('popstate')) })
   expect(input('Note title').value).toBe('Beta')
   await act(async () => { window.history.pushState({}, '', '/notes?create=1'); window.dispatchEvent(new PopStateEvent('popstate')) })
-  expect(input('New note title')).toBeTruthy()
+  expect(client.createNote).toHaveBeenCalledTimes(2)
   window.history.replaceState({}, '', '/')
 })
