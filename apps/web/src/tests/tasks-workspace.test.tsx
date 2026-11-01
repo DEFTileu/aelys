@@ -32,6 +32,8 @@ async function openMore() {
   if (more.getAttribute('aria-expanded') !== 'true') await act(async () => more.click())
 }
 function field(name: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
+  const rich = host.querySelector<HTMLElement>(`[contenteditable][aria-label="${name}"]`)?.closest('.rich-text')
+  if (rich) { const source = [...rich.querySelectorAll('button')].find(button => button.textContent === 'Markdown'); if (source) act(() => source.click()) }
   const direct = [...host.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')].find((item) => item.getAttribute('aria-label') === name)
   const labels = [...host.querySelectorAll('label')].filter((item) => [...item.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim() === name))
   const label = labels.find((item) => item.closest('[role="dialog"]')) ?? labels[0]

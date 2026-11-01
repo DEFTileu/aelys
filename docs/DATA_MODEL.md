@@ -180,3 +180,13 @@ instant. Existing HistoryEntry rows with action task.status.changed retain each
 accepted Task version, raw from/to status, occurrence and work/completion instants.
 No new status-history table. Legacy unknown instants remain null; bootstrap and
 same-version null-key projection enrichment cannot fabricate work or log events.
+
+### Knowledge source consent (migration 0024)
+
+`notes.knowledge_enabled` is a non-null boolean defaulting to false. The source
+body remains `markdown_body`; no duplicate document/chunk or vector table is
+introduced. PostgreSQL has a partial GIN full-text index for enabled live notes.
+AI run/conversation `tool_scope_json.knowledge` stores the explicit retrieval
+scope; assistant `source_refs_json` stores references and redacted excerpts of
+ordinary enabled notes. Mac-only session contents remain excluded. See
+[KNOWLEDGE_RAG.md](KNOWLEDGE_RAG.md) for implementation limits.

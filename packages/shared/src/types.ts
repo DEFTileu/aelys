@@ -135,6 +135,7 @@ export interface DeleteResponse {
 }
 
 export interface NoteIn {
+  readonly knowledge_enabled?: boolean;
   readonly folder?: string | null;
   readonly tags?: readonly string[];
   readonly title: string;
@@ -145,6 +146,7 @@ export interface NoteIn {
   readonly pinned?: boolean;
 }
 export interface NoteOut {
+  readonly knowledge_enabled?: boolean;
   readonly folder?: string | null;
   readonly tags?: readonly string[];
   /** Absent when talking to a backend that predates the field. */
@@ -575,10 +577,12 @@ export interface ProviderPatch { readonly enabled?: boolean; readonly model_poli
 export interface ProviderProbe { readonly connected: boolean; readonly code: string; }
 export interface SecretIn { readonly api_key: string; }
 export interface ConversationIn {
+  readonly knowledge?: KnowledgeScope;
   readonly project_id?: Id | null;
   readonly title?: string;
 }
 export interface AIConversation extends ConversationIn {
+  readonly tool_scope_json?: { readonly scopes?: readonly string[]; readonly knowledge?: KnowledgeScope };
   readonly id: Id;
   readonly owner_id: Id;
   readonly version: number;
@@ -590,11 +594,27 @@ export interface AIMessageIn {
   readonly source_refs?: readonly JsonObject[];
 }
 export interface AIMessage extends AIMessageIn {
+  readonly source_refs_json?: readonly KnowledgeSource[];
   readonly id: Id;
   readonly conversation_id: Id;
   readonly created_at: IsoDateTime;
 }
+export interface KnowledgeScope {
+  readonly note_ids?: readonly Id[];
+  readonly project_id?: Id | null;
+}
+export interface KnowledgeSource {
+  readonly label: string;
+  readonly note_id: Id;
+  readonly title: string;
+  readonly version: number;
+  readonly heading: string;
+  readonly start: number;
+  readonly end: number;
+  readonly excerpt: string;
+}
 export interface AIRunIn {
+  readonly knowledge?: KnowledgeScope;
   readonly conversation_id: Id;
   readonly message: string;
   readonly routing?: JsonObject;

@@ -65,6 +65,7 @@ class FinanceBudgetIn(StrictModel):
         return value
 class NotificationIn(StrictModel): kind: str = Field(default="info", min_length=1, max_length=80); title: str = Field(default="Notification", min_length=1, max_length=300); body: str | None = Field(default=None, max_length=20_000); data: dict = Field(default_factory=dict); dedup_key: str | None = Field(default=None, max_length=150)
 class NoteIn(BaseModel):
+    knowledge_enabled: bool = False
     title: str
     markdown_body: str = ""
     parent_id: str | None = None
@@ -424,7 +425,7 @@ async def update_note(item_id:str, body:NoteIn, version: int | None = Query(defa
     changed_body = body.markdown_body != item.markdown_body
     values = body.model_dump()
     # Older clients do not send organization fields; preserve them on update.
-    for field in ("folder", "tags", "pinned"):
+    for field in ("folder", "tags", "pinned", "knowledge_enabled"):
         if field not in body.model_fields_set:
             values.pop(field)
     result = await db.execute(update(Note).where(

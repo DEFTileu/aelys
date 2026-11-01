@@ -1,4 +1,5 @@
 import type {
+  KnowledgeSource, KnowledgeScope,
   MemoryFactIn, MemoryFactPatch, OwnerMemoryFact,
   ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
@@ -331,6 +332,9 @@ export class ApiClient {
   public createResourceLink(body: ResourceLinkCreate, options?: RequestOptions) { return this.request<ResourceLinkResponse>("/api/v1/resource-links", this.write(body, options)); }
   public deleteResourceLink(linkId: Id, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/resource-links/${encodeURIComponent(linkId)}`, this.write(undefined, options, "DELETE")); }
 
+  public searchKnowledge(query: string, scope: KnowledgeScope = {}, options?: RequestOptions) {
+    return this.request<readonly KnowledgeSource[]>("/api/v1/knowledge/search", { ...options, method: "POST", body: { query, ...scope }, queueOnOffline: false });
+  }
   public notes(options?: RequestOptions) { return this.request<readonly NoteOut[]>("/api/v1/notes", this.read(options, "notes")); }
   public createNote(body: NoteIn, options?: RequestOptions) { return this.request<NoteOut>("/api/v1/notes", this.write(body, options)); }
   public note(itemId: Id, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.read(options)); }
