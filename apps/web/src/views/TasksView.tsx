@@ -377,10 +377,12 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
               const color = task.project_id ? projectColor(task.project_id) : ''
               return <li data-task-row={task.id} className={`tasks-item${isCompleted(task) ? ' tasks-item--done' : ''}${editor?.task.id === task.id ? ' tasks-item--open' : ''}`} key={task.id} role="button" tabIndex={-1} aria-hidden={undefined} onClick={() => openEditor(task)}>
                 <button type="button" role="checkbox" aria-checked={isCompleted(task)} aria-label={`${isCompleted(task) ? 'Reopen' : 'Complete'} ${task.title}`} className="tasks-check" disabled={pending || !writeAllowed} onClick={event => { event.stopPropagation(); void toggle(task) }}>{isCompleted(task) && <Check size={13} />}</button>
+                <div className="tasks-body">
                 <button type="button" className="tasks-open" aria-label={`Open task: ${task.title}`} data-task-editor-trigger onClick={event => { event.stopPropagation(); openEditor(task) }} disabled={pending}><span className="tasks-label"><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}</span></button>
                 {task.project_id && <span className="tasks-project" style={{ color, background: `${color}1A` }}>{projectName(task)}</span>}
                 {task.status === 'in_progress' && <span className="tasks-project tasks-status">In progress</span>}
                 {when && <time className={`tasks-due${overdue ? ' tasks-due--overdue' : ''}`} dateTime={task.due_at ?? undefined}><Clock size={12} aria-hidden="true" />{when}</time>}
+                </div>
                 <span className="tasks-priority" title={task.priority > 0 ? `${PRIORITIES[task.priority] ?? task.priority} priority` : undefined}>{task.priority > 0 && <Flag size={15} style={{ color: PRIORITY_COLORS[task.priority] || PRIORITY_COLORS[3] }} />}</span>
               </li>
             })}</ul>
