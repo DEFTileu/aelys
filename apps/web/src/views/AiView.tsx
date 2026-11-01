@@ -11,6 +11,8 @@ import { navigate } from '../lib/router'
 import { consumeSse } from '../lib/sse'
 import type { ApiStatus } from '../types'
 import './actual-ai.css'
+import './desktop/page-tokens.css'
+import './desktop/ai.css'
 
 type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at'>>
 export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {

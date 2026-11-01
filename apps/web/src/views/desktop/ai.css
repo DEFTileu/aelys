@@ -1,0 +1,21 @@
+/* AI Chat, matched to the ACTUAL design: three glass columns on a fixed 872px stage. Desktop layer; narrower layouts stay in actual-ai.css. */
+@media (min-width: 1101px) {
+  .actual-ai { height: 872px; min-height: 0; padding: 0 28px; gap: 12px; }
+  .actual-ai__card { border: 1px solid rgba(255, 255, 255, .35); border-radius: 20px; background: var(--pg-glass); box-shadow: 0 8px 24px rgba(40, 30, 30, .07); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  :root[data-theme='dark'] .actual-ai__card { border-color: rgba(255, 255, 255, .08); }
+  .actual-ai__thread { padding: 16px; background: rgba(255, 255, 255, .80); }
+  :root[data-theme='dark'] .actual-ai__thread { background: rgba(32, 29, 40, .80); }
+  .actual-ai__history { padding: 16px 12px; }
+  .actual-ai__search { background: var(--pg-chip); }
+  .actual-ai__history-search .actual-ai__new-icon { background: var(--pg-chip); border-radius: 12px; }
+  .actual-ai__new { font-weight: 500; box-shadow: 0 4px 12px rgba(106, 76, 242, .3); }
+  .actual-ai__new:hover:not(:disabled) { background: var(--pg-violet-hover); }
+  .actual-ai__list-label { margin: 16px 8px 6px; line-height: 16px; letter-spacing: .04em; text-transform: uppercase; }
+  .actual-ai__conversation { gap: 10px; min-height: 0; padding: 8px; border-radius: 12px; }
+  .actual-ai__conversation:hover { background: var(--pg-hover); }
+  .actual-ai__conversation--selected, .actual-ai__conversation--selected:hover { background: #EEEAFD; }
+  :root[data-theme='dark'] .actual-ai__conversation--selected, :root[data-theme='dark'] .actual-ai__conversation--selected:hover { background: rgba(139, 108, 240, .22); }
+  .actual-ai__side-card { padding: 16px; }
+  .actual-ai__side-card h2 { font-size: 16px; font-weight: 600; line-height: 24px; }
+  .actual-ai__actions > *, .actual-ai__prompts > * { background: var(--pg-field); border-radius: 10px; }
+}
