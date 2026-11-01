@@ -1,11 +1,11 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { UtilitiesView } from '../views/UtilitiesView'
+import { ToolboxApp } from '../views/ToolboxApp'
 
 let root: ReturnType<typeof createRoot> | undefined
 let host: HTMLDivElement
-async function mount() { host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root!.render(<UtilitiesView />)) }
+async function mount() { host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root!.render(<ToolboxApp />)) }
 const button = (name: string) => [...host.querySelectorAll('button')].find(item => item.textContent?.includes(name) || item.getAttribute('aria-label') === name)!
 const input = () => host.querySelector<HTMLTextAreaElement>('textarea')!
 const output = () => host.querySelectorAll<HTMLTextAreaElement>('textarea')[1]

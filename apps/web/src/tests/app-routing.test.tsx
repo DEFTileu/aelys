@@ -24,7 +24,7 @@ vi.mock('../views/TasksView', async () => {
   await controls.tasksReady
   return { TasksView: ({ apiStatus }: { apiStatus: string }) => <div>Tasks: {apiStatus}</div> }
 })
-vi.mock('../views/UtilitiesView', () => ({ UtilitiesView: () => <div>Local Utilities</div> }))
+vi.mock('../views/AppsView', () => ({ AppsView: () => <div>Local Utilities</div> }))
 vi.mock('../views/FinanceView', () => { throw new Error('chunk unavailable') })
 vi.mock('../views/SettingsView', () => ({ SettingsView: ({ apiStatus, theme, onToggleTheme }: { apiStatus: string; theme: string; onToggleTheme: () => void }) => <button onClick={onToggleTheme}>Settings: {apiStatus} {theme}</button> }))
 

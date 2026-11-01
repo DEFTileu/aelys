@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Code, Copy, Eye, EyeOff, Languages, Link } from 'lucide-react'
-import { ArrowRight, Check, ChevronRight, Lock, RefreshCw, Search, Shield, Terminal, Timer, TriangleAlert, Workflow } from '../icons'
-import { isMacPlatform } from '../data/navigation'
-import { navigate } from '../lib/router'
-import type { RoutePath } from '../types'
+import { ArrowRight, Check, ChevronRight, Lock, RefreshCw, Search, Shield, Terminal, TriangleAlert } from '../icons'
 import { Switch } from '../components/Switch'
 import { SegmentedTabs } from '../components/ScreenToolbar'
 import { generatePassword, MAX_UTILITY_INPUT, PASSWORD_GROUPS, transformText, UtilityError, type Codec, type Direction } from '../lib/utilities'
@@ -18,17 +15,11 @@ const tools = [
   { id: 'unicode', name: 'Unicode', description: 'Read and escape Unicode', icon: Languages },
 ] as const
 
-const workspaceTools: readonly { name: string; description: string; icon: typeof Timer; route: RoutePath; macOnly?: boolean }[] = [
-  { name: 'Timer', description: 'Focus sessions', icon: Timer, route: '/timer' },
-  { name: 'Automation', description: 'Rules that run for you', icon: Workflow, route: '/automation' },
-  { name: 'Developer Hub', description: 'Local agent sessions', icon: Terminal, route: '/developer', macOnly: true },
-]
-
 type Tool = 'password' | Codec
 const errorMessage = (error: unknown) => error instanceof UtilityError ? error.message : 'The tool is unavailable. Try again.'
 
 /** Content stays in component memory; it never enters API, outbox, storage, or AI context. */
-export function UtilitiesView() {
+export function ToolboxApp() {
   const [tool, setTool] = useState<Tool>('password')
   const [query, setQuery] = useState('')
   const [length, setLength] = useState(20)
@@ -71,14 +62,12 @@ export function UtilitiesView() {
   }
 
   return <>
-    <div className="utilities-caption"><span>Everyday tools, right where you work.</span><span><Shield size={14} />Local only</span></div>
     <div className="actual-settings utilities-layout">
       <aside className="actual-settings-nav" aria-label="Utilities">
         <label className="actual-settings-search"><Search size={16} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Find a tool" aria-label="Find a tool" /></label>
         <nav aria-label="Tools">{tools.filter(item => `${item.name} ${item.description}`.toLowerCase().includes(query.toLowerCase())).map(item => <button type="button" key={item.id} aria-current={tool === item.id ? 'page' : undefined} onClick={() => { changeContent(); setTool(item.id); setDirection('encode'); setSource(''); setTooLarge(false) }}><item.icon size={20} /><span><strong>{item.name}</strong><small>{item.description}</small></span><ChevronRight size={16} className="utilities-tool-chevron" /></button>)}
           {!tools.some(item => `${item.name} ${item.description}`.toLowerCase().includes(query.toLowerCase())) && <p role="status">No matching tools.</p>}
         </nav>
-        <nav aria-label="Workspace tools">{workspaceTools.filter(item => !item.macOnly || isMacPlatform()).map(item => <button type="button" key={item.route} onClick={() => navigate(item.route)}><item.icon size={20} /><span><strong>{item.name}</strong><small>{item.description}</small></span><ChevronRight size={16} className="utilities-tool-chevron" /></button>)}</nav>
       </aside>
       <div className="utilities-content">
         <section className="utilities-panel" data-glass="" aria-labelledby="utility-title">
