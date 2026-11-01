@@ -29,3 +29,9 @@
 3. Полные агентские сессии **никогда** не резервировать вне Mac или разрешить отдельно зашифрованный backup?
 
 Ответы не блокируют создание репозитория, Core, Projects, Notes/Tasks, offline sync и локального Session Reader.
+
+Implementation checkpoint 2026-11-01: approved ADR-028 stages 0–4 are locally
+implemented/tested, including ephemeral personal media and separate transcription
+BYOK. This resolves implementation availability only; real Telegram/provider/
+transcription acceptance still needs owner credentials. Attachment storage stays
+OPEN. Explicit memory, task matrix/time and Google Calendar remain later stages.

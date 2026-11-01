@@ -62,11 +62,12 @@ async def rotate() -> int:
                 "draft_text": (encrypt_secret(decrypt_secret(message["draft_text"], old_key), new_key)
                                if message["draft_text"] is not None else None),
             })
-        jobs = (await db.execute(text("SELECT id, text, quote FROM telegram_personal_jobs"))).mappings().all()
+        jobs = (await db.execute(text("SELECT id, text, quote, media_metadata FROM telegram_personal_jobs"))).mappings().all()
         for job in jobs:
-            await db.execute(text("UPDATE telegram_personal_jobs SET text=:body, quote=:quote WHERE id=:id"), {
+            await db.execute(text("UPDATE telegram_personal_jobs SET text=:body, quote=:quote, media_metadata=:media WHERE id=:id"), {
                 'id': job['id'], 'body': encrypt_secret(decrypt_secret(job['text'], old_key), new_key),
                 'quote': encrypt_secret(decrypt_secret(job['quote'], old_key), new_key) if job['quote'] is not None else None,
+                'media': encrypt_secret(decrypt_secret(job['media_metadata'], old_key), new_key) if job['media_metadata'] is not None else None,
             })
         await db.commit()
     return len(jobs) + len(rows) + len(gmail) + len(oauth) + len(integrations) + len(messages)

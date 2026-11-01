@@ -544,7 +544,7 @@ export interface SyncBootstrapResponse {
   readonly has_more: boolean;
 }
 
-export type AIProviderKind = "claude" | "openrouter";
+export type AIProviderKind = "claude" | "openrouter" | "transcription";
 export interface ProviderIn {
   readonly kind: AIProviderKind;
   readonly base_url?: string | null;

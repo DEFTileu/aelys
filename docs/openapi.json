@@ -8721,7 +8721,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "pattern": "^(claude|openrouter)$",
+            "pattern": "^(claude|openrouter|transcription)$",
             "title": "Kind"
           },
           "base_url": {

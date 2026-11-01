@@ -35,3 +35,9 @@
 ## Правило при конфликтах требований
 
 `DECIDED > PROPOSED`; OPEN фиксируется явно, а не подменяется выбором агента. Нельзя толковать «полный доступ к проекту» как разрешение читать SSH-ключи, весь `$HOME`, другие репозитории или делать необратимые внешние операции вне отдельной политики.
+
+ADR-028 implementation checkpoint (2026-11-01): stages 0–4 now have local
+acceptance evidence in PERSONAL_OS_BOT_REPORT.md (sync, Telegram reminders,
+owner text dialogue and ephemeral media). This does not mark memory, matrix,
+Google Calendar or live external acceptance complete. Attachment storage remains
+OPEN; no file persistence or new external scope was approved by this checkpoint.

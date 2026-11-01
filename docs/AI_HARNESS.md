@@ -140,3 +140,35 @@ Permissions come from the current affirmative owner request. Quoted/code content
 and negated or merely referenced actions do not grant write scopes. Ambiguous
 requests remain read-only. The personal registry and AIConversation are never
 passed to the Business secretary. No MCP, RAG or document search was added.
+
+## 12. Ephemeral media and separate transcription (Stage 4)
+
+`ChatMessage.media` holds immutable `MediaContent` bytes only during execution;
+reprs omit binary data. Attachments are user-only and MIME validated. Untrusted
+fencing preserves ephemeral attachments while redacting text. Claude image/PDF
+and OpenRouter image_url/file payloads use inline base64; text-only payloads
+remain unchanged. `images` and `documents` are explicit router capabilities,
+configured with existing controls. The selected model is checked before download.
+A file turn has no tool scopes; provider-generated tool calls are denied by policy.
+
+Transcription uses a separate encrypted AIProviderSecret with kind transcription,
+owner-scoped API and approved api.openai.com HTTPS origin; it cannot serve a chat
+run or secretary. `/v1/audio/transcriptions` multipart uses bytes in memory and
+fixed safe filenames. No raw HTTP/provider body enters logs, events or errors.
+Only bounded transcript text is persisted in ordinary conversation history.
+
+A transcription attempt reserves a configurable Decimal request estimate in a
+separate AIRun before I/O, under the existing owner serialization lock. Monthly
+limit includes that durable estimate even for an interrupted/failed attempt.
+Default estimate 0.10 USD is visible/editable in settings; it is not actual
+provider billing. Estimates below numeric precision or non-finite values refuse;
+other fractions round upward to 8 places. The job binds the transcription run
+until the chat run starts, so startup recovery can fail it without replay.
+
+Payload formats checked against primary documentation:
+[Claude images](https://platform.claude.com/docs/en/build-with-claude/vision),
+[Claude PDFs](https://platform.claude.com/docs/en/build-with-claude/pdf-support),
+[OpenRouter images](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding),
+[OpenRouter PDFs](https://openrouter.ai/docs/guides/overview/multimodal/pdfs), and
+[OpenAI transcription](https://developers.openai.com/api/docs/guides/speech-to-text).
+These document checks do not constitute a real provider test.

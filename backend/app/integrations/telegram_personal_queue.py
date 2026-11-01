@@ -5,7 +5,9 @@ terminal after a restart: neither tools nor an ambiguous recovery DM replay.
 """
 from __future__ import annotations
 
+import json
 import logging
+from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
@@ -60,13 +62,16 @@ async def enqueue_owner_message(db: AsyncSession, item: TelegramIntegration,
     if not isinstance(message, dict):
         return
     sender, chat = message.get('from'), message.get('chat')
-    update_id, content = payload.get('update_id'), message.get('text')
+    from .telegram_media import parse_owner_media
+    media = parse_owner_media(message)
+    update_id = payload.get('update_id')
+    content = message.get('text') if media is None else message.get('caption', '')
     if (not isinstance(sender, dict) or not isinstance(chat, dict)
             or not _integer(sender.get('id')) or sender.get('is_bot')
             or chat.get('type') != 'private' or chat.get('id') != sender['id']
             or any(message.get(key) for key in ('forward_origin', 'forward_from', 'forward_from_chat', 'sender_business_bot'))
             or not isinstance(update_id, int) or isinstance(update_id, bool) or not 0 <= update_id <= 2**52
-            or not isinstance(content, str) or not content.strip() or len(content) > 4096):
+            or not isinstance(content, str) or (not content.strip() and media is None) or len(content) > 4096):
         return
     active = (await db.execute(select(TelegramIntegration).where(
         TelegramIntegration.id == item.id, TelegramIntegration.owner_id == item.owner_id,
@@ -98,6 +103,7 @@ async def enqueue_owner_message(db: AsyncSession, item: TelegramIntegration,
         owner_id=active.owner_id, integration_id=active.id, telegram_update_id=update_id,
         telegram_message_id=message_id if _integer(message_id) else None,
         text=content, quote=quote[:4096] if isinstance(quote, str) else None,
+        input_kind=media.kind if media else 'text', media_metadata=json.dumps(asdict(media)) if media else None,
         conversation_id=conversation.id,
         state='queued', created_at=utc(at), recovery_notice_sent=False,
     ).on_conflict_do_nothing(index_elements=['integration_id', 'telegram_update_id']))

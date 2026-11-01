@@ -27,7 +27,7 @@ Business context must never include personal memory/tasks/notes/calendar.
 | 1 — unified change-log | Accepted locally | Shared transactional writer, domain push and compatibility implemented; final backend 375 passed + 2 separately covered PG skips, 52 targeted new contracts. Details below. |
 | 2 — reminders/digest | Accepted locally | Claims, quiet hours, /remind, deadline options, tomorrow and browser persistence passed. Final backend 418 passed plus 2 separate PG cases; web 414; shared 36. |
 | 3 — personal dialogue | Accepted locally | Encrypted queue, shared loop/usage, current owner scopes, persistent conversation and /new; 552 backend passed, 2 PG cases separately passed. |
-| 4 — ephemeral media | Not started | Limits, in-memory transport, separate transcription key, capabilities/adapters and read-only file turns required. |
+| 4 — ephemeral media | Accepted locally | Bounded in-memory download, separate transcription BYOK/budget estimate, image/PDF adapters, no-tool file turns. Backend 731 passed plus 2 PG cases; web 416; shared 36; settings browser persistence verified. |
 | 5 — explicit memory | Not started | Encrypted facts, commands/tools/API/settings, lexical selection, export/rotation required. |
 | 6 — task matrix/time | Not started | Server timestamps/history, matrix and stagnant digest required. |
 | 7 — Google Calendar | Not started | Read-only OAuth/PKCE/state, incremental import/disconnect, external event protections required. |
@@ -382,3 +382,71 @@ Acceptance commands/results:
   storage and worker paths. Live Telegram/model checks remain owner work.
 
 Stage 4 has not started. No MySDU code/data, main, deployment, push or PR changed.
+
+
+## Stage 4 — ephemeral personal media
+
+Implemented metadata-only encrypted queue additions in migration 0031;
+`telegram_media.py`, bounded `telegram_transport.py` file I/O,
+`telegram_transcription.py`, common dialogue integration, immutable media types
+and Claude/OpenRouter payloads. Existing provider API, shared types and settings
+form support separate transcription and explicit images/documents/tool capabilities.
+Chat/secretary provider choices exclude transcription. Rotation includes encrypted
+media metadata. No file bytes, attachments endpoint, new scheduler or Business
+media path was added.
+
+Policy-checked limits: voice/audio 20 MiB, photo 10 MiB, PDF 20 MiB; text at most
+20k UTF-8 characters / 80k transferred bytes. Known oversize and selected-model
+capability mismatch refuse before file bytes. Unknown sizes are bounded while
+streaming; compressed responses, redirects and unsafe paths refuse. File token
+URLs are excluded from HTTP diagnostics including traceback/stack messages.
+Quoted/file input is UntrustedData and has no tool grants, even with an imperative
+caption. A subsequent owner text may create a task. Voice yields an owner-text
+transcript only; missing transcription configuration returns a Russian explanation.
+Raw text-file body is not stored in conversation or events; only generic marker
+and answer. Bytes live in memory until the turn ends.
+
+Audio budget uses a separate AIRun reservation before network I/O, tied to the
+job until the subsequent chat run. The configurable request estimate (default
+0.10 USD) counts toward monthly limit, including interrupted/failed attempts;
+actual provider billing is not asserted. Values are Decimal and rounded upward
+to Numeric(20,8), with sub-precision/non-finite values rejected. This fixed a
+reviewed spending bypass and a later precision bypass. Selected-model preflight
+also fixed the reviewed case where another model's vision capability allowed an
+unnecessary download. Both agents closed review with no confirmed blocker.
+
+Validation:
+
+- `make test` with fresh disposable PostgreSQL migration/AI/queue URLs:
+  **731 passed, 2 skipped in 94.19s**. Separate fresh PostgreSQL HTTP contracts:
+  **2 passed in 1.06s**. Full run includes migration upgrades across historical
+  branches, routing/adapters, queue dedup, voice creates once, PDF injection,
+  UTF-8 transient context, foreign/forwarded media and no-vision refusal.
+- Transcription focused suite **13 passed**, including multipart/key isolation,
+  fixed errors, pre-I/O reservation observed from another session, budget
+  exhaustion and numeric validation. Media/transport suite with existing
+  regressions **120 passed**. Adapter + adjacent contracts **67 passed**.
+- Ruff, mypy (**81 source files**), Bandit, compileall, script mypy and pip-audit
+  passed. SQLite/PostgreSQL Alembic upgrade/check report no drift; one head
+  `0031_telegram_ephemeral_media`. OpenAPI regenerated and equality checked.
+- Shared typecheck/**36 tests**; web typecheck/**416 tests**/build passed.
+  After visual inspection, the capabilities group uses existing controls without
+  a native fieldset border; focused **3 form tests** and web typecheck passed.
+  Provider form tests cover separate voice key, key clearing, preserving model
+  costs/context/other models and capabilities while enabling media/tools.
+- Actual browser at own loopback frontend 5182/backend 8012 (backend restarted
+  after migration): chat provider saved with streaming/tool_calling/images/
+  documents; separate transcription model saved with monthly budget 2 and
+  request estimate 0.05. Reload + edit confirmed all values and empty key fields.
+  Initial key-clear observation preceded the form's finally block; waiting for
+  save completion confirmed clearing. Screenshot after launch animation visually
+  inspected. All keys were synthetic, Telegram integration disabled, no probe or
+  real outbound provider/Telegram request performed. One expired foreground
+  reminder-dispatch request returned 401 during session refresh; settings reads
+  and saves succeeded through the owner session.
+
+Primary protocol documentation: official Telegram getFile, Claude images/PDF,
+OpenRouter images/PDF, OpenAI transcription (linked in AI_HARNESS.md). Approved
+transcription origin currently api.openai.com; arbitrary compatible custom
+origins are not enabled by this feature. No real vision, transcription, Telegram
+or billing result is claimed. Stage 5 has not started. MySDU and main untouched.

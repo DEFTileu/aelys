@@ -125,6 +125,8 @@ class TelegramPersonalJob(Owned):
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
     text: Mapped[str] = mapped_column(EncryptedText(), default="")
     quote: Mapped[str | None] = mapped_column(EncryptedText())
+    input_kind: Mapped[str] = mapped_column(String(16), default="text", server_default="text")
+    media_metadata: Mapped[str | None] = mapped_column(EncryptedText())
     state: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     conversation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_conversations.id"))
     run_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_runs.id"))

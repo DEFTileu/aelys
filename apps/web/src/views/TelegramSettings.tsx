@@ -60,7 +60,7 @@ export function TelegramSettings() {
     const client = getSharedApiClient()
     try {
       const [next, items, ai] = await Promise.all([client.telegramStatus(), client.telegramMessages(), client.aiProviders()])
-      applyStatus(next); setMessages(items); setProviders(ai)
+      applyStatus(next); setMessages(items); setProviders(ai.filter(item => item.kind !== 'transcription'))
     } catch (error) { setNotice(errorNotice(error)) }
   }, [])
   useEffect(() => { void load() }, [load])

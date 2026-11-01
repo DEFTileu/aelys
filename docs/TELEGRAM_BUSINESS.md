@@ -1,6 +1,6 @@
 # Telegram Business: бот-секретарь
 
-**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и расширенный личный scope (ADR-027/028). Выполнены этапы 0–3: sync, reminders и текстовый AI; media/memory/matrix/Google остаются следующими этапами (см. `PERSONAL_OS_BOT_REPORT.md`).
+**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и расширенный личный scope (ADR-027/028). Выполнены этапы 0–4: sync, reminders, текстовый AI и ephemeral media; memory/matrix/Google остаются следующими этапами (см. `PERSONAL_OS_BOT_REPORT.md`).
 
 ## Подключение
 
@@ -149,3 +149,30 @@ write scope выводится из прямой утвердительной п
 Неоднозначная просьба не разрешает запись. Task update/complete требуют версию;
 конфликт сохраняет более свежую правку. Удаления нет. Ответы режутся по 4096,
 parse_mode отсутствует. Секретарь не использует эту беседу или личный registry.
+
+## Ephemeral personal media — Stage 4
+
+Только личный чат проверенного владельца: voice/audio до 20 MiB, photo до
+10 MiB, PDF до 20 MiB, UTF-8 text до 20 000 символов (80 000 bytes transfer cap).
+Пересланное и чужое медиа молча игнорируется. Очередь хранит только шифрованные
+file_id/ограниченные метаданные и подпись; getFile/download происходят в worker.
+Известный размер и возможность выбранной модели проверяются до скачивания;
+реальный stream ограничен независимо от Content-Length. Redirect/path traversal
+запрещены, file URL с bot token не попадает в ошибки или HTTP diagnostics.
+Байты существуют в памяти и не сохраняются в БД, файлы или логи.
+
+Голос распознаётся отдельным BYOK provider kind `transcription`, настроенным в
+AI & models: model ID и ключ OpenAI-compatible transcription protocol через
+разрешённый HTTPS endpoint `api.openai.com`. Ключ не выбирается для chat/secretary.
+Без него — «Распознавание голоса не настроено». В историю попадает транскрипт,
+не аудио; он считается просьбой владельца и может разрешить создание задачи.
+До запроса сохраняется AIRun с настраиваемой per-request budget estimate
+(default 0.10 USD), учитываемой в monthly limit даже после сбоя. Это оценка,
+не подтверждение фактического счёта провайдера; значения Decimal, не float.
+
+Photo/PDF расширяют ChatMessage ephemeral media и capabilities images/documents.
+Claude/OpenRouter получают inline base64, ModelRouter проверяет возможности.
+Файл/фото/PDF ход вообще не получает инструментов, включая запись; подпись не
+меняет это правило. Текст файла — UntrustedData, в историю не сохраняется;
+остаётся общая отметка и ответ модели. Следующий отдельный текст владельца
+может разрешить создание задачи. Business media не добавлено.

@@ -517,3 +517,18 @@ Existing AI run/event contracts and owner domain contracts are reused. Personal
 tools use exact Task version CAS and the same domain/sync writer as REST.
 No new public queue endpoint, sync resource_kind or credential exposure. Internal
 queue data is excluded from owner export and re-encrypted by provider-key rotation.
+
+### Personal media and transcription (migration 0031)
+
+ProviderIn.kind also accepts transcription. Existing provider/secret endpoints
+store the separate encrypted key, never return it; chat run selection and
+Telegram settings reject this kind as a chat provider. model_policy supports
+`default_model`, `monthly_budget` and `transcription_request_cost` (Decimal
+strings, default estimate 0.10). Each transcription AIRun durably records the
+configured estimate before external I/O; this is not actual billing.
+
+Internal personal queue adds input_kind and encrypted media_metadata containing
+bounded Telegram file_id/metadata only, no bytes. Untrusted photo/PDF/file turns
+have no write grants; transcription is treated as owner text. Public chat message
+HTTP inputs stay text-only; ephemeral provider attachments do not become a public
+upload/storage endpoint or new sync kind. Rotation covers media_metadata.

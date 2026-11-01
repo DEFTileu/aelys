@@ -162,7 +162,8 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
             return None
         if (isinstance(text, str) and chat.get("type") == "private" and integer(sender.get("id"))
                 and chat.get("id") == sender["id"] == item.owner_telegram_id and not sender.get("is_bot")):
-            if text.strip() and not text.strip().startswith('/'):
+            from .telegram_media import parse_owner_media
+            if parse_owner_media(ordinary) is not None or (text.strip() and not text.strip().startswith('/')):
                 from .telegram_personal_queue import enqueue_owner_message
                 await enqueue_owner_message(db, item, payload, now())
                 return None

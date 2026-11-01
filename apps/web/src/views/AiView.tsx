@@ -36,7 +36,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
     const client = getSharedApiClient()
     void Promise.all([client.aiProviders(), client.aiConversations()]).then(([items, history]) => {
       if (!active) return
-      const enabled = items.filter((item) => item.enabled && item.has_secret)
+      const enabled = items.filter((item) => item.enabled && item.has_secret && item.kind !== 'transcription')
       setProviders(enabled); setProviderId((id) => enabled.some((item) => item.id === id) ? id : enabled[0]?.id ?? ''); setConversations(history)
     }).catch(() => { if (active) setNotice('Open your owner session in Settings to load AI providers and chats.') })
     return () => { active = false }

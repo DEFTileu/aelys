@@ -192,7 +192,7 @@ async def settings(body: SettingsIn, principal=Depends(current_principal), db: A
     if provider_id and ("provider_id" in values or assistant_enabled):
         provider = await db.get(AIProvider, provider_id)
         secret = (await db.execute(select(AIProviderSecret).where(AIProviderSecret.provider_id == provider_id, AIProviderSecret.owner_id == item.owner_id))).scalar_one_or_none()
-        if not provider or provider.owner_id != item.owner_id or provider.deleted_at or not provider.enabled or not secret:
+        if not provider or provider.owner_id != item.owner_id or provider.deleted_at or not provider.enabled or provider.kind not in {"claude", "openrouter"} or not secret:
             raise service.error(409, "PROVIDER_REQUIRED", "Настройте активного AI-провайдера с ключом.")
     if assistant_enabled:
         if not provider_id:

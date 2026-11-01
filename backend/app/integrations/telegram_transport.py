@@ -20,8 +20,11 @@ _ALLOWED_UPDATES = (
 class _TelegramLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
+        if record.exc_info:
+            message += logging.Formatter().formatException(record.exc_info)
+        message += (record.exc_text or '') + (record.stack_info or '')
         # Suppress the whole record: URLs, errors and bodies may contain secrets.
-        return not re.search(r"api\.telegram\.org/bot", message, re.IGNORECASE)
+        return not re.search(r"api\.telegram\.org(?:/file)?/bot", message, re.IGNORECASE)
 
 
 # HTTPX client INFO logging is avoided below; these filters also protect against
@@ -117,6 +120,61 @@ class TelegramClient:
 
     async def get_me(self) -> dict[str, Any]:
         return await self._object("getMe", {})
+
+    async def get_file(self, file_id: str) -> dict[str, Any]:
+        if not isinstance(file_id, str) or not 1 <= len(file_id) <= 512 or any(char.isspace() for char in file_id):
+            raise TelegramError('invalid_file_id')
+        return await self._object('getFile', {'file_id': file_id})
+
+    async def download_file(self, file_path: str, max_bytes: int) -> bytes:
+        """Read a bounded raw stream in memory, never following a download URL.
+
+        Telegram returns relative ASCII paths. Reject encodings and URL syntax
+        rather than normalizing them into an authority/path we did not approve.
+        """
+        if (not isinstance(file_path, str) or not 1 <= len(file_path) <= 2048
+                or not re.fullmatch(r'[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*', file_path)
+                or any(segment in {'.', '..'} for segment in file_path.split('/'))):
+            raise TelegramError('invalid_file_path')
+        if type(max_bytes) is not int or not 1 <= max_bytes <= 20 * 1024 * 1024:
+            raise ValueError('max_bytes must be between 1 and 20 MiB')
+        request = httpx.Request(
+            'GET', f'https://api.telegram.org/file/bot{self._token}/{file_path}',
+            headers={'Accept-Encoding': 'identity'},
+            extensions={'timeout': {'connect': 10.0, 'read': 30.0, 'write': 10.0, 'pool': 10.0}},
+        )
+        try:
+            async with asyncio.timeout(60.0):
+                response = await self._transport.handle_async_request(request)
+                try:
+                    if response.status_code != 200:
+                        raise TelegramError(response.status_code)
+                    if response.headers.get('content-encoding', 'identity').lower() != 'identity':
+                        raise TelegramError('invalid_response')
+                    length = response.headers.get('content-length')
+                    if length is not None:
+                        if not re.fullmatch(r'[0-9]+', length) or len(length) > 20:
+                            raise TelegramError('invalid_response')
+                        if int(length) > max_bytes:
+                            raise TelegramError('file_too_large')
+                    body = bytearray()
+                    # Read the raw stream: no transparent decompression or eager
+                    # aread(), including when Content-Length is absent or false.
+                    if not isinstance(response.stream, httpx.AsyncByteStream):
+                        raise TelegramError('invalid_response')
+                    async for chunk in response.stream:
+                        if len(body) + len(chunk) > max_bytes:
+                            raise TelegramError('file_too_large')
+                        body.extend(chunk)
+                    return bytes(body)
+                finally:
+                    await response.aclose()
+        except TelegramError:
+            raise
+        except (httpx.TimeoutException, TimeoutError):
+            raise TelegramError('timeout') from None
+        except Exception:  # noqa: BLE001 - transport exceptions can contain token-bearing paths
+            raise TelegramError('network_error') from None
 
     async def get_webhook_info(self) -> dict[str, Any]:
         return await self._object("getWebhookInfo", {})
