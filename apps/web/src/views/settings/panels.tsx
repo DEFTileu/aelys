@@ -7,6 +7,7 @@ import { greetingForHour } from '../../lib/format'
 import { isKeychainAccessRequired, isNativeHost, KEYCHAIN_ACCESS_NOTICE } from '../../lib/nativeTransport'
 import { displayNameFromEmail, type Owner } from '../../lib/owner'
 import { setPrefs, usePrefs } from '../../lib/prefs'
+import { notifyPermission, requestNotifyPermission, sendSystemNotification, type NotifyPermission } from '../../lib/systemNotifications'
 import type { ApiStatus } from '../../types'
 import pkg from '../../../package.json'
 import { Lock } from '../../icons'
@@ -31,7 +32,28 @@ export function ProfilePanel({ owner }: { owner: Owner }) {
 }
 
 // Reminders and quiet hours are real Telegram settings; the bell and in-app alerts have no per-category switches.
+function SystemNotificationsCard() {
+  const [permission, setPermission] = useState<NotifyPermission | null>(null)
+  useEffect(() => { void notifyPermission().then(setPermission) }, [])
+  if (permission === null || permission === 'unsupported') return null
+  const hint = permission === 'granted' ? 'Reminders and alerts appear as system notifications while Aelys is running.'
+    : permission === 'denied' ? 'Notifications are blocked. Allow Aelys in System Settings → Notifications (Android: app settings → Notifications).'
+    : 'Allow Aelys to show reminders and alerts as system notifications.'
+  return <Group title="This device">
+    <Card>
+      <Row title="System notifications" hint={hint} wrap>
+        {permission === 'prompt' && <button type="button" className="st-btn" onClick={() => void requestNotifyPermission().then(setPermission)}>Allow</button>}
+        {permission === 'granted' && <button type="button" className="st-btn" onClick={() => void sendSystemNotification('Aelys', 'Notifications are working.')}>Send test</button>}
+      </Row>
+    </Card>
+  </Group>
+}
+
 export function NotificationsPanel({ onGo }: { onGo: (id: 'telegram') => void }) {
+  return <><SystemNotificationsCard /><TelegramReminders onGo={onGo} /></>
+}
+
+function TelegramReminders({ onGo }: { onGo: (id: 'telegram') => void }) {
   const [status, setStatus] = useState<TelegramStatus | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)

@@ -3,6 +3,8 @@ import { Bell } from '../icons'
 import { X } from 'lucide-react'
 import type { Notification } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
+import { isNativeHost } from '../lib/nativeTransport'
+import { askNotifyPermissionOnce, sendSystemNotification } from '../lib/systemNotifications'
 import type { ApiStatus } from '../types'
 import './notification-center.css'
 
@@ -31,6 +33,7 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
   const [items, setItems] = useState<readonly Notification[]>([])
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
+  const seen = useRef<Set<string> | null>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const dialog = useRef<HTMLElement>(null)
 
@@ -42,6 +45,11 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
         if (apiStatus === 'ready') await client.dispatchCalendarReminders()
         const records = await client.notifications()
         if (active) {
+          // The first load only learns what already exists; anything unread that shows up later raises an OS banner.
+          if (seen.current === null) { seen.current = new Set(records.map((record) => record.id)); void askNotifyPermissionOnce() }
+          else for (const record of records) {
+            if (!seen.current.has(record.id)) { seen.current.add(record.id); if (!record.read_at) void sendSystemNotification(record.title, record.body) }
+          }
           setItems((current) => records.map((record) => {
             const previous = current.find((item) => item.id === record.id)
             return !record.read_at && previous?.read_at ? { ...record, read_at: previous.read_at } : record
@@ -51,7 +59,8 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
       } catch { if (active) setNotice('Notifications unavailable. Check your session and connection.') }
     }
     void load()
-    const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load() }, 30_000)
+    // Native apps keep polling while hidden so a minimized window still raises system notifications.
+    const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden' || isNativeHost()) void load() }, 30_000)
     return () => { active = false; window.clearInterval(timer) }
   }, [apiStatus, route, open])
 
