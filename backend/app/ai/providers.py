@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from .errors import ProviderError, RunCancelled, redact_error
-from .models import ProviderKind, ProviderRequest, ProviderResponse, Usage
+from .models import ChatMessage, ProviderKind, ProviderRequest, ProviderResponse, Usage
 from .secrets import SecretRef, SecretStore
 
 
@@ -33,6 +34,25 @@ def _usage(body: Mapping[str, Any]) -> Usage:
     return Usage(int(u.get("input_tokens", u.get("prompt_tokens", 0)) or 0), int(u.get("output_tokens", u.get("completion_tokens", 0)) or 0))
 
 
+def _content(message: ChatMessage, *, claude: bool) -> str | list[dict[str, Any]]:
+    if not message.media:
+        return message.content
+    parts: list[dict[str, Any]] = []
+    if message.content:
+        parts.append({"type": "text", "text": message.content})
+    for media in message.media:
+        encoded = base64.b64encode(media.data).decode("ascii")
+        if claude:
+            parts.append({"type": "document" if media.mime_type == "application/pdf" else "image",
+                          "source": {"type": "base64", "media_type": media.mime_type, "data": encoded}})
+        elif media.mime_type == "application/pdf":
+            parts.append({"type": "file", "file": {"filename": media.filename,
+                          "file_data": f"data:application/pdf;base64,{encoded}"}})
+        else:
+            parts.append({"type": "image_url", "image_url": {"url": f"data:{media.mime_type};base64,{encoded}"}})
+    return parts
+
+
 class _BaseAdapter:
     def __init__(self, transport: HttpTransport, secrets: SecretStore, secret_ref: SecretRef, base_url: str):
         self._transport, self._secrets, self._ref, self._base_url = transport, secrets, secret_ref, base_url.rstrip("/")
@@ -41,16 +61,30 @@ class _BaseAdapter:
     def _headers(self) -> dict[str, str]:
         return {"content-type": "application/json", "authorization": f"Bearer {self._secrets._resolve_for_provider_call(self._ref)}"}
 
-    async def _post(self, path: str, payload: Mapping[str, Any]) -> HttpResponse:
+    async def _post(self, path: str, payload: Mapping[str, Any], *, media: bool = False) -> HttpResponse:
         try:
             response = await self._transport.post(self._base_url + path, headers=self._headers(), json=payload)
         except RunCancelled:
             raise
         except Exception as exc:  # noqa: BLE001 - provider implementations expose only sanitized failures
+            if media:
+                # Even a transport exception may echo the inline binary payload.
+                raise ProviderError("provider media request failed") from None
             raise ProviderError(f"provider request failed: {redact_error(exc)}") from None
         if response.status >= 400:
             raise ProviderError(f"provider returned status {response.status}")
         return response
+
+    async def _stream(self, path: str, payload: Mapping[str, Any], *, media: bool = False) -> AsyncIterator[Mapping[str, Any]]:
+        try:
+            async for item in self._transport.stream(self._base_url + path, headers=self._headers(), json=payload):
+                yield item
+        except RunCancelled:
+            raise
+        except Exception:  # Raw media/base64 must never enter error events or logs.
+            if media:
+                raise ProviderError("provider media stream failed") from None
+            raise
 
 
 class ClaudeAdapter(_BaseAdapter):
@@ -61,11 +95,11 @@ class ClaudeAdapter(_BaseAdapter):
 
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
         system = [m.content for m in request.messages if m.role == "system"]
-        messages = [{"role": m.role, "content": m.content} for m in request.messages if m.role != "system"]
+        messages = [{"role": m.role, "content": _content(m, claude=True)} for m in request.messages if m.role != "system"]
         return {"model": request.model, "max_tokens": request.max_tokens, "temperature": float(request.temperature), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
-        response = await self._post("/v1/messages", self._payload(request))
+        response = await self._post("/v1/messages", self._payload(request), media=any(m.media for m in request.messages))
         self.last_usage = _usage(response.body)
         content = response.body.get("content", [])
         text = "".join(str(part.get("text", "")) for part in content if isinstance(part, Mapping) and part.get("type") == "text")
@@ -74,7 +108,7 @@ class ClaudeAdapter(_BaseAdapter):
 
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:
         self.last_usage = Usage()
-        async for item in self._transport.stream(self._base_url + "/v1/messages", headers=self._headers(), json=self._payload(request)):
+        async for item in self._stream("/v1/messages", self._payload(request), media=any(m.media for m in request.messages)):
             if item.get("type") == "error" or item.get("error"):
                 raise ProviderError("provider stream failed")
             if item.get("usage"):
@@ -90,10 +124,10 @@ class OpenRouterAdapter(_BaseAdapter):
 
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
         tools = [{"type": "function", "function": {"name": str(tool["name"]), "description": str(tool.get("description", "")), "parameters": tool.get("input_schema") or {"type": "object"}}} for tool in request.tools]
-        return {"model": request.model, "messages": [{"role": m.role, "content": m.content} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {})}
+        return {"model": request.model, "messages": [{"role": m.role, "content": _content(m, claude=False)} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {})}
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
-        response = await self._post("/api/v1/chat/completions", self._payload(request))
+        response = await self._post("/api/v1/chat/completions", self._payload(request), media=any(m.media for m in request.messages))
         self.last_usage = _usage(response.body)
         choices = response.body.get("choices", [])
         message = choices[0].get("message", {}) if choices else {}
@@ -101,7 +135,7 @@ class OpenRouterAdapter(_BaseAdapter):
 
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:
         self.last_usage = Usage()
-        async for item in self._transport.stream(self._base_url + "/api/v1/chat/completions", headers=self._headers(), json=self._payload(request)):
+        async for item in self._stream("/api/v1/chat/completions", self._payload(request), media=any(m.media for m in request.messages)):
             if item.get("error"):
                 raise ProviderError("provider stream failed")
             if item.get("usage"):

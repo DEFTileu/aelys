@@ -42,6 +42,8 @@ class Capability(str, Enum):
     STREAMING = "streaming"
     LONG_CONTEXT = "long_context"
     REASONING = "reasoning"
+    IMAGES = "images"
+    DOCUMENTS = "documents"
 
 
 class RunStatus(str, Enum):
@@ -53,10 +55,32 @@ class RunStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class MediaContent:
+    """Ephemeral inline attachment; never include bytes in diagnostic reprs."""
+
+    mime_type: str
+    data: bytes = field(repr=False)
+    filename: str = "attachment"
+
+    def __post_init__(self) -> None:
+        if self.mime_type not in {"image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"}:
+            raise ValueError("Unsupported media MIME type")
+        if not isinstance(self.data, bytes) or not self.data:
+            raise ValueError("Media data must be nonempty bytes")
+
+
+@dataclass(frozen=True)
 class ChatMessage:
     role: str
     content: str
     untrusted: bool = False
+    media: tuple[MediaContent, ...] = field(default=(), repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.media, tuple) or any(not isinstance(value, MediaContent) for value in self.media):
+            raise ValueError("Media must be a tuple of MediaContent attachments")
+        if self.media and self.role != "user":
+            raise ValueError("Media is accepted only in user messages")
 
 
 @dataclass(frozen=True)
