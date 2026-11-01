@@ -138,3 +138,8 @@ Explicit memory (Stage 5) does not broaden the mounted sync kind allowlist.
 Backend facts use their own exact Owned.version CAS through owner API and tools;
 plaintext memory is not cached or replayed by the shared offline outbox. Task,
 Note, CalendarEvent and Project continue through the shared change-log unchanged.
+
+Stage 6 task projections include server-owned started_at/completed_at. Echoed
+client values cannot overwrite them. Stale base_version conflicts leave clocks
+and transition history unchanged. Existing projection/bootstrap indexing must
+not fabricate historical dates or advance domain versions. No new resource kind.

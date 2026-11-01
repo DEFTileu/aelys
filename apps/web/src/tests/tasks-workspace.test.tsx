@@ -67,9 +67,87 @@ afterEach(() => {
   localStorage.clear()
   sessionStorage.clear()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 describe('Tasks workspace', () => {
+  it('refreshes matrix urgency every minute only while the matrix is active', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-01T12:00:00Z'))
+    client.tasks.mockResolvedValue([task({ title: 'Approaching task', due_at: '2026-11-03T12:00:30Z' })])
+    await mount(); await click('Matrix')
+    const quadrant = (name: string) => host.querySelector(`[aria-label="${name}"]`)!
+    expect(quadrant('Important, not urgent').contains(row('Approaching task'))).toBe(true)
+    const matrixTimers = vi.getTimerCount()
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(quadrant('Important and urgent').contains(row('Approaching task'))).toBe(true)
+    await click('Inbox')
+    expect(vi.getTimerCount()).toBeLessThan(matrixTimers)
+    await click('Matrix'); expect(vi.getTimerCount()).toBe(matrixTimers)
+    await act(async () => root!.unmount()); root = undefined
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('shows all four matrix quadrants across dates with the existing row actions', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-01T12:00:00Z'))
+    const important = task({ id: 'important', title: 'Important urgent', due_at: '2026-11-02T12:00:00Z', priority: 2, started_at: '2026-10-28T12:00:00Z' })
+    client.tasks.mockResolvedValue([
+      important, task({ id: 'plan', title: 'Important later', due_at: null, priority: 2 }),
+      task({ id: 'urgent', title: 'Urgent only', due_at: '2026-10-20T12:00:00Z', priority: 1 }),
+      task({ id: 'later', title: 'Neither', due_at: '2026-12-01T12:00:00Z', priority: 1 }),
+      task({ id: 'done', title: 'Completed excluded', status: 'completed' }),
+    ])
+    client.updateTask.mockResolvedValue({ ...important, status: 'completed', version: 5, completed_at: '2026-11-01T12:00:00Z' })
+    await mount(); await click('Matrix')
+    const quadrant = (name: string) => host.querySelector(`[aria-label="${name}"]`)!
+    expect(quadrant('Important and urgent')?.contains(row('Important urgent'))).toBe(true)
+    expect(quadrant('Important, not urgent')?.contains(row('Important later'))).toBe(true)
+    expect(quadrant('Urgent, not important')?.contains(row('Urgent only'))).toBe(true)
+    expect(quadrant('Neither urgent nor important')?.contains(row('Neither'))).toBe(true)
+    expect(row('Completed excluded')).toBeNull()
+    await click('Open task: Important urgent')
+    expect(field('Task title').value).toBe('Important urgent')
+    await click('Close task editor'); await click('Complete Important urgent')
+    expect(client.updateTask).toHaveBeenCalledWith(important.id, expect.objectContaining({ version: 4, status: 'completed' }), { queueOnOffline: false })
+    expect(client.updateTask.mock.calls[0][1]).not.toHaveProperty('started_at')
+    expect(client.updateTask.mock.calls[0][1]).not.toHaveProperty('completed_at')
+    expect(row('Important urgent')).toBeNull()
+  })
+
+  it('applies search, project and priority filters to the matrix and includes it in keyboard tabs', async () => {
+    client.tasks.mockResolvedValue([
+      task({ id: 'match', title: 'Matrix match', priority: 2 }),
+      task({ id: 'low', title: 'Low priority', priority: 1 }),
+      task({ id: 'other', title: 'Other project', priority: 2, project_id: null }),
+    ])
+    await mount(); await key(button('Inbox'), 'End')
+    expect(button('Matrix').getAttribute('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(button('Matrix'))
+    await click('Filter'); await setField('Filter by project', project.id); await setField('Filter by priority', '2')
+    expect(row('Matrix match')).not.toBeNull(); expect(row('Low priority')).toBeNull(); expect(row('Other project')).toBeNull()
+    await setField('Search tasks', 'missing'); expect(row('Matrix match')).toBeNull()
+    expect(host.textContent).toContain('No matches in this view')
+    await setField('Search tasks', 'match'); expect(row('Matrix match')).not.toBeNull()
+    await key(button('Matrix'), 'ArrowRight')
+    expect(button('Inbox').getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('retains matrix drafts on a stale toggle and keeps cached matrix actions read-only', async () => {
+    const original = task()
+    const latest = task({ version: 7, title: 'Latest title' })
+    client.tasks.mockResolvedValue([original]); client.task.mockResolvedValue(latest)
+    client.updateTask.mockRejectedValueOnce(new ApiError(409, 'VERSION_CONFLICT', 'Stale'))
+      .mockResolvedValueOnce({ ...latest, description: 'Matrix parked draft', version: 8 })
+    await mount(); await click('Matrix'); await click('Open task: Plan launch')
+    await setField('Description', 'Matrix parked draft'); await click('Close task editor')
+    await click('Complete Plan launch')
+    expect(field('Description').value).toBe('Matrix parked draft')
+    await click('Compare latest'); await click('Keep my draft'); await submit('Save changes')
+    expect(client.updateTask).toHaveBeenLastCalledWith(original.id, expect.objectContaining({ version: 7, description: 'Matrix parked draft' }), { queueOnOffline: false })
+    client.tasks.mockImplementation(async (_query, options) => { if (options?.allowCacheFallback === false) throw new NetworkError('offline'); return [latest] })
+    await click('Refresh tasks'); expect(button('Complete Latest title').disabled).toBe(true)
+    await click('Open task: Latest title'); expect(button('Save changes').disabled).toBe(true)
+  })
   it('defaults to Today and separates active tasks from Completed', async () => {
     const now = new Date(); now.setHours(12, 0, 0, 0)
     const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1)

@@ -34,5 +34,5 @@ Implementation checkpoint 2026-11-01: approved ADR-028 stages 0–4 are locally
 implemented/tested, including ephemeral personal media and separate transcription
 BYOK. This resolves implementation availability only; real Telegram/provider/
 transcription acceptance still needs owner credentials. Attachment storage stays
-OPEN. Explicit memory now has local implementation evidence (Stage 5); task matrix/time
-and Google Calendar remain later stages.
+OPEN. Explicit memory now has local implementation evidence (Stage 5); task matrix/time also has local Stage 6 evidence. Google Calendar remains the
+last implementation stage; live external acceptance and attachment storage remain open.

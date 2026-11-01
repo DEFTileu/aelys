@@ -169,3 +169,14 @@ adds nullable EncryptedText owner_note and supports terminal no_reply/handoff
 statuses. Secret rotation covers both new encrypted fields. Notification stores
 no conversation or owner-note content; dedup key telegram-handoff:<message_id>.
 No CLI data, embeddings or new cloud session content is introduced.
+
+## Implemented task work instants — migration 0033
+
+`tasks.started_at` and `tasks.completed_at` are nullable UTC instants owned by the
+server. Entering in_progress starts the current work period; leaving and entering
+it again starts a new period. Entering a completion state stamps completed_at;
+reopening clears the current completion. Completion aliases preserve the existing
+instant. Existing HistoryEntry rows with action task.status.changed retain each
+accepted Task version, raw from/to status, occurrence and work/completion instants.
+No new status-history table. Legacy unknown instants remain null; bootstrap and
+same-version null-key projection enrichment cannot fabricate work or log events.

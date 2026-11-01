@@ -1,6 +1,6 @@
 # Telegram Business: бот-секретарь
 
-**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и расширенный личный scope (ADR-027/028). Выполнены этапы 0–5: sync, reminders, текстовый AI, ephemeral media и explicit memory; matrix/Google остаются следующими этапами (см. `PERSONAL_OS_BOT_REPORT.md`).
+**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и расширенный личный scope (ADR-027/028). Выполнены этапы 0–6: sync, reminders, текстовый AI, ephemeral media, explicit memory и task matrix/time; Google остаётся следующим этапом (см. `PERSONAL_OS_BOT_REPORT.md`).
 
 ## Подключение
 
@@ -192,3 +192,17 @@ memory tool в текущем owner text/voice ходе. Содержимое ф
 перед каждым шагом модели. Сами старые реплики остаются видны владельцу в истории.
 Секретарь вообще не читает эту память и не получает её личные инструменты.
 Фонового извлечения, rolling summary, MCP, RAG и embeddings нет.
+
+## Task matrix and work time — Stage 6
+
+TasksView получает Matrix на тех же задачах и действиях: important priority >=2;
+urgent — due_at <= now+48 часов, включая просроченное. Срок сравнивается как
+момент, не как локальные календарные дни. Вид обновляет срочность раз в минуту;
+поиск, фильтры, CAS и read-only cache режим сохранены. Новая таблица не создаётся.
+
+Task started_at/completed_at принадлежат серверу и выставляются общим writer
+на переходах статуса. Повтор того же состояния не меняет момент; reopen очищает
+текущий completed_at, история прошлых завершений остаётся в HistoryEntry.
+Историческим задачам неизвестное время не выдумывается при bootstrap. Вечерняя
+сводка добавляет in_progress дольше 7*24 часов; /today не меняется. Итоговая
+приёмка — в PERSONAL_OS_BOT_REPORT.md.

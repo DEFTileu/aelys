@@ -180,6 +180,8 @@ export interface TaskIn {
   readonly rrule?: string | null;
 }
 export interface TaskOut {
+  readonly started_at?: IsoDateTime | null;
+  readonly completed_at?: IsoDateTime | null;
   readonly title: string;
   readonly description: string;
   readonly project_id: Id | null;

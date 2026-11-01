@@ -1,16 +1,16 @@
 import { StyledSelect } from '../components/controls/StyledSelect'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ApiError, type ProjectResponse, type TaskOut } from '@aelys/shared'
-import { Calendar, CalendarDays, Check, Clock, Ellipsis, Flag, Folder, Inbox, ListFilter, SquareCheck, RefreshCw, Search, X } from '../icons'
+import { Calendar, CalendarDays, Check, Clock, Ellipsis, Flag, Folder, Inbox, LayoutGrid, ListFilter, SquareCheck, RefreshCw, Search, X } from '../icons'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import { TaskEditor } from './tasks/TaskEditor'
-import { dateKey, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
+import { dateKey, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
 import './desktop/tasks.css'
 
-type TaskView = 'inbox' | 'today' | 'upcoming' | 'completed' | 'all'
+type TaskView = 'inbox' | 'today' | 'upcoming' | 'completed' | 'matrix' | 'all'
 type EditorState = { task: TaskOut; draft: TaskDraft; error: string; conflict: boolean; latest: TaskOut | null; fieldBase?: TaskOut }
-const VIEWS = [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'today', label: 'Today', Icon: Calendar }, { id: 'upcoming', label: 'Upcoming', Icon: CalendarDays }, { id: 'completed', label: 'Completed', Icon: SquareCheck }] as const
+const VIEWS = [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'today', label: 'Today', Icon: Calendar }, { id: 'upcoming', label: 'Upcoming', Icon: CalendarDays }, { id: 'completed', label: 'Completed', Icon: SquareCheck }, { id: 'matrix', label: 'Matrix', Icon: LayoutGrid }] as const
 const PRIORITIES = ['None', 'Low', 'Medium', 'High']
 const freshRead = { allowCacheFallback: false }
 const isAuthError = (error: unknown) => error instanceof ApiError && [401, 403].includes(error.status)
@@ -34,6 +34,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [refreshing, setRefreshing] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
   const [view, setView] = useState<TaskView>('today')
+  const [matrixNow, setMatrixNow] = useState(Date.now)
   const [query, setQuery] = useState('')
   const [projectFilter, setProjectFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -65,6 +66,13 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
   const writeAllowed = writableSource(apiStatus, online, source)
   const projectNames = useMemo(() => new Map(projects.map(project => [project.id, project.name])), [projects])
   const projectName = (task: TaskOut) => task.project_id ? projectNames.get(task.project_id) ?? 'Unavailable project' : ''
+
+  useEffect(() => {
+    if (view !== 'matrix') return
+    setMatrixNow(Date.now())
+    const clock = window.setInterval(() => setMatrixNow(Date.now()), 60_000)
+    return () => window.clearInterval(clock)
+  }, [view])
 
   // Cached reads remain useful, but cannot prove a live source: explicitly bypass
   // fallback first. A 401/403 never falls back to private cached records.
@@ -258,11 +266,11 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     finally { endWrite() }
   }
   const clearFilters = () => { setQuery(''); setStatusFilter('all'); setProjectFilter('all'); setHighOnly(false); setPriorityFilter('all'); setOverdueOnly(false) }
-  const inView = (task: TaskOut, target: TaskView) => target === 'all' ? true : target === 'completed' ? isCompleted(task) : !isCompleted(task) && (target === 'inbox' ? !task.due_at : target === 'today' ? !!task.due_at && dateKey(task.due_at)! <= today : !!task.due_at && dateKey(task.due_at)! > today)
+  const inView = (task: TaskOut, target: TaskView) => target === 'all' ? true : target === 'completed' ? isCompleted(task) : !isCompleted(task) && (target === 'matrix' ? true : target === 'inbox' ? !task.due_at : target === 'today' ? !!task.due_at && dateKey(task.due_at)! <= today : !!task.due_at && dateKey(task.due_at)! > today)
   const viewTasks = tasks.filter(task => inView(task, view))
   const matching = viewTasks.filter(task => taskMatchesQuery(task, query, projectName(task)) && (projectFilter === 'all' || (projectFilter === 'none' ? !task.project_id : task.project_id === projectFilter)) && (statusFilter === 'all' || (statusFilter === 'completed' ? isCompleted(task) : !isCompleted(task))) && (priorityFilter === 'all' || task.priority === Number(priorityFilter)) && (!highOnly || task.priority >= 3) && (!overdueOnly || isOverdue(task)))
   const sortedTasks = [...matching].sort((a, b) => Number(isCompleted(a)) - Number(isCompleted(b)) || (a.due_at ?? '').localeCompare(b.due_at ?? '') || b.priority - a.priority || a.title.localeCompare(b.title))
-  const groups = view === 'today' ? [{ key: 'overdue', label: 'Overdue', tasks: sortedTasks.filter(task => dateKey(task.due_at)! < today) }, { key: today, label: 'Today', tasks: sortedTasks.filter(task => dateKey(task.due_at) === today) }].filter(group => group.tasks.length) : view === 'inbox' || view === 'completed' ? sortedTasks.length ? [{ key: view, label: view === 'inbox' ? 'Inbox' : 'Completed', tasks: sortedTasks }] : [] : groupTasksByDay(sortedTasks)
+  const groups = view === 'matrix' ? groupTasksInMatrix(sortedTasks, matrixNow) : view === 'today' ? [{ key: 'overdue', label: 'Overdue', tasks: sortedTasks.filter(task => dateKey(task.due_at)! < today) }, { key: today, label: 'Today', tasks: sortedTasks.filter(task => dateKey(task.due_at) === today) }].filter(group => group.tasks.length) : view === 'inbox' || view === 'completed' ? sortedTasks.length ? [{ key: view, label: view === 'inbox' ? 'Inbox' : 'Completed', tasks: sortedTasks }] : [] : groupTasksByDay(sortedTasks)
   const activeFilters = !!query || statusFilter !== 'all' || projectFilter !== 'all' || highOnly || priorityFilter !== 'all' || overdueOnly
   const filterCount = Number(priorityFilter !== 'all') + Number(projectFilter !== 'all')
   const heading = VIEWS.find(item => item.id === view)?.label ?? 'All tasks'
@@ -286,7 +294,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
         if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return
         event.preventDefault()
         const index = Math.max(0, VIEWS.findIndex(item => item.id === view))
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? 3 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 4) % 4
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? VIEWS.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + VIEWS.length) % VIEWS.length
         setView(VIEWS[next].id); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
       }}>
         {VIEWS.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" aria-label={label} id={`tasks-tab-${id}`} aria-controls="tasks-panel" aria-selected={view === id} tabIndex={view === id || (view === 'all' && id === 'today') ? 0 : -1} onClick={() => setView(id)}><Icon size={18} /><span>{label}</span><b aria-hidden="true">{tasks.filter(task => inView(task, id)).length}</b></button>)}
@@ -327,17 +335,20 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
       <section role="tabpanel" id="tasks-panel" aria-labelledby={view === 'all' ? undefined : `tasks-tab-${view}`} aria-label={view === 'all' ? 'All tasks' : undefined} tabIndex={0}>
         <header className="tasks-list-heading"><div><h3>{heading}</h3>{view === 'inbox' && <p>Without a due date</p>}{view === 'upcoming' && <p>After today</p>}</div>{!quickOpen && newDraft.title && <button type="button" className="tasks-quiet" onClick={openQuick}>Resume new task</button>}</header>
         {hiddenDrafts > 0 && <div className="tasks-draft-shelf"><span>Unsent edits</span>{[...editDrafts.current.values()].map(saved => <button type="button" key={saved.task.id} onClick={() => setEditor(saved)}>{saved.draft.title || saved.task.title}</button>)}</div>}
-        {groups.map(group => <section className="tasks-date-group" key={group.key} aria-label={groupTitle(group.key)}>
-          <h4>{groupTitle(group.key)} <span>{group.tasks.length}</span>{group.key === today && <time className="tasks-group-date" dateTime={today}>{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</time>}</h4>
+        <div className={view === 'matrix' ? 'tasks-matrix' : undefined}>
+        {groups.map(group => <section className="tasks-date-group" key={group.key} aria-label={view === 'matrix' ? group.label : groupTitle(group.key)}>
+          <h4>{view === 'matrix' ? group.label : groupTitle(group.key)} <span>{group.tasks.length}</span>{group.key === today && <time className="tasks-group-date" dateTime={today}>{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</time>}</h4>
+          {view === 'matrix' && !group.tasks.length && <p className="tasks-help">No tasks</p>}
           <ul>{group.tasks.map(task => <li data-task-row={task.id} className={`tasks-item${isCompleted(task) ? ' tasks-item--done' : ''}`} key={task.id}>
             <button type="button" role="checkbox" aria-checked={isCompleted(task)} aria-label={`${isCompleted(task) ? 'Reopen' : 'Complete'} ${task.title}`} className="tasks-check" disabled={pending || !writeAllowed} onClick={() => void toggle(task)}><span>{isCompleted(task) && <Check size={14} />}</span></button>
             <button type="button" className="tasks-open" aria-label={`Open task: ${task.title}`} data-task-editor-trigger onClick={() => openEditor(task)} disabled={pending}><span className="tasks-label"><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}</span></button><span className="tasks-row-meta">{task.project_id && <span><Folder size={13} />{projectName(task)}</span>}{task.status === 'in_progress' && <span>In progress</span>}</span>
-            <time className={isOverdue(task) ? 'tasks-due tasks-due--overdue' : 'tasks-due'} dateTime={task.due_at ?? undefined}>{task.due_at && dateKey(task.due_at) === today && <Clock size={12} aria-hidden="true" />}{task.due_at ? new Intl.DateTimeFormat(undefined, dateKey(task.due_at) === today ? { hour:'2-digit', minute:'2-digit', hour12:false } : { month:'short', day:'numeric' }).format(new Date(task.due_at)) : 'No date'}</time>
+            <time className={isOverdue(task) ? 'tasks-due tasks-due--overdue' : 'tasks-due'} dateTime={dateKey(task.due_at) ? task.due_at ?? undefined : undefined}>{task.due_at && dateKey(task.due_at) === today && <Clock size={12} aria-hidden="true" />}{dateKey(task.due_at) ? new Intl.DateTimeFormat(undefined, dateKey(task.due_at) === today ? { hour:'2-digit', minute:'2-digit', hour12:false } : { month:'short', day:'numeric' }).format(new Date(task.due_at!)) : 'No date'}</time>
             <button type="button" className="tasks-icon tasks-priority" data-priority={task.priority >= 3 ? 'high' : task.priority === 2 ? 'medium' : 'low'} title={`${PRIORITIES[task.priority] ?? task.priority} priority`} aria-label={`Change priority: ${task.title}`} onClick={() => openEditor(task)} disabled={pending}>{task.priority > 0 && <Flag size={15} />}</button>
             <button type="button" className="tasks-icon tasks-row-more" aria-label={`Task details: ${task.title}`} onClick={() => openEditor(task)} disabled={pending}><Ellipsis size={18} /></button>
           </li>)}</ul>
         </section>)}
-        {!groups.length && source !== 'loading' && source !== 'auth' && source !== 'error' && <div className="tasks-empty"><p>{activeFilters ? 'No matches in this view' : `No ${view === 'all' ? '' : view + ' '}tasks`}</p><small>{activeFilters ? 'Adjust your filters or look in All tasks' : 'Type in the field above to add one'}</small>{activeFilters && <button type="button" onClick={() => { clearFilters(); setView('all') }}>Show all tasks</button>}</div>}
+        </div>
+        {!sortedTasks.length && source !== 'loading' && source !== 'auth' && source !== 'error' && <div className="tasks-empty"><p>{activeFilters ? 'No matches in this view' : `No ${view === 'all' ? '' : view + ' '}tasks`}</p><small>{activeFilters ? 'Adjust your filters or look in All tasks' : 'Type in the field above to add one'}</small>{activeFilters && <button type="button" onClick={() => { clearFilters(); setView('all') }}>Show all tasks</button>}</div>}
       </section>
     </div>
     {editor && <TaskEditor value={editor.draft} onChange={draft => setEditor({ ...editor, draft })} task={editor.task} projects={projects} projectsUnavailable={projectsUnavailable} pending={pending} saveDisabled={!writeAllowed || editor.conflict} error={editor.error} onSave={() => void saveEditor()} onClose={closeEditor} dirty={JSON.stringify(editor.draft) !== JSON.stringify(draftFromTask(editor.task))} onRevert={() => { editDrafts.current.delete(editor.task.id); setEditor({ ...editor, draft: draftFromTask(editor.task), error: editor.conflict ? editor.error : '' }); setConfirmDelete(false) }} confirmDelete={confirmDelete} onDelete={() => { if (confirmDelete) void deleteEditor(); else setConfirmDelete(true) }} onCancelDelete={() => setConfirmDelete(false)} deleteDisabled={!writeAllowed || editor.conflict} notice={<>

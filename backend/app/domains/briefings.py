@@ -56,8 +56,23 @@ async def build_digest(db: AsyncSession, owner_id: str, tz: ZoneInfo, at: dateti
     today = await build_agenda(db, owner_id, tz, at)
     tomorrow_at = datetime.combine(today.day + timedelta(days=1), time(12), tz).astimezone(UTC)
     tomorrow = await build_agenda(db, owner_id, tz, tomorrow_at)
-    lines = [format_agenda(today), '\nЗавтра:']
+    lines = ['Завтра:']
     items = (*tomorrow.due, *tomorrow.events)
     lines.extend(f'• {value}' for value in items) if items else lines.append('Нет')
-    text = '\n'.join(lines)
-    return text if len(text) <= 4096 else text[:4050] + '\n… Полный список в Aelys.'
+    stagnant = list((await db.execute(select(Task.title).where(
+        Task.owner_id == owner_id, Task.deleted_at.is_(None), func.lower(func.trim(Task.status)) == 'in_progress',
+        Task.started_at < utc(at) - timedelta(days=7),
+    ).order_by(Task.started_at, Task.id).limit(21))).scalars())
+    stagnant_lines = ['Застывшие задачи:']
+    stagnant_lines.extend(f"• {' '.join(title.split())[:120]}" for title in stagnant[:20]) if stagnant else stagnant_lines.append('Нет')
+    if len(stagnant) > 20:
+        stagnant_lines.append('… Полный список в Aelys.')
+    sections = [format_agenda(today), '\n'.join(lines), '\n'.join(stagnant_lines)]
+    text = '\n\n'.join(sections)
+    if len(text) <= 4096:
+        return text
+    # Keep every heading visible even when today's agenda consumes its own limit.
+    suffix = '\n… Полный список в Aelys.'
+    budget = (4096 - 4) // 3
+    return '\n\n'.join(section if len(section) <= budget else section[:budget - len(suffix)] + suffix
+                       for section in sections)

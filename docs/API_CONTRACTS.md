@@ -553,3 +553,13 @@ owner requests; the settings view never queues an unconfirmed forget or stores
 plaintext facts in the shared offline cache. Export uses its encrypted envelope,
 rotation re-encrypts text, and restore recalculates owner-specific hashes and
 checks policy/collisions before insertion.
+
+### Task work timestamps and matrix (Stage 6)
+
+TaskOut adds nullable started_at/completed_at UTC instants, server-owned; TaskIn
+and TaskPatch do not grant client control of these fields. Actual transitions
+are stamped through the common domain change writer, preserving the exact Task
+version in pull/bootstrap. Historical pre-feature rows remain unknown (null).
+HistoryEntry retains immutable per-version status-transition metadata; no new
+history table or sync resource kind. API/offline version conflicts preserve the
+server's work dates and status. Final acceptance is recorded in the stage report.

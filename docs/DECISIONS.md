@@ -45,3 +45,7 @@ OPEN; no file persistence or new external scope was approved by this checkpoint.
 ADR-028 Stage 5 checkpoint: explicit encrypted lexical memory, owner API/settings,
 commands/tools and export/rotation are locally implemented and tested. No new
 permission is derived from a fact; live external acceptance and stages 6–7 remain.
+
+ADR-028 Stage 6 checkpoint: existing TasksView matrix, server task work instants,
+immutable transition history and stagnant digest passed local acceptance. No new
+resource table or permission scope; Google Calendar and live acceptance remain.

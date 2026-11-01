@@ -142,3 +142,12 @@ adds at most 10 active facts as data, with no extractor or embeddings. Revoked
 fact provenance also removes derived context before each provider step. Business
 secretary never reads personal memory. Export/restore and key rotation include
 memory; live external-provider acceptance is still outstanding.
+
+### Task matrix/work dates — Stage 6
+
+Existing TasksView adds a matrix using priority >=2 and an exact rolling 48-hour
+UTC deadline boundary. Current row actions and filters are reused. Server-owned
+start/completion timestamps and immutable transition metadata use the common
+writer, preserving domain/sync versions across REST, AI and device pushes.
+The Telegram digest adds stagnant in-progress work older than seven elapsed days;
+/today remains unchanged. Final acceptance is recorded in the implementation report.

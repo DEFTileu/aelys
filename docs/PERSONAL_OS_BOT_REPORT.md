@@ -29,7 +29,7 @@ Business context must never include personal memory/tasks/notes/calendar.
 | 3 — personal dialogue | Accepted locally | Encrypted queue, shared loop/usage, current owner scopes, persistent conversation and /new; 552 backend passed, 2 PG cases separately passed. |
 | 4 — ephemeral media | Accepted locally | Bounded in-memory download, separate transcription BYOK/budget estimate, image/PDF adapters, no-tool file turns. Backend 731 passed plus 2 PG cases; web 416; shared 36; settings browser persistence verified. |
 | 5 — explicit memory | Accepted locally | Encrypted explicit facts, lexical best 10, CAS API/settings, owner commands/tools, provenance-aware forget, export/rotation. Backend 823 passed plus 2 PG cases; web 418; shared 37; browser create/edit/reload/forget verified. |
-| 6 — task matrix/time | Not started | Server timestamps/history, matrix and stagnant digest required. |
+| 6 — task matrix/time | Accepted locally | Shared clock/history, exact 48h matrix, stagnant digest. Backend 850 passed plus 2 PG cases; web 425; shared 37; real desktop/mobile and repeated completion verified. |
 | 7 — Google Calendar | Not started | Read-only OAuth/PKCE/state, incremental import/disconnect, external event protections required. |
 
 ## Validation
@@ -511,3 +511,58 @@ Validation:
 Stage 5 is locally accepted. Stage 6 task matrix/time and Stage 7 read-only Google
 Calendar remain unimplemented. Attachment storage remains OPEN. No push, PR,
 main modification, MySDU modification or deployment occurred.
+
+
+## Stage 6 — task matrix and work history
+
+Implemented server-owned nullable Task.started_at/completed_at in migration 0033,
+TaskOut UTC/readOnly fields, `domains/task_clock.py` called only by the shared
+change writer, readonly push handling, immutable HistoryEntry transition metadata,
+TasksView Matrix/current controls and stagnant digest. Shared optional output
+fields preserve old caches/fixtures and never enter task mutation input.
+
+Entering in_progress stamps the current work period; leaving/re-entering starts
+another. Entering completion stamps completed_at; aliases and same status retain
+the instant; reopening clears the current completion. Versioned HistoryEntry
+retains every accepted raw status change and past completion date, with no task
+content. Policy precedes clock/history writes. Legacy unknown dates stay null,
+including title edits before indexing; bootstrap is not a work transition. Adding
+missing null clock keys enriches only SyncRecord when an immutable same-version
+log entry already exists, so no duplicate [v4,v4] cursor event is invented.
+
+Matrix uses exact instants (priority >=2; due<=now+48 elapsed hours, including
+overdue), all four active quadrants, existing rows/actions/search/project/priority
+filters, keyboard tabs and conflict/cache restrictions. It refreshes time once per
+minute only while active and cleans up the interval. No new design/table.
+Digest adds owner in_progress older than seven elapsed days, normalizing accepted
+status variants, clipping titles/counts and reserving room for each section.
+/today stays unchanged.
+
+Acceptance:
+
+- Full final `make test` with fresh PostgreSQL migration/AI/memory/queue URLs:
+  **850 passed, 2 skipped in 125.86s**. Separate fresh PostgreSQL HTTP contracts:
+  **2 passed in 1.15s**. Initial pre-review full run 846 passed; new review
+  regressions then passed in the final run.
+- Clock suite initially **16 passed**, later null-key indexing regression added;
+  clock + legacy **28 passed**. Combined clock/cross-channel/stagnant/briefing
+  review run **33 passed**. Parent legacy-migration + real bot/AI/REST/offline
+  conflict + digest tests **7 passed**. Tests first reproduced missing clocks,
+  same-version duplicate log and normalized stagnant-status omission.
+- Ruff, mypy (**86 source files**), Bandit, compileall, pip-audit, diff checks,
+  SQLite and PostgreSQL upgrade/check passed; one head
+  `0033_task_work_timestamps`. OpenAPI regenerated/equality verified.
+  Shared typecheck/**37 tests**; web typecheck/**425 tests**/build passed.
+  Focused tasks **54 passed**, including New York timezone and live timer cleanup.
+- Real browser on own 5182/8012 stand, restarted after migration: four seeded
+  disposable tasks landed one per quadrant on desktop and mobile 390px, no page
+  overflow. Complete -> reopen -> complete returned versions **2/3/4**, cleared
+  current completion on reopen and stamped a new instant on completion. Direct
+  verification retained all three transition records and both completion dates.
+- Actual mobile Today -> Matrix pointer click first exposed Filter/More covering
+  the tab. Minimal existing-toolbar CSS now places controls in separate rows;
+  unforced browser recheck after re-sign-in and post-change **54 targeted tests/build** passed.
+  This was a browser finding, not hidden by force-clicking. Screenshots inspected.
+
+Stage 6 locally accepted; Stage 7 read-only Google Calendar has not started.
+No live Telegram/LLM, MySDU modification, main change, push/PR or deployment.

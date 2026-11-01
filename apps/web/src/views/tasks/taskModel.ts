@@ -91,6 +91,25 @@ export function isOverdue(task: TaskOut, now = Date.now()): boolean {
   return Number.isFinite(due) && due < now
 }
 
+export function isTaskUrgent(task: TaskOut, now = Date.now()): boolean {
+  if (!task.due_at) return false
+  const due = Date.parse(task.due_at)
+  return Number.isFinite(due) && due <= now + 48 * 60 * 60 * 1000
+}
+
+export function groupTasksInMatrix(tasks: readonly TaskOut[], now = Date.now()) {
+  const groups = [
+    { key: 'important-urgent', label: 'Important and urgent', tasks: [] as TaskOut[] },
+    { key: 'important-not-urgent', label: 'Important, not urgent', tasks: [] as TaskOut[] },
+    { key: 'not-important-urgent', label: 'Urgent, not important', tasks: [] as TaskOut[] },
+    { key: 'not-important-not-urgent', label: 'Neither urgent nor important', tasks: [] as TaskOut[] },
+  ]
+  for (const task of tasks) {
+    if (!isCompleted(task)) groups[(task.priority >= 2 ? 0 : 2) + (isTaskUrgent(task, now) ? 0 : 1)].tasks.push(task)
+  }
+  return groups
+}
+
 export function groupTasksByDay(tasks: readonly TaskOut[]): readonly { key: string; label: string; tasks: readonly TaskOut[] }[] {
   const groups = new Map<string, TaskOut[]>()
   for (const task of tasks) {
