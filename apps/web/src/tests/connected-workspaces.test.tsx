@@ -114,14 +114,14 @@ describe('connected workspaces', () => {
       { id: 't2', account_id: 'a2', type: 'income', amount: '12.3400', currency: 'KZT', notes: 'Salary', occurred_at: '2026-10-29T12:00:00Z' },
     ])
     await render(<FinanceView apiStatus="ready" />)
-    expect(host.textContent).toContain('1234567890123456.0001')
+    expect(host.textContent).toContain('1 234 567 890 123 456.0001')
     await act(async () => host.querySelector<HTMLButtonElement>('.actual-filter button:nth-child(3)')!.click())
     expect(host.textContent).toContain('Salary'); expect(host.textContent).not.toContain('Groceries')
     const filter = host.querySelector<HTMLSelectElement>('select[aria-label="Filter by account"]')!
     await act(async () => { filter.value = 'a1'; filter.dispatchEvent(new Event('change', { bubbles: true })) })
     expect(host.textContent).toContain('No transactions for these filters.')
     await act(async () => host.querySelector<HTMLButtonElement>('.actual-filter button:nth-child(2)')!.click())
-    expect(host.textContent).toContain('1234567890123456.0001'); expect(host.textContent).not.toContain('Salary')
+    expect(host.textContent).toContain('1 234 567 890 123 456.0001'); expect(host.textContent).not.toContain('Salary')
   })
 
   it('starts, pauses, resumes and stops a persisted focus session through the API', async () => {
@@ -154,7 +154,7 @@ describe('connected workspaces', () => {
   it('keeps offline ledger writes disabled while showing cached data', async () => {
     client.financeAccounts.mockResolvedValue([]); client.financeTransactions.mockResolvedValue([]); client.financeSummary.mockResolvedValue({ total: '0', count: 0, currencies: [] })
     await render(<FinanceView apiStatus="offline" />)
-    await click('Add account')
+    await click('New account')
     expect(host.querySelector<HTMLButtonElement>('button[type="submit"], form button:not([type])')?.disabled).toBe(true)
     expect(host.textContent).toContain('OFFLINE_WRITE_UNAVAILABLE')
     expect(client.createFinanceAccount).not.toHaveBeenCalled()

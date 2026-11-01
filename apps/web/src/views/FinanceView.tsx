@@ -5,11 +5,30 @@ import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
 import { ApiStatusPill } from '../components/ApiStatusPill'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
+import { fmtDay } from './tasks/taskModel'
 import { decimalToUnits, formatMoney, sumDecimals } from '../lib/money'
 import type { ApiStatus } from '../types'
 import './connected.css'
 import './actual-mail-finance.css'
+import './desktop/page-tokens.css'
+import './desktop/finance.css'
+import { ArrowDownLeft, ArrowUpRight, Info, Plus, Wallet } from '../icons'
 
+// Exact grouped display ("192 120.00 ₸", "$1 205.00"): integer and fraction digits come straight from the fixed-point value.
+const SYMBOLS: Record<string, [string, 'before' | 'after']> = { KZT: ['\u20B8', 'after'], USD: ['$', 'before'], EUR: ['\u20AC', 'before'], RUB: ['\u20BD', 'after'] }
+function displayMoney(units: bigint, currency: string, sign: 'none' | 'always' = 'none'): string {
+  const raw = formatMoney(units < 0n ? -units : units)
+  const [whole, fraction] = raw.split('.')
+  const grouped = `${whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${fraction}`
+  const [symbol, side] = SYMBOLS[currency.toUpperCase()] ?? [currency.toUpperCase(), 'after']
+  const text = side === 'before' ? `${symbol}${grouped}` : `${grouped} ${symbol}`
+  const mark = units < 0n ? '\u2212 ' : sign === 'always' && units > 0n ? '+ ' : ''
+  return `${mark}${text}`
+}
+const symbolOf = (currency: string) => SYMBOLS[currency.toUpperCase()]?.[0] ?? currency.toUpperCase()
+const CAT_COLORS = ['#D97706', '#2F6FE4', '#6A4CF2', '#E2553F', '#14966C', '#D9367E', '#0F9488']
+const catColor = (name: string) => CAT_COLORS[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % CAT_COLORS.length]!
+const dayKeyOf = (iso: string) => { const date = new Date(iso); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 type FormKind = 'account' | 'category' | 'budget' | 'transaction' | 'transfer'
 const decimal = (value: string) => /^\d{1,16}(\.\d{1,4})?$/.test(value) && /[1-9]/.test(value)
 const inputDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -103,9 +122,18 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
   const expenseUnits = (item: FinanceTransaction) => { const value = decimalToUnits(item.amount); return value < 0n ? -value : value }
   const spendingCurrencies = [...new Set(transactions.filter((item) => item.type === 'expense').map((item) => item.currency))]
   const palette = ['#6A4CF2', '#E88D4A', '#40A586', '#E66D88', '#598BD5', '#B77BC5']
+  const todayKey = dayKeyOf(new Date().toISOString())
+  const historyGroups = (() => {
+    const groups = new Map<string, FinanceTransaction[]>()
+    for (const item of [...transactions].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))) {
+      if ((historyType !== 'all' && item.type !== historyType) || (historyAccount !== 'all' && item.account_id !== historyAccount)) continue
+      const key = dayKeyOf(item.occurred_at)
+      groups.set(key, [...(groups.get(key) ?? []), item])
+    }
+    return [...groups.entries()]
+  })()
   const history = transactions.filter((item) => (historyType === 'all' || item.type === historyType) && (historyAccount === 'all' || item.account_id === historyAccount))
   return <div className="connected-workspace actual-workspace actual-finance">
-    <div className="actual-topline"><ApiStatusPill status={apiStatus}/><button className="button button--quiet" onClick={() => void load()}>Refresh</button></div>
     {apiStatus !== 'ready' && <p role="status">Finance is offline or unavailable. Previously loaded records may be shown from cache. Changes require a connection (OFFLINE_WRITE_UNAVAILABLE).</p>}
     {notice && <p role="status">{notice}</p>}
     {status !== 'ready' ? <StateCard status={status} title={status === 'loading' ? 'Loading ledger' : 'Finance unavailable'} description="Check the connection and owner session."/> : <>
@@ -114,16 +142,17 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
         <div className="actual-mobile-record-actions">{(['expense', 'income'] as const).map((type) => <button type="button" key={type} onClick={() => { setForm(null); setKind(type); setCategoryId(''); setMobileRecord(true) }}>{type === 'expense' ? '↗ Expense' : '↙ Income'}</button>)}</div>
       </section>
       <section className="actual-accounts" aria-label="Accounts">
-        {accounts.map((item) => <button type="button" key={item.id} className="actual-account" aria-pressed={accountId === item.id} onClick={() => changeAccount(item.id)}><span className="actual-account-heading"><span className="actual-icon" aria-hidden="true">◈</span><strong>{item.name}</strong><span className="actual-badge">{item.currency}</span></span><span className="actual-account-balance">{formatMoney(accountBalance(item))} {item.currency}</span><span className="actual-account-type">{item.type}</span></button>)}
-        <button type="button" className="actual-new-account" disabled={busy} onClick={() => openForm('account')}>Add account</button>
+        {accounts.map((item) => <button type="button" key={item.id} className="actual-account" aria-pressed={accountId === item.id} onClick={() => changeAccount(item.id)}><span className="actual-account-heading"><span className="actual-icon" aria-hidden="true"><Wallet size={17} /></span><strong>{item.name}</strong><span className="actual-badge">{item.currency}</span></span><span className="actual-account-balance">{displayMoney(accountBalance(item), item.currency)}</span></button>)}
+        <button type="button" className="actual-new-account" disabled={busy} onClick={() => openForm('account')}><Plus size={18} />New account</button>
       </section>
       <div className="actual-finance-columns"><div className="actual-finance-left">
         {(form === null || form === 'transaction') && <form className={`actual-panel actual-record ${mobileRecord ? 'actual-record-open' : ''}`} onSubmit={submit}>
-          <div className="actual-record-title"><h2>Record</h2><button type="button" className="actual-record-close" onClick={() => setMobileRecord(false)} aria-label="Close record">×</button></div>
-          <div className="actual-record-types" role="radiogroup" aria-label="Transaction type">{(['expense', 'income'] as const).map((type) => <button type="button" role="radio" aria-checked={kind === type} key={type} onClick={() => { setKind(type); setCategoryId('') }}>{type === 'expense' ? '↗ Expense' : '↙ Income'}</button>)}</div>
-          <label>Amount<span className="actual-amount"><input required aria-label="Amount (decimal)" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00"/><span>{selectedAccount?.currency ?? currency}</span></span></label>
-          <div className="actual-record-fields"><label>Account<StyledSelect aria-label="Account" required value={accountId} onChange={(event) => changeAccount(event.target.value)}><option value="">Choose account</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</StyledSelect></label><label>Category<StyledSelect aria-label="Category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Uncategorized</option>{categories.filter((item) => item.kind === kind).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</StyledSelect></label><label>Date<input required type="date" value={recordDate} onChange={(event) => setRecordDate(event.target.value)}/></label><label>Note<input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional"/></label></div>
+          <div className="actual-record-title"><h2>Record</h2><ApiStatusPill status={apiStatus} /><button type="button" className="actual-refresh" aria-label="Refresh" title="Refresh" onClick={() => void load()}>Refresh</button><button type="button" className="actual-record-close" onClick={() => setMobileRecord(false)} aria-label="Close record">×</button></div>
+          <div className="actual-record-types" role="radiogroup" aria-label="Transaction type">{(['expense', 'income'] as const).map((type) => <button type="button" role="radio" aria-checked={kind === type} key={type} onClick={() => { setKind(type); setCategoryId('') }}>{type === 'expense' ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}{type === 'expense' ? 'Expense' : 'Income'}</button>)}</div>
+          <label><span className="actual-label">Amount</span><span className="actual-amount"><input required aria-label="Amount (decimal)" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00"/><span>{symbolOf(selectedAccount?.currency ?? currency)}</span></span></label>
+          <div className="actual-record-fields"><label><span className="actual-label">Account</span><select aria-label="Account" required value={accountId} onChange={(event) => changeAccount(event.target.value)}><option value="">Choose account</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.currency}</option>)}</select></label><label><span className="actual-label">Category</span><select aria-label="Category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Uncategorized</option>{categories.filter((item) => item.kind === kind).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span className="actual-label">Date</span><input required type="date" value={recordDate} onChange={(event) => setRecordDate(event.target.value)}/></label><label><span className="actual-label">Note</span><input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional"/></label></div>
           <div className="actual-record-mobile-choices"><span>Account</span><div>{accounts.map((item) => <button key={item.id} type="button" aria-pressed={accountId === item.id} onClick={() => changeAccount(item.id)}>{item.name}</button>)}</div><span>Category</span><div><button type="button" aria-pressed={!categoryId} onClick={() => setCategoryId('')}>Uncategorized</button>{categories.filter((item) => item.kind === kind).map((item) => <button key={item.id} type="button" aria-pressed={categoryId === item.id} onClick={() => setCategoryId(item.id)}>{item.name}</button>)}</div></div>
+          <div className="actual-preview"><Info size={14} />{kind === 'expense' ? 'From' : 'Into'} {selectedAccount ? `${selectedAccount.name} · ${selectedAccount.currency}` : 'choose an account'} · {categories.find((item) => item.id === categoryId)?.name ?? 'Uncategorized'}</div>
           <button className="button button--primary actual-record-submit" disabled={busy || apiStatus !== 'ready' || !accountId}>{busy ? 'Saving…' : `Record ${kind}`}</button>
           <button type="button" className="actual-transfer-link" disabled={busy} onClick={() => openForm('transfer')}>Transfer between accounts</button>
         </form>}
@@ -141,7 +170,7 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
           <div><button className="button button--primary" disabled={busy || apiStatus !== 'ready'}>{busy ? 'Saving…' : 'Save'}</button><button type="button" className="button button--quiet" onClick={() => setForm(null)}>Cancel</button></div>
         </fieldset>
       </form>}
-      <section className="actual-panel actual-summary"><h2>Summary</h2><p>{summary?.count ?? 0} transactions</p>{summary?.currencies?.length ? summary.currencies.map((item) => <div className="actual-summary-currency" key={item.currency}><strong>{item.currency}</strong><b>{item.balance}</b><span>Income {item.income}</span><span>Spent {item.expense}</span></div>) : <p>No currency balances yet.</p>}{spendingCurrencies.map((currencyCode) => {
+      <section className="actual-panel actual-summary"><h2>Summary</h2><p className="actual-summary-sub">{summary?.count ?? 0} transactions</p>{summary?.currencies?.length ? summary.currencies.map((item) => <div className="actual-summary-currency" key={item.currency}><strong>{item.currency}</strong><b className={decimalToUnits(item.balance) < 0n ? 'is-negative' : decimalToUnits(item.balance) > 0n ? 'is-positive' : ''}>{displayMoney(decimalToUnits(item.balance), item.currency, 'always')}</b><span>Income <em className="is-income">{displayMoney(decimalToUnits(item.income), item.currency)}</em></span><span>Spent <em>{displayMoney(decimalToUnits(item.expense) < 0n ? -decimalToUnits(item.expense) : decimalToUnits(item.expense), item.currency)}</em></span></div>) : <p>No currency balances yet.</p>}{spendingCurrencies.map((currencyCode) => {
         const grouped = new Map<string, bigint>()
         transactions.filter((item) => item.type === 'expense' && item.currency === currencyCode).forEach((item) => {
           const key = item.category_id || ''
@@ -158,7 +187,7 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
           return { id, value, percent, start, color: palette[index % palette.length]! }
         })
         const gradient = segments.map((item) => `${item.color} ${item.start}% ${item.start + item.percent}%`).join(', ')
-        return <div className="actual-finance-breakdown" key={currencyCode}><h3>Spending by category · {currencyCode}</h3><div className="actual-finance-chart"><div className="actual-finance-donut" aria-hidden="true" style={{ background: `conic-gradient(${gradient})` }}><span>{formatMoney(total)}<small>{currencyCode} spent</small></span></div><ul>{segments.map((item) => <li key={item.id}><i style={{ background: item.color }}/><span>{item.id ? categories.find((category) => category.id === item.id)?.name ?? 'Unknown category' : 'Uncategorized'}</span><b>{formatMoney(item.value)}</b></li>)}</ul></div></div>
+        return <div className="actual-finance-breakdown" key={currencyCode}><h3>{currencyCode} spending by category · {displayMoney(total, currencyCode)}</h3><div className="actual-finance-bar" aria-hidden="true">{segments.map((item) => <span key={item.id} style={{ width: `${item.percent}%`, background: item.color }} />)}</div><ul>{segments.map((item) => <li key={item.id}><i style={{ background: item.color }}/><span>{item.id ? categories.find((category) => category.id === item.id)?.name ?? 'Unknown category' : 'Uncategorized'}</span><em>{Math.round(item.percent)}%</em><b>{displayMoney(item.value, currencyCode)}</b></li>)}</ul></div>
       })}</section>
       {budgets.length > 0 && <section className="actual-panel actual-finance-budgets"><h2>Budgets</h2>{budgets.map((budget) => {
         const spent = transactions.filter((item) => item.type === 'expense' && item.currency === budget.currency && (!budget.category_id || item.category_id === budget.category_id) && Date.parse(item.occurred_at) >= Date.parse(budget.period_start) && Date.parse(item.occurred_at) < Date.parse(budget.period_end)).reduce((sum, item) => sum + expenseUnits(item), 0n)
@@ -167,8 +196,8 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
         return <div className="actual-finance-budget" key={budget.id}><div><strong>{budget.category_id ? categories.find((category) => category.id === budget.category_id)?.name ?? 'Unknown category' : 'All categories'}</strong><span>{formatMoney(spent)} / {formatMoney(limit)} {budget.currency}</span></div><div className="actual-finance-progress" role="progressbar" aria-label={`${budget.category_id ? categories.find((category) => category.id === budget.category_id)?.name ?? 'Unknown category' : 'All categories'} budget`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }}/></div><small>{new Date(budget.period_start).toLocaleDateString()} – {new Date(budget.period_end).toLocaleDateString()} (end exclusive)</small></div>
       })}</section>}
       <details className="actual-panel actual-finance-tools"><summary>Categories &amp; budgets</summary><div className="actual-actions"><button className="button button--quiet" disabled={busy} onClick={() => openForm('category')}>Add category</button><button className="button button--quiet" disabled={busy} onClick={() => openForm('budget')}>Add budget</button></div><h3>Categories</h3>{categories.length ? categories.map((item) => <p key={item.id}>{item.name} · {item.kind}</p>) : <p>No categories yet.</p>}<h3>Budgets</h3>{budgets.length ? budgets.map((item) => <p key={item.id}>{categories.find((category) => category.id === item.category_id)?.name ?? 'All categories'}: {item.limit_amount} {item.currency} · {new Date(item.period_start).toLocaleDateString()} – {new Date(item.period_end).toLocaleDateString()}</p>) : <p>No budgets yet.</p>}</details>
-      </div><section className="actual-panel actual-history"><div className="actual-history-head"><h2>History</h2><div className="actual-filter" aria-label="Filter history by type">{(['all', 'expense', 'income'] as const).map((value) => <button type="button" key={value} aria-pressed={historyType === value} onClick={() => setHistoryType(value)}>{value === 'all' ? 'All' : value === 'expense' ? 'Expense' : 'Income'}</button>)}</div><StyledSelect aria-label="Filter by account" value={historyAccount} onChange={(event) => setHistoryAccount(event.target.value)}><option value="all">All accounts</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</StyledSelect></div>
-        {history.length ? history.map((item) => <article className="actual-history-row" key={item.id}><span className="actual-icon" aria-hidden="true">{item.type === 'income' ? '↗' : '↙'}</span><div><strong>{item.notes || categories.find((category) => category.id === item.category_id)?.name || 'Uncategorized'}</strong><small>{accounts.find((account) => account.id === item.account_id)?.name ?? 'Unknown account'} · {item.type} · {new Date(item.occurred_at).toLocaleDateString()}</small></div><b>{item.amount} {item.currency}</b></article>) : <p className="actual-empty">{transactions.length ? 'No transactions for these filters.' : 'No transactions yet.'}</p>}
+      </div><section className="actual-panel actual-history"><div className="actual-history-head"><h2>History</h2><div className="actual-filter" role="radiogroup" aria-label="Filter history by type">{(['all', 'expense', 'income'] as const).map((value) => <button type="button" role="radio" aria-checked={historyType === value} aria-pressed={historyType === value} key={value} onClick={() => setHistoryType(value)}>{value === 'all' ? 'All' : value === 'expense' ? 'Expenses' : 'Income'}</button>)}</div><select className="actual-history-select" aria-label="Filter by account" value={historyAccount} onChange={(event) => setHistoryAccount(event.target.value)}><option value="all">All accounts</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+        {history.length ? historyGroups.map(([day, items]) => <div className="actual-history-group" key={day}><div className="actual-history-day"><span>{fmtDay(day, todayKey)}</span><small>{new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</small></div>{items.map((item) => { const category = categories.find((entry) => entry.id === item.category_id)?.name ?? 'Uncategorized'; const color = catColor(category); const value = decimalToUnits(item.amount); return <article className="actual-history-row" key={item.id}><span className="actual-icon" aria-hidden="true" style={{ color, background: `${color}1A` }}><Wallet size={16} /></span><div><strong>{item.notes || category}</strong><small>{category} · {accounts.find((account) => account.id === item.account_id)?.name ?? 'Unknown account'}</small></div><b className={item.type === 'income' ? 'is-income' : ''}>{displayMoney(item.type === 'income' ? (value < 0n ? -value : value) : (value > 0n ? -value : value), item.currency, 'always')}</b></article> })}</div>) : <p className="actual-empty">{transactions.length ? 'No transactions for these filters.' : 'No transactions yet.'}</p>}
       </section></div>
     </>}
   </div>

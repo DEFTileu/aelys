@@ -85,6 +85,9 @@ export const glyphs = {
   MailOpen: 'M3 10 12 4l9 6v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9Zm0 0 9 6 9-6',
   Reply: 'M9 8 4 13l5 5m-5-5h10a6 6 0 0 1 6 6v1',
   ShieldCheck: 'M5 7 12 4l7 3v5c0 3-4 6-7 8-3-2-7-5-7-8Zm4 5 2 2 4-4',
+  ArrowUpRight: 'M7 17 17 7M8 7h9v9',
+  ArrowDownLeft: 'm17 7-10 10m9 0H7V8',
+  Info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 8v5m0-8h.01',
   Trash2: 'M3.5 6h17M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m-6 5v6m4-6v6',
 } as const
 

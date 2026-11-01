@@ -1,0 +1,91 @@
+/* Finances, matched to the ACTUAL design: account cards, Record, Summary and grouped History. Desktop layer; mobile rules stay in actual-mail-finance.css. */
+@media (min-width: 701px) {
+  .actual-finance { padding: 0 28px 28px; display: flex; flex-direction: column; gap: 16px; }
+  .actual-finance :where(button, input, select) { font: inherit; }
+  .actual-finance .actual-panel { padding: 18px; border: 1px solid var(--pg-line); border-radius: 20px; background: var(--pg-card); box-shadow: var(--pg-shadow); }
+  .actual-finance .button { height: 36px; min-height: 0; padding: 0 12px; border: 1px solid var(--pg-line-btn); border-radius: 10px; background: var(--pg-card); color: var(--pg-ink); display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 22px; font-weight: 500; white-space: nowrap; }
+  .actual-finance .button--primary { border: 0; background: var(--pg-violet); color: #fff; }
+
+  /* Accounts */
+  .actual-finance .actual-accounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .actual-finance .actual-account { text-align: left; padding: 16px; min-height: 0; border: 1.5px solid var(--pg-line); border-radius: 18px; background: var(--pg-card); box-shadow: 0 1px 2px rgba(40, 30, 30, .04); display: flex; flex-direction: column; gap: 10px; color: var(--pg-ink); }
+  .actual-finance .actual-account[aria-pressed='true'] { border-color: var(--pg-violet); }
+  .actual-finance .actual-account-heading { display: flex; align-items: center; gap: 10px; }
+  .actual-finance .actual-account-heading .actual-icon { width: 34px; height: 34px; flex: none; border-radius: 10px; background: var(--pg-tint); color: var(--pg-violet); display: flex; align-items: center; justify-content: center; }
+  .actual-finance .actual-account-heading strong { flex: 1; font-size: 14px; font-weight: 600; line-height: 22px; text-align: left; }
+  .actual-finance .actual-badge { height: 20px; padding: 0 7px; border-radius: 6px; background: var(--pg-chip); font-size: 11px; line-height: 20px; font-weight: 600; color: var(--pg-ink-3); }
+  .actual-finance .actual-account-balance { margin: 0; font-size: 22px; line-height: 30px; font-weight: 700; letter-spacing: -.01em; color: var(--pg-ink); }
+  .actual-finance .actual-new-account { padding: 16px; min-height: 104px; border: 1.5px dashed var(--pg-disabled); border-radius: 18px; background: transparent; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--pg-ink-3); }
+  .actual-finance .actual-new-account:hover { background: rgba(128, 118, 140, .10); }
+
+  /* Columns */
+  .actual-finance .actual-finance-columns { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .actual-finance .actual-finance-left { display: flex; flex-direction: column; gap: 16px; }
+  .actual-finance .actual-record { display: flex; flex-direction: column; gap: 12px; }
+  .actual-finance .actual-record-title { display: flex; align-items: center; gap: 8px; }
+  .actual-finance .actual-record-title h2 { flex: 1; font-size: 16px; font-weight: 600; line-height: 24px; }
+  .actual-finance .actual-refresh { height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--pg-mute); font-size: 12px; }
+  .actual-finance .actual-refresh:hover { background: var(--pg-hover); }
+  .actual-finance .actual-record-types { display: flex; padding: 4px; gap: 2px; border-radius: 14px; background: var(--pg-seg); }
+  .actual-finance .actual-record-types button { flex: 1; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--pg-ink-2); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 500; }
+  .actual-finance .actual-record-types button[aria-checked='true'] { background: var(--pg-card); color: var(--pg-acc); box-shadow: 0 1px 3px rgba(30, 20, 40, .12); }
+  .actual-finance .actual-record label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .actual-finance .actual-label { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--pg-ink-3); }
+  .actual-finance .actual-amount { display: flex; align-items: center; height: 52px; padding: 0 14px; border-radius: 14px; background: var(--pg-field); border: 1.5px solid var(--pg-line); }
+  .actual-finance .actual-amount input { flex: 1; min-width: 0; height: auto; padding: 0; border: 0; outline: 0; background: transparent; color: var(--pg-ink); font-size: 22px; font-weight: 600; }
+  .actual-finance .actual-amount > span { font-size: 18px; font-weight: 600; color: var(--pg-mute); }
+  .actual-finance .actual-record-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actual-finance .actual-record-fields input, .actual-finance .actual-record-fields select { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--pg-line); border-radius: 12px; background: var(--pg-field); color: var(--pg-ink); font-size: 14px; font-weight: 400; line-height: 22px; }
+  .actual-finance .actual-record-fields select { cursor: pointer; }
+  .actual-finance .actual-preview { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
+  .actual-finance .actual-record .actual-record-submit { width: 100%; height: 44px; margin: 0; padding: 0 16px; border-radius: 12px; justify-content: center; font-size: 14px; box-shadow: 0 4px 12px rgba(106, 76, 242, .25); }
+  .actual-finance .actual-transfer-link { align-self: center; height: 28px; padding: 0 8px; border: 0; background: none; color: var(--pg-mute); font-size: 12px; text-decoration: underline; }
+
+  /* Summary */
+  .actual-finance .actual-summary { display: flex; flex-direction: column; gap: 12px; }
+  .actual-finance .actual-summary h2 { font-size: 16px; font-weight: 600; line-height: 24px; }
+  .actual-finance .actual-summary-sub { margin: -12px 0 0; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
+  .actual-finance .actual-summary-currency { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 12px; border-radius: 14px; background: var(--pg-field); }
+  .actual-finance .actual-summary-currency strong { font-size: 12px; font-weight: 600; color: var(--pg-ink-3); }
+  .actual-finance .actual-summary-currency b { font-size: 16px; font-weight: 700; color: var(--pg-ink); text-align: right; }
+  .actual-finance .actual-summary-currency span { font-size: 12px; color: var(--pg-mute); }
+  .actual-finance .actual-summary-currency span:nth-of-type(2) { text-align: right; }
+  .actual-finance .actual-summary-currency b.is-positive { color: #0E7A57; }
+  .actual-finance .actual-summary-currency b.is-negative { color: var(--pg-red); }
+  :root[data-theme='dark'] .actual-finance .actual-summary-currency b.is-positive { color: #5FD7A8; }
+  .actual-finance .actual-summary-currency em { font-style: normal; font-weight: 600; color: var(--pg-ink); }
+  .actual-finance .actual-summary-currency em.is-income { color: #0E7A57; }
+  :root[data-theme='dark'] .actual-finance .actual-summary-currency em.is-income { color: #5FD7A8; }
+  .actual-finance .actual-finance-breakdown h3 { margin: 4px 0 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--pg-ink-3); }
+  .actual-finance .actual-finance-bar { display: flex; height: 10px; margin: 12px 0; border-radius: 5px; overflow: hidden; gap: 2px; }
+  .actual-finance .actual-finance-bar span { height: 100%; }
+  .actual-finance .actual-finance-breakdown ul { list-style: none; margin: 0; padding: 0; }
+  .actual-finance .actual-finance-breakdown li { display: flex; align-items: center; gap: 10px; height: 28px; font-size: 13px; }
+  .actual-finance .actual-finance-breakdown li i { width: 8px; height: 8px; border-radius: 50%; }
+  .actual-finance .actual-finance-breakdown li span { flex: 1; }
+  .actual-finance .actual-finance-breakdown li em { font-style: normal; font-size: 12px; color: var(--pg-mute); }
+  .actual-finance .actual-finance-breakdown li b { min-width: 96px; font-weight: 500; text-align: right; }
+
+  /* History */
+  .actual-finance .actual-history { padding: 6px; }
+  .actual-finance .actual-history-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 12px 8px; }
+  .actual-finance .actual-history-head h2 { flex: 1; font-size: 16px; font-weight: 600; line-height: 24px; }
+  .actual-finance .actual-filter { display: flex; padding: 3px; gap: 2px; border-radius: 14px; background: var(--pg-seg); }
+  .actual-finance .actual-filter button { height: 28px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--pg-ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .actual-finance .actual-filter button[aria-pressed='true'] { background: var(--pg-card); color: var(--pg-acc); box-shadow: 0 1px 3px rgba(30, 20, 40, .12); }
+  .actual-finance .actual-history-select { height: 34px; padding: 0 8px; border: 0; border-radius: 10px; background: var(--pg-field); color: var(--pg-ink); font-size: 12px; cursor: pointer; }
+  .actual-finance .actual-history-day { display: flex; align-items: baseline; gap: 8px; padding: 12px 12px 4px; }
+  .actual-finance .actual-history-day span { font-size: 13px; font-weight: 600; }
+  .actual-finance .actual-history-day small { font-size: 12px; color: var(--pg-mute); }
+  .actual-finance .actual-history-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px; border: 0; border-radius: 12px; }
+  .actual-finance .actual-history-row:hover { background: var(--pg-hover); }
+  .actual-finance .actual-history-row .actual-icon { width: 36px; height: 36px; flex: none; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+  .actual-finance .actual-history-row > div { display: block; flex: 1; min-width: 0; }
+  .actual-finance .actual-history-row strong { display: block; font-size: 14px; line-height: 20px; font-weight: 500; }
+  .actual-finance .actual-history-row small { display: block; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
+  .actual-finance .actual-history-row > b { font-size: 14px; font-weight: 600; color: var(--pg-ink); white-space: nowrap; }
+  .actual-finance .actual-history-row > b.is-income { color: #0E7A57; }
+  :root[data-theme='dark'] .actual-finance .actual-history-row > b.is-income { color: #5FD7A8; }
+  .actual-finance .actual-empty { padding: 32px 12px; text-align: center; font-size: 13px; color: var(--pg-mute); }
+  .actual-finance .actual-finance-tools { padding: 12px 18px; }
+}
