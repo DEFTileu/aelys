@@ -155,7 +155,7 @@ describe('Telegram settings', () => {
       const host = await mount()
       const response = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Reply text'))!
       await input(response, 'My reply')
-      const persona = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Assistant instructions'))!
+      const persona = [...host.querySelectorAll('textarea')].find((item) => item.id === 'telegram-instructions')!
       await input(persona, 'My instructions')
       client.telegramStatus.mockResolvedValue({ ...status, version: 4, instructions: 'Old instructions' })
       client.telegramMessages.mockResolvedValue([{ ...message, version: 5, draft_status: 'ready', draft_text: 'New draft' }])
@@ -170,32 +170,29 @@ describe('Telegram settings', () => {
   it('updates settings using the returned version and leaves auto reply off by default', async () => {
     client.updateTelegramSettings.mockResolvedValue({ ...status, version: 4, auto_reply: true, provider_id: 'provider-1', model: 'model-a', instructions: 'Be polite' })
     client.aiProviders.mockResolvedValue([{ id: 'provider-1', kind: 'claude', enabled: true, has_secret: true }])
-    const host = await mount(); const select = host.querySelector<HTMLButtonElement>('[role=combobox]')!
-    await act(async () => select.click())
-    await act(async () => document.querySelector<HTMLElement>('[role=option][id$="option-1"]')!.click())
-    const model = [...host.querySelectorAll('input')].find((item) => item.closest('label')?.textContent?.includes('Model'))!
-    await input(model, 'model-a')
-    const persona = [...host.querySelectorAll('textarea')].find((item) => item.closest('label')?.textContent?.includes('Assistant instructions'))!
-    await input(persona, 'Be polite')
-    const check = [...host.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].find(item => item.closest('label')?.textContent?.includes('Read and reply automatically'))!
-    expect(host.textContent).toContain('Read and reply automatically')
-    expect(host.textContent).toContain('replies automatically on your behalf')
-    expect(host.textContent).toContain('API key')
-    expect(check.checked).toBe(false)
+    const host = await mount(); const select = host.querySelector<HTMLSelectElement>('select[aria-label="AI provider"]')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, 'provider-1'); select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await input(host.querySelector<HTMLInputElement>('input[aria-label="Model"]')!, 'model-a')
+    await input(host.querySelector<HTMLTextAreaElement>('#telegram-instructions')!, 'Be polite')
+    const check = host.querySelector<HTMLButtonElement>('[role=switch][aria-label="Auto-reply"]')!
+    expect(host.textContent).toContain('draft replies in allowed chats')
+    expect(check.getAttribute('aria-checked')).toBe('false')
     await act(async () => check.click())
     expect(client.updateTelegramSettings).toHaveBeenCalledWith({ version: 3, auto_reply: true, provider_id: 'provider-1', model: 'model-a', instructions: 'Be polite' })
-    expect(check.checked).toBe(true)
+    expect(check.getAttribute('aria-checked')).toBe('true')
   })
   it('keeps setup and message details collapsed until requested', async () => {
     client.telegramMessages.mockResolvedValue([message])
     const host = await mount()
-    const disclosures = [...host.querySelectorAll('details')]
-    const setup = disclosures.find((item) => item.querySelector('summary')?.textContent?.includes('How to connect'))!
-    const conversation = disclosures.find((item) => item.querySelector('summary')?.textContent?.includes('Customer'))!
-    expect(setup.open).toBe(false); expect(conversation.open).toBe(false)
+    const conversation = [...host.querySelectorAll('details')].find((item) => item.querySelector('summary')?.textContent?.includes('Customer'))!
+    expect(conversation.open).toBe(false)
     await act(async () => conversation.querySelector('summary')!.click())
     expect(conversation.open).toBe(true)
     expect(client.sendTelegramMessage).not.toHaveBeenCalled()
+    await act(async () => root!.unmount()); root = undefined; host.remove()
+    client.telegramStatus.mockResolvedValue({ ...status, configured: false, version: null })
+    const fresh = await mount()
+    expect([...fresh.querySelectorAll('details')].find((item) => item.querySelector('summary')?.textContent?.includes('How to connect'))!.open).toBe(false)
   })
   it('creates a draft and sends edited text only on explicit clicks, retaining the retry key', async () => {
     client.telegramMessages.mockResolvedValue([message])

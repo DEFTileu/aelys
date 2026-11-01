@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { type AIProvider, type TelegramBusinessMessage, type TelegramSettingsPatch, type TelegramStatus } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
 import { sendIdempotencyKey, telegramErrorNotice as errorNotice } from '../lib/telegramMessages'
-import { Checkbox, SelectField } from '../components/controls/SelectionControls'
+import { Checkbox } from '../components/controls/SelectionControls'
+import { Send } from '../icons'
+import { Card, Group, Row, SelectChip, SwitchRow } from './settings/ui'
 import './connected.css'
 
 export function TelegramSettings() {
@@ -80,86 +82,104 @@ export function TelegramSettings() {
   }
   const connected = status?.connections.some((connection) => connection.enabled) ?? false
 
-  return <div className="page page--settings actual-settings-forms"><div className="settings-grid">
-    <section className="settings-card">
-      <div className="settings-card__header"><div><h2>Telegram Business</h2><p>The assistant reads incoming messages and replies on your behalf in allowed chats.</p></div></div>
-      {notice && <p role="status">{notice}</p>}
-      <details className="actual-settings-disclosure"><summary>How to connect the bot</summary><ol>
-        <li>Create a bot with <a href="https://t.me/BotFather" target="_blank" rel="noreferrer">BotFather</a> and enter its token.</li>
-        <li>In BotFather, turn on Secretary Mode (Business Mode). <a href="https://core.telegram.org/bots/features#business-bots" target="_blank" rel="noreferrer">Telegram guide</a></li>
-        <li>Create a one-time link and open it in Telegram as the owner.</li>
-        <li>In Telegram Business settings, add the bot under chatbots and allow the chats you need. <a href="https://core.telegram.org/api/business" target="_blank" rel="noreferrer">Telegram Business</a></li>
-      </ol>
-      <p className="connected-help">Local Telegram polling needs the Aelys backend to be running; no public URL is required.</p>
-      <p className="connected-help">Messages are stored encrypted for up to 7 days. Disconnecting the bot deletes them.</p></details>
-      <form className="settings-form" onSubmit={connect}>
-        <label>Bot token<input type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} required /></label>
-        <button className="button button--primary" type="submit" disabled={busy || !token.trim()}>Connect bot</button>
-      </form>
-      {status && <>
-        <p><strong>{!status.configured ? 'Bot not set up' : connected ? 'Telegram Business connected' : 'Bot is set up; Telegram Business connection pending'}</strong>{status.bot_username ? ` · @${status.bot_username}` : ''}</p>
-        {status.configured && <>
-          <p>Business mode: {status.business_capable ? 'available' : 'not enabled'} · Owner: {status.owner_telegram_id ?? 'not linked'} · {status.enabled ? 'active' : 'paused'}</p>
-          <div className="provider-actions">
-            <button className="button button--quiet" disabled={busy} onClick={() => void action(async () => { setBinding(await getSharedApiClient().telegramBinding()) })}>Create owner link</button>
-            <button className="button button--quiet" disabled={busy || status.version == null} onClick={() => void action(() => update({ enabled: !status.enabled }))}>{status.enabled ? 'Pause' : 'Resume'}</button>
-            <button className="button button--quiet" disabled={busy} onClick={() => void action(async () => { await getSharedApiClient().disconnectTelegram(); setBinding(null); setMessages([]); await load() })}>Disconnect bot</button>
-          </div>
-          {binding && <p><a href={binding.url} target="_blank" rel="noreferrer">Open one-time owner link</a> · valid until {binding.expires_at}</p>}
-          <details className="actual-settings-disclosure"><summary>Business connections</summary>
-          {status.connections.length === 0 ? <p>No connections yet.</p> : status.connections.map((connection) => <p key={connection.id}>ID {connection.telegram_user_id} · {connection.enabled ? 'active' : 'disabled'} · {connection.can_reply ? 'replies allowed' : 'replies blocked'}</p>)}
-          {status.last_polled_at && <p>Last check: {status.last_polled_at}</p>}
-          {status.last_error_code && <p>The check failed. Refresh the connection status.</p>}</details>
-        </>}
-      </>}
-      <div className="provider-actions"><button className="button button--quiet" disabled={busy} onClick={() => void action(load)}>Refresh</button>
-        <button className="button button--quiet" disabled={busy || !status?.configured} onClick={() => void action(async () => { const result = await getSharedApiClient().syncTelegram(); await load(); setNotice(`Check complete. Processed: ${result.processed}.`) })}>Check connection</button></div>
-    </section>
-    {status?.configured && <section className="settings-card">
-      <h2>Personal commands and digest</h2>
-      <p>One Aelys bot: /task, /note, /today, /remind 18:00 text, /busy 18:00 text, /free, /help. Use a bot separate from MySDU.</p>
-      <p>The digest uses no AI and is off by default. Leave the time empty to turn it off.</p>
-      <p>Status: {status.status_text ?? 'not set'}{status.status_until ? ` · until ${status.status_until}` : ''}</p>
-      <form className="settings-form" onSubmit={event => { event.preventDefault(); void action(() => update({ timezone, digest_time: digestTime || null, reply_delay_seconds: replyDelay, deadline_reminders: deadlineReminders, quiet_start: quietStart || null, quiet_end: quietEnd || null })) }}>
-        <label>Time zone<input required maxLength={64} value={timezone} onChange={event => setTimezone(event.target.value)} /></label>
-        <label>Digest time<input type="time" value={digestTime} onChange={event => setDigestTime(event.target.value)} /></label>
-        <label>Reply delay (seconds)<input type="number" min={0} max={900} required value={replyDelay} onChange={event => setReplyDelay(Number(event.target.value))} /></label>
-        <Checkbox label="Deadline reminders" checked={deadlineReminders} disabled={busy || status.version == null} onChange={setDeadlineReminders} />
-        <p>Remind me in Telegram 5 hours and 10 minutes before an unfinished task is due.</p>
-        <label>Quiet hours start<input type="time" required={!!quietEnd} disabled={busy || status.version == null} value={quietStart} onChange={event => setQuietStart(event.target.value)} aria-describedby="telegram-quiet-hours-help" /></label>
-        <label>Quiet hours end<input type="time" required={!!quietStart} disabled={busy || status.version == null} value={quietEnd} onChange={event => setQuietEnd(event.target.value)} aria-describedby="telegram-quiet-hours-help" /></label>
-        <p id="telegram-quiet-hours-help">Set both times in your time zone, or leave both empty to turn quiet hours off. Reminders wait until quiet hours end, including urgent reminders.</p>
-        <button className="button button--primary" type="submit" disabled={busy || status.version == null}>Save personal settings</button>
-      </form>
-    </section>}
-    {status?.configured && <section className="settings-card">
-      <h2>Read and reply automatically</h2>
-      <p>When this mode is on, the bot reads incoming messages in the selected Telegram Business chats and replies automatically on your behalf. Connect the bot to the chats you need and allow replies in Telegram.</p>
-      <p>For automatic replies, choose an external AI provider with a saved API key, set a model and write instructions for the assistant. Messages are sent to the chosen AI provider to prepare the reply.</p>
-      <form className="settings-form" onSubmit={(event) => { event.preventDefault(); void action(() => update({ instructions, provider_id: provider || null, model: model.trim() || null })) }}>
-        <Checkbox label="Read and reply automatically" checked={status.auto_reply} disabled={busy || status.version == null} onChange={(enabled) => { void action(() => update(enabled ? { auto_reply: true, provider_id: provider || null, model: model.trim() || null, instructions } : { auto_reply: false })) }} />
-        <label>Assistant instructions<textarea maxLength={10000} value={instructions} onChange={(event) => setInstructions(event.target.value)} /></label>
-        <SelectField label="AI provider" value={provider} onChange={setProvider} options={[{ value: '', label: 'Not selected' }, ...providers.map((item) => ({ value: item.id, label: `${item.kind} · ${item.id}` }))]} />
-        <label>Model<input maxLength={200} value={model} onChange={(event) => setModel(event.target.value)} /></label>
-        <button className="button button--primary" disabled={busy || status.version == null} type="submit">Save settings</button>
-      </form>
-    </section>}
-    {status?.configured && <section className="settings-card">
-      <h2>Messages and manual replies</h2>
-      <p>When automatic mode is off, you can draft a reply, review it and send it manually.</p>
-      {messages.length === 0 && <p>No messages yet.</p>}
-      {messages.map((message) => <details className="provider-row actual-settings-disclosure" key={message.id}>
-        <summary>{message.chat_title} · {message.direction}</summary><p>{message.sent_at}{message.deleted_at ? ' · deleted' : ''}</p>
-        <div className="mail-body">{message.text || (message.direction === 'owner' ? 'Message without text' : '')}</div>
-        {message.direction === 'owner' && <p>Your outgoing message. Select an incoming message from the other person to reply.</p>}
-        {message.direction === 'inbound' && <>
-          <p>Draft: {message.draft_status}{message.draft_error_code ? ' · draft failed' : ''}</p>
-          {message.owner_note && <p>For the owner: {message.owner_note}</p>}
-          <div className="settings-form"><label>Reply text<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
-            <div className="provider-actions"><button className="button button--quiet" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Create draft</button>
-              <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Send reply</button></div></div>
-        </>}
-      </details>)}
-    </section>}
-  </div></div>
+  const draftsReady = messages.filter((message) => !!(drafts[message.id] ?? message.draft_text)).length
+  const autoOff = !status?.auto_reply
+  const state = !status?.configured ? 'Bot not set up' : !status.enabled ? 'Paused' : connected ? 'Connected to your Business account' : 'Telegram Business connection pending'
+  const connectForm = <form className="st-form" onSubmit={connect}>
+    <label className="st-field-label">Bot token<input className="st-input st-input--mono" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} required /></label>
+    <div className="st-actions"><button className="st-btn st-btn--primary" type="submit" disabled={busy || !token.trim()}>Connect bot</button></div>
+  </form>
+
+  return <>
+    {notice && <div className="st-note" role="status">{notice}</div>}
+    {status?.configured ? <div className="st-card st-bot">
+      <span className="st-bot-icon"><Send size={20} aria-hidden="true" /></span>
+      <div className="st-grow"><div className="st-label" style={{ fontWeight: 600 }}>{status.bot_username ? `@${status.bot_username}` : status.bot_name ?? 'Telegram bot'}</div><div className="st-bot-state"><span className="st-dot" style={connected && status.enabled ? undefined : { background: 'var(--st-faint)' }} />{state}</div></div>
+      <button type="button" className="st-btn" disabled={busy || status.version == null} onClick={() => void action(() => update({ enabled: !status.enabled }))}>{status.enabled ? 'Pause' : 'Resume'}</button>
+      <button type="button" className="st-btn st-btn--danger" disabled={busy} onClick={() => void action(async () => { await getSharedApiClient().disconnectTelegram(); setBinding(null); setMessages([]); await load() })}>Disconnect</button>
+    </div> : <Group title="Connect your bot">
+      <Card>
+        <details className="st-pad st-steps"><summary>How to connect the bot</summary><ol>
+          <li>Create a bot with <a href="https://t.me/BotFather" target="_blank" rel="noreferrer">BotFather</a> and enter its token.</li>
+          <li>In BotFather, turn on Secretary Mode (Business Mode). <a href="https://core.telegram.org/bots/features#business-bots" target="_blank" rel="noreferrer">Telegram guide</a></li>
+          <li>Create a one-time link and open it in Telegram as the owner.</li>
+          <li>In Telegram Business settings, add the bot under chatbots and allow the chats you need. <a href="https://core.telegram.org/api/business" target="_blank" rel="noreferrer">Telegram Business</a></li>
+        </ol>
+        <p>Local Telegram polling needs the Aelys backend to be running; no public URL is required.</p>
+        <p>Messages are stored encrypted for up to 7 days. Disconnecting the bot deletes them.</p></details>
+        {connectForm}
+        <div className="st-msg">{status ? state : 'Checking Telegram…'}</div>
+      </Card>
+    </Group>}
+    {status?.configured && <>
+      <Card>
+        <SwitchRow title="Auto-reply" hint="Read incoming messages and draft replies in allowed chats" checked={status.auto_reply} disabled={busy || status.version == null} onChange={(enabled) => { void action(() => update(enabled ? { auto_reply: true, provider_id: provider || null, model: model.trim() || null, instructions } : { auto_reply: false })) }} />
+        <div className="st-row st-row--wrap" style={{ opacity: autoOff ? .5 : 1 }}>
+          <div className="st-grow"><div className="st-label">Reply with</div><div className="st-hint">Provider and model for drafts</div></div>
+          <SelectChip label="AI provider" value={provider} onChange={setProvider} options={[['', 'Not selected'], ...providers.map((item) => [item.id, `${item.kind.charAt(0).toUpperCase()}${item.kind.slice(1)} · ${String(item.model_policy?.default_model ?? item.id)}`] as const)]} />
+          <input className="st-input st-input--mono st-inline" aria-label="Model" maxLength={200} placeholder="Model" value={model} onChange={(event) => setModel(event.target.value)} />
+        </div>
+        <form className="st-pad" style={{ opacity: autoOff ? .5 : 1 }} onSubmit={(event) => { event.preventDefault(); void action(() => update({ instructions, provider_id: provider || null, model: model.trim() || null })) }}>
+          <label className="st-field-label" htmlFor="telegram-instructions">Instructions</label>
+          <div className="st-hint" style={{ marginBottom: 10 }}>How the assistant writes on your behalf</div>
+          <textarea id="telegram-instructions" className="st-textarea" maxLength={10000} value={instructions} onChange={(event) => setInstructions(event.target.value)} />
+          <div className="st-counter">{instructions.length.toLocaleString('en-US')} / 10,000</div>
+          <div className="st-actions" style={{ marginTop: 10 }}><button className="st-btn st-btn--primary" disabled={busy || status.version == null} type="submit">Save settings</button></div>
+        </form>
+      </Card>
+
+      <Card>
+        <div className="st-row st-row--14"><span className="st-pin"><Send size={14} aria-hidden="true" /></span><div className="st-grow"><div className="st-label">Conversations and drafts</div><div className="st-hint">Incoming messages, drafts and manual replies</div></div>{draftsReady > 0 && <span className="st-chip st-chip--count">{draftsReady} {draftsReady === 1 ? 'draft' : 'drafts'}</span>}</div>
+        <div className="st-msgs">
+          {messages.length === 0 && <div className="st-hint">No messages yet.</div>}
+          {messages.map((message) => <details className="st-msg-item" key={message.id}>
+            <summary>{message.chat_title} · {message.direction}</summary><p>{message.sent_at}{message.deleted_at ? ' · deleted' : ''}</p>
+            <div className="mail-body">{message.text || (message.direction === 'owner' ? 'Message without text' : '')}</div>
+            {message.direction === 'owner' && <p>Your outgoing message. Select an incoming message from the other person to reply.</p>}
+            {message.direction === 'inbound' && <>
+              <p>Draft: {message.draft_status}{message.draft_error_code ? ' · draft failed' : ''}</p>
+              {message.owner_note && <p>For the owner: {message.owner_note}</p>}
+              <label className="st-field-label">Reply text<textarea className="st-textarea" value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
+              <div className="st-actions" style={{ marginTop: 10 }}><button className="st-btn st-btn--ghost" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Create draft</button>
+                <button className="st-btn st-btn--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Send reply</button></div>
+            </>}
+          </details>)}
+        </div>
+      </Card>
+
+      <Group title="Connection">
+        <Card>
+          <Row title="Owner link" hint={status.owner_telegram_id ? `Linked to Telegram ID ${status.owner_telegram_id}` : 'Open the one-time link in Telegram to link the owner'} wrap>
+            <button type="button" className="st-btn" disabled={busy} onClick={() => void action(async () => { setBinding(await getSharedApiClient().telegramBinding()) })}>Create owner link</button>
+          </Row>
+          {binding && <div className="st-msg"><a href={binding.url} target="_blank" rel="noreferrer">Open one-time owner link</a> · valid until {binding.expires_at}</div>}
+          <Row title="Business mode" hint={`${status.business_capable ? 'Available' : 'Not enabled'} · ${status.enabled ? 'active' : 'paused'}${status.last_polled_at ? ` · last check ${status.last_polled_at}` : ''}`} wrap>
+            <button type="button" className="st-btn" disabled={busy} onClick={() => void action(load)}>Refresh</button>
+            <button type="button" className="st-btn" disabled={busy || !status.configured} onClick={() => void action(async () => { const result = await getSharedApiClient().syncTelegram(); await load(); setNotice(`Check complete. Processed: ${result.processed}.`) })}>Check connection</button>
+          </Row>
+          <details className="st-pad st-steps"><summary>Business connections</summary>
+            {status.connections.length === 0 ? <p>No connections yet.</p> : status.connections.map((connection) => <p key={connection.id}>ID {connection.telegram_user_id} · {connection.enabled ? 'active' : 'disabled'} · {connection.can_reply ? 'replies allowed' : 'replies blocked'}</p>)}
+            {status.last_error_code && <p>The check failed. Refresh the connection status.</p>}</details>
+          {connectForm}
+        </Card>
+      </Group>
+
+      <Group title="Personal commands and digest">
+        <Card>
+          <div className="st-pad st-hint">One Aelys bot: /task, /note, /today, /remind 18:00 text, /busy 18:00 text, /free, /help. Use a bot separate from MySDU. The digest uses no AI and is off by default. Leave the time empty to turn it off. Status: {status.status_text ?? 'not set'}{status.status_until ? ` · until ${status.status_until}` : ''}</div>
+          <form className="st-form" onSubmit={event => { event.preventDefault(); void action(() => update({ timezone, digest_time: digestTime || null, reply_delay_seconds: replyDelay, deadline_reminders: deadlineReminders, quiet_start: quietStart || null, quiet_end: quietEnd || null })) }}>
+            <label className="st-field-label">Time zone<input className="st-input" required maxLength={64} value={timezone} onChange={event => setTimezone(event.target.value)} /></label>
+            <label className="st-field-label">Digest time<input className="st-input" type="time" value={digestTime} onChange={event => setDigestTime(event.target.value)} /></label>
+            <label className="st-field-label">Reply delay (seconds)<input className="st-input" type="number" min={0} max={900} required value={replyDelay} onChange={event => setReplyDelay(Number(event.target.value))} /></label>
+            <Checkbox label="Deadline reminders" checked={deadlineReminders} disabled={busy || status.version == null} onChange={setDeadlineReminders} />
+            <div className="st-hint">Remind me in Telegram 5 hours and 10 minutes before an unfinished task is due.</div>
+            <label className="st-field-label">Quiet hours start<input className="st-input" type="time" required={!!quietEnd} disabled={busy || status.version == null} value={quietStart} onChange={event => setQuietStart(event.target.value)} aria-describedby="telegram-quiet-hours-help" /></label>
+            <label className="st-field-label">Quiet hours end<input className="st-input" type="time" required={!!quietStart} disabled={busy || status.version == null} value={quietEnd} onChange={event => setQuietEnd(event.target.value)} aria-describedby="telegram-quiet-hours-help" /></label>
+            <div className="st-hint" id="telegram-quiet-hours-help">Set both times in your time zone, or leave both empty to turn quiet hours off. Reminders wait until quiet hours end, including urgent reminders.</div>
+            <div className="st-actions"><button className="st-btn st-btn--primary" type="submit" disabled={busy || status.version == null}>Save personal settings</button></div>
+          </form>
+        </Card>
+      </Group>
+    </>}
+  </>
 }
