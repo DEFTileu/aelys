@@ -49,7 +49,6 @@
 .mobile-shell--home .home-widget [data-widget-heading] { height: 28px !important; margin-bottom: 8px !important; }
 .mobile-shell--home .home-widget [data-widget-heading] > span:first-child { display: none !important; }
 .mobile-shell--home .home-widget [data-widget-heading] > span { font-size: 14px !important; }
-.mobile-shell--home .home-widget [data-widget-heading] > span:last-of-type { display: none; }
 .mobile-shell--home .home-widget [data-widget-heading] > button { margin-left: auto; }
 .mobile-shell--home .home-layout-help { font-size: 12px; }
 .mobile-shell--home .home-tool { white-space: nowrap; }
