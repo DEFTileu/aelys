@@ -29,6 +29,7 @@
 | ADR-024 | UI/UX, VPS, домен, брендинг | DEFERRED | Не блокируют model/API design |
 | ADR-025 | Вход без пароля: ключи устройств, setup token, привязка по QR | DECIDED (owner, 2026-10-31) | Пароль остаётся запасным; браузер — устройство пониженного доверия; восстановление через команду на сервере. См. [QR_PAIRING_AUTH_PROPOSAL.md](QR_PAIRING_AUTH_PROPOSAL.md) |
 | ADR-026 | Utilities: генератор паролей и кодеры/декодеры; перенос показанного набора в main | DECIDED (owner, 2026-10-31) | Локальные вычисления в существующей оболочке; первая поставка в PRD §2.13; дополнительные форматы и менеджер паролей OPEN |
+| ADR-027 | Один бот Aelys для личных команд и Telegram Business, отдельный от MySDU; один poller и текущий AI harness | DECIDED (owner, 2026-11-01) | `/task`, `/note`, `/today`, `/busy`, `/free`, `/help`; secretary `reply/no_reply/handoff`, задержка 0–900 с (90 по умолчанию); детерминированная opt-in сводка. Free-form personal AI, media, memory, Google Calendar/MCP и Telegram reminders вне среза. Sheets остаётся в MySDU |
 
 ## Правило при конфликтах требований
 
