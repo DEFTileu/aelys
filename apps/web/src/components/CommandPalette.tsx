@@ -5,17 +5,20 @@ import { kindLabels, openSearchUrl, resultUrl, searchKinds, useSearchResults, ty
 import type { RoutePath } from '../types'
 import '../views/search.css'
 
-type Item = { key: string; label: string; group: string; icon: AelysIconComponent; color: string; kind: string; body: string; run: () => void }
-const pages: { label: string; icon: AelysIconComponent; route: RoutePath; color: string }[] = [
+type Item = { hint?: string; key: string; label: string; group: string; icon: AelysIconComponent; color: string; kind: string; body: string; run: () => void }
+export const pages: { label: string; icon: AelysIconComponent; route: RoutePath; color: string }[] = [
   { label: 'Home', icon: House, route: '/', color: 'violet' }, { label: 'AI Chat', icon: MessageSquareText, route: '/ai', color: 'violet' },
   { label: 'Tasks', icon: SquareCheck, route: '/tasks', color: 'blue' }, { label: 'Calendar', icon: Calendar, route: '/calendar', color: 'red' },
   { label: 'Projects', icon: Folder, route: '/projects', color: 'green' }, { label: 'Notes', icon: NotebookText, route: '/notes', color: 'orange' },
   { label: 'Mail', icon: Mail, route: '/mail', color: 'blue' }, { label: 'Finances', icon: Wallet, route: '/finance', color: 'green' },
-  { label: 'Utilities', icon: Blocks, route: '/utilities', color: 'violet' },
   { label: 'Knowledge base', icon: BookOpen, route: '/knowledge', color: 'violet' }, { label: 'Settings', icon: Settings, route: '/settings', color: 'gray' },
+  { label: 'Apps', icon: Blocks, route: '/utilities', color: 'violet' },
 ]
 const kindIcons: Record<SearchKind, AelysIconComponent> = { task: SquareCheck, note: NotebookText, mail: Mail }
 const kindColors: Record<SearchKind, string> = { task: 'blue', note: 'orange', mail: 'violet' }
+
+/** Cmd/Ctrl + 1..9 jump to the first nine pages; the palette shows the same shortcuts. */
+export const shortcutOf = (route: RoutePath) => { const index = pages.findIndex(page => page.route === route); return index >= 0 && index < 9 ? `⌘${index + 1}` : '' }
 
 export function CommandPalette({ onClose, onNavigate }: { onClose: () => void; onNavigate: (path: RoutePath) => void }) {
   const [query, setQuery] = useState('')
@@ -25,7 +28,7 @@ export function CommandPalette({ onClose, onNavigate }: { onClose: () => void; o
   const { results, status } = useSearchResults(query)
   useEffect(() => { const previous = document.activeElement as HTMLElement | null; inputRef.current?.focus(); return () => { if (previous?.isConnected) previous.focus() } }, [])
   const needle = query.trim().toLowerCase()
-  const items: Item[] = pages.filter(page => !needle || page.label.toLowerCase().includes(needle)).map(page => ({ key: page.route, label: page.label, group: needle ? 'Pages' : 'Go to', icon: page.icon, color: page.color, kind: 'Page', body: `Open ${page.label}.`, run: () => onNavigate(page.route) }))
+  const items: Item[] = pages.filter(page => !needle || page.label.toLowerCase().includes(needle)).map(page => ({ key: page.route, label: page.label, group: needle ? 'Pages' : 'Go to', icon: page.icon, color: page.color, kind: 'Page', hint: shortcutOf(page.route), body: `Open ${page.label}.`, run: () => onNavigate(page.route) }))
   for (const kind of searchKinds) for (const result of results.filter(item => item.kind === kind)) items.push({ key: `${kind}-${result.id}`, label: result.title || 'Untitled', group: kindLabels[kind], icon: kindIcons[kind], color: kindColors[kind], kind: kindLabels[kind] === 'Mail' ? 'Email' : kind === 'task' ? 'Task' : 'Note', body: result.snippet || '', run: () => { onClose(); openSearchUrl(resultUrl(result)) } })
   const actions = [
     { label: 'New task', icon: Plus, color: 'blue', url: '/tasks?create=1' },
@@ -53,10 +56,10 @@ export function CommandPalette({ onClose, onNavigate }: { onClose: () => void; o
     <div ref={dialogRef} className="actual-palette" role="dialog" aria-modal="true" aria-label="Search" onClick={event => event.stopPropagation()} onKeyDown={onKeyDown}>
       <div className="actual-palette__input"><Search size={24} /><input ref={inputRef} value={query} onChange={event => { setQuery(event.target.value); setSelection(0) }} placeholder="Aelys Search" aria-label="Search everything" />{needle && <span>{results.length} results</span>}</div>
       <div className="actual-palette__content"><div className="actual-palette__list" role="listbox" aria-label="Search results and commands">
-        {groups.map(group => <div key={group} role="group" aria-label={group}><div className="actual-palette__group">{group}</div>{items.filter(item => item.group === group).map(item => { const index = items.indexOf(item); return <button key={item.key} type="button" role="option" aria-selected={index === selected} className={`actual-search-row${index === selected ? ' is-selected' : ''}`} onMouseEnter={() => setSelection(index)} onClick={item.run}><span className={`actual-search-icon ${item.color}`}><item.icon size={16} /></span><span className="actual-search-row__title">{item.label}</span><span className="actual-search-row__hint">{item.kind}</span></button> })}</div>)}
+        {groups.map(group => <div key={group} role="group" aria-label={group}><div className="actual-palette__group">{group}</div>{items.filter(item => item.group === group).map(item => { const index = items.indexOf(item); return <button key={item.key} type="button" role="option" aria-selected={index === selected} className={`actual-search-row${index === selected ? ' is-selected' : ''}`} onMouseEnter={() => setSelection(index)} onClick={item.run}><span className={`actual-search-icon ${item.color}`}><item.icon size={16} /></span><span className="actual-search-row__title">{item.label}</span><span className="actual-search-row__hint">{item.kind === 'Page' || item.kind === 'Action' ? item.hint ?? '' : item.kind}</span></button> })}</div>)}
         {status === 'loading' && <p className="actual-search-message">Searching…</p>}{status === 'error' && <p className="actual-search-message" role="status">Search unavailable. Try again.</p>}
-      </div><div className="actual-palette__preview">{current && <><span className={`actual-search-icon actual-search-icon--large ${current.color}`}><current.icon size={28} /></span><strong>{current.label}</strong><small>{current.kind}</small>{current.body && <p>{current.body}</p>}<button type="button" onClick={current.run}>{current.kind === 'Action' ? 'Run' : current.kind === 'AI' ? 'Ask' : 'Open'} <span>↵</span></button></>}</div></div>
-      <div className="actual-palette__footer">↑↓ Navigate <span>↵ Open</span><span>Esc Close</span></div>
+      </div><div className="actual-palette__preview">{current && <><span className={`actual-search-icon actual-search-icon--large ${current.color}`}><current.icon size={28} /></span><strong>{current.label}</strong><small>{current.kind}</small>{current.body && <p>{current.body}</p>}<button type="button" onClick={current.run}>{current.kind === 'Action' ? 'Run' : current.kind === 'AI' ? 'Ask' : 'Open'}<span>↵</span></button></>}</div></div>
+      <div className="actual-palette__footer"><span>↑↓ navigate</span><span>↵ open</span><span>⌘↵ ask Aelys</span><span className="actual-palette__spacer" /><span>esc close</span></div>
     </div>
   </div>
 }

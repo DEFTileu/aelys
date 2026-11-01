@@ -3,12 +3,13 @@ import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText,
 import { WALLPAPERS, accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { getSharedApiClient } from '../lib/api'
+import { useOwner } from '../lib/owner'
 import { navigate } from '../lib/router'
 import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
 import { isMacPlatform } from '../data/navigation'
 import { formatDate, greetingForHour } from '../lib/format'
-import { CommandPalette } from './CommandPalette'
+import { CommandPalette, pages as PALETTE_PAGES } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
 import { WeatherSettingsDialog } from './Weather'
 import { AelysMark } from './AelysMark'
@@ -20,7 +21,6 @@ const BAND_GRADIENT = {
   light: { home: 'linear-gradient(180deg,rgba(18,18,40,.22) 0,rgba(18,18,40,.04) 220px,rgba(246,241,236,0) 330px,rgba(246,241,236,.8) 385px,#F5F0EB 420px)', page: 'linear-gradient(180deg,rgba(18,18,40,.32) 0,rgba(18,18,40,.05) 110px,rgba(246,241,236,.75) 150px,rgba(245,240,235,.97) 230px)' },
   dark: { home: 'linear-gradient(180deg,rgba(8,6,20,.45) 0,rgba(8,6,20,.25) 220px,rgba(20,18,25,0) 330px,rgba(20,18,25,.85) 385px,#141219 420px)', page: 'linear-gradient(180deg,rgba(8,6,20,.45) 0,rgba(8,6,20,.2) 110px,rgba(20,18,25,.8) 170px,#141219 230px)' },
 } as const
-const PROFILE_NAME = 'Tileuzhan'
 const DEFAULT_ACCENT = '#6A4CF2'
 
 // Multicolor is a gradient, not a color token, so it keeps the default accent.
@@ -28,17 +28,22 @@ function accentHex(index: number): string {
   const color = accentColors[index]?.color ?? ''
   return color.startsWith('#') ? color : DEFAULT_ACCENT
 }
+// Tinted fills are written as plain rgba so they compute the same as the design's literal rgba(106,76,242,.12).
+function accentRgba(hex: string, alpha: number): string {
+  const value = Number.parseInt(hex.slice(1), 16)
+  return `rgba(${value >> 16 & 255},${value >> 8 & 255},${value & 255},${alpha})`
+}
 
 // Shell-root custom properties read by the glass surfaces. At 70% transparency the panels keep the design's .88 alpha.
 function shellVars({ transparency, blur, accent }: DesktopSettings, theme: 'light' | 'dark'): CSSProperties {
   const alpha = Math.min(1, Math.max(0.6, 0.88 + (70 - transparency) / 300))
   return {
-    '--glass-bg': theme === 'dark' ? `rgba(32,29,40,${alpha.toFixed(3)})` : `rgba(255,255,255,${alpha.toFixed(3)})`,
-    '--sidebar-bg': theme === 'dark' ? '#1A1720' : `rgba(250,247,244,${(alpha - 0.06).toFixed(3)})`,
+    '--glass-bg': theme === 'dark' ? `rgba(32,29,40,${(alpha - 0.02).toFixed(3)})` : `rgba(255,255,255,${alpha.toFixed(3)})`,
+    '--sidebar-bg': theme === 'dark' ? '#18161E' : `rgba(250,247,244,${(alpha - 0.06).toFixed(3)})`,
     '--glass-blur': `${blur / 2}px`,
     '--sidebar-blur': `${blur * 0.6}px`,
     '--accent': accentHex(accent),
-    '--accent-soft': 'color-mix(in srgb, var(--accent) 12%, transparent)',
+    '--accent-soft': accentRgba(accentHex(accent), 0.12),
   } as CSSProperties
 }
 
@@ -93,27 +98,32 @@ export function AppShell(props: { route: RoutePath; apiStatus: ApiStatus; theme:
   return <DesktopShell {...props} mobile={width <= 700} />
 }
 
-// Open tasks due today or earlier, the same set as the Tasks "Today" tab. Refreshes on navigation so completing tasks updates it.
-function useTodayTaskCount(apiStatus: ApiStatus, route: RoutePath): number {
-  const [count, setCount] = useState(0)
+// Open tasks due today or earlier, the same set as the Tasks "Today" tab, and unread mail. Refreshes on navigation so completing tasks updates it.
+function useNavCounts(apiStatus: ApiStatus, route: RoutePath): { tasks: number; mail: number } {
+  const [counts, setCounts] = useState({ tasks: 0, mail: 0 })
   useEffect(() => {
     if (apiStatus !== 'ready') return
     let active = true
     const today = dateKey(new Date().toISOString())!
-    getSharedApiClient().tasks().then((tasks) => { if (active) setCount(tasks.filter((task) => !isCompleted(task) && !!task.due_at && dateKey(task.due_at)! <= today).length) }).catch(() => { if (active) setCount(0) })
+    const client = getSharedApiClient()
+    const tasks = Promise.resolve().then(() => client.tasks()).then((items) => items.filter((task) => !isCompleted(task) && !!task.due_at && dateKey(task.due_at)! <= today).length).catch(() => 0)
+    const mail = Promise.resolve().then(() => client.mailMessages()).then((items) => items.filter((item) => item.is_read === false).length).catch(() => 0)
+    void Promise.all([tasks, mail]).then(([taskCount, mailCount]) => { if (active) setCounts({ tasks: taskCount, mail: mailCount }) })
     return () => { active = false }
   }, [apiStatus, route])
-  return count
+  return counts
 }
 
 function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile }: { mobile: boolean; route: RoutePath; apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void; children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const todayTasks = useTodayTaskCount(apiStatus, route)
+  const counts = useNavCounts(apiStatus, route)
+  const owner = useOwner(apiStatus)
   const settings = useDesktopState()
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPaletteOpen((open) => !open) }
+      else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && /^[1-9]$/.test(event.key) && PALETTE_PAGES[Number(event.key) - 1]) { event.preventDefault(); setPaletteOpen(false); navigate(PALETTE_PAGES[Number(event.key) - 1]!.route) }
       else if (event.key === 'Escape') setPaletteOpen(false)
     }
     window.addEventListener('keydown', onKey)
@@ -131,7 +141,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
   const navButton = (item: NavItem) => {
     const on = item.id === screen
     const Icon = item.icon
-    const badge = item.id === 'tasks' ? (todayTasks > 0 ? String(todayTasks) : undefined) : item.badge
+    const badge = item.id === 'tasks' ? (counts.tasks > 0 ? String(counts.tasks) : undefined) : item.id === 'mail' ? (counts.mail > 0 ? String(counts.mail) : undefined) : item.badge
     return <button key={item.id} type="button" className={`shell-btn shell-nav-item${on ? ' shell-nav-item--on' : ''}`} aria-label={item.label} aria-current={on ? 'page' : undefined} onClick={() => go(item.route)} style={on ? { background: 'var(--accent-soft)' } : undefined}>
       <Icon size={20} aria-hidden="true" />
       <span style={{ flex: 1 }}>{item.label}</span>
@@ -146,13 +156,13 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             <AelysMark />
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, lineHeight: '24px' }}>Aelys</div>
-              <div style={{ fontSize: 12, lineHeight: '16px', color: '#625D69' }}>Personal space</div>
+              <div className="shell-brand-sub" style={{ fontSize: 12, lineHeight: '16px' }}>Personal space</div>
             </div>
           </div>
           <nav aria-label="Primary" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {NAV.map(navButton)}
           </nav>
-          <div className="shell-nav-group" role="presentation" style={{ margin: '16px 8px 6px', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: '#625D69' }}>Tools</div>
+          <div className="shell-nav-group" role="presentation" style={{ margin: '16px 8px 6px', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>Tools</div>
           <nav aria-label="Tools" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {TOOLS.filter((item) => item.id !== 'developer' || isMacPlatform()).map(navButton)}
           </nav>
@@ -160,10 +170,10 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 14, background: screen === 'settings' ? 'rgba(106,76,242,.10)' : 'transparent' }}>
             <div aria-hidden="true" style={{ width: 40, height: 40, flex: 'none', borderRadius: '50%', background: 'radial-gradient(circle at 50% 30%,#F6C79A,#C77C5A 45%,#3A2F45 46%,#2A2438)' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px' }}>{PROFILE_NAME}</div>
-              <div style={{ fontSize: 12, lineHeight: '16px', color: '#625D69', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Student · Developer</div>
+              <div style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px' }}>{owner.name ?? 'You'}</div>
+              <div className="shell-profile-sub" style={{ fontSize: 12, lineHeight: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{owner.email ?? 'Owner'}</div>
             </div>
-            <button type="button" className="shell-btn shell-user-settings" title="Settings" aria-label="Settings" onClick={() => go('/settings')} style={{ width: 36, height: 36, flex: 'none', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3A3640' }}>
+            <button type="button" className="shell-btn shell-user-settings" title="Settings" aria-label="Settings" onClick={() => go('/settings')} style={{ width: 36, height: 36, flex: 'none', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Settings size={18} aria-hidden="true" />
             </button>
           </div>
@@ -176,10 +186,10 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
           </>}
           <div style={{ position: 'relative' }}>
           {!mobile && <div className="actual-desktop__tools" style={{ position: 'absolute', top: 20, right: 28, display: 'flex', gap: 8, alignItems: 'center', zIndex: 2 }}>
-            <button type="button" className="shell-btn shell-pill shell-pill--button" data-glass="" onClick={() => setPaletteOpen(true)} aria-label="Search or run a command" style={{ width: 260, padding: '0 8px 0 14px', gap: 10, fontSize: 13, color: '#625D69' }}>
-              <Search size={18} color="#1C1B22" aria-hidden="true" />
+            <button type="button" className="shell-btn shell-pill shell-pill--button" data-glass="" onClick={() => setPaletteOpen(true)} aria-label="Search or run a command" style={{ width: 260, padding: '0 8px 0 14px', gap: 10, fontSize: 13 }}>
+              <Search size={18} aria-hidden="true" />
               <span style={{ flex: 1, textAlign: 'left' }}>Search or run a command</span>
-              <kbd style={{ height: 24, padding: '0 8px', borderRadius: 7, background: '#F1EDEA', fontSize: 12, lineHeight: '24px', color: '#3A3640', fontFamily: 'inherit' }}>⌘K</kbd>
+              <kbd style={{ height: 24, padding: '0 8px', borderRadius: 7, fontSize: 12, lineHeight: '24px', fontFamily: 'inherit' }}>⌘K</kbd>
             </button>
             <button type="button" className="shell-btn shell-pill actual-theme" title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} onClick={onToggleTheme}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
             <NotificationCenter apiStatus={apiStatus} route={route} />
@@ -188,7 +198,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
           {!mobile && (isHome ? <div className="shell-hero" style={{ height: showGreeting ? 276 : 116, paddingTop: 56 }}>
             {showGreeting && <>
               <div style={{ fontSize: 14, lineHeight: '20px', fontWeight: 500 }}>{formatDate(new Date())}</div>
-              <h1 style={{ margin: '4px 0 0', fontSize: 36, lineHeight: '44px', fontWeight: 700, letterSpacing: '-.02em' }}>{greetingForHour(new Date().getHours())}, {PROFILE_NAME}</h1>
+              <h1 style={{ margin: '4px 0 0', fontSize: 36, lineHeight: '44px', fontWeight: 700, letterSpacing: '-.02em' }}>{greetingForHour(new Date().getHours())}, {owner.name ?? 'there'}</h1>
               <div style={{ fontSize: 14, lineHeight: '22px', marginTop: 2 }}>A calm day creates bigger results.</div>
             </>}
           </div> : <div className="shell-hero" style={{ height: 140, paddingTop: 32 }}>

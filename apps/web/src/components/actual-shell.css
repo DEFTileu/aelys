@@ -6,7 +6,6 @@
 .actual-desktop .shell-nav-item:hover, .actual-desktop .shell-user-settings:hover { background: rgba(128,118,140,.14); }
 .actual-desktop .shell-nav-item--on, .actual-desktop .shell-nav-item--on:hover { background: var(--accent-soft); }
 .actual-desktop .shell-nav-item--on { color: var(--purple-deep); }
-.actual-desktop .shell-pill { color: var(--ink); background: var(--surface); border-color: var(--line); }
 .actual-desktop .page { width: 100%; }
 .actual-desktop .page-header { margin: 0 0 18px; }
 .actual-desktop .page-header h1 { font-size: 26px; }
@@ -14,19 +13,29 @@
 .actual-desktop :is(.projects-view, .notes-view) > :is(.pv-hero, .nv-header) h1 { display: none; }
 .actual-desktop :is(.projects-view, .notes-view) .pv-eyebrow { display: none; }
 .actual-desktop .settings-panels { margin-inline: 28px; margin-bottom: 18px; flex-wrap: wrap; }
-:root[data-theme='dark'] .actual-desktop { --glass-bg: rgba(32,29,40,.9); --sidebar-bg: #1A1720; }
-:root[data-theme='dark'] .actual-desktop .shell-sidebar { background: #1A1720; color: var(--ink); }
-:root[data-theme='dark'] .actual-desktop .shell-sidebar :is(div,button) { color: inherit !important; }
-:root[data-theme='dark'] .actual-desktop .shell-nav-item:hover { background: rgba(255,255,255,.06); }
-:root[data-theme='dark'] .actual-desktop :is(.shell-pill,.home-widget:not([data-widget-id='weather']),.home-screen [data-glass]:not([data-widget-id='weather'])) { background: var(--surface) !important; color: var(--ink) !important; border-color: var(--line) !important; }
-:root[data-theme='dark'] .actual-desktop :is(.shell-pill,.home-widget) :is(span,small,kbd) { color: inherit !important; }
-:root[data-theme='dark'] .actual-desktop .shell-pill svg { color: var(--ink); }
-:root[data-theme='dark'] .actual-desktop .shell-pill kbd { background: var(--surface-hover) !important; }
-:root[data-theme='dark'] .home-screen :is(.home-composer,.home-chip,.home-tool) { background: var(--surface-solid) !important; color: var(--ink) !important; border-color: var(--line) !important; }
-@media (max-width: 1000px) and (min-width: 701px) {
- .actual-desktop__tools .shell-pill[aria-label='Search or run a command'] { width: 44px !important; padding: 0 !important; justify-content: center; }
- .actual-desktop__tools .shell-pill[aria-label='Search or run a command'] :is(span,kbd) { display: none; }
+:root[data-theme='dark'] .actual-desktop { --glass-bg: rgba(32,29,40,.86); --sidebar-bg: #18161E; }
+/* Light literals from the design and the values its dark theme maps them to. */
+.actual-desktop {
+  --dw-edge: rgba(255, 255, 255, .35); --dw-pill: rgba(255, 255, 255, .88); --dw-section: rgba(255, 255, 255, .72);
+  --dw-btn: #fff; --dw-btn-line: #E7E2DE; --dw-chip: #F1EDEA; --dw-chip-ink: #3A3640; --dw-hover: rgba(128, 118, 140, .14);
+  --ink-green: #14966C; --ink-red: #D93636;
 }
+:root[data-theme='dark'] .actual-desktop {
+  --dw-edge: rgba(255, 255, 255, .08); --dw-pill: rgba(32, 29, 40, .86); --dw-section: rgba(32, 29, 40, .86);
+  --dw-btn: #201D28; --dw-btn-line: #34303D; --dw-chip: #2A2733; --dw-chip-ink: #CBC6D5;
+  --ink-soft: #CBC6D5; --ink-green: #5FD7A8; --ink-red: #FF8A84;
+}
+.actual-desktop .shell-sidebar { color: var(--ink); }
+.actual-desktop .shell-brand-sub, .actual-desktop .shell-profile-sub { color: var(--muted); }
+:root[data-theme='dark'] .actual-desktop .shell-sidebar { background: #18161E; }
+:root[data-theme='dark'] .actual-desktop .shell-nav-item { color: var(--ink); }
+:root[data-theme='dark'] .actual-desktop .shell-nav-item--on { color: var(--purple-deep); }
+.actual-desktop .shell-user-settings { color: var(--ink-soft); }
+.actual-desktop .shell-pill { background: var(--dw-pill); border-color: var(--dw-edge); color: var(--muted); }
+.actual-desktop .shell-pill kbd { background: var(--dw-chip); color: var(--ink-soft); }
+.actual-desktop .shell-pill svg { color: var(--ink); }
+.actual-desktop .actual-theme { color: var(--ink); }
+:root[data-theme='dark'] .home-composer input { color: var(--ink); }
 /* ACTUAL mobile uses its own persisted tile order and compact geometry. */
 .mobile-shell--home .home-screen > section[aria-label='Ask Aelys'] { display: none; }
 .mobile-shell--home .home-screen { padding: 0 16px !important; gap: 12px !important; }
@@ -53,7 +62,6 @@
  :root[data-theme='dark'] [data-glass] { background: var(--surface-solid) !important; }
 }
 
-:root[data-theme='dark'] .home-composer input { color: var(--ink) !important; }
 
 .actual-desktop .shell-sidebar { background: #FAF7F4; border-color: #ECE6E1; }
 .actual-desktop .shell-photo { background-position: 70% 62%; }

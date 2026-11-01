@@ -1,6 +1,6 @@
 .notification-center { position:relative; }
 .notification-center__trigger { position:relative; width:40px; height:40px; justify-content:center; padding:0; border-radius:50%; }
-.notification-center__badge { position:absolute; top:-4px; right:-4px; min-width:18px; height:18px; padding:0 4px; border:2px solid var(--surface-solid); border-radius:10px; background:var(--red-ink); color:var(--surface-solid); font:700 10px/14px var(--font-ui); text-align:center; }
+.notification-center__badge { position:absolute; top:-2px; right:-2px; min-width:18px; height:18px; padding:0 5px; border:2px solid #fff; border-radius:9px; background:#E5484D; color:#fff; font:700 10px/14px var(--font-ui); text-align:center; }
 .notification-center__dialog { position:fixed; top:68px; right:24px; z-index:100; display:flex; flex-direction:column; width:min(400px, calc(100vw - 32px)); max-height:calc(100dvh - 96px); overflow:hidden; border:1px solid var(--line); border-radius:22px; background:var(--surface-solid); color:var(--ink); box-shadow:var(--shadow-lift, 0 24px 70px #0004); }
 .notification-center__dialog button { font:inherit; cursor:pointer; }
 .notification-center__dialog button:disabled { cursor:default; opacity:.5; }
