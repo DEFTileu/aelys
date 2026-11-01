@@ -13,7 +13,7 @@ If code and this file disagree, this file wins. If this file and a reference des
 
 ## 1. Principles
 
-1. **Calm, not empty.** Content goes on soft glass cards over a warm beige canvas. The photo appears only on the Home hero, the Weather card and the launch/unlock screens.
+1. **Calm, not empty.** Content goes on soft glass cards over a warm beige canvas. The photo appears in the page hero band (Home 420 tall, desktop module pages 230), the Weather card and the launch/unlock screens.
 2. **One primary action per view.** Only one violet (or coral, for Focus) filled button per screen.
 3. **Edit in place.** No settings forms for things the user can drag. For example, Customize is direct manipulation.
 4. **Show, don't label.** Content is not described in UI copy. Banned: "Synthetic visual test record", "9 widgets", "Weather in your city", and any debug pills.
@@ -132,7 +132,7 @@ All UI copy is in English. A Russian string in the build is a bug.
 ## 7. Shell
 - Sidebar 240: logo block on top, nav, profile at the bottom. Nav item height 44, radius 12. The active item gets a primary-soft fill and primary-deep text.
 - Top-right cluster: search pill (⌘K), theme, notifications. There is no weather pill in the header.
-- Home hero is 220–280 tall: photo with a gradient into the canvas, and the composer sits on the boundary. Module pages use the plain canvas with no photo.
+- Home hero is 220–280 tall: photo with a gradient into the canvas, and the composer sits on the boundary. Desktop module pages show a 230 tall photo band with the date, a white 30/38 title and a subtitle, then the plain canvas.
 - Mobile: header with logo, search, notifications and avatar (max 3 icons). No bottom nav. The AI bar is pinned at the bottom of Home, and page content gets bottom padding equal to its height so nothing hides under it.
 
 ## 8. Utilities
