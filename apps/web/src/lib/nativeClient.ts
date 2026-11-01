@@ -67,7 +67,29 @@ function bodyValue(body: BodyInit | null | undefined): Record<string, unknown> {
   } catch { return {} }
 }
 
+// Rust holds the real allowlist (API_ALLOWLIST); this only keeps obviously forbidden areas off the bridge.
+const GENERIC_BLOCKED = /^\/api\/v1\/(auth|devices|sync|pairing)(\/|$)/
+
+function genericOperation(url: URL, init?: RequestInit): NativeOperation | undefined {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (!url.pathname.startsWith('/api/v1/') || GENERIC_BLOCKED.test(url.pathname)) return undefined
+  if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return undefined
+  if (init?.body !== undefined && init.body !== null && typeof init.body !== 'string') return undefined
+  const query = Object.fromEntries(url.searchParams.entries())
+  const key = new Headers(init?.headers).get('Idempotency-Key') ?? undefined
+  return {
+    type: 'api', method, path: url.pathname,
+    ...(Object.keys(query).length ? { query } : {}),
+    ...(method !== 'GET' && init?.body ? { body: bodyValue(init.body) } : {}),
+    ...(key ? { idempotency_key: key } : {}),
+  }
+}
+
 function operationFor(url: URL, init?: RequestInit): NativeOperation | undefined {
+  return typedOperationFor(url, init) ?? genericOperation(url, init)
+}
+
+function typedOperationFor(url: URL, init?: RequestInit): NativeOperation | undefined {
   const method = (init?.method ?? 'GET').toUpperCase()
   const path = url.pathname
   if (method === 'GET' && path === '/api/v1/me') return { type: 'me' }
@@ -225,6 +247,9 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
       if (init?.signal?.aborted) throw init.signal.reason ?? new DOMException('Aborted', 'AbortError')
       // Like a failed fetch, so ApiClient can fall back to cache or queue the write.
       if (error === 'NETWORK_ERROR') throw new TypeError('Network request failed')
+      // Generic API calls report the server's own error as "<status>:<CODE>".
+      const passthrough = typeof error === 'string' ? /^(4\d\d):([A-Z0-9_]{3,64})$/.exec(error) : null
+      if (passthrough) return jsonResponse({ detail: { code: passthrough[2], message: 'The server rejected the request.' } }, Number(passthrough[1]))
       const code = typeof error === 'string' ? error : 'NATIVE_TRANSPORT_ERROR'
       const expired = code === 'UNAUTHORIZED' || code === 'SIGN_IN_REQUIRED'
       if (expired && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))

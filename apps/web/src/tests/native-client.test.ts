@@ -207,9 +207,26 @@ describe('native shared-client bridge', () => {
     })
   })
 
+  it('routes other owner-API modules through the generic operation and keeps server error codes', async () => {
+    const invoke = vi.fn(async () => ({ ok: true })) as NativeInvoke
+    const fetchNative = createNativeFetchFromInvoke(invoke, 'http://127.0.0.1:8000')
+    const response = await fetchNative('http://127.0.0.1:8000/api/v1/integrations/telegram/connect', {
+      method: 'POST', headers: { 'Idempotency-Key': 'key-12345678' }, body: JSON.stringify({ bot_token: 't' }),
+    })
+    expect(response.status).toBe(200)
+    expect(invoke).toHaveBeenCalledWith('native_operation', {
+      origin: 'http://127.0.0.1:8000',
+      operation: { type: 'api', method: 'POST', path: '/api/v1/integrations/telegram/connect', body: { bot_token: 't' }, idempotency_key: 'key-12345678' },
+    })
+    const rejected = createNativeFetchFromInvoke((async () => { throw '409:TELEGRAM_WEBHOOK_CONFLICT' }) as NativeInvoke, 'http://127.0.0.1:8000')
+    const conflict = await rejected('http://127.0.0.1:8000/api/v1/integrations/telegram/status')
+    expect(conflict.status).toBe(409)
+    expect(await conflict.json()).toMatchObject({ detail: { code: 'TELEGRAM_WEBHOOK_CONFLICT' } })
+  })
+
   it('fails closed for unsupported modules and transport errors', async () => {
     const unsupported = createNativeFetchFromInvoke(vi.fn() as NativeInvoke, 'http://127.0.0.1:8000')
-    const response = await unsupported('http://127.0.0.1:8000/api/v1/mail/gmail/connect')
+    const response = await unsupported('http://127.0.0.1:8000/api/v1/auth/login', { method: 'POST', body: '{}' })
     expect(response.status).toBe(501)
     expect(await response.json()).toMatchObject({ detail: { code: 'NATIVE_OPERATION_UNSUPPORTED' } })
 

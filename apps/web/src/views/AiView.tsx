@@ -50,7 +50,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
       if (!active) return
       const enabled = items.filter((item) => item.enabled && item.has_secret && item.kind !== 'transcription')
       setProviders(enabled); setProviderId((id) => enabled.some((item) => item.id === id) ? id : enabled[0]?.id ?? ''); setConversations(history)
-    }).catch(() => { if (active) setNotice('Open your owner session in Settings to load AI providers and chats.') })
+    }).catch(() => { if (active) setNotice('Could not load AI providers and chats. Check your connection and reopen this page.') })
     return () => { active = false }
   }, [apiStatus])
   useEffect(() => () => { controller.current?.abort() }, [])

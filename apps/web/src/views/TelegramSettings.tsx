@@ -10,6 +10,7 @@ import './connected.css'
 
 export function TelegramSettings() {
   const [status, setStatus] = useState<TelegramStatus | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [providers, setProviders] = useState<readonly AIProvider[]>([])
   const [messages, setMessages] = useState<readonly TelegramBusinessMessage[]>([])
   const [token, setToken] = useState('')
@@ -36,8 +37,8 @@ export function TelegramSettings() {
     const client = getSharedApiClient()
     try {
       const [next, items, ai] = await Promise.all([client.telegramStatus(), client.telegramMessages(), client.aiProviders()])
-      applyStatus(next); setMessages(items); setProviders(ai.filter(item => item.kind !== 'transcription'))
-    } catch (error) { setNotice(errorNotice(error)) }
+      applyStatus(next); setMessages(items); setProviders(ai.filter(item => item.kind !== 'transcription')); setLoadFailed(false)
+    } catch (error) { setLoadFailed(true); setNotice(errorNotice(error)) }
   }, [])
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -108,8 +109,8 @@ export function TelegramSettings() {
         </ol>
         <p>Local Telegram polling needs the Aelys backend to be running; no public URL is required.</p>
         <p>Messages are stored encrypted for up to 7 days. Disconnecting the bot deletes them.</p></details>
-        {connectForm}
-        <div className="st-msg">{status ? state : 'Checking Telegram…'}</div>
+        {status ? connectForm : null}
+        <div className="st-msg">{status ? state : loadFailed ? <>Could not load Telegram status. <button type="button" className="st-btn" onClick={() => { setLoadFailed(false); setNotice(''); void load() }}>Retry</button></> : 'Checking Telegram…'}</div>
       </Card>
     </Group>}
     {status?.configured && <>
