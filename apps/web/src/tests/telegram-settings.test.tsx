@@ -181,6 +181,12 @@ describe('Telegram settings', () => {
     expect(client.updateTelegramSettings).toHaveBeenCalledWith({ version: 3, auto_reply: true, provider_id: 'provider-1', model: 'model-a', instructions: 'Be polite' })
     expect(check.getAttribute('aria-checked')).toBe('true')
   })
+  it('links Conversations and drafts to the Messages app', async () => {
+    const host = await mount()
+    await click(host, 'Conversations and drafts')
+    expect(window.location.pathname).toBe('/messages')
+    window.history.replaceState({}, '', '/')
+  })
   it('keeps setup and message details collapsed until requested', async () => {
     client.telegramMessages.mockResolvedValue([message])
     const host = await mount()

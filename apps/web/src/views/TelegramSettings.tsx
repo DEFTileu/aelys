@@ -3,7 +3,8 @@ import { type AIProvider, type TelegramBusinessMessage, type TelegramSettingsPat
 import { getSharedApiClient } from '../lib/api'
 import { sendIdempotencyKey, telegramErrorNotice as errorNotice } from '../lib/telegramMessages'
 import { Checkbox } from '../components/controls/SelectionControls'
-import { Send } from '../icons'
+import { ChevronRight, MessageSquareText, Send } from '../icons'
+import { navigate } from '../lib/router'
 import { Card, Group, Row, SelectChip, SwitchRow } from './settings/ui'
 import './connected.css'
 
@@ -128,8 +129,15 @@ export function TelegramSettings() {
         </form>
       </Card>
 
+      <button type="button" className="st-link" onClick={() => navigate('/messages')}>
+        <span className="st-pin"><MessageSquareText size={14} aria-hidden="true" /></span>
+        <span className="st-grow"><span className="st-label" style={{ display: 'block' }}>Conversations and drafts</span><span className="st-hint" style={{ display: 'block' }}>Open the Messages app</span></span>
+        {draftsReady > 0 && <span className="st-chip st-chip--count">{draftsReady} {draftsReady === 1 ? 'draft' : 'drafts'}</span>}
+        <ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--st-mute)' }} />
+      </button>
+
       <Card>
-        <div className="st-row st-row--14"><span className="st-pin"><Send size={14} aria-hidden="true" /></span><div className="st-grow"><div className="st-label">Conversations and drafts</div><div className="st-hint">Incoming messages, drafts and manual replies</div></div>{draftsReady > 0 && <span className="st-chip st-chip--count">{draftsReady} {draftsReady === 1 ? 'draft' : 'drafts'}</span>}</div>
+        <div className="st-row st-row--14"><div className="st-grow"><div className="st-label">Manual replies</div><div className="st-hint">Review incoming messages, edit a draft and send it yourself</div></div></div>
         <div className="st-msgs">
           {messages.length === 0 && <div className="st-hint">No messages yet.</div>}
           {messages.map((message) => <details className="st-msg-item" key={message.id}>
