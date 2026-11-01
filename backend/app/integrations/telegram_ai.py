@@ -6,6 +6,7 @@ transaction, concurrency control, and any eventual Telegram send.
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -183,6 +184,12 @@ async def generate_business_draft(
         text = result.response.text
         if result.response.tool_calls or not isinstance(text, str) or not text.strip() or len(text) > 4096:
             raise TelegramAIError("AI_UNAVAILABLE")
+        # Accept exactly one outer Markdown code fence, never surrounding prose
+        # or multiple blocks. The JSON schema and audience checks stay strict.
+        text = text.strip()
+        fenced = re.fullmatch(r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n```", text, re.DOTALL)
+        if fenced:
+            text = fenced.group(1)
         parsed = _DecisionPayload.model_validate_json(text)
         return BusinessDecision(parsed.action, parsed.text, parsed.owner_note)
     except TelegramAIError:

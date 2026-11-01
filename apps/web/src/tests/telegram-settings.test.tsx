@@ -32,14 +32,20 @@ describe('Telegram settings', () => {
     expect(reloaded.querySelector<HTMLInputElement>('input[value="Asia/Almaty"]')).not.toBeNull()
     expect(reloaded.textContent).toContain('Занят')
   })
-  it.each(['handoff', 'no_reply'])('shows %s without customer reply actions', async draft_status => {
+  it.each(['handoff', 'no_reply'])('allows an explicit owner reply after %s without pre-filling owner_note', async draft_status => {
     client.telegramMessages.mockResolvedValue([{ ...message, draft_status, owner_note: draft_status === 'handoff' ? 'Owner only note' : null }])
     const host = await mount()
     const conversation = [...host.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent?.includes('Клиент'))!
     expect(conversation.textContent).toContain(draft_status)
-    expect(conversation.querySelector('textarea')).toBeNull()
-    expect(conversation.querySelector('button')).toBeNull()
-    if (draft_status === 'handoff') expect(conversation.textContent).toContain('Owner only note')
+    const response = conversation.querySelector('textarea')!
+    expect(response).not.toBeNull()
+    expect(response.value).toBe('')
+    expect(conversation.textContent).toContain('Создать черновик')
+    if (draft_status === 'handoff') expect(conversation.textContent).toContain('Для владельца: Owner only note')
+    client.sendTelegramMessage.mockResolvedValue({ ...message, draft_status: 'sent', draft_text: 'Мой ответ' })
+    await input(response, 'Мой ответ')
+    await click(host, 'Отправить ответ')
+    expect(client.sendTelegramMessage).toHaveBeenCalledWith(message.id, { version: message.version, text: 'Мой ответ' }, { idempotencyKey: expect.any(String) })
   })
   it('shows owner messages as history without draft or send controls', async () => {
     client.telegramMessages.mockResolvedValue([{ ...message, direction: 'owner' }])
@@ -51,6 +57,13 @@ describe('Telegram settings', () => {
     expect(conversation.querySelector('button')).toBeNull()
     expect(client.draftTelegramMessage).not.toHaveBeenCalled()
     expect(client.sendTelegramMessage).not.toHaveBeenCalled()
+  })
+  it('labels an owner message without text without offering reply controls', async () => {
+    client.telegramMessages.mockResolvedValue([{ ...message, direction: 'owner', text: '' }])
+    const host = await mount()
+    const conversation = [...host.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent?.includes('Клиент'))!
+    expect(conversation.textContent).toContain('Сообщение без текста')
+    expect(conversation.querySelector('textarea')).toBeNull()
   })
   it.each([
     [409, 'TELEGRAM_MESSAGE_UNAVAILABLE', 'Ответ доступен только для входящего сообщения'],

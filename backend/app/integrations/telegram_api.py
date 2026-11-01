@@ -218,7 +218,7 @@ async def sync(principal=Depends(current_principal), db: AsyncSession = Depends(
     integration_id = item.id
     await db.commit()
     processed = await service.poll_once(integration_id, timeout=0)
-    return {"processed": processed}
+    return {"processed": processed or 0}
 
 
 @router.get("/messages", response_model=list[MessageOut])

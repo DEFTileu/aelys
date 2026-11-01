@@ -27,7 +27,8 @@ Telegram commands and verified binding. Ветка `feat/telegram-personal-assis
   до delay+300 секунд. Ручной ответ проверяется до LLM и перед отправкой;
   новое входящее во время генерации отменяет устаревшее решение.
 - Pydantic разбирает строгий JSON в `BusinessDecision(reply/no_reply/handoff)`.
-  Терминальное решение не содержит customer text и не проходит ручной send.
+  Терминальное решение не содержит customer text и не отправляется автоматически;
+  ручной ответ владельца и повторная генерация разрешены.
   Handoff создаёт одну content-free Notification и best-effort owner DM.
   Повторный handoff после edit не создаёт вторую Notification/DM.
 - `/busy HH:MM <text>` задаёт разрешённый к раскрытию статус с TTL; `/free`
@@ -65,9 +66,9 @@ credential URL, provider description и текста переписки.
 | 6 | Local day/DST/RRULE, исключение deleted/terminal | `test_briefings.py::test_agenda_day_bounds_completed_deleted_and_rrule` (3 зоны/даты), `test_today_uses_configured_timezone_and_read_policy` |
 | 7 | Digest одна/день, durable claim, disabled/outside молчат | `test_digest_once_persisted_window_disabled_and_failure`; `test_digest_claim_survives_failed_delivery_and_concurrent_workers` — конкурентные отдельные sessions, повторные итерации и потерянная доставка |
 | 8 | Задержка и только последнее из серии, один LLM | `test_telegram_business.py::test_reply_delay_latest_series_and_owner_suppression` |
-| 9 | Ручной ответ во время delay/генерации | `test_manual_owner_answer_suppresses_auto_reply` (2 варианта); в delay-варианте затем продвигается время за окно ожидания |
-| 10 | Новое входящее во время генерации | `test_new_message_during_generation_suppresses_stale_reply` |
-| 11 | No_reply молчит, handoff owner-only, Notification без текста | `test_terminal_decisions_cannot_send_owner_note`, `test_handoff_notification_survives_private_send_failure`, `test_handoff_edit_keeps_single_notification` |
+| 9 | Ручной ответ во время delay/генерации | `test_manual_owner_answer_suppresses_auto_reply` (2 варианта): во время генерации owner reply доступен только через `get_updates` быстрого poll после LLM; прямого ingest из generate нет. В delay-варианте время продвигается за окно ожидания |
+| 10 | Новое входящее во время генерации | `test_new_message_during_generation_suppresses_stale_reply`: новое сообщение приходит через быстрый poll после LLM, старый ответ подавлен, следующая итерация отвечает на новое |
+| 11 | No_reply молчит, handoff owner-only, Notification без текста | `test_terminal_decisions_allow_only_explicit_owner_reply`, `test_handoff_notification_survives_private_send_failure`, `test_handoff_edit_keeps_single_notification` |
 | 12 | Невалидный JSON/terminal с customer text не доставляются | `test_telegram_ai.py::test_strict_decision_rejects_invalid_and_cross_audience_text`; `test_auto_reply_uses_real_ai_harness_and_records_usage` — 5 ответов через настоящий harness, mock только HTTP provider/Telegram |
 | 13 | Customer injection, tools пусты, action валидируется | `test_busy_status_expiry_and_customer_injection_are_data`, invalid action в двух предыдущих тестах; исходные context isolation tests сохранены |
 | 14 | Expired status, /free, /busy следующий день | `test_busy_free_addressed_commands_and_help`; `test_busy_uses_next_real_wall_clock_occurrence_across_dst` (spring gap/autumn fold); `test_busy_status_expiry_and_customer_injection_are_data` |
@@ -148,8 +149,11 @@ PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_telegram_personal.py::
 1. Настраивает Aelys bot, привязывает свой аккаунт и выдаёт can_reply в Telegram.
 2. Проверяет реальный `/task`: задача доступна через Aelys, повтор update не дублирует её.
 3. Проверяет Business-переписку с задержкой и отмену автоответа своим сообщением.
-4. Проверяет handoff: собеседнику ничего не отправлено, owner DM + Notification.
-5. Сам отключает Business-бота MySDU на этом аккаунте при переключении.
+4. Проверяет handoff: собеседнику ничего не отправлено, owner DM + Notification;
+   после handoff/no_reply можно отправить собственный ручной ответ.
+5. Проверяет реальную модель через своего провайдера: JSON разбирается и даёт
+   ожидаемое решение. Реальный провайдер в автоматических тестах не вызывался.
+6. Сам отключает Business-бота MySDU на этом аккаунте при переключении.
    Учебный MySDU bot и Sheets monitor остаются в MySDU.
 
 Без настоящего токена/подключения эти проверки не считаются выполненными.
@@ -163,3 +167,19 @@ PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_telegram_personal.py::
 - `57092c5` — `feat(telegram): add personal commands and deferred business decisions`.
 
 Документация/ADR и этот отчёт идут отдельным атомарным docs-коммитом.
+
+
+## Доработка того же Phase 3 среза после ревью — 2026-11-01
+
+Новые функции, миграция и изменения MySDU не требуются. Исправлены быстрый poll
+после генерации, учёт нетекстовых ответов владельца, одна внешняя JSON-обёртка,
+ручной ответ/повторная генерация после no_reply/handoff. Sync-пробел не изменён.
+Для занятого/потерянного lease внутренний poll возвращает None, успешный пустой
+poll — 0; публичный sync API сохраняет числовой processed.
+
+Регрессии написаны до исправлений: **19 failed, 65 passed** в двух backend-файлах;
+**3 failed, 371 passed** в web. Причины падения: отправленный устаревший ответ,
+отсутствие fast poll/owner marker, отказ fenced JSON и ручного override,
+скрытая форма и отсутствие подписи пустой owner-строки. После исправлений:
+целевые backend **84 passed**, web Telegram settings **14 passed**.
+Итоговые результаты общего прогона приводятся ниже после последующей проверки.

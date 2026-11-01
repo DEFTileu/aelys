@@ -303,7 +303,7 @@ async def test_poll_lease_prevents_concurrent_fetch(setup):
         pytest.fail("first poll never reached get_updates")
     second = await service.poll_once(item["id"], timeout=0)
     fake.gate.set()
-    assert await first == 0 and second == 0
+    assert await first == 0 and second is None
     assert len([call for call in fake.calls if isinstance(call, tuple) and call[0] == "updates"]) == 1
 
 
@@ -438,7 +438,7 @@ async def test_poll_rate_limit_persists_retry_after(setup, monkeypatch):
         obj = await session.get(TelegramIntegration, item["id"])
         assert obj.lease_owner is None and service.utc(obj.lease_expires_at) > now() + timedelta(seconds=20)
         assert obj.last_error_code == "TELEGRAM_RATE_LIMITED" and obj.last_update_id == -1
-    assert await service.poll_once(item["id"], timeout=0) == 0
+    assert await service.poll_once(item["id"], timeout=0) is None
     assert len(calls) == 1
 
 
@@ -524,6 +524,11 @@ async def test_automatic_reply_is_not_repeated_on_next_cycle(setup, monkeypatch)
 @pytest.mark.asyncio
 @pytest.mark.parametrize('decision_payload,expected_status', [
     ('{"action":"reply","text":"Thank you for your message.","owner_note":null}', 'sent'),
+    ('```json\n{"action":"reply","text":"Thank you for your message.","owner_note":null}\n```', 'sent'),
+    ('```\n{"action":"reply","text":"Thank you for your message.","owner_note":null}\n```', 'sent'),
+    ('before ```json\n{"action":"reply","text":"bad","owner_note":null}\n```', 'failed'),
+    ('```json\n{"action":"reply","text":"bad","owner_note":null}\n``` after', 'failed'),
+    ('```json\n{}\n```\n```json\n{}\n```', 'failed'),
     ('not-json', 'failed'),
     ('{"action":"no_reply","text":"malicious customer text","owner_note":null}', 'failed'),
     ('{"action":"delete_all","text":null,"owner_note":null}', 'failed'),
@@ -622,7 +627,7 @@ async def test_reply_delay_latest_series_and_owner_suppression(setup, monkeypatc
 
 
 @pytest.mark.parametrize('action', ['no_reply', 'handoff'])
-async def test_terminal_decisions_cannot_send_owner_note(setup, monkeypatch, action):
+async def test_terminal_decisions_allow_only_explicit_owner_reply(setup, monkeypatch, action):
     from app.core.models import Notification
     from app.integrations.telegram_ai import BusinessDecision
     client, sessions, fake = setup
@@ -650,9 +655,14 @@ async def test_terminal_decisions_cannot_send_owner_note(setup, monkeypatch, act
         else:
             assert not notices and not fake.sent
         with pytest.raises(Exception) as exc:
-            await service.send_reply(session, integration, msg, msg.version, 'private owner note')
+            await service.send_reply(session, integration, msg, msg.version, 'must not auto-send', automatic=True)
         assert getattr(exc.value, 'status_code', None) == 409
     assert all(chat != CUSTOMER for chat, _, _ in fake.sent)
+    response = await client.post(f"{PREFIX}/messages/{row['id']}/send",
+                                 json={'version': msg.version, 'text': 'Explicit owner response'})
+    assert response.status_code == 200, response.text
+    assert fake.sent[-1][:2] == (CUSTOMER, 'Explicit owner response')
+    assert all('private owner note' not in content for chat, content, _ in fake.sent if chat == CUSTOMER)
 
 
 @pytest.mark.parametrize('during_generation', [False, True])
@@ -667,34 +677,164 @@ async def test_manual_owner_answer_suppresses_auto_reply(setup, monkeypatch, dur
     calls = []
     async def generate(session, integration, msg):
         calls.append(msg.id)
-        await ingest(sessions, item['id'], message(3, 'manual owner reply', message_id=50, sender=OWNER), fake)
         return BusinessDecision('reply', 'must not send', None)
     monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    fake.updates = [message(3, 'manual owner reply', message_id=50, sender=OWNER)]
     if not during_generation:
         await service.auto_reply_once(item['id'])
         assert not calls
-        await ingest(sessions, item['id'], message(3, 'manual owner reply', message_id=50, sender=OWNER), fake)
+        await service.poll_once(item['id'], timeout=0)
         after_delay = now() + timedelta(seconds=91)
         monkeypatch.setattr(service, 'now', lambda: after_delay)
     await service.auto_reply_once(item['id'])
     assert calls == ([row['id']] if during_generation else [])
     assert not fake.sent
+    async with sessions() as session:
+        stored = await session.get(TelegramBusinessMessage, row['id'])
+        if during_generation:
+            assert stored.draft_status in {'ready', 'failed'}
+            owners = list((await session.execute(select(TelegramBusinessMessage).where(
+                TelegramBusinessMessage.direction == 'owner'))).scalars())
+            assert len(owners) == 1 and owners[0].text == 'manual owner reply'
+            assert ('updates', 3, 0) in fake.calls
 
 
 async def test_new_message_during_generation_suppresses_stale_reply(setup, monkeypatch):
     client, sessions, fake = setup
-    item, _ = await seed_message(client, sessions, fake)
+    item, row = await seed_message(client, sessions, fake)
     async with sessions() as session:
         integration = await session.get(TelegramIntegration, item['id'])
         integration.auto_reply = True
         integration.reply_delay_seconds = 0
         await session.commit()
+    generated = []
+    async def generate(session, integration, msg):
+        generated.append(msg.telegram_message_id)
+        return BusinessDecision('reply', f'answer to {msg.telegram_message_id}', None)
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    fake.updates = [message(3, 'newer input', message_id=50)]
+    await service.auto_reply_once(item['id'])
+    assert not fake.sent
+    async with sessions() as session:
+        old = await session.get(TelegramBusinessMessage, row['id'])
+        assert old.draft_status in {'ready', 'failed'}
+    await service.auto_reply_once(item['id'])
+    assert generated == [7, 50]
+    assert len(fake.sent) == 1 and fake.sent[0][1] == 'answer to 50'
+
+
+@pytest.mark.parametrize('failure', ['transport', 'lease'])
+async def test_fast_poll_unavailable_never_sends_or_loses_updates(setup, monkeypatch, failure):
+    client, sessions, fake = setup
+    item, row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        integration = await session.get(TelegramIntegration, item['id'])
+        integration.auto_reply = True; integration.reply_delay_seconds = 0
+        if failure == 'lease':
+            integration.lease_owner = 'other-worker'
+            integration.lease_expires_at = now() + timedelta(seconds=60)
+        await session.commit()
     async def generate(*args):
-        await ingest(sessions, item['id'], message(3, 'newer input', message_id=50), fake)
-        return BusinessDecision('reply', 'stale reply', None)
+        return BusinessDecision('reply', 'must not send', None)
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    original = fake.get_updates
+    async def unavailable(self, offset, timeout=20):
+        assert timeout == 0
+        raise TelegramError('network_error')
+    if failure == 'transport':
+        monkeypatch.setattr(fake, 'get_updates', unavailable)
+    fake.updates = [message(3, 'manual reply', message_id=50, sender=OWNER)]
+    await service.auto_reply_once(item['id'])
+    assert not fake.sent
+    async with sessions() as session:
+        integration = await session.get(TelegramIntegration, item['id'])
+        assert integration.last_update_id == 2
+        assert await session.get(TelegramUpdateReceipt, (item['id'], 3)) is None
+        stored = await session.get(TelegramBusinessMessage, row['id'])
+        assert stored.draft_status == 'ready'
+        integration.lease_owner = None; integration.lease_expires_at = None
+        await session.commit()
+    monkeypatch.setattr(fake, 'get_updates', original)
+    assert await service.poll_integration_safely(item['id']) is True
+    assert not fake.sent
+    async with sessions() as session:
+        assert (await session.get(TelegramIntegration, item['id'])).last_update_id == 3
+        assert await session.get(TelegramUpdateReceipt, (item['id'], 3)) is not None
+
+
+@pytest.mark.parametrize('kind', ['voice', 'sticker', 'photo', 'document', 'forward'])
+async def test_owner_nontext_or_forward_on_fast_poll_suppresses_reply(setup, monkeypatch, kind):
+    client, sessions, fake = setup
+    item, _row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        integration = await session.get(TelegramIntegration, item['id'])
+        integration.auto_reply = True; integration.reply_delay_seconds = 0
+        await session.commit()
+    update = message(3, message_id=50, sender=OWNER)
+    raw = update['business_message']; raw.pop('text')
+    if kind == 'forward':
+        raw['text'] = 'forwarded private content'
+        raw['forward_origin'] = {'type': 'hidden_user', 'sender_user_name': 'Private'}
+    else:
+        raw[kind] = {'file_id': 'do-not-store-media-secret'}
+        raw['caption'] = 'do not store caption'
+    fake.updates = [update]
+    async def generate(*args):
+        return BusinessDecision('reply', 'must not send', None)
     monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
     await service.auto_reply_once(item['id'])
     assert not fake.sent
+    async with sessions() as session:
+        owners = list((await session.execute(select(TelegramBusinessMessage).where(
+            TelegramBusinessMessage.direction == 'owner'))).scalars())
+        assert len(owners) == 1 and owners[0].text == ''
+    response = (await client.get(PREFIX + '/messages')).text
+    assert 'do-not-store-media-secret' not in response and 'forwarded private content' not in response
+    assert 'do not store caption' not in response
+
+
+@pytest.mark.parametrize('kind', ['business_bot', 'is_bot', 'customer_media'])
+async def test_ignored_echo_or_customer_media_does_not_cancel_reply(setup, monkeypatch, kind):
+    client, sessions, fake = setup
+    item, row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        integration = await session.get(TelegramIntegration, item['id'])
+        integration.auto_reply = True; integration.reply_delay_seconds = 0
+        await session.commit()
+    update = message(3, message_id=50, sender=CUSTOMER if kind == 'customer_media' else OWNER)
+    raw = update['business_message']
+    if kind == 'business_bot': raw['sender_business_bot'] = {'id': 1}
+    elif kind == 'is_bot': raw['from']['is_bot'] = True
+    else:
+        raw.pop('text'); raw['voice'] = {'file_id': 'ignored'}
+    fake.updates = [update]
+    async def generate(*args):
+        return BusinessDecision('reply', 'allowed answer', None)
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    await service.auto_reply_once(item['id'])
+    assert len(fake.sent) == 1 and fake.sent[0][:2] == (CUSTOMER, 'allowed answer')
+    assert ('updates', 3, 0) in fake.calls
+    async with sessions() as session:
+        rows = list((await session.execute(select(TelegramBusinessMessage))).scalars())
+        assert len(rows) == 1 and rows[0].id == row['id']
+
+
+async def test_handoff_regeneration_keeps_one_notice_and_owner_dm(setup, monkeypatch):
+    from app.core.models import Notification
+    client, sessions, fake = setup
+    _item, row = await seed_message(client, sessions, fake)
+    async def generate(*args):
+        return BusinessDecision('handoff', None, 'owner note')
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    path = f"{PREFIX}/messages/{row['id']}/draft"
+    first = await client.post(path, json={'version': row['version']})
+    assert first.status_code == 200
+    second = await client.post(path, json={'version': first.json()['version']})
+    assert second.status_code == 200, second.text
+    assert second.json()['draft_status'] == 'handoff'
+    assert len(fake.sent) == 1 and fake.sent[0][0] == OWNER
+    async with sessions() as session:
+        assert len((await session.execute(select(Notification))).scalars().all()) == 1
 
 
 @pytest.mark.parametrize('cause', ['edit', 'delete', 'retention', 'clear'])

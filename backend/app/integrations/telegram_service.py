@@ -182,12 +182,17 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
     sender = mapping(raw.get("from"))
     if not integer(raw.get("message_id")) or not integer(raw.get("date")) or not integer(sender.get("id")):
         return None
-    # Ignore bot-generated messages, forwarded payloads, unsupported media and
-    # old imported messages. The connector responds only to plain private text.
-    text = raw.get("text")
-    if not isinstance(text, str) or not text.strip() or len(text) > 4096 or sender.get("is_bot") or raw.get("sender_business_bot") or raw.get("forward_origin") or raw.get("forward_from"):
+    # Bot echoes never represent owner activity. Owner media/forwards only
+    # record that the human answered; no captions, media or forwarded text persist.
+    if sender.get("is_bot") or raw.get("sender_business_bot"):
         return None
     direction = "owner" if sender["id"] == item.owner_telegram_id else "inbound"
+    text = raw.get("text")
+    forwarded = raw.get("forward_origin") or raw.get("forward_from") or raw.get("forward_from_chat")
+    if direction == "owner" and (forwarded or not isinstance(text, str) or not text.strip()):
+        text = ""
+    elif forwarded or not isinstance(text, str) or not text.strip() or len(text) > 4096:
+        return None
     if direction == "inbound" and sender["id"] != chat["id"]:
         return None
     try:
@@ -210,16 +215,17 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
 
     return None
 
-async def poll_once(integration_id: str, *, timeout: int = 20) -> int:
+async def poll_once(integration_id: str, *, timeout: int = 20) -> int | None:
+    """Return processed count; None means freshness could not be established."""
     lease = uuid4().hex
     async with database.SessionLocal() as db:
         claim = await db.execute(update(TelegramIntegration).where(TelegramIntegration.id == integration_id, TelegramIntegration.enabled.is_(True), TelegramIntegration.encrypted_token.is_not(None), or_(TelegramIntegration.lease_expires_at.is_(None), TelegramIntegration.lease_expires_at < now())).values(lease_owner=lease, lease_expires_at=now() + timedelta(seconds=120)))
         await db.commit()
         if int(getattr(claim, "rowcount", 0) or 0) != 1:
-            return 0
+            return None
         item = await db.get(TelegramIntegration, integration_id)
         if not item or not item.encrypted_token:
-            return 0
+            return None
         original_token = item.encrypted_token
         offset = item.last_update_id + 1
         retry_after = None
@@ -242,7 +248,7 @@ async def poll_once(integration_id: str, *, timeout: int = 20) -> int:
                         continue
                     await db.refresh(item)
                     if item.lease_owner != lease or not item.enabled or item.encrypted_token != original_token:
-                        break
+                        return None
                     if update_id <= item.last_update_id:
                         continue
                     response_text = None
@@ -252,7 +258,7 @@ async def poll_once(integration_id: str, *, timeout: int = 20) -> int:
                     cursor_claim = await db.execute(update(TelegramIntegration).where(TelegramIntegration.id == integration_id, TelegramIntegration.lease_owner == lease, TelegramIntegration.encrypted_token == original_token, TelegramIntegration.enabled.is_(True)).values(last_update_id=update_id, last_polled_at=now(), last_error_code=None, lease_expires_at=now() + timedelta(seconds=120)))
                     if int(getattr(cursor_claim, "rowcount", 0) or 0) != 1:
                         await db.rollback()
-                        break
+                        return None
                     await db.commit(); processed += 1
                     if response_text and item.owner_telegram_id:
                         # Shortcut: confirmations are at-most-once. A failed send never
@@ -317,7 +323,7 @@ async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: T
     await db.refresh(item)
     if not item.enabled or not item.encrypted_token:
         raise error(409, "TELEGRAM_PAUSED", "Telegram-ассистент приостановлен.")
-    claim = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == version, TelegramBusinessMessage.draft_status.in_(["none", "ready", "failed"]), TelegramBusinessMessage.deleted_at.is_(None)).values(draft_status="generating", draft_error_code=None, updated_at=now(), version=TelegramBusinessMessage.version + 1))
+    claim = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == version, TelegramBusinessMessage.draft_status.in_(["none", "ready", "failed"] if automatic else ["none", "ready", "failed", "no_reply", "handoff"]), TelegramBusinessMessage.deleted_at.is_(None)).values(draft_status="generating", draft_error_code=None, updated_at=now(), version=TelegramBusinessMessage.version + 1))
     await db.commit()
     if int(getattr(claim, "rowcount", 0) or 0) != 1:
         raise error(409, "VERSION_CONFLICT", "Сообщение уже изменено. Обновите список.")
@@ -376,7 +382,7 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
         raise error(409, "TELEGRAM_MESSAGE_UNAVAILABLE", "Сообщение недоступно для ответа.")
     if automatic and not item.auto_reply:
         raise error(403, "POLICY_DENIED", "Автоответы отключены.")
-    if message.draft_status in {"no_reply", "handoff"}:
+    if automatic and message.draft_status in {"no_reply", "handoff"}:
         raise error(409, "TELEGRAM_MESSAGE_UNAVAILABLE", "Решение секретаря не предназначено для отправки собеседнику.")
     if message.draft_status == "sent":
         if message.draft_text == text:
@@ -413,7 +419,7 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
         ServerPolicyEngine().authorize(descriptor, ToolCall("telegram.reply", {"chat_id": message.chat_id}), PermissionContext(actor=f"telegram:{item.id}", scopes=frozenset({"telegram.reply"}), allow_external_effects=not automatic or item.auto_reply, policy_id="telegram-business"))
         # Atomic pre-send claim. Ambiguous transport results stay unknown and
         # never auto-retry; Telegram sendMessage has no idempotency parameter.
-        claimed = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == version, TelegramBusinessMessage.deleted_at.is_(None), TelegramBusinessMessage.draft_status.in_(["none", "ready", "failed"])).values(draft_status="sending", draft_text=text, draft_error_code=None, updated_at=now(), version=TelegramBusinessMessage.version + 1))
+        claimed = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == version, TelegramBusinessMessage.deleted_at.is_(None), TelegramBusinessMessage.draft_status.in_(["none", "ready", "failed"] if automatic else ["none", "ready", "failed", "no_reply", "handoff"])).values(draft_status="sending", draft_text=text, draft_error_code=None, updated_at=now(), version=TelegramBusinessMessage.version + 1))
         await db.commit()
         if int(getattr(claimed, "rowcount", 0) or 0) != 1:
             raise error(409, "VERSION_CONFLICT", "Ответ уже отправляется или сообщение изменено.")
@@ -486,6 +492,11 @@ async def auto_reply_once(integration_id: str) -> None:
                     return
                 prepared = await generate_draft(db, item, message, message.version, automatic=True)
                 if prepared.draft_status == "ready":
+                    # The same worker cannot ingest while the model is running.
+                    # Fetch pending updates before checking whether this reply is
+                    # still current. A busy lease/failure leaves a manual draft.
+                    if await poll_once(item.id, timeout=0) is None:
+                        continue
                     await send_reply(db, item, prepared, prepared.version, prepared.draft_text or "", automatic=True)
             except (HTTPException, TelegramError):
                 await db.rollback()

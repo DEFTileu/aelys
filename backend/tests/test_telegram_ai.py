@@ -212,3 +212,26 @@ async def test_busy_status_expiry_and_customer_injection_are_data(state):
     integration.status_until = datetime.now(UTC)-timedelta(seconds=1)
     await telegram_ai.generate_business_draft(db, integration, target)
     assert 'занят до вечера' not in calls[-1][2][0].content
+
+
+@pytest.mark.parametrize('fence', ['```json', '```'])
+async def test_single_json_fence_and_empty_owner_history(state, fence):
+    db, integration, target, calls, result = state
+    history = await db.get(TelegramBusinessMessage, 'history-13')
+    history.direction = 'owner'; history.text = ''
+    result.response.text = fence + '\n' + result.response.text + '\n```'
+    decision = await telegram_ai.generate_business_draft(db, integration, target)
+    assert decision == telegram_ai.BusinessDecision('reply', 'A helpful reply', None)
+    assert all(turn.content.strip() for turn in calls[0][2])
+
+
+@pytest.mark.parametrize('wrapper', ['prefix', 'suffix', 'double', 'language'])
+async def test_non_json_wrapper_is_rejected(state, wrapper):
+    db, integration, target, _, result = state
+    fenced = '```json\n' + result.response.text + '\n```'
+    result.response.text = {
+        'prefix': 'Here is JSON: ' + fenced, 'suffix': fenced + ' explanation',
+        'double': fenced + '\n' + fenced, 'language': fenced.replace('```json', '```javascript'),
+    }[wrapper]
+    with pytest.raises(telegram_ai.TelegramAIError, match='AI_UNAVAILABLE'):
+        await telegram_ai.generate_business_draft(db, integration, target)

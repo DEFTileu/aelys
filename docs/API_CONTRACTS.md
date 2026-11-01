@@ -396,7 +396,9 @@ as active. Status commands are accepted only from the verified owner private cha
 
 The one bot handles `/task`, `/note`, `/today`, `/busy`, `/free`, `/help`.
 Business AI returns strict reply/no_reply/handoff decisions. New terminal
-`draft_status` values no_reply/handoff cannot enter manual/automatic send claims.
+`draft_status` values no_reply/handoff cannot enter automatic send claims. The
+owner can explicitly send their own request text or regenerate a draft from
+either status; owner_note never pre-fills the customer reply.
 Handoff creates Notification kind telegram.handoff with only message_id data;
 private owner_note is exposed only through the authenticated Telegram owner API.
 See TELEGRAM_PERSONAL_ASSISTANT_REPORT.md for acceptance and sync limitations.

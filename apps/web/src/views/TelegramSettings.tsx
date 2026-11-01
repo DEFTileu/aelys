@@ -92,7 +92,7 @@ export function TelegramSettings() {
     setDrafts((current) => ({ ...current, [item.id]: item.draft_text ?? '' }))
   }
   const send = (message: TelegramBusinessMessage) => {
-    if (message.direction !== 'inbound' || message.deleted_at || ['no_reply', 'handoff'].includes(message.draft_status)) return
+    if (message.direction !== 'inbound' || message.deleted_at) return
     const text = drafts[message.id] ?? message.draft_text ?? ''
     if (!text.trim()) return
     const signature = JSON.stringify([message.version, text])
@@ -172,14 +172,14 @@ export function TelegramSettings() {
       {messages.length === 0 && <p>Сообщений пока нет.</p>}
       {messages.map((message) => <details className="provider-row actual-settings-disclosure" key={message.id}>
         <summary>{message.chat_title} · {message.direction}</summary><p>{message.sent_at}{message.deleted_at ? ' · удалено' : ''}</p>
-        <div className="mail-body">{message.text}</div>
+        <div className="mail-body">{message.text || (message.direction === 'owner' ? 'Сообщение без текста' : '')}</div>
         {message.direction === 'owner' && <p>Ваше исходящее сообщение. Для ответа выберите входящее сообщение собеседника.</p>}
         {message.direction === 'inbound' && <>
           <p>Черновик: {message.draft_status}{message.draft_error_code ? ' · ошибка создания' : ''}</p>
           {message.owner_note && <p>Для владельца: {message.owner_note}</p>}
-          {!['no_reply', 'handoff'].includes(message.draft_status) && <div className="settings-form"><label>Текст ответа<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
+          <div className="settings-form"><label>Текст ответа<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
             <div className="provider-actions"><button className="button button--quiet" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Создать черновик</button>
-              <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Отправить ответ</button></div></div>}
+              <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Отправить ответ</button></div></div>
         </>}
       </details>)}
     </section>}
