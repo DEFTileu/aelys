@@ -1,4 +1,4 @@
-"""Explicit commands for the verified owner; no personal free-form AI runtime."""
+"""Explicit commands for the verified owner; free text is queued by ingestion."""
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .telegram_models import TelegramIntegration
 
-HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/help'
+HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/new\n/help'
 REMIND_HELP = 'Пример: /remind 18:00 Позвонить, /remind 2026-11-05 18:00 Встреча или /remind 2h Проверить. Укажите будущее время и текст до 300 символов.'
 BUSY_HELP = 'Пример: /busy 18:00 занят. Время HH:MM, текст от 1 до 200 символов.'
 
@@ -47,6 +47,15 @@ async def handle_owner_message(db: AsyncSession, item: TelegramIntegration, text
         return None
     try:
         async with db.begin_nested():
+            if command == '/new':
+                from app.core.models import AIConversation
+                authorize(item, 'ai.personal.write')
+                conversation = AIConversation(owner_id=item.owner_id, title='Telegram assistant')
+                db.add(conversation)
+                await db.flush()
+                item.personal_conversation_id = conversation.id
+                item.version += 1
+                return 'Новая беседа начата.'
             if command in {'/task', '/note'}:
                 if not body or not body.splitlines()[0].strip() or len(body.splitlines()[0]) > 300:
                     return 'Укажите заголовок от 1 до 300 символов, остальное — со следующей строки.'

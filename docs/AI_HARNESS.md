@@ -115,3 +115,28 @@ Rule-based automation uses the same tool registry but has separate rule identity
 ## 10. Framework decision
 
 Exact SDK unresolved. Evaluate OpenAI Agents SDK / direct provider SDK / other orchestration library against: streaming, external provider adapters, tracing/redaction, typed tools, cancellation, policy interception, license and testability. Do not hardwire provider SDK into every domain module.
+
+
+## 11. Shared owner tool turn (Stage 3, 2026-11-01)
+
+`ai/turn.py:run_tool_turn` is the single bounded provider/tool loop used by the
+Web tool branch and Telegram owner dialogue. Web retains its existing one
+completion behavior; personal turns allow up to eight completions inside the
+90-second supervised task. Repeated tool call IDs never re-execute within a
+turn. Tool outputs return to the model as UntrustedData. A step-limit answer
+reports the limit instead of claiming an unfinished chain is complete.
+
+Each completion has a stable distinct usage ID under one AIRun, so UsageTracker
+cannot collapse multiple provider charges. Observed cost/token checkpoints are
+committed before the next tool/provider wait; monthly budget includes recorded
+running/failed usage. Tool mutations and their common sync log commit with the
+successful run event. Interrupted work is failed, never replayed. No provider
+key or unredacted provider failure is exposed in owner replies or generic logs.
+
+`personal_tools.py` extends the existing registry: bounded task list/search,
+exact-version update/complete, bounded note read, calendar occurrences (<=31 days),
+event creation, task reminder creation; existing create_task/create_note remain.
+Permissions come from the current affirmative owner request. Quoted/code content
+and negated or merely referenced actions do not grant write scopes. Ambiguous
+requests remain read-only. The personal registry and AIConversation are never
+passed to the Business secretary. No MCP, RAG or document search was added.

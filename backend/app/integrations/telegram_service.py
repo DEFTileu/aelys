@@ -162,6 +162,10 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
             return None
         if (isinstance(text, str) and chat.get("type") == "private" and integer(sender.get("id"))
                 and chat.get("id") == sender["id"] == item.owner_telegram_id and not sender.get("is_bot")):
+            if text.strip() and not text.strip().startswith('/'):
+                from .telegram_personal_queue import enqueue_owner_message
+                await enqueue_owner_message(db, item, payload, now())
+                return None
             return await handle_owner_message(db, item, text, now())
         return None
     raw = payload.get("business_message") or payload.get("edited_business_message") or payload.get("deleted_business_messages")
@@ -561,6 +565,8 @@ async def poll_integration_safely(integration_id: str) -> bool:
         from .telegram_reminders import deliver_telegram_reminders
         await deliver_telegram_reminders(integration_id)
         await digest_once(integration_id)
+        from .telegram_personal_dialogue import personal_iteration
+        await personal_iteration(integration_id)
     except Exception:  # noqa: BLE001 - isolate one integration from the supervisor
         # No customer text, token, request URL or provider exception is emitted.
         return False
@@ -583,13 +589,20 @@ async def connector_iteration() -> None:
 async def connector_loop() -> None:
     """Background connector works on loopback with no publicly exposed webhook."""
     # Import inside loop so no credentials/DB are touched merely by importing app.
-    while True:
-        try:
-            await connector_iteration()
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001 - keep startup available during migrations
-            # Database may be migrating at process startup. Keep the service
-            # available and try again after a bounded delay.
-            await asyncio.sleep(0)
-        await asyncio.sleep(3)
+    recovered = False
+    try:
+        while True:
+            try:
+                if not recovered:
+                    from .telegram_personal_queue import fail_interrupted_personal_jobs
+                    await fail_interrupted_personal_jobs()
+                    recovered = True
+                await connector_iteration()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - retry while database migrations finish
+                await asyncio.sleep(0)
+            await asyncio.sleep(3)
+    finally:
+        from .telegram_personal_dialogue import stop_personal_turns
+        await stop_personal_turns()

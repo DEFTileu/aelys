@@ -504,3 +504,16 @@ foreground dispatcher only consumes in_app and the Telegram connector consumes
 telegram. Internal pending_digest_on/at persist quiet-hour postponement and are
 not exposed as editable settings. /remind schedules a TaskReminder plus capture
 Task atomically; all reminder mutations and external sends pass Policy Engine.
+
+
+### Telegram personal text queue (migration 0030)
+
+Ordinary verified-owner private text is ingested transactionally with update
+receipt/cursor into encrypted TelegramPersonalJob text/quote. Internal job states:
+queued/running/done/failed. One durable running claim per integration; startup
+fails interrupted running jobs and their bound AIRun without tool replay. The
+persistent owner AIConversation is pinned at enqueue; `/new` starts another.
+Existing AI run/event contracts and owner domain contracts are reused. Personal
+tools use exact Task version CAS and the same domain/sync writer as REST.
+No new public queue endpoint, sync resource_kind or credential exposure. Internal
+queue data is excluded from owner export and re-encrypted by provider-key rotation.

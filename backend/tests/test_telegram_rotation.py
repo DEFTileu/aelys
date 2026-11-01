@@ -108,3 +108,21 @@ async def test_failure_rolls_back_all_rotations(rotation_db):
         assert decrypt_secret(provider.encrypted_value, OLD_KEY) == "provider secret"
         assert decrypt_secret((await db.get(GmailCredential, "account")).encrypted_tokens, OLD_KEY) == "gmail token"
         assert decrypt_secret((await db.get(GmailOAuthState, "state")).encrypted_verifier, OLD_KEY) == "oauth verifier"
+
+
+async def test_rotates_pending_personal_text_and_quote(rotation_db):
+    async with rotation_db() as db:
+        await db.execute(text('INSERT INTO telegram_personal_jobs '
+            '(id,owner_id,integration_id,telegram_update_id,text,quote,state,version,created_at,updated_at,recovery_notice_sent) '
+            'VALUES (:id,:owner,:integration,1,:body,:quote,:state,1,:at,:at,false)'),
+            {'id':'pending','owner':'user','integration':'integration','body':encrypt_secret('private owner request',OLD_KEY),
+             'quote':encrypt_secret('untrusted quote',OLD_KEY),'state':'queued','at':datetime.now(UTC).isoformat()})
+        await db.commit()
+    assert await rotate_provider_secrets.rotate()==8
+    from app.integrations.telegram_models import TelegramPersonalJob
+    async with rotation_db() as db:
+        job=await db.get(TelegramPersonalJob,'pending')
+        assert (job.text,job.quote)==('private owner request','untrusted quote')
+        raw=(await db.execute(text("SELECT text,quote FROM telegram_personal_jobs WHERE id='pending'"))).one()
+        for value in raw:
+            with pytest.raises(InvalidTag):decrypt_secret(value,OLD_KEY)

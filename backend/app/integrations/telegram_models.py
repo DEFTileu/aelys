@@ -62,6 +62,7 @@ class TelegramIntegration(Owned):
     owner_telegram_id: Mapped[int | None] = mapped_column(BigInteger)
     binding_code_hash: Mapped[str | None] = mapped_column(String(64))
     binding_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    personal_conversation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_conversations.id"))
     last_update_id: Mapped[int] = mapped_column(BigInteger, default=-1)
     lease_owner: Mapped[str | None] = mapped_column(String(64))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -113,3 +114,21 @@ class TelegramUpdateReceipt(Base):
     integration_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_integrations.id"), primary_key=True)
     update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TelegramPersonalJob(Owned):
+    """Only verified owner requests enter this encrypted, at-most-once queue."""
+    __tablename__ = "telegram_personal_jobs"
+    __table_args__ = (UniqueConstraint("integration_id", "telegram_update_id", name="uq_telegram_personal_job_update"),)
+    integration_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_integrations.id"), index=True)
+    telegram_update_id: Mapped[int] = mapped_column(BigInteger)
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    text: Mapped[str] = mapped_column(EncryptedText(), default="")
+    quote: Mapped[str | None] = mapped_column(EncryptedText())
+    state: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    conversation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_conversations.id"))
+    run_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_runs.id"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    recovery_notice_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())

@@ -127,3 +127,9 @@ The current UI primarily loads REST collections through the shared cache/outbox;
 shared syncPull/syncBootstrap methods remain available to device-bound consumers.
 This stage makes server-side records available to both REST and pull-only clients;
 it does not claim a new UI background pull orchestrator.
+
+
+Stage 3 personal tools also use this common writer in the same transaction as
+the successful AI tool event. A restarted assistant queue never replays a tool;
+already committed domain data remains visible to pull/bootstrap with its exact
+Owned.version. The encrypted Telegram queue is not a sync resource kind.

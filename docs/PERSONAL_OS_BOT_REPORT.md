@@ -26,7 +26,7 @@ Business context must never include personal memory/tasks/notes/calendar.
 | 0 — merge origin/main | Accepted locally | Fetched origin/main `378ecb3`; merging into feature branch. Automation capture and rule drafts retained; contract additions retained; UI resolved by Luna medium; migration regression by Terra medium. Merge revision 0028 joins both heads without changing historical revisions. All CI commands passed locally, details below. |
 | 1 — unified change-log | Accepted locally | Shared transactional writer, domain push and compatibility implemented; final backend 375 passed + 2 separately covered PG skips, 52 targeted new contracts. Details below. |
 | 2 — reminders/digest | Accepted locally | Claims, quiet hours, /remind, deadline options, tomorrow and browser persistence passed. Final backend 418 passed plus 2 separate PG cases; web 414; shared 36. |
-| 3 — personal dialogue | Not started | Encrypted durable queue, shared tool loop, bounded persistent conversation and /new required. |
+| 3 — personal dialogue | Accepted locally | Encrypted queue, shared loop/usage, current owner scopes, persistent conversation and /new; 552 backend passed, 2 PG cases separately passed. |
 | 4 — ephemeral media | Not started | Limits, in-memory transport, separate transcription key, capabilities/adapters and read-only file turns required. |
 | 5 — explicit memory | Not started | Encrypted facts, commands/tools/API/settings, lexical selection, export/rotation required. |
 | 6 — task matrix/time | Not started | Server timestamps/history, matrix and stagnant digest required. |
@@ -316,3 +316,69 @@ existing warning, 62.60s. Explicit digest scheduling authorization was then
 checked with all **7 briefing tests passed**; no behavior/schema changes.
 Stage 2 accepted locally. Commit includes actual worker/policies, migration,
 contracts, settings, regression and browser evidence. Next Stage 3 only.
+
+## Stage 3 — personal owner text dialogue
+
+Implemented in `telegram_personal_queue.py`, `telegram_personal_dialogue.py`,
+`telegram_models.py`, `telegram_service.py`, `telegram_personal.py`,
+`ai/turn.py`, `ai/personal_tools.py` and migration 0030. The API tool branch uses
+the common turn function, retaining its existing one-completion behavior.
+Provider usage is distinct per completion and accumulated into one AIRun;
+monthly accounting includes observed running/failed checkpoints. Rotation covers
+encrypted queue text/quotes; export explicitly excludes internal queue rows.
+
+- Enqueue verifies private owner identity again and commits encrypted text/quote
+  with receipt/cursor. No model call in polling. Foreign IDs and forwards stay
+  silent. Conversations are pinned at enqueue; `/new` rotates the persistent
+  owner conversation. Context is bounded to 20 owner/assistant messages, with
+  time/timezone supplied by the server.
+- One supervised, bounded turn per integration, at most one started each
+  connector iteration. Timeout 90 seconds, at most eight provider completions.
+  Model/provider waits and recovery notices do not block polling/reminders.
+  Startup fails running jobs and their matching owner AIRun; successful tools
+  are never repeated. Interrupted-notice claims commit before transport, with a
+  content-free Notification and no delivery retry.
+- Registry extends existing creation tools with bounded task list/search,
+  exact-version task update/complete, note/calendar reads, validated event and
+  reminder creation. No delete. Policy Engine authorizes every mutation and
+  external effect; owner references and shared domain/sync writer are reused.
+  A reminder created with an event also checks reminder-write policy.
+- Current affirmative owner request determines direct action scopes. Quotes,
+  code, blockquotes, negation and referenced topics cannot grant writes. This
+  deterministic grammar is deliberately conservative: an ambiguous/unsupported
+  phrasing does not receive write permission; commands remain available.
+  Retrieved/quoted content is UntrustedData. Secretary does not receive this
+  registry/conversation. Reply segments are <=4096 with no parse_mode.
+
+Test-first evidence: missing shared turn (2 failures), missing dialogue runtime
+(3 failures), queue/registry tests before new modules, unrotated queue ciphertext,
+real UsageTracker completion dedup, quoted/negated and referenced-domain scope
+escalation, multiline quote, and stalled recovery transport were reproduced
+before fixes. Terra's two P1 findings and later P2 were fixed and re-reviewed;
+final review found no remaining confirmed blocker. Luna and Terra used medium
+reasoning and disjoint files; parent alone owns Git/index.
+
+Acceptance commands/results:
+
+- Full `make test`, with disposable PostgreSQL AI/queue/concurrency and migration
+  URLs: **552 passed, 2 skipped in 84.01s** on the final implementation, including
+  the stalled recovery-notice path. The two global PG integration cases were
+  separately run against a fresh migrated database: **2 passed**.
+- New queue suite: **82 passed** across SQLite/PostgreSQL. Personal tools:
+  **37 passed**. Shared turn/real monthly checkpoints: **5 passed** across
+  available backends. Final owner dialogue including real polling during model
+  wait, reminder delivery, interrupted committed tool, timeout, quote rejection,
+  long replies, `/new`, and stalled recovery DM: **9 passed**.
+- Ruff, mypy (**79 source files**), Bandit, compileall, pip-audit passed.
+  SQLite and PostgreSQL upgrade/check: no drift. One Alembic head:
+  `0030_telegram_personal_queue`. Fresh + both historical branches upgrade tests
+  passed. A standalone `alembic heads` initially omitted required secret env;
+  rerun with the synthetic local validation key passed.
+- OpenAPI equals the committed schema; no new HTTP envelope. Shared typecheck
+  and **36 tests** passed; web typecheck, **414 tests**, production build passed.
+  Existing Stage 2 settings browser check remains valid; no UI changed here.
+- No real Telegram token, provider completion or billing integration was used.
+  Transport/model fakes exercise real queue, policy, domains, sync, run/event
+  storage and worker paths. Live Telegram/model checks remain owner work.
+
+Stage 4 has not started. No MySDU code/data, main, deployment, push or PR changed.

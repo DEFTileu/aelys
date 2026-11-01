@@ -89,9 +89,8 @@ This is a Business/Secretary bot, not an unrestricted personal-account client.
 Customers cannot access owner Notes/Tasks/Mail/Finance or Mac tools. Only private
 plain-text incoming messages are handled; unsupported media, forwarded messages
 and bot echoes are ignored. No campaigns, proactive messages or Telegram Stars/
-profile/gift operations are implemented. The same bot now handles the six explicit
-owner commands. Free-form personal AI, media and Telegram reminder delivery remain
-outside this slice. Opt-in deterministic digest uses configured timezone and a
+profile/gift operations are implemented. The same bot handles explicit owner commands and queued personal AI text.
+Telegram reminder delivery is implemented; ephemeral media remains a later stage. Opt-in deterministic digest uses configured timezone and a
 2-hour window; no catch-up or send retry. Secretary uses reply/no_reply/handoff,
 waits reply_delay_seconds (default 90), then considers only the newest inbound in
 each chat. Handoff persists an encrypted owner_note and a content-free Notification.
@@ -111,3 +110,14 @@ or explicit past times return an example. Deadline reminders are opt-in (5h and
 the end of the window, including urgent ones. The same connector worker claims
 and commits before delivery; fallback Notification survives failure, no retries.
 The deterministic evening digest adds tomorrow, while /today stays unchanged.
+
+
+### Personal text dialogue — Stage 3, 2026-11-01
+
+Verified private owner text is queued encrypted with receipt/cursor. The same
+connector supervises one bounded asynchronous turn per integration, leaving
+polling/reminders available. Existing AIConversation/AIRun/router/usage and the
+shared typed tool loop are reused. `/new` starts another conversation; history
+is <=20 turns. Explicit owner action scopes, versioned Task CAS, UntrustedData
+quotes, terminal restart recovery and plain <=4096 reply chunks are enforced.
+No secretary access to these personal tools. Live credentials remain untested.

@@ -1,6 +1,6 @@
 # Telegram Business: бот-секретарь
 
-**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и шесть личных команд (ADR-027); дополнительные категории уведомлений остаются вне среза (см. `INTEGRATIONS.md`).
+**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и расширенный личный scope (ADR-027/028). Выполнены этапы 0–3: sync, reminders и текстовый AI; media/memory/matrix/Google остаются следующими этапами (см. `PERSONAL_OS_BOT_REPORT.md`).
 
 ## Подключение
 
@@ -127,3 +127,25 @@ Quiet hours start/end задаются парой: срочность их не 
 тихих часов сводка сохраняется в БД до конца окна; обычного догоняющего digest нет.
 Сводка включает завтра, /today не менялся. Claim и общая Notification сохраняются
 до отправки, повтора после ошибки нет. Секретарь не получает эти личные данные.
+
+
+## Personal owner dialogue — Stage 3
+
+Обычный текст проверенного владельца поступает в `telegram_personal_jobs`:
+text/quote зашифрованы, update receipt и cursor коммитятся с очередью. Poll не
+вызывает LLM. Тот же connector запускает не больше одного нового хода за итерацию,
+с одним in-flight ходом на integration и timeout 90 секунд. Задача supervised
+async: ожидание модели или recovery DM не удерживает polling и доставку reminders.
+Нет второго poller или scheduler. Startup переводит running в failed вместе с
+привязанным AIRun; инструменты не повторяются. Recovery DM «Не выполнено, повтори.»
+claim-ится до сети; при ошибке сохраняется общая Notification без содержимого.
+
+Одна owner AIConversation сохраняется между ходами. `/new` начинает новую;
+уже поставленные сообщения закреплены за прежней беседой. Prompt содержит максимум
+20 последних реплик и server time/timezone. reply_to_message — UntrustedData.
+Личные read/write tools доступны только через общий registry и Policy Engine;
+write scope выводится из прямой утвердительной просьбы и её объекта, не из цитат,
+истории, файлов, результата инструмента, запрета или просто упомянутой темы.
+Неоднозначная просьба не разрешает запись. Task update/complete требуют версию;
+конфликт сохраняет более свежую правку. Удаления нет. Ответы режутся по 4096,
+parse_mode отсутствует. Секретарь не использует эту беседу или личный registry.
