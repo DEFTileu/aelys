@@ -4,8 +4,8 @@
 .launch-intro--out { animation:launch-leave .6s cubic-bezier(.4,0,.2,1) both; }
 .launch-intro__backdrop, .launch-intro__sunrise, .launch-intro__light, .launch-intro__dim { position:absolute; inset:0; }
 .launch-intro__sunrise { background:linear-gradient(180deg,#3B2F86 0%,#8C6CC8 34%,#EBA79A 66%,#F7D5B8 100%); animation:launch-reveal .9s ease-in-out .8s both; }
-.launch-intro__scenery { position:absolute; inset:-4%; background-position:70% 55%; background-size:cover; background-repeat:no-repeat; animation:launch-scenery 1.8s cubic-bezier(.2,.7,.2,1) 1.5s both; }
-.launch-intro__light { background:radial-gradient(ellipse 45% 40% at 50% 46%,rgba(255,255,255,.55),rgba(255,255,255,0) 70%),linear-gradient(180deg,rgba(20,14,50,.15),rgba(20,14,50,.35)); animation:launch-reveal .9s ease-out 1.6s both; }
+.launch-intro__scenery { position:absolute; inset:0; background-position:70% 55%; background-size:cover; background-repeat:no-repeat; animation:launch-scenery 1.8s cubic-bezier(.2,.7,.2,1) 1.5s both; }
+.launch-intro__light { background:linear-gradient(180deg,rgba(20,14,50,.08),rgba(20,14,50,.2)); animation:launch-reveal .9s ease-out 1.6s both; }
 .launch-intro__dim { z-index:3; background:linear-gradient(180deg,rgba(20,12,48,.22),rgba(20,12,48,.42)); opacity:0; transition:opacity 900ms ease; }
 .launch-intro--lock .launch-intro__dim { opacity:1; }
 .launch-intro__stars { position:absolute; inset:0; }
@@ -35,10 +35,10 @@
 @media (max-height:640px) { .launch-stage { justify-content:flex-start; padding-top:24px; padding-bottom:64px; } .launch-intro--lock .launch-intro__mark { width:56px; height:46px; } .launch-stage__foot { bottom:12px; } }
 
 @keyframes launch-reveal { from { opacity:0; } to { opacity:1; } }
-@keyframes launch-scenery { from { opacity:0; transform:scale(1.18); } to { opacity:1; transform:scale(1); } }
+@keyframes launch-scenery { from { opacity:0; } to { opacity:1; } }
 @keyframes launch-float { to { transform:translateY(-6px); } }
 @keyframes launch-letter { from { opacity:0; transform:translateY(22px) rotate(8deg); filter:blur(4px); } to { opacity:1; transform:none; filter:blur(0); } }
 @keyframes launch-twinkle { 0%,100% { opacity:.15; transform:scale(.6); } 50% { opacity:1; transform:scale(1); } }
 @keyframes launch-out { to { opacity:0; visibility:hidden; } }
-@keyframes launch-leave { to { opacity:0; transform:scale(1.04); } }
+@keyframes launch-leave { to { opacity:0; } }
 @media (prefers-reduced-motion:reduce) { .launch-intro, .launch-intro * { animation-duration:.01ms !important; animation-delay:0s !important; transition-duration:.01ms !important; transition-delay:0s !important; } }

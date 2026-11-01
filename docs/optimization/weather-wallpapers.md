@@ -56,3 +56,13 @@ Launch follow-up (owner requested 2026-11-01):
 - Browser: a separate unauthenticated tab shows `11_night_clear.jpg` behind the
   entry form, matching the existing Алматы setting; screenshot verified. The
   original signed-in tab remains available.
+
+
+Launch clarity follow-up (owner requested 2026-11-01): removed the 18% scenery
+zoom, extra 4% overscan, whole-screen exit scaling and white radial light wash.
+Wallpaper reveal/exit now animate opacity only. Logo/card animations and the
+local glass treatment behind the sign-in form remain. This avoids additional
+resampling/haze; it does not increase detail in the supplied 1080p assets.
+Validation: 16 launch/session regression tests and production build passed.
+Browser computed scenery styles: filter `none`, transform `none`, inset `0px`;
+entry form and selected night image visually verified.
