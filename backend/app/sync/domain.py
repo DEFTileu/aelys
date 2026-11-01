@@ -23,6 +23,8 @@ async def apply_domain_patch(db: AsyncSession, *, owner_id: str, device_id: str,
     schemas = {'task': TaskIn, 'note': NoteIn, 'event': EventIn}
     models = {'task': Task, 'note': Note, 'event': CalendarEvent, 'project': Project}
     immutable = {'id', 'version', 'created_at', 'updated_at', 'deleted_at', 'owner_id'}
+    if kind == 'task':
+        immutable.update({'started_at', 'completed_at'})
     if set(patch) - set(FIELDS[kind]) - immutable:
         raise HTTPException(422, detail={'code': 'VALIDATION_ERROR', 'message': 'Unknown domain sync fields'})
     if ('id' in patch and patch['id'] != resource_id) or ('owner_id' in patch and patch['owner_id'] != owner_id):
@@ -32,8 +34,9 @@ async def apply_domain_patch(db: AsyncSession, *, owner_id: str, device_id: str,
             raise HTTPException(409, detail={'code': 'VERSION_CONFLICT', 'message': 'Domain record is missing'})
         item.deleted_at = now(); item.version = version
         return item
-    values = {name: getattr(item, name) for name in FIELDS[kind]} if item else {}
-    values.update({name: value for name, value in patch.items() if name in FIELDS[kind]})
+    writable = set(FIELDS[kind]) - immutable
+    values = {name: getattr(item, name) for name in writable} if item else {}
+    values.update({name: value for name, value in patch.items() if name in writable})
     try:
         if kind == 'project':
             from app.core.schemas import ProjectCreate

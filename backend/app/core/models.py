@@ -163,6 +163,8 @@ class Task(Owned):
     project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"))
     parent_task_id: Mapped[str | None] = mapped_column(String(36))
     status: Mapped[str] = mapped_column(String(30), default="todo")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     priority: Mapped[int] = mapped_column(Integer, default=0)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     due_timezone: Mapped[str | None] = mapped_column(String(64))

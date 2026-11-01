@@ -104,7 +104,18 @@ class TaskIn(BaseModel):
         # restore UTC on output, matching the existing calendar instant policy.
         return utc(value) if value is not None else None
 
-class TaskOut(TaskIn): model_config=ConfigDict(from_attributes=True); id: str; version: int
+class TaskOut(TaskIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    version: int
+    started_at: datetime | None = Field(default=None, json_schema_extra={"readOnly": True})
+    completed_at: datetime | None = Field(default=None, json_schema_extra={"readOnly": True})
+
+    @field_validator("started_at", "completed_at")
+    @classmethod
+    def utc_clock(cls, value: datetime | None) -> datetime | None:
+        return utc(value) if value is not None else None
+
 class TaskPatchIn(TaskIn): version: int | None = Field(default=None, ge=1)
 class EventIn(BaseModel):
     title: str

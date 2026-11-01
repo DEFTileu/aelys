@@ -21,6 +21,8 @@ from app.core.models import (
     SyncRecord,
     Task,
 )
+from app.domains.recurrence import utc
+from app.domains.task_clock import apply_task_transition, capture_task_statuses
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select, text
@@ -31,7 +33,7 @@ from .validation import validate_patch
 
 DOMAIN_MODELS: dict[str, type[Owned]] = {'task': Task, 'note': Note, 'event': CalendarEvent, 'project': Project}
 FIELDS = {
-    'task': ('title', 'description', 'project_id', 'parent_task_id', 'status', 'priority', 'due_at', 'due_timezone', 'rrule'),
+    'task': ('title', 'description', 'project_id', 'parent_task_id', 'status', 'priority', 'due_at', 'due_timezone', 'rrule', 'started_at', 'completed_at'),
     'note': ('title', 'markdown_body', 'parent_id', 'project_id', 'folder', 'tags', 'pinned'),
     'event': ('title', 'description', 'starts_at', 'ends_at', 'timezone', 'all_day', 'project_id', 'linked_task_id', 'rrule'),
     'project': ('name', 'description', 'status'),
@@ -52,6 +54,7 @@ async def lock_owner(db: AsyncSession, owner_id: str) -> None:
     with db.no_autoflush:
         if db.get_bind().dialect.name == 'postgresql':
             await db.execute(text('SELECT pg_advisory_xact_lock(hashtext(:key))'), {'key': f'sync-owner:{owner_id}'})
+        await capture_task_statuses(db, owner_id)
         # Validate pre-mutation state as well as the eventual log write. A patch
         # must not increment the version and hide historical equal-version drift.
         records = {(row.resource_kind, row.resource_id): row for row in
@@ -94,12 +97,24 @@ async def record_change(db: AsyncSession, *, owner_id: str, kind: str, resource_
     if record and record.version == version and _projection_disagrees(record, payload, deleted_at):
         raise HTTPException(409, detail={'code': 'SYNC_RECONCILIATION_REQUIRED',
             'message': 'Historical domain and sync content diverge; review both before merging.'})
-    if record and record.version == version and record.payload == payload and bool(record.deleted_at) == bool(deleted_at):
+    null_clock_enrichment = False
+    if record and kind == 'task' and record.version == version:
+        added = payload.keys() - record.payload.keys()
+        null_clock_enrichment = (bool(added) and added <= {'started_at', 'completed_at'}
+            and all(payload[name] is None for name in added)
+            and record.payload == {name: value for name, value in payload.items() if name not in added})
+    if (record and record.version == version and bool(record.deleted_at) == bool(deleted_at)
+            and (record.payload == payload or null_clock_enrichment)):
         existing = (await db.execute(select(SyncChange).where(
             SyncChange.owner_id == owner_id, SyncChange.resource_kind == kind,
             SyncChange.resource_id == resource_id, SyncChange.version == version,
         ).order_by(SyncChange.seq.desc()).limit(1))).scalar_one_or_none()
-        if existing:
+        if existing and (record.payload == payload or existing.payload == record.payload):
+            if null_clock_enrichment:
+                # Enrich only the derived mirror. The historical log remains
+                # immutable and keeps its original sequence/cursor position.
+                record.payload = payload
+                await db.flush()
             return existing
     if record is None:
         record = SyncRecord(owner_id=owner_id, resource_kind=kind, resource_id=resource_id)
@@ -112,7 +127,7 @@ async def record_change(db: AsyncSession, *, owner_id: str, kind: str, resource_
     return change
 
 
-async def record_domain_change(db: AsyncSession, item: Owned) -> SyncChange:
+async def record_domain_change(db: AsyncSession, item: Owned, *, track_task_clock: bool = True) -> SyncChange:
     kind = next((kind for kind, model in DOMAIN_MODELS.items() if isinstance(item, model)), None)
     if kind is None:
         raise ValueError('Domain is not included in this sync slice')
@@ -120,6 +135,8 @@ async def record_domain_change(db: AsyncSession, item: Owned) -> SyncChange:
     await db.flush()
     await db.refresh(item)
     prior = await db.get(SyncRecord, (item.owner_id, kind, item.id))
+    if track_task_clock and isinstance(item, Task):
+        await apply_task_transition(db, item, prior)
     operation = 'delete' if item.deleted_at else ('update' if prior else 'create')
     payload = domain_payload(item, kind)
     return await record_change(db, owner_id=item.owner_id, kind=kind, resource_id=item.id,
@@ -129,10 +146,14 @@ async def record_domain_change(db: AsyncSession, item: Owned) -> SyncChange:
 
 def domain_payload(item: Owned, kind: str) -> dict[str, Any]:
     """Explicit allowlist, shared by the log and conflict responses."""
-    return {} if item.deleted_at else jsonable_encoder({
-        'id': item.id, 'version': item.version,
-        **{name: getattr(item, name) for name in FIELDS[kind]},
-    })
+    if item.deleted_at:
+        return {}
+    values = {'id': item.id, 'version': item.version, **{name: getattr(item, name) for name in FIELDS[kind]}}
+    if kind == 'task':
+        for name in ('started_at', 'completed_at'):
+            if values[name] is not None:
+                values[name] = utc(values[name])
+    return jsonable_encoder(values)
 
 
 async def ensure_domain_projection(db: AsyncSession, owner_id: str) -> None:
@@ -152,7 +173,7 @@ async def ensure_domain_projection(db: AsyncSession, owner_id: str) -> None:
             if (record is None or record.version != item.version
                     or bool(record.deleted_at) != bool(item.deleted_at)
                     or record.payload != domain_payload(item, kind)):
-                await record_domain_change(db, item)
+                await record_domain_change(db, item, track_task_clock=False)
     # Keep this derived-index commit separate from the repeatable-read snapshot
     # opened by bootstrap. PostgreSQL's owner lock preserves cursor commit order.
     await db.commit()
