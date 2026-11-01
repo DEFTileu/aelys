@@ -14,7 +14,7 @@ import type {
 import type { EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
 import type { GoogleCalendarStatus, GoogleCalendarSync, DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
 
-import type { TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
+import type { TelegramChatAvailability, TelegramChatSendIn, TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
 
 export type QueryValue = string | number | boolean | null | undefined;
 export type Query = Readonly<Record<string, QueryValue>>;
@@ -427,6 +427,8 @@ export class ApiClient {
   public syncTelegram(options?: RequestOptions) { return this.request<{ readonly processed: number }>("/api/v1/integrations/telegram/sync", this.write({}, { ...options, queueOnOffline: false })); }
   public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
   public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
+  public telegramChats(options?: RequestOptions) { return this.request<readonly TelegramChatAvailability[]>("/api/v1/integrations/telegram/chats", this.read({ ...options, cacheKey: undefined })); }
+  public sendTelegramChatMessage(body: TelegramChatSendIn, options: RequestOptions & { readonly idempotencyKey: string }) { return this.request<TelegramBusinessMessage>("/api/v1/integrations/telegram/chats/send", this.write(body, { ...options, queueOnOffline: false })); }
   public sendTelegramMessage(id: string, body: { readonly version: number; readonly text: string }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/send`, this.write(body, { ...options, queueOnOffline: false })); }
 
   public ownerMemory(query?: string) { return this.request<readonly OwnerMemoryFact[]>("/api/v1/ai/memory", { method: "GET", query: query ? { query } : undefined, allowCacheFallback: false }); }

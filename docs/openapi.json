@@ -6562,6 +6562,95 @@
           }
         }
       }
+    },
+    "/api/v1/integrations/telegram/chats": {
+      "get": {
+        "tags": [
+          "Telegram Business"
+        ],
+        "summary": "Chats",
+        "operationId": "chats_api_v1_integrations_telegram_chats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChatOut"
+                  },
+                  "type": "array",
+                  "title": "Response Chats Api V1 Integrations Telegram Chats Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/telegram/chats/send": {
+      "post": {
+        "tags": [
+          "Telegram Business"
+        ],
+        "summary": "Send Chat",
+        "operationId": "send_chat_api_v1_integrations_telegram_chats_send_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 150,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSendIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7037,6 +7126,84 @@
           "expires_at"
         ],
         "title": "ChallengeResponse"
+      },
+      "ChatOut": {
+        "properties": {
+          "business_connection_id": {
+            "type": "string",
+            "title": "Business Connection Id"
+          },
+          "chat_id": {
+            "type": "integer",
+            "title": "Chat Id"
+          },
+          "can_send": {
+            "type": "boolean",
+            "title": "Can Send"
+          },
+          "send_disabled_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Disabled Code"
+          },
+          "reply_window_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Window Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_connection_id",
+          "chat_id",
+          "can_send",
+          "send_disabled_code",
+          "reply_window_expires_at"
+        ],
+        "title": "ChatOut"
+      },
+      "ChatSendIn": {
+        "properties": {
+          "business_connection_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Business Connection Id"
+          },
+          "chat_id": {
+            "type": "integer",
+            "maximum": 4503599627370496.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Chat Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "business_connection_id",
+          "chat_id",
+          "text"
+        ],
+        "title": "ChatSendIn"
       },
       "ConnectIn": {
         "properties": {

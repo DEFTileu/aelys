@@ -24,3 +24,17 @@ export interface TelegramBusinessMessage {
   readonly text: string; readonly sent_at: string; readonly direction: string; readonly draft_text: string | null;
   readonly owner_note: string | null; readonly draft_status: string; readonly draft_error_code: string | null; readonly deleted_at: string | null;
 }
+
+/** Fresh server snapshot; send rechecks Telegram rights before its durable claim. */
+export interface TelegramChatAvailability {
+  readonly business_connection_id: string;
+  readonly chat_id: number;
+  readonly can_send: boolean;
+  readonly send_disabled_code: string | null;
+  readonly reply_window_expires_at: string | null;
+}
+export interface TelegramChatSendIn {
+  readonly business_connection_id: string;
+  readonly chat_id: number;
+  readonly text: string;
+}

@@ -213,3 +213,25 @@ consent, sync and disconnect live in Settings → Google Calendar; import is rea
 and runs in the existing connector iteration every 15 minutes independently of
 Telegram enablement. No Google calendar context is added to the Business secretary.
 Real Telegram /today with an actual Google account remains an owner live check.
+
+## Manual chat composition — 2026-11-01
+
+Owner-approved Phase 3 follow-up: Messages now sends independently typed text as
+new chat messages. A prior secretary reply does not prevent further owner text.
+The secretary draft Send/Edit path retains its one-answer/CAS protection. The
+composer stays visible and editable in a selected chat; the real Send button is
+disabled when empty, pending, offline, paused/unbound, without permissions or
+outside the server's 24-hour window. Enter/Cmd+Enter follow the same checks.
+An inline reason explains unavailable sending; polling and an exact expiry timer
+update the state. Per-chat drafts and text typed during I/O are preserved. Unknown
+manual delivery keeps text and disables repeating the same pending message until
+the owner checks Telegram and changes their composition. No live messages are
+sent by validation.
+
+Manual messages use a separate content-free durable receipt and the existing
+encrypted Business message table (migration 0035); each intentional message gets
+its own key, retries preserve the key, and every claim is committed before I/O.
+Sending/unknown manual activity suppresses secretary replies. An owner echo
+already ingested during transport is adopted by its remote message identity.
+A restart marks abandoned claims unknown, never replays them. Arbitrary new chat
+initiation and bypassing Telegram's can_reply/24-hour rules remain unsupported.

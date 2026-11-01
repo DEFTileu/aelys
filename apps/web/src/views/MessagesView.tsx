@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { TelegramBusinessMessage, TelegramStatus } from '@aelys/shared'
+import { ApiError } from '@aelys/shared'
+import type { TelegramChatAvailability, TelegramBusinessMessage, TelegramStatus } from '@aelys/shared'
 import { ArrowUp, Check, ChevronLeft, RotateCcw, Search, Send, Sparkles } from '../icons'
 import { PageSkeleton } from '../components/PageSkeleton'
 import { getSharedApiClient } from '../lib/api'
 import { navigate } from '../lib/router'
-import { draftOf, groupChats, sendIdempotencyKey, telegramErrorNotice, REPLY_WINDOW_MS, type Chat } from '../lib/telegramMessages'
+import { chatSendIdempotencyKey, draftOf, groupChats, sendIdempotencyKey, telegramErrorNotice, REPLY_WINDOW_MS, type Chat } from '../lib/telegramMessages'
 import type { ApiStatus } from '../types'
 import './desktop/page-tokens.css'
 import './messages.css'
@@ -45,13 +46,15 @@ function useCompact() {
 
 export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [status, setStatus] = useState<TelegramStatus | null>(null)
+  const [availability, setAvailability] = useState<readonly TelegramChatAvailability[]>([])
+  const [uncertain, setUncertain] = useState<Record<string, string>>({})
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [messages, setMessages] = useState<readonly TelegramBusinessMessage[]>([])
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [tab, setTab] = useState<'need' | 'all'>('need')
   const [query, setQuery] = useState('')
   const [current, setCurrent] = useState<string | null>(null)
   const [view, setView] = useState<'list' | 'chat'>('list')
-  const [text, setText] = useState('')
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(new Set())
   const [editing, setEditing] = useState<ReadonlySet<string>>(new Set())
   const [busy, setBusy] = useState(false)
@@ -59,13 +62,17 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [now, setNow] = useState(() => Date.now())
   const sendKeys = useRef<Record<string, { signature: string; key: string }>>({})
   const compact = useCompact()
+  const working = useRef(false)
+  const loadGeneration = useRef(0)
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current
     try {
       const client = getSharedApiClient()
-      const [next, items] = await Promise.all([client.telegramStatus(), client.telegramMessages()])
-      setStatus(next); setMessages(items); setPhase('ready')
-    } catch (error) { setPhase((p) => p === 'ready' ? p : 'error'); setNotice(telegramErrorNotice(error)) }
+      const [next, items, chats] = await Promise.all([client.telegramStatus(), client.telegramMessages(), client.telegramChats()])
+      if (generation !== loadGeneration.current) return
+      setStatus(next); setMessages(items); setAvailability(chats); setPhase('ready')
+    } catch (error) { if (generation !== loadGeneration.current) return; setAvailability([]); setPhase((p) => p === 'ready' ? p : 'error'); setNotice(telegramErrorNotice(error)) }
   }, [])
   useEffect(() => { void load() }, [load, apiStatus])
   useEffect(() => {
@@ -84,28 +91,63 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
   const list = chats.filter((chat) => (tab === 'all' || needs(chat)) && (!needle || chat.title.toLowerCase().includes(needle)))
   const cur = chats.find((chat) => chat.id === current) ?? list[0] ?? chats[0] ?? null
   const draft = cur ? draftOfLive(cur) : null
+  const text = cur ? drafts[cur.id] ?? '' : ''
+  const setText = (value: string) => { if (cur) setDrafts(all => ({ ...all, [cur.id]: value })) }
+  const permission = cur ? availability.find(chat => chat.business_connection_id === cur.businessConnectionId && chat.chat_id === cur.chatId) : undefined
+  const expiresAt = permission?.reply_window_expires_at ? Date.parse(permission.reply_window_expires_at) : NaN
+  const available = () => apiStatus === 'ready' && !!status?.enabled && permission?.can_send === true && Number.isFinite(expiresAt) && expiresAt > Date.now()
+  const deliveryUncertain = !!cur && uncertain[cur.id] === text.trim()
+  const canSend = available() && !busy && !deliveryUncertain
+  const unavailableReason = deliveryUncertain ? 'The send result is unknown. Check the Telegram chat before composing another message.' : apiStatus !== 'ready' ? 'Connect to the API before sending.' : !permission ? 'Refresh the chat to check sending permissions.' : !status?.enabled ? 'The Telegram connection is paused.' : Number.isFinite(expiresAt) && expiresAt <= now ? 'The Telegram reply window (24 hours) has expired. Wait for a new message from the other person.' : !permission.can_send ? telegramErrorNotice(new ApiError(409, permission.send_disabled_code ?? 'TELEGRAM_REPLY_DENIED', '')) : ''
+  useEffect(() => {
+    if (!Number.isFinite(expiresAt)) return
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, expiresAt - Date.now()))
+    const update = () => setNow(Date.now())
+    document.addEventListener('visibilitychange', update)
+    return () => { window.clearTimeout(timer); document.removeEventListener('visibilitychange', update) }
+  }, [expiresAt])
+
 
   const run = async (work: () => Promise<void>) => {
-    if (busy) return
+    if (working.current) return
+    working.current = true
     setBusy(true); setNotice('')
-    try { await work() } catch (error) { setNotice(telegramErrorNotice(error)) } finally { setBusy(false) }
+    try { await work() } catch (error) { setNotice(telegramErrorNotice(error)) } finally { working.current = false; setBusy(false) }
   }
-  const replace = (item: TelegramBusinessMessage) => setMessages((all) => all.map((m) => m.id === item.id ? item : m))
+  const replace = (item: TelegramBusinessMessage) => { loadGeneration.current += 1; setMessages((all) => all.some(m => m.id === item.id) ? all.map((m) => m.id === item.id ? item : m) : [...all, item]) }
   const nextNeeding = (from: Chat) => list.find((chat) => chat.id !== from.id && needs(chat))?.id
   const afterReply = (from: Chat) => { if (compact) setView('list'); else { const next = nextNeeding(from); if (next) setCurrent(next) } }
 
   const sendTo = (target: TelegramBusinessMessage, body: string, from: Chat, advance: boolean) => {
-    if (!body.trim() || target.deleted_at) return
+    if (!body.trim() || target.deleted_at || !available() || working.current) return
+    if (!advance) setCurrent(from.id)
     void run(async () => {
       const key = sendIdempotencyKey(sendKeys.current, target, body)
       replace(await getSharedApiClient().sendTelegramMessage(target.id, { version: target.version, text: body }, { idempotencyKey: key }))
       delete sendKeys.current[target.id]
-      if (!advance) setText('')
+      if (!advance) setDrafts(all => all[from.id]?.trim() === body.trim() ? { ...all, [from.id]: '' } : all)
       else afterReply(from)
     })
   }
   const sendDraft = () => { if (cur && draft) sendTo(draft, draft.draft_text ?? '', cur, true) }
-  const sendOwn = () => { if (cur?.target) sendTo(cur.target, text.trim(), cur, false) }
+  const sendOwn = () => {
+    if (!cur || !text.trim() || !available() || working.current || deliveryUncertain || text.length > 4096) return
+    if (cur.target && editing.has(cur.target.id) && cur.target.draft_status === 'ready') { sendTo(cur.target, text.trim(), cur, false); return }
+    const from = cur, body = text.trim()
+    setCurrent(from.id)
+    void run(async () => {
+      const key = chatSendIdempotencyKey(sendKeys.current, from.id, body)
+      try {
+        const outgoing = await getSharedApiClient().sendTelegramChatMessage({ business_connection_id: from.businessConnectionId, chat_id: from.chatId, text: body }, { idempotencyKey: key })
+        replace(outgoing)
+        delete sendKeys.current[from.id]
+        setDrafts(all => all[from.id]?.trim() === body ? { ...all, [from.id]: '' } : all)
+      } catch (error) {
+        if (error instanceof ApiError && ['TELEGRAM_DELIVERY_UNKNOWN', 'TELEGRAM_SEND_IN_PROGRESS'].includes(error.code)) setUncertain(all => ({ ...all, [from.id]: body }))
+        await load(); throw error
+      }
+    })
+  }
   const edit = () => { if (draft) { setText(draft.draft_text ?? ''); setEditing((s) => new Set(s).add(draft.id)) } }
   const rewrite = (target: TelegramBusinessMessage | null) => {
     if (!target || target.deleted_at) return
@@ -114,11 +156,11 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
   const skip = () => { if (cur?.target) { const target = cur.target; setSkipped((s) => new Set(s).add(skipKey(target))); afterReply(cur) } }
 
   // ⌘↵ sends the draft; J / K step through chats (not while typing).
-  const keys = useRef({ sendDraft, step: (_: number) => {} })
-  keys.current = { sendDraft, step: (delta: number) => { if (!list.length) return; const i = Math.max(0, list.findIndex((c) => c.id === cur?.id)); const next = list[Math.min(list.length - 1, Math.max(0, i + delta))]; setCurrent(next.id) } }
+  const keys = useRef({ sendDraft, sendOwn, step: (_: number) => {} })
+  keys.current = { sendDraft, sendOwn, step: (delta: number) => { if (!list.length) return; const i = Math.max(0, list.findIndex((c) => c.id === cur?.id)); const next = list[Math.min(list.length - 1, Math.max(0, i + delta))]; setCurrent(next.id) } }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); keys.current.sendDraft(); return }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (e.target instanceof Element && e.target.closest('.msg__composer')) keys.current.sendOwn(); else keys.current.sendDraft(); return }
       const el = e.target as HTMLElement | null
       if (e.metaKey || e.ctrlKey || e.altKey || el?.closest('input, textarea, select, [contenteditable="true"]')) return
       if (e.key === 'j' || e.key === 'J') keys.current.step(1)
@@ -180,17 +222,18 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
               <div className="msg__draft-text">{draft ? draft.draft_text : generating ? 'Aelys is writing a reply…' : failed ? 'Aelys could not write a draft. Try again.' : cur.target.draft_status === 'handoff' ? (cur.target.owner_note || 'Aelys left this one for you.') : 'No draft yet.'}</div>
               {!draft && cur.target.owner_note && cur.target.draft_status !== 'handoff' && <div className="msg__draft-note">{cur.target.owner_note}</div>}
               <div className="msg__draft-actions">
-                {draft && <button type="button" className="msg__btn msg__btn--primary" disabled={busy} onClick={sendDraft}><Send size={13} />Send</button>}
+                {draft && <button type="button" className="msg__btn msg__btn--primary" disabled={!canSend} onClick={sendDraft}><Send size={13} />Send</button>}
                 {draft && <button type="button" className="msg__btn" onClick={edit}>Edit</button>}
-                <button type="button" className={draft ? 'msg__btn' : 'msg__btn msg__btn--primary'} aria-label={draft ? 'Rewrite' : 'Draft a reply'} disabled={busy || generating} onClick={() => rewrite(cur.target)}><RotateCcw size={13} />{compact ? '' : draft ? 'Rewrite' : 'Draft a reply'}</button>
+                <button type="button" className={draft ? 'msg__btn' : 'msg__btn msg__btn--primary'} aria-label={draft ? 'Rewrite' : 'Draft a reply'} disabled={!canSend || generating} onClick={() => rewrite(cur.target)}><RotateCcw size={13} />{compact ? '' : draft ? 'Rewrite' : 'Draft a reply'}</button>
                 <button type="button" className="msg__btn msg__btn--ghost" onClick={skip}>Skip</button>
                 {!compact && draft && <><span className="msg__grow" /><span className="msg__hint">⌘↵ send · J / K next chat</span></>}
               </div>
             </div>}
             <div className="msg__composer">
-              <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) sendOwn() }} placeholder="Write a reply…" aria-label="Write a reply" />
-              <span role="button" tabIndex={0} aria-label="Send" aria-disabled={!text.trim()} className={`msg__send${text.trim() ? ' is-on' : ''}`} onClick={sendOwn} onKeyDown={(e) => { if (e.key === 'Enter') sendOwn() }}><ArrowUp size={14} /></span>
+              <input maxLength={4096} aria-describedby={unavailableReason ? 'chat-send-unavailable' : undefined} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendOwn() } }} placeholder="Write a reply…" aria-label="Write a reply" />
+              <button type="button" aria-label="Send message" disabled={!canSend || !text.trim() || text.length > 4096} className={`msg__send${canSend && text.trim() ? ' is-on' : ''}`} onClick={sendOwn}><ArrowUp size={14} /></button>
             </div>
+            {unavailableReason && <p id="chat-send-unavailable" className="msg__hint" role="status">{unavailableReason}</p>}
           </div>
         </> : <div className="msg__empty msg__empty--chat"><Send size={28} /><div className="msg__empty-title">No messages yet</div><div className="msg__empty-sub">Messages from Telegram Business appear here</div></div>}
       </div>}

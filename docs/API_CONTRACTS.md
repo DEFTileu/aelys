@@ -593,3 +593,30 @@ Errors include `503 CALENDAR_NOT_CONFIGURED`, `404 CALENDAR_NOT_CONNECTED`,
 `422 CALENDAR_INVALID_DATA`/`CALENDAR_SYNC_LIMIT`, `502 CALENDAR_UNAVAILABLE` and
 `403 POLICY_DENIED`. HTTP 410 is consumed internally by one full refetch. Provider
 payloads and token-bearing URLs are never returned in error messages or logs.
+
+### Independent manual Telegram chat messages (2026-11-01)
+
+- `GET /integrations/telegram/chats` returns up to 100 known Business chats:
+  `{business_connection_id,chat_id,can_send,send_disabled_code,reply_window_expires_at}`.
+  It uses owner-scoped stored connection rights, pause/binding/cooldown and the
+  latest visible incoming message. Timestamps include their timezone; sends
+  additionally refresh Telegram authority before claiming transport. No-store.
+- `POST /integrations/telegram/chats/send` requires `Idempotency-Key` (1..150)
+  and `{business_connection_id,chat_id,text}` (1..4096). It sends a new owner
+  message to that existing private chat without a reply target. Multiple messages
+  are allowed while can_reply and the 24-hour incoming window remain valid.
+  The response is the canonical `MessageOut` (`direction=owner`), also returned
+  by `/messages`. Only incoming messages extend the window. No arbitrary new
+  contacts, groups, media sending, offline outbox or automatic transport retry.
+- Migration 0035 stores a content-free owner-scoped request receipt before I/O.
+  Same key/payload replays a confirmed success; changed payload returns
+  `409 IDEMPOTENCY_CONFLICT`. A concurrent claim returns
+  `409 TELEGRAM_SEND_IN_PROGRESS`. Failed/unknown requests are not sent again
+  with the same key; `TELEGRAM_DELIVERY_UNKNOWN` means check Telegram first.
+  Stale sending claims become unknown. Text remains encrypted in the existing
+  Business message table, not duplicated in receipts. Receipt payload hashes use
+  HMAC and neither plaintext nor credentials are exposed in status/errors.
+- Existing `/messages/{id}/send` keeps version CAS and one secretary reply per
+  incoming message. Manual chat claims/activity suppress stale automatic replies.
+  Policy, owner/device isolation, fresh permissions, pause, cooldown and window
+  checks remain authoritative. Disconnect purges receipts before messages.

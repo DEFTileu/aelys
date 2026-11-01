@@ -134,3 +134,17 @@ class TelegramPersonalJob(Owned):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(80))
     recovery_notice_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+
+
+class TelegramChatSend(Owned):
+    """Content-free durable receipt; never replay a claimed external send."""
+    __tablename__ = "telegram_chat_sends"
+    __table_args__ = (UniqueConstraint("owner_id", "idempotency_key", name="uq_telegram_chat_send_key"),)
+    integration_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_integrations.id"))
+    business_connection_id: Mapped[str] = mapped_column(String(256), ForeignKey("telegram_business_connections.id"))
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    idempotency_key: Mapped[str] = mapped_column(String(150))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    send_status: Mapped[str] = mapped_column(String(24), default="sending")
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("telegram_business_messages.id", ondelete="SET NULL"))

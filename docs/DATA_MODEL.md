@@ -180,3 +180,12 @@ instant. Existing HistoryEntry rows with action task.status.changed retain each
 accepted Task version, raw from/to status, occurrence and work/completion instants.
 No new status-history table. Legacy unknown instants remain null; bootstrap and
 same-version null-key projection enrichment cannot fabricate work or log events.
+
+Telegram manual chat sends (migration 0035): `telegram_chat_sends` is an internal
+Owned delivery receipt, unique `(owner_id,idempotency_key)`, with integration /
+Business connection / chat references, HMAC request_hash, sending/sent/failed/
+unknown state, fixed error code and optional canonical message_id. It stores no
+message text, raw Telegram response or credential. The existing encrypted
+TelegramBusinessMessage row represents a confirmed owner send. Not a sync resource
+or export table; purged on integration disconnect/replacement. Abandoned sending
+receipts become unknown and never replay network transport.

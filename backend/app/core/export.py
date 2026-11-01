@@ -124,7 +124,7 @@ async def build_owner_export(db: AsyncSession, owner_email: str) -> dict[str, An
         "owner": {"id": owner.id, "email": owner.email},
         "privacy": {
             "encrypted": True,
-            "excluded": ["auth_sessions", "devices", "ai_provider_secrets", "gmail_credentials", "gmail_oauth_states", "google_calendar_connections", "google_calendar_credentials", "google_calendar_oauth_states", "gmail_draft_links", "telegram_integrations", "telegram_business_connections", "telegram_business_messages", "telegram_update_receipts", "telegram_personal_jobs", "project_grants", "raw_mac_agent_sessions", "credentials", "google_calendar_event_projections"],
+            "excluded": ["auth_sessions", "devices", "ai_provider_secrets", "gmail_credentials", "gmail_oauth_states", "google_calendar_connections", "google_calendar_credentials", "google_calendar_oauth_states", "gmail_draft_links", "telegram_integrations", "telegram_business_connections", "telegram_business_messages", "telegram_update_receipts", "telegram_personal_jobs", "telegram_chat_sends", "project_grants", "raw_mac_agent_sessions", "credentials", "google_calendar_event_projections"],
         },
         "exported_at": datetime.now().astimezone().isoformat(),
         "tables": tables,

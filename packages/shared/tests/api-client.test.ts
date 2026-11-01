@@ -322,3 +322,16 @@ it("does not cache owner memory or replay an unconfirmed forget", async () => {
   expect(store.cache.size).toBe(0); expect(store.outbox).toHaveLength(0);
   expect(fetchImpl.mock.calls[2]?.[0]).toContain("/ai/memory/fact?version=3");
 });
+
+it("never caches chat permissions or queues manual Telegram sends",async()=>{
+  const store=new MemoryStore();const fetchImpl=vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify([]),{status:200}))
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValueOnce(new Response(JSON.stringify({id:'outgoing'}),{status:200}));
+  const client=new ApiClient({baseUrl:'https://api.example.test',fetch:fetchImpl,offlineStore:store});
+  await client.telegramChats({cacheKey:'forged-cache'});
+  await expect(client.sendTelegramChatMessage({business_connection_id:'c',chat_id:1,text:'One message'},{idempotencyKey:'stable-key',queueOnOffline:true})).rejects.toBeInstanceOf(NetworkError);
+  await client.sendTelegramChatMessage({business_connection_id:'c',chat_id:1,text:'One message'},{idempotencyKey:'stable-key'});
+  expect(store.cache.size).toBe(0);expect(store.outbox).toHaveLength(0);
+  expect(new Headers(fetchImpl.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe('stable-key');
+});

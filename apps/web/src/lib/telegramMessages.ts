@@ -7,6 +7,9 @@ const NOTICES: Record<string, string> = {
   TELEGRAM_REPLY_WINDOW_EXPIRED: 'The Telegram reply window (24 hours) has expired. Wait for a new message from the other person.',
   TELEGRAM_PAUSED: 'The connection is paused. Resume it before drafting or sending a reply.',
   TELEGRAM_RATE_LIMITED: 'Telegram is limiting requests. Wait before trying again.',
+  TELEGRAM_SEND_IN_PROGRESS: 'This message is already being sent. Check Telegram before trying again.',
+  IDEMPOTENCY_CONFLICT: 'This request belongs to a different message. Refresh the chat.',
+  NOT_FOUND: 'This chat is not available. Refresh the Telegram connection.',
   ALREADY_SENT: 'A reply has already been sent to this message. Select a new incoming message.',
   TELEGRAM_PROVIDER_REQUIRED: 'Choose an AI provider with a saved API key for automatic replies.',
   TELEGRAM_BINDING_REQUIRED: 'Link the owner and connect the bot to Telegram Business.',
@@ -41,7 +44,7 @@ export const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export type ChatLine = { id: string; mine: boolean; text: string; at: string; byAelys: boolean; deleted: boolean }
 export type Chat = {
-  id: string; title: string; messages: readonly TelegramBusinessMessage[]; lines: readonly ChatLine[]
+  id: string; businessConnectionId: string; chatId: number; title: string; messages: readonly TelegramBusinessMessage[]; lines: readonly ChatLine[]
   /** Newest incoming message: the one replies are sent against. */
   target: TelegramBusinessMessage | null
   waiting: number; needsReply: boolean; lastText: string; lastAt: string; lastMine: boolean
@@ -75,7 +78,7 @@ export function groupChats(messages: readonly TelegramBusinessMessage[]): Chat[]
     const last = lines[lines.length - 1]
     const newest = live[live.length - 1]
     chats.push({
-      id, title: sorted.find((m) => m.chat_title)?.chat_title || 'Unknown chat', messages: sorted, lines, target,
+      id, businessConnectionId: sorted[0].business_connection_id, chatId: sorted[0].chat_id, title: sorted.find((m) => m.chat_title)?.chat_title || 'Unknown chat', messages: sorted, lines, target,
       waiting: waitingMessages.length, needsReply: !!newest && newest.direction === 'inbound' && !DONE.has(newest.draft_status),
       lastText: last ? last.text : '', lastAt: last ? last.at : '', lastMine: !!last?.mine,
     })
@@ -86,5 +89,12 @@ export function groupChats(messages: readonly TelegramBusinessMessage[]): Chat[]
 /** The ready draft on the chat's newest incoming message, if there is one to review. */
 export function draftOf(chat: Chat): TelegramBusinessMessage | null {
   const t = chat.target
-  return t && t.draft_status === 'ready' && t.draft_text?.trim() ? t : null
+  return t && chat.needsReply && t.draft_status === 'ready' && t.draft_text?.trim() ? t : null
+}
+
+/** A successful send clears its entry; intentional identical messages then get new keys. */
+export function chatSendIdempotencyKey(store: Record<string, { signature: string; key: string }>, chatId: string, text: string): string {
+  let entry = store[chatId]
+  if (!entry || entry.signature !== text) { entry = { signature: text, key: globalThis.crypto.randomUUID() }; store[chatId] = entry }
+  return entry.key
 }

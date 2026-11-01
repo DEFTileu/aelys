@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .telegram_models import (
     TelegramBusinessConnection,
     TelegramBusinessMessage,
+    TelegramChatSend,
     TelegramIntegration,
     TelegramUpdateReceipt,
 )
@@ -99,6 +100,7 @@ async def clear_messages(db: AsyncSession, integration_id: str, connection_id: s
 
 
 async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None:
+    await db.execute(delete(TelegramChatSend).where(TelegramChatSend.integration_id == item.id))
     await db.execute(delete(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id))
     await db.execute(delete(TelegramBusinessConnection).where(TelegramBusinessConnection.integration_id == item.id))
     await db.execute(delete(TelegramUpdateReceipt).where(TelegramUpdateReceipt.integration_id == item.id))
@@ -304,7 +306,12 @@ async def check_automatic_reply_current(db: AsyncSession, item: TelegramIntegrat
         TelegramBusinessMessage.direction == "owner",
         TelegramBusinessMessage.sent_at >= message.sent_at,
     ).limit(1))).first()
-    if human:
+    manual_claim = (await db.execute(select(TelegramChatSend.id).where(
+        TelegramChatSend.integration_id == item.id, TelegramChatSend.business_connection_id == message.business_connection_id,
+        TelegramChatSend.chat_id == message.chat_id, TelegramChatSend.created_at >= message.sent_at,
+        TelegramChatSend.send_status.in_(["sending", "sent", "unknown"]),
+    ).limit(1))).first()
+    if human or manual_claim:
         raise error(409, "OWNER_ALREADY_REPLIED", "Владелец уже ответил в этом чате.")
     newer = (await db.execute(select(TelegramBusinessMessage.id).where(
         TelegramBusinessMessage.integration_id == item.id,
@@ -578,6 +585,8 @@ async def connector_iteration() -> None:
     async with database.SessionLocal() as db:
         ids = list((await db.execute(select(TelegramIntegration.id).where(TelegramIntegration.enabled.is_(True), TelegramIntegration.encrypted_token.is_not(None)))).scalars())
         # Failed workers never blindly re-send ambiguous deliveries.
+        from .telegram_chat import recover_stale_sends
+        await recover_stale_sends(db)
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.draft_status == "sending", TelegramBusinessMessage.updated_at < now() - timedelta(minutes=3)).values(draft_status="unknown", draft_error_code="TELEGRAM_DELIVERY_UNKNOWN", version=TelegramBusinessMessage.version + 1))
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.draft_status == "generating", TelegramBusinessMessage.updated_at < now() - timedelta(minutes=3)).values(draft_status="failed", draft_error_code="AI_INTERRUPTED", version=TelegramBusinessMessage.version + 1))
         # Minimal retention: expired business message contents are erased.
