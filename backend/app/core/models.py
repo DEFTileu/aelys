@@ -163,6 +163,8 @@ class Task(Owned):
     project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"))
     parent_task_id: Mapped[str | None] = mapped_column(String(36))
     status: Mapped[str] = mapped_column(String(30), default="todo")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     priority: Mapped[int] = mapped_column(Integer, default=0)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     due_timezone: Mapped[str | None] = mapped_column(String(64))
@@ -170,6 +172,10 @@ class Task(Owned):
 
 class CalendarEvent(Owned):
     __tablename__ = "calendar_events"
+    __table_args__ = (UniqueConstraint("external_source", "external_id", name="uq_calendar_event_external"),)
+    external_source: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    external_metadata: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}", nullable=False)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -327,4 +333,6 @@ class AuditLog(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid); owner_id: Mapped[str] = mapped_column(String(36)); action: Mapped[str] = mapped_column(String(100)); actor: Mapped[str] = mapped_column(String(100)); scope: Mapped[str] = mapped_column(String(200)); decision: Mapped[str] = mapped_column(String(30)); outcome: Mapped[str] = mapped_column(String(30)); correlation_id: Mapped[str] = mapped_column(String(36)); redacted_metadata: Mapped[dict] = mapped_column(JSON, default=dict); created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 # Register integration tables in the shared metadata for migrations and tests.
+import app.ai.memory_models
+import app.domains.google_calendar_models
 import app.integrations.telegram_models  # noqa: F401 - register integration tables

@@ -7,7 +7,7 @@
 | Feature | Сразу в модульном ядре | Внешнее подключение |
 |---|---|---|
 | Mail | message/thread/draft/search/import API | Gmail OAuth read/drafts approved 2026-10-29; IMAP later |
-| Calendar | native Aelys events / recurrence | Google Calendar later |
+| Calendar | native Aelys events / recurrence; separate read-only Google primary calendar import | Live OAuth acceptance needs owner credentials |
 | Telegram | command/notification adapter abstraction | Реальный Bot API обязателен для рабочего бота |
 | GitHub | repository association, manual links | OAuth, repo webhooks later |
 | Finance | manual ledger/budgets | Банки / валютные котировки later |
@@ -31,14 +31,15 @@ Cached messages and drafts are available offline; new incoming mail and actual s
 
 ## 3. Telegram bot
 
-### First useful commands (PROPOSED)
+### Личные команды (DECIDED 2026-11-01; реализованы в Phase 3)
 
 ```text
-/start       # identity binding
-/today       # tasks + events today
-/task <text>  # capture task
-/note <text>  # capture note
-/remind ...   # reminder
+/start aelys_CODE  # одноразовая привязка владельца
+/task <title>     # первая строка title, остальные description
+/note <text>      # первая строка title, весь текст markdown_body
+/today            # задачи/просрочка/события локального дня, без AI
+/busy 18:00 <text> # до ближайшего HH:MM в настроенном timezone
+/free             # очистить статус сразу
 /help
 ```
 
@@ -71,7 +72,7 @@ Not all providers implement writes. Capabilities must be explicit and feature-ga
 ## 6. Decision gates
 
 Gmail read/drafts approved by owner 2026-10-29; sending remains unapproved. The UI discloses manual imports and retention of loaded local mail after disconnect. Background sync/retention controls require further design.
-Telegram Business incoming read/reply was approved by owner 2026-10-29. Live setup requires the owner’s bot/account connection; notification categories for the separate personal command bot remain OPEN.
+Telegram Business incoming read/reply was approved by owner 2026-10-29. Live setup requires the owner’s bot/account connection; one bot serves personal commands and Business with one poller (ADR-027). Additional notification categories remain OPEN.
 Before any bank connections: separate security and data sensitivity review.
 
 ### Telegram Business / Secretary Mode (owner approved 2026-10-29)
@@ -88,9 +89,101 @@ This is a Business/Secretary bot, not an unrestricted personal-account client.
 Customers cannot access owner Notes/Tasks/Mail/Finance or Mac tools. Only private
 plain-text incoming messages are handled; unsupported media, forwarded messages
 and bot echoes are ignored. No campaigns, proactive messages or Telegram Stars/
-profile/gift operations are implemented. Notification categories and the separate
-personal `/task`/`note`/`today` command adapter remain outside this slice.
+profile/gift operations are implemented. The same bot handles explicit owner commands and queued personal AI text.
+Telegram reminder delivery, ephemeral personal media and explicit memory are implemented. Opt-in deterministic digest uses configured timezone and a
+2-hour window; no catch-up or send retry. Secretary uses reply/no_reply/handoff,
+waits reply_delay_seconds (default 90), then considers only the newest inbound in
+each chat. Handoff persists an encrypted owner_note and a content-free Notification.
+Personal confirmations are sent only after receipt/cursor commit and never replayed.
 
 See [TELEGRAM_BUSINESS.md](TELEGRAM_BUSINESS.md) for actual setup and retention.
 A real token, connected Telegram account and configured AI key are still required
 for live acceptance; automated tests do not substitute for that external check.
+
+
+### Personal reminders — Stage 2, 2026-11-01
+
+`/remind 18:00 text`, `/remind YYYY-MM-DD HH:MM text`, `/remind 2h text`
+use the owner's timezone. They create a task and one Telegram reminder. Invalid
+or explicit past times return an example. Deadline reminders are opt-in (5h and
+10m before an unfinished task's due_at). Quiet hours delay every reminder until
+the end of the window, including urgent ones. The same connector worker claims
+and commits before delivery; fallback Notification survives failure, no retries.
+The deterministic evening digest adds tomorrow, while /today stays unchanged.
+
+
+### Personal text dialogue — Stage 3, 2026-11-01
+
+Verified private owner text is queued encrypted with receipt/cursor. The same
+connector supervises one bounded asynchronous turn per integration, leaving
+polling/reminders available. Existing AIConversation/AIRun/router/usage and the
+shared typed tool loop are reused. `/new` starts another conversation; history
+is <=20 turns. Explicit owner action scopes, versioned Task CAS, UntrustedData
+quotes, terminal restart recovery and plain <=4096 reply chunks are enforced.
+No secretary access to these personal tools. Live credentials remain untested.
+
+### Personal ephemeral media — Stage 4, 2026-11-01
+
+Verified-owner voice/audio, photo, PDF and UTF-8 text now enter the same encrypted
+queue. getFile and bounded in-memory download run only during processing. No
+stored bytes or task/note attachments. Voice uses a separate transcription BYOK
+key and a durably reserved, user-configured budget estimate. File turns have no
+tools; only a later owner text can authorize creation. Model capability settings
+and transcription configuration use the existing AI & models form. Secretary
+media and personal-memory access remain excluded. Real audio/vision providers
+and live Telegram have not been tested.
+
+### Explicit owner memory — Stage 5, 2026-11-01
+
+Memory now uses encrypted backend facts with explicit save/forget commands and
+owner-only versioned API/settings. The personal text/voice registry gets separate
+remember/forget scopes only from the current owner request. Lexical selection
+adds at most 10 active facts as data, with no extractor or embeddings. Revoked
+fact provenance also removes derived context before each provider step. Business
+secretary never reads personal memory. Export/restore and key rotation include
+memory; live external-provider acceptance is still outstanding.
+
+### Task matrix/work dates — Stage 6
+
+Existing TasksView adds a matrix using priority >=2 and an exact rolling 48-hour
+UTC deadline boundary. Current row actions and filters are reused. Server-owned
+start/completion timestamps and immutable transition metadata use the common
+writer, preserving domain/sync versions across REST, AI and device pushes.
+The Telegram digest adds stagnant in-progress work older than seven elapsed days;
+/today remains unchanged. Final acceptance is recorded in the implementation report.
+
+## Google Calendar readonly import (ADR-028, Stage 7)
+
+`domains/google_calendar_oauth.py` reuses Gmail's extracted PKCE and one-use,
+owner/session-bound state checks (`google_oauth.py`) and the encrypted backend
+secret store. Gmail and Calendar have separate state cookies, token records,
+connections and callbacks. Calendar requests only `calendar.readonly` and rejects
+broader token scopes. The Google OAuth app client ID/secret settings are shared;
+register `AELYS_CALENDAR_REDIRECT_URI` as an additional callback. Server setup is
+shown in `backend/.env.example`. The browser receives only status and a consent URL.
+
+Settings → Google Calendar offers Connect, Import now, Reconnect and Disconnect.
+One primary calendar per owner. The existing sequential connector worker imports
+at most once per 15-minute interval, independently of any Telegram connection.
+A durable lease coordinates manual imports and multiple workers. Requests only
+read Google events; local events are never exported. Pagination uses stable
+`singleEvents=false`, `showDeleted=true` parameters. The sync cursor is encrypted
+at rest; page tokens exist only in backend memory during the bounded fetch. A 410 discards the expired cursor and builds a new complete
+snapshot; local reconciliation and the replacement cursor commit together only
+after all pages succeed. Fetches are bounded at 100 pages / 10,000 items.
+
+Imported CalendarEvent rows use a connection-specific external_source and Google
+external_id, unique as a pair. Recurrence metadata retains RRULE/EXRULE/RDATE/EXDATE,
+original instance starts and override relationships. Bounded occurrence projection
+handles DST, all-day spans, moved/cancelled instances and series cancellation for
+Calendar, /today and personal calendar reads. Imported edits/deletes return 409
+`EXTERNAL_EVENT_READ_ONLY` through REST and device sync. They produce ordinary
+versioned domain sync changes, including tombstones on cancellation/disconnect.
+Disconnect clears credentials/cursor and removes imported local projections;
+it does not change Google. Encrypted owner exports omit these regenerable Google
+projections and their reminders together with connection state/credentials; reconnect
+and import them after restore. Local events remain exportable. OAuth, revocation and actual imported calendars require
+owner credentials for live acceptance and are not claimed as live-tested.
+
+Protocol reference: [Google incremental sync](https://developers.google.com/workspace/calendar/api/guides/sync)
+and [events.list](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).

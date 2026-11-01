@@ -50,6 +50,10 @@ Tasks:
 3. Timer persistence + focus statistics.
 4. Mail message/import/draft; live provider integration only if explicitly approved.
 5. Telegram commands and verified binding if agreed for MVP.
+   Owner-approved personal + Business slice implemented 2026-11-01; local
+   acceptance and the existing sync gap are recorded in
+   [TELEGRAM_PERSONAL_ASSISTANT_REPORT.md](TELEGRAM_PERSONAL_ASSISTANT_REPORT.md).
+   Real Telegram acceptance remains pending with the owner.
 6. Utilities: local password generator and text codecs in the existing shell (owner requested the shown preview in main, 2026-10-31). Task notes and validation: [optimization/utilities.md](optimization/utilities.md).
 
 Exit: each user scenario passes acceptance tests, offline behavior explicit.

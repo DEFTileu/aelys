@@ -223,6 +223,8 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
       return jsonResponse(value)
     } catch (error) {
       if (init?.signal?.aborted) throw init.signal.reason ?? new DOMException('Aborted', 'AbortError')
+      // Like a failed fetch, so ApiClient can fall back to cache or queue the write.
+      if (error === 'NETWORK_ERROR') throw new TypeError('Network request failed')
       const code = typeof error === 'string' ? error : 'NATIVE_TRANSPORT_ERROR'
       const expired = code === 'UNAUTHORIZED' || code === 'SIGN_IN_REQUIRED'
       if (expired && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))

@@ -216,5 +216,9 @@ describe('native shared-client bridge', () => {
     const invoke = vi.fn(async () => { throw 'NATIVE_TRANSPORT_ERROR' }) as NativeInvoke
     const failed = createNativeFetchFromInvoke(invoke, 'http://127.0.0.1:8000')
     expect((await failed('http://127.0.0.1:8000/api/v1/me')).status).toBe(502)
+
+    // An unreachable server must look like a failed fetch so the client can use its offline cache/queue.
+    const offline = createNativeFetchFromInvoke(vi.fn(async () => { throw 'NETWORK_ERROR' }) as NativeInvoke, 'http://127.0.0.1:8000')
+    await expect(offline('http://127.0.0.1:8000/api/v1/me')).rejects.toBeInstanceOf(TypeError)
   })
 })

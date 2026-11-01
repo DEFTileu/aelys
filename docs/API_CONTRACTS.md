@@ -385,6 +385,23 @@ conflict; a client-side preflight alone is not the concurrency guarantee.
 
 `NoteOut` now includes an optional `updated_at` (ISO 8601 date-time, the existing `Owned.updated_at` column). It is additive: older clients ignore it, and the web client falls back to the version badge when a backend omits it. No migration, no write-path change.
 
+
+### Telegram personal + Business (2026-11-01)
+
+Settings PATCH adds `timezone` (valid ZoneInfo/IANA, default UTC), `digest_time`
+(nullable HH:MM, null disables), `reply_delay_seconds` (0–900, default 90).
+GET status additionally returns active `status_text`/`status_until`; MessageOut
+adds encrypted-at-rest `owner_note`. Unknown/expired busy status is not exposed
+as active. Status commands are accepted only from the verified owner private chat.
+
+The one bot handles `/task`, `/note`, `/today`, `/busy`, `/free`, `/help`.
+Business AI returns strict reply/no_reply/handoff decisions. New terminal
+`draft_status` values no_reply/handoff cannot enter automatic send claims. The
+owner can explicitly send their own request text or regenerate a draft from
+either status; owner_note never pre-fills the customer reply.
+Handoff creates Notification kind telegram.handoff with only message_id data;
+private owner_note is exposed only through the authenticated Telegram owner API.
+See TELEGRAM_PERSONAL_ASSISTANT_REPORT.md for acceptance and sync limitations.
 ## Desktop design backend additions (2026-10-31)
 
 ### Focus pause/resume
@@ -465,3 +482,114 @@ All additive; migration `0027_note_pinned_mail_read`.
   legacy `POST /finance/budgets` is unchanged.
 - Finance categories: `GET /finance/transactions` rows carry `category_name`
   (null when uncategorised); `GET /finance/categories` already lists names.
+
+
+### Unified Task/Note/Event/Project sync (2026-11-01)
+
+Mounted CRUD/capture writes now emit the same transactional SyncChange and
+SyncRecord projection as device push; versions match the domain Owned.version.
+Device push applies the validated patch to the actual domain row, preserving
+Note revisions and owner-scoped references. Pull/bootstrap include REST,
+Telegram and AI/automation writes, with versioned delete tombstones. Historical
+ambiguous projection/domain divergence returns 409 SYNC_RECONCILIATION_REQUIRED
+rather than silently choosing one body. Request/response envelopes are unchanged.
+
+
+### Telegram reminders (migration 0029)
+
+Settings/status add deadline_reminders (bool, false default) and quiet_start,
+quiet_end (nullable HH:MM pair, both set to different times or both null).
+TaskReminder and CalendarReminder channel accept in_app or telegram; the existing
+foreground dispatcher only consumes in_app and the Telegram connector consumes
+telegram. Internal pending_digest_on/at persist quiet-hour postponement and are
+not exposed as editable settings. /remind schedules a TaskReminder plus capture
+Task atomically; all reminder mutations and external sends pass Policy Engine.
+
+
+### Telegram personal text queue (migration 0030)
+
+Ordinary verified-owner private text is ingested transactionally with update
+receipt/cursor into encrypted TelegramPersonalJob text/quote. Internal job states:
+queued/running/done/failed. One durable running claim per integration; startup
+fails interrupted running jobs and their bound AIRun without tool replay. The
+persistent owner AIConversation is pinned at enqueue; `/new` starts another.
+Existing AI run/event contracts and owner domain contracts are reused. Personal
+tools use exact Task version CAS and the same domain/sync writer as REST.
+No new public queue endpoint, sync resource_kind or credential exposure. Internal
+queue data is excluded from owner export and re-encrypted by provider-key rotation.
+
+### Personal media and transcription (migration 0031)
+
+ProviderIn.kind also accepts transcription. Existing provider/secret endpoints
+store the separate encrypted key, never return it; chat run selection and
+Telegram settings reject this kind as a chat provider. model_policy supports
+`default_model`, `monthly_budget` and `transcription_request_cost` (Decimal
+strings, default estimate 0.10). Each transcription AIRun durably records the
+configured estimate before external I/O; this is not actual billing.
+
+Internal personal queue adds input_kind and encrypted media_metadata containing
+bounded Telegram file_id/metadata only, no bytes. Untrusted photo/PDF/file turns
+have no write grants; transcription is treated as owner text. Public chat message
+HTTP inputs stay text-only; ephemeral provider attachments do not become a public
+upload/storage endpoint or new sync kind. Rotation covers media_metadata.
+
+### Explicit owner memory (migration 0032)
+
+- `GET /ai/memory?limit=100&query=...`: active/unexpired owner facts, lexical
+  query <=200 chars, no-store; no plaintext browser cache fallback.
+- `POST /ai/memory`: `{text (1..2000),kind?,expires_at?}`. Provenance assigned
+  by server as api; client cannot supply source or ownership. Normalized saves
+  deduplicate, explicit re-save revives forgotten/expired identity.
+- `PATCH /ai/memory/{id}`: required version, optional text/kind/expiry. Exact
+  CAS; 409 VERSION_CONFLICT preserves current value; duplicate target returns
+  409 MEMORY_DUPLICATE. `DELETE ...?version=N` soft-forgets with CAS.
+- Responses include id, owner_id, version, text, kind, source/source_message_id,
+  expires_at and created_at/updated_at. Memory validation failures return fixed
+  typed errors without echoing input. Expired/forgotten facts are absent from
+  selection immediately, including same-turn follow-up provider completions.
+
+No new sync resource_kind. Explicit backend memory is managed through fresh
+owner requests; the settings view never queues an unconfirmed forget or stores
+plaintext facts in the shared offline cache. Export uses its encrypted envelope,
+rotation re-encrypts text, and restore recalculates owner-specific hashes and
+checks policy/collisions before insertion.
+
+### Task work timestamps and matrix (Stage 6)
+
+TaskOut adds nullable started_at/completed_at UTC instants, server-owned; TaskIn
+and TaskPatch do not grant client control of these fields. Actual transitions
+are stamped through the common domain change writer, preserving the exact Task
+version in pull/bootstrap. Historical pre-feature rows remain unknown (null).
+HistoryEntry retains immutable per-version status-transition metadata; no new
+history table or sync resource kind. API/offline version conflicts preserve the
+server's work dates and status. Final acceptance is recorded in the stage report.
+
+### Read-only Google Calendar connection (ADR-028 Stage 7)
+
+`GET /api/v1/calendar/google/status` returns `{configured, connection}`. A connection
+contains only id/version/calendar_id/status/last_synced_at/last_error_code;
+credentials, sync tokens and PKCE verifiers never cross this API. `POST …/connect`
+returns `{authorization_url}`, sets a separate HttpOnly state cookie, and uses
+`…/callback` for one-use PKCE consent. Consent is only `calendar.readonly`, separate
+from Gmail. The callback returns to Settings → Google Calendar.
+
+`POST …/sync` performs a bounded, leased, atomic import and returns
+`{imported, deleted, full_sync}`. Import counts mean changed local projections,
+so importing unchanged data returns zero. `DELETE …/connection` clears credentials
+and imported events, returns `{disconnected:true}` and publishes domain tombstones.
+A connected primary calendar refreshes in the existing connector worker every
+15 minutes; a transient failure keeps the previous snapshot/cursor and retries
+on the next due interval. Revoked credentials require Reconnect.
+
+Calendar `EventOut`/`EventOccurrence` include nullable `external_source` and
+`external_id`. Imported events are read-only: REST patch/delete and device push
+return `409 EXTERNAL_EVENT_READ_ONLY`; clients cannot forge or clear provenance.
+Native events keep their existing CAS/version contract. Every import/cancellation/
+disconnect uses the shared domain change writer. Recurrence exceptions apply to
+Calendar, /today and bounded personal calendar reads.
+
+Errors include `503 CALENDAR_NOT_CONFIGURED`, `404 CALENDAR_NOT_CONNECTED`,
+`409 CALENDAR_RECONNECT_REQUIRED`, `CALENDAR_SCOPE_REQUIRED`, `CALENDAR_SYNC_BUSY`,
+`422 CALENDAR_INVALID_DATA`/`CALENDAR_SYNC_LIMIT`, `502 CALENDAR_UNAVAILABLE` and
+`403 POLICY_DENIED`. HTTP 410 is consumed internally by one full refetch. Provider
+payloads and token-bearing URLs are never returned in error messages or logs.

@@ -34,10 +34,10 @@ from app.core.models import (
     AutomationRule,
     Notification,
     Project,
-    Task,
     now,
 )
 from app.core.security import current_principal
+from app.domains import capture
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import (
     BaseModel,
@@ -277,14 +277,12 @@ def _build_action_registry(
             and await _owned_project(db, owner_id, str(project_id)) is None
         ):
             raise ValueError("automation project is outside the owner scope")
-        item = Task(
-            owner_id=owner_id,
+        item = await capture.create_task(
+            db, owner_id,
             title=str(arguments["title"]),
             description=str(arguments.get("description", "")),
             project_id=str(project_id) if project_id is not None else None,
         )
-        db.add(item)
-        await db.flush()
         db.add(ActivityEvent(owner_id=owner_id, resource_id=item.id, event_kind="automation.task.created", actor_kind="automation", actor_id=None, non_sensitive_metadata={"event_id": event_id}))
         return {"action": "create_task", "task_id": item.id, "event_id": event_id}
 

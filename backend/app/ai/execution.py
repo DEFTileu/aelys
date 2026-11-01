@@ -39,7 +39,8 @@ def apply_untrusted_boundary(messages: tuple[ChatMessage, ...]) -> tuple[ChatMes
     if not any(message.untrusted for message in messages):
         return messages
     fenced = tuple(
-        ChatMessage("user" if message.role == "system" else message.role, UntrustedData("external", message.content).as_context()) if message.untrusted else message
+        ChatMessage("user" if message.role == "system" else message.role,
+                    UntrustedData("external", message.content).as_context(), media=message.media, memory_refs=message.memory_refs) if message.untrusted else message
         for message in messages
     )
     if fenced and fenced[0].role == "system":

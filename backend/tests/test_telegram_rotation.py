@@ -39,7 +39,7 @@ async def rotation_db(tmp_path, monkeypatch):
         db.add(GmailOAuthState(state_hash="state", owner_id="user", session_id="session",
                                encrypted_verifier=encrypt_secret("oauth verifier", OLD_KEY), expires_at=now))
         db.add(TelegramIntegration(id="integration", owner_id="user", bot_id=1, bot_username="bot",
-                                   bot_name="Bot", business_capable=True, instructions="private instruction",
+                                   bot_name="Bot", business_capable=True, instructions="private instruction", status_text="private status",
                                    encrypted_token=encrypt_secret("telegram token", OLD_KEY)))
         db.add(TelegramIntegration(id="no-token", owner_id="user-2", bot_id=2, bot_username="bot2",
                                    bot_name="Bot 2", business_capable=False, instructions="", encrypted_token=None))
@@ -49,7 +49,7 @@ async def rotation_db(tmp_path, monkeypatch):
         db.add(TelegramBusinessMessage(id="message", owner_id="user", integration_id="integration",
                                        business_connection_id="connection", chat_id=2, telegram_message_id=3,
                                        sent_at=now, chat_title="private title", text="private message",
-                                       draft_text="private draft"))
+                                       draft_text="private draft", owner_note="private owner note"))
         db.add(TelegramBusinessMessage(id="empty-draft", owner_id="user", integration_id="integration",
                                        business_connection_id="connection", chat_id=2, telegram_message_id=4,
                                        sent_at=now, chat_title="", text="", draft_text=None))
@@ -66,11 +66,11 @@ async def test_rotates_all_encrypted_records_with_new_configured_key(rotation_db
     assert await rotate_provider_secrets.rotate() == 7
     async with rotation_db() as db:
         integration = (await db.execute(text(
-            "SELECT encrypted_token, instructions FROM telegram_integrations WHERE id = 'integration'"))).mappings().one()
+            "SELECT encrypted_token, instructions, status_text FROM telegram_integrations WHERE id = 'integration'"))).mappings().one()
         message = (await db.execute(text(
-            "SELECT chat_title, text, draft_text FROM telegram_business_messages WHERE id = 'message'"))).mappings().one()
+            "SELECT chat_title, text, draft_text, owner_note FROM telegram_business_messages WHERE id = 'message'"))).mappings().one()
         expected = {"encrypted_token": "telegram token", "instructions": "private instruction",
-                    "chat_title": "private title", "text": "private message", "draft_text": "private draft"}
+                    "chat_title": "private title", "text": "private message", "draft_text": "private draft", "status_text": "private status", "owner_note": "private owner note"}
         for row in (integration, message):
             for field, ciphertext in row.items():
                 assert decrypt_secret(ciphertext, NEW_KEY) == expected[field]
@@ -97,14 +97,55 @@ async def test_failure_rolls_back_all_rotations(rotation_db):
         await db.execute(text("UPDATE telegram_business_messages SET text = :bad WHERE id = 'message'"),
                          {"bad": encrypt_secret("wrong key", NEW_KEY)})
         await db.commit()
-        before = (await db.execute(text("SELECT encrypted_token, instructions FROM telegram_integrations WHERE id = 'integration'"))).one()
+        before = (await db.execute(text("SELECT encrypted_token, instructions, status_text FROM telegram_integrations WHERE id = 'integration'"))).one()
     with pytest.raises(InvalidTag):
         await rotate_provider_secrets.rotate()
     async with rotation_db() as db:
-        after = (await db.execute(text("SELECT encrypted_token, instructions FROM telegram_integrations WHERE id = 'integration'"))).one()
+        after = (await db.execute(text("SELECT encrypted_token, instructions, status_text FROM telegram_integrations WHERE id = 'integration'"))).one()
         assert before == after
         provider = (await db.execute(select(AIProviderSecret))).scalar_one()
         assert provider.key_version == 1
         assert decrypt_secret(provider.encrypted_value, OLD_KEY) == "provider secret"
         assert decrypt_secret((await db.get(GmailCredential, "account")).encrypted_tokens, OLD_KEY) == "gmail token"
         assert decrypt_secret((await db.get(GmailOAuthState, "state")).encrypted_verifier, OLD_KEY) == "oauth verifier"
+
+
+async def test_rotates_pending_personal_text_and_quote(rotation_db):
+    async with rotation_db() as db:
+        await db.execute(text('INSERT INTO telegram_personal_jobs '
+            '(id,owner_id,integration_id,telegram_update_id,text,quote,media_metadata,state,version,created_at,updated_at,recovery_notice_sent) '
+            'VALUES (:id,:owner,:integration,1,:body,:quote,:media,:state,1,:at,:at,false)'),
+            {'id':'pending','owner':'user','integration':'integration','body':encrypt_secret('private owner request',OLD_KEY),
+             'quote':encrypt_secret('untrusted quote',OLD_KEY),'media':encrypt_secret('{"file_id":"private-file"}',OLD_KEY),'state':'queued','at':datetime.now(UTC).isoformat()})
+        await db.commit()
+    assert await rotate_provider_secrets.rotate()==8
+    from app.integrations.telegram_models import TelegramPersonalJob
+    async with rotation_db() as db:
+        job=await db.get(TelegramPersonalJob,'pending')
+        assert (job.text,job.quote)==('private owner request','untrusted quote')
+        assert job.media_metadata=='{"file_id":"private-file"}'
+        raw=(await db.execute(text("SELECT text,quote,media_metadata FROM telegram_personal_jobs WHERE id='pending'"))).one()
+        for value in raw:
+            with pytest.raises(InvalidTag):decrypt_secret(value,OLD_KEY)
+
+
+async def test_rotates_separate_google_tokens_sync_cursor_and_pending_state(rotation_db):
+    from app.domains.google_calendar_models import (
+        GoogleCalendarConnection,
+        GoogleCalendarCredential,
+        GoogleCalendarOAuthState,
+    )
+    async with rotation_db() as db:
+        db.add(GoogleCalendarConnection(id='calendar',owner_id='user',encrypted_sync_token=encrypt_secret('sync-token',OLD_KEY)))
+        await db.flush()
+        db.add(GoogleCalendarCredential(connection_id='calendar',encrypted_tokens=encrypt_secret('calendar-tokens',OLD_KEY)))
+        db.add(GoogleCalendarOAuthState(state_hash='calendar-state',owner_id='user',session_id='session',encrypted_verifier=encrypt_secret('calendar-verifier',OLD_KEY),expires_at=datetime.now(UTC)))
+        await db.commit()
+    assert await rotate_provider_secrets.rotate()==10
+    async with rotation_db() as db:
+        connection=await db.get(GoogleCalendarConnection,'calendar')
+        credential=await db.get(GoogleCalendarCredential,'calendar')
+        state=await db.get(GoogleCalendarOAuthState,'calendar-state')
+        for encrypted,plain in [(connection.encrypted_sync_token,'sync-token'),(credential.encrypted_tokens,'calendar-tokens'),(state.encrypted_verifier,'calendar-verifier')]:
+            assert decrypt_secret(encrypted,NEW_KEY)==plain
+            with pytest.raises(InvalidTag):decrypt_secret(encrypted,OLD_KEY)

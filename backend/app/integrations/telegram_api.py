@@ -3,13 +3,14 @@ import hmac
 import re
 import secrets
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.ai.crypto import decrypt_secret, encrypt_secret
 from app.core.db import get_db
 from app.core.models import AIProvider, AIProviderSecret, now
 from app.core.security import current_principal, token_hash
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +34,22 @@ class SettingsIn(BaseModel):
     provider_id: str | None = Field(default=None, max_length=36)
     model: str | None = Field(default=None, max_length=200)
     instructions: str | None = Field(default=None, max_length=10_000)
+    timezone: str | None = Field(default=None, max_length=64)
+    deadline_reminders: bool | None = None
+    quiet_start: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    quiet_end: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    digest_time: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    reply_delay_seconds: int | None = Field(default=None, ge=0, le=900)
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except (ValueError, KeyError):
+                raise ValueError("Use a valid IANA timezone") from None
+        return value
 
 
 class MessageVersion(BaseModel):
@@ -52,6 +69,14 @@ class ConnectionOut(BaseModel):
 
 
 class StatusOut(BaseModel):
+    deadline_reminders: bool
+    quiet_start: str | None
+    quiet_end: str | None
+    timezone: str
+    digest_time: str | None
+    reply_delay_seconds: int
+    status_text: str | None
+    status_until: datetime | None
     configured: bool
     id: str | None
     version: int | None
@@ -86,6 +111,7 @@ class MessageOut(BaseModel):
     text: str
     sent_at: datetime
     direction: str
+    owner_note: str | None
     draft_text: str | None
     draft_status: str
     draft_error_code: str | None
@@ -154,15 +180,19 @@ async def binding(principal=Depends(current_principal), db: AsyncSession = Depen
 async def settings(body: SettingsIn, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     item = await service.get_integration(db, principal[0].id)
     values = body.model_dump(exclude_unset=True, exclude={"version"})
-    # Null is supported only for nullable provider/model fields.
-    if any(values.get(key) is None for key in ("enabled", "auto_reply", "instructions") if key in values):
+    # Null is supported for nullable provider/model/digest fields only.
+    if any(values.get(key) is None for key in ("enabled", "auto_reply", "instructions", "timezone", "reply_delay_seconds", "deadline_reminders") if key in values):
         raise service.error(422, "VALIDATION_ERROR", "Настройка не может быть пустой.")
+    quiet_start = values.get('quiet_start', item.quiet_start)
+    quiet_end = values.get('quiet_end', item.quiet_end)
+    if bool(quiet_start) != bool(quiet_end) or (quiet_start and quiet_start == quiet_end):
+        raise service.error(422, "VALIDATION_ERROR", "Set both quiet-hour boundaries with different times, or clear both.")
     provider_id = values.get("provider_id", item.provider_id)
     assistant_enabled = values.get("auto_reply", item.auto_reply) and values.get("enabled", item.enabled)
     if provider_id and ("provider_id" in values or assistant_enabled):
         provider = await db.get(AIProvider, provider_id)
         secret = (await db.execute(select(AIProviderSecret).where(AIProviderSecret.provider_id == provider_id, AIProviderSecret.owner_id == item.owner_id))).scalar_one_or_none()
-        if not provider or provider.owner_id != item.owner_id or provider.deleted_at or not provider.enabled or not secret:
+        if not provider or provider.owner_id != item.owner_id or provider.deleted_at or not provider.enabled or provider.kind not in {"claude", "openrouter"} or not secret:
             raise service.error(409, "PROVIDER_REQUIRED", "Настройте активного AI-провайдера с ключом.")
     if assistant_enabled:
         if not provider_id:
@@ -171,6 +201,9 @@ async def settings(body: SettingsIn, principal=Depends(current_principal), db: A
             raise service.error(409, "TELEGRAM_BINDING_REQUIRED", "Привяжите владельца и включите Secretary Mode в BotFather.")
         if not str(values.get("instructions", item.instructions)).strip():
             raise service.error(409, "TELEGRAM_INSTRUCTIONS_REQUIRED", "Опишите бизнес и правила ответов ассистента.")
+    if 'digest_time' in values or 'timezone' in values:
+        values['pending_digest_on'] = None
+        values['pending_digest_at'] = None
     claimed = await db.execute(update(TelegramIntegration).where(TelegramIntegration.id == item.id, TelegramIntegration.version == body.version).values(**values, version=TelegramIntegration.version + 1))
     await db.commit()
     if int(getattr(claimed, "rowcount", 0) or 0) != 1:
@@ -182,6 +215,8 @@ async def settings(body: SettingsIn, principal=Depends(current_principal), db: A
 async def disconnect(principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     item = await service.get_integration(db, principal[0].id, configured=False)
     item.enabled = False; item.auto_reply = False; item.encrypted_token = None
+    item.status_text = None; item.status_until = None; item.digest_time = None
+    item.pending_digest_on = None; item.pending_digest_at = None
     item.owner_telegram_id = None; item.binding_code_hash = None; item.binding_expires_at = None
     item.lease_owner = None; item.lease_expires_at = None; item.version += 1
     await service.purge_integration(db, item)
@@ -197,7 +232,7 @@ async def sync(principal=Depends(current_principal), db: AsyncSession = Depends(
     integration_id = item.id
     await db.commit()
     processed = await service.poll_once(integration_id, timeout=0)
-    return {"processed": processed}
+    return {"processed": processed or 0}
 
 
 @router.get("/messages", response_model=list[MessageOut])

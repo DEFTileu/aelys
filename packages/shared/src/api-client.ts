@@ -1,4 +1,5 @@
 import type {
+  MemoryFactIn, MemoryFactPatch, OwnerMemoryFact,
   ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
@@ -11,7 +12,7 @@ import type {
   TaskIn, TaskOut, TaskReminder, CalendarReminder, CalendarReminderIn, TokenResponse, TransactionIn, Id,
 } from "./types";
 import type { EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
-import type { DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
+import type { GoogleCalendarStatus, GoogleCalendarSync, DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
 
 import type { TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
 
@@ -350,6 +351,10 @@ export class ApiClient {
   public taskReminders(taskId: Id, options?: RequestOptions) { return this.request<readonly TaskReminder[]>(`/api/v1/tasks/${encodeURIComponent(taskId)}/reminders`, this.read(options)); }
   public createTaskReminder(taskId: Id, body: ReminderIn, options?: RequestOptions) { return this.request<TaskReminder>(`/api/v1/tasks/${encodeURIComponent(taskId)}/reminders`, this.write(body, options)); }
   public calendarEvents(query?: Query, options?: RequestOptions) { return this.request<readonly EventOut[]>("/api/v1/calendar/events", this.read({ ...options, query }, "calendar-events")); }
+  public googleCalendarStatus(options?: RequestOptions) { return this.request<GoogleCalendarStatus>("/api/v1/calendar/google/status", this.read(options)); }
+  public connectGoogleCalendar() { return this.request<{ readonly authorization_url: string }>("/api/v1/calendar/google/connect", this.write({}, { queueOnOffline: false })); }
+  public syncGoogleCalendar() { return this.request<GoogleCalendarSync>("/api/v1/calendar/google/sync", this.write({}, { queueOnOffline: false })); }
+  public disconnectGoogleCalendar() { return this.request<{ readonly disconnected: boolean }>("/api/v1/calendar/google/connection", { method: "DELETE", queueOnOffline: false }); }
   public calendarOccurrences(startsAt: string, endsAt: string, options?: RequestOptions) { return this.request<readonly EventOccurrence[]>("/api/v1/calendar/occurrences", this.read({ ...options, query: { starts_at: startsAt, ends_at: endsAt } }, "calendar-occurrences")); }
   public createCalendarEvent(body: EventIn, options?: RequestOptions) { return this.request<EventOut>("/api/v1/calendar/events", this.write(body, { queueOnOffline: false, ...options })); }
   public calendarEvent(itemId: Id, options?: RequestOptions) { return this.request<EventOut>(`/api/v1/calendar/events/${encodeURIComponent(itemId)}`, this.read(options)); }
@@ -417,12 +422,17 @@ export class ApiClient {
   public telegramStatus(options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/status", this.read(options)); }
   public connectTelegram(body: { readonly bot_token: string }, options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/connect", this.write(body, { ...options, queueOnOffline: false })); }
   public telegramBinding(options?: RequestOptions) { return this.request<{ readonly url: string; readonly expires_at: string }>("/api/v1/integrations/telegram/binding", this.write({}, { ...options, queueOnOffline: false })); }
-  public updateTelegramSettings(body: TelegramSettingsPatch, options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/settings", this.write(body, { ...options, queueOnOffline: false }, "PATCH")); }
+  public updateTelegramSettings(body: TelegramSettingsPatch, options?: RequestOptions): Promise<TelegramStatus> { return this.request<TelegramStatus>("/api/v1/integrations/telegram/settings", this.write(body, { ...options, queueOnOffline: false }, "PATCH")); }
   public disconnectTelegram(options?: RequestOptions) { return this.request<{ readonly disconnected: true }>("/api/v1/integrations/telegram/disconnect", this.write({}, { ...options, queueOnOffline: false })); }
   public syncTelegram(options?: RequestOptions) { return this.request<{ readonly processed: number }>("/api/v1/integrations/telegram/sync", this.write({}, { ...options, queueOnOffline: false })); }
   public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
   public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
   public sendTelegramMessage(id: string, body: { readonly version: number; readonly text: string }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/send`, this.write(body, { ...options, queueOnOffline: false })); }
+
+  public ownerMemory(query?: string) { return this.request<readonly OwnerMemoryFact[]>("/api/v1/ai/memory", { method: "GET", query: query ? { query } : undefined, allowCacheFallback: false }); }
+  public rememberFact(body: MemoryFactIn) { return this.request<OwnerMemoryFact>("/api/v1/ai/memory", this.write(body, { queueOnOffline: false })); }
+  public updateMemoryFact(id: Id, body: MemoryFactPatch) { return this.request<OwnerMemoryFact>(`/api/v1/ai/memory/${encodeURIComponent(id)}`, this.write(body, { queueOnOffline: false }, "PATCH")); }
+  public forgetMemoryFact(id: Id, version: number) { return this.request<{ readonly deleted: boolean }>(`/api/v1/ai/memory/${encodeURIComponent(id)}`, { method: "DELETE", query: { version }, queueOnOffline: false }); }
 
   public aiProviders(options?: RequestOptions) { return this.request<readonly AIProvider[]>("/api/v1/ai/providers", this.read(options, "ai-providers")); }
   public createAIProvider(body: ProviderIn, options?: RequestOptions) { return this.request<AIProvider>("/api/v1/ai/providers", this.write(body, options)); }

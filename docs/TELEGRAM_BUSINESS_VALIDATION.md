@@ -97,22 +97,39 @@ be pasted into this chat. Run one real inbound/reply and revoke-rights test afte
 setup before relying on the assistant. Production/PG/multi-host acceptance and
 independent personal bot notification decisions remain open.
 
-## Active development checkout follow-up — 2026-10-31
+## Manual reply regression — 2026-10-31
 
-Selected task: Phase 3 task 5, Telegram adapter, manual reply regression.
-The running web process on port 5173 serves the desktop-design worktree, while
-the backend on port 8000 runs from the primary checkout. The initial fix in the
-primary checkout therefore did not reach the active web page. Applied the same
-inbound-only reply controls and sanitized error explanations here, preserving
-this checkout's English UI. Owner-originated messages remain visible as history.
-The API contract and permission checks are unchanged; no real message was sent.
-Assumption: preserve the documented inbound-only manual reply contract. Existing
-OPEN integration acceptance decisions remain OPEN.
+Selected task: Phase 3 task 5, Telegram adapter. A reported manual send targeted
+an owner-originated message. Read-only inspection confirmed `direction=owner`;
+the existing backend correctly rejects drafts and sends for such records with
+HTTP 409 `TELEGRAM_MESSAGE_UNAVAILABLE`, before contacting Telegram. The web
+panel incorrectly offered reply controls for every message and hid the reason
+behind a generic connection error. Its test fixture also used `incoming` instead
+of the backend's actual `inbound` direction.
 
-Validation: `pnpm --filter @aelys/web exec vitest run src/tests/telegram-settings.test.tsx`
-(10 passed), `pnpm --filter @aelys/web typecheck` and `git diff --check` (passed).
-A direct HTTP read of `/src/views/TelegramSettings.tsx` from port 5173 confirmed
-the outgoing-message explanation, actionable error text and inbound-only controls
-are present in the served module. No backend restart is needed for this change.
-Next acceptance step: reload Settings → Telegram and select a recent inbound
-message after verifying the bot's reply permissions in Telegram Business.
+The panel now shows owner messages as history with an explanation, offers reply
+controls only for inbound messages, and explains unavailable messages, denied
+rights, expired reply windows, pause, rate limits and already-sent replies using
+locally defined error text. Provider descriptions remain undisplayed. Regression
+tests exercise owner-message ingestion and API rejection without any transport
+calls, preserve inbound manual sending, and verify actionable sanitized errors.
+
+Assumption: manual replies retain the documented inbound-only contract. No new
+product decision, migration, permission or API contract change is required.
+Existing personal-command/notification and production acceptance questions remain
+OPEN. Cached connection state also showed reply permission absent; this fix does
+not grant Telegram permissions. Next acceptance step: owner checks reply rights
+in Telegram Business, then selects a recent inbound customer message and sends
+an explicit reply. No real message was sent during this investigation.
+
+Validation:
+
+- `PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_telegram_transport.py backend/tests/test_telegram_business.py backend/tests/test_telegram_http_contract.py backend/tests/test_telegram_models.py backend/tests/test_telegram_ai.py backend/tests/test_telegram_rotation.py`: 58 passed.
+- `pnpm --filter @aelys/web test -- src/tests/telegram-settings.test.tsx`: runner executed the full web suite, 311 passed.
+- `pnpm --filter @aelys/web exec vitest run src/tests/telegram-settings.test.tsx`: focused rerun, 10 passed.
+- `pnpm --filter @aelys/web typecheck` and `pnpm --filter @aelys/web build`: passed.
+- `.venv/bin/ruff check backend/tests/test_telegram_business.py` and `git diff --check`: passed.
+
+Changes are limited to `TelegramSettings.tsx`, its web tests, the backend Telegram
+Business tests and these task notes. Existing deployment/documentation changes
+belonging to other work were preserved.

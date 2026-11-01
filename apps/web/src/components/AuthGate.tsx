@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '@aelys/shared'
-import { bootstrapOwner, browserAuthStatus, claimSetupToken, clearNativeSignedOut, getAccessToken, getApiConfig, getSharedApiClient, hasDeviceIdentity, isSignedOut, login, resumeBrowserSession, saveApiBaseUrl, SESSION_EVENT, signInWithThisDevice } from '../lib/api'
+import { bootstrapOwner, browserAuthStatus, claimSetupToken, clearNativeSignedOut, getAccessToken, getApiConfig, getSharedApiClient, hasDeviceIdentity, isSignedOut, login, resumeBrowserSession, saveApiBaseUrl, SESSION_EVENT, setNativeCacheOwner, signInWithThisDevice, startOutboxReplay } from '../lib/api'
 import type { ApiStatus } from '../types'
 import './auth-entry.css'
 import { Icon } from './Icon'
@@ -72,6 +72,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
           const transport = await loadNativeTransport()
           const origin = nativeBackendOrigin(getApiConfig().baseUrl)
           const native = await transport.status(origin)
+          if (native.signed_in) setNativeCacheOwner(native.owner_id)
           if (isSignedOut()) { setCanUnlock(false); publish('login'); return }
           if (alive && generation.current === run) setCanUnlock(!androidHost && !!native.biometric_locked && !!native.can_resume)
           if (native.signed_in) { publish('ready'); return }
@@ -79,7 +80,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
           if (!native.initialized) { publish('setup'); return }
           if (explicitReauthentication.current) { publish('login', 'Your session ended. Sign in again.'); return }
           if (native.can_resume) {
-            try { await transport.resume(origin); publish('ready'); return }
+            try { setNativeCacheOwner((await transport.resume(origin)).owner_id); publish('ready'); return }
             catch (error) {
               if (isKeychainAccessRequired(error)) { publish('login', KEYCHAIN_ACCESS_NOTICE); return }
               /* Request sign-in after an unsuccessful resume. */
@@ -105,6 +106,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
     void check()
     return () => { alive = false }
   }, [apiStatus, retry])
+  useEffect(() => (state === 'ready' ? startOutboxReplay() : undefined), [state])
   const unlock = async () => {
     if (busy) return
     const run = generation.current
@@ -114,6 +116,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       const transport = await loadNativeTransport()
       const result = await transport.resume(origin)
       if (!result.signed_in) throw new Error('Resume failed')
+      setNativeCacheOwner(result.owner_id)
       if (run === generation.current && origin === nativeBackendOrigin(getApiConfig().baseUrl)) { explicitReauthentication.current = false; setState('ready') }
     } catch (error) {
       if (run === generation.current) setNotice(isKeychainAccessRequired(error) ? KEYCHAIN_ACCESS_NOTICE : 'Could not unlock with Touch ID. Try again or sign in with your password.')
@@ -154,6 +157,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
         const transport = await loadNativeTransport()
         const result = await transport.login(nativeBackendOrigin(base), email.trim(), password, state === 'setup')
         if (!result.signed_in) throw new Error('Sign-in failed')
+        setNativeCacheOwner(result.owner_id)
         clearNativeSignedOut()
       } else if (state === 'setup') await bootstrapOwner(email.trim(), password)
       else await login(email.trim(), password)

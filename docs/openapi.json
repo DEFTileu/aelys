@@ -4841,6 +4841,219 @@
         }
       }
     },
+    "/api/v1/ai/memory": {
+      "get": {
+        "summary": "List Facts",
+        "operationId": "list_facts_api_v1_ai_memory_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryFactOut"
+                  },
+                  "title": "Response List Facts Api V1 Ai Memory Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Fact",
+        "operationId": "create_fact_api_v1_ai_memory_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryFactIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/memory/{fact_id}": {
+      "patch": {
+        "summary": "Edit Fact",
+        "operationId": "edit_fact_api_v1_ai_memory__fact_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Fact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryFactPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFactOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Fact",
+        "operationId": "delete_fact_api_v1_ai_memory__fact_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "fact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Fact Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agents/devices": {
       "get": {
         "summary": "Agent Devices",
@@ -5889,6 +6102,131 @@
         }
       }
     },
+    "/api/v1/calendar/google/status": {
+      "get": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Status",
+        "operationId": "status_api_v1_calendar_google_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/calendar/google/connect": {
+      "post": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Connect",
+        "operationId": "connect_api_v1_calendar_google_connect_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendar/google/sync": {
+      "post": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Sync Now",
+        "operationId": "sync_now_api_v1_calendar_google_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSyncOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/calendar/google/connection": {
+      "delete": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Disconnect",
+        "operationId": "disconnect_api_v1_calendar_google_connection_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarDisconnectOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/integrations/telegram/status": {
       "get": {
         "tags": [
@@ -6441,6 +6779,90 @@
         ],
         "title": "BudgetPutIn"
       },
+      "CalendarConnectOut": {
+        "properties": {
+          "authorization_url": {
+            "type": "string",
+            "title": "Authorization Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorization_url"
+        ],
+        "title": "CalendarConnectOut"
+      },
+      "CalendarConnectionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "calendar_id": {
+            "type": "string",
+            "title": "Calendar Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "error",
+              "disconnected"
+            ],
+            "title": "Status"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "calendar_id",
+          "status",
+          "last_synced_at",
+          "last_error_code"
+        ],
+        "title": "CalendarConnectionOut"
+      },
+      "CalendarDisconnectOut": {
+        "properties": {
+          "disconnected": {
+            "type": "boolean",
+            "title": "Disconnected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "disconnected"
+        ],
+        "title": "CalendarDisconnectOut"
+      },
       "CalendarReminderIn": {
         "properties": {
           "event_id": {
@@ -6454,7 +6876,10 @@
           },
           "channel": {
             "type": "string",
-            "const": "in_app",
+            "enum": [
+              "in_app",
+              "telegram"
+            ],
             "title": "Channel",
             "default": "in_app"
           },
@@ -6486,7 +6911,10 @@
           },
           "channel": {
             "type": "string",
-            "const": "in_app",
+            "enum": [
+              "in_app",
+              "telegram"
+            ],
             "title": "Channel",
             "default": "in_app"
           },
@@ -6524,6 +6952,53 @@
           "version"
         ],
         "title": "CalendarReminderOut"
+      },
+      "CalendarStatusOut": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalendarConnectionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured",
+          "connection"
+        ],
+        "title": "CalendarStatusOut"
+      },
+      "CalendarSyncOut": {
+        "properties": {
+          "imported": {
+            "type": "integer",
+            "title": "Imported"
+          },
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted"
+          },
+          "full_sync": {
+            "type": "boolean",
+            "title": "Full Sync"
+          }
+        },
+        "type": "object",
+        "required": [
+          "imported",
+          "deleted",
+          "full_sync"
+        ],
+        "title": "CalendarSyncOut"
       },
       "ChallengeRequest": {
         "properties": {
@@ -7070,6 +7545,28 @@
             "type": "integer",
             "title": "Version"
           },
+          "external_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Source"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
           "occurrence_id": {
             "type": "string",
             "title": "Occurrence Id"
@@ -7181,6 +7678,28 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "external_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Source"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
           }
         },
         "type": "object",
@@ -7943,6 +8462,183 @@
         ],
         "title": "MailMessageOut"
       },
+      "MemoryFactIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "preference",
+              "fact",
+              "goal",
+              "context"
+            ],
+            "title": "Kind",
+            "default": "fact"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "MemoryFactIn"
+      },
+      "MemoryFactOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "preference",
+              "fact",
+              "goal",
+              "context"
+            ],
+            "title": "Kind"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Message Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "owner_id",
+          "version",
+          "text",
+          "kind",
+          "source",
+          "source_message_id",
+          "expires_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MemoryFactOut"
+      },
+      "MemoryFactPatch": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "preference",
+                  "fact",
+                  "goal",
+                  "context"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "MemoryFactPatch"
+      },
       "MessageOut": {
         "properties": {
           "id": {
@@ -7992,6 +8688,17 @@
           "direction": {
             "type": "string",
             "title": "Direction"
+          },
+          "owner_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Note"
           },
           "draft_text": {
             "anyOf": [
@@ -8044,6 +8751,7 @@
           "text",
           "sent_at",
           "direction",
+          "owner_note",
           "draft_text",
           "draft_status",
           "draft_error_code",
@@ -8703,7 +9411,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "pattern": "^(claude|openrouter)$",
+            "pattern": "^(claude|openrouter|transcription)$",
             "title": "Kind"
           },
           "base_url": {
@@ -8843,6 +9551,10 @@
           },
           "channel": {
             "type": "string",
+            "enum": [
+              "in_app",
+              "telegram"
+            ],
             "title": "Channel",
             "default": "in_app"
           },
@@ -9241,6 +9953,78 @@
               }
             ],
             "title": "Instructions"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "deadline_reminders": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Reminders"
+          },
+          "quiet_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Start"
+          },
+          "quiet_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet End"
+          },
+          "digest_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Time"
+          },
+          "reply_delay_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 900.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Delay Seconds"
           }
         },
         "additionalProperties": false,
@@ -9286,6 +10070,74 @@
       },
       "StatusOut": {
         "properties": {
+          "deadline_reminders": {
+            "type": "boolean",
+            "title": "Deadline Reminders"
+          },
+          "quiet_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Start"
+          },
+          "quiet_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet End"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "digest_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest Time"
+          },
+          "reply_delay_seconds": {
+            "type": "integer",
+            "title": "Reply Delay Seconds"
+          },
+          "status_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Text"
+          },
+          "status_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Until"
+          },
           "configured": {
             "type": "boolean",
             "title": "Configured"
@@ -9416,6 +10268,14 @@
         },
         "type": "object",
         "required": [
+          "deadline_reminders",
+          "quiet_start",
+          "quiet_end",
+          "timezone",
+          "digest_time",
+          "reply_delay_seconds",
+          "status_text",
+          "status_until",
           "configured",
           "id",
           "version",
@@ -9602,6 +10462,32 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "readOnly": true
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "readOnly": true
           }
         },
         "type": "object",

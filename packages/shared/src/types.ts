@@ -180,6 +180,8 @@ export interface TaskIn {
   readonly rrule?: string | null;
 }
 export interface TaskOut {
+  readonly started_at?: IsoDateTime | null;
+  readonly completed_at?: IsoDateTime | null;
   readonly title: string;
   readonly description: string;
   readonly project_id: Id | null;
@@ -219,6 +221,8 @@ export interface EventIn {
   readonly reminder_at?: IsoDateTime | null;
 }
 export interface EventOut {
+  readonly external_source?: string | null;
+  readonly external_id?: string | null;
   readonly title: string;
   readonly description: string;
   readonly starts_at: IsoDateTime;
@@ -544,7 +548,16 @@ export interface SyncBootstrapResponse {
   readonly has_more: boolean;
 }
 
-export type AIProviderKind = "claude" | "openrouter";
+export type MemoryFactKind = "preference" | "fact" | "goal" | "context";
+export interface MemoryFactIn { readonly text: string; readonly kind?: MemoryFactKind; readonly expires_at?: IsoDateTime | null; }
+export interface MemoryFactPatch { readonly version: number; readonly text?: string; readonly kind?: MemoryFactKind; readonly expires_at?: IsoDateTime | null; }
+export interface OwnerMemoryFact extends MemoryFactIn {
+  readonly id: Id; readonly owner_id: Id; readonly version: number; readonly kind: MemoryFactKind;
+  readonly source: string; readonly source_message_id: string | null; readonly expires_at: IsoDateTime | null;
+  readonly created_at: IsoDateTime; readonly updated_at: IsoDateTime;
+}
+
+export type AIProviderKind = "claude" | "openrouter" | "transcription";
 export interface ProviderIn {
   readonly kind: AIProviderKind;
   readonly base_url?: string | null;
@@ -761,3 +774,12 @@ export interface SSEEvent<T = JsonObject> {
   readonly data: T;
   readonly id?: string;
 }
+
+/** Separate readonly primary calendar connection; tokens never leave the server. */
+export interface GoogleCalendarStatus {
+  readonly configured: boolean;
+  readonly connection: { readonly id: Id; readonly version: number; readonly calendar_id: string;
+    readonly status: 'connected' | 'error' | 'disconnected'; readonly last_synced_at: IsoDateTime | null;
+    readonly last_error_code: string | null } | null;
+}
+export interface GoogleCalendarSync { readonly imported: number; readonly deleted: number; readonly full_sync: boolean; }

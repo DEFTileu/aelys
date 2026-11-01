@@ -158,3 +158,25 @@ on explicit disconnect. Connector tables are not part of general owner export
 or offline sync. AI run audits retain counts/cost and metadata, without Telegram
 message content in `ai_messages`. These are implemented schema details; other
 PROPOSED entities in this document remain proposals.
+
+
+### Telegram personal + Business (migration 0025)
+
+TelegramIntegration adds timezone String(64) default UTC, nullable digest_time
+String(5), last_digest_on Date, reply_delay_seconds Integer default 90,
+EncryptedText status_text and timezone-aware status_until. TelegramBusinessMessage
+adds nullable EncryptedText owner_note and supports terminal no_reply/handoff
+statuses. Secret rotation covers both new encrypted fields. Notification stores
+no conversation or owner-note content; dedup key telegram-handoff:<message_id>.
+No CLI data, embeddings or new cloud session content is introduced.
+
+## Implemented task work instants — migration 0033
+
+`tasks.started_at` and `tasks.completed_at` are nullable UTC instants owned by the
+server. Entering in_progress starts the current work period; leaving and entering
+it again starts a new period. Entering a completion state stamps completed_at;
+reopening clears the current completion. Completion aliases preserve the existing
+instant. Existing HistoryEntry rows with action task.status.changed retain each
+accepted Task version, raw from/to status, occurrence and work/completion instants.
+No new status-history table. Legacy unknown instants remain null; bootstrap and
+same-version null-key projection enrichment cannot fabricate work or log events.

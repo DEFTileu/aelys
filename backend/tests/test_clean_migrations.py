@@ -44,6 +44,9 @@ def test_clean_and_incremental_upgrade(backend: str, tmp_path: Path) -> None:
         inspector = sa.inspect(engine)
         assert not inspector.has_table("auth_sessions")
         assert not inspector.has_table("gmail_oauth_states")
+        assert not inspector.has_table("google_calendar_connections")
+        assert not inspector.has_table("google_calendar_credentials")
+        assert not inspector.has_table("google_calendar_oauth_states")
         with engine.begin() as connection:
             connection.execute(sa.text("INSERT INTO users (id, created_at, settings_json) VALUES (:id, CURRENT_TIMESTAMP, :settings)"),
                                {"id": "migration-test-owner", "settings": "{}"})
