@@ -31,14 +31,15 @@ Cached messages and drafts are available offline; new incoming mail and actual s
 
 ## 3. Telegram bot
 
-### First useful commands (PROPOSED)
+### Личные команды (DECIDED 2026-11-01; реализованы в Phase 3)
 
 ```text
-/start       # identity binding
-/today       # tasks + events today
-/task <text>  # capture task
-/note <text>  # capture note
-/remind ...   # reminder
+/start aelys_CODE  # одноразовая привязка владельца
+/task <title>     # первая строка title, остальные description
+/note <text>      # первая строка title, весь текст markdown_body
+/today            # задачи/просрочка/события локального дня, без AI
+/busy 18:00 <text> # до ближайшего HH:MM в настроенном timezone
+/free             # очистить статус сразу
 /help
 ```
 
@@ -71,7 +72,7 @@ Not all providers implement writes. Capabilities must be explicit and feature-ga
 ## 6. Decision gates
 
 Gmail read/drafts approved by owner 2026-10-29; sending remains unapproved. The UI discloses manual imports and retention of loaded local mail after disconnect. Background sync/retention controls require further design.
-Telegram Business incoming read/reply was approved by owner 2026-10-29. Live setup requires the owner’s bot/account connection; notification categories for the separate personal command bot remain OPEN.
+Telegram Business incoming read/reply was approved by owner 2026-10-29. Live setup requires the owner’s bot/account connection; one bot serves personal commands and Business with one poller (ADR-027). Additional notification categories remain OPEN.
 Before any bank connections: separate security and data sensitivity review.
 
 ### Telegram Business / Secretary Mode (owner approved 2026-10-29)
@@ -88,8 +89,13 @@ This is a Business/Secretary bot, not an unrestricted personal-account client.
 Customers cannot access owner Notes/Tasks/Mail/Finance or Mac tools. Only private
 plain-text incoming messages are handled; unsupported media, forwarded messages
 and bot echoes are ignored. No campaigns, proactive messages or Telegram Stars/
-profile/gift operations are implemented. Notification categories and the separate
-personal `/task`/`note`/`today` command adapter remain outside this slice.
+profile/gift operations are implemented. The same bot now handles the six explicit
+owner commands. Free-form personal AI, media and Telegram reminder delivery remain
+outside this slice. Opt-in deterministic digest uses configured timezone and a
+2-hour window; no catch-up or send retry. Secretary uses reply/no_reply/handoff,
+waits reply_delay_seconds (default 90), then considers only the newest inbound in
+each chat. Handoff persists an encrypted owner_note and a content-free Notification.
+Personal confirmations are sent only after receipt/cursor commit and never replayed.
 
 See [TELEGRAM_BUSINESS.md](TELEGRAM_BUSINESS.md) for actual setup and retention.
 A real token, connected Telegram account and configured AI key are still required

@@ -384,3 +384,21 @@ conflict; a client-side preflight alone is not the concurrency guarantee.
 ### Note last-update instant (2026-10-31)
 
 `NoteOut` now includes an optional `updated_at` (ISO 8601 date-time, the existing `Owned.updated_at` column). It is additive: older clients ignore it, and the web client falls back to the version badge when a backend omits it. No migration, no write-path change.
+
+
+### Telegram personal + Business (2026-11-01)
+
+Settings PATCH adds `timezone` (valid ZoneInfo/IANA, default UTC), `digest_time`
+(nullable HH:MM, null disables), `reply_delay_seconds` (0–900, default 90).
+GET status additionally returns active `status_text`/`status_until`; MessageOut
+adds encrypted-at-rest `owner_note`. Unknown/expired busy status is not exposed
+as active. Status commands are accepted only from the verified owner private chat.
+
+The one bot handles `/task`, `/note`, `/today`, `/busy`, `/free`, `/help`.
+Business AI returns strict reply/no_reply/handoff decisions. New terminal
+`draft_status` values no_reply/handoff cannot enter automatic send claims. The
+owner can explicitly send their own request text or regenerate a draft from
+either status; owner_note never pre-fills the customer reply.
+Handoff creates Notification kind telegram.handoff with only message_id data;
+private owner_note is exposed only through the authenticated Telegram owner API.
+See TELEGRAM_PERSONAL_ASSISTANT_REPORT.md for acceptance and sync limitations.

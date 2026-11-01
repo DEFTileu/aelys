@@ -39,7 +39,7 @@ async def rotation_db(tmp_path, monkeypatch):
         db.add(GmailOAuthState(state_hash="state", owner_id="user", session_id="session",
                                encrypted_verifier=encrypt_secret("oauth verifier", OLD_KEY), expires_at=now))
         db.add(TelegramIntegration(id="integration", owner_id="user", bot_id=1, bot_username="bot",
-                                   bot_name="Bot", business_capable=True, instructions="private instruction",
+                                   bot_name="Bot", business_capable=True, instructions="private instruction", status_text="private status",
                                    encrypted_token=encrypt_secret("telegram token", OLD_KEY)))
         db.add(TelegramIntegration(id="no-token", owner_id="user-2", bot_id=2, bot_username="bot2",
                                    bot_name="Bot 2", business_capable=False, instructions="", encrypted_token=None))
@@ -49,7 +49,7 @@ async def rotation_db(tmp_path, monkeypatch):
         db.add(TelegramBusinessMessage(id="message", owner_id="user", integration_id="integration",
                                        business_connection_id="connection", chat_id=2, telegram_message_id=3,
                                        sent_at=now, chat_title="private title", text="private message",
-                                       draft_text="private draft"))
+                                       draft_text="private draft", owner_note="private owner note"))
         db.add(TelegramBusinessMessage(id="empty-draft", owner_id="user", integration_id="integration",
                                        business_connection_id="connection", chat_id=2, telegram_message_id=4,
                                        sent_at=now, chat_title="", text="", draft_text=None))
@@ -66,11 +66,11 @@ async def test_rotates_all_encrypted_records_with_new_configured_key(rotation_db
     assert await rotate_provider_secrets.rotate() == 7
     async with rotation_db() as db:
         integration = (await db.execute(text(
-            "SELECT encrypted_token, instructions FROM telegram_integrations WHERE id = 'integration'"))).mappings().one()
+            "SELECT encrypted_token, instructions, status_text FROM telegram_integrations WHERE id = 'integration'"))).mappings().one()
         message = (await db.execute(text(
-            "SELECT chat_title, text, draft_text FROM telegram_business_messages WHERE id = 'message'"))).mappings().one()
+            "SELECT chat_title, text, draft_text, owner_note FROM telegram_business_messages WHERE id = 'message'"))).mappings().one()
         expected = {"encrypted_token": "telegram token", "instructions": "private instruction",
-                    "chat_title": "private title", "text": "private message", "draft_text": "private draft"}
+                    "chat_title": "private title", "text": "private message", "draft_text": "private draft", "status_text": "private status", "owner_note": "private owner note"}
         for row in (integration, message):
             for field, ciphertext in row.items():
                 assert decrypt_secret(ciphertext, NEW_KEY) == expected[field]
@@ -97,11 +97,11 @@ async def test_failure_rolls_back_all_rotations(rotation_db):
         await db.execute(text("UPDATE telegram_business_messages SET text = :bad WHERE id = 'message'"),
                          {"bad": encrypt_secret("wrong key", NEW_KEY)})
         await db.commit()
-        before = (await db.execute(text("SELECT encrypted_token, instructions FROM telegram_integrations WHERE id = 'integration'"))).one()
+        before = (await db.execute(text("SELECT encrypted_token, instructions, status_text FROM telegram_integrations WHERE id = 'integration'"))).one()
     with pytest.raises(InvalidTag):
         await rotate_provider_secrets.rotate()
     async with rotation_db() as db:
-        after = (await db.execute(text("SELECT encrypted_token, instructions FROM telegram_integrations WHERE id = 'integration'"))).one()
+        after = (await db.execute(text("SELECT encrypted_token, instructions, status_text FROM telegram_integrations WHERE id = 'integration'"))).one()
         assert before == after
         provider = (await db.execute(select(AIProviderSecret))).scalar_one()
         assert provider.key_version == 1

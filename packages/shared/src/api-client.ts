@@ -408,7 +408,7 @@ export class ApiClient {
   public telegramStatus(options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/status", this.read(options)); }
   public connectTelegram(body: { readonly bot_token: string }, options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/connect", this.write(body, { ...options, queueOnOffline: false })); }
   public telegramBinding(options?: RequestOptions) { return this.request<{ readonly url: string; readonly expires_at: string }>("/api/v1/integrations/telegram/binding", this.write({}, { ...options, queueOnOffline: false })); }
-  public updateTelegramSettings(body: TelegramSettingsPatch, options?: RequestOptions) { return this.request<TelegramStatus>("/api/v1/integrations/telegram/settings", this.write(body, { ...options, queueOnOffline: false }, "PATCH")); }
+  public updateTelegramSettings(body: TelegramSettingsPatch, options?: RequestOptions): Promise<TelegramStatus> { return this.request<TelegramStatus>("/api/v1/integrations/telegram/settings", this.write(body, { ...options, queueOnOffline: false }, "PATCH")); }
   public disconnectTelegram(options?: RequestOptions) { return this.request<{ readonly disconnected: true }>("/api/v1/integrations/telegram/disconnect", this.write({}, { ...options, queueOnOffline: false })); }
   public syncTelegram(options?: RequestOptions) { return this.request<{ readonly processed: number }>("/api/v1/integrations/telegram/sync", this.write({}, { ...options, queueOnOffline: false })); }
   public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }

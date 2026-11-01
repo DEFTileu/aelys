@@ -21,12 +21,11 @@ from app.core.models import (
     AIRun,
     AIRunEvent,
     AuthSession,
-    Note,
     Project,
-    Task,
     uid,
 )
 from app.core.security import bearer_scheme, current_principal, decode_token
+from app.domains import capture
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -119,16 +118,14 @@ def _tool_registry(db: AsyncSession, owner_id: str, event_id: str) -> ToolRegist
         project_id = arguments.get("project_id")
         if project_id is not None and not await _owned_project(db, owner_id, str(project_id)):
             raise ValueError("project is outside the owner scope")
-        item = Task(owner_id=owner_id, title=str(arguments["title"]), description=str(arguments.get("description", "")), project_id=str(project_id) if project_id is not None else None)
-        db.add(item); await db.flush()
+        item = await capture.create_task(db, owner_id, title=str(arguments["title"]), description=str(arguments.get("description", "")), project_id=str(project_id) if project_id is not None else None)
         return {"kind":"task", "id":item.id, "event_id":event_id}
 
     async def create_note(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         project_id = arguments.get("project_id")
         if project_id is not None and not await _owned_project(db, owner_id, str(project_id)):
             raise ValueError("project is outside the owner scope")
-        item = Note(owner_id=owner_id, title=str(arguments["title"]), markdown_body=str(arguments.get("markdown_body", "")), project_id=str(project_id) if project_id is not None else None)
-        db.add(item); await db.flush()
+        item = await capture.create_note(db, owner_id, title=str(arguments["title"]), markdown_body=str(arguments.get("markdown_body", "")), project_id=str(project_id) if project_id is not None else None)
         return {"kind":"note", "id":item.id, "event_id":event_id}
 
     registry.register(ToolDescriptor("create_task", "Create an owner-scoped task", "tasks.write", lambda value: CreateTaskToolArgs.model_validate(value).model_dump(mode="json", exclude_none=True), create_task, input_schema=CreateTaskToolArgs.model_json_schema()))

@@ -4,11 +4,10 @@ import argparse
 import asyncio
 import os
 
-from sqlalchemy import select, text
-
 from app.ai.crypto import decrypt_secret, encrypt_secret
 from app.core.db import SessionLocal
 from app.core.models import AIProviderSecret, GmailCredential, GmailOAuthState
+from sqlalchemy import select, text
 
 
 async def rotate() -> int:
@@ -33,27 +32,31 @@ async def rotate() -> int:
         # Raw SQL bypasses EncryptedText, which would try the configured new key
         # while the database still contains ciphertext encrypted with the old key.
         integrations = (await db.execute(text(
-            "SELECT id, encrypted_token, instructions FROM telegram_integrations"
+            "SELECT id, encrypted_token, instructions, status_text FROM telegram_integrations"
         ))).mappings().all()
         for integration in integrations:
             await db.execute(text(
                 "UPDATE telegram_integrations SET encrypted_token = :token, "
-                "instructions = :instructions WHERE id = :id"
+                "instructions = :instructions, status_text = :status_text WHERE id = :id"
             ), {
                 "id": integration["id"],
                 "token": (encrypt_secret(decrypt_secret(integration["encrypted_token"], old_key), new_key)
                           if integration["encrypted_token"] is not None else None),
                 "instructions": encrypt_secret(decrypt_secret(integration["instructions"], old_key), new_key),
+                "status_text": (encrypt_secret(decrypt_secret(integration["status_text"], old_key), new_key)
+                                if integration["status_text"] is not None else None),
             })
         messages = (await db.execute(text(
-            "SELECT id, chat_title, text, draft_text FROM telegram_business_messages"
+            "SELECT id, chat_title, text, draft_text, owner_note FROM telegram_business_messages"
         ))).mappings().all()
         for message in messages:
             await db.execute(text(
                 "UPDATE telegram_business_messages SET chat_title = :chat_title, "
-                "text = :message_text, draft_text = :draft_text WHERE id = :id"
+                "text = :message_text, draft_text = :draft_text, owner_note = :owner_note WHERE id = :id"
             ), {
                 "id": message["id"],
+                "owner_note": (encrypt_secret(decrypt_secret(message["owner_note"], old_key), new_key)
+                               if message["owner_note"] is not None else None),
                 "chat_title": encrypt_secret(decrypt_secret(message["chat_title"], old_key), new_key),
                 "message_text": encrypt_secret(decrypt_secret(message["text"], old_key), new_key),
                 "draft_text": (encrypt_secret(decrypt_secret(message["draft_text"], old_key), new_key)
