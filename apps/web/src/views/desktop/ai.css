@@ -14,7 +14,7 @@
   .actual-ai__conversation { gap: 10px; min-height: 0; padding: 8px; border-radius: 12px; }
   .actual-ai__conversation:hover { background: var(--pg-hover); }
   .actual-ai__conversation--selected, .actual-ai__conversation--selected:hover { background: #EEEAFD; }
-  :root[data-theme='dark'] .actual-ai__conversation--selected, :root[data-theme='dark'] .actual-ai__conversation--selected:hover { background: rgba(139, 108, 240, .22); }
+  :root[data-theme='dark'] .actual-ai__conversation--selected, :root[data-theme='dark'] .actual-ai__conversation--selected:hover { background: #2F2752; }
   .actual-ai__side-card { padding: 16px; }
   .actual-ai__side-card h2 { font-size: 16px; font-weight: 600; line-height: 24px; }
   .actual-ai__actions > *, .actual-ai__prompts > * { background: var(--pg-field); border-radius: 10px; }

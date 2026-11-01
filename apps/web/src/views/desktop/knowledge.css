@@ -12,7 +12,7 @@
   .knowledge-view .knowledge-item { gap: 10px; padding: 10px; border-radius: 12px; color: var(--pg-ink); }
   .knowledge-view .knowledge-item:hover { filter: brightness(.98); background: transparent; }
   .knowledge-view .knowledge-item--selected, .knowledge-view .knowledge-item--selected:hover { background: #EEEAFD; }
-  :root[data-theme='dark'] .knowledge-view .knowledge-item--selected, :root[data-theme='dark'] .knowledge-view .knowledge-item--selected:hover { background: rgba(139, 108, 240, .22); }
+  :root[data-theme='dark'] .knowledge-view .knowledge-item--selected, :root[data-theme='dark'] .knowledge-view .knowledge-item--selected:hover { background: #2F2752; }
   .knowledge-view .knowledge-icon { width: 32px; height: 32px; border-radius: 9px; }
   .knowledge-view .knowledge-item-text strong { font-size: 14px; line-height: 22px; font-weight: 500; }
   .knowledge-view .knowledge-item-text small { margin: 0; font-size: 12px; line-height: 16px; color: var(--pg-mute); }

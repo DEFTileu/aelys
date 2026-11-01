@@ -87,7 +87,12 @@ All UI copy is in English. A Russian string in the build is a bug.
 - **Icon tile:** 28×28 radius 8 (list rows 36–40, radius 10–12), module accent on soft.
 - **Row:** height 40–52, separator `line-soft`. The time sits right-aligned in muted.
 - **Input:** height 44, radius 12, `surface-soft` or white with `line` border. The focus ring shows only on keyboard focus (`:focus-visible`): 2px primary, offset 2.
-- **Quick add (Tasks):** one row containing "+ Add a task". Date, priority and project appear as inline chips **after** typing starts (or via `@date`, `!p1`, `#project`). There are no permanent selects.
+- **Quick add (Tasks):** one 6/14-padded card (radius 16): a purple circle-plus, the title field ("Add a task — Enter to save, Q to focus"), then permanent Date, Priority and Project selects (34 high, `surface-soft`, radius 10) and an Add button that is grey until there is a title. Typing `@today`, `@tomorrow`, `@fri`, `@2026-11-17`, `@14:30`, `!p1` or `#project` fills the same selects. The ACTUAL design wins over the earlier chip-only rule.
+- **Tasks toolbar:** Inbox / Today / Upcoming / Completed segments with count pills, a 220px search, Any-priority and All-projects selects (40 high, white, radius 12) and a Reset link when a filter is on. Matrix, All tasks, High priority, Overdue, Status and Refresh live in the ellipsis menu inside the search field.
+- **Module page cards:** white (`#201D28` dark) radius 20, border `#EDE8E3`, shadow `0 1px 2px rgba(40,30,30,.04), 0 8px 24px rgba(40,30,30,.05)`. Calendar and AI Chat use the glass fill `rgba(255,255,255,.88)` with a `rgba(255,255,255,.35)` border instead. All values are tokens in `views/desktop/page-tokens.css` (`--pg-*`) with their dark mapping.
+- **Master/detail pages** (Notes, Mail, Knowledge): grid `220px 320/340px 1fr` (Knowledge `300px 1fr`) at `calc(100vh - 168px)` including the 28px bottom padding, so the cards are `100vh - 196px` tall. Selected rows use `#EEEAFD` (`#2F2752` dark).
+- **Calendar grid:** 50px per hour, 5 weekday columns (a 5d/7d switch sits in the time-zone cell), 624px tall scroller that opens at 09:00, events are 4px/10px padded with a 3px edge and a tint from the design palette.
+- **Money:** `192 120.00 ₸`, `$1 205.00`, `− 4 500.00 ₸` (U+2212 and a space); digits come from the exact fixed-point value, never from floats.
 
 ## 6. Home & widgets
 

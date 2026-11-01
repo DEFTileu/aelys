@@ -41,7 +41,7 @@
   .projects-view .pv-progress-label { display: flex; width: auto; margin-bottom: 6px; font-size: 13px; line-height: 18px; color: var(--pg-mute); }
   .projects-view .pv-progress-label span { flex: 1; }
   .projects-view .pv-progress-label b { font-weight: 600; color: var(--pg-ink); }
-  .projects-view .pv-progress { display: block; height: 6px; margin-top: 0; width: auto; border-radius: 3px; background: var(--pg-line-soft); overflow: visible; }
+  .projects-view .pv-progress { display: block; height: 6px; margin-top: 0; width: auto; border-radius: 3px; background: var(--pg-track); overflow: visible; }
   .projects-view .pv-progress > span { display: block; height: 100%; border-radius: 3px; }
   .projects-view .pv-next { display: block; width: auto; padding: 10px 12px; border-radius: 12px; background: var(--pg-field); }
   .projects-view .pv-next > small { display: block; font-size: 12px; line-height: 16px; color: var(--pg-mute); }

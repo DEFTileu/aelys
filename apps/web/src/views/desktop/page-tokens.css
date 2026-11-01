@@ -26,6 +26,7 @@
   --pg-check-bd: #BDB7C2;
   --pg-warn-bg: #FDF1D9;
   --pg-warn: #8A5A00;
+  --pg-track: #ECE7E3;
 }
 :root[data-theme='dark'] {
   --pg-card: #201D28;
@@ -51,4 +52,5 @@
   --pg-check-bd: #BDB7C2;
   --pg-warn-bg: rgba(239, 178, 62, .18);
   --pg-warn: #F4C46B;
+  --pg-track: #2A2733;
 }
