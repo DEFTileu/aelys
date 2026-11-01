@@ -25,7 +25,7 @@ Business context must never include personal memory/tasks/notes/calendar.
 |---|---|---|
 | 0 — merge origin/main | Accepted locally | Fetched origin/main `378ecb3`; merging into feature branch. Automation capture and rule drafts retained; contract additions retained; UI resolved by Luna medium; migration regression by Terra medium. Merge revision 0028 joins both heads without changing historical revisions. All CI commands passed locally, details below. |
 | 1 — unified change-log | Accepted locally | Shared transactional writer, domain push and compatibility implemented; final backend 375 passed + 2 separately covered PG skips, 52 targeted new contracts. Details below. |
-| 2 — reminders/digest | Not started | Durable claims, quiet hours/DST, deadline options, /remind and tomorrow required. |
+| 2 — reminders/digest | Accepted locally | Claims, quiet hours, /remind, deadline options, tomorrow and browser persistence passed. Final backend 418 passed plus 2 separate PG cases; web 414; shared 36. |
 | 3 — personal dialogue | Not started | Encrypted durable queue, shared tool loop, bounded persistent conversation and /new required. |
 | 4 — ephemeral media | Not started | Limits, in-memory transport, separate transcription key, capabilities/adapters and read-only file turns required. |
 | 5 — explicit memory | Not started | Encrypted facts, commands/tools/API/settings, lexical selection, export/rotation required. |
@@ -257,3 +257,62 @@ Final Stage 1 full command:
 are separately covered by test_postgres_integration (2 passed). Final Ruff,
 mypy, Bandit, compile, OpenAPI and diff checks passed. No migration is needed
 for Stage 1; schema head remains 0028. Stage 1 accepted locally; next Stage 2.
+
+
+## Stage 2 — reminders and digest
+
+Added /remind clock/explicit-date/relative formats (owner timezone) with examples
+on invalid/past input. A command creates a Task plus Telegram TaskReminder using
+capture + policy checks and receipt transaction. Replayed updates create neither
+extra tasks nor schedules. DST gaps skip to next real clock occurrence; folds
+choose the next real instant. Future dated nonexistent wall times are rejected.
+
+The existing sequential connector calls `deliver_telegram_reminders`; no new
+scheduler. Opt-in deadline_reminders defaults false; stable keys represent due_at
+and the 5h/10m offsets. Completed/deleted or rescheduled tasks cancel stale
+schedules; other owners and in_app channels are excluded. In-app Task reminders
+also deliver via the existing foreground notifications dispatcher; its Calendar
+path now explicitly filters in_app so it cannot consume Telegram schedules.
+
+Claims, Calendar next occurrence and content-free fallback Notification commit
+before transport. Delivery timeout/crash loses at most a DM and never retries;
+Notification survives. Quiet windows apply to urgent reminders and digest,
+including same-day/cross-midnight/fold/gap boundaries. Quiet-delayed digest keeps
+pending day/time durably through restart; this explicit postponement is distinct
+from catching up an offline missed digest window. Its Notification also contains
+only generic wording. /today remains unchanged; digest adds tomorrow's tasks/events.
+
+Migration 0029 adds opt-in/quiet fields and pending_digest_on/at; existing settings,
+cursor and version survive upgrade. Model false default is a SQL Boolean false,
+not a text literal. Settings use existing English controls/shared types.
+
+Test-first: parent command/digest tests **9 failed**; quiet-digest test failed due
+to unwanted immediate send; in_app Task test failed due to absent delivery.
+Luna UI test-first **4 failed, 14 passed**, then **18 passed**. Terra wrote delivery
+suite before module: **22 passed** after implementation. Parent added real
+PostgreSQL concurrent delivery proof: one claim/Notification/send, visible from
+another DB connection before send. Combined delivery+digest tests **30 passed**.
+Other parent command/settings/migration/foreground group **49 passed**.
+
+Stage 2 verification so far: full backend **418 passed, 2 skipped**, one existing
+Starlette warning; separately PostgreSQL contracts **2 passed** on a fresh
+migrated DB. Web **414 passed** (53 files), shared **36 passed**, typechecks/build
+passed. Ruff, mypy 75 files, Bandit/compile, pip-audit, SQLite + PostgreSQL Alembic
+upgrade/check passed. OpenAPI regenerated and equals app.openapi(). Merge and
+Telegram migrations: **8 passed**. Final backend repeated after explicit REST
+reminder Policy Engine checks. No later stage started.
+
+Real Chromium via Playwright CLI on separate loopback 5182/8012 and separate
+SQLite DB: logged in a disposable owner, disabled synthetic connector only.
+Changed Europe/Berlin, digest 20:30, deadline_reminders true, quiet_start 22:00,
+quiet_end 08:00; saved through actual PATCH, reloaded and asserted all values.
+Used keyboard Space for the styled checkbox (native input's click target is
+covered by its decorative icon); no mocked API/DOM or real Telegram token.
+This establishes browser persistence, not live Telegram delivery.
+
+
+Stage 2 final repeat after REST policy checks: **418 passed, 2 skipped**, one
+existing warning, 62.60s. Explicit digest scheduling authorization was then
+checked with all **7 briefing tests passed**; no behavior/schema changes.
+Stage 2 accepted locally. Commit includes actual worker/policies, migration,
+contracts, settings, regression and browser evidence. Next Stage 3 only.

@@ -168,3 +168,61 @@ async def test_busy_uses_next_real_wall_clock_occurrence_across_dst(setup, at, e
         await telegram_personal.handle_owner_message(db, item, f'/busy {clock} занят', at)
         assert item.status_until == expected
         assert '/help' in await telegram_personal.handle_owner_message(db, item, 'hello@example', at)
+
+
+@pytest.mark.parametrize('command,expected', [
+    ('/remind 18:00 Позвонить', datetime(2026, 11, 1, 13, tzinfo=UTC)),
+    ('/remind 2026-11-05 18:00 Встреча', datetime(2026, 11, 5, 13, tzinfo=UTC)),
+    ('/remind 2h Проверить', datetime(2026, 11, 1, 12, tzinfo=UTC)),
+])
+async def test_remind_formats_are_durable_owner_timezone(setup, monkeypatch, command, expected):
+    from app.core.models import Task, TaskReminder
+    from app.integrations.telegram_personal import handle_owner_message
+    client, sessions, _, integration_id = await bound(setup)
+    at = datetime(2026, 11, 1, 10, tzinfo=UTC)
+    async with sessions() as session:
+        item = await session.get(TelegramIntegration, integration_id)
+        item.timezone = 'Asia/Almaty'
+        response = await handle_owner_message(session, item, command, at)
+        await session.commit()
+        reminder = (await session.execute(select(TaskReminder))).scalar_one()
+        task = await session.get(Task, reminder.task_id)
+        assert service.utc(reminder.notify_at) == expected and reminder.channel == 'telegram'
+        assert task.owner_id == item.owner_id
+        assert 'Напоминание создано' in response
+    assert len((await client.get('/api/v1/tasks')).json()) == 1
+
+
+@pytest.mark.parametrize('command', ['/remind 2026-10-01 18:00 Прошло', '/remind 25:00 Неверно', '/remind 0h Неверно', '/remind 18:00', '/remind tomorrow Текст'])
+async def test_remind_invalid_or_explicit_past_has_example_without_write(setup, command):
+    from app.core.models import TaskReminder
+    from app.integrations.telegram_personal import handle_owner_message
+    _, sessions, _, integration_id = await bound(setup)
+    async with sessions() as session:
+        item = await session.get(TelegramIntegration, integration_id)
+        response = await handle_owner_message(session, item, command, datetime(2026, 11, 1, 10, tzinfo=UTC))
+        assert 'Пример:' in response
+        assert not list((await session.execute(select(TaskReminder))).scalars())
+
+
+async def test_remind_update_replay_has_one_task_and_one_schedule(setup, monkeypatch):
+    from app.core.models import TaskReminder
+    client, sessions, fake, integration_id = await bound(setup)
+    fake.updates = [ordinary(1, '/remind 2h Проверить')]
+    assert await service.poll_once(integration_id, timeout=0) == 1
+    assert await service.poll_once(integration_id, timeout=0) == 0
+    assert len((await client.get('/api/v1/tasks')).json()) == 1
+    async with sessions() as session:
+        assert len(list((await session.execute(select(TaskReminder))).scalars())) == 1
+    assert len(fake.sent) == 1 and 'Напоминание создано' in fake.sent[0][1]
+
+
+@pytest.mark.parametrize('at,body,expected', [
+    (datetime(2026, 3, 29, 0, 30, tzinfo=UTC), '02:30 gap', datetime(2026, 3, 30, 0, 30, tzinfo=UTC)),
+    (datetime(2026, 10, 25, 0, 45, tzinfo=UTC), '02:30 fold', datetime(2026, 10, 25, 1, 30, tzinfo=UTC)),
+])
+def test_remind_clock_dst_next_real_instant(at, body, expected):
+    from zoneinfo import ZoneInfo
+
+    from app.integrations.telegram_personal import parse_remind
+    assert parse_remind(body, ZoneInfo('Europe/Berlin'), at)[0] == expected

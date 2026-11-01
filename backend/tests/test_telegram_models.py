@@ -145,3 +145,22 @@ def test_personal_upgrade_preserves_existing_connection_and_defaults(tmp_path):
         row = conn.execute(sa.text('SELECT timezone, reply_delay_seconds, digest_time, last_digest_on, status_text, status_until, last_update_id, instructions FROM telegram_integrations')).one()
         assert tuple(row) == ('UTC', 90, None, None, None, None, 42, 'encrypted-old-instructions')
     engine.dispose()
+
+
+def test_reminder_upgrade_defaults_existing_connection(tmp_path):
+    database = tmp_path / 'reminders-upgrade.db'
+    alembic(database, 'upgrade', 'head')
+    alembic(database, 'downgrade', '0028_merge_personal_desktop')
+    engine = sa.create_engine(f'sqlite:///{database}')
+    with engine.begin() as connection:
+        connection.execute(sa.text("INSERT INTO users (id, created_at, settings_json) VALUES ('owner', CURRENT_TIMESTAMP, '{}')"))
+        connection.execute(sa.text("""INSERT INTO telegram_integrations
+          (id,owner_id,bot_id,bot_username,bot_name,business_capable,enabled,auto_reply,instructions,
+           last_update_id,version,created_at,updated_at) VALUES
+          ('existing','owner',1,'bot','Bot',1,0,0,'encrypted-old',43,5,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"""))
+    alembic(database, 'upgrade', 'head')
+    alembic(database, 'check')
+    with engine.connect() as connection:
+        row = connection.execute(sa.text('SELECT deadline_reminders,quiet_start,quiet_end,pending_digest_on,pending_digest_at,last_update_id,version FROM telegram_integrations')).one()
+        assert tuple(row) == (0, None, None, None, None, 43, 5)
+    engine.dispose()

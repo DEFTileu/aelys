@@ -33,6 +33,7 @@ from app.core.models import (
 from app.core.security import current_principal
 from app.domains import capture
 from app.domains.recurrence import occurrences, parse_rule, utc
+from app.domains.reminders import authorize_reminder_write
 from app.sync.change_log import lock_owner, record_domain_change
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -297,11 +298,11 @@ class FocusOut(FocusIn):
             self.elapsed_seconds = focus_elapsed(self.started_at, self.paused_seconds, self.paused_at)
         return self
 class MailAccountIn(BaseModel): provider: str = "local_import"; external_id: str | None = None
-class ReminderIn(BaseModel): task_id: str; notify_at: datetime; channel: str = "in_app"; idempotency_key: str
+class ReminderIn(BaseModel): task_id: str; notify_at: datetime; channel: Literal["in_app", "telegram"] = "in_app"; idempotency_key: str
 class CalendarReminderIn(BaseModel):
     event_id: str
     notify_at: datetime
-    channel: Literal["in_app"] = "in_app"
+    channel: Literal["in_app", "telegram"] = "in_app"
     idempotency_key: str = Field(min_length=1, max_length=100)
 class CalendarReminderOut(CalendarReminderIn):
     model_config = ConfigDict(from_attributes=True)
@@ -499,7 +500,7 @@ async def delete_task(item_id: str, version: int | None = Query(default=None, ge
 
 @router.post("/tasks/{item_id}/reminders")
 async def create_reminder(item_id:str, body:ReminderIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
-    user,_=principal; task=await owner_obj(Task,item_id,user.id,db)
+    user,_=principal; authorize_reminder_write(user.id); task=await owner_obj(Task,item_id,user.id,db)
     if body.task_id != task.id: raise HTTPException(422,detail={"code":"VALIDATION_ERROR","message":"task_id does not match path"})
     old=(await db.execute(select(TaskReminder).where(TaskReminder.owner_id==user.id,TaskReminder.idempotency_key==body.idempotency_key))).scalar_one_or_none()
     if old: return old
@@ -609,6 +610,7 @@ async def calendar_reminders(item_id: str, principal=Depends(current_principal),
 @router.post("/calendar/events/{item_id}/reminders", response_model=CalendarReminderOut)
 async def create_calendar_reminder(item_id: str, body: CalendarReminderIn, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     user, _ = principal
+    authorize_reminder_write(user.id)
     event = await owner_obj(CalendarEvent, item_id, user.id, db)
     if body.event_id != item_id:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "event_id must match the URL"})
@@ -625,6 +627,7 @@ async def create_calendar_reminder(item_id: str, body: CalendarReminderIn, princ
 @router.delete("/calendar/events/{event_id}/reminders/{reminder_id}")
 async def cancel_calendar_reminder(event_id: str, reminder_id: str, version: int = Query(ge=1), principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     user, _ = principal
+    authorize_reminder_write(user.id)
     await owner_obj(CalendarEvent, event_id, user.id, db)
     reminder = await owner_obj(CalendarReminder, reminder_id, user.id, db)
     if reminder.event_id != event_id:

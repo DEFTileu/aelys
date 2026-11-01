@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -45,6 +46,11 @@ class TelegramIntegration(Owned):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_reply: Mapped[bool] = mapped_column(Boolean, default=False)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
+    pending_digest_on: Mapped[date | None] = mapped_column(Date)
+    pending_digest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deadline_reminders: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    quiet_start: Mapped[str | None] = mapped_column(String(5))
+    quiet_end: Mapped[str | None] = mapped_column(String(5))
     digest_time: Mapped[str | None] = mapped_column(String(5))
     last_digest_on: Mapped[date | None] = mapped_column(Date)
     reply_delay_seconds: Mapped[int] = mapped_column(Integer, default=90, server_default="90")

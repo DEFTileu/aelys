@@ -493,3 +493,14 @@ Note revisions and owner-scoped references. Pull/bootstrap include REST,
 Telegram and AI/automation writes, with versioned delete tombstones. Historical
 ambiguous projection/domain divergence returns 409 SYNC_RECONCILIATION_REQUIRED
 rather than silently choosing one body. Request/response envelopes are unchanged.
+
+
+### Telegram reminders (migration 0029)
+
+Settings/status add deadline_reminders (bool, false default) and quiet_start,
+quiet_end (nullable HH:MM pair, both set to different times or both null).
+TaskReminder and CalendarReminder channel accept in_app or telegram; the existing
+foreground dispatcher only consumes in_app and the Telegram connector consumes
+telegram. Internal pending_digest_on/at persist quiet-hour postponement and are
+not exposed as editable settings. /remind schedules a TaskReminder plus capture
+Task atomically; all reminder mutations and external sends pass Policy Engine.

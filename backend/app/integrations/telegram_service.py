@@ -67,10 +67,12 @@ async def status(db: AsyncSession, owner_id: str) -> dict[str, Any]:
             "model": None, "instructions": "", "last_polled_at": None,
             "last_error_code": None, "connections": [], "timezone": "UTC", "digest_time": None,
             "reply_delay_seconds": 90, "status_text": None, "status_until": None,
+            "deadline_reminders": False, "quiet_start": None, "quiet_end": None,
         }
     connections = list((await db.execute(select(TelegramBusinessConnection).where(TelegramBusinessConnection.integration_id == item.id, TelegramBusinessConnection.owner_id == owner_id))).scalars())
     return {
         "timezone": item.timezone, "digest_time": item.digest_time,
+        "deadline_reminders": item.deadline_reminders, "quiet_start": item.quiet_start, "quiet_end": item.quiet_end,
         "reply_delay_seconds": item.reply_delay_seconds,
         "status_text": item.status_text if item.status_until and utc(item.status_until) > now() else None,
         "status_until": utc(item.status_until) if item.status_until and utc(item.status_until) > now() else None,
@@ -494,31 +496,56 @@ async def digest_once(integration_id: str, *, at: datetime | None = None) -> Non
     from datetime import time
     from zoneinfo import ZoneInfo
 
-    from app.domains.briefings import build_agenda, format_agenda
+    from app.domains.briefings import build_digest
+
+    from .telegram_reminders import quiet_delivery_at
 
     instant = at or now()
     async with database.SessionLocal() as db:
         item = await db.get(TelegramIntegration, integration_id)
         if not item or not item.enabled or not item.encrypted_token or not item.owner_telegram_id or not item.digest_time:
             return
+        authorize(item, 'reminders.write')
         tz = ZoneInfo(item.timezone)
         local = utc(instant).astimezone(tz)
         scheduled = datetime.combine(local.date(), time.fromisoformat(item.digest_time), tz)
-        if not scheduled <= local < scheduled + timedelta(hours=2):
+        if item.pending_digest_on and item.pending_digest_at:
+            if utc(item.pending_digest_at) > utc(instant):
+                return
+            day = item.pending_digest_on
+            source_at = datetime.combine(day, time.fromisoformat(item.digest_time), tz).astimezone(UTC)
+        else:
+            if not scheduled <= local < scheduled + timedelta(hours=2):
+                return
+            day = local.date()
+            source_at = instant
+        deferred = quiet_delivery_at(item, instant)
+        if deferred > utc(instant):
+            # Persist the explicitly postponed digest, unlike catch-up after an
+            # offline missed window. Quiet hours take precedence over its time.
+            await db.execute(update(TelegramIntegration).where(
+                TelegramIntegration.id == item.id, TelegramIntegration.enabled.is_(True),
+                or_(TelegramIntegration.last_digest_on.is_(None), TelegramIntegration.last_digest_on < day),
+            ).values(pending_digest_on=day, pending_digest_at=deferred))
+            await db.commit()
             return
-        day = local.date()
         authorize(item, "tasks.read")
-        text = format_agenda(await build_agenda(db, item.owner_id, tz, instant))
+        text = await build_digest(db, item.owner_id, tz, source_at)
         authorize(item, "telegram.notify_owner", external=True)
         claimed = await db.execute(update(TelegramIntegration).where(
             TelegramIntegration.id == item.id, TelegramIntegration.enabled.is_(True),
             TelegramIntegration.encrypted_token == item.encrypted_token,
             TelegramIntegration.digest_time == item.digest_time, TelegramIntegration.timezone == item.timezone,
             or_(TelegramIntegration.last_digest_on.is_(None), TelegramIntegration.last_digest_on < day),
-        ).values(last_digest_on=day))
-        await db.commit()
+        ).values(last_digest_on=day, pending_digest_on=None, pending_digest_at=None))
         if int(getattr(claimed, "rowcount", 0) or 0) != 1:
+            await db.rollback()
             return
+        authorize(item, 'notifications.write')
+        db.add(Notification(owner_id=item.owner_id, kind='telegram.digest',
+            title='Daily briefing', body='Open Aelys to review your agenda.',
+            dedup_key=f'telegram-digest:{item.id}:{day.isoformat()}', data_json={'day': day.isoformat()}))
+        await db.commit()
         try:
             async with TelegramClient(decrypt_secret(item.encrypted_token)) as client:
                 await client.send_message(item.owner_telegram_id, text)
@@ -531,6 +558,8 @@ async def poll_integration_safely(integration_id: str) -> bool:
     try:
         await poll_once(integration_id)
         await auto_reply_once(integration_id)
+        from .telegram_reminders import deliver_telegram_reminders
+        await deliver_telegram_reminders(integration_id)
         await digest_once(integration_id)
     except Exception:  # noqa: BLE001 - isolate one integration from the supervisor
         # No customer text, token, request URL or provider exception is emitted.

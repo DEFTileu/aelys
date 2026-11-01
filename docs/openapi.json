@@ -6454,7 +6454,10 @@
           },
           "channel": {
             "type": "string",
-            "const": "in_app",
+            "enum": [
+              "in_app",
+              "telegram"
+            ],
             "title": "Channel",
             "default": "in_app"
           },
@@ -6486,7 +6489,10 @@
           },
           "channel": {
             "type": "string",
-            "const": "in_app",
+            "enum": [
+              "in_app",
+              "telegram"
+            ],
             "title": "Channel",
             "default": "in_app"
           },
@@ -8855,6 +8861,10 @@
           },
           "channel": {
             "type": "string",
+            "enum": [
+              "in_app",
+              "telegram"
+            ],
             "title": "Channel",
             "default": "in_app"
           },
@@ -9266,6 +9276,41 @@
             ],
             "title": "Timezone"
           },
+          "deadline_reminders": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Reminders"
+          },
+          "quiet_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Start"
+          },
+          "quiet_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet End"
+          },
           "digest_time": {
             "anyOf": [
               {
@@ -9335,6 +9380,32 @@
       },
       "StatusOut": {
         "properties": {
+          "deadline_reminders": {
+            "type": "boolean",
+            "title": "Deadline Reminders"
+          },
+          "quiet_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Start"
+          },
+          "quiet_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet End"
+          },
           "timezone": {
             "type": "string",
             "title": "Timezone"
@@ -9507,6 +9578,9 @@
         },
         "type": "object",
         "required": [
+          "deadline_reminders",
+          "quiet_start",
+          "quiet_end",
           "timezone",
           "digest_time",
           "reply_delay_seconds",

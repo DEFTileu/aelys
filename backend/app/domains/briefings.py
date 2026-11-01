@@ -49,3 +49,15 @@ def format_agenda(agenda: Agenda) -> str:
         lines.extend(f'• {text}' for text in items) if items else lines.append('Нет')
     text = '\n'.join(lines)
     return text if len(text) <= 4096 else text[:4050] + '\n… Полный список в Aelys.'
+
+
+async def build_digest(db: AsyncSession, owner_id: str, tz: ZoneInfo, at: datetime) -> str:
+    """Evening delivery extends /today without changing the command's contract."""
+    today = await build_agenda(db, owner_id, tz, at)
+    tomorrow_at = datetime.combine(today.day + timedelta(days=1), time(12), tz).astimezone(UTC)
+    tomorrow = await build_agenda(db, owner_id, tz, tomorrow_at)
+    lines = [format_agenda(today), '\nЗавтра:']
+    items = (*tomorrow.due, *tomorrow.events)
+    lines.extend(f'• {value}' for value in items) if items else lines.append('Нет')
+    text = '\n'.join(lines)
+    return text if len(text) <= 4096 else text[:4050] + '\n… Полный список в Aelys.'

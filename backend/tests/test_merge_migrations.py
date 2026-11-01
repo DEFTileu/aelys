@@ -10,7 +10,10 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
-HEAD = "0028_merge_personal_desktop"
+MERGE = "0028_merge_personal_desktop"
+_config = Config(str(ROOT / "alembic.ini"))
+_config.set_main_option("script_location", str(ROOT / "alembic"))
+HEAD = ScriptDirectory.from_config(_config).get_current_head()
 PERSONAL = "0025_telegram_personal"
 DESKTOP = "0027_note_pinned_mail_read"
 
@@ -34,6 +37,7 @@ def test_fresh_database_has_one_head_and_no_schema_drift(tmp_path: Path) -> None
     config = Config(str(ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(ROOT / "alembic"))
     assert ScriptDirectory.from_config(config).get_heads() == [HEAD]
+    assert set(ScriptDirectory.from_config(config).get_revision(MERGE).down_revision) == {PERSONAL, DESKTOP}
     database = tmp_path / "fresh.db"
     alembic(database, "upgrade", "head")
     alembic(database, "check")

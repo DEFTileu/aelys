@@ -100,3 +100,14 @@ Personal confirmations are sent only after receipt/cursor commit and never repla
 See [TELEGRAM_BUSINESS.md](TELEGRAM_BUSINESS.md) for actual setup and retention.
 A real token, connected Telegram account and configured AI key are still required
 for live acceptance; automated tests do not substitute for that external check.
+
+
+### Personal reminders — Stage 2, 2026-11-01
+
+`/remind 18:00 text`, `/remind YYYY-MM-DD HH:MM text`, `/remind 2h text`
+use the owner's timezone. They create a task and one Telegram reminder. Invalid
+or explicit past times return an example. Deadline reminders are opt-in (5h and
+10m before an unfinished task's due_at). Quiet hours delay every reminder until
+the end of the window, including urgent ones. The same connector worker claims
+and commits before delivery; fallback Notification survives failure, no retries.
+The deterministic evening digest adds tomorrow, while /today stays unchanged.

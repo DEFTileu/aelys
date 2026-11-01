@@ -44,6 +44,9 @@ export function TelegramSettings() {
   const [timezone, setTimezone] = useState('UTC')
   const [digestTime, setDigestTime] = useState('')
   const [replyDelay, setReplyDelay] = useState(90)
+  const [deadlineReminders, setDeadlineReminders] = useState(false)
+  const [quietStart, setQuietStart] = useState('')
+  const [quietEnd, setQuietEnd] = useState('')
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
@@ -51,6 +54,7 @@ export function TelegramSettings() {
 
   const applyStatus = (value: TelegramStatus) => {
     setStatus(value); setInstructions(value.instructions); setProvider(value.provider_id ?? ''); setModel(value.model ?? ''); setTimezone(value.timezone); setDigestTime(value.digest_time ?? ''); setReplyDelay(value.reply_delay_seconds)
+    setDeadlineReminders(value.deadline_reminders ?? false); setQuietStart(value.quiet_start ?? ''); setQuietEnd(value.quiet_end ?? '')
   }
   const load = useCallback(async () => {
     const client = getSharedApiClient()
@@ -144,13 +148,18 @@ export function TelegramSettings() {
     </section>
     {status?.configured && <section className="settings-card">
       <h2>Personal commands and digest</h2>
-      <p>One Aelys bot: /task, /note, /today, /busy 18:00 text, /free, /help. Use a bot separate from MySDU.</p>
+      <p>One Aelys bot: /task, /note, /today, /remind 18:00 text, /busy 18:00 text, /free, /help. Use a bot separate from MySDU.</p>
       <p>The digest uses no AI and is off by default. Leave the time empty to turn it off.</p>
       <p>Status: {status.status_text ?? 'not set'}{status.status_until ? ` · until ${status.status_until}` : ''}</p>
-      <form className="settings-form" onSubmit={event => { event.preventDefault(); void action(() => update({ timezone, digest_time: digestTime || null, reply_delay_seconds: replyDelay })) }}>
+      <form className="settings-form" onSubmit={event => { event.preventDefault(); void action(() => update({ timezone, digest_time: digestTime || null, reply_delay_seconds: replyDelay, deadline_reminders: deadlineReminders, quiet_start: quietStart || null, quiet_end: quietEnd || null })) }}>
         <label>Time zone<input required maxLength={64} value={timezone} onChange={event => setTimezone(event.target.value)} /></label>
         <label>Digest time<input type="time" value={digestTime} onChange={event => setDigestTime(event.target.value)} /></label>
         <label>Reply delay (seconds)<input type="number" min={0} max={900} required value={replyDelay} onChange={event => setReplyDelay(Number(event.target.value))} /></label>
+        <Checkbox label="Deadline reminders" checked={deadlineReminders} disabled={busy || status.version == null} onChange={setDeadlineReminders} />
+        <p>Remind me in Telegram 5 hours and 10 minutes before an unfinished task is due.</p>
+        <label>Quiet hours start<input type="time" required={!!quietEnd} disabled={busy || status.version == null} value={quietStart} onChange={event => setQuietStart(event.target.value)} aria-describedby="telegram-quiet-hours-help" /></label>
+        <label>Quiet hours end<input type="time" required={!!quietStart} disabled={busy || status.version == null} value={quietEnd} onChange={event => setQuietEnd(event.target.value)} aria-describedby="telegram-quiet-hours-help" /></label>
+        <p id="telegram-quiet-hours-help">Set both times in your time zone, or leave both empty to turn quiet hours off. Reminders wait until quiet hours end, including urgent reminders.</p>
         <button className="button button--primary" type="submit" disabled={busy || status.version == null}>Save personal settings</button>
       </form>
     </section>}

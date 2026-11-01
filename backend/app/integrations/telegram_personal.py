@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from app.ai.errors import PolicyDenied
 from app.ai.models import PermissionContext, ToolCall
 from app.ai.policy import ServerPolicyEngine
+from app.core.models import TaskReminder
 from app.domains import capture
 from app.domains.briefings import build_agenda, format_agenda
 from app.domains.recurrence import utc
@@ -15,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .telegram_models import TelegramIntegration
 
-HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/busy 18:00 <статус>\n/free\n/help'
+HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/help'
+REMIND_HELP = 'Пример: /remind 18:00 Позвонить, /remind 2026-11-05 18:00 Встреча или /remind 2h Проверить. Укажите будущее время и текст до 300 символов.'
 BUSY_HELP = 'Пример: /busy 18:00 занят. Время HH:MM, текст от 1 до 200 символов.'
 
 
@@ -57,6 +59,18 @@ async def handle_owner_message(db: AsyncSession, item: TelegramIntegration, text
                 authorize(item, 'notes.write')
                 note = await capture.create_note(db, item.owner_id, title=title, markdown_body=body)
                 return f'Заметка создана: {note.title}\nID: {note.id}'
+            if command == '/remind':
+                try:
+                    due, title = parse_remind(body, ZoneInfo(item.timezone), at)
+                except ValueError:
+                    return REMIND_HELP
+                authorize(item, 'tasks.write')
+                authorize(item, 'reminders.write')
+                task = await capture.create_task(db, item.owner_id, title=title, due_at=due, due_timezone=item.timezone)
+                db.add(TaskReminder(owner_id=item.owner_id, task_id=task.id, notify_at=due,
+                                    channel='telegram', idempotency_key=f'command:{task.id}'))
+                await db.flush()
+                return f'Напоминание создано: {title}\n{due.astimezone(ZoneInfo(item.timezone)):%Y-%m-%d %H:%M} {item.timezone}'
             if command == '/today':
                 authorize(item, 'tasks.read')
                 return format_agenda(await build_agenda(db, item.owner_id, ZoneInfo(item.timezone), at))
@@ -95,3 +109,41 @@ async def handle_owner_message(db: AsyncSession, item: TelegramIntegration, text
         return 'Действие запрещено политикой доступа.'
     except (HTTPException, ValueError):
         return 'Не удалось выполнить команду. Проверьте данные и повторите.'
+
+
+def parse_remind(body: str, tz: ZoneInfo, at: datetime) -> tuple[datetime, str]:
+    instant = utc(at)
+    absolute = re.fullmatch(r'(\d{4}-\d{2}-\d{2}) ([0-2]\d:[0-5]\d)\s+(.+)', body, re.DOTALL)
+    relative = re.fullmatch(r'(\d+)([mh])\s+(.+)', body, re.DOTALL)
+    clock = re.fullmatch(r'([0-2]\d:[0-5]\d)\s+(.+)', body, re.DOTALL)
+    if relative:
+        amount = int(relative[1])
+        if not 1 <= amount <= 525600:
+            raise ValueError('Relative time out of range')
+        due = instant + timedelta(minutes=amount if relative[2] == 'm' else amount*60)
+        title = relative[3].strip()
+    elif absolute or clock:
+        match = absolute or clock
+        assert match is not None
+        value = match[2] if absolute else match[1]
+        hour, minute = map(int, value.split(':'))
+        if hour > 23:
+            raise ValueError('Invalid clock')
+        local = instant.astimezone(tz)
+        first_day = datetime.fromisoformat(absolute[1]).date() if absolute else local.date()
+        title = (match[3] if absolute else match[2]).strip()
+        candidates = []
+        for offset in range(1 if absolute else 3):
+            wall = datetime.combine(first_day + timedelta(days=offset), datetime.min.time()).replace(hour=hour, minute=minute)
+            for fold in (0, 1):
+                candidate = wall.replace(tzinfo=tz, fold=fold).astimezone(UTC)
+                if candidate > instant and candidate.astimezone(tz).replace(tzinfo=None) == wall:
+                    candidates.append(candidate)
+        if not candidates:
+            raise ValueError('Past or nonexistent local time')
+        due = min(candidates)
+    else:
+        raise ValueError('Unsupported reminder time')
+    if not 1 <= len(title) <= 300:
+        raise ValueError('Invalid reminder title')
+    return due, title
