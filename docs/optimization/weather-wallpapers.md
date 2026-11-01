@@ -8,7 +8,8 @@ The 13 JPGs in `public/backgrounds/weather` already exactly match the supplied
 slice connects them to the existing forecast store. No new provider, backend,
 permission, API or migration is introduced. OPEN / PROPOSED decisions stay as-is.
 
-- Desktop shell, mobile Home and Weather card share `useWallpaper`.
+- Launch/sign-in scenery, desktop shell, mobile Home and Weather card share
+  `useWallpaper`. Launch keeps its existing reveal/lock animations and scrims.
 - Weather mode is the default for the previous default background. Explicitly
   selected older photos/uploads retain manual mode. Appearance offers a Weather
   wallpaper switch; choosing/uploading a photo selects manual mode. Both the
@@ -43,3 +44,15 @@ Verification:
 Limits: the supplied images are concept/prototype assets (see their source
 README), not newly generated full-resolution photographic originals. Packaged
 native builds are not validated by this web change.
+
+
+Launch follow-up (owner requested 2026-11-01):
+- `LaunchIntro.tsx` now uses the same wallpaper hook; removed the hardcoded image
+  from its CSS. Existing cached/consented weather, manual choices and clock-only
+  fallback work before authentication too, without adding location prompts.
+- Regression checks: changing weather while entering credentials preserves the
+  input element/value, does not replay the intro and keeps the lock scene active.
+- Web typecheck, 63 relevant tests across 5 files and production build: PASS.
+- Browser: a separate unauthenticated tab shows `11_night_clear.jpg` behind the
+  entry form, matching the existing Алматы setting; screenshot verified. The
+  original signed-in tab remains available.
