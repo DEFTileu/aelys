@@ -1,20 +1,21 @@
 .actual-desktop { background: var(--canvas); color: var(--ink); }
 .actual-desktop .actual-theme { width: 40px; height: 40px; justify-content: center; padding: 0; border-radius: 50%; }
-.actual-desktop .shell-main { scrollbar-color: var(--line-strong) transparent; }
+.actual-desktop .shell-main { background: var(--canvas); scrollbar-color: var(--line-strong) transparent; }
 .actual-desktop .shell-sidebar { background: var(--surface-soft); border-color: var(--line); }
 .actual-desktop .shell-nav-item { color: #2A2830; }
 .actual-desktop .shell-nav-item:hover, .actual-desktop .shell-user-settings:hover { background: rgba(128,118,140,.14); }
 .actual-desktop .shell-nav-item--on, .actual-desktop .shell-nav-item--on:hover { background: var(--accent-soft); }
 .actual-desktop .shell-nav-item--on { color: var(--purple-deep); }
 .actual-desktop .shell-pill { color: var(--ink); background: var(--surface); border-color: var(--line); }
+.actual-desktop .page { width: 100%; }
 .actual-desktop .page-header { margin: 0 0 18px; }
 .actual-desktop .page-header h1 { font-size: 26px; }
 .actual-desktop :is(.projects-view, .notes-view) > :is(.pv-hero, .nv-header) { padding-top: 0; }
 .actual-desktop :is(.projects-view, .notes-view) > :is(.pv-hero, .nv-header) h1 { display: none; }
 .actual-desktop :is(.projects-view, .notes-view) .pv-eyebrow { display: none; }
 .actual-desktop .settings-panels { margin-inline: 28px; margin-bottom: 18px; flex-wrap: wrap; }
-:root[data-theme='dark'] .actual-desktop { --glass-bg: rgba(35,34,53,.9); --sidebar-bg: #1b1928; }
-:root[data-theme='dark'] .actual-desktop .shell-sidebar { background: #1b1928; color: var(--ink); }
+:root[data-theme='dark'] .actual-desktop { --glass-bg: rgba(32,29,40,.9); --sidebar-bg: #1A1720; }
+:root[data-theme='dark'] .actual-desktop .shell-sidebar { background: #1A1720; color: var(--ink); }
 :root[data-theme='dark'] .actual-desktop .shell-sidebar :is(div,button) { color: inherit !important; }
 :root[data-theme='dark'] .actual-desktop .shell-nav-item:hover { background: rgba(255,255,255,.06); }
 :root[data-theme='dark'] .actual-desktop :is(.shell-pill,.home-widget:not([data-widget-id='weather']),.home-screen [data-glass]:not([data-widget-id='weather'])) { background: var(--surface) !important; color: var(--ink) !important; border-color: var(--line) !important; }

@@ -33,8 +33,8 @@ function accentHex(index: number): string {
 function shellVars({ transparency, blur, accent }: DesktopSettings, theme: 'light' | 'dark'): CSSProperties {
   const alpha = Math.min(1, Math.max(0.6, 0.88 + (70 - transparency) / 300))
   return {
-    '--glass-bg': theme === 'dark' ? `rgba(35,34,53,${alpha.toFixed(3)})` : `rgba(255,255,255,${alpha.toFixed(3)})`,
-    '--sidebar-bg': theme === 'dark' ? '#1b1928' : `rgba(250,247,244,${(alpha - 0.06).toFixed(3)})`,
+    '--glass-bg': theme === 'dark' ? `rgba(32,29,40,${alpha.toFixed(3)})` : `rgba(255,255,255,${alpha.toFixed(3)})`,
+    '--sidebar-bg': theme === 'dark' ? '#1A1720' : `rgba(250,247,244,${(alpha - 0.06).toFixed(3)})`,
     '--glass-blur': `${blur / 2}px`,
     '--sidebar-blur': `${blur * 0.6}px`,
     '--accent': accentHex(accent),

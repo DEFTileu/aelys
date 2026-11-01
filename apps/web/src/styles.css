@@ -42,22 +42,22 @@
 }
 
 :root[data-theme='dark'] {
-  --ink: #F3F1FA;
+  --ink: #F1EEF6;
   --ink-soft: #D6D2E3;
-  --muted: #AAA7BB;
+  --muted: #A6A0B2;
   --faint: #8C889D;
-  --canvas: #15141F;
-  --surface: rgba(35, 34, 53, .86);
-  --surface-solid: #242337;
-  --surface-soft: rgba(255, 255, 255, .05);
+  --canvas: #141219;
+  --surface: rgba(32, 29, 40, .88);
+  --surface-solid: #201D28;
+  --surface-soft: #2A2733;
   --surface-hover: rgba(255, 255, 255, .08);
   --chip: rgba(255, 255, 255, .09);
-  --glass-solid: rgba(36, 35, 55, .98);
+  --glass-solid: rgba(32, 29, 40, .98);
   --glass-edge: rgba(255, 255, 255, .1);
-  --sidebar: rgba(24, 23, 38, .78);
-  --line: rgba(242, 237, 255, .1);
+  --sidebar: rgba(26, 23, 32, .78);
+  --line: #34303D;
   --line-strong: rgba(242, 237, 255, .18);
-  --purple-deep: #B7ACFF;
+  --purple-deep: #B9A8FF;
   --purple-soft: rgba(113, 99, 230, .2);
   --green-ink: #5FD9AE;
   --red-ink: #FF8A8E;
@@ -66,12 +66,12 @@
   --shadow-lift: 0 18px 48px rgba(0, 0, 0, .36);
   color-scheme: dark;
   color: var(--ink);
-  background: #141421;
+  background: #141219;
 }
 
 * { box-sizing: border-box; }
 html { min-width: 320px; background: #C9B4A6; }
-:root[data-theme='dark'] html { background: #141421; }
+:root[data-theme='dark'] html { background: #141219; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input { font: inherit; color: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -258,7 +258,6 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
 
 /* The shared shell owns the hero for API-backed module screens. */
 .tasks-view .tv-hero, .projects-view .pv-hero { display: none; }
-.tasks-view .tv-toolbar, .projects-view .pv-toolbar { padding-top: 20px; }
 .shell-main .page-header { display: none; }
 .page--settings { padding: 0 28px 28px; }
 .settings-panels { display: flex; gap: 4px; margin: 0 28px 20px; width: fit-content; }
