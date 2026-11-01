@@ -308,3 +308,17 @@ describe("ApiClient", () => {
     await expect(client.financeTransactions()).rejects.toMatchObject({ status: 401 });
   });
 });
+
+it("does not cache owner memory or replay an unconfirmed forget", async () => {
+  const store = new MemoryStore();
+  const fetchImpl = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "fact", text: "private remembered fact" }]), { status: 200 }))
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockRejectedValueOnce(new Error("offline"));
+  const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, offlineStore: store });
+  await expect(client.ownerMemory()).resolves.toHaveLength(1);
+  await expect(client.ownerMemory()).rejects.toBeInstanceOf(NetworkError);
+  await expect(client.forgetMemoryFact("fact", 3)).rejects.toBeInstanceOf(NetworkError);
+  expect(store.cache.size).toBe(0); expect(store.outbox).toHaveLength(0);
+  expect(fetchImpl.mock.calls[2]?.[0]).toContain("/ai/memory/fact?version=3");
+});

@@ -1,4 +1,5 @@
 import type {
+  MemoryFactIn, MemoryFactPatch, OwnerMemoryFact,
   ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
@@ -423,6 +424,11 @@ export class ApiClient {
   public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
   public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
   public sendTelegramMessage(id: string, body: { readonly version: number; readonly text: string }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/send`, this.write(body, { ...options, queueOnOffline: false })); }
+
+  public ownerMemory(query?: string) { return this.request<readonly OwnerMemoryFact[]>("/api/v1/ai/memory", { method: "GET", query: query ? { query } : undefined, allowCacheFallback: false }); }
+  public rememberFact(body: MemoryFactIn) { return this.request<OwnerMemoryFact>("/api/v1/ai/memory", this.write(body, { queueOnOffline: false })); }
+  public updateMemoryFact(id: Id, body: MemoryFactPatch) { return this.request<OwnerMemoryFact>(`/api/v1/ai/memory/${encodeURIComponent(id)}`, this.write(body, { queueOnOffline: false }, "PATCH")); }
+  public forgetMemoryFact(id: Id, version: number) { return this.request<{ readonly deleted: boolean }>(`/api/v1/ai/memory/${encodeURIComponent(id)}`, { method: "DELETE", query: { version }, queueOnOffline: false }); }
 
   public aiProviders(options?: RequestOptions) { return this.request<readonly AIProvider[]>("/api/v1/ai/providers", this.read(options, "ai-providers")); }
   public createAIProvider(body: ProviderIn, options?: RequestOptions) { return this.request<AIProvider>("/api/v1/ai/providers", this.write(body, options)); }

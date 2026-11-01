@@ -110,7 +110,7 @@ def _register(registry: ToolRegistry, name: str, description: str, scope: str,
                                      input_schema=schema.model_json_schema()))
 
 
-def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str) -> ToolRegistry:
+def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, source_message_id: str | None = None) -> ToolRegistry:
     # Import lazily: the queued runtime can import this factory without creating
     # a second version of the mounted create handlers or their policy registry.
     from .api import _tool_registry
@@ -234,4 +234,6 @@ def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str) -> To
               'calendar.write', _EventCreate, create_event)
     _register(registry, 'create_reminder', 'Schedule an owner task reminder; no immediate external send',
               'reminders.write', _ReminderCreate, create_reminder)
+    from .personal_memory_tools import register_memory_tools
+    register_memory_tools(registry, db, owner_id, event_id, source_message_id)
     return registry

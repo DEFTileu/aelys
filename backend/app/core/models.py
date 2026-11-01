@@ -327,4 +327,5 @@ class AuditLog(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid); owner_id: Mapped[str] = mapped_column(String(36)); action: Mapped[str] = mapped_column(String(100)); actor: Mapped[str] = mapped_column(String(100)); scope: Mapped[str] = mapped_column(String(200)); decision: Mapped[str] = mapped_column(String(30)); outcome: Mapped[str] = mapped_column(String(30)); correlation_id: Mapped[str] = mapped_column(String(36)); redacted_metadata: Mapped[dict] = mapped_column(JSON, default=dict); created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 # Register integration tables in the shared metadata for migrations and tests.
+import app.ai.memory_models
 import app.integrations.telegram_models  # noqa: F401 - register integration tables

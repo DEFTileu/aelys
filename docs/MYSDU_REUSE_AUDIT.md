@@ -325,11 +325,11 @@ features остаются OPEN. Текущее выполнение Aelys отр
 или полная работоспособность MySDU этим документом не заявляются.
 
 
-## Фактический прогресс Aelys — 2026-11-01, этапы 0–4
+## Фактический прогресс Aelys — 2026-11-01, этапы 0–5
 
 В изолированной ветке Aelys реализованы transactional domain change-log,
 Telegram reminders/quiet hours/digest tomorrow, личный текстовый AI-диалог
-и ephemeral voice/photo/PDF/text.
+ephemeral voice/photo/PDF/text и explicit encrypted lexical memory.
 Очередь шифрована, общий AI loop/registry переиспользованы, Task CAS сохранён.
 Содержимое цитат не разрешает действий; секретарь не получает личные инструменты.
 Подробные файлы и автоматическая приёмка — `PERSONAL_OS_BOT_REPORT.md`.
@@ -337,5 +337,5 @@ Telegram reminders/quiet hours/digest tomorrow, личный текстовый 
 Это не проверка живого Telegram или реального провайдера и не основание удалять
 что-либо в MySDU. Код и данные MySDU не менялись, Sheets monitor остаётся там.
 Ранее записанные предложения аудита — исторический список; обязательный состав
-и ограничения утверждены ADR-028. Memory, matrix и Google Calendar ещё
+и ограничения утверждены ADR-028. Matrix и Google Calendar ещё
 не реализованы в этом этапе. Импорт данных, MCP/RAG/document search исключены.

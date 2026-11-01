@@ -69,11 +69,18 @@ async def rotate() -> int:
                 'quote': encrypt_secret(decrypt_secret(job['quote'], old_key), new_key) if job['quote'] is not None else None,
                 'media': encrypt_secret(decrypt_secret(job['media_metadata'], old_key), new_key) if job['media_metadata'] is not None else None,
             })
+        # Memory uses EncryptedText too. Never instantiate its ORM model under
+        # the new configured key before old ciphertext has been re-encrypted.
+        facts = (await db.execute(text("SELECT id, text FROM owner_memory_facts"))).mappings().all()
+        for fact in facts:
+            await db.execute(text("UPDATE owner_memory_facts SET text=:body WHERE id=:id"), {
+                'id': fact['id'], 'body': encrypt_secret(decrypt_secret(fact['text'], old_key), new_key),
+            })
         await db.commit()
-    return len(jobs) + len(rows) + len(gmail) + len(oauth) + len(integrations) + len(messages)
+    return len(facts) + len(jobs) + len(rows) + len(gmail) + len(oauth) + len(integrations) + len(messages)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Re-encrypt Aelys provider, Gmail and Telegram data with a new key")
+    parser = argparse.ArgumentParser(description="Re-encrypt Aelys provider, Gmail, Telegram and memory data with a new key")
     parser.parse_args()
     print(f"rotated {asyncio.run(rotate())} encrypted records")

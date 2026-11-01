@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid5
@@ -25,6 +25,7 @@ class ToolTurnResult:
     cost: Decimal
     steps: int
     followup_pending: bool = False
+    memory_refs: tuple[tuple[str, int], ...] = field(default=(), repr=False)
 
 
 async def run_tool_turn(
@@ -34,6 +35,7 @@ async def run_tool_turn(
     parse_call: Callable[[Mapping[str, Any]], ToolCall],
     on_event: Callable[[str, Mapping[str, Any]], Awaitable[None]] | None = None,
     on_usage: Callable[[Decimal, int, int], Awaitable[None]] | None = None,
+    refresh_messages: Callable[[tuple[ChatMessage, ...]], Awaitable[tuple[ChatMessage, ...]]] | None = None,
     cancel: asyncio.Event | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     max_steps: int = 8,
@@ -50,6 +52,7 @@ async def run_tool_turn(
     seen: set[str] = set()
     text: list[str] = []
     cost = Decimal(0)
+    used_memory_refs: set[tuple[str, int]] = set()
     input_tokens = output_tokens = 0
     schemas = tuple(schema for schema in registry.schemas()
                     if registry.descriptor(str(schema['name'])).required_scope in context.scopes)
@@ -64,6 +67,10 @@ async def run_tool_turn(
 
     for step in range(1, max_steps + 1):
         await check()
+        if refresh_messages:
+            messages = await refresh_messages(messages)
+        completion_refs = tuple(sorted({ref for chat in messages for ref in chat.memory_refs}))
+        used_memory_refs.update(completion_refs)
         remaining = request.request_budget - cost
         if remaining <= 0:
             raise BudgetExceeded('Configured AI budget is exhausted')
@@ -97,8 +104,8 @@ async def run_tool_turn(
                                                          ensure_ascii=False, default=str), untrusted=True))
         if not outputs or step == max_steps:
             break
-        messages = (*messages, *((ChatMessage('assistant', result.response.text),)
+        messages = (*messages, *((ChatMessage('assistant', result.response.text, memory_refs=completion_refs),)
                                   if result.response.text else ()), *outputs)
     await check()
     return ToolTurnResult('\n'.join(text), result.provider.value, result.model,
-                          input_tokens, output_tokens, cost, step, bool(outputs and step == max_steps))
+                          input_tokens, output_tokens, cost, step, bool(outputs and step == max_steps), tuple(sorted(used_memory_refs)))

@@ -544,6 +544,15 @@ export interface SyncBootstrapResponse {
   readonly has_more: boolean;
 }
 
+export type MemoryFactKind = "preference" | "fact" | "goal" | "context";
+export interface MemoryFactIn { readonly text: string; readonly kind?: MemoryFactKind; readonly expires_at?: IsoDateTime | null; }
+export interface MemoryFactPatch { readonly version: number; readonly text?: string; readonly kind?: MemoryFactKind; readonly expires_at?: IsoDateTime | null; }
+export interface OwnerMemoryFact extends MemoryFactIn {
+  readonly id: Id; readonly owner_id: Id; readonly version: number; readonly kind: MemoryFactKind;
+  readonly source: string; readonly source_message_id: string | null; readonly expires_at: IsoDateTime | null;
+  readonly created_at: IsoDateTime; readonly updated_at: IsoDateTime;
+}
+
 export type AIProviderKind = "claude" | "openrouter" | "transcription";
 export interface ProviderIn {
   readonly kind: AIProviderKind;

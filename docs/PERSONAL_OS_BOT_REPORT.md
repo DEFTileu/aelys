@@ -28,7 +28,7 @@ Business context must never include personal memory/tasks/notes/calendar.
 | 2 — reminders/digest | Accepted locally | Claims, quiet hours, /remind, deadline options, tomorrow and browser persistence passed. Final backend 418 passed plus 2 separate PG cases; web 414; shared 36. |
 | 3 — personal dialogue | Accepted locally | Encrypted queue, shared loop/usage, current owner scopes, persistent conversation and /new; 552 backend passed, 2 PG cases separately passed. |
 | 4 — ephemeral media | Accepted locally | Bounded in-memory download, separate transcription BYOK/budget estimate, image/PDF adapters, no-tool file turns. Backend 731 passed plus 2 PG cases; web 416; shared 36; settings browser persistence verified. |
-| 5 — explicit memory | Not started | Encrypted facts, commands/tools/API/settings, lexical selection, export/rotation required. |
+| 5 — explicit memory | Accepted locally | Encrypted explicit facts, lexical best 10, CAS API/settings, owner commands/tools, provenance-aware forget, export/rotation. Backend 823 passed plus 2 PG cases; web 418; shared 37; browser create/edit/reload/forget verified. |
 | 6 — task matrix/time | Not started | Server timestamps/history, matrix and stagnant digest required. |
 | 7 — Google Calendar | Not started | Read-only OAuth/PKCE/state, incremental import/disconnect, external event protections required. |
 
@@ -450,3 +450,64 @@ OpenRouter images/PDF, OpenAI transcription (linked in AI_HARNESS.md). Approved
 transcription origin currently api.openai.com; arbitrary compatible custom
 origins are not enabled by this feature. No real vision, transcription, Telegram
 or billing result is claimed. Stage 5 has not started. MySDU and main untouched.
+
+
+## Stage 5 — explicit encrypted lexical memory
+
+Implemented `ai/memory_models.py`, `memory.py`, `memory_api.py`,
+`personal_memory_tools.py`, migration 0032; mounted owner router, personal
+commands/registry/runtime, existing Settings navigation and new MemorySettings,
+shared types/client, encrypted export/restore and key rotation. No extractor,
+embeddings, RAG, MCP or new sync resource kind. MySDU unchanged.
+
+Facts have encrypted text, kind, server-assigned source/message reference, optional
+expiry, exact version, deleted_at and owner-specific NFKC/case/whitespace digest.
+Remember deduplicates or explicitly revives. All writes serialize by owner;
+API updates/deletes use CAS. Only explicit current owner text/voice grants
+remember or forget, separately. Files, quotes, facts and history grant neither.
+Lexical read scans active owner facts in batches of 200 and keeps global best 10.
+Settings use fresh owner-only requests with no plaintext IndexedDB cache or
+unconfirmed forget replay. API validation errors do not echo memory text.
+
+Forget/expiry/edit excludes memory data and derived conversation context through
+(id,version) provenance. The shared tool turn preserves provenance on intermediate
+answers and aggregates every used reference; inherited history keeps it through
+repeated answers. Refresh validates versions before every provider completion,
+so same-turn forget cannot resend the injected fact. Existing visible history
+is retained, with revoked-memory-derived messages omitted from subsequent model
+context. Full owner text/transcript remains; only the retrieval query is bounded.
+
+Test-first/review fixes: missing UI/service, fact injection, next-turn fact-bearing
+answer, intermediate answer with forget in the same completion, inherited repeated
+answer, long text exceeding selector query limit, and physical SQLite savepoint
+commit were reproduced. The command handler now starts a physical outer SQLite
+transaction before its nested savepoint when needed; facts/domain writes remain
+atomic with receipt/cursor and caller rollback. Restore checks memory-write policy
+before insertion and recalculates destination-owner hashes without overwriting
+collisions. Both agents closed review with no remaining confirmed blocker.
+
+Validation:
+
+- Final `make test` with fresh disposable PostgreSQL AI/memory/queue/migration
+  URLs: **823 passed, 2 skipped in 120.89s**. The two global PostgreSQL contracts
+  were separately run on a fresh migrated DB: **2 passed in 0.94s**.
+- Memory service **64 passed** across SQLite and migration-backed PostgreSQL,
+  including encrypted raw columns, dedup/CAS concurrency, expiry, owner isolation,
+  active provenance versions and global lexical best-10 batching. Initial API /
+  portability focused **21 passed**, with later restore-policy denial + existing
+  export **6 passed**. Integrated context/secretary tests are included in full run.
+- Ruff, mypy (**85 source files**), Bandit, compileall, rotation-script mypy,
+  pip-audit and diff checks passed. SQLite/PostgreSQL upgrades and Alembic check
+  have no drift; one head `0032_owner_memory`. OpenAPI regenerated and equality
+  checked. Shared typecheck/**37 tests**, web typecheck/**418 tests**/build passed.
+- Actual browser on own 5182/8012 stand: create memory POST **200/version 1**,
+  reload, edit PATCH **200/version 2**, reload confirmed text, forget DELETE
+  **200**, row immediately absent. Direct read of the disposable SQLite column
+  confirmed ciphertext. Screenshot after launch overlay detached was visually
+  inspected. One initial browser selector timed out during launch; role-based
+  retry and explicit overlay-detached wait completed the actual flow. No real
+  provider or Telegram call was used or claimed.
+
+Stage 5 is locally accepted. Stage 6 task matrix/time and Stage 7 read-only Google
+Calendar remain unimplemented. Attachment storage remains OPEN. No push, PR,
+main modification, MySDU modification or deployment occurred.

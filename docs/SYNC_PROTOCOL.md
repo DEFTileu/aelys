@@ -133,3 +133,8 @@ Stage 3 personal tools also use this common writer in the same transaction as
 the successful AI tool event. A restarted assistant queue never replays a tool;
 already committed domain data remains visible to pull/bootstrap with its exact
 Owned.version. The encrypted Telegram queue is not a sync resource kind.
+
+Explicit memory (Stage 5) does not broaden the mounted sync kind allowlist.
+Backend facts use their own exact Owned.version CAS through owner API and tools;
+plaintext memory is not cached or replayed by the shared offline outbox. Task,
+Note, CalendarEvent and Project continue through the shared change-log unchanged.

@@ -41,3 +41,7 @@ acceptance evidence in PERSONAL_OS_BOT_REPORT.md (sync, Telegram reminders,
 owner text dialogue and ephemeral media). This does not mark memory, matrix,
 Google Calendar or live external acceptance complete. Attachment storage remains
 OPEN; no file persistence or new external scope was approved by this checkpoint.
+
+ADR-028 Stage 5 checkpoint: explicit encrypted lexical memory, owner API/settings,
+commands/tools and export/rotation are locally implemented and tested. No new
+permission is derived from a fact; live external acceptance and stages 6–7 remain.

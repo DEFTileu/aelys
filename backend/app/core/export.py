@@ -15,6 +15,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from app.ai.memory_models import OwnerMemoryFact
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +59,7 @@ EXPORT_MODELS = (
     FocusSession, MailAccount, MailMessage, MailDraft, TaskReminder,
     AIProvider, AIConversation, AIRun, ActivityEvent, Notification,
     HistoryEntry, AutomationRule, AutomationExecution,
+    OwnerMemoryFact,
 )
 
 
@@ -178,6 +180,21 @@ async def restore_owner_export(db: AsyncSession, owner_email: str, payload: dict
             values = {key: _decode_column(model, key, value) for key, value in raw.items() if key in columns}
             if "owner_id" in columns:
                 values["owner_id"] = owner.id
+            if model is OwnerMemoryFact:
+                from app.ai.memory import _authorize, normalized_memory_hash
+
+                _authorize(owner.id, "memory.write")
+                # The export contains decrypted text inside its encrypted
+                # envelope. Hash under the destination owner, then let the
+                # destination EncryptedText codec re-encrypt with its own key.
+                values["normalized_hash"] = normalized_memory_hash(owner.id, values["text"])
+                collision = (await db.execute(select(OwnerMemoryFact.id).where(
+                    (OwnerMemoryFact.id == values.get("id"))
+                    | ((OwnerMemoryFact.owner_id == owner.id)
+                       & (OwnerMemoryFact.normalized_hash == values["normalized_hash"])),
+                ))).first()
+                if collision is not None:
+                    raise RuntimeError("Memory restore conflicts with an existing fact; no facts were overwritten")
             db.add(model(**values))
             count += 1
     await db.commit()

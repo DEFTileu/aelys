@@ -532,3 +532,24 @@ bounded Telegram file_id/metadata only, no bytes. Untrusted photo/PDF/file turns
 have no write grants; transcription is treated as owner text. Public chat message
 HTTP inputs stay text-only; ephemeral provider attachments do not become a public
 upload/storage endpoint or new sync kind. Rotation covers media_metadata.
+
+### Explicit owner memory (migration 0032)
+
+- `GET /ai/memory?limit=100&query=...`: active/unexpired owner facts, lexical
+  query <=200 chars, no-store; no plaintext browser cache fallback.
+- `POST /ai/memory`: `{text (1..2000),kind?,expires_at?}`. Provenance assigned
+  by server as api; client cannot supply source or ownership. Normalized saves
+  deduplicate, explicit re-save revives forgotten/expired identity.
+- `PATCH /ai/memory/{id}`: required version, optional text/kind/expiry. Exact
+  CAS; 409 VERSION_CONFLICT preserves current value; duplicate target returns
+  409 MEMORY_DUPLICATE. `DELETE ...?version=N` soft-forgets with CAS.
+- Responses include id, owner_id, version, text, kind, source/source_message_id,
+  expires_at and created_at/updated_at. Memory validation failures return fixed
+  typed errors without echoing input. Expired/forgotten facts are absent from
+  selection immediately, including same-turn follow-up provider completions.
+
+No new sync resource_kind. Explicit backend memory is managed through fresh
+owner requests; the settings view never queues an unconfirmed forget or stores
+plaintext facts in the shared offline cache. Export uses its encrypted envelope,
+rotation re-encrypts text, and restore recalculates owner-specific hashes and
+checks policy/collisions before insertion.

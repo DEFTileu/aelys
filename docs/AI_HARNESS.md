@@ -172,3 +172,27 @@ Payload formats checked against primary documentation:
 [OpenRouter PDFs](https://openrouter.ai/docs/guides/overview/multimodal/pdfs), and
 [OpenAI transcription](https://developers.openai.com/api/docs/guides/speech-to-text).
 These document checks do not constitute a real provider test.
+
+## 13. Explicit encrypted owner memory (Stage 5)
+
+`owner_memory_facts` stores EncryptedText, kind (preference/fact/goal/context),
+server provenance/source_message_id, optional UTC expiry, Owned version/deletion
+and owner-bound normalized digest. NFKC/case/whitespace normalization deduplicates
+explicit saves. No extraction from conversation, summaries, embeddings or RAG.
+The service authorizes memory read/write independently of fact text; lexical
+selection streams active owner facts in batches and retains the global best 10.
+
+`/remember`, `/forget`, `/memory` share that service with the versioned owner API.
+The personal registry adds remember/forget with distinct least-privilege scopes,
+only when the current owner text/voice explicitly asks. File/media captions,
+quotes, memory content and old history cannot grant either scope. Secretary
+never calls the memory selector or receives the facts/registry.
+
+Facts are injected as UntrustedData. Provider context includes server-only
+(id,version) provenance on memory data and responses derived from it. Before
+every provider completion, active versions are checked again. Forgotten, edited
+or expired provenance excludes both injected data and derived history, including
+intermediate tool-loop replies and repeated answers. Ordinary visible chat
+history is retained; it does not silently restore a revoked memory into prompts.
+Only the retrieval query is bounded to 2k characters; the full owner message or
+voice transcript still goes to the model. No rolling summary was introduced.

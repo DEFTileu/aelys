@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .telegram_models import TelegramIntegration
 
-HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/new\n/help'
+HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/new\n/remember <факт>\n/forget <ID или текст>\n/memory\n/help'
 REMIND_HELP = 'Пример: /remind 18:00 Позвонить, /remind 2026-11-05 18:00 Встреча или /remind 2h Проверить. Укажите будущее время и текст до 300 символов.'
 BUSY_HELP = 'Пример: /busy 18:00 занят. Время HH:MM, текст от 1 до 200 символов.'
 
@@ -34,7 +34,7 @@ def authorize(item: TelegramIntegration, scope: str, *, external: bool = False) 
                                                      allow_external_effects=external, policy_id='telegram-owner'))
 
 
-async def handle_owner_message(db: AsyncSession, item: TelegramIntegration, text: str, at: datetime) -> str | None:
+async def handle_owner_message(db: AsyncSession, item: TelegramIntegration, text: str, at: datetime, *, source_message_id: str | None = None) -> str | None:
     """Caller verifies Telegram identity; isolate expected write errors in a savepoint."""
     # Whitespace can also be a newline immediately after the command.
     parts = text.strip().split(maxsplit=1)
@@ -46,7 +46,47 @@ async def handle_owner_message(db: AsyncSession, item: TelegramIntegration, text
     if username and username.casefold() != item.bot_username.casefold():
         return None
     try:
+        if db.get_bind().dialect.name == 'sqlite':
+            connection = await db.connection()
+            # Legacy sqlite transaction control does not BEGIN for SELECT.
+            # A first SAVEPOINT would therefore commit on RELEASE. Establish
+            # the physical caller transaction before creating the savepoint.
+            def begin_sqlite(sync) -> None:
+                driver = sync.connection.driver_connection
+                if driver is None:
+                    raise RuntimeError('SQLite connection unavailable')
+                if not driver.in_transaction:
+                    sync.exec_driver_sql('BEGIN')
+            await connection.run_sync(begin_sqlite)
         async with db.begin_nested():
+            if command in {'/remember', '/forget', '/memory'}:
+                from app.ai.memory import forget, list_memory, remember
+                if command == '/remember':
+                    if not body or len(body) > 2000:
+                        return 'Укажи факт от 1 до 2000 символов: /remember Предпочитаю короткие ответы'
+                    fact = await remember(db, item.owner_id, body, source='telegram', source_message_id=source_message_id)
+                    return f'Запомнил. ID: {fact.id}'
+                if command == '/forget':
+                    if not body or len(body) > 2000:
+                        return 'Укажи ID или точный текст факта: /forget <ID или текст>'
+                    from uuid import UUID
+                    try:
+                        fact_id = str(UUID(body))
+                    except ValueError:
+                        fact_id = None
+                    fact = await forget(db, item.owner_id, fact_id=fact_id, text=None if fact_id else body)
+                    return 'Факт забыт.' if fact else 'Факт не найден.'
+                facts = await list_memory(db, item.owner_id, at=at, limit=100)
+                if not facts:
+                    return 'В памяти пока нет фактов.'
+                lines = ['Память владельца:']
+                for fact in facts:
+                    line = f'{fact.id} · {fact.kind} · {fact.text}'
+                    if len('\n'.join(lines)) + len(line) > 3900:
+                        lines.append('Полный список и правка доступны в Settings → Memory.')
+                        break
+                    lines.append(line)
+                return '\n'.join(lines)
             if command == '/new':
                 from app.core.models import AIConversation
                 authorize(item, 'ai.personal.write')

@@ -65,7 +65,8 @@ async def test_registry_reuses_create_tools_and_has_minimal_scopes(setup):
     expected = {'create_task': 'tasks.write', 'create_note': 'notes.write',
         'list_tasks': 'tasks.read', 'update_task': 'tasks.write', 'complete_task': 'tasks.write',
         'read_note': 'notes.read', 'read_calendar': 'calendar.read',
-        'create_event': 'calendar.write', 'create_reminder': 'reminders.write'}
+        'create_event': 'calendar.write', 'create_reminder': 'reminders.write',
+        'remember': 'memory.remember', 'forget': 'memory.forget'}
     assert {schema['name'] for schema in setup.registry.schemas()} == set(expected)
     for name, scope in expected.items():
         descriptor = setup.registry.descriptor(name)

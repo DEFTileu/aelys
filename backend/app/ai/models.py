@@ -75,6 +75,7 @@ class ChatMessage:
     content: str
     untrusted: bool = False
     media: tuple[MediaContent, ...] = field(default=(), repr=False)
+    memory_refs: tuple[tuple[str, int], ...] = field(default=(), repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.media, tuple) or any(not isinstance(value, MediaContent) for value in self.media):

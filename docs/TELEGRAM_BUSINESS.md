@@ -1,6 +1,6 @@
 # Telegram Business: бот-секретарь
 
-**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и расширенный личный scope (ADR-027/028). Выполнены этапы 0–4: sync, reminders, текстовый AI и ephemeral media; memory/matrix/Google остаются следующими этапами (см. `PERSONAL_OS_BOT_REPORT.md`).
+**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и расширенный личный scope (ADR-027/028). Выполнены этапы 0–5: sync, reminders, текстовый AI, ephemeral media и explicit memory; matrix/Google остаются следующими этапами (см. `PERSONAL_OS_BOT_REPORT.md`).
 
 ## Подключение
 
@@ -176,3 +176,19 @@ Claude/OpenRouter получают inline base64, ModelRouter проверяет
 меняет это правило. Текст файла — UntrustedData, в историю не сохраняется;
 остаётся общая отметка и ответ модели. Следующий отдельный текст владельца
 может разрешить создание задачи. Business media не добавлено.
+
+## Explicit personal memory — Stage 5
+
+`/remember <факт>` сохраняет явный факт, `/forget <ID или точный текст>` забывает,
+`/memory` показывает активные факты. Дубликаты нормализуются; источник и message
+ID назначает сервер. Настройки → Memory дают просмотр/поиск, правку и забывание
+с проверкой версии. Текст шифрован в основной БД, export/rotation обновлены.
+
+Свободные «запомни/remember» и «забудь/forget» разрешают только соответствующий
+memory tool в текущем owner text/voice ходе. Содержимое файлов и цитат, старые
+факты и история прав не дают. В prompt не больше 10 лексически подходящих
+активных фактов, помеченных UntrustedData. Forget/expiry/edit также исключают
+производные реплики из будущего model context по ID/версии; проверка повторяется
+перед каждым шагом модели. Сами старые реплики остаются видны владельцу в истории.
+Секретарь вообще не читает эту память и не получает её личные инструменты.
+Фонового извлечения, rolling summary, MCP, RAG и embeddings нет.

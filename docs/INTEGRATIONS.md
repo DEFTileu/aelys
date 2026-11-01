@@ -90,7 +90,7 @@ Customers cannot access owner Notes/Tasks/Mail/Finance or Mac tools. Only privat
 plain-text incoming messages are handled; unsupported media, forwarded messages
 and bot echoes are ignored. No campaigns, proactive messages or Telegram Stars/
 profile/gift operations are implemented. The same bot handles explicit owner commands and queued personal AI text.
-Telegram reminder delivery and ephemeral personal media are implemented; memory is a later stage. Opt-in deterministic digest uses configured timezone and a
+Telegram reminder delivery, ephemeral personal media and explicit memory are implemented. Opt-in deterministic digest uses configured timezone and a
 2-hour window; no catch-up or send retry. Secretary uses reply/no_reply/handoff,
 waits reply_delay_seconds (default 90), then considers only the newest inbound in
 each chat. Handoff persists an encrypted owner_note and a content-free Notification.
@@ -132,3 +132,13 @@ tools; only a later owner text can authorize creation. Model capability settings
 and transcription configuration use the existing AI & models form. Secretary
 media and personal-memory access remain excluded. Real audio/vision providers
 and live Telegram have not been tested.
+
+### Explicit owner memory — Stage 5, 2026-11-01
+
+Memory now uses encrypted backend facts with explicit save/forget commands and
+owner-only versioned API/settings. The personal text/voice registry gets separate
+remember/forget scopes only from the current owner request. Lexical selection
+adds at most 10 active facts as data, with no extractor or embeddings. Revoked
+fact provenance also removes derived context before each provider step. Business
+secretary never reads personal memory. Export/restore and key rotation include
+memory; live external-provider acceptance is still outstanding.

@@ -167,7 +167,7 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
                 from .telegram_personal_queue import enqueue_owner_message
                 await enqueue_owner_message(db, item, payload, now())
                 return None
-            return await handle_owner_message(db, item, text, now())
+            return await handle_owner_message(db, item, text, now(), source_message_id=f'{item.id}:{ordinary.get("message_id") or payload.get("update_id")}')
         return None
     raw = payload.get("business_message") or payload.get("edited_business_message") or payload.get("deleted_business_messages")
     if not isinstance(raw, dict):

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from .agents.api import router as agents_router
 from .ai.api import router as ai_router
+from .ai.memory_api import router as memory_router
 from .automation.api import router as automation_router
 from .core import models  # noqa: F401 - register domain metadata
 from .core.api import router as core_router
@@ -86,6 +87,7 @@ app.include_router(native_auth_router, prefix="/api/v1")
 app.include_router(domain_router, prefix="/api/v1")
 app.include_router(sync_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
+app.include_router(memory_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(automation_router, prefix="/api/v1")
 app.include_router(gmail_router, prefix="/api/v1")
