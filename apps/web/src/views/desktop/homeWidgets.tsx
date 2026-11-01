@@ -4,6 +4,7 @@ import { ChevronRight, RefreshCw } from '../../icons'
 import type { ActivityEvent, EventOut, FinanceBudget, FinanceTransaction, FocusOut, MailMessage, NoteOut, ProjectResponse, TaskOut } from '@aelys/shared'
 import { accentOf } from '../../data/desktop/home'
 import { openWeatherSettings, refreshWeather, useWeather } from '../../lib/weather'
+import { useWallpaper } from '../../lib/wallpaper'
 import { navigate } from '../../lib/router'
 import { WIDGET_CATALOG, type WidgetId } from './homeLayout'
 import type { ApiStatus } from '../../types'
@@ -22,6 +23,7 @@ export type HomeWidgetProps = {
 
 export function HomeWidget({ id, editing, mobile = false, focus, data, onToggleTask, onAddTask, onRetry, onRemove, onLongPress, frame }: HomeWidgetProps) {
   const { location } = useWeather()
+  const wallpaper = useWallpaper()
   const def = WIDGET_CATALOG[id]
   const { soft, ink } = accentOf(def.color)
   const dark = id === 'weather'
@@ -31,7 +33,7 @@ export function HomeWidget({ id, editing, mobile = false, focus, data, onToggleT
   const open = id === 'today' ? (mobile ? data.tasks.filter((task) => !isDone(task)) : dayTasks(data.tasks).filter((task) => !isDone(task))).length : 0
   const badge = id === 'today' ? (mobile ? (data.tasks.length ? String(open) : '') : (dayTasks(data.tasks).length ? String(open) : '')) : id === 'mail' && unread ? String(unread) : ''
   const style: CSSProperties = {
-    background: dark ? 'linear-gradient(180deg,rgba(30,34,60,.30),rgba(20,22,40,.72)),url("/backgrounds/aelys/actual-home.png") 82% 40%/auto 420px' : 'var(--glass-bg, rgba(255,255,255,.88))',
+    background: dark ? `linear-gradient(180deg,rgba(30,34,60,.30),rgba(20,22,40,.72)),url(${JSON.stringify(wallpaper)}) center/cover` : 'var(--glass-bg, rgba(255,255,255,.88))',
     color: dark ? '#fff' : 'var(--ink)',
   }
   const route = def.link?.route ?? ({ today: '/tasks', focus: '/timer', fin: '/finance' } as const)[id as 'today' | 'focus' | 'fin']

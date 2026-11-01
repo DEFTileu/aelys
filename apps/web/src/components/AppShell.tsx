@@ -1,7 +1,8 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
-import { WALLPAPERS, accentColors } from '../data/desktop/settings'
+import { accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
+import { useWallpaper } from '../lib/wallpaper'
 import { getSharedApiClient } from '../lib/api'
 import { useOwner } from '../lib/owner'
 import { usePrefs, type Prefs } from '../lib/prefs'
@@ -133,7 +134,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
   const hero = HEROES[route]
   const showGreeting = settings.homeToggles[0]
   const sideW = useWindowWidth() >= 900 ? 240 : 200
-  const wallpaper = settings.wallpaper === -1 && settings.customWallpaper ? settings.customWallpaper : WALLPAPERS[settings.wallpaper] ?? WALLPAPERS[0]
+  const wallpaper = useWallpaper()
   const go = (path: RoutePath) => { setPaletteOpen(false); navigate(path) }
 
   const navButton = (item: NavItem) => {

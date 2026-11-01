@@ -2,6 +2,7 @@ import { useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
 import { Upload } from '../../icons'
 import { accentColors, homeToggles, sliderSettings, VISIBLE_WALLPAPERS, WALLPAPERS } from '../../data/desktop/settings'
 import { setHomeToggle, setSettings, useDesktopState } from '../../lib/desktopStore'
+import { useWallpaper } from '../../lib/wallpaper'
 import { setPrefs, usePrefs } from '../../lib/prefs'
 import { setThemePreference, useThemePreference, type ThemePreference } from '../../lib/theme'
 import { Card, Group, Row, SwitchRow } from './ui'
@@ -16,11 +17,11 @@ const THEMES: readonly { id: ThemePreference; title: string; bg: string; side: s
 export function AppearancePanel() {
   const theme = useThemePreference()
   const { glass, reduceMotion } = usePrefs()
-  const { accent, wallpaper, customWallpaper, transparency, blur, homeToggles: toggles } = useDesktopState()
+  const { accent, wallpaper, wallpaperMode, customWallpaper, transparency, blur, homeToggles: toggles } = useDesktopState()
   const [allWallpapers, setAllWallpapers] = useState(false)
   const upload = useRef<HTMLInputElement>(null)
   const sliderValues = [transparency, blur]
-  const current = wallpaper === -1 && customWallpaper ? customWallpaper : WALLPAPERS[wallpaper] ?? WALLPAPERS[0]
+  const current = useWallpaper()
 
   function uploadWallpaper(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -52,13 +53,14 @@ export function AppearancePanel() {
       </Row>
       <div className="st-row st-row--14">
         <span className="st-photo" aria-hidden="true" style={{ backgroundImage: `url('${current}')` }} />
-        <div className="st-grow"><div className="st-label">Background photo</div><div className="st-hint">Pick one below or use your own image</div></div>
+        <div className="st-grow"><div className="st-label">Background photo</div><div className="st-hint">{wallpaperMode === 'weather' ? 'Follows your weather and time of day' : 'Pick one below or use your own image'}</div></div>
         <input ref={upload} className="st-file" type="file" accept="image/*" aria-label="Upload photo" onChange={uploadWallpaper} />
         <button type="button" className="st-btn st-btn--ghost" onClick={() => upload.current?.click()}><Upload size={14} aria-hidden="true" />Upload photo</button>
       </div>
+      <SwitchRow title="Weather wallpaper" hint="Changes with your selected city's weather and time of day. Without a city, follows your device clock." checked={wallpaperMode === 'weather'} onChange={(on) => setSettings({ wallpaperMode: on ? 'weather' : 'manual' })} />
       <div className="st-wallpapers" role="radiogroup" aria-label="Wallpapers">
-        {customWallpaper && <button type="button" role="radio" aria-checked={wallpaper === -1} aria-label="Uploaded wallpaper" className="st-wall" style={{ backgroundImage: `url('${customWallpaper}')` }} onClick={() => setSettings({ wallpaper: -1 })}>Uploaded</button>}
-        {(allWallpapers ? WALLPAPERS : WALLPAPERS.slice(0, VISIBLE_WALLPAPERS)).map((url, i) => <button key={url} type="button" role="radio" aria-checked={wallpaper === i} aria-label={`Wallpaper ${i + 1}`} className="st-wall" style={{ backgroundImage: `url('${url}')` }} onClick={() => setSettings({ wallpaper: i })} />)}
+        {customWallpaper && <button type="button" role="radio" aria-checked={wallpaperMode === 'manual' && wallpaper === -1} aria-label="Uploaded wallpaper" className="st-wall" style={{ backgroundImage: `url('${customWallpaper}')` }} onClick={() => setSettings({ wallpaper: -1 })}>Uploaded</button>}
+        {(allWallpapers ? WALLPAPERS : WALLPAPERS.slice(0, VISIBLE_WALLPAPERS)).map((url, i) => <button key={url} type="button" role="radio" aria-checked={wallpaperMode === 'manual' && wallpaper === i} aria-label={`Wallpaper ${i + 1}`} className="st-wall" style={{ backgroundImage: `url('${url}')` }} onClick={() => setSettings({ wallpaper: i })} />)}
         <button type="button" className="st-wall" aria-expanded={allWallpapers} style={{ backgroundImage: `linear-gradient(rgba(40,36,50,.55),rgba(40,36,50,.55)), url('${WALLPAPERS[VISIBLE_WALLPAPERS]}')` }} onClick={() => setAllWallpapers((open) => !open)}>{allWallpapers ? 'Less' : 'More'}</button>
       </div>
       <SwitchRow title="Glass cards" hint="Blur the photo behind widgets" checked={glass} onChange={(on) => setPrefs({ glass: on })} />

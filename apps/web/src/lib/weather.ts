@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 
 export type WeatherLocation = { name: string; latitude: number; longitude: number; mode: 'city' | 'auto' }
 export type City = WeatherLocation & { id: number; region: string }
-export type Forecast = { locationKey: string; fetchedAt: number; temperature: number; apparent: number; code: number; wind: number; isDay: boolean; days: { date: string; code: number; min: number; max: number }[]; hours?: { time: string; code: number; temperature: number }[] }
+export type Forecast = { locationKey: string; fetchedAt: number; temperature: number; apparent: number; code: number; wind: number; isDay: boolean; utcOffsetSeconds?: number; days: { date: string; code: number; min: number; max: number }[]; hours?: { time: string; code: number; temperature: number }[] }
 type WeatherState = { location: WeatherLocation | null; forecast: Forecast | null; status: 'empty' | 'loading' | 'ready' | 'error'; notice: string; settingsOpen: boolean; locating: boolean }
 export const WEATHER_STORAGE_KEY = 'aelys.weather.v1'
 const FRESH_FOR = 30 * 60_000
@@ -19,7 +19,7 @@ function validLocation(value: unknown): value is WeatherLocation {
 function validForecast(value: unknown): value is Forecast {
   if (!value || typeof value !== 'object') return false
   const item = value as Forecast
-  return typeof item.locationKey === 'string' && finite(item.fetchedAt) && finite(item.temperature) && finite(item.apparent) && finite(item.wind) && finite(item.code) && typeof item.isDay === 'boolean' && Array.isArray(item.days) && item.days.every((day) => typeof day.date === 'string' && finite(day.code) && finite(day.min) && finite(day.max)) && (item.hours === undefined || (Array.isArray(item.hours) && item.hours.every((hour) => typeof hour.time === 'string' && finite(hour.code) && finite(hour.temperature))))
+  return typeof item.locationKey === 'string' && finite(item.fetchedAt) && finite(item.temperature) && finite(item.apparent) && finite(item.wind) && finite(item.code) && typeof item.isDay === 'boolean' && (item.utcOffsetSeconds === undefined || (finite(item.utcOffsetSeconds) && Math.abs(item.utcOffsetSeconds) <= 50_400)) && Array.isArray(item.days) && item.days.every((day) => typeof day.date === 'string' && finite(day.code) && finite(day.min) && finite(day.max)) && (item.hours === undefined || (Array.isArray(item.hours) && item.hours.every((hour) => typeof hour.time === 'string' && finite(hour.code) && finite(hour.temperature))))
 }
 function readState(): WeatherState {
   const initial: WeatherState = { location: null, forecast: null, status: 'empty', notice: '', settingsOpen: false, locating: false }
@@ -87,7 +87,7 @@ export async function fetchForecast(location: WeatherLocation): Promise<Forecast
     const hours = hourly && [hourly.time, hourly.temperature_2m, hourly.weather_code].every(Array.isArray)
       ? (hourly.time as unknown[]).flatMap((time, index) => finite(time) && time * 1000 > Date.now() - 3_600_000 && finite((hourly.temperature_2m as unknown[])[index]) && finite((hourly.weather_code as unknown[])[index]) ? [{ time: new Date((time + offset) * 1000).toISOString(), code: (hourly.weather_code as number[])[index], temperature: (hourly.temperature_2m as number[])[index] }] : []).slice(0, 6)
       : []
-    return { locationKey: key, fetchedAt: Date.now(), temperature: current.temperature_2m as number, apparent: current.apparent_temperature as number, code: current.weather_code as number, wind: current.wind_speed_10m as number, isDay: current.is_day === 1, days, hours }
+    return { locationKey: key, fetchedAt: Date.now(), temperature: current.temperature_2m as number, apparent: current.apparent_temperature as number, code: current.weather_code as number, wind: current.wind_speed_10m as number, isDay: current.is_day === 1, utcOffsetSeconds: offset, days, hours }
   })().finally(() => { flights.delete(key) })
   flights.set(key, flight)
   return flight
