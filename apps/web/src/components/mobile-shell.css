@@ -3,7 +3,7 @@
 .mobile-shell--home { padding-bottom: 0; }
 .mobile-shell--home .mobile-shell__content { padding-bottom: calc(var(--mobile-bar-height, 96px) + env(safe-area-inset-bottom)); }
 .mobile-shell__wallpaper { position: absolute; inset: 0 0 auto; height: 460px; background-size: cover; background-position: 80% top; pointer-events: none; }
-.mobile-shell__wallpaper::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,rgba(20,20,45,.46),rgba(20,20,45,.1) 70%,var(--canvas, #f5f0eb)); }
+.mobile-shell__wallpaper::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,rgba(20,20,45,.3),transparent 35%,transparent 85%,var(--canvas, #f5f0eb)); }
 .mobile-shell__header { position: relative; z-index: 3; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 60px; padding: 8px 16px; }
 .mobile-shell--home .mobile-shell__header { color: white; }
 .mobile-shell__brand, .mobile-shell__title { flex: 1; min-width: 0; font-size: 18px; line-height: 26px; }

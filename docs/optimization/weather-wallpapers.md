@@ -66,3 +66,14 @@ resampling/haze; it does not increase detail in the supplied 1080p assets.
 Validation: 16 launch/session regression tests and production build passed.
 Browser computed scenery styles: filter `none`, transform `none`, inset `0px`;
 entry form and selected night image visually verified.
+
+
+Main-background clarity follow-up (owner requested 2026-11-01): keep the desktop
+photo's fade within its lower 64px (48px on module pages), remove the broad canvas
+wash and reduce the mobile overlay to a short edge fade. Main wallpaper layers
+have no filter or transform. Weather's photo card no longer inherits the glass
+backdrop blur; other appearance preferences remain available.
+Validation: 28 shell, appearance and wallpaper tests plus production build pass.
+Browser confirms main photo filter/transform `none` and Weather backdrop-filter
+`none`; selected Алматы forecast and both supplied backgrounds remain visible.
+Source image resolution is unchanged.
