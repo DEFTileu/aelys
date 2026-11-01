@@ -9,6 +9,7 @@ import { getSharedApiClient } from '../lib/api'
 import type { FocusIn, FocusOut, TaskOut } from '@aelys/shared'
 import type { ApiStatus } from '../types'
 import { DEFAULT_LAYOUT, MOBILE_DEFAULT_LAYOUT, WIDGET_CATALOG, layoutKey, pendingHighlight, newLayoutEntry, readLayout, reorderLayout, saveLayout, normalizeWidgetSize, type LayoutEntry, type SizeKey, type WidgetId } from './desktop/homeLayout'
+import { RecentActivity } from './desktop/RecentActivity'
 import { HomeWidget, type HomeData, type FocusTimer } from './desktop/homeWidgets'
 
 // Orb gradient from the design; the AppShell hero stays outside this view.
@@ -145,8 +146,6 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const removeWidget = (key: string) => commit(layout.filter((entry) => layoutKey(entry) !== key))
   const resetLayout = () => commit((mobile ? MOBILE_DEFAULT_LAYOUT : DEFAULT_LAYOUT).map((entry) => [...entry] as LayoutEntry))
 
-  const visibleLayout = homeToggles[3] ? layout : layout.filter(([id]) => id !== 'activity')
-
   return <div className={`home-screen${editing ? ' home-screen--editing' : ''}`} style={{ padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
     {homeToggles[2] && <section aria-label="Ask Aelys" data-glass="" style={{ padding: 16, borderRadius: 24, background: 'var(--dw-section, rgba(255,255,255,.72))', backdropFilter: 'blur(20px)', border: '1px solid var(--dw-edge, rgba(255,255,255,.35))', boxShadow: '0 8px 28px rgba(40,30,30,.10)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -180,12 +179,13 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     {layoutNotice && <p role="status">{layoutNotice}</p>}
     {editing && <p className="home-layout-help">Drag a card to move it, drag its corner to resize to S, M, L or Tall.</p>}
     {homeToggles[1] && <section ref={grid} aria-label="Dashboard widgets" className={`home-widget-grid${editing ? ' home-widget-grid--editing' : ''}`}>
-      {visibleLayout.map((entry) => {
+      {layout.map((entry) => {
         const [id, span, height] = entry
         const key = layoutKey(entry)
         return <HomeWidget key={key} id={id} editing={editing} mobile={mobile} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onAddTask={addTask} onRetry={() => setReload((value) => value + 1)} onRemove={() => removeWidget(key)} onLongPress={mobile ? () => setEditing(true) : undefined} frame={{ id, itemKey: key, title: WIDGET_CATALOG[id].title, span, height, onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(key, delta), onSize: (width, nextHeight) => sizeWidget(key, width, nextHeight) }} />
       })}
     </section>}
+    {homeToggles[3] && <RecentActivity items={data.activity ?? []} state={data.states?.activity} />}
     <div style={{ height: 12 }} />
     {sheet && <AddWidgetSheet layout={layout} onAdd={addWidget} onClose={() => setSheet(false)} />}
   </div>

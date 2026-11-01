@@ -10,13 +10,12 @@ describe('fixed widget sizes', () => {
     expect(WIDGET_SIZES.map(({ id, key, span, rows, height }) => [id, key, span, rows, height])).toEqual([['1x1', 'S', 1, 1, 264], ['2x1', 'M', 2, 1, 264], ['2x2', 'L', 2, 2, 544], ['1x2', 'Tall', 1, 2, 544]])
   })
   it('uses the design default layout and sizes', () => {
-    expect(DEFAULT_LAYOUT.map(([id, span, height]) => [id, span, height])).toEqual([['today', 1, 264], ['cal', 1, 264], ['focus', 1, 264], ['weather', 1, 264], ['proj', 1, 264], ['notes', 1, 264], ['fin', 1, 264], ['kb', 1, 264], ['activity', 4, 264]])
+    expect(DEFAULT_LAYOUT.map(([id, span, height]) => [id, span, height])).toEqual([['today', 1, 264], ['cal', 1, 264], ['focus', 1, 264], ['weather', 1, 264], ['proj', 1, 264], ['notes', 1, 264], ['fin', 1, 264], ['kb', 1, 264]])
   })
-  it('gives Recent activity a full-row size and snaps every other widget to S, M, L or Tall', () => {
-    expect(normalizeWidgetSize(4, 264, 'activity')).toMatchObject({ key: 'Full', span: 4, rows: 1, height: 264 })
-    expect(normalizeWidgetSize(4, 264, 'today')).toMatchObject({ key: 'M' })
-    expect(normalizeWidgetSize(4, 560, 'activity')).toMatchObject({ key: 'L' })
-    expect(sizeByKey('Full')).toMatchObject({ span: 4, height: 264 })
+  it('snaps every widget to S, M, L or Tall; Recent activity is no longer a widget', () => {
+    expect(normalizeWidgetSize(4, 264)).toMatchObject({ key: 'M' })
+    expect(normalizeWidgetSize(4, 560)).toMatchObject({ key: 'L' })
+    expect(sizeByKey('Tall')).toMatchObject({ span: 1, height: 544 })
   })
   it('snaps legacy freeform dimensions to the nearest of S, M, L and Tall', () => {
     expect(normalizeWidgetSize(1, 176)).toMatchObject({ key: 'S', span: 1, height: 264, rows: 1 })
@@ -50,8 +49,8 @@ describe('layout migration', () => {
     const legacyKey = mobile ? LEGACY_MOBILE_HOME_LAYOUT_KEY : LEGACY_HOME_LAYOUT_KEY
     localStorage.setItem(legacyKey, JSON.stringify([['today', 1, 264], ['cal', 2, 264], ['focus', 2, 544], ['activity', 4, 264]]))
     const migrated = readLayout(mobile)
-    // Only the desktop Recent activity card may span the full row; mobile snaps it to M.
-    expect(migrated).toEqual([['today', 1, 264], ['cal', 2, 264], ['focus', 2, 544], ['activity', mobile ? 2 : 4, 264]])
+    // A stored Recent activity card is dropped: it is a fixed section now.
+    expect(migrated).toEqual([['today', 1, 264], ['cal', 2, 264], ['focus', 2, 544]])
     saveLayout(migrated, mobile)
     localStorage.setItem(legacyKey, '[]')
     expect(readLayout(mobile)).toEqual(migrated)
@@ -92,9 +91,9 @@ describe('duplicate widgets', () => {
     expect(newLayoutEntry('mail', 'M', [first])).toEqual(['mail', 2, 264])
   })
   it('reorders by key, keeping sizes attached to their card', () => {
-    const layout: LayoutEntry[] = [['today', 2, 544], ['activity', 2, 264], ['cal', 1, 264], ['cal', 2, 264, 'cal-b']]
-    expect(reorderLayout(layout, 'today', 'cal-b').map(layoutKey)).toEqual(['activity', 'cal', 'cal-b', 'today'])
-    expect(reorderLayout(layout, 'cal-b', 'today').map(layoutKey)).toEqual(['cal-b', 'today', 'activity', 'cal'])
+    const layout: LayoutEntry[] = [['today', 2, 544], ['mail', 2, 264], ['cal', 1, 264], ['cal', 2, 264, 'cal-b']]
+    expect(reorderLayout(layout, 'today', 'cal-b').map(layoutKey)).toEqual(['mail', 'cal', 'cal-b', 'today'])
+    expect(reorderLayout(layout, 'cal-b', 'today').map(layoutKey)).toEqual(['cal-b', 'today', 'mail', 'cal'])
     expect(layout[0]).toEqual(['today', 2, 544])
   })
 })

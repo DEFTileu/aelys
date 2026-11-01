@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { X } from '../../icons'
-import { FULL_SIZE, normalizeWidgetSize, WIDGET_GRID_GAP, WIDGET_GRID_ROW, WIDGET_SIZES, type WidgetId, type WidgetSize } from './homeLayout'
+import { normalizeWidgetSize, WIDGET_GRID_GAP, WIDGET_GRID_ROW, WIDGET_SIZES, type WidgetId, type WidgetSize } from './homeLayout'
 
 export type WidgetFrameControls = {
   id: WidgetId
@@ -30,7 +30,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, onLo
   const [moving, setMoving] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [preview, setPreview] = useState<WidgetSize | null>(null)
-  const size = normalizeWidgetSize(controls.span, controls.height, controls.id)
+  const size = normalizeWidgetSize(controls.span, controls.height)
   const activeSize = preview ?? size
   const clearTargets = () => article.current?.parentElement?.querySelectorAll('[data-drop-target]').forEach(card => card.removeAttribute('data-drop-target'))
   const clearPress = () => { if (press.current) window.clearTimeout(press.current.timer); press.current = null }
@@ -63,12 +63,12 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, onLo
     drag.moved = true
     if (drag.kind === 'resize') {
       // Compare actual pixel distances to the four presets. No freeform height.
-      const available: readonly (typeof WIDGET_SIZES[number] | typeof FULL_SIZE)[] = [...WIDGET_SIZES, ...(controls.id === 'activity' ? [FULL_SIZE] : [])].filter(item => drag.columns === 1 ? item.span === size.span : item.span <= drag.columns)
+      const available = WIDGET_SIZES.filter(item => drag.columns === 1 ? item.span === size.span : item.span <= drag.columns)
       const nearest = available.reduce((best, item) => {
         const distance = (candidate: typeof item) => Math.hypot((Math.min(drag.columns, candidate.span) * (drag.column + drag.gap) - drag.gap) - (drag.width + dx), (candidate.rows * (drag.row + drag.gap) - drag.gap) - (drag.height + dy))
         return distance(item) < distance(best) ? item : best
       }, available[0])
-      const next = normalizeWidgetSize(nearest.span, nearest.height, controls.id)
+      const next = normalizeWidgetSize(nearest.span, nearest.height)
       previewRef.current = next; setPreview(next)
     } else {
       setMoving(true); setOffset({ x: dx, y: dy })
@@ -102,9 +102,9 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, onLo
   }
   /** Absolute targets: left/right pick the column span, up/down the row span. */
   const resizeByKey = (key: string) => {
-    const span = key === 'ArrowLeft' ? 1 : key === 'ArrowRight' ? (controls.id === 'activity' && size.span >= 2 ? 4 : 2) : size.span
+    const span = key === 'ArrowLeft' ? 1 : key === 'ArrowRight' ? 2 : size.span
     const rows = key === 'ArrowUp' ? 1 : key === 'ArrowDown' ? 2 : size.rows
-    const next = normalizeWidgetSize(span, rows * (WIDGET_GRID_GAP + WIDGET_GRID_ROW) - WIDGET_GRID_GAP, controls.id)
+    const next = normalizeWidgetSize(span, rows * (WIDGET_GRID_GAP + WIDGET_GRID_ROW) - WIDGET_GRID_GAP)
     controls.onSize(next.span, next.height)
   }
   const onCardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
