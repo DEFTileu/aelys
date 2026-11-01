@@ -94,3 +94,36 @@ Optionally develop CRDT only after spike proves it beneficial; no need for multi
 7. Malicious `resource_kind=agent_session` body containing transcript → server rejects by schema/policy.
 8. Sync page boundary with concurrent commits → no missed changes and repeat-safe apply.
 9. Backlogged offline device after log compaction → correct bootstrap reset.
+
+
+## Mounted unified domain log — 2026-11-01
+
+Stage 1 uses `sync/change_log.py` for one transactional SyncRecord projection and
+SyncChange writer. Task, Note, CalendarEvent and Project mutations from working
+REST, shared capture (Telegram, AI, automation), and sync push all use it. Domain
+Owned.version is the authoritative version; sync push now updates the domain
+row rather than a competing shadow entity. Only explicit payload fields are
+serialized; no secret-store fields or CLI transcript/index contents enter it.
+
+PostgreSQL uses the same `sync-owner:<owner_id>` advisory transaction lock before
+resource reads/writes and sequence allocation. Commit/rollback releases it, so
+another writer cannot commit a higher seq while the first seq remains hidden.
+SQLite local tests use its ordinary transaction serialization. No new queue.
+
+Pull/bootstrap also repair the derived index for pre-upgrade domain rows through
+the same writer. Legacy mirror-only updates preserve their prior payload while
+materializing the domain; deletes retain a versioned tombstone. If historical
+mirror and domain content diverge at equal versions or the mirror is newer,
+409 SYNC_RECONCILIATION_REQUIRED stops automatic reconciliation and preserves
+both copies for explicit review. Stale creates cannot resurrect tombstones.
+Note conflicts include the actual current domain body, with both branches.
+
+Mounted allowed resource_kind remains project, note, task, event,
+finance_transaction, focus_session, mail_message, mail_draft, ai_message.
+Other allowed kinds keep their pre-existing mirror behavior; this stage changes
+only the four approved domains. `sync/validation.py` and pure sync service/store
+have a broader separate allowlist and are not the mounted HTTP implementation.
+The current UI primarily loads REST collections through the shared cache/outbox;
+shared syncPull/syncBootstrap methods remain available to device-bound consumers.
+This stage makes server-side records available to both REST and pull-only clients;
+it does not claim a new UI background pull orchestrator.

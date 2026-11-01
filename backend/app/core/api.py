@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC
 
+from app.sync.change_log import lock_owner, record_domain_change
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -139,7 +140,12 @@ async def list_projects(principal=Depends(current_principal), db: AsyncSession =
 
 @router.post("/projects", response_model=ProjectResponse)
 async def create_project(body: ProjectCreate, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
-    user, _ = principal; project = Project(owner_id=user.id, name=body.name, description=body.description); db.add(project); await db.commit(); await db.refresh(project); return project
+    user, _ = principal
+    await lock_owner(db, user.id)
+    project = Project(owner_id=user.id, name=body.name, description=body.description)
+    db.add(project)
+    await record_domain_change(db, project)
+    await db.commit(); await db.refresh(project); return project
 
 @router.post("/projects/{project_id}/grants")
 async def create_project_grant(project_id: str, body: dict, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):

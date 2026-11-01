@@ -62,7 +62,7 @@ async def test_capture_commits_before_confirmation_replay_and_revision(setup, mo
     async with sessions() as db:
         revision = (await db.execute(select(NoteRevision).where(NoteRevision.note_id == note['id']))).scalar_one()
         assert (revision.revision_no, revision.body) == (1, 'Note\nBody')
-    # Existing REST has the same gap: capture commits domain objects, not SyncChange.
+    # Telegram and REST capture now commit the shared change-log with the object.
     device = (await client.post('/api/v1/devices/enroll', json={'platform': 'web', 'display_name': 'pull-test'})).json()
     client.headers['Authorization'] = 'Bearer ' + device['access_token']
     rest_task = await client.post('/api/v1/tasks', json={'title': 'REST gap comparison'})
@@ -70,7 +70,8 @@ async def test_capture_commits_before_confirmation_replay_and_revision(setup, mo
     pull_response = await client.get('/api/v1/sync/pull')
     assert pull_response.status_code == 200, pull_response.text
     pull = pull_response.json()
-    assert pull['changes'] == []
+    assert {row['resource_id'] for row in pull['changes']} == {task['id'], note['id'], rest_task.json()['id']}
+    assert all(row['version'] == 1 for row in pull['changes'])
 
 
 async def test_confirmation_failure_keeps_write_and_polling_alive(setup):

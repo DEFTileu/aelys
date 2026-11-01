@@ -482,3 +482,14 @@ All additive; migration `0027_note_pinned_mail_read`.
   legacy `POST /finance/budgets` is unchanged.
 - Finance categories: `GET /finance/transactions` rows carry `category_name`
   (null when uncategorised); `GET /finance/categories` already lists names.
+
+
+### Unified Task/Note/Event/Project sync (2026-11-01)
+
+Mounted CRUD/capture writes now emit the same transactional SyncChange and
+SyncRecord projection as device push; versions match the domain Owned.version.
+Device push applies the validated patch to the actual domain row, preserving
+Note revisions and owner-scoped references. Pull/bootstrap include REST,
+Telegram and AI/automation writes, with versioned delete tombstones. Historical
+ambiguous projection/domain divergence returns 409 SYNC_RECONCILIATION_REQUIRED
+rather than silently choosing one body. Request/response envelopes are unchanged.

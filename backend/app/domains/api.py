@@ -33,6 +33,7 @@ from app.core.models import (
 from app.core.security import current_principal
 from app.domains import capture
 from app.domains.recurrence import occurrences, parse_rule, utc
+from app.sync.change_log import lock_owner, record_domain_change
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import or_, select, update
@@ -350,15 +351,23 @@ async def get_project(project_id:str,principal=Depends(current_principal),db:Asy
     user,_=principal; return await owner_obj(Project,project_id,user.id,db)
 @router.patch("/projects/{project_id}")
 async def update_project(project_id:str,body:ProjectPatchIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(Project,project_id,user.id,db)
+    user,_=principal
+    await lock_owner(db, user.id)
+    item=await owner_obj(Project,project_id,user.id,db)
     if body.version is not None and body.version!=item.version: raise HTTPException(409,detail={"code":"VERSION_CONFLICT","message":"Concurrent update","details":{"server_version":item.version}})
     for key in ("name","description","status"):
         value = getattr(body, key)
         if value is not None: setattr(item,key,value)
-    item.version+=1; await db.commit(); return item
+    item.version+=1
+    await record_domain_change(db, item)
+    await db.commit(); return item
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(Project,project_id,user.id,db); item.deleted_at=datetime.now(UTC); item.version+=1; await db.commit(); return {"deleted":True}
+    user,_=principal
+    await lock_owner(db, user.id)
+    item=await owner_obj(Project,project_id,user.id,db); item.deleted_at=datetime.now(UTC); item.version+=1
+    await record_domain_change(db, item)
+    await db.commit(); return {"deleted":True}
 
 @router.post("/resource-links")
 async def link_resources(body: ResourceLinkIn, principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
@@ -389,6 +398,7 @@ async def get_note(item_id:str, principal=Depends(current_principal), db:AsyncSe
 @router.patch("/notes/{item_id}", response_model=NoteOut)
 async def update_note(item_id:str, body:NoteIn, version: int | None = Query(default=None, ge=1), principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user, device = principal
+    await lock_owner(db, user.id)
     item = await owner_obj(Note, item_id, user.id, db)
     await owned_ref(Project, body.project_id, user.id, db)
     await owned_ref(Note, body.parent_id, user.id, db)
@@ -408,6 +418,9 @@ async def update_note(item_id:str, body:NoteIn, version: int | None = Query(defa
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Note changed. Your draft must be compared with the latest version before saving."})
     if changed_body:
         db.add(NoteRevision(note_id=item.id, base_version=expected, revision_no=expected + 1, body=body.markdown_body, source_device_id=device.id if device else None))
+    await db.flush()
+    await db.refresh(item)
+    await record_domain_change(db, item)
     await db.commit()
     await db.refresh(item)
     return item
@@ -416,14 +429,22 @@ async def note_revisions(item_id:str, principal=Depends(current_principal), db:A
     user,_=principal; await owner_obj(Note,item_id,user.id,db); return list((await db.execute(select(NoteRevision).where(NoteRevision.note_id==item_id).order_by(NoteRevision.revision_no))).scalars())
 @router.post("/notes/{item_id}/restore")
 async def restore_note(item_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await db.get(Note,item_id)
+    user,_=principal
+    await lock_owner(db, user.id)
+    item=await db.get(Note,item_id)
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Note not found"})
     revisions=list((await db.execute(select(NoteRevision).where(NoteRevision.note_id==item_id).order_by(NoteRevision.revision_no.desc()).limit(1))).scalars())
     if revisions: item.markdown_body=revisions[0].body
-    item.deleted_at=None; item.version+=1; await db.commit(); return item
+    item.deleted_at=None; item.version+=1
+    await record_domain_change(db, item)
+    await db.commit(); return item
 @router.delete("/notes/{item_id}")
 async def delete_note(item_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(Note,item_id,user.id,db); item.deleted_at=datetime.now(UTC); item.version+=1; await db.commit(); return {"deleted":True}
+    user,_=principal
+    await lock_owner(db, user.id)
+    item=await owner_obj(Note,item_id,user.id,db); item.deleted_at=datetime.now(UTC); item.version+=1
+    await record_domain_change(db, item)
+    await db.commit(); return {"deleted":True}
 
 @router.get("/tasks", response_model=list[TaskOut])
 async def tasks(project_id:str|None=None, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
@@ -440,7 +461,9 @@ async def get_task(item_id:str, principal=Depends(current_principal), db:AsyncSe
     user,_=principal; return await owner_obj(Task,item_id,user.id,db)
 @router.patch("/tasks/{item_id}", response_model=TaskOut)
 async def update_task(item_id:str, body:TaskPatchIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(Task,item_id,user.id,db)
+    user,_=principal
+    await lock_owner(db, user.id)
+    item=await owner_obj(Task,item_id,user.id,db)
     await owned_ref(Project, body.project_id, user.id, db)
     await owned_ref(Task, body.parent_task_id, user.id, db)
     version = body.version if body.version is not None else item.version
@@ -448,10 +471,13 @@ async def update_task(item_id:str, body:TaskPatchIn, principal=Depends(current_p
     if int(getattr(result, "rowcount", 0) or 0) != 1:
         await db.rollback()
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Task changed. Reload before saving."})
+    await db.refresh(item)
+    await record_domain_change(db, item)
     await db.commit(); await db.refresh(item); return item
 @router.delete("/tasks/{item_id}")
 async def delete_task(item_id: str, version: int | None = Query(default=None, ge=1), principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     user, _ = principal
+    await lock_owner(db, user.id)
     item = await owner_obj(Task, item_id, user.id, db)
     if version is None:
         item.deleted_at = datetime.now(UTC)
@@ -465,6 +491,9 @@ async def delete_task(item_id: str, version: int | None = Query(default=None, ge
         if int(getattr(result, "rowcount", 0) or 0) != 1:
             await db.rollback()
             raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Task changed. Reload before deleting."})
+    await db.flush()
+    await db.refresh(item)
+    await record_domain_change(db, item)
     await db.commit()
     return {"deleted": True}
 
@@ -509,6 +538,7 @@ async def calendar_occurrences(starts_at: datetime, ends_at: datetime, principal
 async def create_event(body:EventIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db), idempotency_key: str | None = Header(default=None, max_length=150)):
     if body.ends_at<body.starts_at: raise HTTPException(422,detail={"code":"VALIDATION_ERROR","message":"ends_at must not precede starts_at"})
     user,_=principal
+    await lock_owner(db, user.id)
     await owned_ref(Project, body.project_id, user.id, db)
     await owned_ref(Task, body.linked_task_id, user.id, db)
     item_id = str(uuid5(NAMESPACE_URL, f"aelys:event:{user.id}:{idempotency_key}")) if idempotency_key else str(uuid4())
@@ -527,6 +557,7 @@ async def create_event(body:EventIn, principal=Depends(current_principal), db:As
         await db.flush()
         if body.reminder_at:
             db.add(CalendarReminder(owner_id=user.id, event_id=item.id, notify_at=utc(body.reminder_at), offset_seconds=int((body.starts_at-utc(body.reminder_at)).total_seconds()), occurrence_at=body.starts_at, idempotency_key=f"event:{item.id}:initial"))
+        await record_domain_change(db, item)
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -539,7 +570,9 @@ async def get_event(item_id:str, principal=Depends(current_principal), db:AsyncS
     user,_=principal; return await owner_obj(CalendarEvent,item_id,user.id,db)
 @router.patch("/calendar/events/{item_id}", response_model=EventOut)
 async def update_event(item_id:str,body:EventPatchIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(CalendarEvent,item_id,user.id,db)
+    user,_=principal
+    await lock_owner(db, user.id)
+    item=await owner_obj(CalendarEvent,item_id,user.id,db)
     if body.ends_at<body.starts_at: raise HTTPException(422,detail={"code":"VALIDATION_ERROR","message":"ends_at must not precede starts_at"})
     await owned_ref(Project, body.project_id, user.id, db)
     await owned_ref(Task, body.linked_task_id, user.id, db)
@@ -550,14 +583,21 @@ async def update_event(item_id:str,body:EventPatchIn,principal=Depends(current_p
     if body.reminder_at:
         await db.execute(update(CalendarReminder).where(CalendarReminder.event_id == item_id, CalendarReminder.owner_id == user.id, CalendarReminder.reminder_status == "pending").values(reminder_status="cancelled", version=CalendarReminder.version + 1))
         db.add(CalendarReminder(owner_id=user.id, event_id=item_id, notify_at=utc(body.reminder_at), offset_seconds=int((body.starts_at-utc(body.reminder_at)).total_seconds()), occurrence_at=body.starts_at, idempotency_key=f"event:{item_id}:v{body.version + 1}"))
+    await db.flush()
+    await db.refresh(item)
+    await record_domain_change(db, item)
     await db.commit(); await db.refresh(item); return item
 @router.delete("/calendar/events/{item_id}")
 async def delete_event(item_id:str,version:int=Query(ge=1),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; await owner_obj(CalendarEvent,item_id,user.id,db)
+    user,_=principal
+    await lock_owner(db, user.id)
+    item=await owner_obj(CalendarEvent,item_id,user.id,db)
     result = await db.execute(update(CalendarEvent).where(CalendarEvent.id == item_id, CalendarEvent.owner_id == user.id, CalendarEvent.version == version).values(deleted_at=datetime.now(UTC), version=version + 1))
     if int(getattr(result, "rowcount", 0) or 0) != 1:
         await db.rollback()
         raise HTTPException(409, detail={"code":"VERSION_CONFLICT","message":"Event changed. Reload before deleting."})
+    await db.refresh(item)
+    await record_domain_change(db, item)
     await db.commit(); return {"deleted":True}
 
 @router.get("/calendar/events/{item_id}/reminders", response_model=list[CalendarReminderOut])
