@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from app.agents.trust import verify_signed_manifest
 from app.core import db as core_db
@@ -23,7 +25,7 @@ from app.core.models import (
 from app.core.security import current_principal, decode_token
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +39,21 @@ class CredentialLeaseIn(BaseModel):
     project_id: str
     grant_id: str
     provider: str = Field(pattern="^(claude_api_key|open_ai_api_key)$")
+MAX_SESSION_EVENTS=200
+_ABS_PATH=re.compile(r"^(/|[A-Za-z]:[\\/])")
+_CONTROL=re.compile(r"[\x00-\x1f\x7f]")
+_SECRET=re.compile(r"(sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+|(?i:api[_-]?key|token|secret|password|authorization)\s*[=:]\s*\S+)")
+class SessionEvent(BaseModel):
+    """One metadata-only timeline entry; transcripts and file contents never belong here."""
+    model_config=ConfigDict(extra="forbid")
+    kind: str = Field(pattern=r"^[a-z0-9_.-]{1,40}$")
+    message: str = Field(default="",max_length=2000)
+    at: datetime|None = None
+
+    @field_validator("message")
+    @classmethod
+    def redact_message(cls, value: str) -> str:
+        return _SECRET.sub("[redacted]", _CONTROL.sub(" ", value))[:300]
 class MetadataItem(BaseModel):
     model_config=ConfigDict(extra="forbid")
     session_index_id: str = Field(min_length=1,max_length=100)
@@ -47,8 +64,27 @@ class MetadataItem(BaseModel):
     last_activity_at: datetime|None = None
     state: str = Field(pattern="^(active|completed|failed|archived|indexed)$",max_length=30)
     message_count: int|None = Field(default=None,ge=0,le=10_000_000)
+    workspace_path: str|None = Field(default=None,max_length=500)
+    sandbox: str|None = Field(default=None,max_length=80)
+    network: Literal["blocked","allowlist","open"]|None = None
+    events: list[SessionEvent]|None = Field(default=None,max_length=MAX_SESSION_EVENTS)
 
-METADATA_FIELDS={"session_index_id","device_id","project_id","adapter","started_at","last_activity_at","state","message_count"}
+    @field_validator("workspace_path")
+    @classmethod
+    def clean_workspace_path(cls, value: str|None) -> str|None:
+        # Display metadata only: an absolute path label, never dereferenced by the backend.
+        if value is None: return None
+        value=value.strip()
+        if not _ABS_PATH.match(value) or _CONTROL.search(value) or ".." in re.split(r"[\\/]", value):
+            raise ValueError("workspace_path must be an absolute path")
+        return value
+
+    @field_validator("sandbox")
+    @classmethod
+    def clean_sandbox(cls, value: str|None) -> str|None:
+        return None if value is None else (_CONTROL.sub("", value).strip() or None)
+
+METADATA_FIELDS={"session_index_id","device_id","project_id","adapter","started_at","last_activity_at","state","message_count","workspace_path","sandbox","network","events"}
 EVENT_STATES={"queued","starting","running","waiting_approval","completed","failed","cancelled","expired"}
 
 async def _active_project_grant(db: AsyncSession, owner_id: str, project_id: str, device_id: str) -> ProjectGrant | None:
@@ -173,6 +209,10 @@ async def runtime_channel(websocket:WebSocket):
                         if existing and (existing.owner_id!=device.owner_id or existing.device_id!=device_id):
                             await websocket.send_json({"type":"error","code":"FORBIDDEN"}); continue
                         values={"owner_id":device.owner_id,"device_id":device_id,"project_id":project_id,"adapter":item.adapter,"opaque_local_session_ref":index_id,"state":item.state,"message_count":item.message_count,"started_at":item.started_at,"last_activity_at":item.last_activity_at}
+                        # Older Macs omit the display fields; keep what is stored rather than wiping it.
+                        for field in ("workspace_path","sandbox","network"):
+                            if getattr(item,field) is not None: values[field]=getattr(item,field)
+                        if item.events is not None: values["events"]=[{"kind":e.kind,"message":e.message,"at":(e.at or datetime.now(UTC)).isoformat()} for e in item.events[-MAX_SESSION_EVENTS:]]
                         if existing:
                             for key,value in values.items(): setattr(existing,key,value)
                         else: db.add(AgentSessionIndex(id=index_id,**values))
@@ -249,6 +289,25 @@ async def sessions(project_id:str|None=None,principal=Depends(current_principal)
     elif device:
         q=q.where(AgentSessionIndex.project_id.is_(None))
     return list((await db.execute(q)).scalars())
+@router.post("/agents/sessions/{session_id}/stop")
+async def stop_agent_session(session_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    """Ask the Mac runtime to stop a session by cancelling its active run(s); fails closed."""
+    user,device=principal
+    item=await db.get(AgentSessionIndex,session_id)
+    if not item or item.owner_id!=user.id or (device and item.device_id!=device.id): raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Session not found"})
+    if not item.project_id: raise HTTPException(403,detail={"code":"POLICY_DENIED","message":"Stopping requires a project grant"})
+    target=await db.get(Device,item.device_id)
+    if not target or target.revoked_at or target.owner_id!=user.id: raise HTTPException(403,detail={"code":"DEVICE_REVOKED","message":"Mac device is not authorized"})
+    grant=(await db.execute(select(ProjectGrant).where(ProjectGrant.owner_id==user.id,ProjectGrant.project_id==item.project_id,ProjectGrant.device_id==item.device_id,ProjectGrant.revoked_at.is_(None),ProjectGrant.isolation_validated.is_(True)))).scalar_one_or_none()
+    if not grant: raise HTTPException(403,detail={"code":"POLICY_DENIED","message":"Stopping requires a validated project grant"})
+    runs=list((await db.execute(select(AgentRun).where(AgentRun.owner_id==user.id,AgentRun.device_id==item.device_id,AgentRun.project_id==item.project_id,AgentRun.adapter==item.adapter,AgentRun.request_policy_id==grant.policy_id,AgentRun.status.in_(("queued","starting","running","waiting_approval"))))).scalars())
+    if not runs: raise HTTPException(409,detail={"code":"NO_ACTIVE_RUN","message":"No active runtime run to stop for this session"})
+    for run in runs:
+        if run.status=="queued": run.status="cancelled"
+        else: run.cancellation_requested=True
+    db.add(AuditLog(owner_id=user.id,action="agent.session.stop",actor=f"device:{device.id}" if device else f"user:{user.id}",scope=f"session:{item.id}",decision="allow",outcome="requested",correlation_id=item.id,redacted_metadata={"run_ids":[r.id for r in runs]}))
+    await db.commit()
+    return {"session_id":item.id,"status":"stop_requested","run_ids":[r.id for r in runs]}
 @router.post("/agents/sessions/search")
 async def search_sessions(body:SessionSearch,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,device=principal

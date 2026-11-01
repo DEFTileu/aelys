@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     gmail_client_id: str | None = None
     gmail_client_secret: str | None = Field(default=None, repr=False)
     gmail_redirect_uri: str | None = None
+    calendar_redirect_uri: str | None = None
     runtime_signing_key: str | None = None
     runtime_trust_public_key: str | None = None
     runtime_trust_manifest: str | None = None

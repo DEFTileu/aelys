@@ -3,6 +3,7 @@ export interface TelegramBusinessConnection {
 }
 export interface TelegramStatus {
   readonly timezone: string; readonly digest_time: string | null; readonly reply_delay_seconds: number;
+  readonly deadline_reminders: boolean; readonly quiet_start: string | null; readonly quiet_end: string | null;
   readonly status_text: string | null; readonly status_until: string | null;
   readonly configured: boolean; readonly id: string | null; readonly version: number | null;
   readonly bot_username: string | null; readonly bot_name: string | null; readonly business_capable: boolean;
@@ -13,6 +14,7 @@ export interface TelegramStatus {
 }
 export interface TelegramSettingsPatch {
   readonly timezone?: string; readonly digest_time?: string | null; readonly reply_delay_seconds?: number;
+  readonly deadline_reminders?: boolean; readonly quiet_start?: string | null; readonly quiet_end?: string | null;
   readonly version: number; readonly auto_reply?: boolean; readonly enabled?: boolean; readonly instructions?: string;
   readonly provider_id?: string | null; readonly model?: string | null;
 }

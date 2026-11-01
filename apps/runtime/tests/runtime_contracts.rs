@@ -416,7 +416,9 @@ fn write_process_tree_script(root: &Path) -> (PathBuf, PathBuf) {
 
 #[cfg(target_os = "macos")]
 fn wait_for_child_pid(path: &Path) -> u32 {
-    let deadline = Instant::now() + StdDuration::from_secs(2);
+    // macOS may inspect a newly written executable on its first launch. Allow
+    // cold startup here; the cancellation/timeout cleanup bounds stay strict.
+    let deadline = Instant::now() + StdDuration::from_secs(10);
     loop {
         if let Ok(value) = std::fs::read_to_string(path) {
             if let Ok(pid) = value.trim().parse() {
@@ -615,7 +617,8 @@ fn local_run_coordinator_injects_only_requested_provider_environment() {
             profile.clone(),
             &profile.root,
             script,
-            std::time::Duration::from_secs(2),
+            // This test checks credential scoping, not cold executable startup.
+            std::time::Duration::from_secs(10),
             CredentialRequest {
                 reader: &reader,
                 lease: &credential_lease,

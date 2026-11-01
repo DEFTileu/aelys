@@ -1,17 +1,16 @@
 .mobile-shell { font-size: 14px; line-height: 20px; position: relative; min-height: 100dvh; min-width: 0; overflow-x: clip; background: var(--canvas, #f5f0eb); color: var(--ink, #1c1b22); padding: env(safe-area-inset-top) 0 calc(80px + env(safe-area-inset-bottom)); }
 .mobile-shell *, .mobile-shell *::before, .mobile-shell *::after { box-sizing: border-box; }
-.mobile-shell--home { padding-bottom: calc(128px + env(safe-area-inset-bottom)); }
+.mobile-shell--home { padding-bottom: 0; }
+.mobile-shell--home .mobile-shell__content { padding-bottom: calc(var(--mobile-bar-height, 96px) + env(safe-area-inset-bottom)); }
 .mobile-shell__wallpaper { position: absolute; inset: 0 0 auto; height: 460px; background-size: cover; background-position: 80% top; pointer-events: none; }
 .mobile-shell__wallpaper::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg,rgba(20,20,45,.46),rgba(20,20,45,.1) 70%,var(--canvas, #f5f0eb)); }
-.mobile-shell__header { position: relative; z-index: 3; display: flex; align-items: center; gap: 6px; min-height: 60px; padding: 8px 16px; }
+.mobile-shell__header { position: relative; z-index: 3; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-height: 60px; padding: 8px 16px; }
 .mobile-shell--home .mobile-shell__header { color: white; }
 .mobile-shell__brand, .mobile-shell__title { flex: 1; min-width: 0; font-size: 18px; line-height: 26px; }
 .mobile-shell__title { font-size: 22px; }
 .mobile-shell__circle, .mobile-shell__profile, .mobile-shell__close { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: rgba(255,255,255,.88); color: #1c1b22; cursor: pointer; }
 .mobile-shell__profile { background: radial-gradient(circle at 50% 30%, #f6c79a, #c77c5a 45%, #3a2f45 46%, #2a2438); color: white; border: 2px solid rgba(255,255,255,.9); }
 .mobile-shell__header .shell-pill { height: 36px; width: 36px !important; }
-.mobile-shell__weather { position: relative; display: flex; justify-content: flex-end; padding: 0 16px; z-index: 2; }
-.mobile-shell__weather .shell-pill { height: 32px; }
 .mobile-shell__content { position: relative; min-width: 0; }
 .mobile-shell__bottom { position: fixed; z-index: 10; bottom: 0; left: 0; right: 0; padding: 12px 16px calc(10px + env(safe-area-inset-bottom)); background: linear-gradient(180deg,rgba(245,240,235,0),var(--canvas, #f5f0eb) 22%); }
 .mobile-shell__ask { display: flex; gap: 8px; align-items: center; margin: 0; }
@@ -55,3 +54,6 @@
 .mobile-shell__chips button { flex:none; display:flex; align-items:center; gap:6px; height:32px; padding:0 12px; border:0; border-radius:24px; background:var(--surface-solid); color:var(--ink); font:500 13px/20px var(--font-ui); white-space:nowrap; cursor:pointer; }
 .mobile-shell__header .mobile-shell__circle { padding:5px; background-clip:content-box; }
 .mobile-shell--home .mobile-shell__brand { margin-left:4px; }
+
+.mobile-shell__logo { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.mobile-shell__logo .mobile-shell__brand { flex: 0 1 auto; margin-left: 0; }

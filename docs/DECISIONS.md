@@ -30,7 +30,29 @@
 | ADR-025 | Вход без пароля: ключи устройств, setup token, привязка по QR | DECIDED (owner, 2026-10-31) | Пароль остаётся запасным; браузер — устройство пониженного доверия; восстановление через команду на сервере. См. [QR_PAIRING_AUTH_PROPOSAL.md](QR_PAIRING_AUTH_PROPOSAL.md) |
 | ADR-026 | Utilities: генератор паролей и кодеры/декодеры; перенос показанного набора в main | DECIDED (owner, 2026-10-31) | Локальные вычисления в существующей оболочке; первая поставка в PRD §2.13; дополнительные форматы и менеджер паролей OPEN |
 | ADR-027 | Один бот Aelys для личных команд и Telegram Business, отдельный от MySDU; один poller и текущий AI harness | DECIDED (owner, 2026-11-01) | `/task`, `/note`, `/today`, `/busy`, `/free`, `/help`; secretary `reply/no_reply/handoff`, задержка 0–900 с (90 по умолчанию); детерминированная opt-in сводка. Free-form personal AI, media, memory, Google Calendar/MCP и Telegram reminders вне среза. Sheets остаётся в MySDU |
+| ADR-028 | Расширенный личный scope Telegram assistant и явные ограничения | DECIDED (owner, 2026-11-01; approval only) | Целевой scope включает sync change-log, Telegram reminders, free-form dialogue, voice/photo/PDF via ephemeral processing, explicit encrypted lexical memory, task matrix, and read-only Google Calendar import. Web UI copy is English; owner-facing bot replies are Russian. No MCP, RAG, embeddings, or document search. Telegram files are processed in memory and discarded; task/note attachment storage remains OPEN. Secretary access to personal modules is forbidden. This records approval only; implementation and live acceptance remain incomplete until verified. It supersedes ADR-027's exclusions of these personal capabilities; ADR-027's bot identity, one-poller, and secretary constraints remain in force. |
 
 ## Правило при конфликтах требований
 
 `DECIDED > PROPOSED`; OPEN фиксируется явно, а не подменяется выбором агента. Нельзя толковать «полный доступ к проекту» как разрешение читать SSH-ключи, весь `$HOME`, другие репозитории или делать необратимые внешние операции вне отдельной политики.
+
+ADR-028 implementation checkpoint (2026-11-01): stages 0–4 now have local
+acceptance evidence in PERSONAL_OS_BOT_REPORT.md (sync, Telegram reminders,
+owner text dialogue and ephemeral media). This does not mark memory, matrix,
+Google Calendar or live external acceptance complete. Attachment storage remains
+OPEN; no file persistence or new external scope was approved by this checkpoint.
+
+ADR-028 Stage 5 checkpoint: explicit encrypted lexical memory, owner API/settings,
+commands/tools and export/rotation are locally implemented and tested. No new
+permission is derived from a fact; live external acceptance and stages 6–7 remain.
+
+ADR-028 Stage 6 checkpoint: existing TasksView matrix, server task work instants,
+immutable transition history and stagnant digest passed local acceptance. No new
+resource table or permission scope; Google Calendar and live acceptance remain.
+
+ADR-028 Stage 7 implementation checkpoint: a separate primary Google Calendar
+connection requests only `calendar.readonly`, reuses Gmail PKCE/state/crypto and
+imports into versioned CalendarEvent projections. Manual import and the existing
+15-minute connector step never write Google events. Local and live acceptance
+are reported separately in PERSONAL_OS_BOT_REPORT.md; no credentialed OAuth is
+implied by implementation. Attachments storage and other OPEN decisions remain.

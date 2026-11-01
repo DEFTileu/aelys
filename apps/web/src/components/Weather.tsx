@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, LocateFixed, MapPin, Moon, RefreshCw, Sun, X } from '../icons'
+import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, LocateFixed, MapPin, Moon, RefreshCw, Sun, X } from '../icons'
 import { closeWeatherSettings, detectWeatherLocation, disableWeather, openWeatherSettings, refreshWeather, searchCities, selectWeatherCity, useWeather, weatherDescription, type City } from '../lib/weather'
 
 function WeatherIcon({ code, day = true, size = 24 }: { code: number; day?: boolean; size?: number }) {
@@ -9,26 +9,22 @@ function WeatherIcon({ code, day = true, size = 24 }: { code: number; day?: bool
 }
 const temperature = (value: number) => `${Math.round(value)}°C`
 
-export function WeatherPill() {
-  const { location, forecast, status } = useWeather()
-  return <button type="button" className="shell-btn shell-pill shell-pill--button weather-pill" data-glass="" aria-label={forecast && location ? `Погода: ${location.name}, ${temperature(forecast.temperature)}. Изменить город` : 'Настроить погоду'} title={location?.name || 'Выбрать город для погоды'} onClick={openWeatherSettings}>
-    {forecast ? <WeatherIcon code={forecast.code} day={forecast.isDay} size={18} /> : <CloudSun size={18} aria-hidden="true" />}
-    <span>{forecast ? temperature(forecast.temperature) : status === 'loading' ? '…' : 'Город'}</span>
-  </button>
-}
-
-export function WeatherCard({ compact = false }: { compact?: boolean }) {
+export function WeatherCard({ size = 'S' }: { size?: 'S' | 'M' | 'L' | 'Tall' }) {
   const { location, forecast, status, notice } = useWeather()
-  if (!location) return <div className="weather-empty"><CloudSun size={36} aria-hidden="true" /><p>Погода в вашем городе</p><button type="button" className="weather-action" onClick={openWeatherSettings}><MapPin size={15} />Выбрать город</button></div>
-  return <div className={`weather-card-body${compact ? ' weather-card-body--compact' : ''}`}>
+  if (!location) return <div className="weather-empty"><button type="button" className="weather-action" onClick={openWeatherSettings}><MapPin size={15} aria-hidden="true" />Set location</button></div>
+  const today = forecast?.days[0]
+  return <div className={`weather-card-body weather-card-body--${size.toLowerCase()}`}>
     <button type="button" className="home-btn weather-location" onClick={openWeatherSettings}><MapPin size={14} /><span>{location.name}</span></button>
     {forecast ? <>
       <div className="weather-current"><WeatherIcon code={forecast.code} day={forecast.isDay} size={38} /><strong>{temperature(forecast.temperature)}</strong></div>
-      <div className="weather-description">{weatherDescription(forecast.code)} · ощущается {temperature(forecast.apparent)}</div>
-      <div className="weather-forecast">{forecast.days.map((day) => <div key={day.date}><small>{new Date(day.date).toLocaleDateString('ru', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}</small><WeatherIcon code={day.code} size={17} /><span>{Math.round(day.max)}° / {Math.round(day.min)}°</span></div>)}</div>
-      <small className="weather-updated">{status === 'error' ? 'Сохранённый прогноз · ' : status === 'loading' ? 'Обновляем · ' : ''}{new Date(forecast.fetchedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small>
-    </> : <p role="status">{status === 'loading' ? 'Загружаем погоду…' : notice || 'Погода недоступна.'}</p>}
-    <div className="weather-card-footer"><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a><button type="button" className="home-btn" aria-label="Обновить погоду" disabled={status === 'loading'} onClick={() => void refreshWeather(true)}><RefreshCw size={14} /></button></div>
+      <div className="weather-description">{weatherDescription(forecast.code)}</div>
+      {size !== 'S' && <div className="weather-details"><span>Feels like {temperature(forecast.apparent)}</span><span>Wind {Math.round(forecast.wind)} km/h</span>{today && <span>H {Math.round(today.max)}° · L {Math.round(today.min)}°</span>}</div>}
+      {(size === 'M' || size === 'L') && !!forecast.hours?.length && <div className="weather-hourly" aria-label="Next hours">{forecast.hours.map((hour) => <div key={hour.time}><small>{new Date(hour.time).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' })}</small><WeatherIcon code={hour.code} size={17} /><span>{Math.round(hour.temperature)}°</span></div>)}</div>}
+      {(size === 'L' || size === 'Tall') && <div className="weather-forecast">{forecast.days.slice(0, 5).map((day) => <div key={day.date}><small>{new Date(day.date).toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</small><WeatherIcon code={day.code} size={17} /><span>{Math.round(day.max)}° / {Math.round(day.min)}°</span></div>)}</div>}
+      {size !== 'S' && <small className="weather-updated">{status === 'error' ? 'Saved forecast · ' : status === 'loading' ? 'Updating · ' : ''}{new Date(forecast.fetchedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</small>}
+    </> : status === 'loading' ? <p role="status">Loading weather…</p> : <div className="wb-empty"><span>Can’t load</span><button type="button" className="home-btn wb-action" onClick={() => void refreshWeather(true)}>Retry</button></div>}
+    {notice && !forecast && <small className="weather-updated">{notice}</small>}
+    <div className="weather-card-footer"><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a><button type="button" className="home-btn" aria-label="Refresh weather" disabled={status === 'loading'} onClick={() => void refreshWeather(true)}><RefreshCw size={14} /></button></div>
   </div>
 }
 
@@ -48,26 +44,26 @@ export function WeatherSettingsContent() {
     try {
       const found = await searchCities(query, request.signal)
       if (request.signal.aborted) return
-      setCities(found); if (!found.length) setMessage('Город не найден. Попробуйте другое название.')
-    } catch (error) { if (!request.signal.aborted) setMessage(error instanceof Error ? error.message : 'Не удалось найти город.') }
+      setCities(found); if (!found.length) setMessage('City not found. Try a different name.')
+    } catch (error) { if (!request.signal.aborted) setMessage(error instanceof Error ? error.message : 'Could not search for cities.') }
     finally { if (!request.signal.aborted) setSearching(false) }
   }
   return <div className="weather-settings">
-    <p>Выберите город вручную или разрешите определение местоположения.</p>
+    <p>Choose a city manually or allow location detection.</p>
     <form className="settings-form weather-search" onSubmit={(event) => void submit(event)}>
-      <label htmlFor="weather-city-search">Город<input id="weather-city-search" type="search" value={query} maxLength={100} placeholder="Например, Алматы" onChange={(event) => { setQuery(event.target.value); search.current?.abort(); setSearching(false); setCities([]); setMessage('') }} /></label>
-      <button type="submit" className="button button--primary" disabled={searching || query.trim().length < 2}>{searching ? 'Ищем…' : 'Найти город'}</button>
+      <label htmlFor="weather-city-search">City<input id="weather-city-search" type="search" value={query} maxLength={100} placeholder="For example, London" onChange={(event) => { setQuery(event.target.value); search.current?.abort(); setSearching(false); setCities([]); setMessage('') }} /></label>
+      <button type="submit" className="button button--primary" disabled={searching || query.trim().length < 2}>{searching ? 'Searching…' : 'Find city'}</button>
     </form>
-    {cities.length > 0 && <ul className="weather-cities" aria-label="Найденные города">{cities.map((city) => <li key={city.id}><button type="button" onClick={() => { selectWeatherCity(city); setCities([]); setMessage(`Выбран город: ${city.name}`) }}><MapPin size={16} /><span><strong>{city.name}</strong><small>{city.region}</small></span></button></li>)}</ul>}
+    {cities.length > 0 && <ul className="weather-cities" aria-label="Matching cities">{cities.map((city) => <li key={city.id}><button type="button" onClick={() => { selectWeatherCity(city); setCities([]); setMessage(`City selected: ${city.name}`) }}><MapPin size={16} /><span><strong>{city.name}</strong><small>{city.region}</small></span></button></li>)}</ul>}
     {message && <p role="status">{message}</p>}
     <div className="weather-auto">
-      <h3>Определять автоматически</h3>
-      <p>После разрешения браузера погода будет обновляться для вашего местоположения. В Open-Meteo отправляются координаты, округлённые до 0,1°; точное положение не сохраняется.</p>
-      <button type="button" className="button button--quiet" disabled={locating} onClick={() => { setMessage(''); void detectWeatherLocation() }}><LocateFixed size={16} />{locating ? 'Определяем…' : 'Использовать моё местоположение'}</button>
+      <h3>Detect automatically</h3>
+      <p>Once your browser allows it, the weather updates for your location. Open-Meteo receives coordinates rounded to 0.1°; your exact position is not stored.</p>
+      <button type="button" className="button button--quiet" disabled={locating} onClick={() => { setMessage(''); void detectWeatherLocation() }}><LocateFixed size={16} />{locating ? 'Detecting…' : 'Use my location'}</button>
     </div>
-    {location && <div className="weather-selection"><p><strong>{location.name}</strong><br/><small>{location.mode === 'auto' ? 'Автоматическое определение включено' : 'Город выбран вручную'}{status === 'loading' ? ' · загружаем прогноз' : ''}</small></p><button type="button" className="text-button" onClick={() => { disableWeather(); setMessage('Погода отключена') }}>Отключить погоду</button></div>}
+    {location && <div className="weather-selection"><p><strong>{location.name}</strong><br/><small>{location.mode === 'auto' ? 'Automatic detection is on' : 'City chosen manually'}{status === 'loading' ? ' · loading forecast' : ''}</small></p><button type="button" className="text-button" onClick={() => { disableWeather(); setMessage('Weather turned off') }}>Turn off weather</button></div>}
     {notice && <p role="status">{notice}</p>}
-    <small className="weather-privacy">Город, прогноз и разрешённый автоматический режим сохраняются только в этом браузере. Поиск города и прогноз предоставляет <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>.</small>
+    <small className="weather-privacy">The city, forecast and allowed automatic mode are stored in this browser only. City search and forecast are provided by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>.</small>
   </div>
 }
 
@@ -91,5 +87,5 @@ export function WeatherSettingsDialog() {
     return () => { document.removeEventListener('keydown', key); before?.focus() }
   }, [settingsOpen])
   if (!settingsOpen) return null
-  return createPortal(<div className="weather-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget) closeWeatherSettings() }}><div ref={panel} role="dialog" aria-modal="true" aria-labelledby="weather-settings-title" className="weather-dialog"><header><h2 id="weather-settings-title">Погода и город</h2><button type="button" className="home-btn" aria-label="Закрыть настройки погоды" onClick={closeWeatherSettings}><X size={21} /></button></header><WeatherSettingsContent /></div></div>, document.body)
+  return createPortal(<div className="weather-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget) closeWeatherSettings() }}><div ref={panel} role="dialog" aria-modal="true" aria-labelledby="weather-settings-title" className="weather-dialog"><header><h2 id="weather-settings-title">Weather and city</h2><button type="button" className="home-btn" aria-label="Close weather settings" onClick={closeWeatherSettings}><X size={21} /></button></header><WeatherSettingsContent /></div></div>, document.body)
 }

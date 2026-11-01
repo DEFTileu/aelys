@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { AppShell } from '../components/AppShell'
 
 vi.mock('../components/NotificationCenter', () => ({ NotificationCenter: () => null }))
-vi.mock('../components/Weather', () => ({ WeatherPill: () => null, WeatherSettingsDialog: () => null }))
+vi.mock('../components/Weather', () => ({ WeatherSettingsDialog: () => null }))
 vi.mock('../components/CommandPalette', () => ({ CommandPalette: () => null }))
 let root: ReturnType<typeof createRoot> | undefined
 const originalWidth = window.innerWidth

@@ -4,7 +4,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import secrets
 import time
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
@@ -16,8 +15,6 @@ from app.ai.crypto import decrypt_secret, encrypt_secret
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.models import (
-    AuthSession,
-    Device,
     GmailCredential,
     GmailDraftLink,
     GmailOAuthState,
@@ -29,8 +26,10 @@ from app.core.security import current_principal, decode_token
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from .google_oauth import consume_oauth_state, create_pkce
 
 router = APIRouter(prefix="/mail/gmail", tags=["gmail"])
 SCOPES = {"https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose"}
@@ -96,10 +95,9 @@ async def connect(authorization: str = Header(), principal=Depends(current_princ
     settings = configured()
     user, _ = principal
     claims = decode_token(authorization.split(" ", 1)[1])
-    state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(64)
+    state, verifier, challenge = create_pkce()
     db.add(GmailOAuthState(state_hash=hashlib.sha256(state.encode()).hexdigest(), owner_id=user.id, session_id=claims["sid"], encrypted_verifier=encrypt_secret(verifier), expires_at=datetime.now(UTC) + timedelta(minutes=10)))
     await db.commit()
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({"client_id": settings.gmail_client_id, "redirect_uri": settings.gmail_redirect_uri, "response_type": "code", "scope": " ".join(sorted(SCOPES)), "state": state, "code_challenge": challenge, "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent"})
     response = JSONResponse({"authorization_url": url})
     response.set_cookie(COOKIE, state, max_age=600, httponly=True, secure=settings.gmail_redirect_uri.startswith("https://"), samesite="lax", path="/api/v1/mail/gmail")
@@ -110,21 +108,8 @@ async def connect(authorization: str = Header(), principal=Depends(current_princ
 @router.get("/callback", include_in_schema=False)
 async def callback(request: Request, state: str = Query(max_length=200), code: str | None = Query(default=None, max_length=4096), error: str | None = Query(default=None, max_length=100), db: AsyncSession=Depends(get_db)):
     settings = configured()
-    if not secrets.compare_digest(request.cookies.get(COOKIE, ""), state):
-        raise HTTPException(400, detail={"code": "INVALID_OAUTH_STATE", "message": "Restart Gmail connection in the same browser."})
-    state_hash = hashlib.sha256(state.encode()).hexdigest()
-    record = await db.get(GmailOAuthState, state_hash)
-    if not record or record.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC):
-        raise HTTPException(400, detail={"code": "INVALID_OAUTH_STATE", "message": "Gmail connection expired. Start again."})
-    session = await db.get(AuthSession, record.session_id)
-    device = await db.get(Device, session.device_id) if session and session.device_id else None
-    if not session or session.revoked_at or session.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC) or (session.device_id and (not device or device.revoked_at)):
-        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "Open an owner session and reconnect Gmail."})
-    verifier, owner_id = decrypt_secret(record.encrypted_verifier), record.owner_id
-    consumed = await db.execute(delete(GmailOAuthState).where(GmailOAuthState.state_hash == state_hash))
-    await db.commit()
-    if int(getattr(consumed, "rowcount", 0) or 0) != 1:
-        raise HTTPException(400, detail={"code": "INVALID_OAUTH_STATE", "message": "Gmail connection already used."})
+    record, verifier = await consume_oauth_state(db, GmailOAuthState, state, request.cookies.get(COOKIE, ""))
+    owner_id = record.owner_id
     if error or not code:
         return RedirectResponse("/mail?gmail=denied", status_code=303)
     tokens = await google("POST", "https://oauth2.googleapis.com/token", data={"client_id": settings.gmail_client_id, "client_secret": settings.gmail_client_secret, "redirect_uri": settings.gmail_redirect_uri, "code": code, "code_verifier": verifier, "grant_type": "authorization_code"})

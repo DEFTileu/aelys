@@ -9,7 +9,7 @@ branch_labels = None
 depends_on = None
 # Created in revision 0016, after auth_sessions exists in revision 0005.
 # The legacy initial revision otherwise creates tables from current metadata.
-LATER_TABLES = {"project_grants", "ai_provider_secrets", "auth_sessions", "sync_compaction_watermarks", "device_sync_cursors", "gmail_oauth_states"}
+LATER_TABLES = {"project_grants", "ai_provider_secrets", "auth_sessions", "sync_compaction_watermarks", "device_sync_cursors", "gmail_oauth_states", "google_calendar_connections", "google_calendar_credentials", "google_calendar_oauth_states"}
 def upgrade():
     bind = op.get_bind()
     for table in Base.metadata.sorted_tables:

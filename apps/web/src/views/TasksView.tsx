@@ -1,16 +1,16 @@
 import { StyledSelect } from '../components/controls/StyledSelect'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ApiError, type ProjectResponse, type TaskOut } from '@aelys/shared'
-import { Calendar, CalendarDays, Check, Clock, Ellipsis, Flag, Folder, Inbox, SquareCheck, Plus, RefreshCw, Search, X } from '../icons'
+import { Calendar, CalendarDays, Check, Clock, Ellipsis, Flag, Folder, Inbox, LayoutGrid, ListFilter, SquareCheck, RefreshCw, Search, X } from '../icons'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import { TaskEditor } from './tasks/TaskEditor'
-import { dateKey, draftFromTask, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
+import { dateKey, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
 import './desktop/tasks.css'
 
-type TaskView = 'inbox' | 'today' | 'upcoming' | 'completed' | 'all'
+type TaskView = 'inbox' | 'today' | 'upcoming' | 'completed' | 'matrix' | 'all'
 type EditorState = { task: TaskOut; draft: TaskDraft; error: string; conflict: boolean; latest: TaskOut | null; fieldBase?: TaskOut }
-const VIEWS = [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'today', label: 'Today', Icon: Calendar }, { id: 'upcoming', label: 'Upcoming', Icon: CalendarDays }, { id: 'completed', label: 'Completed', Icon: SquareCheck }] as const
+const VIEWS = [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'today', label: 'Today', Icon: Calendar }, { id: 'upcoming', label: 'Upcoming', Icon: CalendarDays }, { id: 'completed', label: 'Completed', Icon: SquareCheck }, { id: 'matrix', label: 'Matrix', Icon: LayoutGrid }] as const
 const PRIORITIES = ['None', 'Low', 'Medium', 'High']
 const freshRead = { allowCacheFallback: false }
 const isAuthError = (error: unknown) => error instanceof ApiError && [401, 403].includes(error.status)
@@ -34,6 +34,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [refreshing, setRefreshing] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
   const [view, setView] = useState<TaskView>('today')
+  const [matrixNow, setMatrixNow] = useState(Date.now)
   const [query, setQuery] = useState('')
   const [projectFilter, setProjectFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -41,6 +42,8 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [overdueOnly, setOverdueOnly] = useState(false)
   const [quickOpen, setQuickOpen] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [newDraft, setNewDraft] = useState<TaskDraft>(emptyDraft)
   const [createError, setCreateError] = useState('')
@@ -63,6 +66,13 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
   const writeAllowed = writableSource(apiStatus, online, source)
   const projectNames = useMemo(() => new Map(projects.map(project => [project.id, project.name])), [projects])
   const projectName = (task: TaskOut) => task.project_id ? projectNames.get(task.project_id) ?? 'Unavailable project' : ''
+
+  useEffect(() => {
+    if (view !== 'matrix') return
+    setMatrixNow(Date.now())
+    const clock = window.setInterval(() => setMatrixNow(Date.now()), 60_000)
+    return () => window.clearInterval(clock)
+  }, [view])
 
   // Cached reads remain useful, but cannot prove a live source: explicitly bypass
   // fallback first. A 401/403 never falls back to private cached records.
@@ -118,6 +128,13 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     setQuickOpen(true)
   }
   useEffect(() => { if (quickOpen) quickTitle.current?.focus() }, [quickOpen])
+  useEffect(() => {
+    if (!filterOpen) return
+    const away = (event: MouseEvent) => { if (!filterRef.current?.contains(event.target as Node)) setFilterOpen(false) }
+    const esc = (event: KeyboardEvent) => { if (event.key === 'Escape') setFilterOpen(false) }
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc) }
+  }, [filterOpen])
   useEffect(() => { if (quickOpen && createError && !pending) quickError.current?.focus() }, [quickOpen, createError, pending])
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
@@ -185,7 +202,9 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     event.preventDefault()
     if (createUncertain) return
     let input
-    try { input = draftToInput(newDraft) } catch (error) { setCreateError((error as Error).message); quickTitle.current?.focus(); return }
+    const parsed = parseQuickTokens(newDraft.title, projects)
+    const draft = { ...newDraft, title: parsed.title, ...(parsed.dueDate ? { dueDate: parsed.dueDate, dueTime: '' } : {}), ...(parsed.priority ? { priority: parsed.priority } : {}), ...(parsed.projectId ? { projectId: parsed.projectId } : {}) }
+    try { input = draftToInput(draft) } catch (error) { setCreateError((error as Error).message); quickTitle.current?.focus(); return }
     if (!beginWrite()) return
     setCreateError('')
     try {
@@ -247,18 +266,17 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     finally { endWrite() }
   }
   const clearFilters = () => { setQuery(''); setStatusFilter('all'); setProjectFilter('all'); setHighOnly(false); setPriorityFilter('all'); setOverdueOnly(false) }
-  const inView = (task: TaskOut, target: TaskView) => target === 'all' ? true : target === 'completed' ? isCompleted(task) : !isCompleted(task) && (target === 'inbox' ? !task.due_at : target === 'today' ? !!task.due_at && dateKey(task.due_at)! <= today : !!task.due_at && dateKey(task.due_at)! > today)
+  const inView = (task: TaskOut, target: TaskView) => target === 'all' ? true : target === 'completed' ? isCompleted(task) : !isCompleted(task) && (target === 'matrix' ? true : target === 'inbox' ? !task.due_at : target === 'today' ? !!task.due_at && dateKey(task.due_at)! <= today : !!task.due_at && dateKey(task.due_at)! > today)
   const viewTasks = tasks.filter(task => inView(task, view))
   const matching = viewTasks.filter(task => taskMatchesQuery(task, query, projectName(task)) && (projectFilter === 'all' || (projectFilter === 'none' ? !task.project_id : task.project_id === projectFilter)) && (statusFilter === 'all' || (statusFilter === 'completed' ? isCompleted(task) : !isCompleted(task))) && (priorityFilter === 'all' || task.priority === Number(priorityFilter)) && (!highOnly || task.priority >= 3) && (!overdueOnly || isOverdue(task)))
   const sortedTasks = [...matching].sort((a, b) => Number(isCompleted(a)) - Number(isCompleted(b)) || (a.due_at ?? '').localeCompare(b.due_at ?? '') || b.priority - a.priority || a.title.localeCompare(b.title))
-  const groups = view === 'today' ? [{ key: 'overdue', label: 'Overdue', tasks: sortedTasks.filter(task => dateKey(task.due_at)! < today) }, { key: today, label: 'Today', tasks: sortedTasks.filter(task => dateKey(task.due_at) === today) }].filter(group => group.tasks.length) : view === 'inbox' || view === 'completed' ? sortedTasks.length ? [{ key: view, label: view === 'inbox' ? 'Inbox' : 'Completed', tasks: sortedTasks }] : [] : groupTasksByDay(sortedTasks)
+  const groups = view === 'matrix' ? groupTasksInMatrix(sortedTasks, matrixNow) : view === 'today' ? [{ key: 'overdue', label: 'Overdue', tasks: sortedTasks.filter(task => dateKey(task.due_at)! < today) }, { key: today, label: 'Today', tasks: sortedTasks.filter(task => dateKey(task.due_at) === today) }].filter(group => group.tasks.length) : view === 'inbox' || view === 'completed' ? sortedTasks.length ? [{ key: view, label: view === 'inbox' ? 'Inbox' : 'Completed', tasks: sortedTasks }] : [] : groupTasksByDay(sortedTasks)
   const activeFilters = !!query || statusFilter !== 'all' || projectFilter !== 'all' || highOnly || priorityFilter !== 'all' || overdueOnly
+  const filterCount = Number(priorityFilter !== 'all') + Number(projectFilter !== 'all')
   const heading = VIEWS.find(item => item.id === view)?.label ?? 'All tasks'
   const groupTitle = (key: string) => key === 'overdue' ? 'Overdue' : key === 'inbox' ? 'Inbox' : key === 'completed' ? 'Completed' : key === today ? 'Today' : key ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(`${key}T12:00:00`)) : 'No date'
   const hiddenDrafts = editDrafts.current.size
   const offline = !online || apiStatus !== 'ready' || source === 'cached'
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
-  const tomorrowKey = dateKey(tomorrow.toISOString())
   const patchQuick = (patch: Partial<TaskDraft>) => setNewDraft(draft => ({ ...draft, ...patch }))
   const quickKeys = (event: ReactKeyboardEvent<HTMLFormElement>) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeQuick() } }
 
@@ -276,26 +294,35 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
         if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return
         event.preventDefault()
         const index = Math.max(0, VIEWS.findIndex(item => item.id === view))
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? 3 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 4) % 4
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? VIEWS.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + VIEWS.length) % VIEWS.length
         setView(VIEWS[next].id); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
       }}>
         {VIEWS.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" aria-label={label} id={`tasks-tab-${id}`} aria-controls="tasks-panel" aria-selected={view === id} tabIndex={view === id || (view === 'all' && id === 'today') ? 0 : -1} onClick={() => setView(id)}><Icon size={18} /><span>{label}</span><b aria-hidden="true">{tasks.filter(task => inView(task, id)).length}</b></button>)}
       </div>
       <div className="tasks-tools">
         <label className="tasks-search"><Search size={18} /><input aria-label="Search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} />{query && <button type="button" aria-label="Clear search" className="tasks-icon" onClick={() => setQuery('')}><X size={16} /></button>}</label>
-        <div className="tasks-tool-label tasks-priority-filter"><StyledSelect aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{PRIORITIES.map((priority, index) => <option key={priority} value={index}>{priority}</option>)}</StyledSelect></div>
-        <div className="tasks-tool-label tasks-project-filter"><StyledSelect aria-label="Filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{[...new Set([...projects.map(project => project.id), ...tasks.flatMap(task => task.project_id ? [task.project_id] : [])])].map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</StyledSelect></div>
-        <details className="tasks-more-filters"><summary>More</summary><div className="tasks-more-panel"><div className="tasks-mobile-filters"><label>Search<input aria-label="Mobile search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} /></label><div>Priority<StyledSelect aria-label="Mobile filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{PRIORITIES.map((priority, index) => <option key={priority} value={index}>{priority}</option>)}</StyledSelect></div><div>Project<StyledSelect aria-label="Mobile filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{[...new Set([...projects.map(project => project.id), ...tasks.flatMap(task => task.project_id ? [task.project_id] : [])])].map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</StyledSelect></div></div><button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>All tasks</button><button type="button" aria-pressed={highOnly} onClick={() => setHighOnly(value => !value)}><Flag size={15} />High priority</button><button type="button" aria-pressed={overdueOnly} onClick={() => { setOverdueOnly(value => !value); if (!overdueOnly) setView('all') }}>Overdue</button>{activeFilters && <button type="button" onClick={clearFilters}>Clear filters</button>}<div className="tasks-tool-label">Status<StyledSelect aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="completed">Completed</option></StyledSelect></div>
+        <div className="tasks-filter" ref={filterRef}>
+          <button type="button" className="tasks-filter-button" aria-label="Filter" aria-haspopup="dialog" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><ListFilter size={16} />Filter{filterCount > 0 && <b aria-label={`${filterCount} active`}>{filterCount}</b>}</button>
+          {filterOpen && <div className="tasks-filter-popover" role="dialog" aria-label="Filter tasks">
+            <label>Priority<StyledSelect aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}><option value="all">All priorities</option>{PRIORITIES.map((priority, index) => <option key={priority} value={index}>{priority}</option>)}</StyledSelect></label>
+            <label>Project<StyledSelect aria-label="Filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{[...new Set([...projects.map(project => project.id), ...tasks.flatMap(task => task.project_id ? [task.project_id] : [])])].map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</StyledSelect></label>
+            {filterCount > 0 && <button type="button" className="tasks-quiet" onClick={() => { setPriorityFilter('all'); setProjectFilter('all') }}>Clear</button>}
+          </div>}
+        </div>
+        <details className="tasks-more-filters"><summary>More</summary><div className="tasks-more-panel"><div className="tasks-mobile-filters"><label>Search<input aria-label="Mobile search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} /></label></div><button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>All tasks</button><button type="button" aria-pressed={highOnly} onClick={() => setHighOnly(value => !value)}><Flag size={15} />High priority</button><button type="button" aria-pressed={overdueOnly} onClick={() => { setOverdueOnly(value => !value); if (!overdueOnly) setView('all') }}>Overdue</button>{activeFilters && <button type="button" onClick={clearFilters}>Clear filters</button>}<div className="tasks-tool-label">Status<StyledSelect aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="completed">Completed</option></StyledSelect></div>
         <button type="button" aria-label="Refresh tasks" className="tasks-icon" disabled={refreshing || pending} onClick={() => void load()}><RefreshCw size={18} /></button>
         </div></details>
       </div></div>
     <form className={`tasks-quick${detailsOpen ? ' tasks-quick--details' : ''}`} aria-label="Quick add task" onSubmit={createTask} onKeyDown={quickKeys}>
-      <div className="tasks-quick-main"><Plus size={20} /><input ref={quickTitle} aria-label={quickOpen ? 'New task title' : 'Add a task'} placeholder="Add a task — Enter to save, Q to focus" value={newDraft.title} required disabled={pending} onFocus={() => { if (!quickOpen) setQuickOpen(true) }} onChange={event => patchQuick({ title: event.target.value })} />
-        <StyledSelect aria-label="Quick date" value={newDraft.dueDate === dateKey(new Date().toISOString()) ? 'today' : newDraft.dueDate === tomorrowKey ? 'tomorrow' : newDraft.dueDate ? 'custom' : 'none'} disabled={pending} onChange={event => { const date = new Date(); if (event.target.value === 'tomorrow') date.setDate(date.getDate() + 1); patchQuick({ dueDate: event.target.value === 'none' ? '' : dateKey(date.toISOString()) ?? '', dueTime: '' }) }}><option value="none">No date</option><option value="today">Today</option><option value="tomorrow">Tomorrow</option>{newDraft.dueDate && newDraft.dueDate !== dateKey(new Date().toISOString()) && newDraft.dueDate !== tomorrowKey && <option value="custom">{newDraft.dueDate}</option>}</StyledSelect>
-        <StyledSelect aria-label="Quick priority" value={newDraft.priority} disabled={pending} onChange={event => patchQuick({ priority: event.target.value })}><option value="0">No priority</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option></StyledSelect>
-        <StyledSelect aria-label="Quick project" value={newDraft.projectId} disabled={pending || projectsUnavailable} onChange={event => patchQuick({ projectId: event.target.value })}><option value="">No project</option>{newDraft.projectId && !projects.some(project => project.id === newDraft.projectId) && <option value={newDraft.projectId}>Unavailable project</option>}{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</StyledSelect>
-        <button className="tasks-primary" aria-label="Add task" type="submit" disabled={!writeAllowed || pending || !newDraft.title.trim() || createUncertain}>{pending ? 'Saving…' : 'Add'}</button>
+      <div className="tasks-quick-main"><input ref={quickTitle} aria-label={quickOpen ? 'New task title' : 'Add a task'} placeholder="+ Add a task" value={newDraft.title} required disabled={pending} onFocus={() => { if (!quickOpen) setQuickOpen(true) }} onChange={event => { const parsed = parseQuickTokens(event.target.value, projects, new Date(), false); patchQuick({ title: parsed.title, ...(parsed.dueDate ? { dueDate: parsed.dueDate, dueTime: '' } : {}), ...(parsed.priority ? { priority: parsed.priority } : {}), ...(parsed.projectId ? { projectId: parsed.projectId } : {}) }) }} />
+        {newDraft.title.trim() && <button className="tasks-primary" aria-label="Add task" type="submit" disabled={!writeAllowed || pending || createUncertain}>{pending ? 'Saving…' : 'Add'}</button>}
       </div>
+      {(newDraft.title.trim() || newDraft.dueDate || newDraft.priority !== '0' || newDraft.projectId) && <div className="tasks-quick-chips" aria-label="Task options">
+        {newDraft.dueDate && <span className="tasks-chip"><CalendarDays size={13} />{newDraft.dueDate === today ? 'Today' : newDraft.dueDate}<button type="button" aria-label="Remove date" disabled={pending} onClick={() => patchQuick({ dueDate: '', dueTime: '' })}><X size={12} /></button></span>}
+        {newDraft.priority !== '0' && <span className="tasks-chip"><Flag size={13} />{PRIORITIES[Number(newDraft.priority)] ?? newDraft.priority}<button type="button" aria-label="Remove priority" disabled={pending} onClick={() => patchQuick({ priority: '0' })}><X size={12} /></button></span>}
+        {newDraft.projectId && <span className="tasks-chip"><Folder size={13} />{projectNames.get(newDraft.projectId) ?? 'Unavailable project'}<button type="button" aria-label="Remove project" disabled={pending} onClick={() => patchQuick({ projectId: '' })}><X size={12} /></button></span>}
+        {!newDraft.dueDate && newDraft.priority === '0' && !newDraft.projectId && <span className="tasks-help">Try @tomorrow, !p1 or #project</span>}
+      </div>}
       {quickOpen && <div className="tasks-quick-extra"><button type="button" className="tasks-quiet" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(value => !value)}>{detailsOpen ? 'Hide details' : 'Add details'}</button><button type="button" aria-label="Close quick add" className="tasks-quiet" disabled={pending} onClick={closeQuick}>Close</button></div>}
       {detailsOpen && <div className="tasks-quick-fields">
         <label>Due date<input type="date" aria-label="New due date" value={newDraft.dueDate} disabled={pending} onChange={event => patchQuick({ dueDate: event.target.value, ...(!event.target.value ? { dueTime: '' } : {}) })} /></label>
@@ -308,17 +335,20 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
       <section role="tabpanel" id="tasks-panel" aria-labelledby={view === 'all' ? undefined : `tasks-tab-${view}`} aria-label={view === 'all' ? 'All tasks' : undefined} tabIndex={0}>
         <header className="tasks-list-heading"><div><h3>{heading}</h3>{view === 'inbox' && <p>Without a due date</p>}{view === 'upcoming' && <p>After today</p>}</div>{!quickOpen && newDraft.title && <button type="button" className="tasks-quiet" onClick={openQuick}>Resume new task</button>}</header>
         {hiddenDrafts > 0 && <div className="tasks-draft-shelf"><span>Unsent edits</span>{[...editDrafts.current.values()].map(saved => <button type="button" key={saved.task.id} onClick={() => setEditor(saved)}>{saved.draft.title || saved.task.title}</button>)}</div>}
-        {groups.map(group => <section className="tasks-date-group" key={group.key} aria-label={groupTitle(group.key)}>
-          <h4>{groupTitle(group.key)} <span>{group.tasks.length}</span>{group.key === today && <time className="tasks-group-date" dateTime={today}>{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</time>}</h4>
+        <div className={view === 'matrix' ? 'tasks-matrix' : undefined}>
+        {groups.map(group => <section className="tasks-date-group" key={group.key} aria-label={view === 'matrix' ? group.label : groupTitle(group.key)}>
+          <h4>{view === 'matrix' ? group.label : groupTitle(group.key)} <span>{group.tasks.length}</span>{group.key === today && <time className="tasks-group-date" dateTime={today}>{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())}</time>}</h4>
+          {view === 'matrix' && !group.tasks.length && <p className="tasks-help">No tasks</p>}
           <ul>{group.tasks.map(task => <li data-task-row={task.id} className={`tasks-item${isCompleted(task) ? ' tasks-item--done' : ''}`} key={task.id}>
             <button type="button" role="checkbox" aria-checked={isCompleted(task)} aria-label={`${isCompleted(task) ? 'Reopen' : 'Complete'} ${task.title}`} className="tasks-check" disabled={pending || !writeAllowed} onClick={() => void toggle(task)}><span>{isCompleted(task) && <Check size={14} />}</span></button>
             <button type="button" className="tasks-open" aria-label={`Open task: ${task.title}`} data-task-editor-trigger onClick={() => openEditor(task)} disabled={pending}><span className="tasks-label"><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}</span></button><span className="tasks-row-meta">{task.project_id && <span><Folder size={13} />{projectName(task)}</span>}{task.status === 'in_progress' && <span>In progress</span>}</span>
-            <time className={isOverdue(task) ? 'tasks-due tasks-due--overdue' : 'tasks-due'} dateTime={task.due_at ?? undefined}>{task.due_at && dateKey(task.due_at) === today && <Clock size={12} aria-hidden="true" />}{task.due_at ? new Intl.DateTimeFormat(undefined, dateKey(task.due_at) === today ? { hour:'2-digit', minute:'2-digit', hour12:false } : { month:'short', day:'numeric' }).format(new Date(task.due_at)) : 'No date'}</time>
+            <time className={isOverdue(task) ? 'tasks-due tasks-due--overdue' : 'tasks-due'} dateTime={dateKey(task.due_at) ? task.due_at ?? undefined : undefined}>{task.due_at && dateKey(task.due_at) === today && <Clock size={12} aria-hidden="true" />}{dateKey(task.due_at) ? new Intl.DateTimeFormat(undefined, dateKey(task.due_at) === today ? { hour:'2-digit', minute:'2-digit', hour12:false } : { month:'short', day:'numeric' }).format(new Date(task.due_at!)) : 'No date'}</time>
             <button type="button" className="tasks-icon tasks-priority" data-priority={task.priority >= 3 ? 'high' : task.priority === 2 ? 'medium' : 'low'} title={`${PRIORITIES[task.priority] ?? task.priority} priority`} aria-label={`Change priority: ${task.title}`} onClick={() => openEditor(task)} disabled={pending}>{task.priority > 0 && <Flag size={15} />}</button>
             <button type="button" className="tasks-icon tasks-row-more" aria-label={`Task details: ${task.title}`} onClick={() => openEditor(task)} disabled={pending}><Ellipsis size={18} /></button>
           </li>)}</ul>
         </section>)}
-        {!groups.length && source !== 'loading' && source !== 'auth' && source !== 'error' && <div className="tasks-empty"><Inbox size={32} /><h4>{activeFilters ? 'No matches in this view' : `No ${view === 'all' ? '' : view + ' '}tasks`}</h4>{activeFilters && <p>Adjust your filters or look in All tasks.</p>}{activeFilters ? <button type="button" onClick={() => { clearFilters(); setView('all') }}>Show all tasks</button> : <button type="button" onClick={openQuick}>Add a task</button>}</div>}
+        </div>
+        {!sortedTasks.length && source !== 'loading' && source !== 'auth' && source !== 'error' && <div className="tasks-empty"><p>{activeFilters ? 'No matches in this view' : `No ${view === 'all' ? '' : view + ' '}tasks`}</p><small>{activeFilters ? 'Adjust your filters or look in All tasks' : 'Type in the field above to add one'}</small>{activeFilters && <button type="button" onClick={() => { clearFilters(); setView('all') }}>Show all tasks</button>}</div>}
       </section>
     </div>
     {editor && <TaskEditor value={editor.draft} onChange={draft => setEditor({ ...editor, draft })} task={editor.task} projects={projects} projectsUnavailable={projectsUnavailable} pending={pending} saveDisabled={!writeAllowed || editor.conflict} error={editor.error} onSave={() => void saveEditor()} onClose={closeEditor} dirty={JSON.stringify(editor.draft) !== JSON.stringify(draftFromTask(editor.task))} onRevert={() => { editDrafts.current.delete(editor.task.id); setEditor({ ...editor, draft: draftFromTask(editor.task), error: editor.conflict ? editor.error : '' }); setConfirmDelete(false) }} confirmDelete={confirmDelete} onDelete={() => { if (confirmDelete) void deleteEditor(); else setConfirmDelete(true) }} onCancelDelete={() => setConfirmDelete(false)} deleteDisabled={!writeAllowed || editor.conflict} notice={<>

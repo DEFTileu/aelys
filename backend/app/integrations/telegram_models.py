@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -45,6 +46,11 @@ class TelegramIntegration(Owned):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_reply: Mapped[bool] = mapped_column(Boolean, default=False)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
+    pending_digest_on: Mapped[date | None] = mapped_column(Date)
+    pending_digest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deadline_reminders: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    quiet_start: Mapped[str | None] = mapped_column(String(5))
+    quiet_end: Mapped[str | None] = mapped_column(String(5))
     digest_time: Mapped[str | None] = mapped_column(String(5))
     last_digest_on: Mapped[date | None] = mapped_column(Date)
     reply_delay_seconds: Mapped[int] = mapped_column(Integer, default=90, server_default="90")
@@ -56,6 +62,7 @@ class TelegramIntegration(Owned):
     owner_telegram_id: Mapped[int | None] = mapped_column(BigInteger)
     binding_code_hash: Mapped[str | None] = mapped_column(String(64))
     binding_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    personal_conversation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_conversations.id"))
     last_update_id: Mapped[int] = mapped_column(BigInteger, default=-1)
     lease_owner: Mapped[str | None] = mapped_column(String(64))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -107,3 +114,23 @@ class TelegramUpdateReceipt(Base):
     integration_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_integrations.id"), primary_key=True)
     update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TelegramPersonalJob(Owned):
+    """Only verified owner requests enter this encrypted, at-most-once queue."""
+    __tablename__ = "telegram_personal_jobs"
+    __table_args__ = (UniqueConstraint("integration_id", "telegram_update_id", name="uq_telegram_personal_job_update"),)
+    integration_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_integrations.id"), index=True)
+    telegram_update_id: Mapped[int] = mapped_column(BigInteger)
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    text: Mapped[str] = mapped_column(EncryptedText(), default="")
+    quote: Mapped[str | None] = mapped_column(EncryptedText())
+    input_kind: Mapped[str] = mapped_column(String(16), default="text", server_default="text")
+    media_metadata: Mapped[str | None] = mapped_column(EncryptedText())
+    state: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    conversation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_conversations.id"))
+    run_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_runs.id"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    recovery_notice_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())

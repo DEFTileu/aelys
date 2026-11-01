@@ -989,6 +989,8 @@ async def test_fast_poll_failure_does_not_abort_remaining_chats(setup, monkeypat
     async with sessions() as session:
         integration = await session.get(TelegramIntegration, item['id'])
         integration.auto_reply = True; integration.reply_delay_seconds = 0
+        # Telegram dates are whole seconds, so pin the order instead of racing the clock.
+        (await session.get(TelegramBusinessMessage, row['id'])).sent_at = now()
         session.add(TelegramBusinessMessage(owner_id=integration.owner_id, integration_id=item['id'],
             business_connection_id='business-1', chat_id=333, telegram_message_id=8,
             sent_at=now()-timedelta(seconds=1), text='Other chat', direction='inbound'))

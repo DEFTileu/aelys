@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import type { TaskOut } from '@aelys/shared'
-import { dateKey, draftFromTask, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, isCompleted, isOverdue, taskMatchesQuery } from '../views/tasks/taskModel'
+import { dateKey, draftFromTask, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, isTaskUrgent, parseQuickTokens, taskMatchesQuery } from '../views/tasks/taskModel'
+
+describe('parseQuickTokens', () => {
+  const projects = [{ id: 'p1', name: 'Orion' }, { id: 'p2', name: 'Home' }]
+  const wed = new Date(2026, 9, 28, 10)
+  it('extracts date, priority and project tokens and leaves the rest as the title', () => {
+    expect(parseQuickTokens('Buy milk @tomorrow !p1 #ori', projects, wed)).toEqual({ title: 'Buy milk', dueDate: '2026-10-29', priority: '3', projectId: 'p1' })
+    expect(parseQuickTokens('Ship @today', projects, wed).dueDate).toBe('2026-10-28')
+    expect(parseQuickTokens('Gym @FRI', projects, wed).dueDate).toBe('2026-10-30')
+    expect(parseQuickTokens('Standup @wed', projects, wed).dueDate).toBe('2026-11-04')
+    expect(parseQuickTokens('x !p3', projects, wed).priority).toBe('1')
+  })
+  it('keeps unknown tokens in the title and ignores tokens still being typed', () => {
+    expect(parseQuickTokens('Mail a@b.c #nope !p9 @someday', projects, wed)).toEqual({ title: 'Mail a@b.c #nope !p9 @someday' })
+    expect(parseQuickTokens('Task @tomorrow', projects, wed, false)).toEqual({ title: 'Task @tomorrow' })
+    expect(parseQuickTokens('Task @tomorrow ', projects, wed, false).dueDate).toBe('2026-10-29')
+  })
+})
 
 function task(overrides: Partial<TaskOut> = {}): TaskOut {
   return { id: 'task-1', version: 4, title: 'Read', description: '  Notes  ', project_id: 'project-1', parent_task_id: 'parent-1', status: 'todo', priority: 2, due_at: '2025-06-01T12:34:56.123Z', due_timezone: 'Asia/Tokyo', rrule: 'FREQ=DAILY', ...overrides }
@@ -60,6 +77,44 @@ describe('task drafts', () => {
 })
 
 describe('task selection helpers', () => {
+  it('uses exact elapsed 48-hour instants including the boundary and overdue tasks', () => {
+    const now = Date.parse('2026-03-07T17:00:00Z')
+    const horizon = now + 48 * 60 * 60 * 1000
+    expect(isTaskUrgent(task({ due_at: new Date(horizon - 1).toISOString() }), now)).toBe(true)
+    expect(isTaskUrgent(task({ due_at: new Date(horizon).toISOString() }), now)).toBe(true)
+    expect(isTaskUrgent(task({ due_at: new Date(horizon + 1).toISOString() }), now)).toBe(false)
+    expect(isTaskUrgent(task({ due_at: '2020-01-01T00:00:00Z' }), now)).toBe(true)
+    expect(isTaskUrgent(task({ due_at: '2026-03-09T13:00:00-04:00' }), now)).toBe(true)
+    expect(isTaskUrgent(task({ due_at: '2026-03-09T22:00:00+05:00' }), now)).toBe(true)
+    expect(isTaskUrgent(task({ due_at: '2026-03-09T12:59:59-05:00' }), now)).toBe(false)
+    expect(isTaskUrgent(task({ due_at: null }), now)).toBe(false)
+    expect(isTaskUrgent(task({ due_at: 'invalid' }), now)).toBe(false)
+  })
+
+  it('groups active tasks with priority 2 as important, without mutating inputs', () => {
+    const now = Date.parse('2026-11-01T12:00:00Z')
+    const tasks = Object.freeze([
+      task({ id: 'do', priority: 2, due_at: '2026-11-01T12:00:00Z' }),
+      task({ id: 'plan', priority: 2, due_at: null }),
+      task({ id: 'delegate', priority: 1, due_at: '2026-11-01T12:00:00Z' }),
+      task({ id: 'later', priority: 1, due_at: '2026-11-10T12:00:00Z' }),
+      task({ id: 'done', priority: 3, status: 'done' }),
+      task({ id: 'cancelled', priority: 3, status: 'cancelled' }),
+    ].map(item => Object.freeze(item)))
+    expect(groupTasksInMatrix(tasks, now).map(group => [group.key, group.tasks.map(item => item.id)])).toEqual([
+      ['important-urgent', ['do']], ['important-not-urgent', ['plan']],
+      ['not-important-urgent', ['delegate']], ['not-important-not-urgent', ['later']],
+    ])
+    expect(tasks.map(item => item.id)).toEqual(['do', 'plan', 'delegate', 'later', 'done', 'cancelled'])
+  })
+
+  it('keeps server task timestamps out of every editable payload', () => {
+    const original = task({ started_at: '2026-10-01T12:00:00Z', completed_at: '2026-10-03T12:00:00Z' })
+    for (const input of [fullTaskInput(original), draftToInput(draftFromTask(original), original)]) {
+      expect(input).not.toHaveProperty('started_at')
+      expect(input).not.toHaveProperty('completed_at')
+    }
+  })
   it('uses local dates and excludes completed or invalid tasks from overdue', () => {
     const original = task()
     const date = new Date(original.due_at!)

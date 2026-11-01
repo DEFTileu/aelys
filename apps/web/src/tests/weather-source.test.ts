@@ -38,7 +38,7 @@ describe('weather source and consent', () => {
     await weather.detectWeatherLocation()
     const stored = localStorage.getItem(weather.WEATHER_STORAGE_KEY)!
     expect(stored).not.toContain('43.2566723'); expect(stored).not.toContain('76.9286135')
-    expect(JSON.parse(stored).location).toEqual({ name: 'Текущее местоположение', latitude: 43.3, longitude: 76.9, mode: 'auto' })
+    expect(JSON.parse(stored).location).toEqual({ name: 'Current location', latitude: 43.3, longitude: 76.9, mode: 'auto' })
     const url = fetchImpl.mock.calls[0]![0]
     expect(url.searchParams.get('latitude')).toBe('43.3'); expect(url.searchParams.get('longitude')).toBe('76.9')
     expect(fetchImpl.mock.calls[0]![1]).toMatchObject({ credentials: 'omit', referrerPolicy: 'no-referrer' })
@@ -97,6 +97,25 @@ describe('weather source and consent', () => {
   it('rejects incomplete provider data instead of inventing values', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ current: { temperature_2m: null } })))
     const weather = await import('../lib/weather')
-    await expect(weather.fetchForecast(city)).rejects.toThrow('неполные данные')
+    await expect(weather.fetchForecast(city)).rejects.toThrow('incomplete data')
+  })
+
+  it('requests hourly and 5-day data and keeps the next six hours', async () => {
+    const hour = Math.floor(Date.now() / 3_600_000) * 3600
+    const times = Array.from({ length: 12 }, (_, index) => hour - 7200 + index * 3600)
+    const fetchImpl = vi.fn(async (_url: URL) => json({ ...forecastBody, hourly: { time: times, temperature_2m: times.map((_, index) => index), weather_code: times.map(() => 1) }, daily: { time: [1, 2, 3, 4, 5, 6].map((day) => 1793203200 + day * 86400), weather_code: [1, 1, 1, 1, 1, 1], temperature_2m_min: [1, 1, 1, 1, 1, 1], temperature_2m_max: [2, 2, 2, 2, 2, 2] } }))
+    vi.stubGlobal('fetch', fetchImpl)
+    const weather = await import('../lib/weather')
+    const forecast = await weather.fetchForecast(city)
+    const url = fetchImpl.mock.calls[0]![0]
+    expect(url.origin).toBe('https://api.open-meteo.com'); expect(url.searchParams.get('hourly')).toBe('temperature_2m,weather_code'); expect(url.searchParams.get('forecast_days')).toBe('5')
+    expect(forecast.days).toHaveLength(5); expect(forecast.hours).toHaveLength(6)
+    expect(forecast.hours!.map((item) => item.temperature)).toEqual([2, 3, 4, 5, 6, 7])
+  })
+
+  it('still returns the forecast when the hourly series is missing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(forecastBody)))
+    const weather = await import('../lib/weather')
+    expect((await weather.fetchForecast(city)).hours).toEqual([])
   })
 })

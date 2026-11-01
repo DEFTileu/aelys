@@ -5,6 +5,7 @@ import hashlib
 import ipaddress
 import json
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -53,10 +54,11 @@ from .policy import ServerPolicyEngine
 from .providers import ClaudeAdapter, OpenRouterAdapter
 from .secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
 from .tools import ToolDescriptor, ToolRegistry
+from .turn import run_tool_turn
 
 router=APIRouter()
 _active_cancellations: dict[str, asyncio.Event] = {}
-class ProviderIn(BaseModel): kind:str=Field(pattern="^(claude|openrouter)$"); base_url:str|None=None; enabled:bool=True; model_policy:dict={}; secret_ref:str|None=None
+class ProviderIn(BaseModel): kind:str=Field(pattern="^(claude|openrouter|transcription)$"); base_url:str|None=None; enabled:bool=True; model_policy:dict={}; secret_ref:str|None=None
 class ConversationIn(BaseModel): project_id:str|None=None; title:str="Conversation"; tool_scope:dict=Field(default_factory=dict)
 class MessageIn(BaseModel): role:str=Field(pattern="^(user|assistant|system|tool)$"); content:str; source_refs:list[dict]=[]
 class RunIn(BaseModel): conversation_id:str; message:str; routing:dict={}; tool_scope:dict={}; idempotency_key:str
@@ -158,18 +160,36 @@ async def _replay_events(db: AsyncSession, run_id: str, last_event_id: str | Non
             after = 0
     return list((await db.execute(select(AIRunEvent).where(AIRunEvent.run_id == run_id, AIRunEvent.sequence > after).order_by(AIRunEvent.sequence))).scalars())
 
+@dataclass
+class _ProviderPolicy:
+    name: str
+    required_scope: str
+    external_effect: bool = False
+
+
+def _authorize_provider(owner_id: str, scope: str, *, external: bool = False) -> None:
+    ServerPolicyEngine().authorize(_ProviderPolicy(scope, scope, external), ToolCall(scope, {}),
+        PermissionContext(actor=f'owner:{owner_id}', scopes=frozenset({scope}), allow_external_effects=external, policy_id='owner-provider'))
+
+
 def _provider_base_url(kind: str, value: str | None) -> str:
-    default = "https://api.anthropic.com" if kind == "claude" else "https://openrouter.ai"
+    default = {"claude":"https://api.anthropic.com", "openrouter":"https://openrouter.ai", "transcription":"https://api.openai.com"}.get(kind, "")
+    if not default:
+        raise HTTPException(422, detail={"code":"INVALID_PROVIDER_ENDPOINT","message":"Unsupported provider kind"})
     if value is None:
         return default
     parsed = urlparse(value)
     host = (parsed.hostname or "").lower().rstrip(".")
-    allowed = (kind == "claude" and host == "api.anthropic.com") or (kind == "openrouter" and host == "openrouter.ai")
+    try:
+        port = parsed.port
+    except ValueError:
+        raise HTTPException(422, detail={"code":"INVALID_PROVIDER_ENDPOINT","message":"Invalid provider endpoint port"}) from None
+    allowed = (kind == "claude" and host == "api.anthropic.com") or (kind == "openrouter" and host == "openrouter.ai") or (kind == "transcription" and host == "api.openai.com")
     try:
         is_ip = ipaddress.ip_address(host)
     except ValueError:
         is_ip = None
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password or is_ip is not None or not allowed:
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password or is_ip is not None or not allowed or parsed.query or parsed.fragment or port not in {None, 443} or (kind == "transcription" and parsed.path not in {"", "/"}):
         raise HTTPException(status_code=422, detail={"code":"INVALID_PROVIDER_ENDPOINT","message":"Provider endpoint must be an approved HTTPS host"})
     return value.rstrip("/")
 
@@ -183,11 +203,11 @@ async def _remaining_monthly_budget(db: AsyncSession, owner_id: str, provider: A
         monthly_budget = Decimal(str(policy.get("monthly_budget", "100")))
     except (ValueError, TypeError, ArithmeticError):
         return Decimal(0)
-    if monthly_budget <= 0:
+    if not monthly_budget.is_finite() or monthly_budget <= 0:
         return Decimal(0)
     now_utc = datetime.now(UTC)
     month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    spent = (await db.execute(select(func.coalesce(func.sum(AIRun.cost_estimate), 0)).where(AIRun.owner_id == owner_id, AIRun.provider_id == provider.id, AIRun.status == "completed", AIRun.completed_at >= month_start))).scalar_one()
+    spent = (await db.execute(select(func.coalesce(func.sum(AIRun.cost_estimate), 0)).where(AIRun.owner_id == owner_id, AIRun.provider_id == provider.id, AIRun.cost_estimate > 0, AIRun.updated_at >= month_start))).scalar_one()
     return max(Decimal(0), monthly_budget - Decimal(str(spent or "0")))
 
 def _service(provider: AIProvider, secret_value: str, *, cancel_event: asyncio.Event | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None) -> AIExecutionService:
@@ -215,6 +235,7 @@ async def update_provider(provider_id: str, body: ProviderPatch, principal=Depen
     provider = await db.get(AIProvider, provider_id)
     if not provider or provider.owner_id != user.id or provider.deleted_at is not None:
         raise HTTPException(404, detail={"code":"NOT_FOUND","message":"Provider not found"})
+    _authorize_provider(user.id, 'ai.providers.write')
     if body.enabled is not None:
         provider.enabled = body.enabled
     if body.model_policy is not None:
@@ -231,11 +252,12 @@ async def probe_provider(provider_id: str, principal=Depends(current_principal),
     secret = await db.get(AIProviderSecret, provider_id)
     if not secret:
         return ProviderProbe(connected=False, code="SECRET_REQUIRED")
+    _authorize_provider(user.id, 'ai.providers.probe', external=True)
     base = _provider_base_url(provider.kind, provider.base_url)
     try:
         key = decrypt_secret(secret.encrypted_value)
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"} if provider.kind == "claude" else {"Authorization": f"Bearer {key}"}
-        path = "/v1/models" if provider.kind == "claude" else "/api/v1/key"
+        path = "/api/v1/key" if provider.kind == "openrouter" else "/v1/models"
         async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
             response = await client.get(base + path, headers=headers)
         if response.status_code in {401, 403}:
@@ -245,11 +267,12 @@ async def probe_provider(provider_id: str, principal=Depends(current_principal),
         return ProviderProbe(connected=False, code="PROVIDER_UNAVAILABLE")
 @router.post("/ai/providers")
 async def create_provider(body:ProviderIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; endpoint = None if body.base_url is None else _provider_base_url(body.kind, body.base_url); item=AIProvider(owner_id=user.id,kind=body.kind,base_url=endpoint,enabled=body.enabled,model_policy_json=body.model_policy,secret_ref=body.secret_ref); db.add(item); await db.commit(); await db.refresh(item); return {"id":item.id,"kind":item.kind,"enabled":item.enabled}
+    user,_=principal; _authorize_provider(user.id, 'ai.providers.write'); endpoint = None if body.base_url is None else _provider_base_url(body.kind, body.base_url); item=AIProvider(owner_id=user.id,kind=body.kind,base_url=endpoint,enabled=body.enabled,model_policy_json=body.model_policy,secret_ref=body.secret_ref); db.add(item); await db.commit(); await db.refresh(item); return {"id":item.id,"kind":item.kind,"enabled":item.enabled}
 @router.put("/ai/providers/{provider_id}/secret")
 async def set_provider_secret(provider_id:str,body:SecretIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; provider=await db.get(AIProvider,provider_id)
     if not provider or provider.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Provider not found"})
+    _authorize_provider(user.id, 'ai.providers.write')
     existing=await db.get(AIProviderSecret,provider_id)
     if existing: existing.encrypted_value=encrypt_secret(body.api_key)
     else: db.add(AIProviderSecret(provider_id=provider_id,owner_id=user.id,encrypted_value=encrypt_secret(body.api_key)))
@@ -261,6 +284,7 @@ async def delete_provider_secret(provider_id:str,principal=Depends(current_princ
     user,_=principal; provider=await db.get(AIProvider,provider_id)
     if not provider or provider.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Provider not found"})
     secret=await db.get(AIProviderSecret,provider_id)
+    _authorize_provider(user.id, 'ai.providers.write')
     if secret: await db.delete(secret)
     provider.secret_ref=None
     await db.commit()
@@ -304,7 +328,7 @@ async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSes
         return existing
     requested_provider=body.routing.get("provider")
     requested_id = body.routing.get("provider_id")
-    filters = [AIProvider.owner_id==user.id, AIProvider.enabled.is_(True), AIProvider.deleted_at.is_(None)]
+    filters = [AIProvider.owner_id==user.id, AIProvider.enabled.is_(True), AIProvider.deleted_at.is_(None), AIProvider.kind.in_(["claude", "openrouter"])]
     if requested_provider: filters.append(AIProvider.kind == requested_provider)
     if requested_id: filters.append(AIProvider.id == requested_id)
     configured=(await db.execute(select(AIProvider).where(*filters).order_by(AIProvider.created_at))).scalars().first()
@@ -412,43 +436,42 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 registry = _tool_registry(db, user.id, run_id)
                 context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
                 tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget))
-                result = await service.complete(__import__('uuid').UUID(run_id), tool_request, chat_messages, tools=tuple(registry.schemas()), cancel=cancel_event)
-                if await durable_cancel_check():
-                    yield await emit("ai.run.cancelled", {"run_id": run_id})
+                pending_events: list[str] = []
+                async def tool_event(kind: str, payload: Mapping[str, Any]) -> None:
+                    pending_events.append(await emit(kind, payload))
+                async def account_tool_usage(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
+                    item.cost_estimate = cost
+                    item.token_counts = {'input': input_tokens, 'output': output_tokens}
+                    await db.commit()
+                owner_id = user.id
+                try:
+                    result = await run_tool_turn(
+                        service, __import__('uuid').UUID(run_id), tool_request, chat_messages,
+                        registry, context, parse_call=_tool_call, on_event=tool_event, on_usage=account_tool_usage,
+                        cancel=cancel_event, cancel_check=durable_cancel_check, max_steps=1,
+                    )
+                except (PolicyDenied, ToolValidationError, RuntimeError) as error:
+                    await db.rollback()
+                    await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==owner_id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(UTC)))
+                    await db.commit()
+                    for event in pending_events:
+                        yield event
+                    code = "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
+                    message = "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
+                    yield await emit("ai.run.failed", {"run_id": run_id, "code": code, "message": message})
                     return
-                yield await emit("ai.run.started", {"run_id": run_id, "provider": result.provider.value, "model": result.model})
-                seen_calls: set[str] = set()
-                for raw_call in result.response.tool_calls:
-                    call = _tool_call(raw_call)
-                    if call.call_id in seen_calls:
-                        continue
-                    seen_calls.add(call.call_id)
-                    if await durable_cancel_check():
-                        yield await emit("ai.run.cancelled", {"run_id": run_id})
-                        return
-                    yield await emit("ai.tool.requested", {"run_id": run_id, "tool": call.name, "call_id": call.call_id})
-                    try:
-                        output = await registry.invoke(call, context)
-                    except (PolicyDenied, ToolValidationError, RuntimeError) as error:
-                        await db.rollback()
-                        await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(UTC)))
-                        await db.commit()
-                        code = "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
-                        message = "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
-                        yield await emit("ai.run.failed", {"run_id": run_id, "code": code, "message": message})
-                        return
-                    yield await emit("ai.tool.approved", {"run_id": run_id, "tool": call.name, "call_id": call.call_id})
-                    yield await emit("ai.tool.result", {"run_id": run_id, "tool": call.name, "call_id": call.call_id, "result": output})
-                if result.response.text:
-                    yield await emit("ai.text.delta", {"run_id": run_id, "text": result.response.text})
+                for event in pending_events:
+                    yield event
+                if result.text:
+                    yield await emit("ai.text.delta", {"run_id": run_id, "text": result.text})
                 if cancel_event.is_set() or await durable_cancel_check():
                     yield await emit("ai.run.cancelled", {"run_id": run_id})
                     return
-                item.token_counts={"input":result.usage.usage.input_tokens,"output":result.usage.usage.output_tokens}; item.cost_estimate=result.usage.estimated_cost
-                if result.response.text:
-                    db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content=result.response.text))
+                item.token_counts={"input":result.input_tokens,"output":result.output_tokens}; item.cost_estimate=result.cost
+                if result.text:
+                    db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content=result.text))
                 await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(UTC),token_counts=item.token_counts,cost_estimate=item.cost_estimate)); await db.commit()
-                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.response.text), "estimated_cost": str(result.usage.estimated_cost)})
+                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.text), "estimated_cost": str(result.cost)})
                 return
             failure_event: str | None = None
             completion_event: str | None = None

@@ -67,9 +67,87 @@ afterEach(() => {
   localStorage.clear()
   sessionStorage.clear()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 describe('Tasks workspace', () => {
+  it('refreshes matrix urgency every minute only while the matrix is active', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-01T12:00:00Z'))
+    client.tasks.mockResolvedValue([task({ title: 'Approaching task', due_at: '2026-11-03T12:00:30Z' })])
+    await mount(); await click('Matrix')
+    const quadrant = (name: string) => host.querySelector(`[aria-label="${name}"]`)!
+    expect(quadrant('Important, not urgent').contains(row('Approaching task'))).toBe(true)
+    const matrixTimers = vi.getTimerCount()
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(quadrant('Important and urgent').contains(row('Approaching task'))).toBe(true)
+    await click('Inbox')
+    expect(vi.getTimerCount()).toBeLessThan(matrixTimers)
+    await click('Matrix'); expect(vi.getTimerCount()).toBe(matrixTimers)
+    await act(async () => root!.unmount()); root = undefined
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('shows all four matrix quadrants across dates with the existing row actions', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-01T12:00:00Z'))
+    const important = task({ id: 'important', title: 'Important urgent', due_at: '2026-11-02T12:00:00Z', priority: 2, started_at: '2026-10-28T12:00:00Z' })
+    client.tasks.mockResolvedValue([
+      important, task({ id: 'plan', title: 'Important later', due_at: null, priority: 2 }),
+      task({ id: 'urgent', title: 'Urgent only', due_at: '2026-10-20T12:00:00Z', priority: 1 }),
+      task({ id: 'later', title: 'Neither', due_at: '2026-12-01T12:00:00Z', priority: 1 }),
+      task({ id: 'done', title: 'Completed excluded', status: 'completed' }),
+    ])
+    client.updateTask.mockResolvedValue({ ...important, status: 'completed', version: 5, completed_at: '2026-11-01T12:00:00Z' })
+    await mount(); await click('Matrix')
+    const quadrant = (name: string) => host.querySelector(`[aria-label="${name}"]`)!
+    expect(quadrant('Important and urgent')?.contains(row('Important urgent'))).toBe(true)
+    expect(quadrant('Important, not urgent')?.contains(row('Important later'))).toBe(true)
+    expect(quadrant('Urgent, not important')?.contains(row('Urgent only'))).toBe(true)
+    expect(quadrant('Neither urgent nor important')?.contains(row('Neither'))).toBe(true)
+    expect(row('Completed excluded')).toBeNull()
+    await click('Open task: Important urgent')
+    expect(field('Task title').value).toBe('Important urgent')
+    await click('Close task editor'); await click('Complete Important urgent')
+    expect(client.updateTask).toHaveBeenCalledWith(important.id, expect.objectContaining({ version: 4, status: 'completed' }), { queueOnOffline: false })
+    expect(client.updateTask.mock.calls[0][1]).not.toHaveProperty('started_at')
+    expect(client.updateTask.mock.calls[0][1]).not.toHaveProperty('completed_at')
+    expect(row('Important urgent')).toBeNull()
+  })
+
+  it('applies search, project and priority filters to the matrix and includes it in keyboard tabs', async () => {
+    client.tasks.mockResolvedValue([
+      task({ id: 'match', title: 'Matrix match', priority: 2 }),
+      task({ id: 'low', title: 'Low priority', priority: 1 }),
+      task({ id: 'other', title: 'Other project', priority: 2, project_id: null }),
+    ])
+    await mount(); await key(button('Inbox'), 'End')
+    expect(button('Matrix').getAttribute('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(button('Matrix'))
+    await click('Filter'); await setField('Filter by project', project.id); await setField('Filter by priority', '2')
+    expect(row('Matrix match')).not.toBeNull(); expect(row('Low priority')).toBeNull(); expect(row('Other project')).toBeNull()
+    await setField('Search tasks', 'missing'); expect(row('Matrix match')).toBeNull()
+    expect(host.textContent).toContain('No matches in this view')
+    await setField('Search tasks', 'match'); expect(row('Matrix match')).not.toBeNull()
+    await key(button('Matrix'), 'ArrowRight')
+    expect(button('Inbox').getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('retains matrix drafts on a stale toggle and keeps cached matrix actions read-only', async () => {
+    const original = task()
+    const latest = task({ version: 7, title: 'Latest title' })
+    client.tasks.mockResolvedValue([original]); client.task.mockResolvedValue(latest)
+    client.updateTask.mockRejectedValueOnce(new ApiError(409, 'VERSION_CONFLICT', 'Stale'))
+      .mockResolvedValueOnce({ ...latest, description: 'Matrix parked draft', version: 8 })
+    await mount(); await click('Matrix'); await click('Open task: Plan launch')
+    await setField('Description', 'Matrix parked draft'); await click('Close task editor')
+    await click('Complete Plan launch')
+    expect(field('Description').value).toBe('Matrix parked draft')
+    await click('Compare latest'); await click('Keep my draft'); await submit('Save changes')
+    expect(client.updateTask).toHaveBeenLastCalledWith(original.id, expect.objectContaining({ version: 7, description: 'Matrix parked draft' }), { queueOnOffline: false })
+    client.tasks.mockImplementation(async (_query, options) => { if (options?.allowCacheFallback === false) throw new NetworkError('offline'); return [latest] })
+    await click('Refresh tasks'); expect(button('Complete Latest title').disabled).toBe(true)
+    await click('Open task: Latest title'); expect(button('Save changes').disabled).toBe(true)
+  })
   it('defaults to Today and separates active tasks from Completed', async () => {
     const now = new Date(); now.setHours(12, 0, 0, 0)
     const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1)
@@ -100,12 +178,10 @@ describe('Tasks workspace', () => {
     client.createTask.mockResolvedValue(task())
     await mount()
     await click('New task')
-    await setField('New task title', 'Timed task')
+    await setField('New task title', 'Timed task !p1 #ori ')
     await click('Add details')
     await setField('New due date', '2026-11-17')
     await setField('New due time', '14:35')
-    await setField('Quick priority', '3')
-    await setField('Quick project', project.id)
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Timed task', due_at: new Date(2026, 10, 17, 14, 35).toISOString(), due_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, priority: 3, project_id: project.id }), expect.objectContaining({ queueOnOffline: false }))
   })
@@ -163,8 +239,7 @@ describe('Tasks workspace', () => {
 
   it('creates with inline date, priority and project options', async () => {
     client.createTask.mockResolvedValue(task())
-    await mount(); await click('New task'); await setField('New task title', 'Inline')
-    await setField('Quick date', 'tomorrow'); await setField('Quick priority', '3'); await setField('Quick project', project.id)
+    await mount(); await click('New task'); await setField('New task title', 'Inline @tomorrow !p1 #orion ')
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(23, 59, 0, 0)
     await submit('Add task')
     expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Inline', due_at: tomorrow.toISOString(), priority: 3, project_id: project.id }), expect.anything())
@@ -197,6 +272,7 @@ describe('Tasks workspace', () => {
     expect(row('Beta')).not.toBeNull()
     expect(row('Gamma')).toBeNull()
     await setField('Search tasks', '')
+    await click('Filter')
     await setField('Filter by project', project.id)
     await setField('Filter by status', 'active')
     await click('High priority')
@@ -449,6 +525,45 @@ describe('Tasks workspace', () => {
     expect(field('Description').value).toBe('Keep this draft')
     expect(document.activeElement?.getAttribute('role')).toBe('alert')
     expect(dialog()?.contains(document.activeElement)).toBe(true)
+  })
+
+  it('shows Add and option chips only once typing starts, and chips are removable', async () => {
+    await mount()
+    expect(host.querySelector('[aria-label="Add task"]')).toBeNull()
+    expect(host.querySelector('.tasks-quick-chips')).toBeNull()
+    await click('New task')
+    await setField('New task title', 'Call Sam !p1 #ori ')
+    expect(host.querySelector('[aria-label="Add task"]')).not.toBeNull()
+    expect(field('New task title').value).toBe('Call Sam ')
+    expect(host.querySelector('.tasks-quick-chips')?.textContent).toContain('High')
+    expect(host.querySelector('.tasks-quick-chips')?.textContent).toContain('Orion')
+    await click('Remove priority')
+    expect(host.querySelector('.tasks-quick-chips')?.textContent).not.toContain('High')
+    await setField('New task title', '')
+    expect(host.querySelector('[aria-label="Add task"]')).toBeNull()
+  })
+
+  it('parses tokens still in the field when submitting', async () => {
+    client.createTask.mockResolvedValue(task())
+    await mount(); await click('New task')
+    await setField('New task title', 'Plan trip !p2 #Ori')
+    await submit('Add task')
+    expect(client.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Plan trip', priority: 2, project_id: project.id }), expect.anything())
+  })
+
+  it('keeps priority and project filters in a popover with an active-count badge', async () => {
+    client.tasks.mockResolvedValue([task()])
+    await mount()
+    expect(host.querySelector('[aria-label="Filter by priority"]')).toBeNull()
+    expect(button('Filter').querySelector('b')).toBeNull()
+    await click('Filter')
+    expect(host.querySelector('[role="dialog"][aria-label="Filter tasks"]')).not.toBeNull()
+    await setField('Filter by priority', '3')
+    await setField('Filter by project', project.id)
+    expect(button('Filter').querySelector('b')?.textContent).toBe('2')
+    await act(async () => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+    expect(host.querySelector('[aria-label="Filter tasks"]')).toBeNull()
+    expect(button('Filter').querySelector('b')?.textContent).toBe('2')
   })
 
 })

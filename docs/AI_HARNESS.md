@@ -115,3 +115,92 @@ Rule-based automation uses the same tool registry but has separate rule identity
 ## 10. Framework decision
 
 Exact SDK unresolved. Evaluate OpenAI Agents SDK / direct provider SDK / other orchestration library against: streaming, external provider adapters, tracing/redaction, typed tools, cancellation, policy interception, license and testability. Do not hardwire provider SDK into every domain module.
+
+
+## 11. Shared owner tool turn (Stage 3, 2026-11-01)
+
+`ai/turn.py:run_tool_turn` is the single bounded provider/tool loop used by the
+Web tool branch and Telegram owner dialogue. Web retains its existing one
+completion behavior; personal turns allow up to eight completions inside the
+90-second supervised task. Repeated tool call IDs never re-execute within a
+turn. Tool outputs return to the model as UntrustedData. A step-limit answer
+reports the limit instead of claiming an unfinished chain is complete.
+
+Each completion has a stable distinct usage ID under one AIRun, so UsageTracker
+cannot collapse multiple provider charges. Observed cost/token checkpoints are
+committed before the next tool/provider wait; monthly budget includes recorded
+running/failed usage. Tool mutations and their common sync log commit with the
+successful run event. Interrupted work is failed, never replayed. No provider
+key or unredacted provider failure is exposed in owner replies or generic logs.
+
+`personal_tools.py` extends the existing registry: bounded task list/search,
+exact-version update/complete, bounded note read, calendar occurrences (<=31 days),
+event creation, task reminder creation; existing create_task/create_note remain.
+Permissions follow the turn's source, not its wording: owner text and voice get
+task, note, calendar and reminder tools; a turn with a quote is read-only and a
+file turn has no tools. Memory tools still need an explicit remember/forget
+request. Writes are versioned and no delete tool exists. The personal registry and AIConversation are never
+passed to the Business secretary. No MCP, RAG or document search was added.
+
+## 12. Ephemeral media and separate transcription (Stage 4)
+
+`ChatMessage.media` holds immutable `MediaContent` bytes only during execution;
+reprs omit binary data. Attachments are user-only and MIME validated. Untrusted
+fencing preserves ephemeral attachments while redacting text. Claude image/PDF
+and OpenRouter image_url/file payloads use inline base64; text-only payloads
+remain unchanged. `images` and `documents` are explicit router capabilities,
+configured with existing controls. The selected model is checked before download.
+A file turn has no tool scopes; provider-generated tool calls are denied by policy.
+
+Transcription uses a separate encrypted AIProviderSecret with kind transcription,
+owner-scoped API and approved api.openai.com HTTPS origin; it cannot serve a chat
+run or secretary. `/v1/audio/transcriptions` multipart uses bytes in memory and
+fixed safe filenames. No raw HTTP/provider body enters logs, events or errors.
+Only bounded transcript text is persisted in ordinary conversation history.
+
+A transcription attempt reserves a configurable Decimal request estimate in a
+separate AIRun before I/O, under the existing owner serialization lock. Monthly
+limit includes that durable estimate even for an interrupted/failed attempt.
+Default estimate 0.10 USD is visible/editable in settings; it is not actual
+provider billing. Estimates below numeric precision or non-finite values refuse;
+other fractions round upward to 8 places. The job binds the transcription run
+until the chat run starts, so startup recovery can fail it without replay.
+
+Payload formats checked against primary documentation:
+[Claude images](https://platform.claude.com/docs/en/build-with-claude/vision),
+[Claude PDFs](https://platform.claude.com/docs/en/build-with-claude/pdf-support),
+[OpenRouter images](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding),
+[OpenRouter PDFs](https://openrouter.ai/docs/guides/overview/multimodal/pdfs), and
+[OpenAI transcription](https://developers.openai.com/api/docs/guides/speech-to-text).
+These document checks do not constitute a real provider test.
+
+## 13. Explicit encrypted owner memory (Stage 5)
+
+`owner_memory_facts` stores EncryptedText, kind (preference/fact/goal/context),
+server provenance/source_message_id, optional UTC expiry, Owned version/deletion
+and owner-bound normalized digest. NFKC/case/whitespace normalization deduplicates
+explicit saves. No extraction from conversation, summaries, embeddings or RAG.
+The service authorizes memory read/write independently of fact text; lexical
+selection streams active owner facts in batches and retains the global best 10.
+
+`/remember`, `/forget`, `/memory` share that service with the versioned owner API.
+The personal registry adds remember/forget with distinct least-privilege scopes,
+only when the current owner text/voice explicitly asks. File/media captions,
+quotes, memory content and old history cannot grant either scope. Secretary
+never calls the memory selector or receives the facts/registry.
+
+Facts are injected as UntrustedData. Provider context includes server-only
+(id,version) provenance on memory data and responses derived from it. Before
+every provider completion, active versions are checked again. Forgotten, edited
+or expired provenance excludes both injected data and derived history, including
+intermediate tool-loop replies and repeated answers. Ordinary visible chat
+history is retained; it does not silently restore a revoked memory into prompts.
+Only the retrieval query is bounded to 2k characters; the full owner message or
+voice transcript still goes to the model. No rolling summary was introduced.
+
+Stage 7 calendar reads use the same bounded occurrence projection as Calendar and
+/today, including imported recurring exceptions and cancellations. Event content
+remains UntrustedData; Google readonly consent grants no AI write permissions.
+The Business secretary receives none of these personal calendar records. The
+Google worker uses server Policy Engine checks for local import writes and each
+external read; no Google event write tool exists.

@@ -1,6 +1,6 @@
 # Telegram Business: бот-секретарь
 
-**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и шесть личных команд (ADR-027); дополнительные категории уведомлений остаются вне среза (см. `INTEGRATIONS.md`).
+**Статус: Phase 3 personal + Business, live acceptance требуется**, задача Phase 3 «Telegram commands and verified binding». Backend и интерфейс реализованы и проверены автоматическими тестами; подключение к Telegram с настоящим токеном и бизнес-перепиской ещё не проверено. Владелец подтвердил Business read/reply и расширенный личный scope (ADR-027/028). Выполнены этапы 0–6: sync, reminders, текстовый AI, ephemeral media, explicit memory и task matrix/time; Google остаётся следующим этапом (см. `PERSONAL_OS_BOT_REPORT.md`).
 
 ## Подключение
 
@@ -76,9 +76,9 @@ Engine; отказ доставки не теряет Notification. Решени
 не подставляется в ответ и стирается с содержимым при редактировании, удалении,
 отзыве подключения и 7-дневной ретенции.
 
-Ограничение sync: capture, как текущие REST create, не пишет SyncChange.
-GET /tasks и GET /notes видят запись, pull-only клиент её не получает. Это
-зафиксировано в тесте и отчёте; общий sync outbox не исправлялся этим срезом.
+Sync Stage 1: capture и рабочие REST мутации Task/Note теперь пишут общий
+SyncChange в той же транзакции. Записи доступны через REST, sync/pull и bootstrap.
+Подробности версий, блокировки владельца и старых данных — в SYNC_PROTOCOL.md.
 Live-check владельца: реальный `/task`, Business-переписка с задержкой, handoff,
 права can_reply и самостоятельное отключение Business-бота MySDU на аккаунте.
 
@@ -115,3 +115,101 @@ JSON модели допускает одну внешнюю Markdown-обёрт
 В незашифрованной Notification по-прежнему только общий title/body и message_id.
 Live-check владельца включает проверку разбора JSON от реальной модели через
 реального провайдера; это не проверялось mock HTTP-тестами.
+
+
+## Personal reminders — Stage 2
+
+`/remind 18:00 текст`, `/remind 2026-11-05 18:00 текст`, `/remind 2h текст`
+создают задачу и связанное Telegram-напоминание. Время — timezone владельца;
+явно прошедшая дата отклоняется. Deadline reminders выключены по умолчанию;
+после включения напоминания приходят за 5 часов и 10 минут до срока активной задачи.
+Quiet hours start/end задаются парой: срочность их не отменяет. Перенесённая из-за
+тихих часов сводка сохраняется в БД до конца окна; обычного догоняющего digest нет.
+Сводка включает завтра, /today не менялся. Claim и общая Notification сохраняются
+до отправки, повтора после ошибки нет. Секретарь не получает эти личные данные.
+
+
+## Personal owner dialogue — Stage 3
+
+Обычный текст проверенного владельца поступает в `telegram_personal_jobs`:
+text/quote зашифрованы, update receipt и cursor коммитятся с очередью. Poll не
+вызывает LLM. Тот же connector запускает не больше одного нового хода за итерацию,
+с одним in-flight ходом на integration и timeout 90 секунд. Задача supervised
+async: ожидание модели или recovery DM не удерживает polling и доставку reminders.
+Нет второго poller или scheduler. Startup переводит running в failed вместе с
+привязанным AIRun; инструменты не повторяются. Recovery DM «Не выполнено, повтори.»
+claim-ится до сети; при ошибке сохраняется общая Notification без содержимого.
+
+Одна owner AIConversation сохраняется между ходами. `/new` начинает новую;
+уже поставленные сообщения закреплены за прежней беседой. Prompt содержит максимум
+20 последних реплик и server time/timezone. reply_to_message — UntrustedData.
+Личные read/write tools доступны только через общий registry и Policy Engine;
+write scope определяется источником хода, а не формулировкой: текст и голос владельца
+могут писать в задачи, заметки, календарь и напоминания, ход с цитатой только читает,
+ход с файлом не имеет инструментов. Запись в память только по явной просьбе. Task update/complete требуют версию;
+конфликт сохраняет более свежую правку. Удаления нет. Ответы режутся по 4096,
+parse_mode отсутствует. Секретарь не использует эту беседу или личный registry.
+
+## Ephemeral personal media — Stage 4
+
+Только личный чат проверенного владельца: voice/audio до 20 MiB, photo до
+10 MiB, PDF до 20 MiB, UTF-8 text до 20 000 символов (80 000 bytes transfer cap).
+Пересланное и чужое медиа молча игнорируется. Очередь хранит только шифрованные
+file_id/ограниченные метаданные и подпись; getFile/download происходят в worker.
+Известный размер и возможность выбранной модели проверяются до скачивания;
+реальный stream ограничен независимо от Content-Length. Redirect/path traversal
+запрещены, file URL с bot token не попадает в ошибки или HTTP diagnostics.
+Байты существуют в памяти и не сохраняются в БД, файлы или логи.
+
+Голос распознаётся отдельным BYOK provider kind `transcription`, настроенным в
+AI & models: model ID и ключ OpenAI-compatible transcription protocol через
+разрешённый HTTPS endpoint `api.openai.com`. Ключ не выбирается для chat/secretary.
+Без него — «Распознавание голоса не настроено». В историю попадает транскрипт,
+не аудио; он считается просьбой владельца и может разрешить создание задачи.
+До запроса сохраняется AIRun с настраиваемой per-request budget estimate
+(default 0.10 USD), учитываемой в monthly limit даже после сбоя. Это оценка,
+не подтверждение фактического счёта провайдера; значения Decimal, не float.
+
+Photo/PDF расширяют ChatMessage ephemeral media и capabilities images/documents.
+Claude/OpenRouter получают inline base64, ModelRouter проверяет возможности.
+Файл/фото/PDF ход вообще не получает инструментов, включая запись; подпись не
+меняет это правило. Текст файла — UntrustedData, в историю не сохраняется;
+остаётся общая отметка и ответ модели. Следующий отдельный текст владельца
+может разрешить создание задачи. Business media не добавлено.
+
+## Explicit personal memory — Stage 5
+
+`/remember <факт>` сохраняет явный факт, `/forget <ID или точный текст>` забывает,
+`/memory` показывает активные факты. Дубликаты нормализуются; источник и message
+ID назначает сервер. Настройки → Memory дают просмотр/поиск, правку и забывание
+с проверкой версии. Текст шифрован в основной БД, export/rotation обновлены.
+
+Свободные «запомни/remember» и «забудь/forget» разрешают только соответствующий
+memory tool в текущем owner text/voice ходе. Содержимое файлов и цитат, старые
+факты и история прав не дают. В prompt не больше 10 лексически подходящих
+активных фактов, помеченных UntrustedData. Forget/expiry/edit также исключают
+производные реплики из будущего model context по ID/версии; проверка повторяется
+перед каждым шагом модели. Сами старые реплики остаются видны владельцу в истории.
+Секретарь вообще не читает эту память и не получает её личные инструменты.
+Фонового извлечения, rolling summary, MCP, RAG и embeddings нет.
+
+## Task matrix and work time — Stage 6
+
+TasksView получает Matrix на тех же задачах и действиях: important priority >=2;
+urgent — due_at <= now+48 часов, включая просроченное. Срок сравнивается как
+момент, не как локальные календарные дни. Вид обновляет срочность раз в минуту;
+поиск, фильтры, CAS и read-only cache режим сохранены. Новая таблица не создаётся.
+
+Task started_at/completed_at принадлежат серверу и выставляются общим writer
+на переходах статуса. Повтор того же состояния не меняет момент; reopen очищает
+текущий completed_at, история прошлых завершений остаётся в HistoryEntry.
+Историческим задачам неизвестное время не выдумывается при bootstrap. Вечерняя
+сводка добавляет in_progress дольше 7*24 часов; /today не меняется. Итоговая
+приёмка — в PERSONAL_OS_BOT_REPORT.md.
+
+Stage 7: /today and personal calendar read tools now see the owner's locally
+imported Google Calendar occurrences, including moved/cancelled instances. Google
+consent, sync and disconnect live in Settings → Google Calendar; import is readonly
+and runs in the existing connector iteration every 15 minutes independently of
+Telegram enablement. No Google calendar context is added to the Business secretary.
+Real Telegram /today with an actual Google account remains an owner live check.

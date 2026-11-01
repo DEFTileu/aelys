@@ -45,6 +45,7 @@ export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {
   const createBaseline = useRef<{ startsAt: string; endsAt: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<EventOut | null>(null)
+  const [externalEvent, setExternalEvent] = useState<EventOut | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [message, setMessage] = useState('')
   const [parkedEvent, setParkedEvent] = useState<{ title: string; startsAt: string; endsAt: string; rrule: string; reminderAt: string; editing: EventOut; reminders: readonly CalendarReminder[] } | null>(null)
@@ -85,6 +86,7 @@ export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {
   }, [selectedDate, weekOffset])
 
   const openCreate = () => {
+    setExternalEvent(null)
     const start = new Date(selectedDate)
     start.setDate(start.getDate() + weekOffset * 7)
     start.setHours(9, 0, 0, 0)
@@ -128,6 +130,8 @@ export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {
   }
 
   const editEvent = (occurrence: EventOccurrence) => {
+    if (occurrence.external_source) { setExternalEvent(occurrence); setFormOpen(false); return }
+    setExternalEvent(null)
     const event: EventOut = { ...occurrence, starts_at: occurrence.series_starts_at, ends_at: occurrence.series_ends_at }
     setEditing(event); setConfirmDelete(false); setTitle(event.title); setRrule(event.rrule ?? ''); setReminderAt('')
     setStartsAt(localInputDate(new Date(event.starts_at))); setEndsAt(localInputDate(new Date(event.ends_at)))
@@ -183,6 +187,7 @@ export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {
   return <div className="calendar-live page">
     <div className="cl-toolbar"><form className="cl-assistant" onSubmit={event => { event.preventDefault(); if (assistantDraft.trim()) { askAelys(assistantDraft.trim()); setAssistantDraft('') } }}><span className="cl-assistant-orb" aria-hidden="true" /><input aria-label="Ask Aelys about your calendar" placeholder="Ask Aelys to schedule something…" value={assistantDraft} onChange={event => setAssistantDraft(event.target.value)} /><button type="submit" aria-label="Send calendar request" disabled={!assistantDraft.trim()}><ArrowRight size={14} /></button></form><button type="button" className="cl-btn cl-assistant-action" onClick={() => askAelys('Find a free time in my calendar.')}><Calendar size={16} />Find a time</button><button type="button" className="cl-btn cl-assistant-action" onClick={() => askAelys('Help draft an invitation for a calendar event.')}><User size={16} />Invite people</button><ApiStatusPill status={apiStatus} /><button className="cl-btn cl-btn--primary" type="button" onClick={openCreate}><Plus size={16} />Create event</button></div>
     {parkedEvent && <p role="status">Event edit kept. <button type="button" onClick={resumeParkedEvent}>Resume event edit</button></p>}
+    {externalEvent && <section className="cl-form" aria-label="Imported event"><h3>{externalEvent.title}</h3><p>Read-only event from Google Calendar. Edit or delete it in Google Calendar.</p><p>{new Date(externalEvent.starts_at).toLocaleString()} — {new Date(externalEvent.ends_at).toLocaleString()}</p>{externalEvent.description && <p>{externalEvent.description}</p>}<button type="button" className="cl-btn" onClick={() => setExternalEvent(null)}>Close</button></section>}
     {formOpen && <form aria-label="Event editor" className="cl-form" onSubmit={createEvent}><input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Event title" aria-label="New event title" /><label>Start<input required type="datetime-local" aria-label="Event start" value={startsAt} onInput={(event) => setStartsAt(event.currentTarget.value)} onChange={(event) => setStartsAt(event.target.value)} /></label><label>End<input required type="datetime-local" aria-label="Event end" value={endsAt} onInput={(event) => setEndsAt(event.currentTarget.value)} onChange={(event) => setEndsAt(event.target.value)} /></label>{editing?.rrule && <p>Editing the entire recurring series.</p>}<label>Repeat (RRULE)<input aria-label="Event recurrence" value={rrule} onChange={(event) => setRrule(event.target.value)} placeholder="FREQ=WEEKLY;COUNT=4" /></label><label>Reminder (same lead time on repeats)<input aria-label="Event reminder" type="datetime-local" value={reminderAt} onInput={(event) => setReminderAt(event.currentTarget.value)} onChange={(event) => setReminderAt(event.target.value)} /></label><button className="cl-btn cl-btn--primary" type="submit" disabled={saving || apiStatus !== 'ready'}>{saving ? 'Saving…' : 'Save'}</button><button className="cl-btn" type="button" disabled={saving} onClick={() => setFormOpen(false)}>Cancel</button>{editing && <button className="cl-btn" type="button" disabled={saving || apiStatus !== 'ready'} onClick={() => void deleteEvent()}>{confirmDelete ? 'Confirm delete' : 'Delete event'}</button>}</form>}
     {formOpen && editing && <section aria-label="Event reminders">{reminders.map((reminder) => <p key={reminder.id}>{new Date(reminder.notify_at).toLocaleString()} · {reminder.reminder_status} <button type="button" disabled={saving || apiStatus !== 'ready'} onClick={() => { setSaving(true); void getSharedApiClient().cancelCalendarReminder(editing.id, reminder.id, reminder.version, { queueOnOffline: false }).then(async () => setReminders(await getSharedApiClient().calendarReminders(editing.id))).catch((error) => setMessage(error instanceof ApiError ? `${error.code}: ${error.message}` : 'Could not cancel reminder.')).finally(() => setSaving(false)) }}>Cancel reminder</button></p>)}</section>}
     {apiStatus !== 'ready' && <p role="status">Calendar is offline or unavailable. Previously loaded events may be shown from cache. Changes require a connection (OFFLINE_WRITE_UNAVAILABLE).</p>}

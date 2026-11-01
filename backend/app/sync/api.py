@@ -14,7 +14,16 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .change_log import (
+    DOMAIN_MODELS,
+    domain_payload,
+    ensure_domain_projection,
+    lock_owner,
+    record_change,
+    record_domain_change,
+)
 from .cursor import CursorCodec
+from .domain import apply_domain_patch
 from .models import SyncErrorCode
 from .validation import SyncException, validate_patch
 
@@ -161,12 +170,8 @@ async def _bootstrap_page(
 @router.post("/sync/push")
 async def push(body:Push, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,device=principal
-    bind=db.get_bind()
-    if bind.dialect.name == "postgresql":
-        # Serialize all pushes for one owner so allocation order and commit
-        # order cannot diverge for the cursor protocol.
-        await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key":f"sync-owner:{user.id}"})
     if not device or device.id!=body.device_id: raise HTTPException(403,detail={"code":"FORBIDDEN","message":"Device-bound sync credential required"})
+    await lock_owner(db, user.id)
     receipts=[]
     for op in body.operations:
         old=await db.get(ClientOperation,op.operation_id)
@@ -175,23 +180,45 @@ async def push(body:Push, principal=Depends(current_principal), db:AsyncSession=
                 raise HTTPException(403,detail={"code":"FORBIDDEN","message":"Operation is bound to another owner or device"})
             receipts.append(Receipt(operation_id=op.operation_id,status=old.result_status,version=old.applied_version,cursor=_codec().encode(kind="pull",owner_id=user.id,commit_seq=old.applied_seq or 0) if old.applied_seq else None,conflict=old.response_json.get("conflict"))); continue
         if op.resource_kind not in ALLOWED: raise HTTPException(422,detail={"code":"VALIDATION_ERROR","message":"Resource is not syncable"})
+        if op.device_id != device.id:
+            raise HTTPException(403, detail={"code": "FORBIDDEN", "message": "Operation is bound to another device"})
         record=await db.get(SyncRecord,(user.id,op.resource_kind,op.resource_id))
-        current_version=record.version if record else 0
-        if op.action.value == "create" and record and not record.deleted_at:
+        model = DOMAIN_MODELS.get(op.resource_kind)
+        domain = await db.get(model, op.resource_id) if model else None
+        if domain is not None and domain.owner_id != user.id:
+            raise HTTPException(403, detail={"code": "FORBIDDEN", "message": "Resource belongs to another owner"})
+        if domain is not None:
+            await lock_owner(db, user.id, (op.resource_kind, op.resource_id))
+        current_version = domain.version if domain else (record.version if record else 0)
+        if op.action.value == "create" and ((domain is not None and not domain.deleted_at) or (record and not record.deleted_at)):
             conflict={"code":"ALREADY_EXISTS","server_version":current_version}
             db.add(ClientOperation(operation_id=op.operation_id,owner_id=user.id,device_id=body.device_id,resource_id=op.resource_id,result_status="conflict",applied_version=current_version,response_json={"conflict":conflict})); receipts.append(Receipt(operation_id=op.operation_id,status="conflict",version=current_version,conflict=conflict)); continue
-        if op.action.value != "create" and (not record or op.base_version != current_version):
+        if (op.action.value != "create" and not (record or domain)) or (current_version and op.base_version != current_version):
             conflict={"code":"VERSION_CONFLICT","server_version":current_version}
-            if op.resource_kind=="note" and op.action.value=="update": conflict["branches"]=[{"branch":"server","payload":record.payload if record else {}},{"branch":"client","payload":op.patch,"base_version":op.base_version}]
+            if op.resource_kind=="note" and op.action.value=="update": conflict["branches"]=[{"branch":"server","payload":domain_payload(domain, op.resource_kind) if domain is not None else (record.payload if record else {})},{"branch":"client","payload":op.patch,"base_version":op.base_version}]
             db.add(ClientOperation(operation_id=op.operation_id,owner_id=user.id,device_id=body.device_id,resource_id=op.resource_id,result_status="conflict",applied_version=current_version,response_json={"conflict":conflict})); receipts.append(Receipt(operation_id=op.operation_id,status="conflict",version=current_version,conflict=conflict)); continue
         version=current_version+1
         payload=dict(record.payload) if record else {}
         payload.update(op.patch)
         if op.action.value=="delete": payload={};
-        if record: record.version=version; record.payload=payload; record.deleted_at=__import__("app.core.models",fromlist=["now"]).now() if op.action.value=="delete" else None
-        else: record=SyncRecord(owner_id=user.id,resource_kind=op.resource_kind,resource_id=op.resource_id,version=version,payload=payload); db.add(record)
-        change=SyncChange(owner_id=user.id,resource_kind=op.resource_kind,resource_id=op.resource_id,version=version,operation=op.action.value,payload=payload)
-        db.add(change); await db.flush()
+        if model and domain is None and op.action.value == "delete":
+            # Historical device-only entities have no domain row to delete.
+            # Preserve their versioned tombstone through the same writer.
+            change = await record_change(db, owner_id=user.id, kind=op.resource_kind,
+                resource_id=op.resource_id, version=version, payload={}, operation="delete",
+                deleted_at=__import__("app.core.models",fromlist=["now"]).now())
+        elif model:
+            # Device writes update actual domain rows, not a competing shadow
+            # entity. Mounted reads and the next REST edit see exactly this version.
+            domain = await apply_domain_patch(db, owner_id=user.id, device_id=device.id,
+                kind=op.resource_kind, resource_id=op.resource_id, version=version,
+                action=op.action.value, patch=payload if domain is None else op.patch, item=domain,
+                prior_payload=record.payload if record else None)
+            change = await record_domain_change(db, domain)
+        else:
+            change = await record_change(db, owner_id=user.id, kind=op.resource_kind,
+                resource_id=op.resource_id, version=version, payload=payload, operation=op.action.value,
+                deleted_at=__import__("app.core.models",fromlist=["now"]).now() if op.action.value == "delete" else None)
         receipt=ClientOperation(operation_id=op.operation_id,owner_id=user.id,device_id=body.device_id,resource_id=op.resource_id,result_status="applied",applied_version=version,applied_seq=change.seq,response_json={"version":version})
         db.add(receipt); receipts.append(Receipt(operation_id=op.operation_id,status="applied",version=version,cursor=_codec().encode(kind="pull",owner_id=user.id,commit_seq=change.seq)))
     latest=(await db.execute(select(SyncChange.seq).where(SyncChange.owner_id==user.id).order_by(SyncChange.seq.desc()).limit(1))).scalar_one_or_none() or 0
@@ -205,6 +232,7 @@ async def pull(cursor:str=Query(default="0"),limit:int=Query(default=200,ge=1,le
     try:
         decoded=_codec().decode(cursor,owner_id=user.id,expected_kind="pull") if cursor!="0" else None
         after=decoded.commit_seq if decoded else 0
+        await ensure_domain_projection(db, user.id)
         latest=(await db.execute(select(SyncChange.seq).where(SyncChange.owner_id==user.id).order_by(SyncChange.seq.desc()).limit(1))).scalar_one_or_none() or 0
         if after > latest:
             raise SyncException(SyncErrorCode.VALIDATION_ERROR,"Cannot pull from a future cursor",{},422)
@@ -253,6 +281,7 @@ async def bootstrap(scope:str|None=Query(default=None),page_token:str|None=Query
     if not device: raise HTTPException(403,detail={"code":"FORBIDDEN","message":"Device-bound sync credential required"})
     owner_id = user.id
     try:
+        await ensure_domain_projection(db, owner_id)
         if db.get_bind().dialect.name == "postgresql":
             await db.rollback()
             await db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))

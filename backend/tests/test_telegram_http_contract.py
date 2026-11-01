@@ -63,3 +63,27 @@ async def test_personal_settings_roundtrip(setup):
 
 
 pytest_plugins = ("test_telegram_business",)
+
+
+@pytest.mark.parametrize('patch', [
+    {'quiet_start': '22:00'}, {'quiet_start': '22:00', 'quiet_end': '22:00'},
+    {'quiet_start': '25:00', 'quiet_end': '08:00'}, {'deadline_reminders': None},
+])
+async def test_reminder_settings_invalid_pair_or_null(setup, patch):
+    from test_telegram_business import PREFIX, connect
+    client, _, _ = setup
+    item = await connect(client)
+    response = await client.patch(PREFIX + '/settings', json={'version': item['version'], **patch})
+    assert response.status_code == 422, response.text
+
+
+async def test_reminder_settings_roundtrip(setup):
+    from test_telegram_business import PREFIX, connect
+    client, _, _ = setup
+    item = await connect(client)
+    assert item['deadline_reminders'] is False and item['quiet_start'] is None
+    response = await client.patch(PREFIX + '/settings', json={'version': item['version'],
+        'deadline_reminders': True, 'quiet_start': '22:00', 'quiet_end': '08:00'})
+    assert response.status_code == 200, response.text
+    status = (await client.get(PREFIX + '/status')).json()
+    assert status['deadline_reminders'] is True and status['quiet_start'] == '22:00' and status['quiet_end'] == '08:00'

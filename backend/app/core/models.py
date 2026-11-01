@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -143,6 +144,7 @@ class Note(Owned):
     project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"))
     folder: Mapped[str | None] = mapped_column(String(120), nullable=True)
     tags: Mapped[list] = mapped_column(JSON, default=list, server_default="[]", nullable=False)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
 
 class NoteRevision(Base):
     __tablename__ = "note_revisions"
@@ -161,6 +163,8 @@ class Task(Owned):
     project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"))
     parent_task_id: Mapped[str | None] = mapped_column(String(36))
     status: Mapped[str] = mapped_column(String(30), default="todo")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     priority: Mapped[int] = mapped_column(Integer, default=0)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     due_timezone: Mapped[str | None] = mapped_column(String(64))
@@ -168,6 +172,10 @@ class Task(Owned):
 
 class CalendarEvent(Owned):
     __tablename__ = "calendar_events"
+    __table_args__ = (UniqueConstraint("external_source", "external_id", name="uq_calendar_event_external"),)
+    external_source: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    external_metadata: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}", nullable=False)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -194,11 +202,13 @@ class FinanceBudget(Owned):
 class FocusSession(Owned):
     __tablename__ = "focus_sessions"
     task_id: Mapped[str | None] = mapped_column(String(36)); project_id: Mapped[str | None] = mapped_column(String(36)); started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); elapsed_seconds: Mapped[int] = mapped_column(Integer, default=0); mode: Mapped[str] = mapped_column(String(30), default="pomodoro"); status: Mapped[str] = mapped_column(String(20), default="active")
-    __table_args__ = (Index("uq_focus_active_owner", "owner_id", unique=True, sqlite_where=text("status = 'active' AND deleted_at IS NULL"), postgresql_where=text("status = 'active' AND deleted_at IS NULL")),)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); paused_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    __table_args__ = (Index("uq_focus_active_owner", "owner_id", unique=True, sqlite_where=text("status IN ('active', 'paused') AND deleted_at IS NULL"), postgresql_where=text("status IN ('active', 'paused') AND deleted_at IS NULL")),)
 
 class MailMessage(Owned):
     __tablename__ = "mail_messages"
     account_id: Mapped[str | None] = mapped_column(String(36)); thread_id: Mapped[str | None] = mapped_column(String(100)); sender: Mapped[str] = mapped_column(String(320)); recipients: Mapped[list] = mapped_column(JSON, default=list); subject: Mapped[str] = mapped_column(String(500)); body: Mapped[str] = mapped_column(Text, default=""); received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); sync_origin: Mapped[str] = mapped_column(String(30), default="import")
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
 class MailDraft(Owned):
     __tablename__ = "mail_drafts"
     account_id: Mapped[str | None] = mapped_column(String(36)); thread_id: Mapped[str | None] = mapped_column(String(100)); recipients: Mapped[list] = mapped_column(JSON, default=list); subject: Mapped[str] = mapped_column(String(500), default=""); content: Mapped[str] = mapped_column(Text, default=""); status: Mapped[str] = mapped_column(String(20), default="draft")
@@ -270,6 +280,7 @@ class AIRunEvent(Base):
 class AgentSessionIndex(Owned):
     __tablename__ = "agent_session_index"
     device_id: Mapped[str] = mapped_column(String(36)); project_id: Mapped[str | None] = mapped_column(String(36)); adapter: Mapped[str] = mapped_column(String(30)); opaque_local_session_ref: Mapped[str] = mapped_column(String(255)); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); message_count: Mapped[int | None] = mapped_column(Integer); state: Mapped[str] = mapped_column(String(30), default="active")
+    workspace_path: Mapped[str | None] = mapped_column(String(500)); sandbox: Mapped[str | None] = mapped_column(String(80)); network: Mapped[str | None] = mapped_column(String(20)); events: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
 class AgentRun(Owned):
     __tablename__ = "agent_runs"
     project_id: Mapped[str] = mapped_column(String(36)); device_id: Mapped[str] = mapped_column(String(36)); adapter: Mapped[str] = mapped_column(String(30)); status: Mapped[str] = mapped_column(String(30), default="queued"); request_policy_id: Mapped[str] = mapped_column(String(36)); idempotency_key: Mapped[str | None] = mapped_column(String(150), nullable=True); lease_id: Mapped[str | None] = mapped_column(String(36)); lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); cancellation_requested: Mapped[bool] = mapped_column(Boolean, default=False); error_code: Mapped[str | None] = mapped_column(String(80)); result_metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -322,4 +333,6 @@ class AuditLog(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid); owner_id: Mapped[str] = mapped_column(String(36)); action: Mapped[str] = mapped_column(String(100)); actor: Mapped[str] = mapped_column(String(100)); scope: Mapped[str] = mapped_column(String(200)); decision: Mapped[str] = mapped_column(String(30)); outcome: Mapped[str] = mapped_column(String(30)); correlation_id: Mapped[str] = mapped_column(String(36)); redacted_metadata: Mapped[dict] = mapped_column(JSON, default=dict); created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 # Register integration tables in the shared metadata for migrations and tests.
+import app.ai.memory_models
+import app.domains.google_calendar_models
 import app.integrations.telegram_models  # noqa: F401 - register integration tables

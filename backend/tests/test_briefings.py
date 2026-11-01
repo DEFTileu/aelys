@@ -86,3 +86,37 @@ async def test_digest_claim_survives_failed_delivery_and_concurrent_workers(setu
     assert len(fake.sent) == 1
     async with sessions() as db:
         assert (await db.get(TelegramIntegration, item['id'])).last_digest_on == at.date()
+
+
+async def test_evening_digest_has_tomorrow_but_today_is_unchanged(setup):
+    from app.domains.briefings import build_digest
+    _, sessions, _ = setup
+    at = datetime(2026, 11, 1, 20, tzinfo=UTC)
+    async with sessions() as session:
+        owner = (await session.execute(select(User.id))).scalar_one()
+        session.add(Task(owner_id=owner, title='Tomorrow task', due_at=at+timedelta(hours=16)))
+        await session.commit()
+        today = format_agenda(await build_agenda(session, owner, ZoneInfo('UTC'), at))
+        digest = await build_digest(session, owner, ZoneInfo('UTC'), at)
+        assert 'Tomorrow task' not in today and 'Завтра' not in today
+        assert 'Завтра' in digest and 'Tomorrow task' in digest
+
+
+async def test_quiet_digest_defers_durably_until_next_morning(setup):
+    client, sessions, fake = setup
+    data = await connect(client)
+    await set_bound(sessions, data['id'])
+    async with sessions() as session:
+        item = await session.get(TelegramIntegration, data['id'])
+        item.digest_time = '22:00'; item.quiet_start = '21:00'; item.quiet_end = '08:00'
+        await session.commit()
+    at = datetime(2026, 11, 1, 22, 30, tzinfo=UTC)
+    await service.digest_once(data['id'], at=at)
+    assert not fake.sent
+    # New DB session/iteration after a full missed digest window still delivers
+    # the explicitly postponed day, once quiet hours end.
+    await service.digest_once(data['id'], at=datetime(2026, 11, 2, 7, 59, tzinfo=UTC))
+    assert not fake.sent
+    await service.digest_once(data['id'], at=datetime(2026, 11, 2, 8, tzinfo=UTC))
+    await service.digest_once(data['id'], at=datetime(2026, 11, 2, 8, 1, tzinfo=UTC))
+    assert len(fake.sent) == 1 and '2026-11-01' in fake.sent[0][1]

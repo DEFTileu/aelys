@@ -121,9 +121,12 @@ worker не обращался к Telegram от его имени.
 реальный API и форма вернули те же значения. Mock API/DOM для этой приёмки не
 использовался. Тестовые данные не добавлялись в базу владельца.
 
-## Воспроизведение существующего sync-пробела
+## Историческое воспроизведение sync-пробела (исправлен Stage 1 Personal OS bot)
 
-Автоматическое воспроизведение:
+Ниже историческое состояние до Stage 1. Актуальный тест проверяет наличие
+Task/Note/REST изменений в pull, а не пустой список; см. PERSONAL_OS_BOT_REPORT.md.
+
+Автоматическая регрессия:
 
 ```sh
 PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_telegram_personal.py::test_capture_commits_before_confirmation_replay_and_revision

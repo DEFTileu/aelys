@@ -91,6 +91,25 @@ export function isOverdue(task: TaskOut, now = Date.now()): boolean {
   return Number.isFinite(due) && due < now
 }
 
+export function isTaskUrgent(task: TaskOut, now = Date.now()): boolean {
+  if (!task.due_at) return false
+  const due = Date.parse(task.due_at)
+  return Number.isFinite(due) && due <= now + 48 * 60 * 60 * 1000
+}
+
+export function groupTasksInMatrix(tasks: readonly TaskOut[], now = Date.now()) {
+  const groups = [
+    { key: 'important-urgent', label: 'Important and urgent', tasks: [] as TaskOut[] },
+    { key: 'important-not-urgent', label: 'Important, not urgent', tasks: [] as TaskOut[] },
+    { key: 'not-important-urgent', label: 'Urgent, not important', tasks: [] as TaskOut[] },
+    { key: 'not-important-not-urgent', label: 'Neither urgent nor important', tasks: [] as TaskOut[] },
+  ]
+  for (const task of tasks) {
+    if (!isCompleted(task)) groups[(task.priority >= 2 ? 0 : 2) + (isTaskUrgent(task, now) ? 0 : 1)].tasks.push(task)
+  }
+  return groups
+}
+
 export function groupTasksByDay(tasks: readonly TaskOut[]): readonly { key: string; label: string; tasks: readonly TaskOut[] }[] {
   const groups = new Map<string, TaskOut[]>()
   for (const task of tasks) {
@@ -102,6 +121,41 @@ export function groupTasksByDay(tasks: readonly TaskOut[]): readonly { key: stri
   return [...groups.entries()].sort(([a], [b]) => a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)).map(([key, grouped]) => ({
     key, label: key ? new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(localInstant(key, '12:00')) : 'No date', tasks: grouped,
   }))
+}
+
+export interface QuickTokens { title: string; dueDate?: string; priority?: string; projectId?: string }
+const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+const localKey = (date: Date) => `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+
+/** Pulls `@date`, `!p1`..`!p3` and `#project` tokens out of quick-add text. Unmatched tokens stay in the title.
+ *  Unless `final`, a token still being typed (no trailing whitespace) is left alone. p1 is the highest priority. */
+export function parseQuickTokens(text: string, projects: readonly { id: string; name: string }[], now = new Date(), final = true): QuickTokens {
+  const out: QuickTokens = { title: '' }
+  const settled = final || /\s$/.test(text) ? text : text.slice(0, text.search(/\S+$/))
+  const tail = text.slice(settled.length)
+  const kept = settled.replace(/(^|\s)([@#!])(\S+)(?=\s|$)/g, (whole, lead: string, mark: string, word: string) => {
+    const lower = word.toLocaleLowerCase()
+    if (mark === '@') {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const day = lower.length >= 3 ? DAYS.findIndex(name => name.startsWith(lower)) : -1
+      if (lower === 'today') out.dueDate = localKey(date)
+      else if (lower === 'tomorrow') { date.setDate(date.getDate() + 1); out.dueDate = localKey(date) }
+      else if (day >= 0) { date.setDate(date.getDate() + (day - date.getDay() + 6) % 7 + 1); out.dueDate = localKey(date) }
+      else return whole
+    } else if (mark === '!') {
+      const level = /^p([1-3])$/.exec(lower)?.[1]
+      if (!level) return whole
+      out.priority = String(4 - Number(level))
+    } else {
+      const match = projects.find(project => project.name.toLocaleLowerCase().startsWith(lower))
+      if (!match) return whole
+      out.projectId = match.id
+    }
+    return lead
+  })
+  const title = (kept + tail).replace(/\s{2,}/g, ' ').replace(/^\s+/, '')
+  out.title = final ? title.trimEnd() : title
+  return out
 }
 
 export function taskMatchesQuery(task: TaskOut, query: string, projectName = ''): boolean {

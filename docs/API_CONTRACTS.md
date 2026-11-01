@@ -402,3 +402,194 @@ either status; owner_note never pre-fills the customer reply.
 Handoff creates Notification kind telegram.handoff with only message_id data;
 private owner_note is exposed only through the authenticated Telegram owner API.
 See TELEGRAM_PERSONAL_ASSISTANT_REPORT.md for acceptance and sync limitations.
+## Desktop design backend additions (2026-10-31)
+
+### Focus pause/resume
+
+- `POST /api/v1/focus/sessions/{id}/pause?version=N` and `/resume?version=N`
+  (version optional, `409 VERSION_CONFLICT` when stale; repeating the same
+  transition is a no-op; wrong state returns `409 INVALID_STATE`).
+- `FocusOut` gains `paused_at` (set while `status = "paused"`) and
+  `paused_seconds` (accumulated pauses). `status` is `active | paused |
+  completed`. `elapsed_seconds` = wall time minus pauses and is frozen while
+  paused. A paused session still occupies the owner's single timer slot and
+  can be stopped. Migration `0025_focus_pause`.
+
+### Agent session display metadata and stop
+
+- `AgentSession` (`GET /agents/sessions`) gains optional, non-secret display
+  fields reported by the Mac over `metadata_batch`: `workspace_path` (absolute
+  path label, <=500 chars, no `..`/control characters; never read by the
+  backend), `sandbox` (scope label, <=80), `network` (`blocked|allowlist|open`)
+  and `events` (`[{kind, message, at}]`, newest 200 kept, messages redacted of
+  token/key/password/Bearer patterns and truncated to 300 chars; metadata only,
+  no transcripts or file contents). Omitting them in a batch keeps stored
+  values; invalid values reject the item with `VALIDATION_ERROR`. Migration
+  `0026_agent_session_display`.
+- `POST /api/v1/agents/sessions/{id}/stop` asks the Mac runtime to stop the
+  session through the existing run-cancel path. It fails closed: `404` for
+  unknown/foreign sessions, `403 POLICY_DENIED` without a project and an
+  active, isolation-validated grant, `403 DEVICE_REVOKED`, and `409
+  NO_ACTIVE_RUN` when the device has no queued/running run for that project
+  and adapter. On success queued runs become `cancelled`, running ones get
+  `cancellation_requested` (delivered via run heartbeat), an audit row
+  `agent.session.stop` is written and the response is
+  `{session_id, status: "stop_requested", run_ids}`. Sessions are linked to runs
+  by device+project+adapter+grant policy, since the index has no run id.
+
+### Automation drafts and recent runs
+
+- `POST /api/v1/automations/draft` body `{description}` or `{rule}` (exactly
+  one) returns a PROPOSED rule and never saves or executes anything:
+  `{source: "structured"|"ai"|"parser", rule, policy: {policy_ref, registered,
+  allowed, issues[]}, saved: false}`. For `description` the owner's enabled AI
+  provider (BYOK, budget-checked, usage recorded as an AI run) is asked first;
+  the text is sent as `<untrusted_data>`-fenced content, the reply is accepted
+  only if it parses into the strict rule schema, and the model can never pick
+  the policy (always `safe`). Without a usable provider a deterministic parser
+  handles sentences like `When a task is created in project "Home", create a
+  notification "Review it"` (triggers `task|note` created/added/completed;
+  actions `create_task|create_notification`; quoted title required). Anything
+  else is `422 DRAFT_UNSUPPORTED`. The policy engine preflight reports
+  unregistered policies, unauthorised actions and foreign projects in `issues`.
+- `POST /api/v1/automations` accepts optional `reviewed_draft: true`. When set
+  the same preflight is enforced at creation (`403 POLICY_DENIED` listing the
+  issues); without it behaviour is unchanged and dispatch remains the
+  authoritative gate.
+- `GET /api/v1/automations/runs?limit=` (default 20, max 100) lists recent
+  executions across the owner's rules, newest first:
+  `{id, rule_id, rule_name, event_id, status, error_code, attempt, started_at,
+  finished_at}`. `status` is `success` (completed), `skipped` (rate limited),
+  `blocked_by_policy` (failed with `POLICY_DENIED`), `failed`, or `running`
+  while in flight. No schema change.
+
+### Widget data flags (2026-10-31)
+
+All additive; migration `0027_note_pinned_mail_read`.
+
+- Notes: `NoteIn`/`NoteOut.pinned` (bool, default false). `PATCH /notes/{id}?version=N`
+  with `pinned` toggles it (version-checked, bumps `version`); clients that omit
+  `pinned` keep the stored value.
+- Mail: `MailMessageOut.is_read` (default false for imported/synced mail) and
+  `version`. `PATCH /mail/messages/{id}` body `{is_read, version?}` marks
+  read/unread; stale `version` is `409 VERSION_CONFLICT`, repeating the current
+  value is a no-op that does not bump `version`.
+- Finance budgets: `PUT /finance/budgets` body `{category_id|null, currency,
+  month: "YYYY-MM", limit_amount: "decimal string"}` upserts the single budget for
+  (owner, category, currency, month) (UTC month bounds; `null` category = overall
+  budget) and returns the existing `FinanceBudgetOut`. Floats are rejected.
+  `GET /finance/budgets` accepts optional `month` and `currency` filters. The
+  legacy `POST /finance/budgets` is unchanged.
+- Finance categories: `GET /finance/transactions` rows carry `category_name`
+  (null when uncategorised); `GET /finance/categories` already lists names.
+
+
+### Unified Task/Note/Event/Project sync (2026-11-01)
+
+Mounted CRUD/capture writes now emit the same transactional SyncChange and
+SyncRecord projection as device push; versions match the domain Owned.version.
+Device push applies the validated patch to the actual domain row, preserving
+Note revisions and owner-scoped references. Pull/bootstrap include REST,
+Telegram and AI/automation writes, with versioned delete tombstones. Historical
+ambiguous projection/domain divergence returns 409 SYNC_RECONCILIATION_REQUIRED
+rather than silently choosing one body. Request/response envelopes are unchanged.
+
+
+### Telegram reminders (migration 0029)
+
+Settings/status add deadline_reminders (bool, false default) and quiet_start,
+quiet_end (nullable HH:MM pair, both set to different times or both null).
+TaskReminder and CalendarReminder channel accept in_app or telegram; the existing
+foreground dispatcher only consumes in_app and the Telegram connector consumes
+telegram. Internal pending_digest_on/at persist quiet-hour postponement and are
+not exposed as editable settings. /remind schedules a TaskReminder plus capture
+Task atomically; all reminder mutations and external sends pass Policy Engine.
+
+
+### Telegram personal text queue (migration 0030)
+
+Ordinary verified-owner private text is ingested transactionally with update
+receipt/cursor into encrypted TelegramPersonalJob text/quote. Internal job states:
+queued/running/done/failed. One durable running claim per integration; startup
+fails interrupted running jobs and their bound AIRun without tool replay. The
+persistent owner AIConversation is pinned at enqueue; `/new` starts another.
+Existing AI run/event contracts and owner domain contracts are reused. Personal
+tools use exact Task version CAS and the same domain/sync writer as REST.
+No new public queue endpoint, sync resource_kind or credential exposure. Internal
+queue data is excluded from owner export and re-encrypted by provider-key rotation.
+
+### Personal media and transcription (migration 0031)
+
+ProviderIn.kind also accepts transcription. Existing provider/secret endpoints
+store the separate encrypted key, never return it; chat run selection and
+Telegram settings reject this kind as a chat provider. model_policy supports
+`default_model`, `monthly_budget` and `transcription_request_cost` (Decimal
+strings, default estimate 0.10). Each transcription AIRun durably records the
+configured estimate before external I/O; this is not actual billing.
+
+Internal personal queue adds input_kind and encrypted media_metadata containing
+bounded Telegram file_id/metadata only, no bytes. Untrusted photo/PDF/file turns
+have no write grants; transcription is treated as owner text. Public chat message
+HTTP inputs stay text-only; ephemeral provider attachments do not become a public
+upload/storage endpoint or new sync kind. Rotation covers media_metadata.
+
+### Explicit owner memory (migration 0032)
+
+- `GET /ai/memory?limit=100&query=...`: active/unexpired owner facts, lexical
+  query <=200 chars, no-store; no plaintext browser cache fallback.
+- `POST /ai/memory`: `{text (1..2000),kind?,expires_at?}`. Provenance assigned
+  by server as api; client cannot supply source or ownership. Normalized saves
+  deduplicate, explicit re-save revives forgotten/expired identity.
+- `PATCH /ai/memory/{id}`: required version, optional text/kind/expiry. Exact
+  CAS; 409 VERSION_CONFLICT preserves current value; duplicate target returns
+  409 MEMORY_DUPLICATE. `DELETE ...?version=N` soft-forgets with CAS.
+- Responses include id, owner_id, version, text, kind, source/source_message_id,
+  expires_at and created_at/updated_at. Memory validation failures return fixed
+  typed errors without echoing input. Expired/forgotten facts are absent from
+  selection immediately, including same-turn follow-up provider completions.
+
+No new sync resource_kind. Explicit backend memory is managed through fresh
+owner requests; the settings view never queues an unconfirmed forget or stores
+plaintext facts in the shared offline cache. Export uses its encrypted envelope,
+rotation re-encrypts text, and restore recalculates owner-specific hashes and
+checks policy/collisions before insertion.
+
+### Task work timestamps and matrix (Stage 6)
+
+TaskOut adds nullable started_at/completed_at UTC instants, server-owned; TaskIn
+and TaskPatch do not grant client control of these fields. Actual transitions
+are stamped through the common domain change writer, preserving the exact Task
+version in pull/bootstrap. Historical pre-feature rows remain unknown (null).
+HistoryEntry retains immutable per-version status-transition metadata; no new
+history table or sync resource kind. API/offline version conflicts preserve the
+server's work dates and status. Final acceptance is recorded in the stage report.
+
+### Read-only Google Calendar connection (ADR-028 Stage 7)
+
+`GET /api/v1/calendar/google/status` returns `{configured, connection}`. A connection
+contains only id/version/calendar_id/status/last_synced_at/last_error_code;
+credentials, sync tokens and PKCE verifiers never cross this API. `POST …/connect`
+returns `{authorization_url}`, sets a separate HttpOnly state cookie, and uses
+`…/callback` for one-use PKCE consent. Consent is only `calendar.readonly`, separate
+from Gmail. The callback returns to Settings → Google Calendar.
+
+`POST …/sync` performs a bounded, leased, atomic import and returns
+`{imported, deleted, full_sync}`. Import counts mean changed local projections,
+so importing unchanged data returns zero. `DELETE …/connection` clears credentials
+and imported events, returns `{disconnected:true}` and publishes domain tombstones.
+A connected primary calendar refreshes in the existing connector worker every
+15 minutes; a transient failure keeps the previous snapshot/cursor and retries
+on the next due interval. Revoked credentials require Reconnect.
+
+Calendar `EventOut`/`EventOccurrence` include nullable `external_source` and
+`external_id`. Imported events are read-only: REST patch/delete and device push
+return `409 EXTERNAL_EVENT_READ_ONLY`; clients cannot forge or clear provenance.
+Native events keep their existing CAS/version contract. Every import/cancellation/
+disconnect uses the shared domain change writer. Recurrence exceptions apply to
+Calendar, /today and bounded personal calendar reads.
+
+Errors include `503 CALENDAR_NOT_CONFIGURED`, `404 CALENDAR_NOT_CONNECTED`,
+`409 CALENDAR_RECONNECT_REQUIRED`, `CALENDAR_SCOPE_REQUIRED`, `CALENDAR_SYNC_BUSY`,
+`422 CALENDAR_INVALID_DATA`/`CALENDAR_SYNC_LIMIT`, `502 CALENDAR_UNAVAILABLE` and
+`403 POLICY_DENIED`. HTTP 410 is consumed internally by one full refetch. Provider
+payloads and token-bearing URLs are never returned in error messages or logs.

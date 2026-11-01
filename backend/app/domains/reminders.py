@@ -4,7 +4,14 @@ from datetime import UTC, datetime, timedelta
 
 from app.ai.models import PermissionContext, ToolCall
 from app.ai.policy import ServerPolicyEngine
-from app.core.models import CalendarEvent, CalendarReminder, Notification
+from app.core.models import (
+    CalendarEvent,
+    CalendarReminder,
+    Notification,
+    Task,
+    TaskReminder,
+)
+from app.domains.briefings import TERMINAL_TASK_STATUSES
 from app.domains.recurrence import next_occurrence, utc
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,10 +24,17 @@ class ReminderNotification:
     external_effect: bool = False
 
 
+def authorize_reminder_write(owner_id: str) -> None:
+    descriptor = ReminderNotification(name='reminder.write', required_scope='reminders.write')
+    ServerPolicyEngine().authorize(descriptor, ToolCall(name='reminder.write', arguments={}),
+        PermissionContext(actor=f'owner:{owner_id}', scopes=frozenset({'reminders.write'}), policy_id='owner-reminders'))
+
+
 async def deliver_due_reminders(db: AsyncSession, owner_id: str) -> int:
     current = datetime.now(UTC)
     pairs = (await db.execute(select(CalendarReminder, CalendarEvent).join(CalendarEvent, CalendarReminder.event_id == CalendarEvent.id).where(
         CalendarReminder.owner_id == owner_id, CalendarEvent.owner_id == owner_id,
+        CalendarReminder.channel == "in_app",
         CalendarReminder.deleted_at.is_(None), CalendarReminder.reminder_status == "pending",
         CalendarReminder.notify_at <= current,
     ).order_by(CalendarReminder.notify_at).limit(200))).all()
@@ -46,6 +60,24 @@ async def deliver_due_reminders(db: AsyncSession, owner_id: str) -> int:
         db.add(Notification(owner_id=owner_id, kind="calendar.reminder", title=event.title,
                             body="Scheduled calendar reminder", dedup_key=f"calendar-reminder:{reminder.id}:{occurrence.isoformat()}",
                             data_json={"event_id": event.id, "reminder_id": reminder.id, "occurrence_at": occurrence.isoformat()}))
+        delivered += 1
+    task_pairs = (await db.execute(select(TaskReminder, Task).join(Task, TaskReminder.task_id == Task.id).where(
+        TaskReminder.owner_id == owner_id, Task.owner_id == owner_id,
+        TaskReminder.channel == 'in_app', TaskReminder.deleted_at.is_(None),
+        TaskReminder.reminder_status == 'pending', TaskReminder.notify_at <= current,
+    ).order_by(TaskReminder.notify_at).limit(200))).all()
+    for reminder, task in task_pairs:
+        cancelled = task.deleted_at is not None or task.status.lower() in TERMINAL_TASK_STATUSES
+        ServerPolicyEngine().authorize(ReminderNotification(), ToolCall(name='calendar_reminder_notification', arguments={}),
+            PermissionContext(actor='task_reminder', scopes=frozenset({'notifications.write'}), policy_id=f'reminder:{reminder.id}'))
+        claimed = await db.execute(update(TaskReminder).where(
+            TaskReminder.id == reminder.id, TaskReminder.version == reminder.version,
+            TaskReminder.reminder_status == 'pending',
+        ).values(reminder_status='cancelled' if cancelled else 'delivered', version=reminder.version+1))
+        if int(getattr(claimed, 'rowcount', 0) or 0) != 1 or cancelled:
+            continue
+        db.add(Notification(owner_id=owner_id, kind='task.reminder', title='Scheduled reminder',
+            dedup_key=f'task-reminder:{reminder.id}', data_json={'task_id': task.id, 'reminder_id': reminder.id}))
         delivered += 1
     await db.commit()
     return delivered
