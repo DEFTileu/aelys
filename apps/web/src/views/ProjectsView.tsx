@@ -4,6 +4,7 @@ import { ApiError, OfflineQueuedError } from '@aelys/shared'
 import { ApiStatusPill } from '../components/ApiStatusPill'
 import { Icon } from '../components/Icon'
 import { StateCard } from '../components/StateCard'
+import { PageSkeleton } from '../components/PageSkeleton'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import { dateKey, fmtDay, fullTaskInput, isOverdue, projectColor } from './tasks/taskModel'
@@ -24,12 +25,7 @@ function isDone(task: TaskOut): boolean {
 }
 
 function EmptyProjects({ status, retry }: { status: ApiStatus; retry: () => void }) {
-  const copy = status === 'loading'
-    ? ['Loading projects', 'Checking the connected project source.']
-    : status === 'offline'
-      ? ['Projects are offline', 'Reconnect to load the latest project data.']
-      : ['Projects are unavailable', 'The project API did not respond. Check the connection and try again.']
-  return <StateCard status={status} title={copy[0]} description={copy[1]} action={<button className="text-button" type="button" onClick={retry}><Icon name="refresh" size={14} />Try again</button>} />
+  return <PageSkeleton kind="grid" label="projects" phase={status === 'loading' ? 'loading' : 'error'} onRetry={retry} />
 }
 
 export function ProjectsView({ apiStatus }: { apiStatus: ApiStatus }) {

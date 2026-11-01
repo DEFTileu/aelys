@@ -18,7 +18,7 @@ describe('live calendar and notes views', () => {
   it('keeps Notes honest while offline', async () => {
     const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host); roots.push(root)
     await act(async () => { root.render(<NotesView apiStatus="offline" />) })
-    expect(host.textContent).toContain('Notes are offline')
+    expect(host.textContent).toContain('Can’t reach Aelys')
     expect(host.textContent).toContain('New note')
   })
 })

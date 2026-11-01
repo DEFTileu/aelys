@@ -1,0 +1,34 @@
+/* Loading / slow / error states, matched to the design's AelysSkeleton. */
+.pskel { display: flex; flex-direction: column; gap: 14px; color: var(--pg-ink); animation: pskelFade .2s ease-out; }
+.pskel__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.pskel__bar { height: 3px; border-radius: 2px; background: #EEE8FD; overflow: hidden; }
+.pskel__bar > span { display: block; width: 38%; height: 100%; border-radius: 2px; background: var(--pg-violet); animation: pskelBar 1.1s cubic-bezier(.4, 0, .2, 1) infinite; }
+.pskel__slow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border-radius: 16px; background: var(--pg-card); border: 1px solid var(--pg-line); box-shadow: 0 8px 24px rgba(40, 30, 30, .05); }
+.pskel__spin { width: 20px; height: 20px; flex: none; box-sizing: border-box; border-radius: 50%; border: 2.5px solid #EEE8FD; border-top-color: var(--pg-violet); animation: pskelSpin .9s linear infinite; }
+.pskel__slow-text { flex: 1; min-width: 180px; }
+.pskel__slow-text > div:first-child { font-weight: 600; }
+.pskel__slow-text > div:last-child { font-size: 13px; color: var(--pg-mute); }
+.pskel__slow button { height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: var(--pg-field); color: var(--pg-ink); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.pskel__slow button:hover { background: #EFE9E3; }
+.pskel__error { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 32px 20px; border-radius: 24px; background: var(--pg-glass); border: 1px solid var(--pg-line); }
+.pskel__error-icon { width: 56px; height: 56px; border-radius: 16px; background: var(--pg-red-bg); color: var(--pg-red); display: flex; align-items: center; justify-content: center; }
+.pskel__error-title { margin-top: 4px; font-size: 18px; line-height: 26px; font-weight: 600; }
+.pskel__error-text { max-width: 360px; font-size: 14px; line-height: 21px; color: var(--pg-mute); }
+.pskel__error-actions { display: flex; gap: 8px; margin-top: 8px; }
+.pskel__error-actions button { height: 40px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--pg-violet); color: #fff; font: inherit; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.pskel__error-actions button:hover { background: #5132D6; }
+.pskel__grid { display: grid; align-items: start; }
+.pskel__card { display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; border-radius: 20px; background: var(--pg-glass); border: 1px solid var(--pg-line); }
+.pskel__row { display: flex; align-items: center; gap: 12px; }
+.pskel__head { gap: 10px; }
+.pskel__lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.pskel__bone { display: block; flex: none; background: linear-gradient(90deg, #EEE8E2 30%, #F8F5F2 50%, #EEE8E2 70%); background-size: 200% 100%; animation: pskelSk 1.4s ease-in-out infinite; }
+:root[data-theme='dark'] .pskel__bone { background-image: linear-gradient(90deg, #26232E 30%, #322E3B 50%, #26232E 70%); }
+:root[data-theme='dark'] .pskel__bar { background: #2F2752; }
+:root[data-theme='dark'] .pskel__spin { border-color: #2F2752; border-top-color: var(--pg-violet); }
+:root[data-theme='dark'] .pskel__slow button:hover { background: #34303D; }
+@keyframes pskelSk { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@keyframes pskelBar { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+@keyframes pskelSpin { to { transform: rotate(360deg); } }
+@keyframes pskelFade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pskel__bone, .pskel__bar > span, .pskel__spin { animation: none !important; } }

@@ -1,6 +1,7 @@
 import { StyledSelect } from '../components/controls/StyledSelect'
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { ApiError, type MailAccount, type MailDraft, type MailMessage } from '@aelys/shared'
+import { PageSkeleton } from '../components/PageSkeleton'
 import { ApiStatusPill } from '../components/ApiStatusPill'
 import { getSharedApiClient } from '../lib/api'
 import './connected.css'
@@ -40,6 +41,7 @@ export function MailView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [content, setContent] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const upload = useRef<HTMLInputElement>(null)
   const load = useCallback(async () => {
     try {
@@ -47,8 +49,9 @@ export function MailView({ apiStatus }: { apiStatus: ApiStatus }) {
       const [inbox, saved, connected, gmail] = await Promise.all([client.mailMessages(), client.mailDrafts(), client.mailAccounts(), client.gmailStatus()])
       setMessages(inbox); setDrafts(saved)
       setAccounts(connected); setGmailConfigured(gmail.configured)
+      setPhase('ready')
       setGmailAccount((id) => connected.some((item) => item.id === id && item.connection_status === 'connected') ? id : connected.find((item) => item.provider === 'gmail' && item.connection_status === 'connected')?.id ?? '')
-    } catch { setNotice('Could not load mail. Check the connection and owner session in Settings.') }
+    } catch { setPhase('error'); setNotice('Could not load mail. Check the connection and owner session in Settings.') }
   }, [])
   useEffect(() => { void load() }, [load, apiStatus])
   const visible = useMemo(() => messages.filter((item) => `${item.sender} ${item.subject} ${item.body}`.toLowerCase().includes(query.toLowerCase())), [messages, query])
@@ -143,7 +146,8 @@ export function MailView({ apiStatus }: { apiStatus: ApiStatus }) {
     <input ref={upload} type="file" accept=".eml,message/rfc822" aria-label="Import EML file" hidden onChange={(event) => void importFile(event)} />
     {notice && <p role="status">{notice}</p>}
     {!compose && (recipients || subject || content) && <p role="status">Compose draft kept. <button type="button" onClick={() => { setCompose(true); setReaderOpen(true) }}>Resume draft</button></p>}
-    <div className={`actual-mail-grid ${readerOpen ? 'actual-reader-open' : ''}`}>
+    {phase !== 'ready' && !messages.length && !drafts.length && <PageSkeleton kind="split" label="mail" phase={phase === 'error' ? 'error' : 'loading'} onRetry={() => { setPhase('loading'); setNotice(''); void load() }} />}
+    <div hidden={phase !== 'ready' && !messages.length && !drafts.length} className={`actual-mail-grid ${readerOpen ? 'actual-reader-open' : ''}`}>
       <aside className="actual-panel actual-folders"><button className="button actual-import" disabled={busy || apiStatus !== 'ready'} onClick={() => upload.current?.click()}><FileUp size={16} />Import .eml</button><div className="actual-folder-heading">Mailboxes</div><nav aria-label="Mail folders">{(['inbox', 'drafts'] as const).map((folder) => { const count = folder === 'inbox' ? messages.filter((item) => item.is_read === false).length : drafts.length; return <button key={folder} type="button" aria-pressed={tab === folder} onClick={() => { setTab(folder); setCompose(false); setReaderOpen(false) }}>{folder === 'inbox' ? <Inbox size={16} /> : <Save size={16} />}<span className="actual-folder-name">{folder === 'inbox' ? 'Inbox' : 'Drafts'}</span><span>{count || ''}</span></button> })}</nav>{accounts.length > 0 && <><div className="actual-folder-heading">Accounts</div>{accounts.map((account) => <div className="actual-mail-account" key={account.id}><span className="actual-account-icon"><Mail size={16} /></span><div><strong>{account.provider === 'gmail' ? 'Gmail' : account.provider}</strong><span>{account.external_id}</span>{account.connection_status === 'connected' ? <small className="actual-account-ok"><i />Read &amp; drafts</small> : <small>{account.connection_status}</small>}</div></div>)}</>}    <div className="actual-topline actual-topline--panel"><ApiStatusPill status={apiStatus} /><button className="button button--quiet" disabled={busy} onClick={() => void load()}>Refresh</button><details className="actual-mail-tools"><summary>Mail tools</summary>    <div className="actual-actions"><button className="button button--quiet" disabled={busy || apiStatus !== 'ready' || !gmailConfigured} onClick={() => void connect()}>Connect Gmail</button><StyledSelect aria-label="Gmail account" value={gmailAccount} onChange={(event) => setGmailAccount(event.target.value)}><option value="">Select connected Gmail</option>{accounts.filter((item) => item.provider === 'gmail' && item.connection_status === 'connected').map((item) => <option key={item.id} value={item.id}>{item.external_id}</option>)}</StyledSelect><button className="button button--quiet" disabled={busy || !gmailAccount || apiStatus !== 'ready'} onClick={() => void sync()}>Load latest Gmail</button>{nextPages[gmailAccount] && <button className="button button--quiet" disabled={busy} onClick={() => void sync(true)}>Load older mail</button>}<button className="button button--quiet" disabled={busy || !gmailAccount || apiStatus !== 'ready'} onClick={() => void loadGmailDrafts()}>Load Gmail drafts</button>{nextPages[`${gmailAccount}:drafts`] && <button className="button button--quiet" disabled={busy} onClick={() => void loadGmailDrafts(true)}>Load older drafts</button>}<button className="button button--quiet" disabled={busy || !gmailAccount} onClick={() => void disconnect()}>Disconnect Gmail</button></div>
     <p className="connected-help">Gmail loads 25 messages per page into your Aelys store. Disconnecting removes access; loaded mail and local drafts stay here. Save replies locally or explicitly save a draft in Gmail. Sending is unavailable.</p>
     {!gmailConfigured && <p className="connected-help">Gmail needs server setup before you can connect your account. You can import EML files while it is being configured.</p>}

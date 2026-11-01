@@ -5,6 +5,7 @@ import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import { TaskEditor } from './tasks/TaskEditor'
 import { dateKey, dayDiff, fmtDay, projectColor, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
+import { PageSkeleton } from '../components/PageSkeleton'
 import './desktop/page-tokens.css'
 import './desktop/tasks.css'
 
@@ -299,9 +300,10 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     <div className="tasks-main">
       {message && <p className="tasks-feedback" role="status">{message}</p>}
       {actionError && <p className="tasks-error" role="alert">{actionError}</p>}
-      {source === 'loading' && <p role="status" className="tasks-source">Loading your tasks…</p>}
+      {source === 'loading' && <PageSkeleton kind="list" label="tasks" />}
       {source === 'auth' && <p className="tasks-error" role="alert">Your session ended. Sign in again to load your private tasks.</p>}
-      {source === 'error' && <div className="tasks-error" role="alert">Tasks could not be loaded. Previously loaded records may be out of date. <button type="button" disabled={refreshing} onClick={() => void load()}>Try again</button></div>}
+      {source === 'error' && !tasks.length && <PageSkeleton kind="list" label="tasks" phase="error" onRetry={() => void load()} />}
+      {source === 'error' && !!tasks.length && <div className="tasks-error" role="alert">Tasks could not be loaded. Previously loaded records may be out of date. <button type="button" disabled={refreshing} onClick={() => void load()}>Try again</button></div>}
       {offline && source !== 'loading' && source !== 'auth' && <p className="tasks-source" role="status">Offline or connection unavailable. Showing cached or previously loaded tasks. Saving requires a connection; drafts stay open while you work here.</p>}
       {projectsUnavailable && <p className="tasks-source" role="status">Projects could not be refreshed. Existing links are preserved; reconnect to choose a project.</p>}
       <div className="tasks-top-row">

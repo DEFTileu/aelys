@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { FinanceAccount, FinanceBudget, FinanceCategory, FinanceSummary, FinanceTransaction } from '@aelys/shared'
 import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
 import { ApiStatusPill } from '../components/ApiStatusPill'
+import { PageSkeleton } from '../components/PageSkeleton'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
 import { fmtDay } from './tasks/taskModel'
@@ -136,7 +137,7 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
   return <div className="connected-workspace actual-workspace actual-finance">
     {apiStatus !== 'ready' && <p role="status">Finance is offline or unavailable. Previously loaded records may be shown from cache. Changes require a connection (OFFLINE_WRITE_UNAVAILABLE).</p>}
     {notice && <p role="status">{notice}</p>}
-    {status !== 'ready' ? <StateCard status={status} title={status === 'loading' ? 'Loading ledger' : 'Finance unavailable'} description="Check the connection and owner session."/> : <>
+    {status !== 'ready' ? <PageSkeleton kind="grid" label="finances" phase={status === 'loading' ? 'loading' : 'error'} onRetry={() => void load()} /> : <>
       <section className="actual-finance-mobile-total" aria-label="Balance">
         {summary?.currencies?.length ? summary.currencies.map((item) => <div key={item.currency}><span>Total balance · {item.currency}</span><strong>{item.balance}</strong></div>) : <span>No currency balances yet.</span>}
         <div className="actual-mobile-record-actions">{(['expense', 'income'] as const).map((type) => <button type="button" key={type} onClick={() => { setForm(null); setKind(type); setCategoryId(''); setMobileRecord(true) }}>{type === 'expense' ? '↗ Expense' : '↙ Income'}</button>)}</div>

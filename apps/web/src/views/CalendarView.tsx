@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Plus, RefreshCw, ArrowRight, Calendar, User 
 import './desktop/page-tokens.css'
 import './actual-calendar.css'
 import { ApiStatusPill } from '../components/ApiStatusPill'
-import { StateCard } from '../components/StateCard'
+import { PageSkeleton } from '../components/PageSkeleton'
 import { getSharedApiClient } from '../lib/api'
 import { askAelys } from '../lib/desktopStore'
 import type { ApiStatus } from '../types'
@@ -29,8 +29,7 @@ function monthLabel(value: Date) { return value.toLocaleDateString(undefined, { 
 function localInputDate(value: Date) { return `${dayKey(value.toISOString())}T${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}` }
 
 function CalendarState({ status, retry }: { status: ApiStatus; retry: () => void }) {
-  const copy = status === 'loading' ? ['Loading calendar', 'Checking connected events.'] : status === 'offline' ? ['Calendar is offline', 'Reconnect to load or create events.'] : ['Calendar is unavailable', 'The calendar API did not respond. Check the connection and try again.']
-  return <StateCard status={status} title={copy[0]} description={copy[1]} action={<button className="text-button" type="button" onClick={retry}><RefreshCw size={14} />Try again</button>} />
+  return <PageSkeleton kind="calendar" label="calendar" phase={status === 'loading' ? 'loading' : 'error'} onRetry={retry} />
 }
 
 export function CalendarView({ apiStatus }: { apiStatus: ApiStatus }) {

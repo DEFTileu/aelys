@@ -4,7 +4,7 @@ import { ApiError } from '@aelys/shared'
 import { Check, FileText, Folder, Plus, Save, Search, SquarePen, Trash2, X } from '../icons'
 import './desktop/page-tokens.css'
 import { ApiStatusPill } from '../components/ApiStatusPill'
-import { StateCard } from '../components/StateCard'
+import { PageSkeleton } from '../components/PageSkeleton'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import './actual-projects-notes.css'
@@ -30,8 +30,7 @@ function PreviewLine({ line }: { line: string }) {
 }
 
 function NotesState({ status, retry }: { status: ApiStatus; retry: () => void }) {
-  const copy = status === 'loading' ? ['Loading notes', 'Checking the connected knowledge source.'] : status === 'offline' ? ['Notes are offline', 'Saving notes requires a connection. Unsaved drafts remain in this view.'] : ['Notes are unavailable', 'The notes API did not respond. Check the connection and try again.']
-  return <StateCard status={status} title={copy[0]} description={copy[1]} action={<button className="text-button" type="button" onClick={retry}>Try again</button>} />
+  return <PageSkeleton kind="split" label="notes" phase={status === 'loading' ? 'loading' : 'error'} onRetry={retry} />
 }
 
 export function NotesView({ apiStatus }: { apiStatus: ApiStatus }) {

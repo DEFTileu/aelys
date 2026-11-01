@@ -1,3 +1,4 @@
+import { PageSkeleton } from '../components/PageSkeleton'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Check, LayoutGrid, Plus, RotateCcw } from '../icons'
 import { AddWidgetSheet } from './desktop/AddWidgetSheet'
@@ -173,7 +174,8 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
         : <button type="button" className="home-btn home-tool" onClick={() => setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />{mobile ? 'Customize home' : 'Customize'}</button>}
     </div>
 
-    {apiStatus !== 'ready' && <p role="status">{apiStatus === 'loading' ? 'Loading workspace…' : 'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}
+    {apiStatus === 'loading' && <PageSkeleton kind="home" label="workspace" />}
+    {apiStatus !== 'ready' && apiStatus !== 'loading' && <p role="status">{'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}
     {taskNotice && <p role="status">{taskNotice}</p>}
     {layoutNotice && <p role="status">{layoutNotice}</p>}
     {editing && <p className="home-layout-help">Drag a card to move it, drag its corner to resize to S, M, L or Tall.</p>}

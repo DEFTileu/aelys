@@ -5,6 +5,7 @@ import { askAelys } from '../lib/desktopStore'
 import { projectColor } from './tasks/taskModel'
 import './desktop/page-tokens.css'
 import { ApiStatusPill } from '../components/ApiStatusPill'
+import { PageSkeleton } from '../components/PageSkeleton'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
@@ -78,7 +79,7 @@ export function KnowledgeView({ apiStatus }: { apiStatus: ApiStatus }) {
 
   return <div className={`knowledge-view page${reading ? ' knowledge-view--reading' : ''}`}>
     <div className="knowledge-status"><ApiStatusPill status={status} /></div>
-    {status !== 'ready' && notes.length === 0 ? <StateCard status={status} title={status === 'loading' ? 'Loading knowledge' : status === 'offline' ? 'Knowledge is offline' : 'Knowledge is unavailable'} description={status === 'loading' ? 'Loading your notes.' : 'Could not load notes. Check your connection and try again.'} action={status === 'loading' ? undefined : <button type="button" className="knowledge-button" onClick={() => void load()}>Try again</button>} /> : <>
+    {status !== 'ready' && notes.length === 0 ? <PageSkeleton kind="split" label="knowledge base" phase={status === 'loading' ? 'loading' : 'error'} onRetry={() => void load()} /> : <>
       {status !== 'ready' && <div className="knowledge-warning" role="status">{status === 'loading' ? 'Refreshing notes…' : 'Could not refresh notes.'} {status !== 'loading' && <button type="button" className="knowledge-button" onClick={() => void load()}>Try again</button>}</div>}
       <div className="knowledge-grid">
         <section className="knowledge-card knowledge-list" aria-label="Knowledge documents">
