@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getApiConfig } from '../lib/api'
 import { isKeychainAccessRequired, KEYCHAIN_ACCESS_NOTICE, loadNativeTransport, nativeBackendOrigin, type BiometricStatus } from '../lib/nativeTransport'
-import { Switch } from './Switch'
+import { Lock } from '../icons'
+import { Card, SwitchRow } from '../views/settings/ui'
 import { KeychainAccessRecovery } from './KeychainAccessRecovery'
 
 export function BiometricSettings() {
@@ -43,20 +44,18 @@ export function BiometricSettings() {
     } finally { setPending(false) }
   }
 
-  return <section className="settings-card">
-    <h2>Security</h2>
-    {!status && !error && <p role="status">Checking Touch ID…</p>}
-    {status?.supported && <div className="settings-form">
-      <p>Unlock your saved session with Touch ID after the app restarts. Signing in with your Aelys password stays available.</p>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-        <span>Touch ID</span>
-        <Switch label="Touch ID" checked={status.enabled} disabled={!status.available && !status.enabled} pending={pending} onCheckedChange={() => void change()} />
-      </div>
-      {!status.available && <p className="field-help">Touch ID is unavailable. Check your device settings.</p>}
-      {pending && <p role="status">Confirm the change on your device…</p>}
-    </div>}
-    {status && !status.supported && <p>Touch ID is not supported on this device.</p>}
-    {error && <p role="alert">{error}</p>}
-    {error === KEYCHAIN_ACCESS_NOTICE && <KeychainAccessRecovery pending={pending} onAuthorize={() => void authorizeKeychain()} />}
-  </section>
+  return <>
+    {!status && !error && <Card><div className="st-msg" role="status">Checking Touch ID…</div></Card>}
+    {status?.supported && <Card>
+      <SwitchRow title="Unlock with Touch ID" hint="Instead of the password" checked={status.enabled} disabled={!status.available && !status.enabled} pending={pending} onChange={() => void change()} />
+      {!status.available && <div className="st-msg">Touch ID is unavailable. Check your device settings.</div>}
+      {pending && <div className="st-msg" role="status">Confirm the change on your device…</div>}
+    </Card>}
+    {status && !status.supported && <Card><div className="st-msg">Touch ID is not supported on this device.</div></Card>}
+    {error && <Card>
+      <div className="st-error" role="alert">{error}</div>
+      {error === KEYCHAIN_ACCESS_NOTICE && <div className="st-pad"><KeychainAccessRecovery pending={pending} onAuthorize={() => void authorizeKeychain()} /></div>}
+    </Card>}
+    {status?.supported && <div className="st-note"><Lock size={14} aria-hidden="true" />Biometric data never leaves this Mac. Signing in with your Aelys password stays available.</div>}
+  </>
 }

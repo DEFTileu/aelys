@@ -1,87 +1,89 @@
-import { useState, type FormEvent } from 'react'
-import { Icon } from '../components/Icon'
-import { ApiStatusPill } from '../components/ApiStatusPill'
-import { getApiConfig, logout, saveApiBaseUrl } from '../lib/api'
-import { SettingsScreen } from './desktop/SettingsScreen'
-import { ProviderSettings } from './ProviderSettings'
+import { useState } from 'react'
+import { useOwner } from '../lib/owner'
+import { Bell, Calendar, ChevronLeft, ChevronRight, CloudSun, Info, Paintbrush, Search, Send, Shield, Sparkles, User, Wifi, type AelysIconComponent } from '../icons'
+import type { ApiStatus } from '../types'
+import { AppearancePanel } from './settings/AppearancePanel'
+import { AboutPanel, ConnectionPanel, NotificationsPanel, ProfilePanel, SecurityPanel } from './settings/panels'
+import { WeatherPanel } from './settings/WeatherPanel'
 import { GoogleCalendarSettings } from './GoogleCalendarSettings'
 import { MemorySettings } from './MemorySettings'
-import { WeatherSettingsContent } from '../components/Weather'
+import { ProviderSettings } from './ProviderSettings'
 import { TelegramSettings } from './TelegramSettings'
-import { BiometricSettings } from '../components/BiometricSettings'
-import { isKeychainAccessRequired, isNativeHost, KEYCHAIN_ACCESS_NOTICE } from '../lib/nativeTransport'
-import type { ApiStatus } from '../types'
-import { CloudSun, Wifi, Paintbrush, Search, Shield, Sparkles, Send } from '../icons'
 import './actual-settings.css'
+import './settings/settings.css'
 
-export function SettingsView({ apiStatus, theme, onToggleTheme }: { apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void }) {
-  const [baseUrl, setBaseUrl] = useState(getApiConfig().baseUrl)
-  const [saved, setSaved] = useState(false)
-  const [authMessage, setAuthMessage] = useState('')
-  const [authBusy, setAuthBusy] = useState(false)
+type PanelId = 'profile' | 'notifications' | 'appearance' | 'weather' | 'calendar' | 'ai' | 'memory' | 'telegram' | 'connection' | 'security' | 'about'
+type Section = { id: PanelId; title: string; desc: string; icon: AelysIconComponent; tone: string }
+
+// Groups, titles, descriptions and tile colors are the design's. Memory and Google Calendar are Aelys sections the design lacks.
+const GROUPS: readonly { title: string; items: readonly Section[] }[] = [
+  { title: 'Account', items: [
+    { id: 'profile', title: 'Profile', desc: 'Name and how Aelys addresses you', icon: User, tone: 'profile' },
+    { id: 'notifications', title: 'Notifications', desc: 'What can interrupt you, and when', icon: Bell, tone: 'alert' },
+  ] },
+  { title: 'General', items: [
+    { id: 'appearance', title: 'Appearance', desc: 'Theme, accent and motion', icon: Paintbrush, tone: 'violet' },
+    { id: 'weather', title: 'Weather & location', desc: 'City and units', icon: CloudSun, tone: 'blue' },
+    { id: 'calendar', title: 'Google Calendar', desc: 'Read-only event import', icon: Calendar, tone: 'blue' },
+  ] },
+  { title: 'Assistant', items: [
+    { id: 'ai', title: 'AI & models', desc: 'Providers and the models Aelys uses', icon: Sparkles, tone: 'violet' },
+    { id: 'memory', title: 'Memory', desc: 'Saved facts and preferences', icon: Sparkles, tone: 'violet' },
+    { id: 'telegram', title: 'Telegram', desc: 'Connection, auto-reply and instructions', icon: Send, tone: 'blue' },
+  ] },
+  { title: 'System', items: [
+    { id: 'connection', title: 'Connection', desc: 'Backend address and your session', icon: Wifi, tone: 'green' },
+    { id: 'security', title: 'Security', desc: 'Touch ID and session unlock', icon: Shield, tone: 'coral' },
+    { id: 'about', title: 'Data & about', desc: 'Version and sync', icon: Info, tone: 'gray' },
+  ] },
+]
+const ALL = GROUPS.flatMap((group) => group.items)
+
+export function SettingsView({ apiStatus }: { apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void }) {
+  const owner = useOwner(apiStatus)
   const [query, setQuery] = useState('')
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(() => ['telegram', 'calendar'].includes(new URLSearchParams(window.location.search).get('section') ?? ''))
-  const [panel, setPanel] = useState<'connection' | 'appearance' | 'ai' | 'weather' | 'telegram' | 'memory' | 'calendar' | 'security'>(() => { const section = new URLSearchParams(window.location.search).get('section'); return section === 'telegram' || section === 'calendar' ? section : 'appearance' })
+  const initial = (() => { const section = new URLSearchParams(window.location.search).get('section'); return ALL.find((item) => item.id === section)?.id })()
+  const [panel, setPanel] = useState<PanelId>(initial ?? 'profile')
+  // On a phone the list and the panel take turns, as in the design's compact layout.
+  const [open, setOpen] = useState(!!initial)
 
-  const save = (event: FormEvent) => {
-    event.preventDefault()
-    saveApiBaseUrl(baseUrl)
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 2200)
-  }
+  const q = query.trim().toLocaleLowerCase()
+  const groups = GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => !q || `${item.title} ${item.desc}`.toLocaleLowerCase().includes(q)) })).filter((group) => group.items.length)
+  const go = (id: PanelId) => { setPanel(id); setOpen(true) }
+  const current = ALL.find((item) => item.id === panel)!
 
-  const signOut = async () => {
-    if (authBusy) return
-    setAuthBusy(true); setAuthMessage('')
-    try { await logout(); setAuthMessage('You signed out of Aelys.') }
-    catch (error) {
-      const code = error instanceof Error ? error.message : error
-      setAuthMessage(isKeychainAccessRequired(error) ? KEYCHAIN_ACCESS_NOTICE : code === 'LOCAL_LOGOUT_ONLY' ? 'You signed out on this device. The server did not confirm the session was revoked.' : isNativeHost() ? 'Could not sign out. Try again.' : 'Signed out locally. The server is unavailable.')
-    } finally { setAuthBusy(false) }
-  }
-
-  const sections = [
-    { id: 'appearance' as const, title: 'Appearance', subtitle: 'Theme, wallpaper, styling', icon: Paintbrush },
-    { id: 'connection' as const, title: 'Connection', subtitle: 'API and owner session', icon: Wifi },
-    { id: 'ai' as const, title: 'AI & models', subtitle: 'Providers and models', icon: Sparkles },
-    { id: 'memory' as const, title: 'Memory', subtitle: 'Saved facts and preferences', icon: Sparkles },
-    { id: 'weather' as const, title: 'Weather and city', subtitle: 'Weather and city', icon: CloudSun },
-    { id: 'calendar' as const, title: 'Google Calendar', subtitle: 'Read-only event import', icon: CloudSun },
-    { id: 'telegram' as const, title: 'Telegram', subtitle: 'Connected messaging', icon: Send },
-    ...(isNativeHost() ? [{ id: 'security' as const, title: 'Security', subtitle: 'Security and biometric access', icon: Shield }] : []),
-  ]
-  const normalizedQuery = query.trim().toLocaleLowerCase()
-  const matches = (text: string) => text.toLocaleLowerCase().includes(normalizedQuery)
-  const visibleSections = sections.filter((item) => matches(`${item.title} ${item.subtitle}`))
-  const connection = <div className="actual-connection">
-    <header className="actual-connection-header"><div><h2>Connection</h2><p>API and owner session</p></div><ApiStatusPill status={apiStatus} /></header>
-    <section className="settings-card">
-      <div className="settings-card__header"><div><h2>API connection</h2></div><Icon name="external" size={19} /></div>
-      <form onSubmit={save} className="settings-form"><label>API base URL<input value={baseUrl} onChange={(event) => { setBaseUrl(event.target.value); setSaved(false) }} placeholder="/api/v1" inputMode="url" /></label><p className="field-help">Default: <code>/api/v1</code>. Build-time setting: <code>VITE_API_BASE_URL</code>.</p><button className="button button--primary" type="submit"><Icon name="refresh" size={16} />Save connection</button>{saved && <span className="save-note" role="status">Saved locally. Reload to check the new endpoint.</span>}</form>
-    </section>
-    <section className="settings-card">
-      <div className="settings-card__header"><div><h2>Owner session</h2></div><Icon name="lock" size={19} /></div>
-      <div className="settings-form"><button className="button button--quiet" type="button" disabled={authBusy} onClick={() => void signOut()}>{authBusy ? 'Signing out…' : 'Sign out'}</button>{authMessage && <span role="status">{authMessage}</span>}</div>
-    </section>
-  </div>
-
-  return <div className={`actual-settings ${mobilePanelOpen ? 'actual-settings--mobile-panel' : ''}`}>
-    <aside className="actual-settings-nav">
-      <label className="actual-settings-search"><Search size={16} aria-hidden="true" /><input aria-label="Search settings" placeholder="Search settings…" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <div className="actual-settings-mobile-heading">Settings</div><nav aria-label="Settings sections">
-        {visibleSections.map((item) => { const NavIcon = item.icon; return <button key={item.id} type="button" aria-current={panel === item.id ? 'page' : undefined} onClick={() => { setPanel(item.id); setMobilePanelOpen(true) }}><span className="actual-settings-nav-icon"><NavIcon size={20} aria-hidden="true" /></span><span className="actual-settings-nav-label"><strong>{item.title}</strong><small>{item.subtitle}</small></span><span className="actual-settings-chevron" aria-hidden="true">›</span></button> })}
-        {!visibleSections.length && <p>No settings sections found.</p>}
+  return <div className="st" data-open={open}>
+    <aside className="st-nav" aria-label="Settings">
+      <label className="st-search"><Search size={14} aria-hidden="true" /><input aria-label="Search settings" placeholder="Search settings" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      <nav aria-label="Settings sections" style={{ display: 'contents' }}>
+        {groups.map((group) => <section key={group.title} style={{ display: 'contents' }} aria-label={group.title}>
+          <div className="st-nav-group">{group.title}</div>
+          <div className="st-nav-list">
+            {group.items.map((item) => { const NavIcon = item.icon; return <button key={item.id} type="button" className="st-nav-item" data-section={item.id} aria-current={panel === item.id ? 'page' : undefined} onClick={() => go(item.id)}>
+              <span className={`st-tile st-tone-${item.tone}`}><NavIcon size={14} aria-hidden="true" /></span>
+              <span className="st-nav-text"><span>{item.title}</span><span className="st-nav-desc">{item.desc}</span></span>
+              <ChevronRight className="st-nav-chevron" size={14} aria-hidden="true" />
+            </button> })}
+          </div>
+        </section>)}
+        {!groups.length && <p className="st-nav-empty">No settings sections found.</p>}
       </nav>
     </aside>
-    <main className="actual-settings-content"><button type="button" className="actual-settings-back" onClick={() => setMobilePanelOpen(false)}>← Settings</button>
-      {panel === 'appearance' && <SettingsScreen theme={theme} onToggleTheme={onToggleTheme} />}
-      {panel === 'connection' && connection}
+    <main className="st-panel">
+      <div className="st-head">
+        <button type="button" className="st-back" aria-label="Back to settings" onClick={() => setOpen(false)}><ChevronLeft size={20} aria-hidden="true" /></button>
+        <div><h2 className="st-title">{current.title}</h2><div className="st-sub">{current.desc}</div></div>
+      </div>
+      {panel === 'profile' && <ProfilePanel owner={owner} />}
+      {panel === 'notifications' && <NotificationsPanel onGo={go} />}
+      {panel === 'appearance' && <AppearancePanel />}
+      {panel === 'weather' && <WeatherPanel />}
       {panel === 'ai' && <ProviderSettings />}
-      {panel === 'memory' && <MemorySettings />}
-      {panel === 'calendar' && <GoogleCalendarSettings />}
-      {panel === 'weather' && <section className="settings-card weather-settings-page"><h2>Weather and city</h2><WeatherSettingsContent /></section>}
       {panel === 'telegram' && <TelegramSettings />}
-      {panel === 'security' && isNativeHost() && <BiometricSettings />}
+      {panel === 'connection' && <ConnectionPanel apiStatus={apiStatus} owner={owner} />}
+      {panel === 'security' && <SecurityPanel />}
+      {panel === 'about' && <AboutPanel />}
+      {(panel === 'memory' || panel === 'calendar') && <div className="st-legacy actual-settings-content">{panel === 'memory' ? <MemorySettings /> : <GoogleCalendarSettings />}</div>}
     </main>
   </div>
 }
