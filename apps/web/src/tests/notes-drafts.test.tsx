@@ -13,7 +13,9 @@ let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
 const button = (text: string) => [...host.querySelectorAll('button')].find((item) => item.textContent?.includes(text) || item.getAttribute('aria-label') === text)!
 const input = (label: string) => host.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[aria-label="${label}"]`)!
+const body = () => host.querySelector<HTMLElement>('[aria-label="Note body"]')!
 async function change(label: string, value: string) {
+  if (label === 'Note body') { const editor = body(); await act(async () => { editor.textContent = ''; const p = document.createElement('p'); p.textContent = value; editor.appendChild(p); editor.dispatchEvent(new Event('input', { bubbles: true })) }); return }
   const element = input(label)
   const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
   await act(async () => { Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })) })
@@ -34,25 +36,25 @@ describe('note drafts', () => {
     expect(host.querySelector('.nl-note-list')?.textContent).toContain('Alpha')
     await click('Beta'); expect(host.querySelector('.notes-live--editing')).not.toBeNull()
     await click('← All notes'); expect(host.querySelector('.notes-live--editing')).toBeNull()
-    await click('All notes'); await click('Alpha'); expect(input('Note body').value).toBe('Alpha draft')
+    await click('All notes'); await click('Alpha'); expect(body().textContent).toBe('Alpha draft')
   })
   it('keeps the editor draft when opening and cancelling creation', async () => {
     await mount(); await change('Note body', 'Unsaved body'); await click('New note'); await change('New note title', 'New'); await click('Cancel')
-    expect(input('Note body').value).toBe('Unsaved body')
+    expect(body().textContent).toBe('Unsaved body')
     expect(input('Note title').value).toBe('Alpha')
   })
   it('keeps separate drafts across selection and search', async () => {
     await mount(); await change('Note body', 'Alpha draft'); await click('Beta'); await change('Note body', 'Beta draft')
-    await change('Search notes', 'Alpha'); expect(input('Note body').value).toBe('Alpha draft')
-    await change('Search notes', 'Beta'); expect(input('Note body').value).toBe('Beta draft')
-    await change('Search notes', ''); await click('Alpha'); expect(input('Note body').value).toBe('Alpha draft')
+    await change('Search notes', 'Alpha'); expect(body().textContent).toBe('Alpha draft')
+    await change('Search notes', 'Beta'); expect(body().textContent).toBe('Beta draft')
+    await change('Search notes', ''); await click('Alpha'); expect(body().textContent).toBe('Alpha draft')
   })
   it('saves the full note and uses the returned version as the next base', async () => {
     const saved = { ...first, title: 'Edited', markdown_body: 'Saved body', version: 2 }
     client.updateNote.mockResolvedValueOnce(saved).mockResolvedValueOnce({ ...saved, version: 3 })
     await mount(); await change('Note title', 'Edited'); await change('Note body', 'Saved body'); await click('Save changes')
     expect(client.updateNote).toHaveBeenCalledWith('1', { title: 'Edited', markdown_body: 'Saved body', parent_id: 'parent', project_id: 'project' }, { query: { version: 1 }, queueOnOffline: false })
-    expect(host.textContent).toContain('v2'); expect(input('Note body').value).toBe('Saved body')
+    expect(host.textContent).toContain('v2'); expect(body().textContent).toBe('Saved body')
     await change('Note body', 'Next'); await click('Save changes')
     expect(client.updateNote).toHaveBeenLastCalledWith('1', expect.objectContaining({ markdown_body: 'Next' }), { query: { version: 2 }, queueOnOffline: false })
   })
@@ -65,7 +67,7 @@ describe('note drafts', () => {
     await act(async () => root.render(<NotesView apiStatus="offline" />))
     await change('Note body', 'Offline draft')
     expect(host.textContent).not.toContain('Changes saved.')
-    expect(input('Note body').value).toBe('Offline draft')
+    expect(body().textContent).toBe('Offline draft')
   })
   it('does not report success for a newer draft typed during save', async () => {
     let finish!: (value: typeof first) => void
@@ -73,7 +75,7 @@ describe('note drafts', () => {
     await mount(); await change('Note body', 'Sent'); await click('Save changes')
     await change('Note body', 'Newer draft')
     await act(async () => finish({ ...first, markdown_body: 'Sent', version: 2 }))
-    expect(input('Note body').value).toBe('Newer draft')
+    expect(body().textContent).toBe('Newer draft')
     expect(host.textContent).not.toContain('Changes saved.')
   })
   it('does not show a completed save on another selected note', async () => {
@@ -96,15 +98,15 @@ describe('note drafts', () => {
   it('retains drafts on conflict and network failure', async () => {
     await mount(); await change('Note body', 'Draft')
     client.updateNote.mockRejectedValueOnce(new ApiError(409, 'CONFLICT', 'Changed')); await click('Save changes')
-    expect(input('Note body').value).toBe('Draft'); expect(host.textContent).toContain('changed on the server')
+    expect(body().textContent).toBe('Draft'); expect(host.textContent).toContain('changed on the server')
     expect(client.updateNote).toHaveBeenCalledWith('1', expect.objectContaining({ markdown_body: 'Draft' }), { query: { version: 1 }, queueOnOffline: false })
     expect(client.note).not.toHaveBeenCalled(); expect(client.notes).toHaveBeenCalledTimes(1)
     client.note.mockResolvedValueOnce({ ...first, markdown_body: 'Remote', version: 2 }); await click('Review latest version')
-    expect(host.textContent).toContain('Remote'); expect(input('Note body').value).toBe('Draft')
+    expect(host.textContent).toContain('Remote'); expect(body().textContent).toBe('Draft')
     await click('Keep my draft and use this version')
     client.updateNote.mockRejectedValueOnce(new Error('network')); await click('Save changes')
     expect(client.updateNote).toHaveBeenLastCalledWith('1', expect.objectContaining({ markdown_body: 'Draft' }), { query: { version: 2 }, queueOnOffline: false })
-    expect(input('Note body').value).toBe('Draft'); expect(host.textContent).toContain('draft is preserved')
+    expect(body().textContent).toBe('Draft'); expect(host.textContent).toContain('draft is preserved')
   })
   it('blocks overlapping writes and does not queue offline', async () => {
     let finish!: (value: typeof first) => void
@@ -114,7 +116,7 @@ describe('note drafts', () => {
     expect(client.updateNote).toHaveBeenCalledTimes(1)
     await act(async () => finish({ ...first, markdown_body: 'Draft', version: 2 }))
     await act(async () => root.render(<NotesView apiStatus="offline" />))
-    expect(input('Note body').value).toBe('Draft'); expect(button('Save changes').disabled).toBe(true)
+    expect(body().textContent).toBe('Draft'); expect(button('Save changes').disabled).toBe(true)
     await click('New note'); expect(host.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true)
     expect(client.createNote).not.toHaveBeenCalled()
   })
@@ -124,14 +126,14 @@ describe('note drafts', () => {
     await mount(); await change('Note body', 'Sent'); await act(async () => button('Save changes').click())
     await change('Note body', 'Typed during save')
     await act(async () => finish({ ...first, markdown_body: 'Sent', version: 2 }))
-    expect(input('Note body').value).toBe('Typed during save')
+    expect(body().textContent).toBe('Typed during save')
     client.notes.mockResolvedValue([{ ...first, markdown_body: 'Server refresh', version: 3 }, second])
     await act(async () => root.render(<NotesView apiStatus="offline" />))
     await act(async () => root.render(<NotesView apiStatus="ready" />))
-    expect(input('Note body').value).toBe('Typed during save')
+    expect(body().textContent).toBe('Typed during save')
     client.updateNote.mockRejectedValueOnce(new ApiError(409, 'CONFLICT', 'Changed')); await click('Save changes')
     expect(client.updateNote).toHaveBeenLastCalledWith('1', expect.objectContaining({ markdown_body: 'Typed during save' }), { query: { version: 2 }, queueOnOffline: false })
-    expect(input('Note body').value).toBe('Typed during save')
+    expect(body().textContent).toBe('Typed during save')
   })
   it('does not blindly retry an ambiguous create', async () => {
     client.createNote.mockRejectedValue(new Error('network'))
@@ -141,17 +143,19 @@ describe('note drafts', () => {
     expect(input('New note title').value).toBe('New'); expect(host.textContent).toContain('may have succeeded')
     expect(host.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true)
   })
-  it('formats a selection and safely previews the draft without saving', async () => {
-    await mount(); await change('Note body', '<script>bad()</script> hello')
-    const area = input('Note body') as HTMLTextAreaElement
-    area.setSelectionRange(23, 28)
-    await click('Bold')
-    expect(input('Note body').value).toContain('**hello**')
-    await click('Preview')
-    expect(host.querySelector('.nl-preview script')).toBeNull()
-    expect(host.querySelector('.nl-preview strong')?.textContent).toBe('hello')
+  it('renders stored markdown as sanitized rich text and saves markdown back without saving by itself', async () => {
+    client.notes.mockResolvedValue([{ ...first, markdown_body: '**hello** <script>bad()</script>\n\n- [ ] task\n- [x] done' }, second])
+    await mount()
+    const editor = body()
+    expect(editor.querySelector('script')).toBeNull(); expect(editor.querySelector('strong')?.textContent).toBe('hello')
+    expect(editor.querySelectorAll('ul[data-check] > li')).toHaveLength(2)
     expect(client.updateNote).not.toHaveBeenCalled()
-    await click('Edit'); expect(input('Note body').value).toContain('**hello**')
+    const li = editor.querySelector('li')!
+    li.getBoundingClientRect = () => ({ left: 0 } as DOMRect)
+    await act(async () => { li.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 4 })) })
+    client.updateNote.mockResolvedValue({ ...first, version: 2 })
+    await click('Save changes')
+    expect(client.updateNote.mock.calls[0]![1].markdown_body).toBe('**hello** <script>bad()</script>\n\n- [x] task\n- [x] done')
   })
 
   it('confirms deletion and removes only the selected note after success', async () => {
