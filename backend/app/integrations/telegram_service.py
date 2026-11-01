@@ -585,6 +585,8 @@ async def connector_iteration() -> None:
         await db.commit()
     for integration_id in ids:
         await poll_integration_safely(integration_id)
+    from app.domains.google_calendar_sync import sync_due_google_calendars
+    await sync_due_google_calendars()
 
 
 async def connector_loop() -> None:

@@ -20,7 +20,8 @@ from app.core.models import (
     TaskReminder,
 )
 from app.domains.api import EventIn, TaskPatchIn, owned_ref, owner_obj
-from app.domains.recurrence import occurrences, utc
+from app.domains.google_calendar_projection import project_google_calendar_events
+from app.domains.recurrence import utc
 from app.domains.reminders import authorize_reminder_write
 from app.sync.change_log import FIELDS, lock_owner, record_domain_change
 from fastapi.encoders import jsonable_encoder
@@ -166,20 +167,20 @@ def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, so
     async def read_calendar(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         args = _CalendarRead.model_validate(arguments)
         lower, upper = utc(args.starts_at), utc(args.ends_at)
-        rows = (await db.execute(select(CalendarEvent).where(CalendarEvent.owner_id == owner_id,
-            CalendarEvent.deleted_at.is_(None), CalendarEvent.starts_at < upper,
-            or_(CalendarEvent.ends_at > lower, CalendarEvent.rrule.is_not(None)),
-        ).order_by(CalendarEvent.starts_at, CalendarEvent.id).limit(MAX_CALENDAR_SERIES + 1))).scalars().all()
-        if len(rows) > MAX_CALENDAR_SERIES:
+        rows = (await db.execute(select(CalendarEvent).where(CalendarEvent.owner_id == owner_id)
+            .order_by(CalendarEvent.starts_at, CalendarEvent.id).limit(10001))).scalars().all()
+        if len(rows) > 10000:
+            raise ValueError('CALENDAR_RANGE_LIMIT: Calendar exceeds 10000 records')
+        instances = project_google_calendar_events(list(rows), lower, upper)
+        if len({item.id for item, _, _ in instances}) > MAX_CALENDAR_SERIES:
             raise ValueError('CALENDAR_RANGE_LIMIT: Narrow the calendar range')
         projected = []
-        for item in rows:
-            for start, end in occurrences(item.starts_at, item.ends_at, item.timezone, item.rrule, lower, upper):
-                projected.append({'id': item.id, 'occurrence_id': f'{item.id}:{start.isoformat()}',
-                    'title': item.title[:300], 'starts_at': start, 'ends_at': end,
-                    'timezone': item.timezone, 'version': item.version, 'project_id': item.project_id})
-                if len(projected) > MAX_CALENDAR_OCCURRENCES:
-                    raise ValueError('CALENDAR_RANGE_LIMIT: Narrow the calendar range')
+        for item, start, end in instances:
+            projected.append({'id': item.id, 'occurrence_id': f'{item.id}:{start.isoformat()}',
+                'title': item.title[:300], 'starts_at': start, 'ends_at': end,
+                'timezone': item.timezone, 'version': item.version, 'project_id': item.project_id})
+            if len(projected) > MAX_CALENDAR_OCCURRENCES:
+                raise ValueError('CALENDAR_RANGE_LIMIT: Narrow the calendar range')
         projected.sort(key=lambda row: (row['starts_at'], row['id']))
         return jsonable_encoder({'items': projected[:args.limit],
                                   'truncated': len(projected) > args.limit, 'untrusted': True})

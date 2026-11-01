@@ -12,7 +12,7 @@ import type {
   TaskIn, TaskOut, TaskReminder, CalendarReminder, CalendarReminderIn, TokenResponse, TransactionIn, Id,
 } from "./types";
 import type { EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
-import type { DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
+import type { GoogleCalendarStatus, GoogleCalendarSync, DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
 
 import type { TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
 
@@ -351,6 +351,10 @@ export class ApiClient {
   public taskReminders(taskId: Id, options?: RequestOptions) { return this.request<readonly TaskReminder[]>(`/api/v1/tasks/${encodeURIComponent(taskId)}/reminders`, this.read(options)); }
   public createTaskReminder(taskId: Id, body: ReminderIn, options?: RequestOptions) { return this.request<TaskReminder>(`/api/v1/tasks/${encodeURIComponent(taskId)}/reminders`, this.write(body, options)); }
   public calendarEvents(query?: Query, options?: RequestOptions) { return this.request<readonly EventOut[]>("/api/v1/calendar/events", this.read({ ...options, query }, "calendar-events")); }
+  public googleCalendarStatus(options?: RequestOptions) { return this.request<GoogleCalendarStatus>("/api/v1/calendar/google/status", this.read(options)); }
+  public connectGoogleCalendar() { return this.request<{ readonly authorization_url: string }>("/api/v1/calendar/google/connect", this.write({}, { queueOnOffline: false })); }
+  public syncGoogleCalendar() { return this.request<GoogleCalendarSync>("/api/v1/calendar/google/sync", this.write({}, { queueOnOffline: false })); }
+  public disconnectGoogleCalendar() { return this.request<{ readonly disconnected: boolean }>("/api/v1/calendar/google/connection", { method: "DELETE", queueOnOffline: false }); }
   public calendarOccurrences(startsAt: string, endsAt: string, options?: RequestOptions) { return this.request<readonly EventOccurrence[]>("/api/v1/calendar/occurrences", this.read({ ...options, query: { starts_at: startsAt, ends_at: endsAt } }, "calendar-occurrences")); }
   public createCalendarEvent(body: EventIn, options?: RequestOptions) { return this.request<EventOut>("/api/v1/calendar/events", this.write(body, { queueOnOffline: false, ...options })); }
   public calendarEvent(itemId: Id, options?: RequestOptions) { return this.request<EventOut>(`/api/v1/calendar/events/${encodeURIComponent(itemId)}`, this.read(options)); }

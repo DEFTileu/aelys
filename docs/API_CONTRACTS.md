@@ -563,3 +563,33 @@ version in pull/bootstrap. Historical pre-feature rows remain unknown (null).
 HistoryEntry retains immutable per-version status-transition metadata; no new
 history table or sync resource kind. API/offline version conflicts preserve the
 server's work dates and status. Final acceptance is recorded in the stage report.
+
+### Read-only Google Calendar connection (ADR-028 Stage 7)
+
+`GET /api/v1/calendar/google/status` returns `{configured, connection}`. A connection
+contains only id/version/calendar_id/status/last_synced_at/last_error_code;
+credentials, sync tokens and PKCE verifiers never cross this API. `POST …/connect`
+returns `{authorization_url}`, sets a separate HttpOnly state cookie, and uses
+`…/callback` for one-use PKCE consent. Consent is only `calendar.readonly`, separate
+from Gmail. The callback returns to Settings → Google Calendar.
+
+`POST …/sync` performs a bounded, leased, atomic import and returns
+`{imported, deleted, full_sync}`. Import counts mean changed local projections,
+so importing unchanged data returns zero. `DELETE …/connection` clears credentials
+and imported events, returns `{disconnected:true}` and publishes domain tombstones.
+A connected primary calendar refreshes in the existing connector worker every
+15 minutes; a transient failure keeps the previous snapshot/cursor and retries
+on the next due interval. Revoked credentials require Reconnect.
+
+Calendar `EventOut`/`EventOccurrence` include nullable `external_source` and
+`external_id`. Imported events are read-only: REST patch/delete and device push
+return `409 EXTERNAL_EVENT_READ_ONLY`; clients cannot forge or clear provenance.
+Native events keep their existing CAS/version contract. Every import/cancellation/
+disconnect uses the shared domain change writer. Recurrence exceptions apply to
+Calendar, /today and bounded personal calendar reads.
+
+Errors include `503 CALENDAR_NOT_CONFIGURED`, `404 CALENDAR_NOT_CONNECTED`,
+`409 CALENDAR_RECONNECT_REQUIRED`, `CALENDAR_SCOPE_REQUIRED`, `CALENDAR_SYNC_BUSY`,
+`422 CALENDAR_INVALID_DATA`/`CALENDAR_SYNC_LIMIT`, `502 CALENDAR_UNAVAILABLE` and
+`403 POLICY_DENIED`. HTTP 410 is consumed internally by one full refetch. Provider
+payloads and token-bearing URLs are never returned in error messages or logs.

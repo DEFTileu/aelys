@@ -103,6 +103,13 @@ async def build_owner_export(db: AsyncSession, owner_email: str) -> dict[str, An
         rows = (await db.execute(select(model).where(model.owner_id == owner.id))).scalars().all()
         tables[model.__tablename__] = [_row(model, item) for item in rows]
 
+    # Derived Google snapshots cannot be restored without their deliberately
+    # excluded connection identity. Rebuild them after a new readonly consent;
+    # otherwise orphan readonly rows would become undeletable duplicate events.
+    imported_ids = {row['id'] for row in tables.get('calendar_events', [])
+                    if str(row.get('external_source') or '').startswith('google_calendar:')}
+    tables['calendar_events'] = [row for row in tables.get('calendar_events', []) if row['id'] not in imported_ids]
+    tables['calendar_reminders'] = [row for row in tables.get('calendar_reminders', []) if row['event_id'] not in imported_ids]
     note_ids = [row["id"] for row in tables.get("notes", [])]
     if note_ids:
         revisions = (await db.execute(select(NoteRevision).where(NoteRevision.note_id.in_(note_ids)))).scalars().all()
@@ -117,7 +124,7 @@ async def build_owner_export(db: AsyncSession, owner_email: str) -> dict[str, An
         "owner": {"id": owner.id, "email": owner.email},
         "privacy": {
             "encrypted": True,
-            "excluded": ["auth_sessions", "devices", "ai_provider_secrets", "gmail_credentials", "gmail_oauth_states", "gmail_draft_links", "telegram_integrations", "telegram_business_connections", "telegram_business_messages", "telegram_update_receipts", "telegram_personal_jobs", "project_grants", "raw_mac_agent_sessions", "credentials"],
+            "excluded": ["auth_sessions", "devices", "ai_provider_secrets", "gmail_credentials", "gmail_oauth_states", "google_calendar_connections", "google_calendar_credentials", "google_calendar_oauth_states", "gmail_draft_links", "telegram_integrations", "telegram_business_connections", "telegram_business_messages", "telegram_update_receipts", "telegram_personal_jobs", "project_grants", "raw_mac_agent_sessions", "credentials", "google_calendar_event_projections"],
         },
         "exported_at": datetime.now().astimezone().isoformat(),
         "tables": tables,

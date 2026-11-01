@@ -116,8 +116,9 @@ async def test_gmail_callback_rejects_revoked_session(gmail_client, monkeypatch)
     assert (await client.get('/api/v1/mail/gmail/callback', params={'state':state,'code':'private-code'})).status_code == 401
 
 
-def test_callback_codes_are_redacted_from_access_logs():
-    record = logging.LogRecord('uvicorn.access', logging.INFO, '', 0, '%s - %s %s %s %s', ('host','GET','/api/v1/mail/gmail/callback?code=private-code&state=private-state','1.1',303), None)
+@pytest.mark.parametrize("path", ["/api/v1/mail/gmail/callback", "/api/v1/calendar/google/callback"])
+def test_callback_codes_are_redacted_from_access_logs(path):
+    record = logging.LogRecord('uvicorn.access', logging.INFO, '', 0, '%s - %s %s %s %s', ('host','GET',path+'?code=private-code&state=private-state','1.1',303), None)
     OAuthAccessLogFilter().filter(record)
     assert 'private-code' not in record.getMessage() and 'private-state' not in record.getMessage()
 

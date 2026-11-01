@@ -196,3 +196,10 @@ intermediate tool-loop replies and repeated answers. Ordinary visible chat
 history is retained; it does not silently restore a revoked memory into prompts.
 Only the retrieval query is bounded to 2k characters; the full owner message or
 voice transcript still goes to the model. No rolling summary was introduced.
+
+Stage 7 calendar reads use the same bounded occurrence projection as Calendar and
+/today, including imported recurring exceptions and cancellations. Event content
+remains UntrustedData; Google readonly consent grants no AI write permissions.
+The Business secretary receives none of these personal calendar records. The
+Google worker uses server Policy Engine checks for local import writes and each
+external read; no Google event write tool exists.

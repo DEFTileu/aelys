@@ -6102,6 +6102,131 @@
         }
       }
     },
+    "/api/v1/calendar/google/status": {
+      "get": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Status",
+        "operationId": "status_api_v1_calendar_google_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/calendar/google/connect": {
+      "post": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Connect",
+        "operationId": "connect_api_v1_calendar_google_connect_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendar/google/sync": {
+      "post": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Sync Now",
+        "operationId": "sync_now_api_v1_calendar_google_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSyncOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/calendar/google/connection": {
+      "delete": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Disconnect",
+        "operationId": "disconnect_api_v1_calendar_google_connection_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarDisconnectOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/integrations/telegram/status": {
       "get": {
         "tags": [
@@ -6654,6 +6779,90 @@
         ],
         "title": "BudgetPutIn"
       },
+      "CalendarConnectOut": {
+        "properties": {
+          "authorization_url": {
+            "type": "string",
+            "title": "Authorization Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorization_url"
+        ],
+        "title": "CalendarConnectOut"
+      },
+      "CalendarConnectionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "calendar_id": {
+            "type": "string",
+            "title": "Calendar Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "error",
+              "disconnected"
+            ],
+            "title": "Status"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "calendar_id",
+          "status",
+          "last_synced_at",
+          "last_error_code"
+        ],
+        "title": "CalendarConnectionOut"
+      },
+      "CalendarDisconnectOut": {
+        "properties": {
+          "disconnected": {
+            "type": "boolean",
+            "title": "Disconnected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "disconnected"
+        ],
+        "title": "CalendarDisconnectOut"
+      },
       "CalendarReminderIn": {
         "properties": {
           "event_id": {
@@ -6743,6 +6952,53 @@
           "version"
         ],
         "title": "CalendarReminderOut"
+      },
+      "CalendarStatusOut": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalendarConnectionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured",
+          "connection"
+        ],
+        "title": "CalendarStatusOut"
+      },
+      "CalendarSyncOut": {
+        "properties": {
+          "imported": {
+            "type": "integer",
+            "title": "Imported"
+          },
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted"
+          },
+          "full_sync": {
+            "type": "boolean",
+            "title": "Full Sync"
+          }
+        },
+        "type": "object",
+        "required": [
+          "imported",
+          "deleted",
+          "full_sync"
+        ],
+        "title": "CalendarSyncOut"
       },
       "ChallengeRequest": {
         "properties": {
@@ -7289,6 +7545,28 @@
             "type": "integer",
             "title": "Version"
           },
+          "external_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Source"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
           "occurrence_id": {
             "type": "string",
             "title": "Occurrence Id"
@@ -7400,6 +7678,28 @@
           "version": {
             "type": "integer",
             "title": "Version"
+          },
+          "external_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Source"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
           }
         },
         "type": "object",

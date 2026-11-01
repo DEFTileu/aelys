@@ -4,7 +4,8 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.core.models import CalendarEvent, Task
-from app.domains.recurrence import occurrences, utc
+from app.domains.google_calendar_projection import project_google_calendar_events
+from app.domains.recurrence import utc
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,12 +31,12 @@ async def build_agenda(db: AsyncSession, owner_id: str, tz: ZoneInfo, at: dateti
         func.lower(Task.status).not_in(TERMINAL_TASK_STATUSES),
     ).order_by(Task.due_at, Task.id))).scalars())
     events = list((await db.execute(select(CalendarEvent).where(
-        CalendarEvent.owner_id == owner_id, CalendarEvent.deleted_at.is_(None),
-        CalendarEvent.starts_at < upper,
-    ).order_by(CalendarEvent.starts_at, CalendarEvent.id))).scalars())
-    projected = sorted((start, event.id, event.title) for event in events
-                       for start, _ in occurrences(event.starts_at, event.ends_at, event.timezone,
-                                                   event.rrule, lower, upper))
+        CalendarEvent.owner_id == owner_id,
+    ).order_by(CalendarEvent.starts_at, CalendarEvent.id).limit(10001))).scalars())
+    if len(events) > 10000:
+        raise ValueError('Calendar projection exceeds 10000 records')
+    projected = sorted((start, event.id, event.title)
+                       for event, start, _ in project_google_calendar_events(events, lower, upper))
     return Agenda(day, tz.key,
                   tuple(t.title for t in tasks if t.due_at and utc(t.due_at) >= lower),
                   tuple(t.title for t in tasks if t.due_at and utc(t.due_at) < lower),

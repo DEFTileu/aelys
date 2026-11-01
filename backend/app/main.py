@@ -23,6 +23,8 @@ from .core.device_auth import router as device_auth_router
 from .core.native_auth import router as native_auth_router
 from .domains.api import router as domain_router
 from .domains.gmail import router as gmail_router
+from .domains.google_calendar_api import router as calendar_router
+from .domains.google_calendar_oauth import router as calendar_oauth_router
 from .sync.api import router as sync_router
 
 
@@ -45,8 +47,11 @@ class OAuthAccessLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple) and len(record.args) >= 3:
             args = list(record.args)
-            if isinstance(args[2], str) and args[2].startswith("/api/v1/mail/gmail/callback"):
-                args[2] = "/api/v1/mail/gmail/callback"
+            if isinstance(args[2], str):
+                for path in ("/api/v1/mail/gmail/callback", "/api/v1/calendar/google/callback"):
+                    if args[2].startswith(path):
+                        args[2] = path
+                        break
                 record.args = tuple(args)
         return True
 
@@ -91,6 +96,8 @@ app.include_router(memory_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(automation_router, prefix="/api/v1")
 app.include_router(gmail_router, prefix="/api/v1")
+app.include_router(calendar_oauth_router, prefix="/api/v1")
+app.include_router(calendar_router, prefix="/api/v1")
 from .integrations.telegram_api import router as telegram_router
 
 app.include_router(telegram_router, prefix="/api/v1")

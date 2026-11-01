@@ -23,6 +23,10 @@ async def apply_domain_patch(db: AsyncSession, *, owner_id: str, device_id: str,
     schemas = {'task': TaskIn, 'note': NoteIn, 'event': EventIn}
     models = {'task': Task, 'note': Note, 'event': CalendarEvent, 'project': Project}
     immutable = {'id', 'version', 'created_at', 'updated_at', 'deleted_at', 'owner_id'}
+    if kind == 'event':
+        immutable.update({'external_source', 'external_id', 'external_metadata'})
+        if isinstance(item, CalendarEvent) and item.external_source:
+            raise HTTPException(409, detail={'code': 'EXTERNAL_EVENT_READ_ONLY', 'message': 'Imported events can only change through their source calendar'})
     if kind == 'task':
         immutable.update({'started_at', 'completed_at'})
     if set(patch) - set(FIELDS[kind]) - immutable:

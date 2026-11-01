@@ -35,7 +35,7 @@ DOMAIN_MODELS: dict[str, type[Owned]] = {'task': Task, 'note': Note, 'event': Ca
 FIELDS = {
     'task': ('title', 'description', 'project_id', 'parent_task_id', 'status', 'priority', 'due_at', 'due_timezone', 'rrule', 'started_at', 'completed_at'),
     'note': ('title', 'markdown_body', 'parent_id', 'project_id', 'folder', 'tags', 'pinned'),
-    'event': ('title', 'description', 'starts_at', 'ends_at', 'timezone', 'all_day', 'project_id', 'linked_task_id', 'rrule'),
+    'event': ('title', 'description', 'starts_at', 'ends_at', 'timezone', 'all_day', 'project_id', 'linked_task_id', 'rrule', 'external_source', 'external_id', 'external_metadata'),
     'project': ('name', 'description', 'status'),
 }
 SCOPES = {'task': 'tasks.write', 'note': 'notes.write', 'event': 'calendar.write', 'project': 'projects.write'}
@@ -97,20 +97,26 @@ async def record_change(db: AsyncSession, *, owner_id: str, kind: str, resource_
     if record and record.version == version and _projection_disagrees(record, payload, deleted_at):
         raise HTTPException(409, detail={'code': 'SYNC_RECONCILIATION_REQUIRED',
             'message': 'Historical domain and sync content diverge; review both before merging.'})
-    null_clock_enrichment = False
+    default_projection_enrichment = False
+    if record and kind == 'event' and record.version == version:
+        added = payload.keys() - record.payload.keys()
+        defaults: dict[str, Any] = {'external_source': None, 'external_id': None, 'external_metadata': {}}
+        default_projection_enrichment = (bool(added) and added <= defaults.keys()
+            and all(payload[name] == defaults[name] for name in added)
+            and record.payload == {name: value for name, value in payload.items() if name not in added})
     if record and kind == 'task' and record.version == version:
         added = payload.keys() - record.payload.keys()
-        null_clock_enrichment = (bool(added) and added <= {'started_at', 'completed_at'}
+        default_projection_enrichment = (bool(added) and added <= {'started_at', 'completed_at'}
             and all(payload[name] is None for name in added)
             and record.payload == {name: value for name, value in payload.items() if name not in added})
     if (record and record.version == version and bool(record.deleted_at) == bool(deleted_at)
-            and (record.payload == payload or null_clock_enrichment)):
+            and (record.payload == payload or default_projection_enrichment)):
         existing = (await db.execute(select(SyncChange).where(
             SyncChange.owner_id == owner_id, SyncChange.resource_kind == kind,
             SyncChange.resource_id == resource_id, SyncChange.version == version,
         ).order_by(SyncChange.seq.desc()).limit(1))).scalar_one_or_none()
         if existing and (record.payload == payload or existing.payload == record.payload):
-            if null_clock_enrichment:
+            if default_projection_enrichment:
                 # Enrich only the derived mirror. The historical log remains
                 # immutable and keeps its original sequence/cursor position.
                 record.payload = payload

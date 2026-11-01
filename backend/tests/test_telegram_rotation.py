@@ -127,3 +127,25 @@ async def test_rotates_pending_personal_text_and_quote(rotation_db):
         raw=(await db.execute(text("SELECT text,quote,media_metadata FROM telegram_personal_jobs WHERE id='pending'"))).one()
         for value in raw:
             with pytest.raises(InvalidTag):decrypt_secret(value,OLD_KEY)
+
+
+async def test_rotates_separate_google_tokens_sync_cursor_and_pending_state(rotation_db):
+    from app.domains.google_calendar_models import (
+        GoogleCalendarConnection,
+        GoogleCalendarCredential,
+        GoogleCalendarOAuthState,
+    )
+    async with rotation_db() as db:
+        db.add(GoogleCalendarConnection(id='calendar',owner_id='user',encrypted_sync_token=encrypt_secret('sync-token',OLD_KEY)))
+        await db.flush()
+        db.add(GoogleCalendarCredential(connection_id='calendar',encrypted_tokens=encrypt_secret('calendar-tokens',OLD_KEY)))
+        db.add(GoogleCalendarOAuthState(state_hash='calendar-state',owner_id='user',session_id='session',encrypted_verifier=encrypt_secret('calendar-verifier',OLD_KEY),expires_at=datetime.now(UTC)))
+        await db.commit()
+    assert await rotate_provider_secrets.rotate()==10
+    async with rotation_db() as db:
+        connection=await db.get(GoogleCalendarConnection,'calendar')
+        credential=await db.get(GoogleCalendarCredential,'calendar')
+        state=await db.get(GoogleCalendarOAuthState,'calendar-state')
+        for encrypted,plain in [(connection.encrypted_sync_token,'sync-token'),(credential.encrypted_tokens,'calendar-tokens'),(state.encrypted_verifier,'calendar-verifier')]:
+            assert decrypt_secret(encrypted,NEW_KEY)==plain
+            with pytest.raises(InvalidTag):decrypt_secret(encrypted,OLD_KEY)

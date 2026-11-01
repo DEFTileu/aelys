@@ -18,7 +18,7 @@
 | P2 | Utilities: какие дополнительные форматы и настройки нужны после первой локальной поставки? | Реализовать показанный владельцу набор (PRD §2.13); история и менеджер паролей не включены | Следующие версии Utilities |
 | P2 | Uni Hub, Infra Monitor и голос вне личного Telegram-бота — нужны ли в roadmap? | Личный Telegram voice одобрен ADR-028; прочие сценарии остаются Backlog | Future releases |
 | P2 | Нужны ли версии Linux/Windows после macOS? | Нет в MVP | Cross-desktop strategy |
-| P2 | Срок и live acceptance Google Calendar integration | Только чтение; импорт событий в Aelys, запись в Google запрещена. Scope одобрен владельцем 2026-11-01 (ADR-028), реализация и live OAuth acceptance не подтверждены | Реализация и проверка OAuth; external write остается запрещён |
+| P2 | Срок и live acceptance Google Calendar integration | Только чтение; импорт событий в Aelys, запись в Google запрещена. Scope одобрен владельцем 2026-11-01 (ADR-028), локальная реализация этапа 7 выполнена; live OAuth acceptance не подтверждён | Проверка OAuth на настоящем аккаунте; external write остается запрещён |
 | P2 | Нужна ли интеграция с GitHub в первом релизе? | Позже, отдельный адаптер; решение не принято | External automation |
 | P2 | Хочет ли пользователь публичную документацию на английском дополнительно? | Исходные инженерные документы на русском | Community adoption |
 
@@ -34,5 +34,5 @@ Implementation checkpoint 2026-11-01: approved ADR-028 stages 0–4 are locally
 implemented/tested, including ephemeral personal media and separate transcription
 BYOK. This resolves implementation availability only; real Telegram/provider/
 transcription acceptance still needs owner credentials. Attachment storage stays
-OPEN. Explicit memory now has local implementation evidence (Stage 5); task matrix/time also has local Stage 6 evidence. Google Calendar remains the
-last implementation stage; live external acceptance and attachment storage remain open.
+OPEN. Explicit memory now has local implementation evidence (Stage 5); task matrix/time also has local Stage 6 evidence. Google Calendar also passed local Stage 7 acceptance (943 backend tests plus
+2 separate PostgreSQL contracts; shared/web 37/428). Credentialed external acceptance and attachment storage remain open.

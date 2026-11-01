@@ -221,6 +221,8 @@ export interface EventIn {
   readonly reminder_at?: IsoDateTime | null;
 }
 export interface EventOut {
+  readonly external_source?: string | null;
+  readonly external_id?: string | null;
   readonly title: string;
   readonly description: string;
   readonly starts_at: IsoDateTime;
@@ -772,3 +774,12 @@ export interface SSEEvent<T = JsonObject> {
   readonly data: T;
   readonly id?: string;
 }
+
+/** Separate readonly primary calendar connection; tokens never leave the server. */
+export interface GoogleCalendarStatus {
+  readonly configured: boolean;
+  readonly connection: { readonly id: Id; readonly version: number; readonly calendar_id: string;
+    readonly status: 'connected' | 'error' | 'disconnected'; readonly last_synced_at: IsoDateTime | null;
+    readonly last_error_code: string | null } | null;
+}
+export interface GoogleCalendarSync { readonly imported: number; readonly deleted: number; readonly full_sync: boolean; }

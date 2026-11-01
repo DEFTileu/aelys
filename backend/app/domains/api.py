@@ -32,7 +32,7 @@ from app.core.models import (
 )
 from app.core.security import current_principal
 from app.domains import capture
-from app.domains.recurrence import occurrences, parse_rule, utc
+from app.domains.recurrence import parse_rule, utc
 from app.domains.reminders import authorize_reminder_write
 from app.sync.change_log import lock_owner, record_domain_change
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
@@ -139,7 +139,7 @@ class EventIn(BaseModel):
     def validate_calendar(self):
         try:
             ZoneInfo(self.timezone)
-            if self.rrule:
+            if self.rrule and not getattr(self, "external_source", None):
                 parse_rule(self.rrule, self.starts_at, self.timezone)
         except (ValueError, KeyError, OverflowError, ZoneInfoNotFoundError) as exc:
             raise ValueError(f"Invalid calendar timezone or RRULE: {exc}") from exc
@@ -148,7 +148,13 @@ class EventIn(BaseModel):
         if self.reminder_at and utc(self.reminder_at) >= self.starts_at:
             raise ValueError("reminder_at must precede starts_at")
         return self
-class EventOut(EventIn): model_config=ConfigDict(from_attributes=True); id: str; version: int
+class EventOut(EventIn):
+    model_config=ConfigDict(from_attributes=True)
+    id: str
+    version: int
+    external_source: str | None = None
+    external_id: str | None = None
+
 class EventPatchIn(EventIn): version: int = Field(ge=1)
 class EventOccurrence(EventOut):
     occurrence_id: str
@@ -531,21 +537,22 @@ async def calendar_occurrences(starts_at: datetime, ends_at: datetime, principal
     lower, upper = utc(starts_at), utc(ends_at)
     if upper <= lower or upper - lower > timedelta(days=366):
         raise HTTPException(422, detail={"code": "CALENDAR_RANGE_INVALID", "message": "Choose a positive window of at most 366 days"})
-    rows = list((await db.execute(select(CalendarEvent).where(CalendarEvent.owner_id == user.id, CalendarEvent.deleted_at.is_(None), CalendarEvent.starts_at < upper, or_(CalendarEvent.ends_at > lower, CalendarEvent.rrule.is_not(None))).limit(1001))).scalars())
-    if len(rows) > 1000:
-        raise HTTPException(422, detail={"code": "RECURRENCE_LIMIT", "message": "Calendar projection exceeds 1000 series"})
+    from app.domains.google_calendar_projection import project_google_calendar_events
+    rows = list((await db.execute(select(CalendarEvent).where(CalendarEvent.owner_id == user.id).limit(10001))).scalars())
+    if len(rows) > 10000:
+        raise HTTPException(422, detail={"code": "RECURRENCE_LIMIT", "message": "Calendar projection exceeds 10000 records"})
     result = []
-    for item in rows:
+    try:
+        projected = project_google_calendar_events(rows, lower, upper)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "RECURRENCE_LIMIT", "message": str(exc)}) from exc
+    for item, start, end in projected:
         series = EventOut.model_validate(item)
-        try:
-            instances = occurrences(item.starts_at, item.ends_at, item.timezone, item.rrule, lower, upper)
-        except ValueError as exc:
-            raise HTTPException(422, detail={"code": "RECURRENCE_LIMIT", "message": str(exc)}) from exc
-        for start, end in instances:
-            result.append(EventOccurrence(**{**series.model_dump(), "starts_at": start, "ends_at": end}, occurrence_id=f"{item.id}:{start.isoformat()}", series_starts_at=series.starts_at, series_ends_at=series.ends_at))
-            if len(result) > 1000:
-                raise HTTPException(422, detail={"code": "RECURRENCE_LIMIT", "message": "Choose a smaller calendar window"})
+        result.append(EventOccurrence(**{**series.model_dump(), "starts_at": start, "ends_at": end}, occurrence_id=f"{item.id}:{start.isoformat()}", series_starts_at=series.starts_at, series_ends_at=series.ends_at))
+        if len(result) > 1000:
+            raise HTTPException(422, detail={"code": "RECURRENCE_LIMIT", "message": "Choose a smaller calendar window"})
     return sorted(result, key=lambda item: item.starts_at)
+
 @router.post("/calendar/events", response_model=EventOut)
 async def create_event(body:EventIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db), idempotency_key: str | None = Header(default=None, max_length=150)):
     if body.ends_at<body.starts_at: raise HTTPException(422,detail={"code":"VALIDATION_ERROR","message":"ends_at must not precede starts_at"})
@@ -556,7 +563,7 @@ async def create_event(body:EventIn, principal=Depends(current_principal), db:As
     item_id = str(uuid5(NAMESPACE_URL, f"aelys:event:{user.id}:{idempotency_key}")) if idempotency_key else str(uuid4())
     existing = (await db.execute(select(CalendarEvent).where(CalendarEvent.id == item_id))).scalar_one_or_none()
     if existing:
-        recorded = EventOut.model_validate(existing).model_dump(exclude={"id", "version", "reminder_at"})
+        recorded = EventOut.model_validate(existing).model_dump(exclude={"id", "version", "reminder_at", "external_source", "external_id"})
         if recorded != body.model_dump(exclude={"reminder_at"}):
             raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Calendar key is bound to another event"})
         initial = (await db.execute(select(CalendarReminder).where(CalendarReminder.owner_id == user.id, CalendarReminder.idempotency_key == f"event:{item_id}:initial"))).scalar_one_or_none()
@@ -580,11 +587,22 @@ async def create_event(body:EventIn, principal=Depends(current_principal), db:As
 @router.get("/calendar/events/{item_id}", response_model=EventOut)
 async def get_event(item_id:str, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; return await owner_obj(CalendarEvent,item_id,user.id,db)
-@router.patch("/calendar/events/{item_id}", response_model=EventOut)
+async def require_local_calendar_event(item_id: str, principal=Depends(current_principal), db: AsyncSession=Depends(get_db)) -> None:
+    # Google supports recurrence syntax that local mutation inputs intentionally
+    # reject. Resolve source ownership before validating that local-only body.
+    user, _ = principal
+    item = await owner_obj(CalendarEvent, item_id, user.id, db)
+    if item.external_source:
+        raise HTTPException(409, detail={"code": "EXTERNAL_EVENT_READ_ONLY", "message": "Imported events can only change through their source calendar"})
+
+
+@router.patch("/calendar/events/{item_id}", response_model=EventOut, dependencies=[Depends(require_local_calendar_event)])
 async def update_event(item_id:str,body:EventPatchIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal
     await lock_owner(db, user.id)
     item=await owner_obj(CalendarEvent,item_id,user.id,db)
+    if item.external_source:
+        raise HTTPException(409, detail={"code": "EXTERNAL_EVENT_READ_ONLY", "message": "Imported events can only change through their source calendar"})
     if body.ends_at<body.starts_at: raise HTTPException(422,detail={"code":"VALIDATION_ERROR","message":"ends_at must not precede starts_at"})
     await owned_ref(Project, body.project_id, user.id, db)
     await owned_ref(Task, body.linked_task_id, user.id, db)
@@ -604,6 +622,8 @@ async def delete_event(item_id:str,version:int=Query(ge=1),principal=Depends(cur
     user,_=principal
     await lock_owner(db, user.id)
     item=await owner_obj(CalendarEvent,item_id,user.id,db)
+    if item.external_source:
+        raise HTTPException(409, detail={"code": "EXTERNAL_EVENT_READ_ONLY", "message": "Imported events can only change through their source calendar"})
     result = await db.execute(update(CalendarEvent).where(CalendarEvent.id == item_id, CalendarEvent.owner_id == user.id, CalendarEvent.version == version).values(deleted_at=datetime.now(UTC), version=version + 1))
     if int(getattr(result, "rowcount", 0) or 0) != 1:
         await db.rollback()

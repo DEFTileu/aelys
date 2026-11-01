@@ -49,3 +49,10 @@ permission is derived from a fact; live external acceptance and stages 6–7 rem
 ADR-028 Stage 6 checkpoint: existing TasksView matrix, server task work instants,
 immutable transition history and stagnant digest passed local acceptance. No new
 resource table or permission scope; Google Calendar and live acceptance remain.
+
+ADR-028 Stage 7 implementation checkpoint: a separate primary Google Calendar
+connection requests only `calendar.readonly`, reuses Gmail PKCE/state/crypto and
+imports into versioned CalendarEvent projections. Manual import and the existing
+15-minute connector step never write Google events. Local and live acceptance
+are reported separately in PERSONAL_OS_BOT_REPORT.md; no credentialed OAuth is
+implied by implementation. Attachments storage and other OPEN decisions remain.

@@ -172,6 +172,10 @@ class Task(Owned):
 
 class CalendarEvent(Owned):
     __tablename__ = "calendar_events"
+    __table_args__ = (UniqueConstraint("external_source", "external_id", name="uq_calendar_event_external"),)
+    external_source: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    external_metadata: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}", nullable=False)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -330,4 +334,5 @@ class AuditLog(Base):
 
 # Register integration tables in the shared metadata for migrations and tests.
 import app.ai.memory_models
+import app.domains.google_calendar_models
 import app.integrations.telegram_models  # noqa: F401 - register integration tables

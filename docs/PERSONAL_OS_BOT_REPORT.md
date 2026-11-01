@@ -3,7 +3,9 @@
 Date: 2026-11-01. Milestone: Phase 3, Telegram commands and verified binding.
 Branch: `feat/personal-os-bot`, isolated worktree from local main `40f822e`.
 Owner instructions require stages 0–7 in order, each validated and committed
-before the next begins. This report is an in-progress ledger, not acceptance.
+before the next begins. Stages 0–7 are now locally accepted. Per-stage sections
+retain their historical checkpoints; final acceptance below supersedes earlier
+remaining-work notes. Credentialed external acceptance is separate.
 No push, PR, main modification, Railway deployment or MySDU modification.
 
 ## Owner decisions and scope
@@ -30,7 +32,7 @@ Business context must never include personal memory/tasks/notes/calendar.
 | 4 — ephemeral media | Accepted locally | Bounded in-memory download, separate transcription BYOK/budget estimate, image/PDF adapters, no-tool file turns. Backend 731 passed plus 2 PG cases; web 416; shared 36; settings browser persistence verified. |
 | 5 — explicit memory | Accepted locally | Encrypted explicit facts, lexical best 10, CAS API/settings, owner commands/tools, provenance-aware forget, export/rotation. Backend 823 passed plus 2 PG cases; web 418; shared 37; browser create/edit/reload/forget verified. |
 | 6 — task matrix/time | Accepted locally | Shared clock/history, exact 48h matrix, stagnant digest. Backend 850 passed plus 2 PG cases; web 425; shared 37; real desktop/mobile and repeated completion verified. |
-| 7 — Google Calendar | Not started | Read-only OAuth/PKCE/state, incremental import/disconnect, external event protections required. |
+| 7 — Google Calendar | Accepted locally | Separate readonly OAuth/import/recurrence, protected events, disconnect fencing and settings. Final backend 943 passed plus 2 separate PG cases; web 428; shared 37; real browser checked with local synthetic data. |
 
 ## Validation
 
@@ -566,3 +568,123 @@ Acceptance:
 
 Stage 6 locally accepted; Stage 7 read-only Google Calendar has not started.
 No live Telegram/LLM, MySDU modification, main change, push/PR or deployment.
+
+## Stage 7 — separate readonly Google Calendar
+
+Implemented `domains/google_calendar_models.py`, `google_oauth.py`,
+`google_calendar_oauth.py`, `google_calendar_sync.py`,
+`google_calendar_projection.py` and mounted `google_calendar_api.py`. Gmail keeps
+its existing behavior while sharing PKCE/state/session checks. Calendar has its
+own encrypted credentials, one-use state, cookie and connection. Only exact
+`calendar.readonly` is accepted. Each local mutation and external request passes
+Policy Engine. The transport allows Google Calendar GETs and token exchange only;
+it never writes Google events, Gmail, or arbitrary destinations. Access logs and
+provider errors redact codes, tokens, URLs and content. Key rotation includes
+Calendar tokens, sync cursor and pending verifier.
+
+CalendarEvent gains unique (external_source, external_id) and bounded server-owned
+recurrence metadata in migration 0034. The old initial migration's metadata table
+skip list includes the three new future tables, preserving historical auth-session
+FK ordering; historical revision identifiers are unchanged. Fresh and actual
+0033 SQLite upgrades, fresh/incremental PostgreSQL upgrades and schema checks pass.
+Identical imports preserve event versions; changed/cancelled rows use the shared
+owner lock and change-log, including disconnect tombstones. Device push cannot
+forge/clear provenance or mutate an external event. Local event idempotency and
+legacy mirror enrichment retain versions and immutable cursor history.
+
+Manual and 15-minute imports share a durable CAS lease. Network work has a
+90-second deadline, at most 100 pages / 10,000 items. Pagination parameters stay
+constant; the final encrypted cursor commits with the entire validated snapshot.
+A 410 retries one complete fetch. RRULE/EXRULE/RDATE/EXDATE, DST/all-day spans,
+modified/cancelled instances, whole-series cancellation and obsolete exception
+removal are covered. Calendar, /today and personal AI reads share the projection.
+Transient failures retry on the next due tick; revoked credentials show error and
+require Reconnect. Disconnect fences active imports and in-flight OAuth callbacks,
+clears credentials/cursor/pending states and tombstones imported events. Native
+local events are preserved. Owner exports exclude regenerable Google projections
+and dependent reminders as well as credentials/connections; reconnect and reimport
+after restore, avoiding orphan readonly duplicates.
+
+Settings → Google Calendar uses existing components/styles. Connect/Import now/
+Reconnect/Disconnect have honest loading/error/disabled states. Imported event
+clicks show readonly details and no editor/delete controls. Shared API types and
+OpenAPI are current. No new UI design, scheduler, SDK, cloud vendor, MCP or RAG.
+
+Tests first reproduced missing source guards, missing OAuth setup status,
+readonly snapshot export orphans, request-session expiration on manual import,
+disconnected status leakage, local-only RRULE validation masking the readonly
+409, EXRULE rejection, OAuth resurrection and conflicting callbacks. Regressions
+now use mounted APIs and real local transactions. Luna and Terra ran at medium;
+the parent integrated, reviewed and owned the Git index.
+
+Browser acceptance on isolated 5182/8012 stand:
+
+- Missing OAuth configuration renders a disabled Connect button on desktop and
+  mobile, without claiming a live connection. Deep link opens Calendar settings.
+- A synthetic local connection/event fixture with **no credentials** verifies
+  visible recurring event details, readonly controls and no page overflow at
+  390px. Manual import returns the actual `CALENDAR_RECONNECT_REQUIRED` code;
+  this exercises the backend error path and makes no Google HTTP call.
+- Actual Disconnect returns 200, clears the settings connection, and removes the
+  event. Direct DB verification: disconnected, no credentials, event version 2
+  tombstone and ordered create(v1)/delete(v2) sync changes. The synthetic event
+  is now deleted. Screenshots visually inspected; desktop reload checked too.
+- Earlier browser and unit findings were fixed before acceptance. No forced
+  clicks or fake live Google acceptance are used.
+
+## Owner live acceptance checklist
+
+Implementation/local acceptance does not establish credentialed external delivery.
+
+1. Bind the real Aelys bot/private owner chat. Check personal text `/task`, `/note`,
+   `/today`, `/remind`, quiet-hour deferral and deadline opt-in. In a Business chat,
+   check manual terminal-decision overrides, delayed replies, fast-poll suppression
+   by owner text/media and new messages, and handoff title/note separation.
+2. Configure a real supported model/BYOK key. Check bounded multi-step dialogue,
+   CAS conflict, `/new`, explicit remember/forget and immediate forgetting. Check
+   that the real secretary model returns parsable strict JSON (plain or one fence)
+   and receives no personal calendar/tasks/notes/memory.
+3. Configure the separate transcription BYOK key/budget; send real voice, photo,
+   PDF and text files. Check supported capabilities, honest missing-key/model
+   refusals, no tools on file turns, explicit owner follow-up and no retained bytes.
+4. Register the separate Calendar callback on the Google OAuth app; grant only
+   calendar.readonly. Check primary-calendar manual and 15-minute incremental
+   imports, moved/cancelled recurring instances, Calendar and `/today`, revocation
+   status and Disconnect. Confirm local edits stay local and Google is unchanged.
+
+No push, PR, main change, Railway deployment, MySDU code/data change or removal.
+Sheets monitor stays in MySDU. Attachments storage remains OPEN. No next goal is
+started. Local services use this isolated worktree (web 5182, API 8012); port 5173
+is another checkout and is not this acceptance stand.
+
+
+## Final local acceptance — all stages 0–7
+
+- `make test` with disposable PostgreSQL AI/calendar contracts and a fresh PG
+  migration database: **943 passed, 2 skipped, 1 warning in 127.17s**. The two
+  global PostgreSQL tests require their own mounted-database URL and were run
+  separately on a fresh migrated DB: **2 passed in 0.90s**. The warning is the
+  existing Starlette/httpx deprecation. Initial pre-final-review full run:
+  941 passed; last readonly/status regressions passed in the final run.
+- New real database Calendar lease/idempotency/ordered disconnect contract:
+  **2 passed** on SQLite and disposable PostgreSQL. Mounted Calendar /today and
+  OAuth/readonly review focus: **15 passed**. Shared typecheck/**37 tests**,
+  web typecheck/**428 tests** in 56 files and production build passed.
+- Ruff all backend app/tests, mypy (**92 source files**), Bandit, compileall and
+  pip-audit passed. Audit has no known vulnerabilities; only the local editable
+  aelys-backend package is explicitly unauditable on PyPI. No dependencies added.
+- SQLite fresh upgrade/check, actual 0033 -> 0034 stand upgrade/check, PostgreSQL
+  clean/incremental upgrade/check passed. One head **0034_google_calendar**. The
+  clean-chain pair **2 passed**; final make reran it with a new empty PG DB.
+- OpenAPI regenerated and exact runtime equality confirmed (**122 paths**).
+  Compose validation and backend Docker build passed on the final code. Native,
+  runtime, desktop/mobile and local-start checks passed in Stage 0 and those
+  implementations/dependencies were unchanged by subsequent stages.
+- Real browser Settings tested throughout stages 2–7; final Calendar mobile and
+  desktop screenshots inspected. Browser stand remains web **5182**, API **8012**.
+  It uses disposable owner data and no live provider credentials.
+
+Completed stage commits before Stage 7: `baa5496`, `0dbc531`, `b32b775`,
+`cb6bffb`, `443fa65`, `6f93f8d`, `2f730ae`, `b0942f1`, `a9068ec`, `723b4a0`.
+Stage 7 is the subsequent atomic `feat(calendar)` commit; final ledger records
+its hash after creation. No acceptance depends on a claim of live credentials.

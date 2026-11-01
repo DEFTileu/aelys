@@ -206,3 +206,10 @@ Task started_at/completed_at принадлежат серверу и выста
 Историческим задачам неизвестное время не выдумывается при bootstrap. Вечерняя
 сводка добавляет in_progress дольше 7*24 часов; /today не меняется. Итоговая
 приёмка — в PERSONAL_OS_BOT_REPORT.md.
+
+Stage 7: /today and personal calendar read tools now see the owner's locally
+imported Google Calendar occurrences, including moved/cancelled instances. Google
+consent, sync and disconnect live in Settings → Google Calendar; import is readonly
+and runs in the existing connector iteration every 15 minutes independently of
+Telegram enablement. No Google calendar context is added to the Business secretary.
+Real Telegram /today with an actual Google account remains an owner live check.

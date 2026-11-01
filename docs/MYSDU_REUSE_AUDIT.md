@@ -7,9 +7,11 @@
 `domains/productivity.py` не изменялся. Уточняющий вопрос — обычный reply,
 отдельного clarify нет. Сводка без AI. Один Aelys bot на personal + Business.
 
-ОТЛОЖЕНО: voice/media, attachments, AI memory, RAG/embeddings, Google Calendar,
-MCP, /remind/Telegram reminders, task matrix, shortlist/rolling summary, импорт
-и изменения MySDU. **Sheets monitor полностью остаётся в MySDU.** Ничего из
+Исторические исключения первого среза: voice/media, attachments, AI memory,
+Google Calendar, /remind и task matrix. Личный scope позднее расширен ADR-028;
+фактический прогресс этапов 0–7 указан в конце этого документа. Вне текущей цели
+остаются attachments storage, MCP/RAG/embeddings/document search,
+shortlist/rolling summary, импорт и изменения MySDU. **Sheets monitor полностью остаётся в MySDU.** Ничего из
 MySDU не копировалось и не удалялось. Ниже сохранён более широкий аудит будущих
 кандидатов: его шаги за пределами указанного среза не реализованы этой задачей.
 Подробная приёмка/ограничения: [TELEGRAM_PERSONAL_ASSISTANT_REPORT.md](TELEGRAM_PERSONAL_ASSISTANT_REPORT.md).
@@ -325,12 +327,13 @@ features остаются OPEN. Текущее выполнение Aelys отр
 или полная работоспособность MySDU этим документом не заявляются.
 
 
-## Фактический прогресс Aelys — 2026-11-01, этапы 0–6
+## Фактический прогресс Aelys — 2026-11-01, этапы 0–7
 
 В изолированной ветке Aelys реализованы transactional domain change-log,
 Telegram reminders/quiet hours/digest tomorrow, личный текстовый AI-диалог
 ephemeral voice/photo/PDF/text, explicit encrypted lexical memory и Matrix
-с серверной историей переходов задач.
+с серверной историей переходов задач, отдельный readonly Google Calendar import
+с incremental sync, исключениями повторений и защищёнными внешними событиями.
 Очередь шифрована, общий AI loop/registry переиспользованы, Task CAS сохранён.
 Содержимое цитат не разрешает действий; секретарь не получает личные инструменты.
 Подробные файлы и автоматическая приёмка — `PERSONAL_OS_BOT_REPORT.md`.
@@ -338,5 +341,6 @@ ephemeral voice/photo/PDF/text, explicit encrypted lexical memory и Matrix
 Это не проверка живого Telegram или реального провайдера и не основание удалять
 что-либо в MySDU. Код и данные MySDU не менялись, Sheets monitor остаётся там.
 Ранее записанные предложения аудита — исторический список; обязательный состав
-и ограничения утверждены ADR-028. Google Calendar ещё
-не реализован в этом этапе. Импорт данных, MCP/RAG/document search исключены.
+и ограничения утверждены ADR-028. Реальный Google OAuth требует credentials
+владельца; автоматическая проверка не означает live acceptance. Импорт данных
+из MySDU, MCP/RAG/document search исключены.

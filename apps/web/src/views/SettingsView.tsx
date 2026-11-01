@@ -4,6 +4,7 @@ import { ApiStatusPill } from '../components/ApiStatusPill'
 import { getApiConfig, logout, saveApiBaseUrl } from '../lib/api'
 import { SettingsScreen } from './desktop/SettingsScreen'
 import { ProviderSettings } from './ProviderSettings'
+import { GoogleCalendarSettings } from './GoogleCalendarSettings'
 import { MemorySettings } from './MemorySettings'
 import { WeatherSettingsContent } from '../components/Weather'
 import { TelegramSettings } from './TelegramSettings'
@@ -19,8 +20,8 @@ export function SettingsView({ apiStatus, theme, onToggleTheme }: { apiStatus: A
   const [authMessage, setAuthMessage] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
   const [query, setQuery] = useState('')
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(() => new URLSearchParams(window.location.search).get('section') === 'telegram')
-  const [panel, setPanel] = useState<'connection' | 'appearance' | 'ai' | 'weather' | 'telegram' | 'memory' | 'security'>(() => new URLSearchParams(window.location.search).get('section') === 'telegram' ? 'telegram' : 'appearance')
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(() => ['telegram', 'calendar'].includes(new URLSearchParams(window.location.search).get('section') ?? ''))
+  const [panel, setPanel] = useState<'connection' | 'appearance' | 'ai' | 'weather' | 'telegram' | 'memory' | 'calendar' | 'security'>(() => { const section = new URLSearchParams(window.location.search).get('section'); return section === 'telegram' || section === 'calendar' ? section : 'appearance' })
 
   const save = (event: FormEvent) => {
     event.preventDefault()
@@ -45,6 +46,7 @@ export function SettingsView({ apiStatus, theme, onToggleTheme }: { apiStatus: A
     { id: 'ai' as const, title: 'AI & models', subtitle: 'Providers and models', icon: Sparkles },
     { id: 'memory' as const, title: 'Memory', subtitle: 'Saved facts and preferences', icon: Sparkles },
     { id: 'weather' as const, title: 'Weather and city', subtitle: 'Weather and city', icon: CloudSun },
+    { id: 'calendar' as const, title: 'Google Calendar', subtitle: 'Read-only event import', icon: CloudSun },
     { id: 'telegram' as const, title: 'Telegram', subtitle: 'Connected messaging', icon: Send },
     ...(isNativeHost() ? [{ id: 'security' as const, title: 'Security', subtitle: 'Security and biometric access', icon: Shield }] : []),
   ]
@@ -76,6 +78,7 @@ export function SettingsView({ apiStatus, theme, onToggleTheme }: { apiStatus: A
       {panel === 'connection' && connection}
       {panel === 'ai' && <ProviderSettings />}
       {panel === 'memory' && <MemorySettings />}
+      {panel === 'calendar' && <GoogleCalendarSettings />}
       {panel === 'weather' && <section className="settings-card weather-settings-page"><h2>Weather and city</h2><WeatherSettingsContent /></section>}
       {panel === 'telegram' && <TelegramSettings />}
       {panel === 'security' && isNativeHost() && <BiometricSettings />}

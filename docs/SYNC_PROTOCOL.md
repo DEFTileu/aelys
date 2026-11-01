@@ -143,3 +143,15 @@ Stage 6 task projections include server-owned started_at/completed_at. Echoed
 client values cannot overwrite them. Stale base_version conflicts leave clocks
 and transition history unchanged. Existing projection/bootstrap indexing must
 not fabricate historical dates or advance domain versions. No new resource kind.
+
+Stage 7: CalendarEvent now projects nullable `external_source`, `external_id` and
+server-owned `external_metadata` (recurrence/instance exceptions only). Device
+patches cannot set provenance; an existing external event rejects every mutation
+with `EXTERNAL_EVENT_READ_ONLY`. Imports, cancellations and disconnect use the same
+owner lock, Owned versions and atomic change writer as local writes. A failed or
+incomplete Google page sequence changes neither events nor sync cursor. Historical
+local event mirrors gain only NULL/empty defaults at their existing version; their
+immutable SyncChange and cursor positions stay unchanged. Deleted exception rows
+remain available to bounded occurrence projection, so cancelled instances do not
+reappear in Calendar or /today. A successful full rebuild clears obsolete exception
+relationships. Google credentials, leases and sync/page tokens never enter sync.

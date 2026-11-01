@@ -7,7 +7,7 @@
 | Feature | Сразу в модульном ядре | Внешнее подключение |
 |---|---|---|
 | Mail | message/thread/draft/search/import API | Gmail OAuth read/drafts approved 2026-10-29; IMAP later |
-| Calendar | native Aelys events / recurrence | Google Calendar later |
+| Calendar | native Aelys events / recurrence; separate read-only Google primary calendar import | Live OAuth acceptance needs owner credentials |
 | Telegram | command/notification adapter abstraction | Реальный Bot API обязателен для рабочего бота |
 | GitHub | repository association, manual links | OAuth, repo webhooks later |
 | Finance | manual ledger/budgets | Банки / валютные котировки later |
@@ -151,3 +151,39 @@ start/completion timestamps and immutable transition metadata use the common
 writer, preserving domain/sync versions across REST, AI and device pushes.
 The Telegram digest adds stagnant in-progress work older than seven elapsed days;
 /today remains unchanged. Final acceptance is recorded in the implementation report.
+
+## Google Calendar readonly import (ADR-028, Stage 7)
+
+`domains/google_calendar_oauth.py` reuses Gmail's extracted PKCE and one-use,
+owner/session-bound state checks (`google_oauth.py`) and the encrypted backend
+secret store. Gmail and Calendar have separate state cookies, token records,
+connections and callbacks. Calendar requests only `calendar.readonly` and rejects
+broader token scopes. The Google OAuth app client ID/secret settings are shared;
+register `AELYS_CALENDAR_REDIRECT_URI` as an additional callback. Server setup is
+shown in `backend/.env.example`. The browser receives only status and a consent URL.
+
+Settings → Google Calendar offers Connect, Import now, Reconnect and Disconnect.
+One primary calendar per owner. The existing sequential connector worker imports
+at most once per 15-minute interval, independently of any Telegram connection.
+A durable lease coordinates manual imports and multiple workers. Requests only
+read Google events; local events are never exported. Pagination uses stable
+`singleEvents=false`, `showDeleted=true` parameters. The sync cursor is encrypted
+at rest; page tokens exist only in backend memory during the bounded fetch. A 410 discards the expired cursor and builds a new complete
+snapshot; local reconciliation and the replacement cursor commit together only
+after all pages succeed. Fetches are bounded at 100 pages / 10,000 items.
+
+Imported CalendarEvent rows use a connection-specific external_source and Google
+external_id, unique as a pair. Recurrence metadata retains RRULE/EXRULE/RDATE/EXDATE,
+original instance starts and override relationships. Bounded occurrence projection
+handles DST, all-day spans, moved/cancelled instances and series cancellation for
+Calendar, /today and personal calendar reads. Imported edits/deletes return 409
+`EXTERNAL_EVENT_READ_ONLY` through REST and device sync. They produce ordinary
+versioned domain sync changes, including tombstones on cancellation/disconnect.
+Disconnect clears credentials/cursor and removes imported local projections;
+it does not change Google. Encrypted owner exports omit these regenerable Google
+projections and their reminders together with connection state/credentials; reconnect
+and import them after restore. Local events remain exportable. OAuth, revocation and actual imported calendars require
+owner credentials for live acceptance and are not claimed as live-tested.
+
+Protocol reference: [Google incremental sync](https://developers.google.com/workspace/calendar/api/guides/sync)
+and [events.list](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).
