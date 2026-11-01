@@ -1,0 +1,97 @@
+/* Projects, matched to the ACTUAL design. Desktop layer on top of actual-projects-notes.css (the mobile rules stay there). */
+@media (min-width: 701px) {
+  .projects-view { display: flex; flex-direction: column; gap: 16px; padding: 0 28px 28px; }
+  .projects-view :where(button, input, textarea) { font: inherit; }
+  .projects-view .pv-toolbar { gap: 8px; padding: 0; }
+  .projects-view .pv-filters { padding: 4px; gap: 2px; border-radius: 14px; background: var(--pg-seg); margin-right: auto; }
+  .projects-view .pv-filters button { height: 34px; min-height: 0; padding: 0 12px; border: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--pg-ink-2); background: transparent; white-space: nowrap; }
+  .projects-view .pv-filters button[aria-pressed='true'] { background: var(--pg-card); color: var(--pg-acc); box-shadow: 0 1px 3px rgba(30, 20, 40, .12); }
+  .projects-view .pv-filters span { min-width: 20px; height: 18px; margin: 0; padding: 0 6px; border-radius: 9px; background: rgba(28, 27, 34, .07); font-size: 11px; line-height: 18px; font-weight: 600; text-align: center; color: inherit; }
+  :root[data-theme='dark'] .projects-view .pv-filters span { background: rgba(255, 255, 255, .1); }
+  .projects-view .pv-search { width: 240px; height: 40px; padding: 0 12px; border: 1px solid var(--pg-line); border-radius: 12px; background: var(--pg-card); color: var(--pg-mute); backdrop-filter: none; }
+  .projects-view .pv-search input { font-size: 13px; color: var(--pg-ink); }
+  .projects-view .pv-new { height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--pg-violet); color: #fff; font-size: 14px; font-weight: 500; gap: 8px; box-shadow: 0 4px 12px rgba(106, 76, 242, .25); }
+  .projects-view .pv-new:hover { background: var(--pg-violet-hover); }
+  .projects-view .pn-button { height: 36px; min-height: 0; padding: 0 12px; border: 1px solid var(--pg-line-btn); border-radius: 10px; background: var(--pg-card); color: var(--pg-ink); font-size: 13px; font-weight: 500; gap: 6px; white-space: nowrap; }
+  .projects-view .pn-button:hover { background: var(--pg-hover); }
+  .projects-view .pv-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 12px; align-items: end; margin: 0; padding: 18px; border: 1px solid var(--pg-line); border-radius: 20px; background: var(--pg-card); box-shadow: var(--pg-shadow); backdrop-filter: none; }
+  .projects-view .pv-form label { min-width: 0; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--pg-ink-3); }
+  .projects-view .pv-form input { height: 40px; padding: 0 12px; border: 1px solid var(--pg-line); border-radius: 12px; background: var(--pg-field); color: var(--pg-ink); font-size: 14px; }
+  .projects-view .pv-form .pv-new { height: 40px; font-weight: 600; box-shadow: none; }
+  .projects-view .pv-form .pn-button { height: 40px; }
+
+  .projects-view .pv-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  .projects-view .pv-card { position: relative; gap: 14px; padding: 18px; border: 1px solid var(--pg-line); border-radius: 20px; background: var(--pg-card); box-shadow: var(--pg-shadow); backdrop-filter: none; transition: box-shadow .15s; cursor: pointer; }
+  .projects-view .pv-card:hover { box-shadow: 0 12px 32px rgba(40, 30, 30, .12); }
+  .projects-view .pv-card-top { gap: 12px; }
+  .projects-view .pv-icon { width: 44px; height: 44px; border-radius: 12px; }
+  .projects-view .pv-card-open { flex: 1; min-width: 0; padding: 0; border: 0; background: none; text-align: left; color: var(--pg-ink); }
+  .projects-view .pv-card-name { display: flex; flex-direction: column; align-items: flex-start; }
+  .projects-view .pv-card-name strong { display: block; font-size: 16px; font-weight: 600; line-height: 24px; }
+  .projects-view .pv-status { display: inline-block; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; line-height: 20px; font-weight: 600; }
+  :root[data-theme='dark'] .projects-view .pv-status { color: #5FD7A8; background: rgba(54, 190, 138, .18); }
+  .projects-view .pv-menu-trigger { width: 36px; height: 36px; flex: none; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--pg-ink-2); display: flex; align-items: center; justify-content: center; font-size: 0; }
+  .projects-view .pv-menu-trigger:hover { background: var(--pg-hover); }
+  .projects-view .pv-menu { position: absolute; top: 60px; right: 14px; z-index: 5; width: 180px; padding: 6px; border-radius: 14px; background: var(--pg-card); border: 1px solid var(--pg-line); box-shadow: 0 16px 40px rgba(30, 20, 40, .18); display: flex; flex-direction: column; }
+  .projects-view .pv-menu button { gap: 10px; height: 36px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--pg-ink); display: flex; align-items: center; font-size: 13px; text-align: left; }
+  .projects-view .pv-menu button:hover { background: var(--pg-hover); }
+  .projects-view .pv-menu button:last-child { color: var(--pg-red); }
+  .projects-view .pv-card-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 36px; font-size: 13px; line-height: 18px; color: var(--pg-ink-3); }
+  .projects-view .pv-progress-block { display: flex; flex-direction: column; }
+  .projects-view .pv-progress-label { display: flex; width: auto; margin-bottom: 6px; font-size: 13px; line-height: 18px; color: var(--pg-mute); }
+  .projects-view .pv-progress-label span { flex: 1; }
+  .projects-view .pv-progress-label b { font-weight: 600; color: var(--pg-ink); }
+  .projects-view .pv-progress { display: block; height: 6px; margin-top: 0; width: auto; border-radius: 3px; background: var(--pg-line-soft); overflow: visible; }
+  .projects-view .pv-progress > span { display: block; height: 100%; border-radius: 3px; }
+  .projects-view .pv-next { display: block; width: auto; padding: 10px 12px; border-radius: 12px; background: var(--pg-field); }
+  .projects-view .pv-next > small { display: block; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
+  .projects-view .pv-next-row { display: flex; align-items: stretch; gap: 8px; font-size: 14px; line-height: 22px; }
+  .projects-view .pv-next-row strong { flex: 1; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .projects-view .pv-next-row small { font-size: 12px; font-weight: 400; color: var(--pg-mute); }
+  .projects-view .pv-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 22px; color: var(--pg-mute); }
+
+  /* Detail */
+  .projects-view .pv-back { height: 36px; padding: 0 8px; border-color: transparent; background: transparent; }
+  .projects-view .pv-detail { gap: 16px; }
+  .projects-view .pn-card { border: 1px solid var(--pg-line); border-radius: 20px; background: var(--pg-card); box-shadow: var(--pg-shadow); backdrop-filter: none; }
+  .projects-view .pv-detail-head { padding: 20px; gap: 16px; }
+  .projects-view .pv-detail-title h2 { display: inline; margin: 0 10px 0 0; font-size: 22px; line-height: 30px; font-weight: 600; }
+  .projects-view .pv-detail-title p { margin: 4px 0 0; max-width: 720px; font-size: 14px; line-height: 22px; color: var(--pg-ink-3); }
+  .projects-view .pv-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+  .projects-view .pv-task-list h3, .projects-view .pv-overview h3, .projects-view .pv-linked h3 { margin: 0; font-size: 16px; font-weight: 600; line-height: 24px; }
+  .projects-view .pv-overview { padding: 18px; }
+  .projects-view .pv-overview h3 { margin-bottom: 12px; }
+  .projects-view .pv-linked { padding: 6px; }
+  .projects-view .pv-linked h3 { padding: 12px 12px 6px; }
+  .projects-view .pv-ring { background-clip: padding-box; }
+  .projects-view .pv-ring strong { background: var(--pg-card); color: var(--pg-ink); }
+  .projects-view .pv-counts { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; color: var(--pg-mute); }
+  .projects-view .pv-counts b { display: block; font-size: 18px; line-height: 22px; font-weight: 700; color: var(--pg-ink); }
+
+  .projects-view .pv-detail-head > .pv-icon { width: 56px; height: 56px; border-radius: 16px; font-size: 26px; }
+  .projects-view .pv-detail-head .pv-status { height: 22px; line-height: 22px; font-size: 12px; padding: 0 8px; border-radius: 11px; vertical-align: 3px; }
+  .projects-view .pv-detail-actions { display: flex; gap: 8px; align-items: flex-start; }
+  .projects-view .pv-detail-actions .pn-button:last-child { color: var(--pg-red); }
+  .projects-view .pv-task-list { padding: 6px; }
+  .projects-view .pv-task-list h3 { display: flex; align-items: baseline; gap: 8px; padding: 12px 12px 8px; }
+  .projects-view .pv-task-list h3 small { font-size: 12px; font-weight: 600; line-height: 22px; color: var(--pg-mute); }
+  .projects-view .pv-add-task { margin: 0 6px 6px; padding: 0 6px 0 12px; border-radius: 12px; background: var(--pg-field); color: var(--pg-violet); }
+  .projects-view .pv-add-task input { height: 40px; font-size: 14px; }
+  .projects-view .pv-add-task button { font-size: 13px; font-weight: 600; }
+  .projects-view .pv-task { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 12px; border: 0; border-radius: 12px; cursor: pointer; }
+  .projects-view .pv-task:hover { background: var(--pg-hover); }
+  .projects-view .pv-task-dot { width: 22px; height: 22px; flex: none; padding: 0; border-radius: 50%; border: 2px solid var(--pg-check-bd); background: transparent; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .projects-view .pv-task-dot--done { border: 0; background: var(--pg-violet); }
+  .projects-view .pv-task-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; line-height: 22px; }
+  .projects-view .pv-task--done .pv-task-title { color: var(--pg-mute); text-decoration: line-through; }
+  .projects-view .pv-task > small { font-size: 12px; line-height: 22px; color: var(--pg-ink-3); }
+  .projects-view .pv-task-go { flex: none; color: #A29DA8; }
+  .projects-view .pv-ring { width: 88px; height: 88px; padding: 8px; border-radius: 50%; }
+  .projects-view .pv-ring strong { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; }
+  .projects-view .pv-linked button { gap: 10px; padding: 10px 12px; border-radius: 12px; background: transparent; color: var(--pg-ink); text-align: left; }
+  .projects-view .pv-linked button:hover { background: var(--pg-hover); }
+  .projects-view .pv-note-icon { flex: none; margin-top: 2px; color: #D97706; }
+  .projects-view .pv-linked button strong { display: block; font-size: 14px; font-weight: 500; line-height: 22px; }
+  .projects-view .pv-linked button small { display: block; font-size: 12px; line-height: 16px; color: var(--pg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .projects-view .pv-linked button > span:last-child { flex: 1; min-width: 0; }
+}

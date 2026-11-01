@@ -164,3 +164,17 @@ export function taskMatchesQuery(task: TaskOut, query: string, projectName = '')
   const needle = query.trim().toLocaleLowerCase()
   return [task.title, task.description, projectName].some((value) => value.toLocaleLowerCase().includes(needle))
 }
+
+export const dayDiff = (key: string, today: string) => Math.round((Date.parse(`${key}T00:00:00`) - Date.parse(`${today}T00:00:00`)) / 864e5)
+/** Today / Tomorrow / Yesterday, a weekday within the week, otherwise "Nov 2" (the design's date wording). */
+export function fmtDay(key: string, today: string): string {
+  const n = dayDiff(key, today)
+  if (n === 0) return 'Today'
+  if (n === 1) return 'Tomorrow'
+  if (n === -1) return 'Yesterday'
+  const date = new Date(`${key}T00:00:00`)
+  return n > 1 && n < 7 ? date.toLocaleDateString('en-US', { weekday: 'long' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+// Project chips and cards take a stable colour from the design palette, keyed by id.
+const PROJECT_COLORS = ['#6A4CF2', '#2F6FE4', '#14966C', '#D97706', '#E2553F', '#D9367E', '#0F9488']
+export const projectColor = (id: string) => PROJECT_COLORS[[...id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PROJECT_COLORS.length]

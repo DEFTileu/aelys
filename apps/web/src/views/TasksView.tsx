@@ -4,7 +4,7 @@ import { Calendar, CalendarDays, Check, CircleCheck, CircleCheckBig, CirclePlus,
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import { TaskEditor } from './tasks/TaskEditor'
-import { dateKey, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
+import { dateKey, dayDiff, fmtDay, projectColor, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
 import './desktop/page-tokens.css'
 import './desktop/tasks.css'
 
@@ -13,18 +13,6 @@ type EditorState = { task: TaskOut; draft: TaskDraft; error: string; conflict: b
 const VIEWS = [{ id: 'inbox', label: 'Inbox', Icon: Inbox }, { id: 'today', label: 'Today', Icon: Calendar }, { id: 'upcoming', label: 'Upcoming', Icon: CalendarDays }, { id: 'completed', label: 'Completed', Icon: CircleCheck }] as const
 const PRIORITIES = ['None', 'Low', 'Medium', 'High']
 const PRIORITY_COLORS = ['', '#2F6FE4', '#D97706', '#D93636']
-// Project chips take a stable colour from the design palette, keyed by id.
-const PROJECT_COLORS = ['#6A4CF2', '#2F6FE4', '#14966C', '#D97706', '#E2553F', '#D9367E', '#0F9488']
-const projectColor = (id: string) => PROJECT_COLORS[[...id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % PROJECT_COLORS.length]
-const dayDiff = (key: string, today: string) => Math.round((Date.parse(`${key}T00:00:00`) - Date.parse(`${today}T00:00:00`)) / 864e5)
-function fmtDay(key: string, today: string): string {
-  const n = dayDiff(key, today)
-  if (n === 0) return 'Today'
-  if (n === 1) return 'Tomorrow'
-  if (n === -1) return 'Yesterday'
-  const date = new Date(`${key}T00:00:00`)
-  return n > 1 && n < 7 ? date.toLocaleDateString('en-US', { weekday: 'long' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
 // A date without a time is stored as 23:59, so that time is not shown.
 function timeLabel(iso: string | null): string {
   if (!iso) return ''

@@ -80,6 +80,7 @@ export const glyphs = {
   CirclePlus: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 5v8m-4-4h8',
   CircleCheck: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-4 9 3 3 5-6',
   CircleCheckBig: 'M21 10.5a9 9 0 1 1-4.5-7.2M9 11l3 3 9-9',
+  Archive: 'M3.5 4h17v4h-17ZM5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8m-9 4h4',
   Trash2: 'M3.5 6h17M19 6v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m-6 5v6m4-6v6',
 } as const
 
