@@ -11,7 +11,7 @@ const first = { id: '1', title: 'Alpha', markdown_body: 'Original', version: 1, 
 const second = { id: '2', title: 'Beta', markdown_body: 'Second', version: 3, parent_id: null, project_id: null }
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
-const button = (text: string) => [...host.querySelectorAll('button')].find((item) => item.textContent?.includes(text))!
+const button = (text: string) => [...host.querySelectorAll('button')].find((item) => item.textContent?.includes(text) || item.getAttribute('aria-label') === text)!
 const input = (label: string) => host.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[aria-label="${label}"]`)!
 async function change(label: string, value: string) {
   const element = input(label)
