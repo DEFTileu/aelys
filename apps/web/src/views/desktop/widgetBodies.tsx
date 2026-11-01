@@ -10,6 +10,7 @@ import { WeatherCard } from '../../components/Weather'
 import type { RoutePath } from '../../types'
 import type { SizeKey, WidgetId } from './homeLayout'
 import type { FocusTimer, HomeData } from './homeWidgets'
+import { DesktopBody } from './desktopBodies'
 
 const pad = (value: number) => String(value).padStart(2, '0')
 const hhmm = (value: string | Date | null) => value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'
@@ -260,13 +261,14 @@ function Activity({ size, data }: BodyProps) {
 export function WidgetBody(props: BodyProps & { onRetry: () => void }) {
   const { id, size, data, onRetry } = props
   const state = data.states?.[id]
-  if (state === 'loading') return <div className="wb-empty"><span>Loading…</span></div>
-  if (state && state !== 'ready') return <Failed onRetry={onRetry} />
+  if (state === 'loading') return <div className={props.mobile ? 'wb-empty' : 'dw-empty'}><span>Loading…</span></div>
+  if (state && state !== 'ready') return props.mobile ? <Failed onRetry={onRetry} /> : <div className="dw-empty"><span>Can’t load</span><button type="button" className="home-btn dw-action" onClick={onRetry}>Retry</button></div>
+  if (!props.mobile) return <DesktopBody {...props} />
   switch (id) {
     case 'today': return <Today {...props} />
     case 'cal': return <Calendar {...props} />
     case 'focus': return <Focus {...props} />
-    case 'weather': return <WeatherCard size={size} />
+    case 'weather': return <WeatherCard size={size === 'Full' ? 'M' : size} />
     case 'proj': return <Projects {...props} />
     case 'notes': case 'kb': return <Notes {...props} />
     case 'fin': return <Finances {...props} />

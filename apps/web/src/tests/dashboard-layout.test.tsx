@@ -38,19 +38,19 @@ const tasks = (count: number) => Array.from({ length: count }, (_, index) => ({ 
 describe('dashboard widgets', () => {
   it('renders the design default sizes with no automatic sizing and saves nothing', async () => {
     const { grid } = await mount()
-    expect([...grid.children].map(card => [card.getAttribute('data-widget-id'), (card as HTMLElement).dataset.sizeKey])).toEqual([['today', 'M'], ['focus', 'S'], ['weather', 'S'], ['cal', 'M'], ['proj', 'M'], ['fin', 'M'], ['notes', 'S'], ['mail', 'S']])
+    expect([...grid.children].map(card => [card.getAttribute('data-widget-id'), (card as HTMLElement).dataset.sizeKey])).toEqual([['today', 'S'], ['cal', 'S'], ['focus', 'S'], ['weather', 'S'], ['proj', 'S'], ['notes', 'S'], ['fin', 'S'], ['kb', 'S'], ['activity', 'Full']])
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
   })
 
-  it('does not grow a card with its record count: Today M always shows at most four tasks', async () => {
+  it('does not grow a card with its record count: Today S always shows at most five tasks', async () => {
     client.tasks.mockResolvedValue(tasks(12))
     const { grid } = await mount()
-    expect(grid.querySelector('[data-widget-id="today"]')!.querySelectorAll('[role="checkbox"]')).toHaveLength(4)
+    expect(grid.querySelector('[data-widget-id="today"]')!.querySelectorAll('[role="checkbox"]')).toHaveLength(5)
   })
 
-  it.each(WIDGET_IDS.filter(id => id !== 'weather'))('renders a different layout for %s at S, M and L', async (id) => {
+  it.each(WIDGET_IDS.filter(id => id !== 'weather'))('renders %s at S, M and L, with L adding content', async (id) => {
     const at = (hours: number) => new Date(Date.now() + hours * 3600000).toISOString()
-    const records = Array.from({ length: 12 }, (_, index) => ({ id: `record-${index}`, title: `Record ${index}`, name: `Project ${index}`, status: 'todo', due_at: at(index), starts_at: at(index + 1), ends_at: at(index + 1.5), markdown_body: 'Note preview', currency: 'KZT', amount: '1.5', type: index % 2 ? 'expense' : 'income', category_name: 'Food', is_read: false, pinned: index === 1, occurred_at: at(-index), notes: '', sender: 'Sender', subject: 'Subject', body: 'Body', received_at: at(-index), event_kind: 'task.created', actor_kind: 'owner', project_id: null, elapsed_seconds: 60 }))
+    const records = Array.from({ length: 12 }, (_, index) => ({ id: `record-${index}`, title: `Record ${index}`, name: `Project ${index}`, status: 'todo', due_at: at(index), starts_at: at(index + 1), ends_at: at(index + 1.5), markdown_body: 'Note preview', currency: 'KZT', amount: '1.5', type: index % 2 ? 'expense' : 'income', category_name: `Category ${index}`, is_read: false, pinned: index === 1, occurred_at: at(-index), notes: '', sender: 'Sender', subject: 'Subject', body: 'Body', received_at: at(-index), event_kind: 'task.created', actor_kind: 'owner', project_id: null, elapsed_seconds: 60 }))
     Object.entries(client).forEach(([key, method]) => method.mockResolvedValue(key === 'focusSessions' ? [] : key === 'createTask' ? {} : records))
     const html: string[] = []
     for (const [span, height] of [[1, 264], [2, 264], [2, 544]]) {
@@ -59,18 +59,20 @@ describe('dashboard widgets', () => {
       html.push(grid.querySelector('.home-widget-body')!.innerHTML)
       await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ''
     }
-    expect(new Set(html).size).toBe(3)
+    // S and M share one layout in the design (the card is just wider); L adds rows or extras.
+    expect(html.every(markup => markup.length > 0)).toBe(true)
+    expect(html[2]).not.toBe(html[0])
   })
 
   it('shows one muted line plus one action when empty, and Can’t load · Retry when loading fails', async () => {
     const { grid } = await mount()
-    const empty = grid.querySelector('[data-widget-id="proj"] .wb-empty')!
+    const empty = grid.querySelector('[data-widget-id="proj"] .dw-empty')!
     expect(empty.textContent).toContain('No projects yet.')
     expect(empty.querySelectorAll('button')).toHaveLength(1)
     await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ''
     client.projects.mockRejectedValue(new Error('offline'))
     const failed = await mount()
-    const retry = failed.grid.querySelector('[data-widget-id="proj"] .wb-empty')!
+    const retry = failed.grid.querySelector('[data-widget-id="proj"] .dw-empty')!
     expect(retry.textContent).toContain('Can’t load')
     client.projects.mockResolvedValue([{ id: 'p', name: 'Alpha', status: 'active', description: '' }])
     await click(retry.querySelector('button')!)
@@ -82,9 +84,9 @@ describe('dashboard widgets', () => {
     client.financeTransactions.mockResolvedValue([tx('a', 'KZT', '10'), tx('b', 'KZT', '5'), tx('c', 'USD', '100')])
     const { grid } = await mount()
     const text = grid.querySelector('[data-widget-id="fin"]')!.textContent!
-    expect(text).toContain('15.0')
-    expect(text).toContain('KZT')
+    expect(text).toContain('15\u00A0₸')
     expect(text).not.toContain('115')
+    expect(text).not.toContain('$')
     expect(text).toContain('1 more currency')
   })
 
@@ -101,7 +103,7 @@ describe('dashboard widgets', () => {
     client.financeBudgets.mockResolvedValue([budget('KZT', '100')])
     const withBudget = await mount()
     const text = withBudget.grid.querySelector('[data-widget-id="fin"]')!.textContent!
-    expect(text).toContain('Uncategorized'); expect(text).toContain('15.00 KZT'); expect(text).toContain('Budget17.00 / 100.00 KZT'); expect(text).not.toContain('Travel')
+    expect(text).toContain('Uncategorized'); expect(text).toContain('15\u00A0₸'); expect(text).toContain('Budget17\u00A0₸ / 100\u00A0₸'); expect(text).not.toContain('Travel')
   })
 
   it('Mail counts only unread messages and shows Inbox is clear with Import otherwise', async () => {
@@ -109,11 +111,13 @@ describe('dashboard widgets', () => {
     saveLayout([['mail', 1, 264]])
     client.mailMessages.mockResolvedValue([message('1', false), message('2', true), message('3', false)])
     const unread = await mount()
-    expect(unread.grid.querySelector('[data-widget-id="mail"]')!.textContent).toContain('2unread')
+    const mailCard = unread.grid.querySelector('[data-widget-id="mail"]')!
+    expect(mailCard.querySelector('.dw-head-badge')?.textContent).toBe('2')
+    expect(mailCard.querySelectorAll('.dw-row')).toHaveLength(2)
     await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ''
     client.mailMessages.mockResolvedValue([message('2', true)])
     const clear = await mount()
-    const empty = clear.grid.querySelector('[data-widget-id="mail"] .wb-empty')!
+    const empty = clear.grid.querySelector('[data-widget-id="mail"] .dw-empty')!
     expect(empty.textContent).toContain('Inbox is clear'); expect(empty.textContent).toContain('Import'); expect(empty.querySelectorAll('button')).toHaveLength(1)
   })
 
@@ -122,7 +126,7 @@ describe('dashboard widgets', () => {
     client.notes.mockResolvedValue([{ id: 'n1', title: 'Recent one', markdown_body: 'x', updated_at: '2026-10-30T10:00:00Z' }, { id: 'n2', title: 'Pinned one', markdown_body: 'y', pinned: true, updated_at: '2026-01-01T10:00:00Z' }])
     const { grid } = await mount()
     const text = grid.querySelector('[data-widget-id="notes"]')!.textContent!
-    expect(text.indexOf('Pinned')).toBeGreaterThanOrEqual(0); expect(text.indexOf('Pinned one')).toBeLessThan(text.indexOf('Recent one'))
+    expect(text.indexOf('Pinned one')).toBeGreaterThanOrEqual(0); expect(text.indexOf('Pinned one')).toBeLessThan(text.indexOf('Recent one'))
   })
 
   it('Focus shows a paused session as Resume and the toggle calls resume', async () => {
@@ -159,12 +163,12 @@ describe('dashboard customization', () => {
     expect(host.querySelector('[aria-label="Resize Today"]')).not.toBeNull()
   })
 
-  it('dims and disables card bodies while editing', async () => {
+  it('disables card bodies while editing', async () => {
     const { host, grid } = await mount()
     expect(grid.querySelector('.home-widget-body[inert]')).toBeNull()
     await customize(host)
     const bodies = [...grid.querySelectorAll('.home-widget-body')]
-    expect(bodies.length).toBe(8)
+    expect(bodies.length).toBe(9)
     expect(bodies.every(body => body.hasAttribute('inert'))).toBe(true)
     expect(grid.classList.contains('home-widget-grid--editing')).toBe(true)
   })
@@ -173,10 +177,10 @@ describe('dashboard customization', () => {
     const { host } = await mount(); await customize(host)
     expect(card(host, 'today').tabIndex).toBe(0)
     await press(card(host, 'today'), 'ArrowRight')
-    expect(readLayout().slice(0, 2).map(([id]) => id)).toEqual(['focus', 'today'])
+    expect(readLayout().slice(0, 2).map(([id]) => id)).toEqual(['cal', 'today'])
     await press(card(host, 'today'), 'ArrowLeft')
     expect(readLayout()[0][0]).toBe('today')
-    for (const [key, span, height] of [['ArrowDown', 2, 544], ['ArrowLeft', 1, 544], ['ArrowUp', 1, 264], ['ArrowRight', 2, 264]] as const) {
+    for (const [key, span, height] of [['ArrowDown', 1, 544], ['ArrowLeft', 1, 544], ['ArrowUp', 1, 264], ['ArrowRight', 2, 264]] as const) {
       await press(card(host, 'today'), key, true)
       expect(readLayout()[0]).toEqual(['today', span, height])
     }
@@ -201,7 +205,7 @@ describe('dashboard customization', () => {
   it('snaps resize-handle keyboard input to S, M, L and Tall', async () => {
     const { host } = await mount(); await customize(host)
     const handle = host.querySelector('[aria-label="Resize Today"]')!
-    for (const [key, span, height] of [['ArrowDown', 2, 544], ['ArrowLeft', 1, 544], ['ArrowUp', 1, 264], ['ArrowRight', 2, 264]] as const) {
+    for (const [key, span, height] of [['ArrowDown', 1, 544], ['ArrowLeft', 1, 544], ['ArrowUp', 1, 264], ['ArrowRight', 2, 264]] as const) {
       await press(handle, key)
       expect(readLayout()[0]).toEqual(['today', span, height])
     }
@@ -223,13 +227,13 @@ describe('dashboard customization', () => {
     const { host } = await mount(); await customize(host)
     const today = card(host, 'today')
     const handle = host.querySelector('[aria-label="Resize Today"]')!
-    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(0)
+    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(5)
     await act(async () => { pointer(handle, 'pointerdown', 200, 264); pointer(handle, 'pointermove', 480, 544) })
-    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(12)
-    expect(today.querySelector('.home-size-badge')?.textContent).toBe('L · 2×2')
+    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(11)
+    expect(today.querySelector('.home-size-badge')?.textContent).toBe('2 × 2')
     expect(readLayout()).toEqual([['today', 1, 264]])
     await act(async () => pointer(handle, 'pointercancel', 480, 544))
-    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(0)
+    expect(today.querySelectorAll('[role="checkbox"]')).toHaveLength(5)
     expect(today.querySelector('.home-size-badge')).toBeNull()
   })
 
@@ -238,7 +242,7 @@ describe('dashboard customization', () => {
     for (const label of ['Resize Today', 'Remove Today']) expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull()
     const heading = grid.querySelector('[data-widget-id="today"] [data-widget-heading]')!
     await act(async () => { pointer(heading, 'pointerdown', 15, 25); pointer(heading, 'pointermove', 300, 100); pointer(heading, 'pointerup', 300, 100) })
-    expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['today', 'focus'])
+    expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['today', 'cal'])
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
   })
 
@@ -249,8 +253,8 @@ describe('dashboard customization', () => {
     await act(async () => pointer(today, 'pointermove', 300, 100))
     expect(grid.children[1]?.hasAttribute('data-drop-target')).toBe(true)
     await act(async () => pointer(today, 'pointerup', 300, 100))
-    expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['focus', 'today'])
-    expect(readLayout().slice(0, 2).map(([id]) => id)).toEqual(['focus', 'today'])
+    expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['cal', 'today'])
+    expect(readLayout().slice(0, 2).map(([id]) => id)).toEqual(['cal', 'today'])
   })
 
   it('snaps pointer resize to a size and restores it after remount', async () => {
@@ -276,12 +280,12 @@ describe('dashboard customization', () => {
     expect(readLayout()[0]).toEqual(['today', 2, 544])
   })
 
-  it('removes a card with the minus badge and adds it back from the Add widget sheet', async () => {
+  it('removes a card with the remove badge and adds it back from the Add widget sheet', async () => {
     const { host, grid } = await mount(); await customize(host)
     await click(host.querySelector<HTMLButtonElement>('[aria-label="Remove Today"]')!)
     expect(grid.querySelector('[data-widget-id="today"]')).toBeNull()
     expect(readLayout().some(([id]) => id === 'today')).toBe(false)
-    await click(button(host, 'Add widget'))
+    await click(button(host, 'Widget'))
     const dialog = host.querySelector<HTMLElement>('[role="dialog"][aria-label="Add widget"]')!
     expect(dialog).not.toBeNull()
     expect(dialog.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe('M')
@@ -296,14 +300,14 @@ describe('dashboard customization', () => {
 
   it('lets the same widget be added twice at different sizes with unique keys', async () => {
     const { host, grid } = await mount(); await customize(host)
-    await click(button(host, 'Add widget'))
+    await click(button(host, 'Widget'))
     const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!
     expect([...dialog.querySelectorAll('[role="option"]')].find(node => node.textContent?.includes('Calendar'))?.textContent).toContain('On Home')
     await click([...dialog.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(node => node.textContent?.includes('Calendar'))!)
-    await click([...dialog.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(node => node.textContent === 'S')!)
+    await click([...dialog.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(node => node.textContent === 'L')!)
     await click([...dialog.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === 'Add')!)
     const cards = [...grid.querySelectorAll<HTMLElement>('[data-widget-id="cal"]')]
-    expect(cards.map(node => node.dataset.sizeKey)).toEqual(['M', 'S'])
+    expect(cards.map(node => node.dataset.sizeKey)).toEqual(['S', 'L'])
     expect(new Set(cards.map(node => node.dataset.widgetKey)).size).toBe(2)
     expect(readLayout().filter(([id]) => id === 'cal')).toHaveLength(2)
     await click(cards[1].querySelector<HTMLButtonElement>('[aria-label="Remove Calendar"]')!)
@@ -312,13 +316,13 @@ describe('dashboard customization', () => {
 
   it('filters the Add widget list by search and closes with Cancel or Escape without changing the layout', async () => {
     const { host } = await mount(); await customize(host)
-    await click(button(host, 'Add widget'))
+    await click(button(host, 'Widget'))
     const search = host.querySelector<HTMLInputElement>('[aria-label="Search widgets"]')!
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'mail'); search.dispatchEvent(new Event('input', { bubbles: true })) })
-    expect([...host.querySelectorAll('[role="option"]')].map(node => node.textContent)).toEqual(['MailOn Home'])
+    expect([...host.querySelectorAll('[role="option"]')].map(node => node.textContent)).toEqual(['Mail'])
     await click([...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(node => node.textContent === 'Cancel')!)
     expect(host.querySelector('[role="dialog"]')).toBeNull()
-    await click(button(host, 'Add widget'))
+    await click(button(host, 'Widget'))
     await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
     expect(host.querySelector('[role="dialog"]')).toBeNull()
     expect(host.querySelector('[aria-label="Remove Today"]')).not.toBeNull()
@@ -338,7 +342,7 @@ describe('dashboard customization', () => {
     await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 688) })
     await act(async () => pointer(resize, 'pointercancel', 410, 688))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect(today.dataset.sizeKey).toBe('M')
+    expect(today.dataset.sizeKey).toBe('S')
     await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 688) })
     await press(resize, 'Escape')
     await act(async () => pointer(resize, 'pointerup', 410, 688))
@@ -346,7 +350,7 @@ describe('dashboard customization', () => {
     await act(async () => { pointer(resize, 'pointerdown', 200, 264); pointer(resize, 'pointermove', 410, 688) })
     await act(async () => pointer(resize, 'lostpointercapture', 410, 688))
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect(today.dataset.sizeKey).toBe('M')
+    expect(today.dataset.sizeKey).toBe('S')
   })
 
   it('Done cancels a gesture and removes editing affordances', async () => {
@@ -357,7 +361,7 @@ describe('dashboard customization', () => {
     for (const label of ['Resize Today', 'Remove Today']) expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull()
     expect(grid.querySelector('[data-drop-target]')).toBeNull()
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
-    expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['today', 'focus'])
+    expect([...grid.children].slice(0, 2).map((item) => item.getAttribute('data-widget-id'))).toEqual(['today', 'cal'])
   })
 
   it('reports a blocked local save instead of claiming the layout is durable', async () => {

@@ -16,16 +16,18 @@ export type AccentKey = keyof typeof ACCENT
 
 export function accentOf(key: AccentKey) {
   const c = ACCENT[key]
-  return { c, soft: `${c}1A` }
+  // Red and green swap to lighter inks in dark; the vars are defined by the desktop shell.
+  const ink = key === 'red' ? 'var(--ink-red, #D93636)' : key === 'green' ? 'var(--ink-green, #14966C)' : c
+  return { c, soft: `${c}1A`, ink }
 }
 
 export const FOCUS_SESSION_SECONDS = 1500
 
 export const HOME_CHIPS: { label: string; icon: AelysIconComponent; color: string }[] = [
   { label: 'Plan my day', icon: CalendarCheck, color: '#2F6FE4' },
-  { label: 'Find a task', icon: CircleDot, color: '#D93636' },
+  { label: 'Find a task', icon: CircleDot, color: 'var(--ink-red, #D93636)' },
   { label: 'Continue project', icon: FolderOpen, color: '#6A4CF2' },
   { label: 'Sort inbox', icon: Mail, color: '#D9367E' },
   { label: 'Analyze data', icon: ChartColumn, color: '#0F9488' },
-  { label: 'More', icon: Ellipsis, color: '#3A3640' },
+  { label: 'More', icon: Ellipsis, color: 'var(--ink-soft, #3A3640)' },
 ]

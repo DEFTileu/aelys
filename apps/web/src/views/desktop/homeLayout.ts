@@ -15,7 +15,7 @@ export const LEGACY_MOBILE_HOME_LAYOUT_KEY = 'aelys.mobile.home.v1'
 export type WidgetId = 'today' | 'cal' | 'focus' | 'weather' | 'proj' | 'notes' | 'fin' | 'kb' | 'mail' | 'activity'
 /** [widget, column span, pixel height, instance key]. The key is only stored for a second copy of a widget. */
 export type LayoutEntry = [WidgetId, number, number?, string?]
-export type SizeKey = 'S' | 'M' | 'L' | 'Tall'
+export type SizeKey = 'S' | 'M' | 'L' | 'Tall' | 'Full'
 
 export type WidgetDefinition = {
   title: string
@@ -34,7 +34,7 @@ export const WIDGET_CATALOG: Record<WidgetId, WidgetDefinition> = {
   proj: { title: 'Projects', icon: Folder, color: 'violet', description: 'Progress across projects', link: { label: 'All', route: '/projects' } },
   notes: { title: 'Notes', icon: NotebookText, color: 'orange', description: 'Most recent notes', link: { label: 'All', route: '/notes' } },
   fin: { title: 'Finances', icon: Wallet, color: 'green', description: 'Balance and spending' },
-  kb: { title: 'Knowledge base', icon: BookOpen, color: 'violet', description: 'Recent knowledge notes', link: { label: 'Open', route: '/knowledge' } },
+  kb: { title: 'Knowledge base', icon: BookOpen, color: 'violet', description: 'Recent knowledge notes' },
   mail: { title: 'Mail', icon: Mail, color: 'blue', description: 'Latest imported emails', link: { label: 'Open', route: '/mail' } },
   activity: { title: 'Recent activity', icon: Zap, color: 'violet', description: 'What happened recently' },
 }
@@ -52,17 +52,23 @@ export const WIDGET_SIZES = [
 
 export type WidgetSize = { id: string; key: SizeKey; span: number; height: number; rows: number }
 
-/** Legacy freeform dimensions snap to the nearest of S / M / L / Tall. */
-export function normalizeWidgetSize(span: number, height = WIDGET_GRID_ROW): WidgetSize {
+/** Full row: only Recent activity uses it, as in the design where that card spans every column. */
+export const FULL_SIZE = { id: '4x1', key: 'Full', span: 4, rows: 1, height: 264 } as const
+
+/** Legacy freeform dimensions snap to the nearest of S / M / L / Tall; Recent activity may also be Full. */
+export function normalizeWidgetSize(span: number, height = WIDGET_GRID_ROW, id?: WidgetId): WidgetSize {
+  if (id === 'activity' && span >= 3 && height < 320) return { ...FULL_SIZE }
   const wide = span >= 1.5
   const tall = height >= 320
   const size = WIDGET_SIZES.find(item => (item.span === 2) === wide && (item.rows === 2) === tall)!
   return { id: size.id, key: size.key, span: size.span, height: size.height, rows: size.rows }
 }
-export const sizeByKey = (key: SizeKey) => WIDGET_SIZES.find(size => size.key === key)!
+export const sizeByKey = (key: SizeKey): WidgetSize => key === 'Full' ? { ...FULL_SIZE } : WIDGET_SIZES.find(size => size.key === key)!
 
-export const DEFAULT_SIZES: Record<WidgetId, SizeKey> = { today: 'M', cal: 'M', focus: 'S', weather: 'S', proj: 'M', notes: 'S', fin: 'M', kb: 'M', mail: 'S', activity: 'M' }
-const sized = (id: WidgetId): LayoutEntry => { const size = sizeByKey(DEFAULT_SIZES[id]); return [id, size.span, size.height] }
+// Desktop default is the reference design: nine cards, every one 1x1 except Recent activity across the whole row.
+export const DEFAULT_SIZES: Record<WidgetId, SizeKey> = { today: 'S', cal: 'S', focus: 'S', weather: 'S', proj: 'S', notes: 'S', fin: 'S', kb: 'S', mail: 'S', activity: 'Full' }
+const MOBILE_SIZES: Record<WidgetId, SizeKey> = { today: 'M', cal: 'M', focus: 'S', weather: 'S', proj: 'M', notes: 'S', fin: 'M', kb: 'M', mail: 'S', activity: 'M' }
+const sized = (id: WidgetId, sizes = DEFAULT_SIZES): LayoutEntry => { const size = sizeByKey(sizes[id]); return [id, size.span, size.height] }
 export const layoutKey = (entry: LayoutEntry) => entry[3] ?? entry[0]
 /** A second copy of a widget gets its own stable key so cards can be told apart. */
 export const newLayoutEntry = (id: WidgetId, size: SizeKey, layout: readonly LayoutEntry[]): LayoutEntry => {
@@ -73,15 +79,18 @@ export const newLayoutEntry = (id: WidgetId, size: SizeKey, layout: readonly Lay
 /** Set by the Add widget sheet so Home can scroll to and highlight the card it just created. */
 export const pendingHighlight = { key: '' }
 
-export const DEFAULT_LAYOUT: LayoutEntry[] = (['today', 'focus', 'weather', 'cal', 'proj', 'fin', 'notes', 'mail'] as WidgetId[]).map(sized)
-export const MOBILE_DEFAULT_LAYOUT: LayoutEntry[] = (['today', 'focus', 'weather', 'cal', 'mail', 'notes', 'fin', 'proj'] as WidgetId[]).map(sized)
+export const DEFAULT_LAYOUT: LayoutEntry[] = (['today', 'cal', 'focus', 'weather', 'proj', 'notes', 'fin', 'kb', 'activity'] as WidgetId[]).map(id => sized(id))
+export const MOBILE_DEFAULT_LAYOUT: LayoutEntry[] = (['today', 'focus', 'weather', 'cal', 'mail', 'notes', 'fin', 'proj'] as WidgetId[]).map(id => sized(id, MOBILE_SIZES))
+// The previous untouched desktop default. A stored copy of it means "never customized" and follows the new default.
+const PREVIOUS_DEFAULT_JSON = JSON.stringify([['today', 2, 264], ['focus', 1, 264], ['weather', 1, 264], ['cal', 2, 264], ['proj', 2, 264], ['fin', 2, 264], ['notes', 1, 264], ['mail', 1, 264]])
 
 export function readLayout(mobile = false): LayoutEntry[] {
   try {
     const keys = mobile
       ? [MOBILE_HOME_LAYOUT_KEY, PREVIOUS_MOBILE_HOME_LAYOUT_KEY, OLDER_MOBILE_HOME_LAYOUT_KEY, LEGACY_MOBILE_HOME_LAYOUT_KEY]
       : [HOME_LAYOUT_KEY, PREVIOUS_HOME_LAYOUT_KEY, OLDER_HOME_LAYOUT_KEY, LEGACY_HOME_LAYOUT_KEY]
-    const stored: unknown = JSON.parse(keys.map(key => window.localStorage.getItem(key)).find(value => value !== null) ?? 'null')
+    const raw = keys.map(key => window.localStorage.getItem(key)).find(value => value !== null) ?? 'null'
+    const stored: unknown = !mobile && raw === PREVIOUS_DEFAULT_JSON ? null : JSON.parse(raw)
     if (Array.isArray(stored)) {
       const seen = new Set<string>()
       return stored.flatMap((entry): LayoutEntry[] => {
@@ -91,7 +100,7 @@ export function readLayout(mobile = false): LayoutEntry[] {
         if (seen.has(key)) return []
         seen.add(key)
         // Span 0 was the removed Auto mode: it becomes the widget's default size.
-        const size = entry[1] === 0 ? sizeByKey(DEFAULT_SIZES[id]) : normalizeWidgetSize(entry[1], Number.isFinite(entry[2]) ? entry[2] : WIDGET_GRID_ROW)
+        const size = entry[1] === 0 ? sizeByKey(mobile ? MOBILE_SIZES[id] : DEFAULT_SIZES[id]) : normalizeWidgetSize(entry[1], Number.isFinite(entry[2]) ? entry[2] : WIDGET_GRID_ROW, mobile ? undefined : id)
         return [key === id ? [id, size.span, size.height] : [id, size.span, size.height, key]]
       })
     }
@@ -103,7 +112,7 @@ export function readLayout(mobile = false): LayoutEntry[] {
 
 export function saveLayout(layout: LayoutEntry[], mobile = false) {
   try {
-    window.localStorage.setItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY, JSON.stringify(layout.map(entry => { const size = normalizeWidgetSize(entry[1], entry[2]); return entry[3] ? [entry[0], size.span, size.height, entry[3]] : [entry[0], size.span, size.height] })))
+    window.localStorage.setItem(mobile ? MOBILE_HOME_LAYOUT_KEY : HOME_LAYOUT_KEY, JSON.stringify(layout.map(entry => { const size = normalizeWidgetSize(entry[1], entry[2], mobile ? undefined : entry[0]); return entry[3] ? [entry[0], size.span, size.height, entry[3]] : [entry[0], size.span, size.height] })))
     return true
   } catch {
     // Let the UI distinguish a durable change from a session-only preview.

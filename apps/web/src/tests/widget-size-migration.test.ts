@@ -10,7 +10,13 @@ describe('fixed widget sizes', () => {
     expect(WIDGET_SIZES.map(({ id, key, span, rows, height }) => [id, key, span, rows, height])).toEqual([['1x1', 'S', 1, 1, 264], ['2x1', 'M', 2, 1, 264], ['2x2', 'L', 2, 2, 544], ['1x2', 'Tall', 1, 2, 544]])
   })
   it('uses the design default layout and sizes', () => {
-    expect(DEFAULT_LAYOUT.map(([id, span, height]) => [id, span, height])).toEqual([['today', 2, 264], ['focus', 1, 264], ['weather', 1, 264], ['cal', 2, 264], ['proj', 2, 264], ['fin', 2, 264], ['notes', 1, 264], ['mail', 1, 264]])
+    expect(DEFAULT_LAYOUT.map(([id, span, height]) => [id, span, height])).toEqual([['today', 1, 264], ['cal', 1, 264], ['focus', 1, 264], ['weather', 1, 264], ['proj', 1, 264], ['notes', 1, 264], ['fin', 1, 264], ['kb', 1, 264], ['activity', 4, 264]])
+  })
+  it('gives Recent activity a full-row size and snaps every other widget to S, M, L or Tall', () => {
+    expect(normalizeWidgetSize(4, 264, 'activity')).toMatchObject({ key: 'Full', span: 4, rows: 1, height: 264 })
+    expect(normalizeWidgetSize(4, 264, 'today')).toMatchObject({ key: 'M' })
+    expect(normalizeWidgetSize(4, 560, 'activity')).toMatchObject({ key: 'L' })
+    expect(sizeByKey('Full')).toMatchObject({ span: 4, height: 264 })
   })
   it('snaps legacy freeform dimensions to the nearest of S, M, L and Tall', () => {
     expect(normalizeWidgetSize(1, 176)).toMatchObject({ key: 'S', span: 1, height: 264, rows: 1 })
@@ -44,14 +50,15 @@ describe('layout migration', () => {
     const legacyKey = mobile ? LEGACY_MOBILE_HOME_LAYOUT_KEY : LEGACY_HOME_LAYOUT_KEY
     localStorage.setItem(legacyKey, JSON.stringify([['today', 1, 264], ['cal', 2, 264], ['focus', 2, 544], ['activity', 4, 264]]))
     const migrated = readLayout(mobile)
-    expect(migrated).toEqual([['today', 1, 264], ['cal', 2, 264], ['focus', 2, 544], ['activity', 2, 264]])
+    // Only the desktop Recent activity card may span the full row; mobile snaps it to M.
+    expect(migrated).toEqual([['today', 1, 264], ['cal', 2, 264], ['focus', 2, 544], ['activity', mobile ? 2 : 4, 264]])
     saveLayout(migrated, mobile)
     localStorage.setItem(legacyKey, '[]')
     expect(readLayout(mobile)).toEqual(migrated)
   })
   it('migrates legacy tuples, removes duplicate legacy ids and rejects unknown or invalid cards', () => {
     localStorage.setItem(LEGACY_HOME_LAYOUT_KEY, JSON.stringify([['today', 10], ['cal', 0, 9999], ['today', 1], ['unknown', 2], ['fin', null], ['focus', 2, 384]]))
-    expect(readLayout()).toEqual([['today', 2, 264], ['cal', 2, 264], ['focus', 2, 544]])
+    expect(readLayout()).toEqual([['today', 2, 264], ['cal', 1, 264], ['focus', 2, 544]])
   })
   it('keeps desktop and mobile layouts durable and independent', () => {
     const desktop: LayoutEntry[] = [['today', 2, 544]]
@@ -61,6 +68,15 @@ describe('layout migration', () => {
     expect(readLayout()).toEqual(desktop)
     expect(readLayout(true)).toEqual(mobile)
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).not.toEqual(localStorage.getItem(MOBILE_HOME_LAYOUT_KEY))
+  })
+})
+
+describe('previous default', () => {
+  it('treats an untouched copy of the previous desktop default as unset', () => {
+    localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 2, 264], ['focus', 1, 264], ['weather', 1, 264], ['cal', 2, 264], ['proj', 2, 264], ['fin', 2, 264], ['notes', 1, 264], ['mail', 1, 264]]))
+    expect(readLayout()).toEqual(DEFAULT_LAYOUT)
+    localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 2, 264], ['focus', 1, 264]]))
+    expect(readLayout()).toEqual([['today', 2, 264], ['focus', 1, 264]])
   })
 })
 

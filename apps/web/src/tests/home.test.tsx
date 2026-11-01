@@ -20,7 +20,7 @@ describe('HomeView', () => {
     expect(host.textContent).toContain('Can’t load')
     expect(host.textContent).toContain('OFFLINE_WRITE_UNAVAILABLE')
     expect(host.textContent).not.toContain('No tasks yet.')
-    expect(host.querySelector('[aria-label="Dashboard widgets"]')?.children.length).toBe(8)
+    expect(host.querySelector('[aria-label="Dashboard widgets"]')?.children.length).toBe(9)
   })
 
   it('updates the actual task with its version from the Home checkbox', async () => {

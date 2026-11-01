@@ -1,0 +1,163 @@
+/* Desktop My day cards, measured against the reference design (ACTUAL Aelys Desktop). Mobile keeps the .wb-* bodies. */
+.actual-desktop {
+  --dw-line: #EFEAE6; --dw-ink2: #4F4A56; --dw-sub: #F7F4F1; --dw-track: #ECE7E3; --dw-ring-bg: #FDFBFA; --dw-check: #BDB7C2;
+  --dw-green: #128A63; --dw-focus-btn: #FDE3DC; --dw-focus-ink: #D63F2C; --dw-focus-btn-hover: rgba(240, 115, 98, .24);
+  --dw-mail-badge: #FDE3E1; --dw-mail-badge-ink: #C9302C; --dw-ring-track: rgba(130, 120, 140, .22);
+  --dw-tint-0: #E4EEFD; --dw-tint-1: #EEE8FD; --dw-tint-2: #FDE6E1; --dw-tint-3: #DCF5EC; --dw-tint-4: #FDF1D9;
+}
+:root[data-theme='dark'] .actual-desktop {
+  --dw-line: #34303D; --dw-ink2: #CBC6D5; --dw-sub: #2A2733; --dw-track: #2A2733; --dw-ring-bg: #201D28; --dw-green: #5FD7A8;
+  --dw-focus-btn: rgba(240, 115, 98, .18); --dw-mail-badge: rgba(240, 115, 98, .18); --dw-mail-badge-ink: #FF8A84;
+  --dw-tint-0: rgba(74, 142, 240, .20); --dw-tint-1: rgba(139, 108, 240, .22); --dw-tint-2: rgba(240, 115, 98, .18); --dw-tint-3: rgba(54, 190, 138, .18); --dw-tint-4: rgba(239, 178, 62, .18);
+}
+
+/* Grid: cells share the row evenly, cards size to their content with the design's 264 / 544 minimum. */
+.actual-desktop .home-widget-grid { --widget-columns: 4; grid-template-columns: repeat(var(--widget-columns), minmax(0, 1fr)); grid-auto-rows: auto; grid-auto-flow: row; align-items: start; border-radius: 0; }
+.actual-desktop .home-widget-grid > .home-widget { min-height: 264px; height: auto; }
+.actual-desktop .home-widget-grid > .home-widget[data-rows='2'] { min-height: 544px; }
+.actual-desktop .home-widget-grid > .home-widget[data-size-key='Full'] { min-height: 0; }
+@media (max-width: 1239px) { .actual-desktop .home-widget-grid { --widget-columns: 2; } }
+@media (max-width: 899px) { .actual-desktop .home-widget-grid { --widget-columns: 1; } }
+.actual-desktop .home-widget { border: 1px solid var(--dw-edge); }
+.actual-desktop .home-widget[data-widget-id='weather']:not(.home-widget--editing) { border-color: rgba(255, 255, 255, .35); }
+.actual-desktop .home-widget .home-widget-drag-bar { display: block; height: auto; overflow: visible; }
+.actual-desktop .home-widget .home-widget-body { display: block; overflow: visible; flex: none; }
+.actual-desktop .home-widget .home-widget-body > * { flex: none; }
+
+/* Heading: icon tile, title, count badge, meta and link on one 32px line. */
+.dw-head { display: flex; align-items: center; gap: 8px; height: 32px; margin-bottom: 10px; }
+.dw-head-icon { width: 28px; height: 28px; flex: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.dw-head-title { font-size: 16px; font-weight: 600; line-height: 24px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dw-head-badge { flex: none; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--dw-chip); color: var(--dw-chip-ink); font-size: 12px; font-weight: 600; line-height: 20px; text-align: center; }
+.dw-head-meta { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-head-link { flex: none; display: flex; align-items: center; font-size: 13px; color: var(--muted); cursor: pointer; }
+.dw-head-link:hover { opacity: .75; }
+.dw-head-move { flex: none; display: flex; color: #6A4CF2; }
+.home-widget[data-widget-id='weather'] :is(.dw-head-meta, .dw-head-link, .dw-head-move) { color: #fff; }
+
+/* Today */
+.dw-tasks { display: block; }
+.dw-task { display: flex; align-items: center; gap: 12px; height: 36px; }
+.dw-check { width: 20px; height: 20px; flex: none; border-radius: 50%; border: 2px solid var(--dw-check); background: transparent; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.dw-check--on { border: none; background: #6A4CF2; }
+.dw-grow { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-done { color: var(--muted); text-decoration: line-through; }
+.dw-time { font-size: 13px; color: var(--muted); }
+.dw-quickadd { display: flex; align-items: center; gap: 10px; height: 36px; margin-bottom: 4px; padding: 0 12px; border-radius: 12px; background: var(--dw-sub); color: #6A4CF2; }
+.dw-quickadd input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; outline: none; }
+
+/* Calendar */
+.dw-cal { display: flex; flex-direction: column; gap: 6px; }
+.dw-ev { display: flex; align-items: center; gap: 12px; }
+.dw-ev-time { width: 40px; flex: none; font-size: 12px; line-height: 16px; color: var(--muted); }
+.dw-ev-pill { flex: 1; min-width: 0; padding: 4px 12px; border-radius: 10px; border-left: 3px solid; }
+.dw-ev-title { font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-ev-range { font-size: 12px; line-height: 16px; color: var(--dw-ink2); }
+.dw-month { margin-bottom: 10px; }
+
+/* Focus */
+.dw-focus { display: flex; align-items: center; justify-content: center; gap: 20px; flex-direction: column; }
+.dw-focus--row { flex-direction: row; }
+.dw-ring { width: 128px; height: 128px; flex: none; border-radius: 50%; padding: 8px; }
+.dw-ring-inner { width: 100%; height: 100%; border-radius: 50%; background: var(--dw-ring-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.dw-ring-time { font-size: 30px; line-height: 38px; font-weight: 700; letter-spacing: -.02em; }
+.dw-ring-sub { font-size: 12px; line-height: 16px; color: var(--muted); }
+.dw-ctrls { display: flex; gap: 8px; align-items: center; }
+.dw-round { width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--dw-btn); border: 1px solid var(--dw-btn-line); display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.dw-round:hover, .dw-select:hover { background: var(--dw-hover); }
+.dw-round--go { background: var(--dw-focus-btn); border: 0; color: var(--dw-focus-ink); font-size: 16px; }
+.dw-round--go:hover { background: var(--dw-focus-btn-hover); }
+.dw-select { height: 40px; padding: 0 12px; border-radius: 12px; background: var(--dw-btn); border: 1px solid var(--dw-btn-line); display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.dw-focus-extra { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.dw-focus-line { font-size: 13px; color: var(--muted); }
+.dw-focus-line b { color: var(--ink); font-weight: 600; }
+
+/* Weather (photo card) */
+.dw-weather { text-shadow: 0 1px 8px rgba(0, 0, 0, .35); }
+.dw-weather-now { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+.dw-weather-temp { font-size: 36px; line-height: 44px; font-weight: 700; }
+.dw-weather-desc { font-size: 14px; line-height: 22px; }
+.dw-weather-hours { position: absolute; left: 18px; right: 18px; bottom: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; font-size: 12px; line-height: 16px; }
+.dw-weather-hours > div { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.dw-weather-hours b { font-size: 13px; font-weight: 600; }
+.dw-weather-days { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.dw-weather-days > div { display: flex; align-items: center; gap: 10px; }
+.dw-weather-days span:first-child { width: 36px; }
+.dw-weather-days span:last-child { margin-left: auto; font-weight: 600; }
+.dw-weather-foot { position: absolute; right: 18px; top: 18px; opacity: 0; }
+.dw-weather-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.dw-weather-actions a { color: inherit; opacity: .85; }
+.dw-weather-actions button { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; }
+
+/* Column grids shared by Projects, Notes, Knowledge, Mail and Activity */
+.dw-grid { display: grid; grid-template-columns: repeat(var(--dw-cols, 1), minmax(0, 1fr)); }
+.dw-tile { flex: none; display: flex; align-items: center; justify-content: center; }
+.dw-proj { gap: 12px 20px; }
+.dw-proj-item { display: flex; gap: 12px; align-items: center; }
+.dw-proj-item .dw-tile { width: 40px; height: 40px; border-radius: 12px; font-size: 18px; }
+.dw-proj-main { flex: 1; min-width: 0; }
+.dw-proj-line { display: flex; font-size: 14px; line-height: 20px; font-weight: 500; }
+.dw-proj-line > span:first-child { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-proj-line > span:last-child { font-size: 12px; color: var(--muted); }
+.dw-proj-sub { font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-proj-bar { height: 4px; border-radius: 2px; background: var(--dw-track); margin-top: 4px; }
+.dw-proj-bar > div { height: 100%; border-radius: 2px; }
+.dw-notes { gap: 6px 20px; }
+.dw-note { display: flex; align-items: center; gap: 12px; height: 38px; min-width: 0; text-align: left; width: 100%; }
+.dw-note .dw-tile { width: 32px; height: 32px; border-radius: 10px; font-size: 16px; }
+.dw-note-when { font-size: 12px; color: var(--muted); }
+.dw-list { gap: 8px 20px; }
+.dw-row { display: flex; align-items: center; gap: 12px; min-width: 0; text-align: left; width: 100%; }
+.dw-row .dw-tile { width: 32px; height: 32px; border-radius: 10px; font-size: 16px; }
+.dw-row-main { flex: 1; min-width: 0; }
+.dw-row-title { font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-row-title--head { display: flex; gap: 8px; font-weight: 500; overflow: visible; }
+.dw-row-title--head > span:first-child { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-row-title--head > span:last-child { font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+.dw-row-sub { font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Finances */
+.dw-fin-head { display: flex; align-items: flex-end; margin-bottom: 8px; }
+.dw-fin-head > div:first-child { flex: 1; min-width: 0; }
+.dw-fin-total { font-size: 22px; line-height: 30px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-fin-delta { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--dw-green); }
+.dw-fin-delta--down { color: var(--dw-mail-badge-ink); }
+.dw-fin-bars { display: flex; gap: 3px; align-items: flex-end; height: 32px; }
+.dw-fin-bars span { width: 6px; border-radius: 3px; background: #2BC48F; }
+.dw-fin-row { display: flex; align-items: center; gap: 12px; height: 32px; border-top: 1px solid var(--dw-line); font-size: 13px; }
+.dw-fin-row > span:first-child { width: 8px; height: 8px; flex: none; border-radius: 50%; }
+.dw-fin-row > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dw-fin-row > span:last-child { font-weight: 500; white-space: nowrap; }
+.dw-fin-budget { margin-top: 10px; }
+
+/* Recent activity */
+.dw-act { gap: 12px; }
+.dw-act-item { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--dw-sub); min-width: 0; }
+.dw-act-item .dw-tile { width: 36px; height: 36px; border-radius: 10px; font-size: 16px; }
+.dw-act-main { flex: 1; min-width: 0; }
+.dw-act-line { display: flex; gap: 8px; font-size: 13px; line-height: 18px; font-weight: 500; }
+.dw-act-line > span:first-child { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dw-act-line > span:last-child { font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+
+/* Empty and error states keep the design's quiet type. */
+.dw-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding-top: 4px; color: var(--muted); font-size: 13px; line-height: 20px; }
+.dw-action { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 12px; background: var(--dw-btn); border: 1px solid var(--dw-btn-line); font-size: 13px; font-weight: 500; color: var(--ink); }
+.dw-action:hover { background: var(--dw-hover); }
+.home-widget[data-widget-id='weather'] .dw-action { background: rgba(255, 255, 255, .2); border-color: rgba(255, 255, 255, .35); color: #fff; }
+
+/* Customize mode, drawn like the design: dashed outline, move icon, corner resize and a centered size badge. */
+.actual-desktop .home-widget--editing { border: 1.5px dashed rgba(106, 76, 242, .55); cursor: grab; overflow: hidden; box-shadow: 0 8px 24px rgba(40, 30, 30, .07); outline: none; }
+.actual-desktop .home-widget--editing .home-widget-body { opacity: 1; }
+.actual-desktop .home-widget--moving { opacity: .92; cursor: grabbing; box-shadow: 0 24px 60px rgba(30, 20, 50, .28); transition: none; }
+.actual-desktop .home-widget--resizing { outline: 0; background-color: transparent; transition: none; }
+.actual-desktop .home-widget[data-drop-target] { outline: 0; background-color: transparent; box-shadow: 0 0 0 3px #6A4CF2, 0 8px 24px rgba(40, 30, 30, .07); }
+.actual-desktop .home-widget--editing:focus-visible { outline: 2px solid rgba(106, 76, 242, .55); outline-offset: 2px; }
+.actual-desktop .home-remove-widget { top: 12px; right: 12px; left: auto; z-index: 6; width: 28px; height: 28px; border-radius: 50%; background: rgba(255, 255, 255, .96); color: #D93636; box-shadow: 0 2px 8px rgba(20, 10, 30, .18); font-size: 14px; }
+.actual-desktop .home-widget[data-widget-id='weather'] .home-remove-widget { background: rgba(20, 22, 40, .55); }
+.actual-desktop .home-resize-handle { right: 4px; bottom: 4px; z-index: 6; width: 30px; height: 30px; border-radius: 10px; color: #6A4CF2; }
+.actual-desktop .home-widget[data-widget-id='weather'] .home-resize-handle { color: #fff; }
+.actual-desktop .home-resize-handle:hover, .actual-desktop .home-resize-handle:focus-visible { background: rgba(106, 76, 242, .14); outline: 0; }
+.actual-desktop .home-resize-handle:focus-visible { outline: 2px solid rgba(106, 76, 242, .55); outline-offset: 1px; }
+.actual-desktop .home-size-badge { left: 50%; top: 50%; bottom: auto; z-index: 7; transform: translate(-50%, -50%); box-shadow: 0 6px 18px rgba(106, 76, 242, .4); }
+.actual-desktop .home-widget-grid--editing { padding: 0; margin: 0; background: none; }
+.actual-desktop .home-layout-help { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

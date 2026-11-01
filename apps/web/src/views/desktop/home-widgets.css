@@ -4,7 +4,7 @@
 .home-widget [data-widget-heading] { flex: none; min-width: 0; }
 .home-widget .home-widget-body { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; overflow-wrap: anywhere; }
 .home-widget .home-widget-body > * { flex: 1 1 auto; min-height: 0; }
-.home-widget[data-size-key='S'] .home-link, .home-widget[data-size-key='S'] .home-widget-meta, .home-widget[data-size-key='Tall'] .home-widget-meta { display: none; }
+.mobile-shell--home .home-widget[data-size-key='S'] .home-link, .mobile-shell--home .home-widget[data-size-key='S'] .home-widget-meta, .mobile-shell--home .home-widget[data-size-key='Tall'] .home-widget-meta { display: none; }
 
 .wb-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .wb-center { align-items: center; justify-content: center; text-align: center; }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { normalizeWidgetSize, WIDGET_GRID_GAP, WIDGET_GRID_ROW, WIDGET_SIZES, type WidgetId, type WidgetSize } from './homeLayout'
+import { X } from '../../icons'
+import { FULL_SIZE, normalizeWidgetSize, WIDGET_GRID_GAP, WIDGET_GRID_ROW, WIDGET_SIZES, type WidgetId, type WidgetSize } from './homeLayout'
 
 export type WidgetFrameControls = {
   id: WidgetId
@@ -29,7 +30,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, onLo
   const [moving, setMoving] = useState(false)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [preview, setPreview] = useState<WidgetSize | null>(null)
-  const size = normalizeWidgetSize(controls.span, controls.height)
+  const size = normalizeWidgetSize(controls.span, controls.height, controls.id)
   const activeSize = preview ?? size
   const clearTargets = () => article.current?.parentElement?.querySelectorAll('[data-drop-target]').forEach(card => card.removeAttribute('data-drop-target'))
   const clearPress = () => { if (press.current) window.clearTimeout(press.current.timer); press.current = null }
@@ -50,7 +51,7 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, onLo
     const gap = Number.parseFloat(grid.columnGap) || WIDGET_GRID_GAP
     const padding = (Number.parseFloat(grid.paddingLeft) || 0) + (Number.parseFloat(grid.paddingRight) || 0)
     const column = (node.parentElement.getBoundingClientRect().width - padding - gap * (columns - 1)) / columns
-    gesture.current = { kind, x: event.clientX, y: event.clientY, width: rect.width, height: rect.height, column, gap, columns, row: Number.parseFloat(grid.gridAutoRows) || ((rect.height + gap) / size.rows - gap), moved: false }
+    gesture.current = { kind, x: event.clientX, y: event.clientY, width: rect.width, height: rect.height, column, gap, columns, row: Number.parseFloat(grid.gridAutoRows) || WIDGET_GRID_ROW, moved: false }
     node.setPointerCapture?.(event.pointerId)
   }
   const move = (event: PointerEvent<HTMLElement>) => {
@@ -62,12 +63,12 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, onLo
     drag.moved = true
     if (drag.kind === 'resize') {
       // Compare actual pixel distances to the four presets. No freeform height.
-      const available = WIDGET_SIZES.filter(item => drag.columns === 1 ? item.span === size.span : item.span <= drag.columns)
+      const available: readonly (typeof WIDGET_SIZES[number] | typeof FULL_SIZE)[] = [...WIDGET_SIZES, ...(controls.id === 'activity' ? [FULL_SIZE] : [])].filter(item => drag.columns === 1 ? item.span === size.span : item.span <= drag.columns)
       const nearest = available.reduce((best, item) => {
         const distance = (candidate: typeof item) => Math.hypot((Math.min(drag.columns, candidate.span) * (drag.column + drag.gap) - drag.gap) - (drag.width + dx), (candidate.rows * (drag.row + drag.gap) - drag.gap) - (drag.height + dy))
         return distance(item) < distance(best) ? item : best
       }, available[0])
-      const next = normalizeWidgetSize(nearest.span, nearest.height)
+      const next = normalizeWidgetSize(nearest.span, nearest.height, controls.id)
       previewRef.current = next; setPreview(next)
     } else {
       setMoving(true); setOffset({ x: dx, y: dy })
@@ -101,9 +102,9 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, onLo
   }
   /** Absolute targets: left/right pick the column span, up/down the row span. */
   const resizeByKey = (key: string) => {
-    const span = key === 'ArrowLeft' ? 1 : key === 'ArrowRight' ? 2 : size.span
+    const span = key === 'ArrowLeft' ? 1 : key === 'ArrowRight' ? (controls.id === 'activity' && size.span >= 2 ? 4 : 2) : size.span
     const rows = key === 'ArrowUp' ? 1 : key === 'ArrowDown' ? 2 : size.rows
-    const next = normalizeWidgetSize(span, rows * (WIDGET_GRID_GAP + WIDGET_GRID_ROW) - WIDGET_GRID_GAP)
+    const next = normalizeWidgetSize(span, rows * (WIDGET_GRID_GAP + WIDGET_GRID_ROW) - WIDGET_GRID_GAP, controls.id)
     controls.onSize(next.span, next.height)
   }
   const onCardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -116,17 +117,17 @@ export function WidgetFrame({ controls, style, children, editing, onRemove, onLo
       else controls.onMove(event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1)
     } else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); onRemove() }
   }
-  return <article ref={article} tabIndex={editing ? 0 : undefined} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}${preview ? ' home-widget--resizing' : ''}`} aria-label={controls.title} aria-description={editing ? 'Arrow keys move, Shift and arrow keys resize, Delete removes' : undefined} data-widget-id={controls.id} data-widget-key={controls.itemKey} data-size-key={activeSize.key} data-size={activeSize.id} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, transform: moving ? `translate(${offset.x}px,${offset.y}px)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties}
+  return <article ref={article} tabIndex={editing ? 0 : undefined} className={`home-widget${editing ? ' home-widget--editing' : ''}${moving ? ' home-widget--moving' : ''}${preview ? ' home-widget--resizing' : ''}`} aria-label={controls.title} aria-description={editing ? 'Arrow keys move, Shift and arrow keys resize, Delete removes' : undefined} data-widget-id={controls.id} data-widget-key={controls.itemKey} data-size-key={activeSize.key} data-size={activeSize.id} data-rows={activeSize.rows} data-glass="" style={{ ...style, '--widget-span': activeSize.span, '--widget-rows': activeSize.rows, transform: moving ? `translate(${offset.x}px,${offset.y}px) rotate(1deg) scale(1.02)` : undefined, zIndex: moving ? 20 : undefined } as CSSProperties}
     onPointerDown={event => {
       if ((event.target as HTMLElement).closest('button,a,input,select,textarea')) return
       if (editing) { begin(event, 'move'); return }
       if (onLongPress && event.button === 0) { clearPress(); press.current = { x: event.clientX, y: event.clientY, timer: window.setTimeout(() => { press.current = null; onLongPress() }, LONG_PRESS_MS) } }
     }}
     onPointerMove={move} onPointerUp={() => finish(false)} onPointerCancel={() => finish(true)} onLostPointerCapture={() => finish(true)} onKeyDown={onCardKeyDown}>
-    {editing && <button type="button" className="home-btn home-remove-widget" aria-label={`Remove ${controls.title}`} onClick={onRemove}><span aria-hidden="true">−</span></button>}
+    {editing && <button type="button" className="home-btn home-remove-widget" aria-label={`Remove ${controls.title}`} onClick={onRemove}><X size={14} aria-hidden="true" /></button>}
     <div className="home-widget-drag-bar">{typeof children === 'function' ? children(activeSize) : children}</div>
     {editing && <>
-      {preview && <span className="home-size-badge" role="status">{preview.key} · {preview.span}×{preview.rows}</span>}
+      {preview && <span className="home-size-badge" role="status">{preview.span} × {preview.rows}</span>}
       <button type="button" className="home-btn home-resize-handle" aria-label={`Resize ${controls.title}`} title="Drag to resize" onPointerDown={event => begin(event, 'resize')} onKeyDown={event => {
         if (event.key === 'Escape') return
         if (!ARROWS.includes(event.key)) return
