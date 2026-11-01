@@ -3,6 +3,7 @@ export type NativeInvoke = <T>(command: string, args?: Record<string, unknown>) 
 
 export type NativeOperation =
   | { type: 'me' }
+  | { type: 'api_binary'; path: string }
   | { type: 'api'; method: string; path: string; query?: Record<string, string>; body?: Record<string, unknown>; idempotency_key?: string }
   | { type: 'projects' }
   | { type: 'project_create'; project: Record<string, unknown> }

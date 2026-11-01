@@ -230,6 +230,19 @@ function typedOperationFor(url: URL, init?: RequestInit): NativeOperation | unde
   return undefined
 }
 
+function nativeErrorResponse(error: unknown, origin: string, init?: RequestInit): Response {
+  if (init?.signal?.aborted) throw init.signal.reason ?? new DOMException('Aborted', 'AbortError')
+  // Like a failed fetch, so ApiClient can fall back to cache or queue the write.
+  if (error === 'NETWORK_ERROR') throw new TypeError('Network request failed')
+  // Generic API calls report the server's own error as "<status>:<CODE>".
+  const passthrough = typeof error === 'string' ? /^(4\d\d):([A-Z0-9_]{3,64})$/.exec(error) : null
+  if (passthrough) return jsonResponse({ detail: { code: passthrough[2], message: 'The server rejected the request.' } }, Number(passthrough[1]))
+  const code = typeof error === 'string' ? error : 'NATIVE_TRANSPORT_ERROR'
+  const expired = code === 'UNAUTHORIZED' || code === 'SIGN_IN_REQUIRED'
+  if (expired && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))
+  return jsonResponse({ detail: { code, message: expired ? 'Sign in again.' : 'Native operation failed.' } }, expired ? 401 : 502)
+}
+
 /**
  * Adapt only the Rust operation allowlist to the shared client's fetch shape.
  * Unsupported routes return a typed error; they never fall back to browser fetch.
@@ -237,24 +250,21 @@ function typedOperationFor(url: URL, init?: RequestInit): NativeOperation | unde
 export function createNativeFetch(transport: NativeTransport, origin: string): typeof fetch {
   return async (input, init) => {
     const url = new URL(String(input), `${origin}/`)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (method === 'GET' && /^\/api\/v1\/integrations\/telegram\/(messages\/[A-Za-z0-9_-]+\/media|chats\/\d+\/avatar)$/.test(url.pathname)) {
+      try {
+        const binary = await transport.operation<{ content_type: string; data: string }>(origin, { type: 'api_binary', path: url.pathname })
+        const bytes = Uint8Array.from(atob(binary.data), (c) => c.charCodeAt(0))
+        return new Response(bytes, { status: 200, headers: { 'Content-Type': binary.content_type, 'Content-Length': String(bytes.byteLength) } })
+      } catch (error) { return nativeErrorResponse(error, origin, init) }
+    }
     const operation = operationFor(url, init)
     if (!operation) return jsonResponse({ detail: { code: 'NATIVE_OPERATION_UNSUPPORTED', message: 'This module is not available in the native pilot.' } }, 501)
     try {
       if (operation.type === 'ai_run_events') return await nativeAIEventResponse(transport, origin, operation.id, init?.signal)
       const value = await transport.operation<unknown>(origin, operation)
       return jsonResponse(value)
-    } catch (error) {
-      if (init?.signal?.aborted) throw init.signal.reason ?? new DOMException('Aborted', 'AbortError')
-      // Like a failed fetch, so ApiClient can fall back to cache or queue the write.
-      if (error === 'NETWORK_ERROR') throw new TypeError('Network request failed')
-      // Generic API calls report the server's own error as "<status>:<CODE>".
-      const passthrough = typeof error === 'string' ? /^(4\d\d):([A-Z0-9_]{3,64})$/.exec(error) : null
-      if (passthrough) return jsonResponse({ detail: { code: passthrough[2], message: 'The server rejected the request.' } }, Number(passthrough[1]))
-      const code = typeof error === 'string' ? error : 'NATIVE_TRANSPORT_ERROR'
-      const expired = code === 'UNAUTHORIZED' || code === 'SIGN_IN_REQUIRED'
-      if (expired && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))
-      return jsonResponse({ detail: { code, message: expired ? 'Sign in again.' : 'Native operation failed.' } }, expired ? 401 : 502)
-    }
+    } catch (error) { return nativeErrorResponse(error, origin, init) }
   }
 }
 

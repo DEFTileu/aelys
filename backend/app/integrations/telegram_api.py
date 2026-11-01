@@ -302,6 +302,21 @@ async def chats(response: Response,principal=Depends(current_principal),db: Asyn
     return await telegram_chat.chats(db,item) if item is not None else []
 
 
+@router.get("/chats/{chat_id}/avatar", response_class=Response,
+            responses={200:{"content":{"image/jpeg":{},"image/png":{},"image/webp":{},"image/gif":{}}}})
+async def chat_avatar(chat_id: int,principal=Depends(current_principal),db: AsyncSession=Depends(get_db)):
+    from .telegram_avatar import chat_avatar as load_avatar
+    item=await service.get_integration(db,principal[0].id)
+    known=(await db.execute(select(TelegramBusinessMessage.id).where(TelegramBusinessMessage.owner_id==principal[0].id,
+        TelegramBusinessMessage.integration_id==item.id,TelegramBusinessMessage.chat_id==chat_id).limit(1))).first()
+    if known is None:
+        raise service.error(404,"NOT_FOUND","Чат не найден.")
+    content,kind=await load_avatar(item,chat_id)
+    return Response(content,media_type=kind,headers={"Cache-Control":"private, max-age=21600",
+        "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox",
+        "Content-Disposition":"inline"})
+
+
 @router.post("/chats/send",response_model=MessageOut)
 async def send_chat(body: ChatSendIn,response: Response,idempotency_key: str=Header(min_length=1,max_length=150),
                     principal=Depends(current_principal),db: AsyncSession=Depends(get_db)):

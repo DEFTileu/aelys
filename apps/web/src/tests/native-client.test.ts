@@ -224,6 +224,15 @@ describe('native shared-client bridge', () => {
     expect(await conflict.json()).toMatchObject({ detail: { code: 'TELEGRAM_WEBHOOK_CONFLICT' } })
   })
 
+  it('returns Telegram media and avatars as real binary responses', async () => {
+    const invoke = vi.fn(async () => ({ content_type: 'image/jpeg', data: btoa('abc') })) as NativeInvoke
+    const fetchNative = createNativeFetchFromInvoke(invoke, 'http://127.0.0.1:8000')
+    const response = await fetchNative('http://127.0.0.1:8000/api/v1/integrations/telegram/chats/1234/avatar')
+    expect(invoke).toHaveBeenCalledWith('native_operation', { origin: 'http://127.0.0.1:8000', operation: { type: 'api_binary', path: '/api/v1/integrations/telegram/chats/1234/avatar' } })
+    expect(response.headers.get('Content-Type')).toBe('image/jpeg')
+    expect(new TextDecoder().decode(await response.arrayBuffer())).toBe('abc')
+  })
+
   it('fails closed for unsupported modules and transport errors', async () => {
     const unsupported = createNativeFetchFromInvoke(vi.fn() as NativeInvoke, 'http://127.0.0.1:8000')
     const response = await unsupported('http://127.0.0.1:8000/api/v1/auth/login', { method: 'POST', body: '{}' })

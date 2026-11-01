@@ -1,3 +1,4 @@
+import { ChatAvatar } from '../components/ChatAvatar'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '@aelys/shared'
 import type { TelegramChatAvailability, TelegramBusinessMessage, TelegramStatus } from '@aelys/shared'
@@ -194,7 +195,7 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
         <div className="msg__rows" role="listbox" aria-label="Chats">
           {list.map((chat) => { const [c, soft] = colourOf(chat.title); const on = !compact && chat.id === cur?.id; const unread = needs(chat) ? chat.waiting : 0
             return <div key={chat.id} role="option" tabIndex={0} aria-selected={on} className={`msg__row${on ? ' is-on' : ''}`} onClick={() => { setCurrent(chat.id); setView('chat') }} onKeyDown={(e) => { if (e.key === 'Enter') { setCurrent(chat.id); setView('chat') } }}>
-              <span className="msg__avatar msg__avatar--44" style={{ color: c, background: soft }}>{initialOf(chat.title)}</span>
+              <ChatAvatar chatId={chat.chatId} initial={initialOf(chat.title)} className="msg__avatar msg__avatar--44" style={{ color: c, background: soft }} />
               <div className="msg__row-body">
                 <div className="msg__row-top"><span className="msg__row-name">{chat.title}</span><span className="msg__row-time">{whenLabel(chat.lastAt)}</span></div>
                 <div className="msg__row-bottom"><span className="msg__row-last">{(chat.lastMine ? 'You: ' : '') + chat.lastText}</span>
@@ -212,7 +213,7 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
         {cur ? <>
           <div className="msg__chat-head">
             {compact && <span className="msg__back" role="button" tabIndex={0} aria-label="Back" onClick={() => setView('list')} onKeyDown={(e) => { if (e.key === 'Enter') setView('list') }}><ChevronLeft size={20} /></span>}
-            <span className="msg__avatar msg__avatar--40" style={{ color: ink[0], background: ink[1] }}>{initialOf(cur.title)}</span>
+            <ChatAvatar chatId={cur.chatId} initial={initialOf(cur.title)} className="msg__avatar msg__avatar--40" style={{ color: ink[0], background: ink[1] }} />
             <div className="msg__chat-title"><div className="msg__chat-name">{cur.title}</div><div className="msg__chat-sub">{windowLabel(cur, now)}</div></div>
           </div>
           <div className="msg__lines">

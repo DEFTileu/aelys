@@ -432,7 +432,14 @@ export class ApiClient {
   public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
   public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
   /** Private media is downloaded only to memory, with no cache/outbox/token in its URL. */
-  public async telegramMessageMedia(id: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+  public telegramMessageMedia(id: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+    return this.privateBlob(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/media`, options);
+  }
+  /** Chat profile picture; the server caches it briefly in memory, nothing is stored there on disk. */
+  public telegramChatAvatar(chatId: number, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+    return this.privateBlob(`/api/v1/integrations/telegram/chats/${encodeURIComponent(String(chatId))}/avatar`, options);
+  }
+  private async privateBlob(path: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
     const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
     const headers: Record<string,string> = { Accept: "image/*,audio/*" };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -443,7 +450,7 @@ export class ApiClient {
     if (options?.signal?.aborted) controller.abort();
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
-      const response = await this.fetchImpl(`${this.baseUrl}/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/media`, {method:"GET", headers, signal:controller.signal, cache:"no-store"});
+      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {method:"GET", headers, signal:controller.signal, cache:"no-store"});
       if (!response.ok) return await this.parseResponse<never>(response);
       const type = (response.headers.get("Content-Type") ?? "").split(";")[0]!.trim().toLowerCase();
       if (!["image/jpeg","image/png","image/webp","image/gif","audio/ogg","audio/mpeg","audio/mp4","audio/wav","audio/flac","audio/webm"].includes(type)) throw new ApiError(415,"TELEGRAM_MEDIA_UNSUPPORTED","Unsupported media format");

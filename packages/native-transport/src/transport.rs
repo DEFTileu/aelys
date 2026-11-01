@@ -813,6 +813,10 @@ impl From<TaskUpdate> for TaskInput {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
     Me {},
+    /// Binary GET (Telegram media and avatars); answered as base64 plus content type.
+    ApiBinary {
+        path: String,
+    },
     /// Generic owner-API call for modules that have no typed operation. The path
     /// must match `API_ALLOWLIST`; credentials and device/sync routes never do.
     Api {
@@ -1077,6 +1081,126 @@ fn api_allowed(method: &str, path: &str) -> bool {
                 .all(|(w, s)| if *w == "*" { valid_id(s) } else { w == s })
     })
 }
+const BINARY_ALLOWLIST: &[&str] = &[
+    "integrations/telegram/messages/*/media",
+    "integrations/telegram/chats/*/avatar",
+];
+const BINARY_TYPES: &[&str] = &[
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "audio/ogg",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/wav",
+    "audio/flac",
+    "audio/webm",
+];
+const MAX_BINARY: usize = 20 * 1024 * 1024;
+fn binary_allowed(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/v1/") else {
+        return false;
+    };
+    let segments: Vec<&str> = rest.split('/').collect();
+    BINARY_ALLOWLIST.iter().any(|pattern| {
+        let want: Vec<&str> = pattern.split('/').collect();
+        want.len() == segments.len()
+            && want
+                .iter()
+                .zip(&segments)
+                .all(|(w, s)| if *w == "*" { valid_id(s) } else { w == s })
+    })
+}
+async fn request_binary(
+    client: &Client,
+    url: &str,
+    access: &str,
+) -> Result<Value, String> {
+    let mut response = client
+        .get(url)
+        .bearer_auth(access)
+        .header("Accept", "image/*,audio/*")
+        .send()
+        .await
+        .map_err(|_| err("NETWORK_ERROR"))?;
+    let status = response.status();
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(err("UNAUTHORIZED"));
+    }
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.split(';').next().unwrap_or("").trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_BINARY as u64)
+    {
+        return Err(err("413:TELEGRAM_MEDIA_TOO_LARGE"));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| err("NETWORK_ERROR"))? {
+        if bytes.len().saturating_add(chunk.len()) > MAX_BINARY {
+            return Err(err("413:TELEGRAM_MEDIA_TOO_LARGE"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if !status.is_success() {
+        if status.is_client_error() {
+            let code = serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .and_then(|v| v["detail"]["code"].as_str().map(str::to_owned))
+                .filter(|c| {
+                    (3..=64).contains(&c.len())
+                        && c.bytes()
+                            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+                })
+                .unwrap_or_else(|| "BAD_REQUEST".into());
+            return Err(format!("{}:{code}", status.as_u16()));
+        }
+        return Err(err("BACKEND_ERROR"));
+    }
+    if !BINARY_TYPES.contains(&content_type.as_str()) {
+        return Err(err("415:TELEGRAM_MEDIA_UNSUPPORTED"));
+    }
+    Ok(json!({
+        "content_type": content_type,
+        "data": base64_encode(&bytes),
+    }))
+}
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        out.push(TABLE[(n >> 18) as usize & 63] as char);
+        out.push(TABLE[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 { TABLE[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+async fn execute_binary(state: &NativeState, origin: &str, path: &str) -> Result<Value, String> {
+    if !binary_allowed(path) {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    let access = {
+        let guard = state.0.lock().await;
+        guard
+            .as_ref()
+            .filter(|s| s.origin == origin)
+            .map(|s| s.access.clone())
+            .ok_or_else(|| err("SIGN_IN_REQUIRED"))?
+    };
+    let response = request_binary(&client()?, &format!("{origin}{path}"), &access).await;
+    let value = session_response(state, origin, &access, response).await?;
+    ensure_operation_session(state, origin, &access, false).await?;
+    Ok(value)
+}
 fn api_route(
     method: String,
     path: String,
@@ -1124,6 +1248,7 @@ fn route(op: Operation) -> Result<(Method, String, Option<Value>), String> {
             body,
             ..
         } => api_route(method, path, query, body),
+        Operation::ApiBinary { .. } => Err(err("VALIDATION_ERROR")),
         Operation::Me {} => Ok((Method::GET, "/api/v1/me".into(), None)),
         Operation::Projects {} => Ok((Method::GET, "/api/v1/projects".into(), None)),
         Operation::ProjectCreate { project } if valid_project(&project) => Ok((
@@ -1721,6 +1846,9 @@ async fn execute_operation(
     origin: &str,
     operation: Operation,
 ) -> Result<Value, String> {
+    if let Operation::ApiBinary { path } = &operation {
+        return execute_binary(state, origin, path).await;
+    }
     let ai_events = matches!(&operation, Operation::AIRunEvents { .. });
     let idempotency_key = match &operation {
         Operation::FocusStart {
@@ -3752,6 +3880,24 @@ mod tests {
                 .refresh_token,
             "rotated"
         );
+    }
+
+    #[test]
+    fn base64_matches_rfc4648_vectors() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn binary_route_is_allowlisted() {
+        assert!(binary_allowed("/api/v1/integrations/telegram/messages/abc123/media"));
+        assert!(binary_allowed("/api/v1/integrations/telegram/chats/1234567/avatar"));
+        assert!(!binary_allowed("/api/v1/integrations/telegram/messages/abc/media/x"));
+        assert!(!binary_allowed("/api/v1/me"));
+        assert!(!binary_allowed("/api/v1/integrations/telegram/messages/../media"));
     }
 
     #[test]

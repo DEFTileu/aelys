@@ -6593,6 +6593,52 @@
         ]
       }
     },
+    "/api/v1/integrations/telegram/chats/{chat_id}/avatar": {
+      "get": {
+        "tags": [
+          "Telegram Business"
+        ],
+        "summary": "Chat Avatar",
+        "operationId": "chat_avatar_api_v1_integrations_telegram_chats__chat_id__avatar_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {},
+              "image/gif": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/integrations/telegram/chats/send": {
       "post": {
         "tags": [
