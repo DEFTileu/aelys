@@ -293,7 +293,8 @@ async def check_automatic_reply_current(db: AsyncSession, item: TelegramIntegrat
         TelegramBusinessMessage.integration_id == item.id,
         TelegramBusinessMessage.business_connection_id == message.business_connection_id,
         TelegramBusinessMessage.chat_id == message.chat_id,
-        TelegramBusinessMessage.direction == "owner", TelegramBusinessMessage.deleted_at.is_(None),
+        # Deleted human messages still mean the owner already answered.
+        TelegramBusinessMessage.direction == "owner",
         TelegramBusinessMessage.sent_at >= message.sent_at,
     ).limit(1))).first()
     if human:
@@ -355,7 +356,7 @@ async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: T
             try:
                 authorize(item, "telegram.notify_owner", external=True)
                 async with TelegramClient(decrypt_secret(item.encrypted_token)) as client:
-                    await client.send_message(item.owner_telegram_id, draft.owner_note)
+                    await client.send_message(item.owner_telegram_id, f"{message.chat_title}\n{draft.owner_note}")
             except Exception:  # noqa: BLE001 - durable Notification survives failed Telegram delivery
                 logger.info("Telegram handoff notification unavailable")
     except TelegramAIError as exc:
@@ -406,15 +407,9 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
         # Human owner activity since this inbound message suppresses automatic replies.
         if automatic:
             await check_automatic_reply_current(db, item, message)
-            human = (await db.execute(select(TelegramBusinessMessage.id).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.business_connection_id == connection.id, TelegramBusinessMessage.chat_id == message.chat_id, TelegramBusinessMessage.direction == "owner", TelegramBusinessMessage.sent_at >= message.sent_at).limit(1))).first()
-            if human:
-                raise error(409, "OWNER_ALREADY_REPLIED", "Владелец уже ответил в этом чате.")
             sent_recently = list((await db.execute(select(TelegramBusinessMessage.chat_id).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.draft_status == "sent", TelegramBusinessMessage.updated_at >= now() - timedelta(minutes=1)))).scalars())
             if len(sent_recently) >= 20 or sent_recently.count(message.chat_id) >= 6:
                 raise error(429, "TELEGRAM_RATE_LIMITED", "Лимит автоматических ответов достигнут.")
-            newer = (await db.execute(select(TelegramBusinessMessage.id).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.business_connection_id == connection.id, TelegramBusinessMessage.chat_id == message.chat_id, TelegramBusinessMessage.direction == "inbound", TelegramBusinessMessage.sent_at > message.sent_at, TelegramBusinessMessage.deleted_at.is_(None)).limit(1))).first()
-            if newer:
-                raise error(409, "NEWER_MESSAGE_EXISTS", "Есть более новое входящее сообщение.")
         descriptor = ToolDescriptor("telegram.reply", "Reply to the verified customer chat", "telegram.reply", lambda arguments: arguments, lambda arguments: asyncio.sleep(0, result={}), external_effect=True)
         ServerPolicyEngine().authorize(descriptor, ToolCall("telegram.reply", {"chat_id": message.chat_id}), PermissionContext(actor=f"telegram:{item.id}", scopes=frozenset({"telegram.reply"}), allow_external_effects=not automatic or item.auto_reply, policy_id="telegram-business"))
         # Atomic pre-send claim. Ambiguous transport results stay unknown and
@@ -456,40 +451,31 @@ async def auto_reply_once(integration_id: str) -> None:
         item = await db.get(TelegramIntegration, integration_id)
         if not item or not item.enabled or not item.auto_reply or not item.encrypted_token or not item.owner_telegram_id:
             return
-        candidates = list((await db.execute(select(TelegramBusinessMessage).where(
+        candidates = list((await db.execute(select(TelegramBusinessMessage.id).where(
             TelegramBusinessMessage.integration_id == item.id,
             TelegramBusinessMessage.direction == "inbound", TelegramBusinessMessage.deleted_at.is_(None),
             TelegramBusinessMessage.draft_status == "none",
             TelegramBusinessMessage.sent_at <= now() - timedelta(seconds=item.reply_delay_seconds),
             TelegramBusinessMessage.sent_at >= now() - timedelta(seconds=item.reply_delay_seconds + 300),
         ).order_by(TelegramBusinessMessage.sent_at.desc(), TelegramBusinessMessage.telegram_message_id.desc()))).scalars())
-        handled_chats = set()
-        for message in candidates:
+        handled_chats: set[tuple[str, int]] = set()
+        for message_id in candidates:
+            # A failed poll/send rolls back and expires ORM state. Load each next
+            # candidate explicitly rather than accessing expired objects implicitly.
+            message = await db.get(TelegramBusinessMessage, message_id, populate_existing=True)
+            if message is None or message.deleted_at or message.draft_status != "none":
+                continue
             chat_key = (message.business_connection_id, message.chat_id)
             if chat_key in handled_chats:
                 continue
+            if len(handled_chats) >= 10:
+                break
             handled_chats.add(chat_key)
-            newer = (await db.execute(select(TelegramBusinessMessage.id).where(
-                TelegramBusinessMessage.integration_id == item.id,
-                TelegramBusinessMessage.business_connection_id == message.business_connection_id,
-                TelegramBusinessMessage.chat_id == message.chat_id, TelegramBusinessMessage.deleted_at.is_(None),
-                TelegramBusinessMessage.direction == "inbound",
-                or_(TelegramBusinessMessage.sent_at > message.sent_at,
-                    (TelegramBusinessMessage.sent_at == message.sent_at) &
-                    (TelegramBusinessMessage.telegram_message_id > message.telegram_message_id)),
-            ).limit(1))).first()
-            human = (await db.execute(select(TelegramBusinessMessage.id).where(
-                TelegramBusinessMessage.integration_id == item.id,
-                TelegramBusinessMessage.business_connection_id == message.business_connection_id,
-                TelegramBusinessMessage.chat_id == message.chat_id, TelegramBusinessMessage.direction == "owner",
-                TelegramBusinessMessage.deleted_at.is_(None), TelegramBusinessMessage.sent_at >= message.sent_at,
-            ).limit(1))).first()
-            if newer or human:
-                continue
             try:
                 await db.refresh(item)
                 if not item.enabled or not item.auto_reply:
                     return
+                await check_automatic_reply_current(db, item, message)
                 prepared = await generate_draft(db, item, message, message.version, automatic=True)
                 if prepared.draft_status == "ready":
                     # The same worker cannot ingest while the model is running.

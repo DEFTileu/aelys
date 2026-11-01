@@ -906,3 +906,106 @@ async def test_handoff_edit_keeps_single_notification(setup, monkeypatch):
         assert len((await session.execute(select(Notification))).scalars().all()) == 1
         assert (await session.get(TelegramBusinessMessage, row['id'])).draft_status == 'handoff'
     assert len(fake.sent) == 1
+
+
+async def test_handoff_dm_starts_with_chat_title_without_notification_content(setup, monkeypatch):
+    from app.core.models import Notification
+    client, sessions, fake = setup
+    _item, row = await seed_message(client, sessions, fake)
+    async def generate(*args):
+        return BusinessDecision('handoff', None, 'Private reason for the owner')
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    response = await client.post(f"{PREFIX}/messages/{row['id']}/draft", json={'version': row['version']})
+    assert response.status_code == 200
+    assert fake.sent[0][:2] == (OWNER, 'Customer\nPrivate reason for the owner')
+    async with sessions() as session:
+        notice = (await session.execute(select(Notification))).scalar_one()
+        assert notice.data_json == {'message_id': row['id']}
+        assert all(secret not in str((notice.title, notice.body, notice.data_json))
+                   for secret in ('Customer', 'Private reason for the owner', 'hello'))
+
+
+async def test_auto_reply_limits_twelve_chats_to_ten_newest(setup, monkeypatch):
+    client, sessions, fake = setup
+    item, _row = await seed_message(client, sessions, fake)
+    base = now()
+    async with sessions() as session:
+        # Include multiple messages per chat so a SQL LIMIT 10 on messages cannot
+        # accidentally satisfy the distinct-chat processing cap.
+        original = (await session.execute(select(TelegramBusinessMessage))).scalar_one()
+        original.sent_at = base - timedelta(seconds=100)
+        integration = await session.get(TelegramIntegration, item['id'])
+        integration.auto_reply = True; integration.reply_delay_seconds = 0
+        for i in range(12):
+            for j in range(2):
+                session.add(TelegramBusinessMessage(
+                    owner_id=integration.owner_id, integration_id=item['id'],
+                    business_connection_id='business-1', chat_id=1000+i,
+                    telegram_message_id=100+i*2+j, sent_at=base-timedelta(seconds=20-i),
+                    direction='inbound', text='question', chat_title=f'Chat {i}',
+                ))
+        await session.commit()
+    calls = []
+    async def generate(session, integration, msg):
+        calls.append((msg.chat_id, msg.telegram_message_id))
+        return BusinessDecision('reply', 'answer', None)
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    await service.auto_reply_once(item['id'])
+    assert calls == [(1000+i, 101+i*2) for i in reversed(range(2, 12))]
+    assert len(fake.sent) == 10
+
+
+@pytest.mark.parametrize('before_generation', [False, True])
+async def test_deleted_owner_message_still_suppresses_auto_reply(setup, monkeypatch, before_generation):
+    client, sessions, fake = setup
+    item, _row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        integration = await session.get(TelegramIntegration, item['id'])
+        integration.auto_reply = True; integration.reply_delay_seconds = 0
+        await session.commit()
+    calls = []
+    async def generate(*args):
+        calls.append(True)
+        return BusinessDecision('reply', 'must not send', None)
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    fake.updates = [message(3, 'owner answer', message_id=50, sender=OWNER), {
+        'update_id': 4, 'deleted_business_messages': {'business_connection_id': 'business-1',
+        'chat': {'id': CUSTOMER, 'type': 'private'}, 'message_ids': [50]},
+    }]
+    if before_generation:
+        await service.poll_once(item['id'], timeout=0)
+    await service.auto_reply_once(item['id'])
+    assert calls == ([] if before_generation else [True])
+    assert not fake.sent
+    async with sessions() as session:
+        owner = (await session.execute(select(TelegramBusinessMessage).where(
+            TelegramBusinessMessage.direction == 'owner'))).scalar_one()
+        assert owner.deleted_at is not None and owner.text == ''
+
+
+async def test_fast_poll_failure_does_not_abort_remaining_chats(setup, monkeypatch):
+    client, sessions, fake = setup
+    item, row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        integration = await session.get(TelegramIntegration, item['id'])
+        integration.auto_reply = True; integration.reply_delay_seconds = 0
+        session.add(TelegramBusinessMessage(owner_id=integration.owner_id, integration_id=item['id'],
+            business_connection_id='business-1', chat_id=333, telegram_message_id=8,
+            sent_at=now()-timedelta(seconds=1), text='Other chat', direction='inbound'))
+        await session.commit()
+    calls = []
+    async def generate(session, integration, msg):
+        calls.append(msg.chat_id)
+        return BusinessDecision('reply', 'answer', None)
+    original = fake.get_updates
+    async def once_unavailable(self, offset, timeout=20):
+        if len(calls) == 1:
+            raise TelegramError('network_error')
+        return await original(self, offset, timeout)
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    monkeypatch.setattr(fake, 'get_updates', once_unavailable)
+    await service.auto_reply_once(item['id'])
+    assert calls == [CUSTOMER, 333]
+    assert len(fake.sent) == 1 and fake.sent[0][0] == 333
+    async with sessions() as session:
+        assert (await session.get(TelegramBusinessMessage, row['id'])).draft_status == 'ready'

@@ -69,7 +69,7 @@ credential URL, provider description и текста переписки.
 | 9 | Ручной ответ во время delay/генерации | `test_manual_owner_answer_suppresses_auto_reply` (2 варианта): во время генерации owner reply доступен только через `get_updates` быстрого poll после LLM; прямого ingest из generate нет. В delay-варианте время продвигается за окно ожидания |
 | 10 | Новое входящее во время генерации | `test_new_message_during_generation_suppresses_stale_reply`: новое сообщение приходит через быстрый poll после LLM, старый ответ подавлен, следующая итерация отвечает на новое |
 | 11 | No_reply молчит, handoff owner-only, Notification без текста | `test_terminal_decisions_allow_only_explicit_owner_reply`, `test_handoff_notification_survives_private_send_failure`, `test_handoff_edit_keeps_single_notification` |
-| 12 | Невалидный JSON/terminal с customer text не доставляются | `test_telegram_ai.py::test_strict_decision_rejects_invalid_and_cross_audience_text`; `test_auto_reply_uses_real_ai_harness_and_records_usage` — 5 ответов через настоящий harness, mock только HTTP provider/Telegram |
+| 12 | Невалидный JSON/terminal с customer text не доставляются | `test_telegram_ai.py::test_strict_decision_rejects_invalid_and_cross_audience_text`; `test_auto_reply_uses_real_ai_harness_and_records_usage` — 10 вариантов ответа через настоящий harness, mock только HTTP provider/Telegram |
 | 13 | Customer injection, tools пусты, action валидируется | `test_busy_status_expiry_and_customer_injection_are_data`, invalid action в двух предыдущих тестах; исходные context isolation tests сохранены |
 | 14 | Expired status, /free, /busy следующий день | `test_busy_free_addressed_commands_and_help`; `test_busy_uses_next_real_wall_clock_occurrence_across_dst` (spring gap/autumn fold); `test_busy_status_expiry_and_customer_injection_are_data` |
 | 15 | owner_note очищается при edit/delete/retention/clear | `test_owner_note_erased_with_message_content` (4 варианта) |
@@ -182,4 +182,72 @@ poll — 0; публичный sync API сохраняет числовой proc
 отсутствие fast poll/owner marker, отказ fenced JSON и ручного override,
 скрытая форма и отсутствие подписи пустой owner-строки. После исправлений:
 целевые backend **84 passed**, web Telegram settings **14 passed**.
-Итоговые результаты общего прогона приводятся ниже после последующей проверки.
+Отдельная доработка: handoff DM начинается с chat_title, лимит 10 самых новых
+чатов за итерацию, общий актуальный check до LLM и перед отправкой вместо
+дублирующихся SQL-проверок. Удалённое сообщение владельца также подавляет автоответ.
+Регрессии этой доработки до исправления: **4 failed, 1 passed, 58 deselected**.
+Проверка ошибки poll в одном из нескольких чатов выявила истёкшие ORM-объекты
+после rollback: candidates теперь IDs, следующий объект загружается явно.
+
+### Приёмка 13 сценариев доработки
+
+Все имена ниже из `backend/tests`, кроме указанного web-файла.
+
+| № | Сценарий | Доказательство |
+|---|---|---|
+| 1 | Owner reply только на быстром poll после LLM | `test_manual_owner_answer_suppresses_auto_reply[True]`: get_updates(offset=3, timeout=0), нет send, ready/failed виден |
+| 2 | Новое входящее на быстром poll | `test_new_message_during_generation_suppresses_stale_reply`: первая итерация молчит, вторая отвечает на message_id=50 |
+| 3 | Ошибка/занятый lease, cursor/receipt не потеряны, worker продолжает | `test_fast_poll_unavailable_never_sends_or_loses_updates` (2); `test_fast_poll_failure_does_not_abort_remaining_chats` |
+| 4 | Нетекстовое/пересланное владельцем отменяет ответ | `test_owner_nontext_or_forward_on_fast_poll_suppresses_reply` (voice, sticker, photo, document, forward), text пуст, caption/file_id/forwarded text отсутствуют в API |
+| 5 | sender_business_bot/is_bot не считается владельцем | `test_ignored_echo_or_customer_media_does_not_cancel_reply` (2 echo-варианта) |
+| 6 | Нетекстовое клиента игнорируется как раньше | Тот же тест (customer_media): одна inbound запись, ответ на исходное текстовое сообщение |
+| 7 | Одна json/безъязыковая обёртка принимается, проза/две отклоняются | `test_single_json_fence_and_empty_owner_history` (2); `test_non_json_wrapper_is_rejected` (4); `test_auto_reply_uses_real_ai_harness_and_records_usage` (10), включая проверку отсутствия отправки при отказе |
+| 8 | Ручной текст после handoff/no_reply | `test_terminal_decisions_allow_only_explicit_owner_reply` (2): authenticated POST send, customer получает только Explicit owner response |
+| 9 | Automatic никогда не отправляет terminal decision | Тот же тест: две auto-итерации, затем прямой automatic send даёт 409, ручной send проходит |
+| 10 | Повтор handoff без дубля Notification/DM | `test_handoff_regeneration_keeps_one_notice_and_owner_dm`: два POST draft с актуальными версиями, одна Notification/DM; edit-вариант сохранён |
+| 11 | Chat title + owner note только в личке | `test_handoff_dm_starts_with_chat_title_without_notification_content`: точный текст DM и отсутствие названия/содержимого переписки в Notification |
+| 12 | Не больше 10 чатов, новые первыми | `test_auto_reply_limits_twelve_chats_to_ten_newest`: 12 новых чатов, по две реплики, плюс исходный старый чат; ровно 10 вызовов в ожидаемом порядке |
+| 13 | Web: пустая форма, отдельная заметка, подпись нетекстового | `apps/web/src/tests/telegram-settings.test.tsx`: handoff/no_reply с отправкой собственного текста и отдельный owner-empty test |
+
+Дополнительно `test_deleted_owner_message_still_suppresses_auto_reply` проверяет
+удаление ответа владельца до генерации и его поступление/удаление на быстром poll.
+Пустая owner-реплика не входит в AI prompt — проверено в fenced JSON тесте.
+
+### Итоговая валидация после исправлений
+
+Все команды выполнены в этом worktree и собственном .venv. PostgreSQL — новый
+локальный disposable `aelys-telegram-review-pg`, loopback 15439; пользовательские
+БД/контейнеры не использовались. Значения DB URL/ключей ниже обозначены placeholders.
+
+| Команда | Результат |
+|---|---|
+| `AELYS_TEST_AI_POSTGRES_ADMIN_URL=<admin> AELYS_TEST_POSTGRES_MIGRATION_URL=<empty-db> make test` | **310 passed, 2 skipped**, 1 Starlette deprecation warning; PostgreSQL AI и migration cases включены |
+| `AELYS_DATABASE_URL=<migrated-pg> PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_postgres_integration.py` | **2 passed**, покрывает два пропуска общего прогона |
+| `AELYS_TEST_AI_POSTGRES_ADMIN_URL=<admin> PYTHONPATH=backend .venv/bin/pytest -q backend/tests/ai_automation/test_ai_api.py backend/tests/ai_automation/test_ai_event_commit.py` | **8 passed** |
+| `PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_telegram_business.py backend/tests/test_telegram_ai.py` | **89 passed** |
+| `.venv/bin/ruff check backend/app backend/tests` | passed |
+| `.venv/bin/mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs` | passed, 72 files |
+| `.venv/bin/bandit -q -r backend/app -ll` / `make compile` | passed / passed |
+| `.venv/bin/pip-audit` | no known vulnerabilities; local editable package отсутствует в PyPI и пропущен |
+| Из backend `PYTHONPATH=. ../.venv/bin/alembic upgrade head`, затем `check` с отдельными SQLite и PostgreSQL URL | passed для обеих БД, no new upgrade operations; head остаётся 0025 |
+| `AELYS_SECRET_KEY=<test-key> make openapi`, `git diff --exit-code -- docs/openapi.json` | passed, OpenAPI не изменился |
+| `pnpm --filter @aelys/shared typecheck` / `test` | passed / **36 passed**, отдельного build script у shared нет |
+| `pnpm --filter @aelys/web typecheck` / `test` / `build` | passed / **374 passed**, 53 files / passed |
+| `pnpm --filter @aelys/web exec vitest run src/tests/telegram-settings.test.tsx` | **14 passed** |
+| Ruff/mypy для start_local + Ruff scripts/tests, `.venv/bin/pytest -q scripts/tests/test_start_local.py` | passed / **19 passed** |
+| `git diff --check` | passed |
+
+pytest также сообщает прежнее предупреждение о неуказанном
+asyncio_default_fixture_loop_scope. Предупреждения не исправлялись этой задачей.
+Rust/runtime/deployment не менялись; соответствующие platform gates не запускались.
+Браузерная приёмка предыдущего среза выше историческая; в этой доработке форма
+проверена web-тестами. Живой Telegram и реальная модель через провайдера не
+проверялись. Нужен live-check владельца, включая разбираемый JSON, быстрый poll,
+нетекстовый ручной ответ и ручной override после handoff/no_reply.
+
+Основные файлы: telegram_service.py (poll/ingest/claims/check/limit/DM),
+telegram_ai.py (fence parser), telegram_api.py (числовой processed),
+TelegramSettings.tsx (ручная форма и owner-empty label), их регрессии и эти docs.
+Первый коммит исправлений: `77fb183` — fix(telegram): refresh updates before automatic replies.
+Handoff title, cap и устранение дублирующихся проверок — отдельный следующий коммит.
+Миграций нет. MySDU/Sheets, sync и чужие изменения не затронуты. Push/PR не делались.
