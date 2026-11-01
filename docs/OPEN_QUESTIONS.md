@@ -5,20 +5,21 @@
 | Приоритет | Вопрос | Безопасный временный вариант | Что блокирует |
 |---|---|---|---|
 | P0 | Gmail read/drafts подтверждены владельцем 2026-10-29; production OAuth verification, фоновые обновления и retention ещё открыты | Явная загрузка по 25 писем, локальные копии сохраняются после disconnect; отправка отсутствует | Production Gmail и автоматическая синхронизация |
-| P0 | Telegram personal + Business в одном боте подтверждены 2026-11-01 (ADR-027); live token/account acceptance и дополнительные notification categories открыты | Шесть явных команд, `reply/no_reply/handoff`, сводка выключена по умолчанию; без свободного personal AI и доставки reminders | Live acceptance и последующие расширения |
+| P0 | Telegram personal + Business в одном отдельном от MySDU боте подтверждены владельцем 2026-11-01 (ADR-027, ADR-028); live token/account acceptance остаётся открытой | Реализовывать утверждённые этапы по порядку через один poller и текущий AI harness; секретарь изолирован от личных модулей | Live acceptance и завершение утверждённых этапов; одобрение scope не подтверждает реализацию |
 | P0 | Android Tauri 2 соответствует требованиям фонового sync/push/secure storage? | Исследовательский APK-spike; fallback Capacitor | Финальная архитектура Android |
 | P0 | Sandbox для macOS CLI: что реально изолируем технически? | Не запускать unattended CLI до прохода security tests | Автономный remote control |
 | P1 | Backup: делать ли зашифрованную резервную копию Mac-only histories? Куда, каким ключом, срок хранения? | Нет облачного backup сессий; ручной локальный экспорт только по разрешению | Recovery сессий |
 | P1 | Подключение API моделей: серверный BYOK, локальные ключи или оба варианта? | Backend encrypted secret store + ревокация, не выдавать на клиентов | Финальные threat boundaries |
 | P1 | Нужен ли запуск AI offline локальными моделями? | Нет, только локальный доступ к уже сохранённым данным | Offline AI |
-| P1 | Вложения Notes: лимиты, файловое хранилище и политика offline attachment sync | Локальное хранение + явно ограниченный upload | Масштаб файлового storage |
+| P1 | Хранилище постоянных вложений к задачам и заметкам: архитектура, лимиты, шифрование и offline sync | Вложения к задачам и заметкам не сохранять до отдельного решения; Telegram media обрабатывать в памяти и удалять | Реализация постоянных task/note attachments |
 | P1 | Синхронизация конфликтующего Markdown: ручное слияние или CRDT в следующих версиях? | Branch/version conflict с сохранением обеих версий | Collaborative editor / сложное merge |
 | P1 | Конкретная технология agent loop: SDK или собственный adapter loop? | Capability spike, abstraction-first | Runtime implementation |
 | P1 | Лицензия: Apache-2.0 окончательно? | Держать proposed, не объявлять окончательно | Публичный release |
 | P2 | Utilities: какие дополнительные форматы и настройки нужны после первой локальной поставки? | Реализовать показанный владельцу набор (PRD §2.13); история и менеджер паролей не включены | Следующие версии Utilities |
-| P2 | Голос, Uni Hub, Infra Monitor — нужны ли в roadmap после MVP? | Backlog, не обязательная разработка | Future releases |
+| P2 | Uni Hub, Infra Monitor и голос вне личного Telegram-бота — нужны ли в roadmap? | Личный Telegram voice одобрен ADR-028; прочие сценарии остаются Backlog | Future releases |
 | P2 | Нужны ли версии Linux/Windows после macOS? | Нет в MVP | Cross-desktop strategy |
-| P2 | Нужна ли интеграция с Google Calendar/GitHub в первом релизе? | Позже, отдельные адаптеры | External automation |
+| P2 | Срок и live acceptance Google Calendar integration | Только чтение; импорт событий в Aelys, запись в Google запрещена. Scope одобрен владельцем 2026-11-01 (ADR-028), реализация и live OAuth acceptance не подтверждены | Реализация и проверка OAuth; external write остается запрещён |
+| P2 | Нужна ли интеграция с GitHub в первом релизе? | Позже, отдельный адаптер; решение не принято | External automation |
 | P2 | Хочет ли пользователь публичную документацию на английском дополнительно? | Исходные инженерные документы на русском | Community adoption |
 
 ## Минимальные уточнения от пользователя перед проектированием интеграций

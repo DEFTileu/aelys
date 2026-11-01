@@ -1,6 +1,7 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '@aelys/shared'
 import { AiView } from '../views/AiView'
 import { MailView } from '../views/MailView'
 import { ProviderSettings } from '../views/ProviderSettings'
@@ -9,7 +10,7 @@ import { TimerView } from '../views/TimerView'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { consumeSse } from '../lib/sse'
 
-const client = vi.hoisted(() => ({ aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), createAIProvider: vi.fn(), setAIProviderSecret: vi.fn(), updateAIProvider: vi.fn(), mailMessages: vi.fn(), mailDrafts: vi.fn(), createMailDraft: vi.fn(), updateMailDraft: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn(), financeAccounts: vi.fn(), financeCategories: vi.fn(), financeBudgets: vi.fn(), financeTransactions: vi.fn(), financeSummary: vi.fn(), createFinanceAccount: vi.fn(), createFinanceCategory: vi.fn(), createFinanceBudget: vi.fn(), createFinanceTransaction: vi.fn(), createFinanceTransfer: vi.fn(), focusSessions: vi.fn(), tasks: vi.fn(), projects: vi.fn(), startFocusSession: vi.fn(), stopFocusSession: vi.fn(), notifications: vi.fn(), dispatchCalendarReminders: vi.fn(), markNotificationRead: vi.fn() }))
+const client = vi.hoisted(() => ({ aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), createAIProvider: vi.fn(), setAIProviderSecret: vi.fn(), updateAIProvider: vi.fn(), mailMessages: vi.fn(), mailDrafts: vi.fn(), createMailDraft: vi.fn(), updateMailDraft: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn(), financeAccounts: vi.fn(), financeCategories: vi.fn(), financeBudgets: vi.fn(), financeTransactions: vi.fn(), financeSummary: vi.fn(), createFinanceAccount: vi.fn(), createFinanceCategory: vi.fn(), createFinanceBudget: vi.fn(), createFinanceTransaction: vi.fn(), createFinanceTransfer: vi.fn(), focusSessions: vi.fn(), tasks: vi.fn(), projects: vi.fn(), startFocusSession: vi.fn(), stopFocusSession: vi.fn(), pauseFocusSession: vi.fn(), resumeFocusSession: vi.fn(), notifications: vi.fn(), dispatchCalendarReminders: vi.fn(), markNotificationRead: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client, getAccessToken: () => 'test-session' }))
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
@@ -123,17 +124,32 @@ describe('connected workspaces', () => {
     expect(host.textContent).toContain('1234567890123456.0001'); expect(host.textContent).not.toContain('Salary')
   })
 
-  it('starts and stops a persisted focus session through the API', async () => {
-    const active = { id: 's1', version: 1, started_at: new Date(Date.now() - 30_000).toISOString(), mode: 'pomodoro', status: 'active', elapsed_seconds: 30 }
+  it('starts, pauses, resumes and stops a persisted focus session through the API', async () => {
+    const active = { id: 's1', version: 1, started_at: new Date(Date.now() - 30_000).toISOString(), mode: 'pomodoro', status: 'active', elapsed_seconds: 30, paused_seconds: 0 }
+    const paused = { ...active, version: 2, status: 'paused', paused_at: new Date().toISOString(), elapsed_seconds: 30 }
     client.focusSessions.mockResolvedValue([]); client.tasks.mockResolvedValue([]); client.projects.mockResolvedValue([])
     client.startFocusSession.mockImplementation(async () => { client.focusSessions.mockResolvedValue([active]); return active })
+    client.pauseFocusSession.mockImplementation(async () => { client.focusSessions.mockResolvedValue([paused]); return paused })
+    client.resumeFocusSession.mockImplementation(async () => { client.focusSessions.mockResolvedValue([{ ...active, version: 3 }]); return active })
     client.stopFocusSession.mockImplementation(async () => { const stopped = { ...active, status: 'completed', elapsed_seconds: 31 }; client.focusSessions.mockResolvedValue([stopped]); return stopped })
-    await render(<TimerView apiStatus="ready" />); await click('Start focus')
+    await render(<TimerView apiStatus="ready" />); await click('Start')
     expect(client.startFocusSession).toHaveBeenCalledWith(expect.objectContaining({ mode: 'pomodoro' }), expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
-    expect(host.textContent).toContain('Total focus: 00:00:30')
-    await click('Stop focus')
-    expect(client.stopFocusSession).toHaveBeenCalledWith('s1', expect.objectContaining({ query: { version: 1 }, queueOnOffline: false }))
-    expect(host.textContent).toContain('Total focus: 00:00:31')
+    expect(host.textContent).toMatch(/24:(29|30)/); expect(host.textContent).toContain('1 session')
+    await click('Pause')
+    expect(client.pauseFocusSession).toHaveBeenCalledWith('s1', 1)
+    expect(host.textContent).toContain('Paused'); expect(host.textContent).toContain('Resume')
+    await click('Resume')
+    expect(client.resumeFocusSession).toHaveBeenCalledWith('s1', 2)
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Reset"]')!.click())
+    expect(client.stopFocusSession).toHaveBeenCalledWith('s1', expect.objectContaining({ query: { version: 3 }, queueOnOffline: false }))
+    expect(host.textContent).toContain('completed'); expect(host.textContent).toContain('Ready')
+  })
+  it('reloads the real session after a VERSION_CONFLICT on pause', async () => {
+    const active = { id: 's1', version: 1, started_at: new Date(Date.now() - 30_000).toISOString(), mode: 'pomodoro', status: 'active', elapsed_seconds: 30 }
+    client.focusSessions.mockResolvedValue([active]); client.tasks.mockResolvedValue([]); client.projects.mockResolvedValue([])
+    client.pauseFocusSession.mockImplementation(async () => { client.focusSessions.mockResolvedValue([{ ...active, version: 5, status: 'paused' }]); throw new ApiError(409, 'VERSION_CONFLICT', 'stale') })
+    await render(<TimerView apiStatus="ready" />); await click('Pause')
+    expect(client.focusSessions).toHaveBeenCalledTimes(2); expect(host.textContent).toContain('VERSION_CONFLICT'); expect(host.textContent).toContain('Resume')
   })
   it('keeps offline ledger writes disabled while showing cached data', async () => {
     client.financeAccounts.mockResolvedValue([]); client.financeTransactions.mockResolvedValue([]); client.financeSummary.mockResolvedValue({ total: '0', count: 0, currencies: [] })

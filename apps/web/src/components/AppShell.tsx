@@ -1,14 +1,15 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { Blocks, BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
+import { Blocks, BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Terminal, Timer, Wallet, Workflow, type AelysIconComponent } from '../icons'
 import { WALLPAPERS, accentColors } from '../data/desktop/settings'
 import { requestCustomizeHome, useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { getSharedApiClient } from '../lib/api'
 import { navigate } from '../lib/router'
 import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
+import { isMacPlatform } from '../data/navigation'
 import { CommandPalette } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
-import { WeatherPill, WeatherSettingsDialog } from './Weather'
+import { WeatherSettingsDialog } from './Weather'
 import { AelysMark } from './AelysMark'
 import { MobileShell } from './MobileShell'
 import './actual-shell.css'
@@ -52,6 +53,12 @@ const NAV: NavItem[] = [
   { id: 'widgets', label: 'Widgets', icon: LayoutGrid, route: '/', customize: true },
 ]
 
+const TOOLS: NavItem[] = [
+  { id: 'timer', label: 'Timer', icon: Timer, route: '/timer' },
+  { id: 'automation', label: 'Automation', icon: Workflow, route: '/automation' },
+  { id: 'developer', label: 'Developer Hub', icon: Terminal, route: '/developer' },
+]
+
 const MODULE_TITLES: Partial<Record<RoutePath, string>> = {
   '/ai': 'AI Chat',
   '/calendar': 'Calendar',
@@ -62,7 +69,7 @@ const MODULE_TITLES: Partial<Record<RoutePath, string>> = {
   '/knowledge': 'Knowledge base',
   '/mail': 'Mail',
   '/finance': 'Finances',
-  '/timer': 'Timer',
+  '/timer': 'Focus',
   '/utilities': 'Utilities',
   '/developer': 'Developer Hub',
   '/automation': 'Automation',
@@ -72,7 +79,7 @@ const MODULE_TITLES: Partial<Record<RoutePath, string>> = {
 
 function screenFor(route: RoutePath): string | null {
   if (route === '/settings') return 'settings'
-  return NAV.find((item) => item.route === route)?.id ?? null
+  return [...NAV, ...TOOLS].find((item) => item.route === route)?.id ?? null
 }
 
 // theme and onToggleTheme stay in the signature for App.tsx; the design has no theme toggle in the window chrome.
@@ -115,6 +122,19 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
   const wallpaper = settings.wallpaper === -1 && settings.customWallpaper ? settings.customWallpaper : WALLPAPERS[settings.wallpaper] ?? WALLPAPERS[0]
   const go = (path: RoutePath) => { setPaletteOpen(false); navigate(path) }
 
+  const navButton = (item: NavItem) => {
+    const on = item.id === screen
+    const Icon = item.icon
+    const badge = item.id === 'tasks' ? (todayTasks > 0 ? String(todayTasks) : undefined) : item.badge
+    // Widgets opens Home in Customize mode; the flag is set before navigating so Home picks it up on mount.
+    const open = () => { if (item.customize) requestCustomizeHome(); go(item.route) }
+    return <button key={item.id} type="button" className={`shell-btn shell-nav-item${on ? ' shell-nav-item--on' : ''}`} aria-label={item.label} aria-current={on ? 'page' : undefined} onClick={open} style={on ? { background: 'var(--accent-soft)' } : undefined}>
+      <Icon size={20} aria-hidden="true" />
+      <span style={{ flex: 1 }}>{item.label}</span>
+      {badge && <span className="shell-nav-badge">{badge}</span>}
+    </button>
+  }
+
   return <div className={mobile ? `mobile-shell${isHome ? ' mobile-shell--home' : ''}` : 'shell-root actual-desktop'} data-screen-label={screen ?? route} style={mobile ? shellVars(settings, theme) : { ...shellVars(settings, theme), '--side-w': `${sideW}px`, gridTemplateColumns: `${sideW}px minmax(0,1fr)` } as CSSProperties}>
         {mobile && <MobileShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={onToggleTheme} chromeOnly>{null}</MobileShell>}
         {!mobile && <aside className="shell-sidebar" aria-label="Main navigation">
@@ -126,18 +146,11 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             </div>
           </div>
           <nav aria-label="Primary" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {NAV.map((item) => {
-              const on = item.id === screen
-              const Icon = item.icon
-              const badge = item.id === 'tasks' ? (todayTasks > 0 ? String(todayTasks) : undefined) : item.badge
-              // Widgets opens Home in Customize mode; the flag is set before navigating so Home picks it up on mount.
-              const open = () => { if (item.customize) requestCustomizeHome(); go(item.route) }
-              return <button key={item.id} type="button" className={`shell-btn shell-nav-item${on ? ' shell-nav-item--on' : ''}`} aria-label={item.label} aria-current={on ? 'page' : undefined} onClick={open} style={on ? { background: 'var(--accent-soft)' } : undefined}>
-                <Icon size={20} aria-hidden="true" />
-                <span style={{ flex: 1 }}>{item.label}</span>
-                {badge && <span className="shell-nav-badge">{badge}</span>}
-              </button>
-            })}
+            {NAV.map(navButton)}
+          </nav>
+          <div className="shell-nav-group" role="presentation" style={{ margin: '16px 8px 6px', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: '#625D69' }}>Tools</div>
+          <nav aria-label="Tools" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {TOOLS.filter((item) => item.id !== 'developer' || isMacPlatform()).map(navButton)}
           </nav>
           <div style={{ flex: 1 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 14, background: screen === 'settings' ? 'rgba(106,76,242,.10)' : 'transparent' }}>
@@ -164,7 +177,6 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
               <span style={{ flex: 1, textAlign: 'left' }}>Search or run a command</span>
               <kbd style={{ height: 24, padding: '0 8px', borderRadius: 7, background: '#F1EDEA', fontSize: 12, lineHeight: '24px', color: '#3A3640', fontFamily: 'inherit' }}>⌘K</kbd>
             </button>
-            <WeatherPill />
             <button type="button" className="shell-btn shell-pill actual-theme" title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} onClick={onToggleTheme}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
             <NotificationCenter apiStatus={apiStatus} route={route} />
           </div>}

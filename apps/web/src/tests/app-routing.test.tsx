@@ -52,14 +52,14 @@ it('defers protected routes, keeps the shell through loading and recovers from a
   await act(async () => { root!.render(<App />) })
   const shell = host.querySelector('[data-testid="shell"]')
   expect(shell).not.toBeNull()
-  expect(host.querySelector('[role="status"]')?.textContent).toContain('Загрузка')
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('Loading')
   expect(controls.tasksLoaded).toHaveBeenCalledTimes(1)
   await act(async () => { controls.resolveTasks(); await controls.tasksReady })
   expect(host.textContent).toContain('Tasks: error')
 
   const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
   await act(async () => { navigate('/finance') })
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain('Не удалось загрузить раздел')
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('Could not load this section')
   expect(host.querySelector('[data-testid="shell"]')).toBe(shell)
   errorLog.mockRestore()
 

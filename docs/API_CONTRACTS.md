@@ -402,3 +402,83 @@ either status; owner_note never pre-fills the customer reply.
 Handoff creates Notification kind telegram.handoff with only message_id data;
 private owner_note is exposed only through the authenticated Telegram owner API.
 See TELEGRAM_PERSONAL_ASSISTANT_REPORT.md for acceptance and sync limitations.
+## Desktop design backend additions (2026-10-31)
+
+### Focus pause/resume
+
+- `POST /api/v1/focus/sessions/{id}/pause?version=N` and `/resume?version=N`
+  (version optional, `409 VERSION_CONFLICT` when stale; repeating the same
+  transition is a no-op; wrong state returns `409 INVALID_STATE`).
+- `FocusOut` gains `paused_at` (set while `status = "paused"`) and
+  `paused_seconds` (accumulated pauses). `status` is `active | paused |
+  completed`. `elapsed_seconds` = wall time minus pauses and is frozen while
+  paused. A paused session still occupies the owner's single timer slot and
+  can be stopped. Migration `0025_focus_pause`.
+
+### Agent session display metadata and stop
+
+- `AgentSession` (`GET /agents/sessions`) gains optional, non-secret display
+  fields reported by the Mac over `metadata_batch`: `workspace_path` (absolute
+  path label, <=500 chars, no `..`/control characters; never read by the
+  backend), `sandbox` (scope label, <=80), `network` (`blocked|allowlist|open`)
+  and `events` (`[{kind, message, at}]`, newest 200 kept, messages redacted of
+  token/key/password/Bearer patterns and truncated to 300 chars; metadata only,
+  no transcripts or file contents). Omitting them in a batch keeps stored
+  values; invalid values reject the item with `VALIDATION_ERROR`. Migration
+  `0026_agent_session_display`.
+- `POST /api/v1/agents/sessions/{id}/stop` asks the Mac runtime to stop the
+  session through the existing run-cancel path. It fails closed: `404` for
+  unknown/foreign sessions, `403 POLICY_DENIED` without a project and an
+  active, isolation-validated grant, `403 DEVICE_REVOKED`, and `409
+  NO_ACTIVE_RUN` when the device has no queued/running run for that project
+  and adapter. On success queued runs become `cancelled`, running ones get
+  `cancellation_requested` (delivered via run heartbeat), an audit row
+  `agent.session.stop` is written and the response is
+  `{session_id, status: "stop_requested", run_ids}`. Sessions are linked to runs
+  by device+project+adapter+grant policy, since the index has no run id.
+
+### Automation drafts and recent runs
+
+- `POST /api/v1/automations/draft` body `{description}` or `{rule}` (exactly
+  one) returns a PROPOSED rule and never saves or executes anything:
+  `{source: "structured"|"ai"|"parser", rule, policy: {policy_ref, registered,
+  allowed, issues[]}, saved: false}`. For `description` the owner's enabled AI
+  provider (BYOK, budget-checked, usage recorded as an AI run) is asked first;
+  the text is sent as `<untrusted_data>`-fenced content, the reply is accepted
+  only if it parses into the strict rule schema, and the model can never pick
+  the policy (always `safe`). Without a usable provider a deterministic parser
+  handles sentences like `When a task is created in project "Home", create a
+  notification "Review it"` (triggers `task|note` created/added/completed;
+  actions `create_task|create_notification`; quoted title required). Anything
+  else is `422 DRAFT_UNSUPPORTED`. The policy engine preflight reports
+  unregistered policies, unauthorised actions and foreign projects in `issues`.
+- `POST /api/v1/automations` accepts optional `reviewed_draft: true`. When set
+  the same preflight is enforced at creation (`403 POLICY_DENIED` listing the
+  issues); without it behaviour is unchanged and dispatch remains the
+  authoritative gate.
+- `GET /api/v1/automations/runs?limit=` (default 20, max 100) lists recent
+  executions across the owner's rules, newest first:
+  `{id, rule_id, rule_name, event_id, status, error_code, attempt, started_at,
+  finished_at}`. `status` is `success` (completed), `skipped` (rate limited),
+  `blocked_by_policy` (failed with `POLICY_DENIED`), `failed`, or `running`
+  while in flight. No schema change.
+
+### Widget data flags (2026-10-31)
+
+All additive; migration `0027_note_pinned_mail_read`.
+
+- Notes: `NoteIn`/`NoteOut.pinned` (bool, default false). `PATCH /notes/{id}?version=N`
+  with `pinned` toggles it (version-checked, bumps `version`); clients that omit
+  `pinned` keep the stored value.
+- Mail: `MailMessageOut.is_read` (default false for imported/synced mail) and
+  `version`. `PATCH /mail/messages/{id}` body `{is_read, version?}` marks
+  read/unread; stale `version` is `409 VERSION_CONFLICT`, repeating the current
+  value is a no-op that does not bump `version`.
+- Finance budgets: `PUT /finance/budgets` body `{category_id|null, currency,
+  month: "YYYY-MM", limit_amount: "decimal string"}` upserts the single budget for
+  (owner, category, currency, month) (UTC month bounds; `null` category = overall
+  budget) and returns the existing `FinanceBudgetOut`. Floats are rejected.
+  `GET /finance/budgets` accepts optional `month` and `currency` filters. The
+  legacy `POST /finance/budgets` is unchanged.
+- Finance categories: `GET /finance/transactions` rows carry `category_name`
+  (null when uncategorised); `GET /finance/categories` already lists names.

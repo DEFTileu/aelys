@@ -28,3 +28,6 @@ export const utilityNav: NavItem[] = [
   { label: 'Search', path: '/search', icon: 'search' },
   { label: 'Settings', path: '/settings', icon: 'settings' },
 ]
+
+/** Developer Hub drives local agent sessions, which only exist on the Mac runtime. */
+export const isMacPlatform = (): boolean => typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent)

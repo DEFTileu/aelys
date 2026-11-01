@@ -141,10 +141,14 @@ export interface NoteIn {
   readonly markdown_body?: string;
   readonly parent_id?: Id | null;
   readonly project_id?: Id | null;
+  /** Omit to keep the stored value on update. */
+  readonly pinned?: boolean;
 }
 export interface NoteOut {
   readonly folder?: string | null;
   readonly tags?: readonly string[];
+  /** Absent when talking to a backend that predates the field. */
+  readonly pinned?: boolean;
   readonly title: string;
   readonly markdown_body: string;
   readonly parent_id: Id | null;
@@ -260,8 +264,13 @@ export interface FocusOut {
   readonly mode: string;
   readonly ended_at: IsoDateTime | null;
   readonly elapsed_seconds: number;
+  /** "active" | "paused" | "completed" */
   readonly status: string;
   readonly version: number;
+  /** Set while status is "paused". */
+  readonly paused_at?: IsoDateTime | null;
+  /** Accumulated paused time, excluded from elapsed_seconds. */
+  readonly paused_seconds?: number;
 }
 
 export interface FinanceAccountIn {
@@ -305,6 +314,14 @@ export interface FinanceBudget {
   readonly owner_id: Id;
   readonly version: number;
 }
+/** Monthly budget upsert; category_id null is the overall budget for the month. */
+export interface FinanceBudgetPut {
+  readonly category_id?: Id | null;
+  readonly currency: string;
+  /** YYYY-MM */
+  readonly month: string;
+  readonly limit_amount: DecimalString;
+}
 export interface TransactionIn {
   readonly account_id: Id;
   readonly category_id?: Id | null;
@@ -328,6 +345,8 @@ export interface FinanceTransaction {
   readonly owner_id: Id;
   readonly version: number;
   readonly related_transfer_id: Id | null;
+  /** Filled by the list endpoint; null when uncategorised. */
+  readonly category_name?: string | null;
 }
 export interface FinanceTransferIn {
   readonly from_account_id: Id;
@@ -381,6 +400,13 @@ export interface MailMessage {
   readonly sync_origin: string;
   readonly id: Id;
   readonly owner_id: Id;
+  /** Absent when talking to a backend that predates the field. */
+  readonly is_read?: boolean;
+  readonly version?: number;
+}
+export interface MailMessageReadIn {
+  readonly is_read: boolean;
+  readonly version?: number;
 }
 export interface DraftIn {
   readonly account_id?: Id | null;
@@ -602,6 +628,23 @@ export interface AgentSession {
   readonly last_activity_at: IsoDateTime | null;
   readonly message_count: number | null;
   readonly state: string;
+  /** Display-only metadata reported by the Mac; absent/null for older runtimes. */
+  readonly workspace_path?: string | null;
+  readonly sandbox?: string | null;
+  readonly network?: AgentNetworkMode | null;
+  /** Metadata-only timeline (max 200, redacted); never transcripts. */
+  readonly events?: readonly AgentSessionEvent[];
+}
+export type AgentNetworkMode = "blocked" | "allowlist" | "open";
+export interface AgentSessionEvent {
+  readonly kind: string;
+  readonly message: string;
+  readonly at: IsoDateTime;
+}
+export interface AgentSessionStopResponse {
+  readonly session_id: Id;
+  readonly status: "stop_requested";
+  readonly run_ids: readonly Id[];
 }
 export interface SessionSearch {
   readonly query: string;
@@ -651,6 +694,37 @@ export interface AutomationRuleIn {
   readonly policy_ref: string;
   readonly rate_limit?: JsonObject;
   readonly enabled?: boolean;
+  /** Send true when creating from a reviewed /automations/draft proposal: policy is then enforced at creation. */
+  readonly reviewed_draft?: boolean;
+}
+export interface AutomationDraftIn {
+  /** Provide exactly one of description or rule. */
+  readonly description?: string;
+  readonly rule?: AutomationRuleIn;
+}
+export interface AutomationDraft {
+  readonly source: "structured" | "ai" | "parser";
+  /** Proposed rule; never saved by the draft call. */
+  readonly rule: AutomationRuleIn & { readonly conditions: JsonObject; readonly actions: readonly JsonObject[]; readonly rate_limit: JsonObject; readonly enabled: boolean };
+  readonly policy: {
+    readonly policy_ref: string;
+    readonly registered: boolean;
+    readonly allowed: boolean;
+    readonly issues: readonly string[];
+  };
+  readonly saved: false;
+}
+export type AutomationRunStatus = "success" | "skipped" | "blocked_by_policy" | "failed" | "running";
+export interface AutomationRun {
+  readonly id: Id;
+  readonly rule_id: Id;
+  readonly rule_name: string;
+  readonly event_id: string;
+  readonly status: AutomationRunStatus;
+  readonly error_code: string | null;
+  readonly attempt: number;
+  readonly started_at: IsoDateTime;
+  readonly finished_at: IsoDateTime | null;
 }
 export interface AutomationRule extends AutomationRuleIn {
   readonly id: Id;

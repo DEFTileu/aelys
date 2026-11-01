@@ -70,7 +70,7 @@ export type BiometricStatus = { supported: boolean; available: boolean; enabled:
 export const NATIVE_SESSION_EXPIRED_EVENT = 'aelys:native-session-expired'
 export type KeychainScope = 'session' | 'touch_id_policy'
 
-export const KEYCHAIN_ACCESS_NOTICE = 'Нужен доступ к связке ключей.'
+export const KEYCHAIN_ACCESS_NOTICE = 'Keychain access is required.'
 
 export function isKeychainAccessRequired(error: unknown): boolean {
   return error === 'KEYCHAIN_ACCESS_REQUIRED' || (error instanceof Error && error.message === 'KEYCHAIN_ACCESS_REQUIRED')

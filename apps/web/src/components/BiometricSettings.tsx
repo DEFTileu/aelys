@@ -14,7 +14,7 @@ export function BiometricSettings() {
     let alive = true
     void loadNativeTransport().then((transport) => transport.biometricStatus(origin)).then(
       (value) => { if (alive) setStatus(value) },
-      (reason: unknown) => { if (alive) setError(isKeychainAccessRequired(reason) ? KEYCHAIN_ACCESS_NOTICE : 'Не удалось проверить Touch ID. Откройте настройки ещё раз.') },
+      (reason: unknown) => { if (alive) setError(isKeychainAccessRequired(reason) ? KEYCHAIN_ACCESS_NOTICE : 'Could not check Touch ID. Open settings again.') },
     )
     return () => { alive = false }
   }, [origin])
@@ -26,7 +26,7 @@ export function BiometricSettings() {
       const transport = await loadNativeTransport()
       setStatus(await transport.setBiometric(origin, !status.enabled))
     } catch (reason) {
-      setError(isKeychainAccessRequired(reason) ? KEYCHAIN_ACCESS_NOTICE : 'Не удалось изменить настройку Touch ID. Попробуйте ещё раз.')
+      setError(isKeychainAccessRequired(reason) ? KEYCHAIN_ACCESS_NOTICE : 'Could not change the Touch ID setting. Try again.')
     } finally { setPending(false) }
   }
 
@@ -44,18 +44,18 @@ export function BiometricSettings() {
   }
 
   return <section className="settings-card">
-    <h2>Безопасность</h2>
-    {!status && !error && <p role="status">Проверяем Touch ID…</p>}
+    <h2>Security</h2>
+    {!status && !error && <p role="status">Checking Touch ID…</p>}
     {status?.supported && <div className="settings-form">
-      <p>Открывайте сохранённую сессию с Touch ID после перезапуска приложения. Вход с паролем Aelys остаётся доступен.</p>
+      <p>Unlock your saved session with Touch ID after the app restarts. Signing in with your Aelys password stays available.</p>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
         <span>Touch ID</span>
         <Switch label="Touch ID" checked={status.enabled} disabled={!status.available && !status.enabled} pending={pending} onCheckedChange={() => void change()} />
       </div>
-      {!status.available && <p className="field-help">Touch ID недоступен. Проверьте настройки устройства.</p>}
-      {pending && <p role="status">Подтвердите изменение на устройстве…</p>}
+      {!status.available && <p className="field-help">Touch ID is unavailable. Check your device settings.</p>}
+      {pending && <p role="status">Confirm the change on your device…</p>}
     </div>}
-    {status && !status.supported && <p>Touch ID не поддерживается на этом устройстве.</p>}
+    {status && !status.supported && <p>Touch ID is not supported on this device.</p>}
     {error && <p role="alert">{error}</p>}
     {error === KEYCHAIN_ACCESS_NOTICE && <KeychainAccessRecovery pending={pending} onAuthorize={() => void authorizeKeychain()} />}
   </section>

@@ -23,7 +23,7 @@ describe('biometric settings', () => {
     native.authorizeKeychain.mockResolvedValue(true)
     const host = await mount()
     expect(native.authorizeKeychain).not.toHaveBeenCalled()
-    await act(async () => { [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('Разрешить доступ macOS'))!.click() })
+    await act(async () => { [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('Allow macOS access'))!.click() })
     expect(native.authorizeKeychain).toHaveBeenCalledWith('http://127.0.0.1:8000', 'touch_id_policy')
     expect(native.biometricStatus).toHaveBeenCalledTimes(2)
     expect(native.setBiometric).not.toHaveBeenCalled()
@@ -37,7 +37,7 @@ describe('biometric settings', () => {
     const host = await mount()
     const toggle = host.querySelector('[role=switch]') as HTMLButtonElement
     await act(async () => { toggle.click() })
-    const recovery = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('Разрешить доступ macOS'))!
+    const recovery = [...host.querySelectorAll('button')].find((item) => item.textContent?.includes('Allow macOS access'))!
     await act(async () => { recovery.click() })
     expect(recovery.disabled).toBe(true)
     expect(toggle.disabled).toBe(true)
@@ -52,7 +52,7 @@ describe('biometric settings', () => {
   it('shows the Keychain notice if checking settings is denied', async () => {
     native.biometricStatus.mockRejectedValue('KEYCHAIN_ACCESS_REQUIRED')
     const host = await mount()
-    expect(host.querySelector('[role=alert]')?.textContent).toContain('Нужен доступ к связке ключей')
+    expect(host.querySelector('[role=alert]')?.textContent).toContain('Keychain access is required')
   })
   it('keeps the authoritative off state when Keychain access is denied', async () => {
     native.biometricStatus.mockResolvedValue({ supported: true, available: true, enabled: false })
@@ -62,7 +62,7 @@ describe('biometric settings', () => {
     await act(async () => { toggle.click() })
     expect(toggle.getAttribute('aria-checked')).toBe('false')
     expect(toggle.disabled).toBe(false)
-    expect(host.querySelector('[role=alert]')?.textContent).toContain('Нужен доступ к связке ключей')
+    expect(host.querySelector('[role=alert]')?.textContent).toContain('Keychain access is required')
   })
   it('hides the switch when the native platform does not support it', async () => {
     native.biometricStatus.mockResolvedValue({ supported: false, available: false, enabled: false })
@@ -73,7 +73,7 @@ describe('biometric settings', () => {
   it('explains unavailable Touch ID and disables changes', async () => {
     native.biometricStatus.mockResolvedValue({ supported: true, available: false, enabled: false })
     const host = await mount()
-    expect(host.textContent).toContain('Touch ID недоступен')
+    expect(host.textContent).toContain('Touch ID is unavailable')
     expect((host.querySelector('[role=switch]') as HTMLButtonElement).disabled).toBe(true)
   })
   it('keeps the authoritative value during a prompt and after cancellation', async () => {
@@ -88,7 +88,7 @@ describe('biometric settings', () => {
     await act(async () => { reject(new Error('secret details')) })
     expect(toggle.getAttribute('aria-checked')).toBe('false')
     expect(toggle.disabled).toBe(false)
-    expect(host.querySelector('[role=alert]')?.textContent).toContain('Не удалось изменить')
+    expect(host.querySelector('[role=alert]')?.textContent).toContain('Could not change')
     expect(host.textContent).not.toContain('secret details')
   })
   it('uses the native response after a successful prompt', async () => {

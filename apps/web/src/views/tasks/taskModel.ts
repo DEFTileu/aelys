@@ -104,6 +104,41 @@ export function groupTasksByDay(tasks: readonly TaskOut[]): readonly { key: stri
   }))
 }
 
+export interface QuickTokens { title: string; dueDate?: string; priority?: string; projectId?: string }
+const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+const localKey = (date: Date) => `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+
+/** Pulls `@date`, `!p1`..`!p3` and `#project` tokens out of quick-add text. Unmatched tokens stay in the title.
+ *  Unless `final`, a token still being typed (no trailing whitespace) is left alone. p1 is the highest priority. */
+export function parseQuickTokens(text: string, projects: readonly { id: string; name: string }[], now = new Date(), final = true): QuickTokens {
+  const out: QuickTokens = { title: '' }
+  const settled = final || /\s$/.test(text) ? text : text.slice(0, text.search(/\S+$/))
+  const tail = text.slice(settled.length)
+  const kept = settled.replace(/(^|\s)([@#!])(\S+)(?=\s|$)/g, (whole, lead: string, mark: string, word: string) => {
+    const lower = word.toLocaleLowerCase()
+    if (mark === '@') {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const day = lower.length >= 3 ? DAYS.findIndex(name => name.startsWith(lower)) : -1
+      if (lower === 'today') out.dueDate = localKey(date)
+      else if (lower === 'tomorrow') { date.setDate(date.getDate() + 1); out.dueDate = localKey(date) }
+      else if (day >= 0) { date.setDate(date.getDate() + (day - date.getDay() + 6) % 7 + 1); out.dueDate = localKey(date) }
+      else return whole
+    } else if (mark === '!') {
+      const level = /^p([1-3])$/.exec(lower)?.[1]
+      if (!level) return whole
+      out.priority = String(4 - Number(level))
+    } else {
+      const match = projects.find(project => project.name.toLocaleLowerCase().startsWith(lower))
+      if (!match) return whole
+      out.projectId = match.id
+    }
+    return lead
+  })
+  const title = (kept + tail).replace(/\s{2,}/g, ' ').replace(/^\s+/, '')
+  out.title = final ? title.trimEnd() : title
+  return out
+}
+
 export function taskMatchesQuery(task: TaskOut, query: string, projectName = ''): boolean {
   const needle = query.trim().toLocaleLowerCase()
   return [task.title, task.description, projectName].some((value) => value.toLocaleLowerCase().includes(needle))

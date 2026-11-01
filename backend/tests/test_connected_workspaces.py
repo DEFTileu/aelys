@@ -142,6 +142,29 @@ async def test_focus_session_round_trip_persists_elapsed_time(client):
 
 
 @pytest.mark.asyncio
+async def test_focus_pause_resume_freezes_elapsed_and_checks_version(client):
+    started = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+    session = (await client.post("/api/v1/focus/sessions", json={"started_at": started, "mode": "stopwatch"})).json()
+    base = f"/api/v1/focus/sessions/{session['id']}"
+    assert (await client.post(f"{base}/resume")).json()["version"] == session["version"]  # already running: no-op
+    assert (await client.post(f"{base}/pause", params={"version": session["version"] + 5})).status_code == 409
+    paused = (await client.post(f"{base}/pause", params={"version": session["version"]})).json()
+    assert paused["status"] == "paused" and paused["paused_at"] and paused["version"] == session["version"] + 1
+    assert 595 <= paused["elapsed_seconds"] <= 610
+    assert (await client.post(f"{base}/pause")).json()["version"] == paused["version"]  # idempotent repeat
+    assert (await client.post("/api/v1/focus/sessions", json={"started_at": started})).status_code == 409  # slot still taken
+    assert (await client.get("/api/v1/focus/sessions")).json()[0]["elapsed_seconds"] == paused["elapsed_seconds"]
+    resumed = (await client.post(f"{base}/resume", params={"version": paused["version"]})).json()
+    assert resumed["status"] == "active" and resumed["paused_at"] is None
+    paused_again = (await client.post(f"{base}/pause")).json()
+    stopped = (await client.post(f"{base}/stop")).json()  # stopping while paused folds the pause in
+    assert stopped["status"] == "completed" and stopped["paused_at"] is None
+    assert stopped["paused_seconds"] >= paused_again["paused_seconds"]
+    assert stopped["elapsed_seconds"] <= paused["elapsed_seconds"] + 1
+    assert (await client.post(f"{base}/pause")).status_code == 409
+
+
+@pytest.mark.asyncio
 async def test_calendar_projects_weekly_rrule_across_dst(client):
     body = {"title": "Weekly New York", "starts_at": "2026-10-26T09:00:00-04:00", "ends_at": "2026-10-26T10:00:00-04:00", "timezone": "America/New_York", "rrule": "FREQ=WEEKLY;COUNT=3"}
     event = await client.post("/api/v1/calendar/events", json=body)

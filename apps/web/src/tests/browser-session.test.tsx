@@ -62,7 +62,7 @@ describe('shared browser session', () => {
     const { host } = await mount()
     expect(host.textContent).toContain('Finance workspace')
     await act(async () => { expect(await resumeBrowserSession()).toBe(false) })
-    expect(host.textContent).toContain('Войти в Aelys')
+    expect(host.textContent).toContain('Sign in to Aelys')
     expect(host.textContent).not.toContain('Finance workspace')
     expect(getAccessToken()).toBeUndefined()
   })
@@ -109,7 +109,7 @@ describe('entry gate', () => {
     vi.stubGlobal('fetch', fetchImpl)
     const { host, mounted } = await mount()
     expect(mounted).not.toHaveBeenCalled()
-    expect(host.textContent).toContain('Войти в Aelys')
+    expect(host.textContent).toContain('Sign in to Aelys')
     const inputs = host.querySelectorAll('input')
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
     await act(async () => {
@@ -126,7 +126,7 @@ describe('entry gate', () => {
   it('automatically offers setup only for an uninitialized instance', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ initialized: false, can_resume: false })))
     const { host, mounted } = await mount()
-    expect(host.textContent).toContain('Создать аккаунт')
+    expect(host.textContent).toContain('Create account')
     expect(mounted).not.toHaveBeenCalled()
   })
 
@@ -176,7 +176,7 @@ describe('password entry for each local web launch', () => {
     expect(getAccessToken()).toBeUndefined()
     expect(await resumeBrowserSession()).toBe(false)
     const { host, mounted } = await mount()
-    expect(host.textContent).toContain('Войти в Aelys')
+    expect(host.textContent).toContain('Sign in to Aelys')
     expect(mounted).not.toHaveBeenCalled()
     expect(fetchImpl.mock.calls.some(([input]) => /\/(refresh|me)$/.test(String(input)))).toBe(false)
   })

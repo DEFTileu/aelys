@@ -69,6 +69,7 @@ class NoteIn(BaseModel):
     project_id: str | None = None
     folder: str | None = Field(default=None, max_length=120)
     tags: list[str] = Field(default_factory=list, max_length=50)
+    pinned: bool = False
 
     @field_validator("folder")
     @classmethod
@@ -203,6 +204,7 @@ class FinanceTransactionOut(StrictModel):
     idempotency_key: str | None
     related_transfer_id: str | None
     version: int
+    category_name: str | None = None
 
 class TransferOut(StrictModel):
     transfer_id: str
@@ -223,6 +225,26 @@ class FinanceBudgetOut(FinanceBudgetIn):
     id: str
     owner_id: str
     version: int
+class MessageReadIn(StrictModel): is_read: bool; version: int | None = Field(default=None, ge=1)
+class BudgetPutIn(StrictModel):
+    category_id: str | None = None
+    currency: str = Field(min_length=3, max_length=3, pattern="^[A-Za-z]{3}$")
+    month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    limit_amount: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+
+    @field_validator("currency")
+    @classmethod
+    def upper_currency(cls, value: str) -> str: return value.upper()
+
+    @field_validator("limit_amount", mode="before")
+    @classmethod
+    def budget_decimal(cls, value):
+        if isinstance(value, float):
+            raise ValueError("limit_amount must be a decimal string")  # noqa: TRY004 - Pydantic needs ValueError for structured money validation
+        return value
+def month_bounds(month: str) -> tuple[datetime, datetime]:
+    year, number = int(month[:4]), int(month[5:7])
+    return datetime(year, number, 1, tzinfo=UTC), datetime(year + number // 12, number % 12 + 1, 1, tzinfo=UTC)
 class DraftIn(BaseModel): account_id: str | None = None; thread_id: str | None = None; recipients: list[str] = []; subject: str = ""; content: str = ""
 class DraftPatch(DraftIn): version: int = Field(ge=1)
 class MessageIn(BaseModel): account_id: str | None = None; thread_id: str | None = None; sender: str; recipients: list[str] = []; subject: str; body: str = ""; received_at: datetime; sync_origin: str = "import"
@@ -230,11 +252,16 @@ class MailMessageOut(MessageIn):
     model_config = ConfigDict(from_attributes=True)
     id: str
     owner_id: str
+    is_read: bool = False
+    version: int = 1
 
     @field_validator("received_at")
     @classmethod
     def received_utc(cls, value: datetime) -> datetime:
         return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+def focus_elapsed(started_at: datetime, paused_seconds: int, until: datetime) -> int:
+    """Focused seconds: wall time minus accumulated pauses."""
+    return max(0, int((until - started_at).total_seconds()) - paused_seconds)
 class FocusIn(BaseModel):
     task_id: str | None = None
     project_id: str | None = None
@@ -253,8 +280,10 @@ class FocusOut(FocusIn):
     elapsed_seconds: int
     status: str
     version: int
+    paused_at: datetime | None = None
+    paused_seconds: int = 0
 
-    @field_validator("started_at", "ended_at")
+    @field_validator("started_at", "ended_at", "paused_at")
     @classmethod
     def focus_utc(cls, value: datetime | None) -> datetime | None:
         return None if value is None else value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
@@ -262,7 +291,9 @@ class FocusOut(FocusIn):
     @model_validator(mode="after")
     def active_elapsed(self):
         if self.status == "active" and self.ended_at is None:
-            self.elapsed_seconds = max(self.elapsed_seconds, int((datetime.now(UTC) - self.started_at).total_seconds()))
+            self.elapsed_seconds = max(self.elapsed_seconds, focus_elapsed(self.started_at, self.paused_seconds, datetime.now(UTC)))
+        elif self.status == "paused" and self.paused_at is not None:
+            self.elapsed_seconds = focus_elapsed(self.started_at, self.paused_seconds, self.paused_at)
         return self
 class MailAccountIn(BaseModel): provider: str = "local_import"; external_id: str | None = None
 class ReminderIn(BaseModel): task_id: str; notify_at: datetime; channel: str = "in_app"; idempotency_key: str
@@ -365,7 +396,7 @@ async def update_note(item_id:str, body:NoteIn, version: int | None = Query(defa
     changed_body = body.markdown_body != item.markdown_body
     values = body.model_dump()
     # Older clients do not send organization fields; preserve them on update.
-    for field in ("folder", "tags"):
+    for field in ("folder", "tags", "pinned"):
         if field not in body.model_fields_set:
             values.pop(field)
     result = await db.execute(update(Note).where(
@@ -618,11 +649,28 @@ async def create_budget(body:FinanceBudgetIn,principal=Depends(current_principal
     if body.period_end <= body.period_start: raise HTTPException(422, detail={"code":"VALIDATION_ERROR","message":"period_end must be after period_start"})
     return await create_personal_record(FinanceBudget, body, user.id, idempotency_key, db)
 @router.get("/finance/budgets", response_model=list[FinanceBudgetOut])
-async def budgets(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; return list((await db.execute(select(FinanceBudget).where(FinanceBudget.owner_id==user.id,FinanceBudget.deleted_at.is_(None)))).scalars())
+async def budgets(month:str|None=Query(default=None,pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),currency:str|None=Query(default=None,min_length=3,max_length=3),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    user,_=principal; q=select(FinanceBudget).where(FinanceBudget.owner_id==user.id,FinanceBudget.deleted_at.is_(None))
+    if month: q=q.where(FinanceBudget.period_start==month_bounds(month)[0])
+    if currency: q=q.where(FinanceBudget.currency==currency.upper())
+    return list((await db.execute(q)).scalars())
+@router.put("/finance/budgets", response_model=FinanceBudgetOut)
+async def put_budget(body:BudgetPutIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    """Upsert the one monthly budget for (category, currency, month); category None is the overall budget."""
+    user,_=principal; await owned_ref(FinanceCategory, body.category_id, user.id, db)
+    start,end=month_bounds(body.month)
+    same_category=FinanceBudget.category_id.is_(None) if body.category_id is None else FinanceBudget.category_id==body.category_id
+    # shortcut: select-then-write without a unique index (legacy POST may hold duplicates); fine for a single user, add a unique key if budgets go multi-writer.
+    item=(await db.execute(select(FinanceBudget).where(FinanceBudget.owner_id==user.id,FinanceBudget.deleted_at.is_(None),same_category,FinanceBudget.currency==body.currency,FinanceBudget.period_start==start).order_by(FinanceBudget.created_at))).scalars().first()
+    if item: item.limit_amount=body.limit_amount; item.version+=1
+    else:
+        item=FinanceBudget(owner_id=user.id,category_id=body.category_id,currency=body.currency,period_start=start,period_end=end,limit_amount=body.limit_amount); db.add(item)
+    await db.commit(); await db.refresh(item); return item
 @router.get("/finance/transactions", response_model=list[FinanceTransactionOut])
 async def transactions(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; return list((await db.execute(select(FinanceTransaction).where(FinanceTransaction.owner_id==user.id,FinanceTransaction.deleted_at.is_(None)).order_by(FinanceTransaction.occurred_at.desc()))).scalars())
+    user,_=principal; rows=list((await db.execute(select(FinanceTransaction).where(FinanceTransaction.owner_id==user.id,FinanceTransaction.deleted_at.is_(None)).order_by(FinanceTransaction.occurred_at.desc()))).scalars())
+    names: dict[str, str]=dict((await db.execute(select(FinanceCategory.id,FinanceCategory.name).where(FinanceCategory.owner_id==user.id))).all())
+    return [FinanceTransactionOut.model_validate(row).model_copy(update={"category_name":names.get(row.category_id or "")}) for row in rows]
 @router.post("/finance/transactions", response_model=FinanceTransactionOut)
 async def create_transaction(body:TransactionIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db), idempotency_key: str | None = Header(default=None, max_length=100)):
     user,_=principal
@@ -742,7 +790,7 @@ async def start_focus(body:FocusIn, principal=Depends(current_principal), db:Asy
         if existing.task_id != body.task_id or existing.project_id != body.project_id or existing.mode != body.mode or utc(existing.started_at) != body.started_at:
             raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Focus start key is bound to another request"})
         return existing
-    active=(await db.execute(select(FocusSession).where(FocusSession.owner_id==user.id,FocusSession.status=="active"))).scalar_one_or_none()
+    active=(await db.execute(select(FocusSession).where(FocusSession.owner_id==user.id,FocusSession.status.in_(("active","paused"))))).scalar_one_or_none()
     if active: raise HTTPException(409,detail={"code":"TIMER_ACTIVE","message":"Only one active focus session is allowed"})
     item=FocusSession(id=item_id,owner_id=user.id,**body.model_dump()); db.add(item)
     try:
@@ -765,11 +813,37 @@ async def stop_focus(item_id:str,version:int | None=Query(default=None,ge=1),pri
     if version is not None and item.version != version:
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Focus session changed. Reload before stopping."})
     ended_at = datetime.now(UTC)
-    result = await db.execute(update(FocusSession).where(FocusSession.id == item_id, FocusSession.owner_id == user.id, FocusSession.version == item.version, FocusSession.status == "active").values(ended_at=ended_at, elapsed_seconds=max(0, int((ended_at-utc(item.started_at)).total_seconds())), status="completed", version=item.version + 1))
+    paused_seconds = item.paused_seconds + (int((ended_at - utc(item.paused_at)).total_seconds()) if item.status == "paused" and item.paused_at else 0)
+    result = await db.execute(update(FocusSession).where(FocusSession.id == item_id, FocusSession.owner_id == user.id, FocusSession.version == item.version, FocusSession.status.in_(("active", "paused"))).values(ended_at=ended_at, paused_at=None, paused_seconds=paused_seconds, elapsed_seconds=focus_elapsed(utc(item.started_at), paused_seconds, ended_at), status="completed", version=item.version + 1))
     if int(getattr(result, "rowcount", 0) or 0) != 1:
         await db.rollback()
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
     await db.commit(); await db.refresh(item); return item
+async def _toggle_focus_pause(item_id: str, version: int | None, pausing: bool, user_id: str, db: AsyncSession):
+    item = await owner_obj(FocusSession, item_id, user_id, db)
+    source, target = ("active", "paused") if pausing else ("paused", "active")
+    if item.status == target:
+        return item  # idempotent repeat
+    if item.status != source:
+        raise HTTPException(409, detail={"code": "INVALID_STATE", "message": f"Focus session is {item.status}"})
+    if version is not None and item.version != version:
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Focus session changed. Reload."})
+    now = datetime.now(UTC)
+    if pausing:
+        values = {"paused_at": now, "elapsed_seconds": focus_elapsed(utc(item.started_at), item.paused_seconds, now)}
+    else:
+        values = {"paused_at": None, "paused_seconds": item.paused_seconds + (max(0, int((now - utc(item.paused_at)).total_seconds())) if item.paused_at else 0)}
+    result = await db.execute(update(FocusSession).where(FocusSession.id == item_id, FocusSession.owner_id == user_id, FocusSession.version == item.version, FocusSession.status == source).values(status=target, version=item.version + 1, **values))
+    if int(getattr(result, "rowcount", 0) or 0) != 1:
+        await db.rollback()
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
+    await db.commit(); await db.refresh(item); return item
+@router.post("/focus/sessions/{item_id}/pause", response_model=FocusOut)
+async def pause_focus(item_id:str,version:int | None=Query(default=None,ge=1),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    return await _toggle_focus_pause(item_id, version, True, principal[0].id, db)
+@router.post("/focus/sessions/{item_id}/resume", response_model=FocusOut)
+async def resume_focus(item_id:str,version:int | None=Query(default=None,ge=1),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+    return await _toggle_focus_pause(item_id, version, False, principal[0].id, db)
 @router.post("/mail/import/eml", response_model=MailMessageOut)
 async def import_eml(file: UploadFile = File(), principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
     from .eml import parse_eml
@@ -800,6 +874,17 @@ async def import_message(body:MessageIn, principal=Depends(current_principal), d
 @router.get("/mail/messages", response_model=list[MailMessageOut])
 async def mail_messages(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; return list((await db.execute(select(MailMessage).where(MailMessage.owner_id==user.id,MailMessage.deleted_at.is_(None)).order_by(MailMessage.received_at.desc()))).scalars())
+@router.patch("/mail/messages/{item_id}", response_model=MailMessageOut)
+async def mark_message_read(item_id:str, body:MessageReadIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
+    user,_=principal; item=await owner_obj(MailMessage,item_id,user.id,db)
+    if body.version is not None and item.version != body.version:
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Message changed. Reload."})
+    if item.is_read == body.is_read: return item  # idempotent: no version churn
+    result = await db.execute(update(MailMessage).where(MailMessage.id==item_id, MailMessage.owner_id==user.id, MailMessage.version==item.version).values(is_read=body.is_read, version=item.version+1))
+    if int(getattr(result, "rowcount", 0) or 0) != 1:
+        await db.rollback()
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the message. Reload."})
+    await db.commit(); await db.refresh(item); return item
 @router.post("/mail/accounts")
 async def create_mail_account(body:MailAccountIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; item=MailAccount(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item

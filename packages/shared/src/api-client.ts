@@ -1,12 +1,12 @@
 import type {
   ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
-  AIRun, AIRunIn, AutomationDispatchResponse, AutomationDryRunResponse, AutomationEventIn, AutomationExecution, AutomationRule,
+  AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
-  DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceCategory,
+  DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
   FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
-  MailAccountIn, MailDraft, MailMessage, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
+  MailAccountIn, MailDraft, MailMessage, MailMessageReadIn, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
-  ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession,
+  ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession, AgentSessionStopResponse,
   SyncAckRequest, SyncAckResponse, SyncBootstrapResponse, SyncPullResponse, SyncPushRequest, SyncPushResponse, SyncStatusResponse,
   TaskIn, TaskOut, TaskReminder, CalendarReminder, CalendarReminderIn, TokenResponse, TransactionIn, Id,
 } from "./types";
@@ -334,6 +334,10 @@ export class ApiClient {
   public createNote(body: NoteIn, options?: RequestOptions) { return this.request<NoteOut>("/api/v1/notes", this.write(body, options)); }
   public note(itemId: Id, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.read(options)); }
   public updateNote(itemId: Id, body: NoteIn, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.write(body, options, "PATCH")); }
+  public setNotePinned(note: NoteOut, pinned: boolean, options?: RequestOptions) {
+    const body: NoteIn = { title: note.title, markdown_body: note.markdown_body, parent_id: note.parent_id, project_id: note.project_id, folder: note.folder ?? null, tags: note.tags ?? [], pinned };
+    return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(note.id)}`, this.write(body, { ...options, query: { version: note.version } }, "PATCH"));
+  }
   public deleteNote(itemId: Id, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.write(undefined, options, "DELETE")); }
   public noteRevisions(itemId: Id, options?: RequestOptions) { return this.request<readonly NoteRevision[]>(`/api/v1/notes/${encodeURIComponent(itemId)}/revisions`, this.read(options)); }
   public restoreNote(itemId: Id, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}/restore`, this.write(undefined, options)); }
@@ -358,12 +362,16 @@ export class ApiClient {
   public focusSessions(options?: RequestOptions) { return this.request<readonly FocusOut[]>("/api/v1/focus/sessions", this.read(options, "focus-sessions")); }
   public startFocusSession(body: FocusIn, options?: RequestOptions) { return this.request<FocusOut>("/api/v1/focus/sessions", this.write(body, { queueOnOffline: false, ...options })); }
   public stopFocusSession(itemId: Id, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/stop`, this.write(undefined, { queueOnOffline: false, ...options })); }
+  public pauseFocusSession(itemId: Id, version?: number, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/pause`, this.write(undefined, { queueOnOffline: false, ...options, query: version === undefined ? undefined : { version } })); }
+  public resumeFocusSession(itemId: Id, version?: number, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/resume`, this.write(undefined, { queueOnOffline: false, ...options, query: version === undefined ? undefined : { version } })); }
 
   public financeAccounts(options?: RequestOptions) { return this.request<readonly FinanceAccount[]>("/api/v1/finance/accounts", this.read(options, "finance-accounts")); }
   public createFinanceAccount(body: FinanceAccountIn, options?: RequestOptions) { return this.request<FinanceAccount>("/api/v1/finance/accounts", this.write(body, { queueOnOffline: false, ...options })); }
   public financeCategories(options?: RequestOptions) { return this.request<readonly FinanceCategory[]>("/api/v1/finance/categories", this.read(options, "finance-categories")); }
   public createFinanceCategory(body: FinanceCategoryIn, options?: RequestOptions) { return this.request<FinanceCategory>("/api/v1/finance/categories", this.write(body, { queueOnOffline: false, ...options })); }
+  /** Pass `{ query: { month: "2026-10", currency: "USD" } }` to filter. */
   public financeBudgets(options?: RequestOptions) { return this.request<readonly FinanceBudget[]>("/api/v1/finance/budgets", this.read(options, "finance-budgets")); }
+  public putFinanceBudget(body: FinanceBudgetPut, options?: RequestOptions) { return this.request<FinanceBudget>("/api/v1/finance/budgets", this.write(body, { queueOnOffline: false, ...options }, "PUT")); }
   public createFinanceBudget(body: FinanceBudgetIn, options?: RequestOptions) { return this.request<FinanceBudget>("/api/v1/finance/budgets", this.write(body, { queueOnOffline: false, ...options })); }
   public financeTransactions(options?: RequestOptions) { return this.request<readonly FinanceTransaction[]>("/api/v1/finance/transactions", this.read(options, "finance-transactions")); }
   public createFinanceTransaction(body: TransactionIn, options?: RequestOptions) { return this.request<FinanceTransaction>("/api/v1/finance/transactions", this.write(body, { queueOnOffline: false, ...options })); }
@@ -379,6 +387,7 @@ export class ApiClient {
   public disconnectGmail(id: Id) { return this.request<{ readonly disconnected: boolean; readonly provider_revoked: boolean }>(`/api/v1/mail/gmail/${encodeURIComponent(id)}/disconnect`, this.write(undefined, { queueOnOffline: false })); }
   public createMailAccount(body: MailAccountIn, options?: RequestOptions) { return this.request<MailAccount>("/api/v1/mail/accounts", this.write(body, options)); }
   public mailMessages(query?: Query, options?: RequestOptions) { return this.request<readonly MailMessage[]>("/api/v1/mail/messages", this.read({ ...options, query }, "mail-messages")); }
+  public setMailMessageRead(messageId: Id, body: MailMessageReadIn, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/mail/messages/${encodeURIComponent(messageId)}`, this.write(body, { queueOnOffline: false, ...options }, "PATCH")); }
   public importMailMessage(body: MessageIn, options?: RequestOptions) { return this.request<MailMessage>("/api/v1/mail/messages", this.write(body, options)); }
   public mailDrafts(options?: RequestOptions) { return this.request<readonly MailDraft[]>("/api/v1/mail/drafts", this.read(options, "mail-drafts")); }
   public createMailDraft(body: DraftIn, options?: RequestOptions) { return this.request<MailDraft>("/api/v1/mail/drafts", this.write(body, options)); }
@@ -432,6 +441,7 @@ export class ApiClient {
 
   public agentDevices(options?: RequestOptions) { return this.request<readonly AgentDevice[]>("/api/v1/agents/devices", this.read(options, "agent-devices")); }
   public agentSessions(query?: Query, options?: RequestOptions) { return this.request<readonly AgentSession[]>("/api/v1/agents/sessions", this.read({ ...options, query }, "agent-sessions")); }
+  public stopAgentSession(sessionId: Id, options?: RequestOptions) { return this.request<AgentSessionStopResponse>(`/api/v1/agents/sessions/${encodeURIComponent(sessionId)}/stop`, this.write(undefined, { queueOnOffline: false, ...options })); }
   public searchAgentSessions(body: SessionSearch, options?: RequestOptions) { return this.request<SessionSearchResponse>("/api/v1/agents/sessions/search", this.write(body, options)); }
   public createAgentRun(body: AgentRunIn, options?: RequestOptions) { return this.request<AgentRun>("/api/v1/agents/runs", this.write(body, options)); }
   public issueCredentialLease(runId: Id, body: CredentialLeaseIn, options?: RequestOptions) { return this.request<CredentialLeaseResponse>(`/api/v1/agents/runs/${encodeURIComponent(runId)}/credential-lease`, this.write(body, options)); }
@@ -441,6 +451,8 @@ export class ApiClient {
 
   public automations(options?: RequestOptions) { return this.request<readonly AutomationRule[]>("/api/v1/automations", this.read(options, "automations")); }
   public createAutomation(body: AutomationRuleIn, options?: RequestOptions) { return this.request<AutomationRule>("/api/v1/automations", this.write(body, options)); }
+  public draftAutomation(body: AutomationDraftIn, options?: RequestOptions) { return this.request<AutomationDraft>("/api/v1/automations/draft", this.write(body, { queueOnOffline: false, ...options })); }
+  public automationRuns(limit?: number, options?: RequestOptions) { return this.request<readonly AutomationRun[]>("/api/v1/automations/runs", this.read({ ...options, query: limit === undefined ? undefined : { limit } }, "automations")); }
   public updateAutomation(ruleId: Id, body: JsonObject, options?: RequestOptions) { return this.request<AutomationRule>(`/api/v1/automations/${encodeURIComponent(ruleId)}`, this.write(body, options, "PATCH")); }
   public deleteAutomation(ruleId: Id, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/automations/${encodeURIComponent(ruleId)}`, this.write(undefined, options, "DELETE")); }
   public automationExecutions(ruleId: Id, options?: RequestOptions) { return this.request<readonly AutomationExecution[]>(`/api/v1/automations/${encodeURIComponent(ruleId)}/executions`, this.read(options)); }

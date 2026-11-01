@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import type { TaskOut } from '@aelys/shared'
-import { dateKey, draftFromTask, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, isCompleted, isOverdue, taskMatchesQuery } from '../views/tasks/taskModel'
+import { dateKey, draftFromTask, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, isCompleted, isOverdue, parseQuickTokens, taskMatchesQuery } from '../views/tasks/taskModel'
+
+describe('parseQuickTokens', () => {
+  const projects = [{ id: 'p1', name: 'Orion' }, { id: 'p2', name: 'Home' }]
+  const wed = new Date(2026, 9, 28, 10)
+  it('extracts date, priority and project tokens and leaves the rest as the title', () => {
+    expect(parseQuickTokens('Buy milk @tomorrow !p1 #ori', projects, wed)).toEqual({ title: 'Buy milk', dueDate: '2026-10-29', priority: '3', projectId: 'p1' })
+    expect(parseQuickTokens('Ship @today', projects, wed).dueDate).toBe('2026-10-28')
+    expect(parseQuickTokens('Gym @FRI', projects, wed).dueDate).toBe('2026-10-30')
+    expect(parseQuickTokens('Standup @wed', projects, wed).dueDate).toBe('2026-11-04')
+    expect(parseQuickTokens('x !p3', projects, wed).priority).toBe('1')
+  })
+  it('keeps unknown tokens in the title and ignores tokens still being typed', () => {
+    expect(parseQuickTokens('Mail a@b.c #nope !p9 @someday', projects, wed)).toEqual({ title: 'Mail a@b.c #nope !p9 @someday' })
+    expect(parseQuickTokens('Task @tomorrow', projects, wed, false)).toEqual({ title: 'Task @tomorrow' })
+    expect(parseQuickTokens('Task @tomorrow ', projects, wed, false).dueDate).toBe('2026-10-29')
+  })
+})
 
 function task(overrides: Partial<TaskOut> = {}): TaskOut {
   return { id: 'task-1', version: 4, title: 'Read', description: '  Notes  ', project_id: 'project-1', parent_task_id: 'parent-1', status: 'todo', priority: 2, due_at: '2025-06-01T12:34:56.123Z', due_timezone: 'Asia/Tokyo', rrule: 'FREQ=DAILY', ...overrides }

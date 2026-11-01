@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from '../views/HomeView'
 
-const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), focusSessions: vi.fn(), mailMessages: vi.fn(), activity: vi.fn(), updateTask: vi.fn() }))
+const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), financeBudgets: vi.fn(), focusSessions: vi.fn(), mailMessages: vi.fn(), activity: vi.fn(), updateTask: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 
 describe('HomeView', () => {
@@ -17,11 +17,10 @@ describe('HomeView', () => {
     root = createRoot(host)
     await act(async () => { root?.render(<HomeView apiStatus="offline" />) })
     expect(host.textContent).toContain('My day')
-    expect(host.textContent).toContain('9 widgets')
-    expect(host.textContent).toContain('Records unavailable.')
+    expect(host.textContent).toContain('Can’t load')
     expect(host.textContent).toContain('OFFLINE_WRITE_UNAVAILABLE')
     expect(host.textContent).not.toContain('No tasks yet.')
-    expect(host.querySelector('[aria-label="Dashboard widgets"]')?.children.length).toBe(9)
+    expect(host.querySelector('[aria-label="Dashboard widgets"]')?.children.length).toBe(8)
   })
 
   it('updates the actual task with its version from the Home checkbox', async () => {
