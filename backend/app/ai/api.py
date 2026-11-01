@@ -53,6 +53,7 @@ from .policy import ServerPolicyEngine
 from .providers import ClaudeAdapter, OpenRouterAdapter
 from .secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
 from .tools import ToolDescriptor, ToolRegistry
+from .turn import run_tool_turn
 
 router=APIRouter()
 _active_cancellations: dict[str, asyncio.Event] = {}
@@ -187,7 +188,7 @@ async def _remaining_monthly_budget(db: AsyncSession, owner_id: str, provider: A
         return Decimal(0)
     now_utc = datetime.now(UTC)
     month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    spent = (await db.execute(select(func.coalesce(func.sum(AIRun.cost_estimate), 0)).where(AIRun.owner_id == owner_id, AIRun.provider_id == provider.id, AIRun.status == "completed", AIRun.completed_at >= month_start))).scalar_one()
+    spent = (await db.execute(select(func.coalesce(func.sum(AIRun.cost_estimate), 0)).where(AIRun.owner_id == owner_id, AIRun.provider_id == provider.id, AIRun.cost_estimate > 0, AIRun.updated_at >= month_start))).scalar_one()
     return max(Decimal(0), monthly_budget - Decimal(str(spent or "0")))
 
 def _service(provider: AIProvider, secret_value: str, *, cancel_event: asyncio.Event | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None) -> AIExecutionService:
@@ -412,43 +413,42 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 registry = _tool_registry(db, user.id, run_id)
                 context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
                 tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget))
-                result = await service.complete(__import__('uuid').UUID(run_id), tool_request, chat_messages, tools=tuple(registry.schemas()), cancel=cancel_event)
-                if await durable_cancel_check():
-                    yield await emit("ai.run.cancelled", {"run_id": run_id})
+                pending_events: list[str] = []
+                async def tool_event(kind: str, payload: Mapping[str, Any]) -> None:
+                    pending_events.append(await emit(kind, payload))
+                async def account_tool_usage(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
+                    item.cost_estimate = cost
+                    item.token_counts = {'input': input_tokens, 'output': output_tokens}
+                    await db.commit()
+                owner_id = user.id
+                try:
+                    result = await run_tool_turn(
+                        service, __import__('uuid').UUID(run_id), tool_request, chat_messages,
+                        registry, context, parse_call=_tool_call, on_event=tool_event, on_usage=account_tool_usage,
+                        cancel=cancel_event, cancel_check=durable_cancel_check, max_steps=1,
+                    )
+                except (PolicyDenied, ToolValidationError, RuntimeError) as error:
+                    await db.rollback()
+                    await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==owner_id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(UTC)))
+                    await db.commit()
+                    for event in pending_events:
+                        yield event
+                    code = "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
+                    message = "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
+                    yield await emit("ai.run.failed", {"run_id": run_id, "code": code, "message": message})
                     return
-                yield await emit("ai.run.started", {"run_id": run_id, "provider": result.provider.value, "model": result.model})
-                seen_calls: set[str] = set()
-                for raw_call in result.response.tool_calls:
-                    call = _tool_call(raw_call)
-                    if call.call_id in seen_calls:
-                        continue
-                    seen_calls.add(call.call_id)
-                    if await durable_cancel_check():
-                        yield await emit("ai.run.cancelled", {"run_id": run_id})
-                        return
-                    yield await emit("ai.tool.requested", {"run_id": run_id, "tool": call.name, "call_id": call.call_id})
-                    try:
-                        output = await registry.invoke(call, context)
-                    except (PolicyDenied, ToolValidationError, RuntimeError) as error:
-                        await db.rollback()
-                        await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(UTC)))
-                        await db.commit()
-                        code = "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
-                        message = "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
-                        yield await emit("ai.run.failed", {"run_id": run_id, "code": code, "message": message})
-                        return
-                    yield await emit("ai.tool.approved", {"run_id": run_id, "tool": call.name, "call_id": call.call_id})
-                    yield await emit("ai.tool.result", {"run_id": run_id, "tool": call.name, "call_id": call.call_id, "result": output})
-                if result.response.text:
-                    yield await emit("ai.text.delta", {"run_id": run_id, "text": result.response.text})
+                for event in pending_events:
+                    yield event
+                if result.text:
+                    yield await emit("ai.text.delta", {"run_id": run_id, "text": result.text})
                 if cancel_event.is_set() or await durable_cancel_check():
                     yield await emit("ai.run.cancelled", {"run_id": run_id})
                     return
-                item.token_counts={"input":result.usage.usage.input_tokens,"output":result.usage.usage.output_tokens}; item.cost_estimate=result.usage.estimated_cost
-                if result.response.text:
-                    db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content=result.response.text))
+                item.token_counts={"input":result.input_tokens,"output":result.output_tokens}; item.cost_estimate=result.cost
+                if result.text:
+                    db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content=result.text))
                 await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(UTC),token_counts=item.token_counts,cost_estimate=item.cost_estimate)); await db.commit()
-                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.response.text), "estimated_cost": str(result.usage.estimated_cost)})
+                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.text), "estimated_cost": str(result.cost)})
                 return
             failure_event: str | None = None
             completion_event: str | None = None
