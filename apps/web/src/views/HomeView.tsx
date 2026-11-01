@@ -5,11 +5,16 @@ import { AddWidgetSheet } from './desktop/AddWidgetSheet'
 import { HOME_CHIPS } from '../data/desktop/home'
 import { askAelys, takeCustomizeHome, useDesktopState, useWindowWidth } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
+import { formatDate, greetingForHour } from '../lib/format'
+import { useOwner } from '../lib/owner'
+import { usePrefs } from '../lib/prefs'
+import { useWeather } from '../lib/weather'
 import { getSharedApiClient } from '../lib/api'
 import type { FocusIn, FocusOut, TaskOut } from '@aelys/shared'
 import type { ApiStatus } from '../types'
 import { DEFAULT_LAYOUT, MOBILE_DEFAULT_LAYOUT, WIDGET_CATALOG, layoutKey, pendingHighlight, newLayoutEntry, readLayout, reorderLayout, saveLayout, normalizeWidgetSize, type LayoutEntry, type SizeKey, type WidgetId } from './desktop/homeLayout'
 import { RecentActivity } from './desktop/RecentActivity'
+import { WeatherIcon, degrees } from './desktop/desktopBodies'
 import { HomeWidget, type HomeData, type FocusTimer } from './desktop/homeWidgets'
 
 // Orb gradient from the design; the AppShell hero stays outside this view.
@@ -17,6 +22,19 @@ const ORB = 'radial-gradient(circle at 32% 28%,#fff 0,rgba(235,225,255,.9) 9%,tr
 
 const isLive = (item: FocusOut) => item.status === 'active' || item.status === 'paused'
 const EMPTY_DATA: HomeData = { tasks: [], events: [], projects: [], notes: [], finance: [] }
+
+/** Phone Home greeting: date, hello line, quote and the weather chip, drawn over the wallpaper. */
+function MobileGreeting({ apiStatus }: { apiStatus: ApiStatus }) {
+  const owner = useOwner(apiStatus)
+  const { greeting } = usePrefs()
+  const { forecast } = useWeather()
+  const now = new Date()
+  return <section className="home-greeting" aria-label="Greeting">
+    <div className="home-greeting__date">{formatDate(now)}</div>
+    <h1>{greeting === 'hello' ? 'Hello' : greetingForHour(now.getHours())},<br />{owner.name ?? 'there'}</h1>
+    <div className="home-greeting__row"><div>A calm day creates bigger results.</div>{forecast && <div className="home-greeting__weather"><WeatherIcon code={forecast.code} day={forecast.isDay} size={18} />{degrees(forecast.temperature)}</div>}</div>
+  </section>
+}
 
 export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const mobile = useWindowWidth() <= 700
@@ -147,6 +165,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
   const resetLayout = () => commit((mobile ? MOBILE_DEFAULT_LAYOUT : DEFAULT_LAYOUT).map((entry) => [...entry] as LayoutEntry))
 
   return <div className={`home-screen${editing ? ' home-screen--editing' : ''}`} style={{ padding: '0 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    {mobile && homeToggles[0] && <MobileGreeting apiStatus={apiStatus ?? 'loading'} />}
     {homeToggles[2] && <section aria-label="Ask Aelys" data-glass="" style={{ padding: 16, borderRadius: 24, background: 'var(--dw-section, rgba(255,255,255,.72))', backdropFilter: 'blur(20px)', border: '1px solid var(--dw-edge, rgba(255,255,255,.35))', boxShadow: '0 8px 28px rgba(40,30,30,.10)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div aria-hidden="true" style={{ width: 48, height: 48, flex: 'none', borderRadius: '50%', background: ORB, boxShadow: '0 0 20px rgba(130,100,255,.5)' }} />
@@ -160,7 +179,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
       </div>
     </section>}
 
-    <div ref={layoutToolbar} className="home-layout-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+    {(!mobile || editing) && <div ref={layoutToolbar} className="home-layout-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 10 }}>
         <h2 style={{ margin: 0, fontSize: 22, lineHeight: '30px', fontWeight: 600 }}>My day</h2>
       </div>
@@ -170,8 +189,8 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
           <button type="button" className="home-btn home-tool home-done" onClick={() => { setEditing(false); setSheet(false) }} style={{ padding: '0 16px', fontSize: 14 }}><Check size={18} aria-hidden="true" />Done</button>
           <button type="button" className="home-btn home-add" aria-haspopup="dialog" aria-label="Add widget" onClick={() => setSheet(true)}><Plus size={18} aria-hidden="true" />Widget</button>
         </>
-        : <button type="button" className="home-btn home-tool" onClick={() => setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />{mobile ? 'Customize home' : 'Customize'}</button>}
-    </div>
+        : <button type="button" className="home-btn home-tool" onClick={() => setEditing(true)}><LayoutGrid size={16} aria-hidden="true" />Customize</button>}
+    </div>}
 
     {apiStatus === 'loading' && <PageSkeleton kind="home" label="workspace" />}
     {apiStatus !== 'ready' && apiStatus !== 'loading' && <p role="status">{'Workspace offline or unavailable. Showing cached records where available; changes require a connection (OFFLINE_WRITE_UNAVAILABLE).'}</p>}
@@ -185,6 +204,7 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
         return <HomeWidget key={key} id={id} editing={editing} mobile={mobile} focus={focus} data={data} onToggleTask={(task) => void toggleTask(task)} onAddTask={addTask} onRetry={() => setReload((value) => value + 1)} onRemove={() => removeWidget(key)} onLongPress={mobile ? () => setEditing(true) : undefined} frame={{ id, itemKey: key, title: WIDGET_CATALOG[id].title, span, height, onDrop: (source, target) => commit(reorderLayout(layout, source, target)), onMove: (delta) => moveWidget(key, delta), onSize: (width, nextHeight) => sizeWidget(key, width, nextHeight) }} />
       })}
     </section>}
+    {mobile && !editing && <button type="button" className="home-btn home-customize" onClick={() => setEditing(true)}><LayoutGrid size={18} aria-hidden="true" />Customize home</button>}
     {homeToggles[3] && <RecentActivity items={data.activity ?? []} state={data.states?.activity} />}
     <div style={{ height: 12 }} />
     {sheet && <AddWidgetSheet layout={layout} onAdd={addWidget} onClose={() => setSheet(false)} />}

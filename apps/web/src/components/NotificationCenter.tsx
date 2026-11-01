@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell } from '../icons'
+import { ArrowLeft, Bell } from '../icons'
 import { X } from 'lucide-react'
 import type { Notification } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
+import { useWallpaper } from '../lib/wallpaper'
 import { isNativeHost } from '../lib/nativeTransport'
 import { askNotifyPermissionOnce, sendSystemNotification } from '../lib/systemNotifications'
 import type { ApiStatus } from '../types'
@@ -36,6 +37,7 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
   const seen = useRef<Set<string> | null>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const dialog = useRef<HTMLElement>(null)
+  const wallpaper = useWallpaper()
 
   useEffect(() => {
     let active = true
@@ -107,7 +109,8 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
       <Bell size={18} aria-hidden="true" />{unread > 0 && <span className="notification-center__badge" aria-hidden="true">{unread}</span>}
     </button>
     {open && <section ref={dialog} className="notification-center__dialog" role="dialog" aria-label="Notification center" aria-modal="true" tabIndex={-1}>
-      <header className="notification-center__header"><div><h2>Notifications</h2><span className="notification-center__count">{unread} unread</span></div><button type="button" className="notification-center__read-all" disabled={!unread || saving || apiStatus !== 'ready'} onClick={() => void markRead(items.filter((item) => !item.read_at))}>Mark all as read</button><button type="button" className="notification-center__close" aria-label="Close notifications" onClick={() => { setOpen(false); trigger.current?.focus() }}><X size={18} /></button></header>
+      <div className="notification-center__band" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(wallpaper)})` }} />
+      <header className="notification-center__header"><div><h2>Notifications</h2><span className="notification-center__count">{unread} unread</span></div><button type="button" className="notification-center__read-all" disabled={!unread || saving || apiStatus !== 'ready'} onClick={() => void markRead(items.filter((item) => !item.read_at))}>Mark all as read</button><button type="button" className="notification-center__close" aria-label="Close notifications" onClick={() => { setOpen(false); trigger.current?.focus() }}><X size={18} className="notification-center__x" /><ArrowLeft size={20} className="notification-center__back" /></button></header>
       <div className="notification-center__filters" aria-label="Filter notifications"><button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All</button><button type="button" aria-pressed={filter === 'unread'} onClick={() => setFilter('unread')}>Unread{unread > 0 ? ` (${unread})` : ''}</button></div>
       {notice && <p className="notification-center__notice" role="status">{notice}</p>}
       <div className="notification-center__list">{groups.map((group) => <section key={group.label} aria-label={group.label}><h3>{group.label}</h3>{group.items.map((item) => <article key={item.id} className="notification-center__item" data-unread={!item.read_at || undefined}>

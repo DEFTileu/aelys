@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowLeft, ArrowUp, Blocks, BookOpen, Calendar, Folder, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, Sparkles, SquareCheck, Terminal, Timer, User, Wallet, Workflow, X, Plus, type AelysIconComponent } from '../icons'
+import { ArrowLeft, ArrowUp, Blocks, BookOpen, Calendar, Folder, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, Sparkles, SquareCheck, Terminal, Timer, Wallet, Workflow, X, Plus, type AelysIconComponent } from '../icons'
 import { MOBILE_ACTIONS, useMobileActions } from '../lib/mobilePreferences'
 import { useWallpaper } from '../lib/wallpaper'
 import { askAelys, useDesktopState } from '../lib/desktopStore'
@@ -9,6 +9,7 @@ import { AelysMark } from './AelysMark'
 import { NotificationCenter } from './NotificationCenter'
 import { WeatherSettingsDialog } from './Weather'
 import './mobile-shell.css'
+import './mobile-home.css'
 
 type App = { label: string; route: RoutePath; icon: AelysIconComponent; color: string }
 const APPS: App[] = [
@@ -79,15 +80,14 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
   }
 
   return <div ref={shell} style={chromeOnly ? { display: 'contents' } : undefined} className={chromeOnly ? undefined : `mobile-shell${isHome ? ' mobile-shell--home' : ''}`}>
-    {isHome && <div className="mobile-shell__wallpaper" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(wallpaper)})` }} />}
+    <div className={`mobile-shell__wallpaper${isHome ? '' : ' mobile-shell__wallpaper--inner'}`} aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(wallpaper)})` }} />
     <header className="mobile-shell__header">
-      {isHome ? <button ref={trigger} className="mobile-shell__logo" type="button" aria-label="All apps" aria-expanded={appsOpen} onClick={() => setAppsOpen(true)}><AelysMark size={36} /><strong className="mobile-shell__brand">Aelys</strong></button> : <><button className="mobile-shell__circle" type="button" aria-label="Back to Home" onClick={() => go('/')}><ArrowLeft size={20} /></button><strong className="mobile-shell__title">{title}</strong></>}
-      {isHome && <><button className="mobile-shell__circle" type="button" aria-label="Search" onClick={() => go('/search')}><Search size={18} /></button><NotificationCenter apiStatus={apiStatus} route={route} /></>}
-      {!isHome && <button ref={trigger} className="mobile-shell__circle" type="button" aria-label="All apps" aria-expanded={appsOpen} onClick={() => setAppsOpen(true)}><LayoutGrid size={18} /></button>}
-      <button className="mobile-shell__profile" type="button" aria-label="Profile and settings" onClick={() => go('/settings')}><User size={18} /></button>
+      {isHome ? <div className="mobile-shell__logo"><AelysMark size={36} /><strong className="mobile-shell__brand">Aelys</strong></div> : <><button className="mobile-shell__circle mobile-shell__back" type="button" aria-label="Back to Home" onClick={() => go('/')}><ArrowLeft size={20} /></button><strong className="mobile-shell__title">{title}</strong></>}
+      <button ref={trigger} className="mobile-shell__circle" type="button" aria-label="All apps" aria-expanded={appsOpen} onClick={() => setAppsOpen(true)}><LayoutGrid size={18} /></button>
+      {isHome && <><button className="mobile-shell__circle" type="button" aria-label="Search" onClick={() => go('/search')}><Search size={18} /></button><NotificationCenter apiStatus={apiStatus} route={route} /><button className="mobile-shell__profile" type="button" aria-label="Profile and settings" onClick={() => go('/settings')} /></>}
     </header>
     {!chromeOnly && <main className="mobile-shell__content">{children}</main>}
-    <div ref={bar} className="mobile-shell__bottom">
+    <div ref={bar} className={`mobile-shell__bottom${isHome ? '' : ' mobile-shell__bottom--fab'}`}>
       {isHome && <form className="mobile-shell__ask" onSubmit={submit}><label className="mobile-shell__ask-field"><span className="mobile-shell__sr-only">Ask Aelys</span><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask or search" /><button className="mobile-shell__add" type="button" aria-label="Add task" onClick={() => { window.history.pushState({},'', '/tasks?create=1'); window.dispatchEvent(new PopStateEvent('popstate')) }}><Plus size={20} /></button></label><button className="mobile-shell__orb" type="submit" aria-label={draft.trim() ? 'Send to Aelys' : 'Open AI Chat'}>{draft.trim() ? <ArrowUp size={21} /> : <Sparkles size={21} />}</button></form>}
       {isHome && settings.homeToggles[2] && <div className="mobile-shell__chips">{MOBILE_ACTIONS.filter((_,index)=>actions[index]).map(chip => <button key={chip.label} type="button" onClick={() => askAelys(chip.prompt)}><chip.icon size={16} color={chip.color} />{chip.label}</button>)}</div>}
       {!isHome && route !== '/ai' && <button className="mobile-shell__orb mobile-shell__fab" type="button" aria-label="Open AI Chat" onClick={() => go('/ai')}><Sparkles size={21} /></button>}
