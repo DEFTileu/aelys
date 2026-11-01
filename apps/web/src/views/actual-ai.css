@@ -44,3 +44,34 @@
 @media (max-width:700px) { .actual-ai { display:flex; flex-direction:column; gap:12px; height:auto; min-height:0; padding:0 16px 24px; }.actual-ai__mobile-head { display:flex; align-items:flex-start; gap:8px; color:var(--ink); }.actual-ai__mobile-head > div { flex:1; }.actual-ai__mobile-head h2 { font-size:18px; }.actual-ai__mobile-head p { margin:12px 0 4px; font-size:26px; line-height:32px; font-weight:700; }.actual-ai__mobile-head button { min-height:36px; padding:0 12px; display:flex; align-items:center; gap:4px; border:1px solid var(--line); border-radius:20px; background:var(--surface-solid); color:var(--ink); }.actual-ai__history { display:none; order:1; max-height:300px; }.actual-ai--history-open .actual-ai__history { display:flex; }.actual-ai__side { display:contents; }.actual-ai__context { order:2; border-radius:22px; }.actual-ai__context .actual-ai__actions { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }.actual-ai__context .actual-ai__actions button { padding:0; background:transparent; }.actual-ai__context .actual-ai__actions button > svg { display:none; }.actual-ai__quick,.actual-ai__useful { order:4; border-radius:22px; }.actual-ai__thread { order:3; min-height:480px; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; backdrop-filter:none; overflow:visible; }.actual-ai__thread-head,.actual-ai__provider { padding:0 2px; }.actual-ai__lines { overflow:visible; padding:0; }.actual-ai__line { gap:8px; padding-right:32px; }.actual-ai__line--user { padding:0 0 0 40px; }.actual-ai__line--user .actual-ai__avatar { display:none; }.actual-ai__bubble { border-radius:20px 20px 20px 6px; }.actual-ai__line--user .actual-ai__bubble { border-radius:20px 20px 6px 20px; }.actual-ai__compose-icon { display:none; }.actual-ai__welcome { background:var(--surface); border-radius:22px; }.actual-ai__send span { display:none; } }
 .mobile-shell .actual-ai__mobile-head { display:flex; }.mobile-shell .actual-ai__history { display:none; }.mobile-shell .actual-ai--history-open .actual-ai__history { display:flex; }
 @media (max-width:700px) { .mobile-shell .actual-ai { padding:0 16px 24px; gap:12px; }.mobile-shell .actual-ai__side { display:contents; }.mobile-shell .actual-ai__thread { order:3; }.mobile-shell .actual-ai__history { order:1; }.mobile-shell .actual-ai--history-open .actual-ai__history { display:flex; } }
+/* Mobile parity (ACTUAL Mobile "AI Chat"): header row, greeting, glass context card, bubbles, pill composer. */
+.actual-ai__greeting { display:none; }
+@media (max-width:700px) {
+  .actual-ai, .mobile-shell .actual-ai { gap:12px; padding:8px 16px 24px; }
+  .actual-ai__mobile-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .actual-ai__mobile-head h2 { flex:1; margin-left:4px; font-size:18px; line-height:26px; font-weight:700; }
+  .actual-ai__mobile-head > button { height:36px; min-height:36px; padding:0 12px; gap:6px; border:0; border-radius:24px; background:rgba(255,255,255,.88); color:#1C1B22; font-size:14px; font-weight:500; }
+  .actual-ai__mobile-head > .actual-ai__greeting { display:block; flex:1 0 100%; margin-top:16px; }
+  .actual-ai__greeting p { margin:0; font-size:26px; line-height:32px; font-weight:700; letter-spacing:-.02em; }
+  .actual-ai__greeting span { display:block; max-width:320px; margin-top:6px; font-size:14px; line-height:20px; color:var(--muted); }
+  .actual-ai__card { border:1px solid rgba(255,255,255,.35); border-radius:22px; background:rgba(255,255,255,.88); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); box-shadow:none; }
+  :root[data-theme='dark'] .actual-ai__card { border-color:rgba(255,255,255,.08); background:var(--pg-glass,rgba(32,29,40,.86)); }
+  .actual-ai__side-card { padding:16px; }
+  .actual-ai__side-card h2 { font-size:14px; line-height:20px; font-weight:600; }
+  .actual-ai__context .actual-ai__actions { gap:12px; margin-top:12px; }
+  .actual-ai__context .actual-ai__actions button { min-height:36px; gap:10px; font-size:14px; line-height:20px; font-weight:600; }
+  .actual-ai__context .actual-ai__actions button > span { width:36px; height:36px; border-radius:10px; }
+  .actual-ai__line { padding-right:32px; }
+  .actual-ai__line--user { padding:0 0 0 40px; }
+  .actual-ai__bubble > strong { display:none; }
+  .actual-ai__bubble { padding:10px 14px; border-radius:20px 20px 20px 6px; background:#fff; font-size:14px; line-height:20px; box-shadow:none; }
+  .actual-ai__line--user .actual-ai__bubble { border-radius:20px 20px 6px 20px; background:#E3E8FD; }
+  .actual-ai__bubble time { font-size:12px; line-height:16px; }
+  .actual-ai__quick .actual-ai__prompts button, .actual-ai__useful .actual-ai__prompts button { min-height:48px; padding:8px 12px; border-radius:16px; font-size:14px; font-weight:600; }
+  .actual-ai__compose { gap:8px; }
+  .actual-ai__compose-field { min-height:48px; padding:0 6px 0 20px; border:0; border-radius:24px; background:#fff; box-shadow:0 4px 14px rgba(40,30,30,.08), inset 0 0 0 1px rgba(28,27,34,.06); }
+  .actual-ai__compose textarea { min-height:48px; padding:14px 0; font-size:15px; line-height:20px; }
+  .actual-ai__send { width:36px; height:36px; min-width:36px; }
+  :root[data-theme='dark'] .actual-ai__bubble, :root[data-theme='dark'] .actual-ai__compose-field, :root[data-theme='dark'] .actual-ai__mobile-head > button { background:var(--surface-solid); color:var(--ink); }
+  :root[data-theme='dark'] .actual-ai__line--user .actual-ai__bubble { background:#2F2752; }
+}

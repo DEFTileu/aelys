@@ -111,7 +111,7 @@ export function AutomationView({ apiStatus }: { apiStatus: ApiStatus }) {
   return <div className="au">
     <div className="au-top">
       <form className="au-ask" onSubmit={submitDraft}><Sparkles size={18} aria-hidden="true" />
-        <input aria-label="Describe a rule" placeholder={'Describe a rule: "When a task is completed, send me a notification"'} value={description} maxLength={500} disabled={!ready || drafting} onChange={(event) => setDescription(event.target.value)} />
+        <input aria-label="Describe a rule" placeholder={window.matchMedia?.('(max-width: 700px)').matches ? 'Describe a rule…' : 'Describe a rule: "When a task is completed, send me a notification"'} value={description} maxLength={500} disabled={!ready || drafting} onChange={(event) => setDescription(event.target.value)} />
         <button type="submit" aria-label="Draft rule" disabled={!ready || drafting}><ArrowRight size={14} aria-hidden="true" /></button></form>
       {inUse && <button type="button" className="au-guide-btn" onClick={() => setGuide(!guide)}><CircleHelp size={14} aria-hidden="true" />{guide ? 'Hide guide' : 'How it works'}</button>}
     </div>

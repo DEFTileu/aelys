@@ -101,7 +101,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
     { label: 'Think through priorities', text: 'Help me decide what to prioritize.' },
   ]
   return <div className={`actual-ai${historyOpen ? ' actual-ai--history-open' : ''}`}>
-    <div className="actual-ai__mobile-head"><div><h2>AI Chat</h2><p>How can I help?</p></div><button type="button" onClick={newChat} disabled={running}><Plus size={18} />New chat</button><button type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen(!historyOpen)}>Chats</button></div>
+    <div className="actual-ai__mobile-head"><h2>AI Chat</h2><button type="button" onClick={newChat} disabled={running}><Plus size={18} />New chat</button><button type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen(!historyOpen)}>Chats</button><div className="actual-ai__greeting"><p>How can I help?</p><span>I’ll help you plan the day, sort out tasks and focus on what matters.</span></div></div>
     <aside className="actual-ai__card actual-ai__history" aria-label="Conversations">
       <div className="actual-ai__history-search"><label className="actual-ai__search"><Search size={17} /><input aria-label="Search conversations" placeholder="Search chats…" value={search} onChange={event => setSearch(event.target.value)} /></label><button type="button" className="actual-ai__new-icon" aria-label="New chat" title="New chat" disabled={running} onClick={newChat}><Plus size={18} /></button></div>
       <button type="button" className="actual-ai__new" disabled={running} onClick={newChat}><Plus size={18} />New chat</button>

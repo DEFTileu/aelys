@@ -110,4 +110,18 @@
   .apps { padding: 0 16px 24px; }
   .apps-search kbd { display: none; }
   .apps-form__fields { grid-template-columns: minmax(0, 1fr); }
+  /* ACTUAL Mobile "Apps": a 4-column grid of 60px app icons with the title below. */
+  .apps { gap: 20px; padding-top: 8px; }
+  .apps-search { max-width: none; }
+  .apps-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px; }
+  .apps-card { min-height: 0; flex-direction: column; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; }
+  :root[data-theme='dark'] .apps-card { background: transparent; }
+  .apps-card:hover:not(.apps-card--soon) { transform: none; box-shadow: none; }
+  .apps-card__icon { width: 60px; height: 60px; border-radius: 18px; box-shadow: 0 4px 12px rgba(40, 30, 30, .06); }
+  .apps-card__icon svg { width: 26px; height: 26px; }
+  .apps-card__body, .apps-card--soon .apps-card__body { flex: none; width: 100%; margin-right: 0; text-align: center; }
+  .apps-card__open { font-size: 12px; line-height: 16px; font-weight: 500; }
+  .apps-card__desc, .apps-card__status { display: none; }
+  .apps-pin { position: absolute; top: -6px; right: 0; width: 24px; height: 24px; }
+  .apps-soon { top: -4px; right: 0; padding: 0 6px; font-size: 10px; }
 }
