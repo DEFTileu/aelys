@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NoteOut, ProjectResponse } from '@aelys/shared'
-import { ArrowLeft, FileText, Search } from '../icons'
+import { ArrowLeft, FileText, Search, Sparkles } from '../icons'
+import { askAelys } from '../lib/desktopStore'
+import { projectColor } from './tasks/taskModel'
+import './desktop/page-tokens.css'
 import { ApiStatusPill } from '../components/ApiStatusPill'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import './actual-knowledge.css'
+import './desktop/knowledge.css'
 
 function MarkdownText({ text }: { text: string }) {
   return <div className="knowledge-markdown">{text.split('\n').map((line, index) => {
@@ -18,6 +22,8 @@ function MarkdownText({ text }: { text: string }) {
     return <div key={index}>{line || '\u00a0'}</div>
   })}</div>
 }
+
+const updatedLabel = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
 export function KnowledgeView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [notes, setNotes] = useState<readonly NoteOut[]>([])
@@ -64,6 +70,7 @@ export function KnowledgeView({ apiStatus }: { apiStatus: ApiStatus }) {
     return [...result.entries()]
   }, [notes, visible, projects])
   const selected = visible.find((note) => note.id === selectedId) ?? visible[0]
+  const selectedGroup = groups.find(([, group]) => group.items.some((note) => note.id === selected?.id))?.[0] ?? 'documents'
   const edit = (id: string) => {
     window.history.pushState({}, '', `/notes?note=${encodeURIComponent(id)}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
@@ -76,9 +83,9 @@ export function KnowledgeView({ apiStatus }: { apiStatus: ApiStatus }) {
       <div className="knowledge-grid">
         <section className="knowledge-card knowledge-list" aria-label="Knowledge documents">
           <label className="knowledge-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" /></label>
-          <div className="knowledge-items">{groups.map(([key, group]) => <div key={key}><h2>{group.label} <span>{group.items.length}</span></h2>{group.items.map((note) => <button type="button" key={note.id} className={`knowledge-item${selected?.id === note.id ? ' knowledge-item--selected' : ''}`} aria-pressed={selected?.id === note.id} onClick={() => { setSelectedId(note.id); setReading(true) }}><span className="knowledge-icon"><FileText size={16} /></span><span className="knowledge-item-text"><strong>{note.title}</strong><small>Note · v{note.version}</small></span></button>)}</div>)}{visible.length === 0 && <p className="knowledge-empty">{notes.length ? 'Nothing found.' : 'No notes yet.'}</p>}</div>
+          <div className="knowledge-items">{groups.map(([key, group]) => <div key={key}><h2>{group.label}</h2>{group.items.map((note) => <button type="button" key={note.id} className={`knowledge-item${selected?.id === note.id ? ' knowledge-item--selected' : ''}`} aria-pressed={selected?.id === note.id} onClick={() => { setSelectedId(note.id); setReading(true) }}><span className="knowledge-icon" style={{ color: projectColor(key), background: `${projectColor(key)}1A` }}><FileText size={16} /></span><span className="knowledge-item-text"><strong>{note.title}</strong><small>{note.updated_at ? `Updated ${updatedLabel(note.updated_at)}` : `Note · v${note.version}`}</small></span></button>)}</div>)}{visible.length === 0 && <p className="knowledge-empty">{notes.length ? 'Nothing found.' : 'No notes yet.'}</p>}</div>
         </section>
-        <section className="knowledge-card knowledge-reader" aria-label="Document reader">{selected ? <><div className="knowledge-reader-head"><button type="button" className="knowledge-button knowledge-back" onClick={() => setReading(false)}><ArrowLeft size={16} />Back</button><span className="knowledge-kind">Note · v{selected.version}</span><button type="button" className="knowledge-button knowledge-edit" onClick={() => edit(selected.id)}>Edit note</button></div><article className="knowledge-content"><h1>{selected.title}</h1>{selected.markdown_body ? <MarkdownText text={selected.markdown_body} /> : <p className="knowledge-empty">This note is empty.</p>}</article></> : <div className="knowledge-placeholder">Select a note to read it.</div>}</section>
+        <section className="knowledge-card knowledge-reader" aria-label="Document reader">{selected ? <><div className="knowledge-reader-head"><button type="button" className="knowledge-button knowledge-back" onClick={() => setReading(false)}><ArrowLeft size={16} />Back</button><span className="knowledge-kind" style={{ color: projectColor(selectedGroup), background: `${projectColor(selectedGroup)}1A` }}>{groups.find(([, group]) => group.items.some((note) => note.id === selected.id))?.[1].label ?? 'Documents'}</span><span className="knowledge-updated">{selected.updated_at ? `Updated ${updatedLabel(selected.updated_at)}` : `Version ${selected.version}`}</span><span className="knowledge-grow" /><button type="button" className="knowledge-button" onClick={() => askAelys(`Tell me about my note "${selected.title}".`)}><Sparkles size={15} />Ask Aelys about this</button><button type="button" className="knowledge-button knowledge-edit" onClick={() => edit(selected.id)}>Edit note</button></div><article className="knowledge-content"><h1>{selected.title}</h1>{selected.markdown_body ? <MarkdownText text={selected.markdown_body} /> : <p className="knowledge-empty">This note is empty.</p>}</article></> : <div className="knowledge-placeholder">Select a note to read it.</div>}</section>
       </div>
     </>}
   </div>

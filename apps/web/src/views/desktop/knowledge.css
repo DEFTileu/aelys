@@ -1,0 +1,33 @@
+/* Knowledge base, matched to the ACTUAL design: document list and reader. Desktop layer; mobile rules stay in actual-knowledge.css. */
+@media (min-width: 701px) {
+  .knowledge-view { padding: 0 28px 28px; }
+  .knowledge-view :where(button, input) { font: inherit; }
+  .knowledge-view .knowledge-grid { grid-template-columns: 300px minmax(0, 1fr); gap: 16px; height: calc(100vh - 196px); min-height: 532px; }
+  .knowledge-view .knowledge-card { border: 1px solid var(--pg-line); border-radius: 20px; background: var(--pg-card); box-shadow: var(--pg-shadow); backdrop-filter: none; }
+  .knowledge-view .knowledge-list { padding: 12px; }
+  .knowledge-view .knowledge-search { height: 40px; padding: 0 12px; border-radius: 12px; background: var(--pg-field); color: var(--pg-mute); }
+  .knowledge-view .knowledge-search input { font-size: 13px; color: var(--pg-ink); }
+  .knowledge-view .knowledge-items { flex: 1; overflow-y: auto; margin-top: 8px; }
+  .knowledge-view .knowledge-list h2 { display: block; margin: 0; padding: 12px 10px 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--pg-ink-3); }
+  .knowledge-view .knowledge-item { gap: 10px; padding: 10px; border-radius: 12px; color: var(--pg-ink); }
+  .knowledge-view .knowledge-item:hover { filter: brightness(.98); background: transparent; }
+  .knowledge-view .knowledge-item--selected, .knowledge-view .knowledge-item--selected:hover { background: #EEEAFD; }
+  :root[data-theme='dark'] .knowledge-view .knowledge-item--selected, :root[data-theme='dark'] .knowledge-view .knowledge-item--selected:hover { background: rgba(139, 108, 240, .22); }
+  .knowledge-view .knowledge-icon { width: 32px; height: 32px; border-radius: 9px; }
+  .knowledge-view .knowledge-item-text strong { font-size: 14px; line-height: 22px; font-weight: 500; }
+  .knowledge-view .knowledge-item-text small { margin: 0; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
+  .knowledge-view .knowledge-empty { padding: 32px 12px; text-align: center; font-size: 13px; color: var(--pg-mute); }
+  .knowledge-view .knowledge-reader-head { height: 56px; min-height: 0; padding: 0 16px; gap: 8px; border-bottom: 1px solid var(--pg-rule); }
+  .knowledge-view .knowledge-kind { height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; line-height: 24px; font-weight: 500; }
+  .knowledge-view .knowledge-updated { font-size: 12px; color: var(--pg-mute); }
+  .knowledge-view .knowledge-grow { flex: 1; }
+  .knowledge-view .knowledge-button { height: 36px; min-height: 0; padding: 0 12px; border: 1px solid var(--pg-line-btn); border-radius: 10px; background: var(--pg-card); color: var(--pg-ink); font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .knowledge-view .knowledge-button:hover { background: var(--pg-hover); }
+  .knowledge-view .knowledge-button svg { color: var(--pg-violet); }
+  .knowledge-view .knowledge-edit { margin-left: 0; }
+  .knowledge-view .knowledge-content { padding: 28px 40px 40px; }
+  .knowledge-view .knowledge-content > h1 { max-width: 720px; margin: 0 0 20px; font-size: 30px; line-height: 38px; font-weight: 700; letter-spacing: -.02em; }
+  .knowledge-view .knowledge-markdown { max-width: 720px; }
+  .knowledge-view .knowledge-markdown h2, .knowledge-view .knowledge-markdown h3, .knowledge-view .knowledge-markdown h4 { margin: 20px 0 6px; font-size: 18px; line-height: 26px; font-weight: 600; }
+  .knowledge-view .knowledge-markdown > div { font-size: 15px; line-height: 26px; color: var(--pg-ink-2); }
+}
