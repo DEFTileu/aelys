@@ -26,7 +26,7 @@ export function HomeWidget({ id, editing, mobile = false, focus, data, onToggleT
   const doneCount = data.tasks.filter(isDone).length
   const badge = id === 'today' && data.tasks.length ? String(Math.max(0, data.tasks.length - doneCount)) : ''
   const style: CSSProperties = {
-    background: dark ? 'linear-gradient(180deg,rgba(30,34,60,.30),rgba(20,22,40,.72)),url("/backgrounds/aelys/actual-wallpaper.png") 82% 40%/auto 420px' : 'var(--glass-bg, rgba(255,255,255,.88))',
+    background: dark ? 'linear-gradient(180deg,rgba(30,34,60,.30),rgba(20,22,40,.72)),url("/backgrounds/aelys/actual-home.png") 82% 40%/auto 420px' : 'var(--glass-bg, rgba(255,255,255,.88))',
     color: dark ? '#fff' : 'var(--ink)',
     border: '1px solid rgba(255,255,255,.35)',
   }

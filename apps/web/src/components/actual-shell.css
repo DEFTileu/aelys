@@ -2,11 +2,11 @@
 .actual-desktop .actual-theme { width: 40px; height: 40px; justify-content: center; padding: 0; border-radius: 50%; }
 .actual-desktop .shell-main { scrollbar-color: var(--line-strong) transparent; }
 .actual-desktop .shell-sidebar { background: var(--surface-soft); border-color: var(--line); }
-.actual-desktop .shell-nav-item { color: var(--ink-soft); }
+.actual-desktop .shell-nav-item { color: #2A2830; }
+.actual-desktop .shell-nav-item:hover, .actual-desktop .shell-user-settings:hover { background: rgba(128,118,140,.14); }
+.actual-desktop .shell-nav-item--on, .actual-desktop .shell-nav-item--on:hover { background: var(--accent-soft); }
 .actual-desktop .shell-nav-item--on { color: var(--purple-deep); }
 .actual-desktop .shell-pill { color: var(--ink); background: var(--surface); border-color: var(--line); }
-.actual-desktop .shell-main > div > .shell-hero { color: var(--ink); }
-.actual-desktop[data-screen-label='home'] .shell-main > div > .shell-hero { color: #fff; }
 .actual-desktop .page-header { margin: 0 0 18px; }
 .actual-desktop .page-header h1 { font-size: 26px; }
 .actual-desktop :is(.projects-view, .notes-view) > :is(.pv-hero, .nv-header) { padding-top: 0; }

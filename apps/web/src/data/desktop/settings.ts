@@ -67,7 +67,7 @@ const LEGACY_WALLPAPERS = [
 ].map((name) => `/backgrounds/aelys/${name}.jpg`)
 
 // Keep persisted wallpaper indexes stable; the default tile adopts ACTUAL artwork.
-export const WALLPAPERS = ['/backgrounds/aelys/actual-wallpaper.png', ...LEGACY_WALLPAPERS.slice(1)]
+export const WALLPAPERS = ['/backgrounds/aelys/actual-home.png', ...LEGACY_WALLPAPERS.slice(1)]
 
 // The design shows five tiles and a "More" tile that reveals the rest.
 export const VISIBLE_WALLPAPERS = 5

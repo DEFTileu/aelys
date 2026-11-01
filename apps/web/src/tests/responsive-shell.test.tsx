@@ -35,3 +35,14 @@ it('keeps the routed editor mounted and its draft intact across desktop/mobile b
   }
   expect(mounts).toBe(1); expect(unmounts).toBe(0)
 })
+
+it('renders the reference sidebar list and module hero copy on desktop', async () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host)
+  await act(async () => root!.render(<AppShell route="/tasks" apiStatus="offline" theme="light" onToggleTheme={() => {}}><div /></AppShell>))
+  const labels = [...host.querySelectorAll('nav[aria-label="Primary"] button')].map(button => button.getAttribute('aria-label'))
+  expect(labels).toEqual(['Home', 'AI Chat', 'Tasks', 'Calendar', 'Projects', 'Notes', 'Mail', 'Finances', 'Knowledge base', 'Apps'])
+  const hero = host.querySelector('.shell-hero')!
+  expect(hero.querySelector('h1')?.textContent).toBe('My tasks')
+  expect(hero.textContent).toContain('More focus. More results.')
+})
