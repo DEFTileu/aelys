@@ -136,9 +136,10 @@ key or unredacted provider failure is exposed in owner replies or generic logs.
 `personal_tools.py` extends the existing registry: bounded task list/search,
 exact-version update/complete, bounded note read, calendar occurrences (<=31 days),
 event creation, task reminder creation; existing create_task/create_note remain.
-Permissions come from the current affirmative owner request. Quoted/code content
-and negated or merely referenced actions do not grant write scopes. Ambiguous
-requests remain read-only. The personal registry and AIConversation are never
+Permissions follow the turn's source, not its wording: owner text and voice get
+task, note, calendar and reminder tools; a turn with a quote is read-only and a
+file turn has no tools. Memory tools still need an explicit remember/forget
+request. Writes are versioned and no delete tool exists. The personal registry and AIConversation are never
 passed to the Business secretary. No MCP, RAG or document search was added.
 
 ## 12. Ephemeral media and separate transcription (Stage 4)

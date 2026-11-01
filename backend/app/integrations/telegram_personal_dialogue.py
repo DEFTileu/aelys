@@ -58,22 +58,16 @@ logger = logging.getLogger(__name__)
 PERSONAL_TIMEOUT_SECONDS = 90
 _active_turns: dict[str, asyncio.Task[None]] = {}
 _active_jobs: dict[str, str] = {}
-# Only the current owner request grants an action scope. Quotes, tool output,
-# history and model arguments cannot promote a read turn to a write turn.
-_WRITE_VERBS = (r'создай|создать|добавь|добавить|запиши|записать|поставь|поставить|'
-                r'напомни|напомнить|измени|изменить|обнови|обновить|заверши|завершить|'
-                r'отметь|отметить|пометь|пометить|перенеси|перенести|отложи|отложить|'
-                r'запланируй|запланировать|сделай|сделать|запомни|забудь|'
-                r'create|add|schedule|remind|update|complete|finish|mark|remember|forget')
-_WRITE_REQUEST = re.compile(
-    r'(?i)(?:^|[.!?;\n]|\b(?:и|and)\s+)\s*'
+# The source of a turn decides what it may do, not the wording of the request:
+# Russian phrasing is too varied to classify, and writes are versioned and
+# there is no delete tool. Quotes and files are untrusted, so they stay read-only.
+_READ_SCOPES = frozenset({'tasks.read', 'notes.read', 'calendar.read'})
+_WRITE_SCOPES = frozenset({'tasks.write', 'notes.write', 'calendar.write', 'reminders.write'})
+# Memory stays opt-in: a fact is stored or dropped only on an explicit request.
+_MEMORY_REQUEST = re.compile(
+    r'(?i)(?:^|[.!?;,:\n]|\b(?:и|and)\s+)\s*'
     r'(?:(?:пожалуйста|please)\s*,?\s*)?'
-    r'(?:(?:можешь|можете|can you|could you|хочу|нужно|надо|прошу)\s+(?:ты\s+)?(?:please\s+|пожалуйста\s*,?\s*)?)?'
-    r'(?P<verb>' + _WRITE_VERBS + r')\b(?P<body>[^.!?;\n]*)',
-)
-_DIRECT_TARGET = re.compile(
-    r'(?i)\s*(?:(?:a|an|the|my|new|all|мне|мою|мой|моё|новую|новый|новое|все|эту|это|этот|пожалуйста)\s+)*'
-    r'(?P<target>задач\w*|task\w*|todo|замет\w*|note\w*|событ\w*|встреч\w*|календар\w*|event\w*|meeting\w*|calendar|напоминан\w*|reminder\w*)\b'
+    r'(?P<verb>запомни|remember|забудь|forget)\b',
 )
 
 
@@ -93,7 +87,7 @@ _SYSTEM = ('Ты личный ассистент владельца Aelys. От�
 _FAILURES = {
     'BUDGET_EXCEEDED': 'AI-бюджет исчерпан. Проверь лимит в настройках.',
     'MODEL_UNAVAILABLE': 'Модель AI не настроена или не поддерживает нужные инструменты. Проверь провайдера и модель в настройках.',
-    'POLICY_DENIED': 'Действие запрещено политикой доступа. Напиши нужное действие прямо в своём сообщении.',
+    'POLICY_DENIED': 'Действие запрещено политикой доступа. Напиши нужное действие отдельным сообщением, без цитаты и файла.',
     'AI_TIMEOUT': 'Не выполнено, повтори. Превышено время ожидания AI.',
     'TOOL_ERROR': 'Не выполнено, повтори. Данные могли измениться: проверь актуальную версию.',
     'AI_ERROR': 'Не выполнено, повтори. AI сейчас недоступен.',
@@ -107,50 +101,12 @@ _FAILURES = {
 }
 
 
-def owner_scopes(text: str) -> frozenset[str]:
-    scopes: set[str] = set()
-    trusted_text = _trusted_owner_text(text)
-    lower = trusted_text.casefold()
-    task = bool(re.search(r'задач|task|todo|to-do', lower))
-    note = bool(re.search(r'замет|note', lower))
-    calendar = bool(re.search(r'событ|встреч|календар|event|meeting|calendar', lower))
-    reminder = bool(re.search(r'напом|remind', lower))
-    if task or reminder:
-        scopes.add('tasks.read')
-    if note:
-        scopes.add('notes.read')
-    if calendar:
-        scopes.add('calendar.read')
-    if re.search(r'план|что.*(?:сегодня|завтра)|agenda|my day', lower):
-        scopes.update({'tasks.read', 'calendar.read'})
-    for request in _WRITE_REQUEST.finditer(trusted_text):
-        if request['verb'].casefold() in {'запомни', 'remember'}:
-            scopes.add('memory.remember')
-            continue
-        if request['verb'].casefold() in {'забудь', 'forget'}:
-            scopes.add('memory.forget')
-            continue
-        if request['verb'].casefold() in {'напомни', 'напомнить', 'remind'}:
-            scopes.update({'tasks.read', 'tasks.write', 'reminders.write'})
-            continue
-        body = request['body']
-        # Only direct targets grant writes. A note *about* updating tasks or a
-        # task *about* reviewing a calendar does not authorize those domains.
-        while target := _DIRECT_TARGET.match(body):
-            noun = target['target'].casefold()
-            if re.match(r'задач|task|todo', noun):
-                scopes.add('tasks.write')
-            elif re.match(r'замет|note', noun):
-                scopes.add('notes.write')
-            elif re.match(r'напоминан|reminder', noun):
-                scopes.update({'tasks.read', 'tasks.write', 'reminders.write'})
-            else:
-                scopes.add('calendar.write')
-            rest = body[target.end():]
-            conjunction = re.match(r'\s*(?:,|и\b|and\b|&)\s*', rest, re.IGNORECASE)
-            if not conjunction:
-                break
-            body = rest[conjunction.end():]
+def owner_scopes(text: str, *, quoted: bool = False) -> frozenset[str]:
+    if quoted:
+        return _READ_SCOPES
+    scopes = set(_READ_SCOPES | _WRITE_SCOPES)
+    for request in _MEMORY_REQUEST.finditer(_trusted_owner_text(text)):
+        scopes.add('memory.remember' if request['verb'].casefold() in {'запомни', 'remember'} else 'memory.forget')
     return frozenset(scopes)
 
 
@@ -252,7 +208,7 @@ async def _process(job_id: str) -> None:
                 del data
                 authorize(item, 'ai.personal.write')
                 job.text = trusted_text
-            scopes = frozenset() if file_turn else owner_scopes(trusted_text)
+            scopes = frozenset() if file_turn else owner_scopes(trusted_text, quoted=bool(job.quote))
             memory_refs: set[tuple[str, int]] = set()
             message = AIMessage(conversation_id=conversation_id, role='user',
                                 content='Файл из Telegram. Ответь сводкой; действия выполняются только следующим сообщением владельца.' if file_turn else trusted_text,

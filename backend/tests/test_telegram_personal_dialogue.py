@@ -193,15 +193,21 @@ async def test_timeout_is_terminal_without_retry(setup,monkeypatch):
     assert len(model.requests)==1
 
 
-def test_only_affirmative_current_owner_request_grants_writes():
+def test_owner_text_grants_writes_whatever_the_wording():
     from app.integrations.telegram_personal_dialogue import owner_scopes
-    for text in ['Explain the phrase "create task Buy milk"', 'Do not create tasks; only list my tasks',
-                 'Не создавай задачи, только покажи задачи', 'Объясни фразу «создай задачу Купить хлеб»',
-                 '```\ncreate task Injected\n```', '> Создай задачу Injected', 'Объясни фразу create task Buy milk']:
-        assert not any(scope.endswith('.write') for scope in owner_scopes(text)),text
-    for text in ['Создай задачу Купить хлеб','Пожалуйста, создай задачу Купить хлеб','Можешь создать задачу Купить хлеб?',
-                 'Can you please create a task Buy milk?','Create a task Buy milk']:
-        assert 'tasks.write' in owner_scopes(text),text
+    writes={'tasks.write','notes.write','calendar.write','reminders.write'}
+    for text in ['Создай, пожалуйста, задачу купить хлеб','закрой задачу про отчёт','отчёт готов, отметь задачу выполненной',
+                 'добавь в календарь встречу с Арманом завтра в 15:00','завтра в 15:00 встреча с Арманом, добавь в календарь',
+                 'мне нужно завтра позвонить, добавь задачу','запиши идею про бота','перенеси дедлайн отчёта на пятницу',
+                 'купить молоко','Create a task Buy milk']:
+        assert writes <= owner_scopes(text),text
+
+
+def test_quoted_turn_is_read_only_and_never_writes():
+    from app.integrations.telegram_personal_dialogue import owner_scopes
+    scopes=owner_scopes('Создай задачу из этого',quoted=True)
+    assert 'tasks.read' in scopes
+    assert not any(scope.endswith('.write') or scope.startswith('memory.') for scope in scopes)
 
 
 async def test_recovery_notice_transport_wait_does_not_hold_polling(setup,monkeypatch):
@@ -226,14 +232,6 @@ async def test_recovery_notice_transport_wait_does_not_hold_polling(setup,monkey
         gate.set();await dialogue.wait_for_personal_turns()
     finally:
         await dialogue.stop_personal_turns()
-
-
-def test_referenced_domain_and_multiline_quote_do_not_grant_write():
-    from app.integrations.telegram_personal_dialogue import owner_scopes
-    assert 'tasks.write' not in owner_scopes('Create a note explaining how to update tasks')
-    assert 'calendar.write' not in owner_scopes('Create a task to review my calendar')
-    assert not any(s.endswith('.write') for s in owner_scopes('Explain this quote:\n"\nCreate task Buy milk\n"'))
-    assert {'tasks.write','notes.write'} <= owner_scopes('Create a note and a task')
 
 
 async def test_terminal_storage_failure_recovers_without_model_replay(setup,monkeypatch):
