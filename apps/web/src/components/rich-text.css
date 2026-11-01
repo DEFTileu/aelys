@@ -38,9 +38,7 @@
 .rte__footer { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--pg-mute); flex: none; }
 .rte__footer b { font-weight: 600; }
 .rte__grow { flex: 1; }
-:root[data-theme='dark'] .rte__sep { background: #34303D; }
-:root[data-theme='dark'] .rte__tool[data-on='1'] { background: #2F2752; }
-:root[data-theme='dark'] .rte__link { border-color: #4A3F86; }
+:root[data-theme='dark'] .rte__tool[data-on='1'] { background: rgba(139, 108, 240, .22); }
 :root[data-theme='dark'] .rte__content { color: #E9E5EF; }
 :root[data-theme='dark'] .rte__content code { background: #2A2733; }
 :root[data-theme='dark'] .rte__content blockquote { color: #C9C3D3; border-color: #4A3F86; }

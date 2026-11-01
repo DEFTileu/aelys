@@ -22,10 +22,9 @@
 .pskel__row { display: flex; align-items: center; gap: 12px; }
 .pskel__head { gap: 10px; }
 .pskel__lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.pskel__bone { display: block; flex: none; background: linear-gradient(90deg, #EEE8E2 30%, #F8F5F2 50%, #EEE8E2 70%); background-size: 200% 100%; animation: pskelSk 1.4s ease-in-out infinite; }
+.pskel__bone { display: block; background: linear-gradient(90deg, #EEE8E2 30%, #F8F5F2 50%, #EEE8E2 70%); background-size: 200% 100%; animation: pskelSk 1.4s ease-in-out infinite; }
 :root[data-theme='dark'] .pskel__bone { background-image: linear-gradient(90deg, #26232E 30%, #322E3B 50%, #26232E 70%); }
-:root[data-theme='dark'] .pskel__bar { background: #2F2752; }
-:root[data-theme='dark'] .pskel__spin { border-color: #2F2752; border-top-color: var(--pg-violet); }
+:root[data-theme='dark'] .pskel__bar { background: rgba(139, 108, 240, .22); }
 :root[data-theme='dark'] .pskel__slow button:hover { background: #34303D; }
 @keyframes pskelSk { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 @keyframes pskelBar { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }

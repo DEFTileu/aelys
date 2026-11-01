@@ -30,7 +30,7 @@ export function skeletonLayout(kind: SkeletonKind, compact: boolean): { cols: st
   }
 }
 
-const Bone = ({ style }: { style: CSSProperties }) => <span className="pskel__bone" data-sk="" style={style} />
+const Bone = ({ style, fixed }: { style: CSSProperties; fixed?: boolean }) => <span className="pskel__bone" data-sk="" style={fixed ? { ...style, flex: 'none' } : style} />
 
 export function PageSkeleton({ kind = 'list', phase = 'loading', compact = false, label = 'page', onRetry }: { kind?: SkeletonKind; phase?: SkeletonPhase; compact?: boolean; label?: string; onRetry?: () => void }) {
   const [waited, setWaited] = useState(false)
@@ -54,15 +54,15 @@ export function PageSkeleton({ kind = 'list', phase = 'loading', compact = false
       <span className="pskel__error-icon"><LucideGlyph name="wifi-off" size={26} /></span>
       <div className="pskel__error-title">Can’t reach Aelys</div>
       <div className="pskel__error-text">Check your connection. Anything you change is saved on this device and syncs when you’re back online.</div>
-      <div className="pskel__error-actions"><button type="button" onClick={onRetry}><RotateCcw size={16} />Try again</button></div>
+      <div className="pskel__error-actions"><button type="button" onClick={onRetry}><RotateCcw size={14} />Try again</button></div>
     </div>}
     {!error && <div className="pskel__grid" aria-hidden="true" style={{ gridTemplateColumns: cols, gap: compact ? 12 : 16 }}>
       {cards.map((c, i) => <div key={i} className="pskel__card" style={{ gridColumn: c.col, minHeight: c.h, padding: compact ? 14 : 18 }}>
-        {c.head && <div className="pskel__row pskel__head"><Bone style={{ width: 28, height: 28, borderRadius: 8 }} /><Bone style={{ width: c.hw, height: 14, borderRadius: 7 }} /></div>}
+        {c.head && <div className="pskel__row pskel__head"><Bone fixed style={{ width: 28, height: 28, borderRadius: 8 }} /><Bone style={{ width: c.hw, height: 14, borderRadius: 7 }} /></div>}
         {c.rows.map((r, j) => <div key={j} className="pskel__row" style={{ minHeight: r.mh }}>
-          {r.hasAv && <Bone style={{ width: r.av, height: r.av, borderRadius: r.avR }} />}
+          {r.hasAv && <Bone fixed style={{ width: r.av, height: r.av, borderRadius: r.avR }} />}
           <div className="pskel__lines"><Bone style={{ width: r.w1, height: 12, borderRadius: 6 }} />{r.two && <Bone style={{ width: r.w2, height: 10, borderRadius: 5 }} />}</div>
-          {r.tail && <Bone style={{ width: r.tw, height: r.th, borderRadius: r.tr }} />}
+          {r.tail && <Bone fixed style={{ width: r.tw, height: r.th, borderRadius: r.tr }} />}
         </div>)}
         {c.lines.map((l, j) => <Bone key={j} style={{ width: l.w, height: l.h, marginLeft: l.ml, borderRadius: l.r }} />)}
       </div>)}
