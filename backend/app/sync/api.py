@@ -187,6 +187,8 @@ async def push(body:Push, principal=Depends(current_principal), db:AsyncSession=
         domain = await db.get(model, op.resource_id) if model else None
         if domain is not None and domain.owner_id != user.id:
             raise HTTPException(403, detail={"code": "FORBIDDEN", "message": "Resource belongs to another owner"})
+        if domain is not None:
+            await lock_owner(db, user.id, (op.resource_kind, op.resource_id))
         current_version = domain.version if domain else (record.version if record else 0)
         if op.action.value == "create" and ((domain is not None and not domain.deleted_at) or (record and not record.deleted_at)):
             conflict={"code":"ALREADY_EXISTS","server_version":current_version}

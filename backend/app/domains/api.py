@@ -370,7 +370,7 @@ async def get_project(project_id:str,principal=Depends(current_principal),db:Asy
 @router.patch("/projects/{project_id}")
 async def update_project(project_id:str,body:ProjectPatchIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('project', project_id))
     item=await owner_obj(Project,project_id,user.id,db)
     if body.version is not None and body.version!=item.version: raise HTTPException(409,detail={"code":"VERSION_CONFLICT","message":"Concurrent update","details":{"server_version":item.version}})
     for key in ("name","description","status"):
@@ -382,7 +382,7 @@ async def update_project(project_id:str,body:ProjectPatchIn,principal=Depends(cu
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('project', project_id))
     item=await owner_obj(Project,project_id,user.id,db); item.deleted_at=datetime.now(UTC); item.version+=1
     await record_domain_change(db, item)
     await db.commit(); return {"deleted":True}
@@ -416,7 +416,7 @@ async def get_note(item_id:str, principal=Depends(current_principal), db:AsyncSe
 @router.patch("/notes/{item_id}", response_model=NoteOut)
 async def update_note(item_id:str, body:NoteIn, version: int | None = Query(default=None, ge=1), principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user, device = principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('note', item_id))
     item = await owner_obj(Note, item_id, user.id, db)
     await owned_ref(Project, body.project_id, user.id, db)
     await owned_ref(Note, body.parent_id, user.id, db)
@@ -448,7 +448,7 @@ async def note_revisions(item_id:str, principal=Depends(current_principal), db:A
 @router.post("/notes/{item_id}/restore")
 async def restore_note(item_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('note', item_id))
     item=await db.get(Note,item_id)
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Note not found"})
     revisions=list((await db.execute(select(NoteRevision).where(NoteRevision.note_id==item_id).order_by(NoteRevision.revision_no.desc()).limit(1))).scalars())
@@ -459,7 +459,7 @@ async def restore_note(item_id:str,principal=Depends(current_principal),db:Async
 @router.delete("/notes/{item_id}")
 async def delete_note(item_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('note', item_id))
     item=await owner_obj(Note,item_id,user.id,db); item.deleted_at=datetime.now(UTC); item.version+=1
     await record_domain_change(db, item)
     await db.commit(); return {"deleted":True}
@@ -480,7 +480,7 @@ async def get_task(item_id:str, principal=Depends(current_principal), db:AsyncSe
 @router.patch("/tasks/{item_id}", response_model=TaskOut)
 async def update_task(item_id:str, body:TaskPatchIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('task', item_id))
     item=await owner_obj(Task,item_id,user.id,db)
     await owned_ref(Project, body.project_id, user.id, db)
     await owned_ref(Task, body.parent_task_id, user.id, db)
@@ -495,7 +495,7 @@ async def update_task(item_id:str, body:TaskPatchIn, principal=Depends(current_p
 @router.delete("/tasks/{item_id}")
 async def delete_task(item_id: str, version: int | None = Query(default=None, ge=1), principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     user, _ = principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('task', item_id))
     item = await owner_obj(Task, item_id, user.id, db)
     if version is None:
         item.deleted_at = datetime.now(UTC)
@@ -599,7 +599,7 @@ async def require_local_calendar_event(item_id: str, principal=Depends(current_p
 @router.patch("/calendar/events/{item_id}", response_model=EventOut, dependencies=[Depends(require_local_calendar_event)])
 async def update_event(item_id:str,body:EventPatchIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('event', item_id))
     item=await owner_obj(CalendarEvent,item_id,user.id,db)
     if item.external_source:
         raise HTTPException(409, detail={"code": "EXTERNAL_EVENT_READ_ONLY", "message": "Imported events can only change through their source calendar"})
@@ -620,7 +620,7 @@ async def update_event(item_id:str,body:EventPatchIn,principal=Depends(current_p
 @router.delete("/calendar/events/{item_id}")
 async def delete_event(item_id:str,version:int=Query(ge=1),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal
-    await lock_owner(db, user.id)
+    await lock_owner(db, user.id, ('event', item_id))
     item=await owner_obj(CalendarEvent,item_id,user.id,db)
     if item.external_source:
         raise HTTPException(409, detail={"code": "EXTERNAL_EVENT_READ_ONLY", "message": "Imported events can only change through their source calendar"})

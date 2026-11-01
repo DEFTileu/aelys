@@ -133,7 +133,7 @@ def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, so
 
     async def mutate_task(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         args = _TaskUpdate.model_validate(arguments)
-        await lock_owner(db, owner_id)
+        await lock_owner(db, owner_id, ('task', args.task_id))
         item = await owner_obj(Task, args.task_id, owner_id, db)
         if item.version != args.version:
             raise ValueError('VERSION_CONFLICT: Task changed; read the latest version before editing')

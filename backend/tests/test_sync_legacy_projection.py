@@ -139,6 +139,21 @@ async def test_preexisting_divergence_fails_closed_without_overwriting(legacy_sy
         assert not list((await session.execute(select(SyncChange))).scalars())
 
 
+async def test_drift_blocks_only_its_own_row(legacy_sync):
+    client, sessions, owner, _ = legacy_sync
+    async with sessions() as session:
+        session.add(Task(id='legacy', owner_id=owner, title='domain title', version=4))
+        session.add(SyncRecord(owner_id=owner, resource_kind='task', resource_id='legacy',
+                               version=4, payload={'title': 'mirror title'}))
+        await session.commit()
+    assert (await client.post('/api/v1/tasks', json={'title': 'Unrelated'})).status_code == 200
+    response = await client.delete('/api/v1/tasks/legacy?version=4')
+    assert response.status_code == 409
+    assert response.json()['detail']['code'] == 'SYNC_RECONCILIATION_REQUIRED'
+    async with sessions() as session:
+        assert (await session.get(Task, 'legacy')).version == 4
+
+
 @pytest.mark.parametrize('tombstone', [False, True])
 async def test_write_cannot_hide_equal_version_historical_divergence(legacy_sync, tombstone):
     from app.core.models import now

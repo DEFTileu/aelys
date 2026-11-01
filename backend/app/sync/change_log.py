@@ -48,26 +48,31 @@ class _WritePolicy:
     external_effect: bool = False
 
 
-async def lock_owner(db: AsyncSession, owner_id: str) -> None:
+async def lock_owner(db: AsyncSession, owner_id: str, resource: tuple[str, str] | None = None) -> None:
+    """Pass the (kind, id) about to change so its own drift is checked first.
+
+    Only that row is checked: one historical mismatch must not stop other writes.
+    """
     # Do not autoflush before locking: a writer holding a row and waiting on the
     # advisory lock would deadlock against a push holding the advisory lock.
     with db.no_autoflush:
         if db.get_bind().dialect.name == 'postgresql':
             await db.execute(text('SELECT pg_advisory_xact_lock(hashtext(:key))'), {'key': f'sync-owner:{owner_id}'})
         await capture_task_statuses(db, owner_id)
-        # Validate pre-mutation state as well as the eventual log write. A patch
-        # must not increment the version and hide historical equal-version drift.
-        records = {(row.resource_kind, row.resource_id): row for row in
-                   (await db.execute(select(SyncRecord).where(SyncRecord.owner_id == owner_id,
-                        SyncRecord.resource_kind.in_(DOMAIN_MODELS)))).scalars()}
-        for kind, model in DOMAIN_MODELS.items():
-            rows = (await db.execute(select(model).where(model.owner_id == owner_id))).scalars()
-            for item in rows:
-                record = records.get((kind, item.id))
-                if record and (record.version > item.version or (record.version == item.version
-                        and _projection_disagrees(record, domain_payload(item, kind), item.deleted_at))):
-                    raise HTTPException(409, detail={'code': 'SYNC_RECONCILIATION_REQUIRED',
-                        'message': 'Historical domain and sync data diverge; review both before merging.'})
+        if resource:
+            kind, resource_id = resource
+            # A patch must not increment the version and hide equal-version drift.
+            item = await db.get(DOMAIN_MODELS[kind], resource_id)
+            record = await db.get(SyncRecord, (owner_id, kind, resource_id))
+            if item is not None and item.owner_id == owner_id:
+                _reject_drift(record, item, kind)
+
+
+def _reject_drift(record: SyncRecord | None, item: Owned, kind: str) -> None:
+    if record and (record.version > item.version or (record.version == item.version
+            and _projection_disagrees(record, domain_payload(item, kind), item.deleted_at))):
+        raise HTTPException(409, detail={'code': 'SYNC_RECONCILIATION_REQUIRED',
+            'message': 'Historical domain and sync data diverge; review both before merging.'})
 
 
 def _projection_disagrees(record: SyncRecord, payload: dict[str, Any], deleted_at: datetime | None) -> bool:
@@ -172,14 +177,17 @@ async def ensure_domain_projection(db: AsyncSession, owner_id: str) -> None:
     records = {(row.resource_kind, row.resource_id): row for row in
                (await db.execute(select(SyncRecord).where(SyncRecord.owner_id == owner_id,
                     SyncRecord.resource_kind.in_(DOMAIN_MODELS)))).scalars()}
-    for kind, model in DOMAIN_MODELS.items():
-        rows = list((await db.execute(select(model).where(model.owner_id == owner_id))).scalars())
-        for item in rows:
-            record = records.get((kind, item.id))
-            if (record is None or record.version != item.version
-                    or bool(record.deleted_at) != bool(item.deleted_at)
-                    or record.payload != domain_payload(item, kind)):
-                await record_domain_change(db, item, track_task_clock=False)
+    rows = [(kind, item) for kind, model in DOMAIN_MODELS.items()
+            for item in (await db.execute(select(model).where(model.owner_id == owner_id))).scalars()]
+    # Sync reads fail closed on any drift, before this repair writes anything.
+    for kind, item in rows:
+        _reject_drift(records.get((kind, item.id)), item, kind)
+    for kind, item in rows:
+        record = records.get((kind, item.id))
+        if (record is None or record.version != item.version
+                or bool(record.deleted_at) != bool(item.deleted_at)
+                or record.payload != domain_payload(item, kind)):
+            await record_domain_change(db, item, track_task_clock=False)
     # Keep this derived-index commit separate from the repeatable-read snapshot
     # opened by bootstrap. PostgreSQL's owner lock preserves cursor commit order.
     await db.commit()
