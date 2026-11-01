@@ -34,3 +34,32 @@ async def test_secret_validation_redaction_and_protected_contracts(tmp_path, mon
             for operation in schema['paths'][path].values():
                 assert {'HTTPBearer': []} in operation['security']
     await engine.dispose()
+
+
+@pytest.mark.parametrize('patch', [
+    {'timezone': 'Mars/Olympus'}, {'timezone': None}, {'reply_delay_seconds': -1},
+    {'reply_delay_seconds': 901}, {'digest_time': '25:00'}, {'digest_time': '8:00'},
+])
+async def test_personal_settings_validation(setup, patch):
+    from test_telegram_business import PREFIX, connect
+    client, _, _ = setup
+    item = await connect(client)
+    response = await client.patch(PREFIX+'/settings', json={'version': item['version'], **patch})
+    assert response.status_code == 422
+
+
+async def test_personal_settings_roundtrip(setup):
+    from test_telegram_business import PREFIX, connect
+    client, _, _ = setup
+    item = await connect(client)
+    assert item['timezone'] == 'UTC' and item['digest_time'] is None and item['reply_delay_seconds'] == 90
+    values = {'timezone': 'Asia/Almaty', 'digest_time': '20:00', 'reply_delay_seconds': 120}
+    result = await client.patch(PREFIX+'/settings', json={'version': item['version'], **values})
+    assert result.status_code == 200
+    reloaded = (await client.get(PREFIX+'/status')).json()
+    assert all(reloaded[key] == value for key, value in values.items())
+    off = await client.patch(PREFIX+'/settings', json={'version': reloaded['version'], 'digest_time': None})
+    assert off.status_code == 200 and off.json()['digest_time'] is None
+
+
+pytest_plugins = ("test_telegram_business",)

@@ -126,3 +126,22 @@ def test_content_is_encrypted_at_rest(tmp_path):
         session.expire_all()
         assert session.get(TelegramBusinessMessage, "message").draft_text is None
     engine.dispose()
+
+
+def test_personal_upgrade_preserves_existing_connection_and_defaults(tmp_path):
+    database = tmp_path / 'personal-upgrade.db'
+    alembic(database, 'upgrade', 'head')
+    alembic(database, 'downgrade', '0024_device_pairing')
+    engine = sa.create_engine(f'sqlite:///{database}')
+    with engine.begin() as conn:
+        conn.execute(sa.text("INSERT INTO users (id, created_at, settings_json) VALUES ('owner', CURRENT_TIMESTAMP, '{}')"))
+        conn.execute(sa.text("""INSERT INTO telegram_integrations
+            (id, owner_id, bot_id, bot_username, bot_name, business_capable, enabled, auto_reply,
+             instructions, last_update_id, version, created_at, updated_at)
+            VALUES ('integration', 'owner', 1, 'bot', 'Bot', 1, 1, 0, 'encrypted-old-instructions', 42, 3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""))
+    alembic(database, 'upgrade', 'head')
+    alembic(database, 'check')
+    with engine.connect() as conn:
+        row = conn.execute(sa.text('SELECT timezone, reply_delay_seconds, digest_time, last_digest_on, status_text, status_until, last_update_id, instructions FROM telegram_integrations')).one()
+        assert tuple(row) == ('UTC', 90, None, None, None, None, 42, 'encrypted-old-instructions')
+    engine.dispose()

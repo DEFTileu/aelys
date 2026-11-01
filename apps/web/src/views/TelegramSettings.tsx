@@ -41,13 +41,16 @@ export function TelegramSettings() {
   const [instructions, setInstructions] = useState('')
   const [provider, setProvider] = useState('')
   const [model, setModel] = useState('')
+  const [timezone, setTimezone] = useState('UTC')
+  const [digestTime, setDigestTime] = useState('')
+  const [replyDelay, setReplyDelay] = useState(90)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const sendKeys = useRef<Record<string, { signature: string; key: string }>>({})
 
   const applyStatus = (value: TelegramStatus) => {
-    setStatus(value); setInstructions(value.instructions); setProvider(value.provider_id ?? ''); setModel(value.model ?? '')
+    setStatus(value); setInstructions(value.instructions); setProvider(value.provider_id ?? ''); setModel(value.model ?? ''); setTimezone(value.timezone); setDigestTime(value.digest_time ?? ''); setReplyDelay(value.reply_delay_seconds)
   }
   const load = useCallback(async () => {
     const client = getSharedApiClient()
@@ -89,7 +92,7 @@ export function TelegramSettings() {
     setDrafts((current) => ({ ...current, [item.id]: item.draft_text ?? '' }))
   }
   const send = (message: TelegramBusinessMessage) => {
-    if (message.direction !== 'inbound' || message.deleted_at) return
+    if (message.direction !== 'inbound' || message.deleted_at || ['no_reply', 'handoff'].includes(message.draft_status)) return
     const text = drafts[message.id] ?? message.draft_text ?? ''
     if (!text.trim()) return
     const signature = JSON.stringify([message.version, text])
@@ -140,6 +143,18 @@ export function TelegramSettings() {
         <button className="button button--quiet" disabled={busy || !status?.configured} onClick={() => void action(async () => { const result = await getSharedApiClient().syncTelegram(); await load(); setNotice(`Проверка завершена. Обработано: ${result.processed}.`) })}>Проверить подключение</button></div>
     </section>
     {status?.configured && <section className="settings-card">
+      <h2>Личные команды и сводка</h2>
+      <p>Один бот Aelys: /task, /note, /today, /busy 18:00 текст, /free, /help. Используйте отдельного от MySDU бота.</p>
+      <p>Сводка без AI, выключена по умолчанию. Оставьте время пустым для отключения.</p>
+      <p>Статус: {status.status_text ?? 'не задан'}{status.status_until ? ` · до ${status.status_until}` : ''}</p>
+      <form className="settings-form" onSubmit={event => { event.preventDefault(); void action(() => update({ timezone, digest_time: digestTime || null, reply_delay_seconds: replyDelay })) }}>
+        <label>Часовой пояс<input required maxLength={64} value={timezone} onChange={event => setTimezone(event.target.value)} /></label>
+        <label>Время сводки<input type="time" value={digestTime} onChange={event => setDigestTime(event.target.value)} /></label>
+        <label>Задержка ответа (секунды)<input type="number" min={0} max={900} required value={replyDelay} onChange={event => setReplyDelay(Number(event.target.value))} /></label>
+        <button className="button button--primary" type="submit" disabled={busy || status.version == null}>Сохранить личные настройки</button>
+      </form>
+    </section>}
+    {status?.configured && <section className="settings-card">
       <h2>Читать и отвечать автоматически</h2>
       <p>Когда режим включён, бот читает входящие сообщения в выбранных чатах Telegram Business и автоматически отвечает от вашего имени. Для этого подключите бота к нужным чатам и разрешите ответы в Telegram.</p>
       <p>Для автоматических ответов выберите внешний AI-провайдер с сохранённым API-ключом, укажите модель и задайте инструкции для помощника. Сообщения передаются выбранному AI-провайдеру для подготовки ответа.</p>
@@ -161,9 +176,10 @@ export function TelegramSettings() {
         {message.direction === 'owner' && <p>Ваше исходящее сообщение. Для ответа выберите входящее сообщение собеседника.</p>}
         {message.direction === 'inbound' && <>
           <p>Черновик: {message.draft_status}{message.draft_error_code ? ' · ошибка создания' : ''}</p>
-          <div className="settings-form"><label>Текст ответа<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
+          {message.owner_note && <p>Для владельца: {message.owner_note}</p>}
+          {!['no_reply', 'handoff'].includes(message.draft_status) && <div className="settings-form"><label>Текст ответа<textarea value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
             <div className="provider-actions"><button className="button button--quiet" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Создать черновик</button>
-              <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Отправить ответ</button></div></div>
+              <button className="button button--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Отправить ответ</button></div></div>}
         </>}
       </details>)}
     </section>}

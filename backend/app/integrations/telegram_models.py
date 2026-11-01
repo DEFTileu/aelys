@@ -1,5 +1,5 @@
 """Persistence for Telegram Business; raw updates and plaintext tokens are excluded."""
-from datetime import datetime
+from datetime import date, datetime
 
 from app.ai.crypto import decrypt_secret, encrypt_secret
 from app.core.db import Base
@@ -8,8 +8,10 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -42,6 +44,12 @@ class TelegramIntegration(Owned):
     business_capable: Mapped[bool] = mapped_column(Boolean)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_reply: Mapped[bool] = mapped_column(Boolean, default=False)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
+    digest_time: Mapped[str | None] = mapped_column(String(5))
+    last_digest_on: Mapped[date | None] = mapped_column(Date)
+    reply_delay_seconds: Mapped[int] = mapped_column(Integer, default=90, server_default="90")
+    status_text: Mapped[str | None] = mapped_column(EncryptedText())
+    status_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     instructions: Mapped[str] = mapped_column(EncryptedText(), default="")
     provider_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_providers.id"))
     model: Mapped[str | None] = mapped_column(String(200))
@@ -86,6 +94,7 @@ class TelegramBusinessMessage(Owned):
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     direction: Mapped[str] = mapped_column(String(16), default="inbound")
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owner_note: Mapped[str | None] = mapped_column(EncryptedText())
     draft_text: Mapped[str | None] = mapped_column(EncryptedText())
     draft_status: Mapped[str] = mapped_column(String(24), default="none")
     draft_error_code: Mapped[str | None] = mapped_column(String(80))

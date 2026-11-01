@@ -11,7 +11,7 @@ async def _owned_ref(db: AsyncSession, model: Any, item_id: str | None, owner_id
         return
     item = await db.get(model, item_id)
     if item is None or item.owner_id != owner_id or item.deleted_at is not None:
-        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Reference not found"})
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Referenced resource not found"})
 
 
 async def create_task(db: AsyncSession, owner_id: str, *, title: str, description: str = "",
