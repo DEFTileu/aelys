@@ -700,3 +700,23 @@ with read-only consent`). No acceptance depends on a claim of live credentials.
 | 5 — explicit memory | `b0942f1` |
 | 6 — work history/matrix | `a9068ec`, `723b4a0` |
 | 7 — readonly Google Calendar | `05e07e7` |
+
+
+## Post-review fixes
+
+Review found that the deterministic grammar from Stage 3 granted writes for only
+5 of 21 ordinary owner requests, including none with a comma after the verb. It
+is replaced by source-based scopes: owner text and voice get task, note, calendar
+and reminder tools, a quoted turn is read-only, and a file turn has no tools.
+Memory keeps its explicit remember/forget check. The tool model is now a
+trust-boundary assumption: an untrusted note read by a tool, or a matched memory
+fact, could steer a task edit on an owner turn; there is no delete tool and every
+edit is versioned. Facts and tool output still cannot enable memory tools.
+
+`lock_owner` no longer scans all owner rows on every write. A write checks drift
+only on the row it changes, so one historical mismatch cannot stop unrelated
+writes or transcription budget checks. Sync pull/bootstrap still fail closed on
+any drift. `test_fast_poll_failure_does_not_abort_remaining_chats` pins message
+order instead of racing whole-second Telegram dates.
+
+Live model behaviour with these wider scopes is part of the owner checklist.
