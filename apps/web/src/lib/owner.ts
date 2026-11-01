@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSharedApiClient } from './api'
+import { usePrefs } from './prefs'
 import type { ApiStatus } from '../types'
 
 export type Owner = { name: string | null; email: string | null }
@@ -14,9 +15,10 @@ export function displayNameFromEmail(email: string | null | undefined): string |
   return words.map((word) => word[0]!.toLocaleUpperCase() + word.slice(1)).join(' ')
 }
 
-/** The signed-in owner from GET /api/v1/me. The API has no display name yet, so the name is derived from the email. */
+/** The signed-in owner from GET /api/v1/me. The API has no display name yet, so the name is derived from the email unless the owner set one in Settings. */
 export function useOwner(apiStatus: ApiStatus): Owner {
   const [owner, setOwner] = useState<Owner>(NONE)
+  const { name } = usePrefs()
   useEffect(() => {
     if (apiStatus !== 'ready') return
     let active = true
@@ -25,5 +27,6 @@ export function useOwner(apiStatus: ApiStatus): Owner {
     }).catch(() => undefined)
     return () => { active = false }
   }, [apiStatus])
-  return owner
+  // A name chosen in Settings > Profile replaces the one derived from the email.
+  return name.trim() ? { ...owner, name: name.trim() } : owner
 }

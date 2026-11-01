@@ -4,6 +4,7 @@ import { WALLPAPERS, accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { getSharedApiClient } from '../lib/api'
 import { useOwner } from '../lib/owner'
+import { usePrefs, type Prefs } from '../lib/prefs'
 import { navigate } from '../lib/router'
 import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
@@ -34,13 +35,14 @@ function accentRgba(hex: string, alpha: number): string {
 }
 
 // Shell-root custom properties read by the glass surfaces. At 70% transparency the panels keep the design's .88 alpha.
-function shellVars({ transparency, blur, accent }: DesktopSettings, theme: 'light' | 'dark'): CSSProperties {
-  const alpha = Math.min(1, Math.max(0.6, 0.88 + (70 - transparency) / 300))
+function shellVars({ transparency, blur, accent }: DesktopSettings, theme: 'light' | 'dark', glass: Prefs['glass']): CSSProperties {
+  // With glass cards off the panels turn opaque and stop blurring the photo behind them.
+  const alpha = glass ? Math.min(1, Math.max(0.6, 0.88 + (70 - transparency) / 300)) : 1
   return {
     '--glass-bg': theme === 'dark' ? `rgba(32,29,40,${(alpha - 0.02).toFixed(3)})` : `rgba(255,255,255,${alpha.toFixed(3)})`,
     '--sidebar-bg': theme === 'dark' ? '#18161E' : `rgba(250,247,244,${(alpha - 0.06).toFixed(3)})`,
-    '--glass-blur': `${blur / 2}px`,
-    '--sidebar-blur': `${blur * 0.6}px`,
+    '--glass-blur': glass ? `${blur / 2}px` : '0px',
+    '--sidebar-blur': glass ? `${blur * 0.6}px` : '0px',
     '--accent': accentHex(accent),
     '--accent-soft': accentRgba(accentHex(accent), 0.12),
   } as CSSProperties
@@ -114,6 +116,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
   const counts = useNavCounts(apiStatus, route)
   const owner = useOwner(apiStatus)
   const settings = useDesktopState()
+  const { glass, greeting } = usePrefs()
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -144,7 +147,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
     </button>
   }
 
-  return <div className={mobile ? `mobile-shell${isHome ? ' mobile-shell--home' : ''}` : 'shell-root actual-desktop'} data-screen-label={screen ?? route} style={mobile ? shellVars(settings, theme) : { ...shellVars(settings, theme), '--side-w': `${sideW}px`, gridTemplateColumns: `${sideW}px minmax(0,1fr)` } as CSSProperties}>
+  return <div className={mobile ? `mobile-shell${isHome ? ' mobile-shell--home' : ''}` : 'shell-root actual-desktop'} data-screen-label={screen ?? route} style={mobile ? shellVars(settings, theme, glass) : { ...shellVars(settings, theme, glass), '--side-w': `${sideW}px`, gridTemplateColumns: `${sideW}px minmax(0,1fr)` } as CSSProperties}>
         {mobile && <MobileShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={onToggleTheme} chromeOnly>{null}</MobileShell>}
         {!mobile && <aside className="shell-sidebar" aria-label="Main navigation">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px 24px' }}>
@@ -189,7 +192,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
           {!mobile && (isHome ? <div className="shell-hero" style={{ height: showGreeting ? 276 : 116, paddingTop: 56 }}>
             {showGreeting && <>
               <div style={{ fontSize: 14, lineHeight: '20px', fontWeight: 500 }}>{formatDate(new Date())}</div>
-              <h1 style={{ margin: '4px 0 0', fontSize: 36, lineHeight: '44px', fontWeight: 700, letterSpacing: '-.02em' }}>{greetingForHour(new Date().getHours())}, {owner.name ?? 'there'}</h1>
+              <h1 style={{ margin: '4px 0 0', fontSize: 36, lineHeight: '44px', fontWeight: 700, letterSpacing: '-.02em' }}>{greeting === 'hello' ? 'Hello' : greetingForHour(new Date().getHours())}, {owner.name ?? 'there'}</h1>
               <div style={{ fontSize: 14, lineHeight: '22px', marginTop: 2 }}>A calm day creates bigger results.</div>
             </>}
           </div> : <div className="shell-hero" style={{ height: 140, paddingTop: 32 }}>

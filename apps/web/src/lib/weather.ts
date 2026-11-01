@@ -115,6 +115,10 @@ export function disableWeather() {
   generation += 1
   update({ location: null, forecast: null, status: 'empty', notice: '', locating: false }, true)
 }
+// Stops automatic detection but keeps the last detected place as a fixed city.
+export function keepWeatherLocation() {
+  if (state.location?.mode === 'auto') update({ location: { ...state.location, mode: 'city' } }, true)
+}
 export async function detectWeatherLocation() {
   if (!navigator.geolocation) { update({ notice: 'This browser does not support geolocation. Choose a city manually.' }); return }
   const run = ++generation

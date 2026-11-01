@@ -42,12 +42,10 @@ export const themeOptions: ThemeOption[] = [
 export const accentColors: { name: string; color: string }[] = [
   { name: 'Violet', color: '#6A4CF2' },
   { name: 'Blue', color: '#2F6FE4' },
-  { name: 'Cyan', color: '#0FA3B8' },
   { name: 'Green', color: '#14966C' },
-  { name: 'Orange', color: '#EA7A12' },
-  { name: 'Pink', color: '#D9367E' },
-  { name: 'Red', color: '#D93636' },
-  { name: 'Multicolor', color: 'conic-gradient(#F87171,#FBBF24,#34D399,#60A5FA,#A78BFA,#F87171)' },
+  { name: 'Coral', color: '#F06A58' },
+  { name: 'Rose', color: '#D9468F' },
+  { name: 'Graphite', color: '#1C1B22' },
 ]
 
 // Wallpapers in public/backgrounds/aelys; the stored `wallpaper` setting is an index into this list.

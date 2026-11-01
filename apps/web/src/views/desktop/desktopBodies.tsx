@@ -7,6 +7,7 @@ import { ACCENT, FOCUS_SESSION_SECONDS, accentOf, type AccentKey } from '../../d
 import { ageLabel, dayLabel } from '../../lib/format'
 import { formatMoney, sumDecimals } from '../../lib/money'
 import { navigate } from '../../lib/router'
+import { getPrefs, usePrefs } from '../../lib/prefs'
 import { openWeatherSettings, refreshWeather, useWeather, weatherDescription } from '../../lib/weather'
 import type { RoutePath } from '../../types'
 import type { SizeKey } from './homeLayout'
@@ -129,10 +130,13 @@ function WeatherIcon({ code, day = true, size = 16 }: { code: number; day?: bool
   const Icon: AelysIconComponent = code === 0 ? day ? Sun : Moon : code <= 2 ? CloudSun : code <= 3 ? Cloud : code <= 48 ? CloudFog : code <= 67 ? CloudRain : code <= 77 ? CloudSnow : code <= 82 ? CloudRain : code <= 86 ? CloudSnow : CloudLightning
   return <Icon size={size} aria-hidden="true" />
 }
-const degrees = (value: number) => `${value > 0 ? '+' : ''}${Math.round(value)}°`
+// Reads the unit at render time; WeatherBody subscribes through usePrefs so a change re-renders it.
+const inUnits = (celsius: number) => getPrefs().units === 'f' ? celsius * 9 / 5 + 32 : celsius
+const degrees = (celsius: number) => { const value = getPrefs().units === 'f' ? celsius * 9 / 5 + 32 : celsius; return `${value > 0 ? '+' : ''}${Math.round(value)}°` }
 
 function WeatherBody({ size }: BodyProps) {
   const { location, forecast, status } = useWeather()
+  usePrefs()
   if (!location) return <div className="dw-empty"><button type="button" className="home-btn dw-action" onClick={openWeatherSettings}><MapPin size={16} aria-hidden="true" />Set location</button></div>
   if (!forecast) return status === 'loading' ? <p role="status" className="dw-weather">Loading weather…</p> : <div className="dw-empty"><span>Can’t load</span><button type="button" className="home-btn dw-action" onClick={() => void refreshWeather(true)}>Retry</button></div>
   // Next hours every two hours, then tomorrow, matching the design's four columns.
@@ -140,7 +144,7 @@ function WeatherBody({ size }: BodyProps) {
   const columns = [...[0, 2, 4].flatMap((index) => hours[index] ? [{ label: hhmm(new Date(hours[index]!.time.replace('Z', ''))), code: hours[index]!.code, temperature: hours[index]!.temperature, day: true }] : []), ...(forecast.days[1] ? [{ label: new Date(forecast.days[1].date).toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' }), code: forecast.days[1].code, temperature: forecast.days[1].max, day: true }] : [])]
   return <div className="dw-weather">
     <div className="dw-weather-now"><WeatherIcon code={forecast.code} day={forecast.isDay} size={44} /><div><div className="dw-weather-temp">{degrees(forecast.temperature)}</div><div className="dw-weather-desc">{weatherDescription(forecast.code)}</div></div></div>
-    {tall(size) && <div className="dw-weather-days">{forecast.days.slice(0, 5).map((day) => <div key={day.date}><span>{new Date(day.date).toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</span><WeatherIcon code={day.code} size={16} /><span>{Math.round(day.max)}° / {Math.round(day.min)}°</span></div>)}</div>}
+    {tall(size) && <div className="dw-weather-days">{forecast.days.slice(0, 5).map((day) => <div key={day.date}><span>{new Date(day.date).toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</span><WeatherIcon code={day.code} size={16} /><span>{Math.round(inUnits(day.max))}° / {Math.round(inUnits(day.min))}°</span></div>)}</div>}
     <div className="dw-weather-hours">{columns.map((column) => <div key={column.label}><span>{column.label}</span><WeatherIcon code={column.code} day={column.day} /><b>{degrees(column.temperature)}</b></div>)}</div>
   </div>
 }
