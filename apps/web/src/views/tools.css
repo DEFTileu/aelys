@@ -83,3 +83,11 @@
   .tl-ring__time { font-size: 56px; }
   .tl-task { min-width: 0; width: 100%; }
 }
+
+/* Dark theme: the design maps these light literals to its dark surfaces. */
+:root[data-theme='dark'] .tl-seg, :root[data-theme='dark'] .tl-pill { background: #2A2733; }
+:root[data-theme='dark'] .tl-seg button[aria-selected="true"] { background: #3A3546; color: var(--ink, #F1EEF6); box-shadow: none; }
+:root[data-theme='dark'] .tl-chips button { background: #2A2733; color: var(--ink, #F1EEF6); }
+:root[data-theme='dark'] .tl-chips button[aria-checked="true"] { background: #F1EEF6; color: #1C1B22; }
+:root[data-theme='dark'] .tl-sess { border-top-color: var(--line, #34303D); }
+:root[data-theme='dark'] .tl-session__icon { background: #2A2733; }
