@@ -182,3 +182,11 @@
   .actual-mail-tools[open] { position:absolute; top:0; right:0; width:min(540px,calc(100vw - 300px)); max-height:70dvh; overflow:auto; border:1px solid var(--amf-border); box-shadow:0 12px 36px #140a1e26; }
   .actual-mail-grid { height:calc(100dvh - 160px); }
 }
+
+/* The mail tools disclosure sits over the photo band: draw it as a button like Refresh. */
+.actual-mail > .actual-topline .actual-mail-tools > summary { display:flex; align-items:center; height:40px; padding:0 14px; border:1px solid var(--line-strong); border-radius:12px; background:var(--surface-solid); color:var(--ink); font-weight:500; list-style:none; }
+.actual-mail > .actual-topline .actual-mail-tools > summary::-webkit-details-marker { display:none; }
+@media(min-width:701px) {
+  .actual-finance { position:relative; }
+  .actual-finance > .actual-topline { position:absolute; top:-56px; right:28px; z-index:4; margin:0; }
+}

@@ -1,6 +1,7 @@
 .knowledge-view { padding:0 28px 28px; color:var(--ink); }
 .knowledge-view * { box-sizing:border-box; }
 .knowledge-status { display:flex; justify-content:flex-end; margin-bottom:10px; }
+.knowledge-status:empty { display:none; }
 .knowledge-grid { display:grid; grid-template-columns:300px minmax(0,1fr); gap:16px; height:calc(100vh - 168px); min-height:560px; }
 .knowledge-card { min-width:0; min-height:0; border:1px solid var(--line); border-radius:20px; background:var(--surface); box-shadow:var(--shadow); backdrop-filter:blur(var(--glass-blur,20px)); overflow:hidden; }
 .knowledge-list { display:flex; flex-direction:column; padding:12px; }

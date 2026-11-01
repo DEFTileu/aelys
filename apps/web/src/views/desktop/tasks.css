@@ -239,3 +239,17 @@
 .tasks-empty small { font-size:12px; color:var(--muted); }
 @media (max-width:700px) { .tasks-item { grid-template-columns:28px minmax(0,1fr) auto; } .tasks-item .tasks-check { grid-row:1 / span 2; } }
 @media (max-width:640px) { .tasks-top-row .tasks-tools { gap:6px; } .tasks-top-row .tasks-navigation { padding-right:150px; } .tasks-filter-popover { right:0; max-width:calc(100vw - 32px); } }
+
+/* ACTUAL desktop: segmented track, count pills and empty state. */
+@media (min-width:701px) {
+  .tasks-navigation { background:#EFEAE5; }
+  .tasks-navigation button { min-height:34px; font-weight:500; }
+  .tasks-navigation button[aria-selected="true"] { font-weight:500; }
+  .tasks-navigation b { min-width:20px; height:18px; padding:0 6px; border-radius:9px; background:rgba(28,27,34,.07); font-size:11px; line-height:18px; font-weight:600; text-align:center; }
+  .tasks-empty { padding:48px 24px; gap:8px; }
+  .tasks-empty p { font-size:16px; line-height:24px; font-weight:600; }
+  .tasks-empty small { max-width:320px; font-size:13px; line-height:18px; text-align:center; }
+}
+:root[data-theme='dark'] .tasks-navigation { background:var(--chip); }
+:root[data-theme='dark'] .tasks-navigation b { background:rgba(255,255,255,.1); }
+:root[data-theme='dark'] .tasks-quick { border-color:var(--line); box-shadow:none; }
