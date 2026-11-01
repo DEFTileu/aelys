@@ -25,27 +25,27 @@ describe('automatic weather wallpapers', () => {
   it.each([[0, 'clear'], [1, 'clear'], [2, 'cloudy'], [3, 'cloudy'], [45, 'fog'], [48, 'fog'], [51, 'rain'], [67, 'rain'], [82, 'rain'], [95, 'rain'], [99, 'rain'], [71, 'snow'], [77, 'snow'], [85, 'snow'], [86, 'snow'], [-1, 'unknown'], [NaN, 'unknown'], [4, 'unknown']])('maps WMO %s to %s', (code, condition) => { expect(backgroundCondition(Number(code))).toBe(condition) })
 
   it('uses city time and daylight, keeps snow in the morning and ignores old forecasts', () => {
-    expect(forecastBackgroundUrl(forecast(61))).toContain('06_day_rain.jpg')
-    expect(forecastBackgroundUrl(forecast(73, false))).toContain('13_night_snow.jpg')
-    expect(forecastBackgroundUrl(forecast(3))).toContain('05_day_cloudy.jpg')
+    expect(forecastBackgroundUrl(forecast(61))).toContain('rainy-boulevard-beneath-snowy-peaks.png')
+    expect(forecastBackgroundUrl(forecast(73, false))).toContain('blizzard-over-the-alpine-gondola.png')
+    expect(forecastBackgroundUrl(forecast(3))).toContain('alpine-skyline-cityscape.png')
     const morning = new Date('2026-11-01T02:00:00Z')
-    expect(forecastBackgroundUrl({ ...forecast(73), fetchedAt: morning.getTime() }, morning)).toContain('07_day_snow.jpg')
-    expect(forecastBackgroundUrl({ ...forecast(61), fetchedAt: Date.now() - 2 * 86_400_000 })).toContain('04_day_clear.jpg')
+    expect(forecastBackgroundUrl({ ...forecast(73), fetchedAt: morning.getTime() }, morning)).toContain('snowy-alpine-ice-arena.png')
+    expect(forecastBackgroundUrl({ ...forecast(61), fetchedAt: Date.now() - 2 * 86_400_000 })).toContain('fountains-beneath-snow-capped-mountains.png')
   })
 
   it('updates on weather changes, clock transitions and returning from sleep', async () => {
     weather.forecast = forecast(61)
     await act(async () => root!.render(<Wallpaper />))
-    expect(host.textContent).toContain('06_day_rain.jpg')
+    expect(host.textContent).toContain('rainy-boulevard-beneath-snowy-peaks.png')
     weather.forecast = forecast(73, false)
     await act(async () => root!.render(<Wallpaper />))
-    expect(host.textContent).toContain('13_night_snow.jpg')
+    expect(host.textContent).toContain('blizzard-over-the-alpine-gondola.png')
     weather.forecast = null
     vi.setSystemTime(new Date(2026, 10, 1, 16, 59, 30))
     await act(async () => window.dispatchEvent(new Event('focus')))
-    expect(host.textContent).toContain('04_day_clear.jpg')
+    expect(host.textContent).toContain('fountains-beneath-snow-capped-mountains.png')
     await act(async () => vi.advanceTimersByTime(60_000))
-    expect(host.textContent).toContain('08_evening_sunset.jpg')
+    expect(host.textContent).toContain('sunset-garden-avenue-with-alpine-peaks.png')
   })
 
   it('preserves uploaded/manual choices and allows enabling automatic mode again', async () => {
@@ -53,7 +53,7 @@ describe('automatic weather wallpapers', () => {
     await act(async () => root!.render(<Wallpaper />))
     expect(host.textContent).toBe('data:image/png;base64,example')
     await act(async () => setSettings({ wallpaperMode: 'weather' }))
-    expect(host.textContent).toContain('/backgrounds/weather/')
+    expect(host.textContent).toContain('/backgrounds/originals/')
     expect(JSON.parse(localStorage.getItem('aelys.desktop.state.v1')!)).toMatchObject({ wallpaperMode: 'weather', customWallpaper: 'data:image/png;base64,example' })
   })
 

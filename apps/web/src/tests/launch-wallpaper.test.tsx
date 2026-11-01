@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { LaunchIntro } from '../components/LaunchIntro'
 
-const wallpaper = vi.hoisted(() => ({ url: '/backgrounds/weather/11_night_clear.jpg' }))
+const wallpaper = vi.hoisted(() => ({ url: '/backgrounds/originals/glittering-city-beneath-snowy-peaks.png' }))
 vi.mock('../lib/wallpaper', () => ({ useWallpaper: () => wallpaper.url }))
 let root: ReturnType<typeof createRoot> | undefined
 
@@ -15,15 +15,15 @@ it('updates the launch and sign-in scenery without replaying the intro or losing
   const render = () => root!.render(<LaunchIntro resolved locked><input aria-label="Username" defaultValue="1" /></LaunchIntro>)
   await act(async () => render())
   expect(host.querySelector('.launch-intro')?.classList.contains('launch-intro--intro')).toBe(true)
-  expect(host.querySelector<HTMLElement>('.launch-intro__scenery')!.style.backgroundImage).toContain('11_night_clear.jpg')
+  expect(host.querySelector<HTMLElement>('.launch-intro__scenery')!.style.backgroundImage).toContain('glittering-city-beneath-snowy-peaks.png')
   await act(async () => vi.advanceTimersByTime(2700))
   const field = host.querySelector<HTMLInputElement>('input')!
   expect(field.closest('[inert]')).toBeNull()
   const scenery = host.querySelector('.launch-intro__scenery')
-  wallpaper.url = '/backgrounds/weather/12_night_rain.jpg'
+  wallpaper.url = '/backgrounds/originals/rainy-boulevard-beneath-misty-mountains.png'
   await act(async () => render())
   expect(host.querySelector('.launch-intro__scenery')).toBe(scenery)
-  expect((scenery as HTMLElement).style.backgroundImage).toContain('12_night_rain.jpg')
+  expect((scenery as HTMLElement).style.backgroundImage).toContain('rainy-boulevard-beneath-misty-mountains.png')
   expect(host.querySelector('.launch-intro')?.classList.contains('launch-intro--lock')).toBe(true)
   expect(host.querySelector('input')).toBe(field)
   expect(field.value).toBe('1')

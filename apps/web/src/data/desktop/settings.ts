@@ -48,8 +48,8 @@ export const accentColors: { name: string; color: string }[] = [
   { name: 'Graphite', color: '#1C1B22' },
 ]
 
-// Wallpapers in public/backgrounds/aelys; the stored `wallpaper` setting is an index into this list.
-const LEGACY_WALLPAPERS = [
+// Original PNGs; keep the existing scene order for persisted wallpaper indexes.
+const ORIGINAL_WALLPAPERS = [
   'golden-sunrise-over-mountain-cityscape',
   'sunset-garden-avenue-with-alpine-peaks',
   'alpine-skyline-cityscape',
@@ -62,10 +62,9 @@ const LEGACY_WALLPAPERS = [
   'rainy-park-path-to-the-ornate-cathedral',
   'snowy-alpine-ice-arena',
   'blizzard-over-the-alpine-gondola',
-].map((name) => `/backgrounds/aelys/${name}.jpg`)
+].map((name) => `/backgrounds/originals/${name}.png`)
 
-// Keep persisted wallpaper indexes stable; the default tile adopts ACTUAL artwork.
-export const WALLPAPERS = ['/backgrounds/aelys/actual-home.png', ...LEGACY_WALLPAPERS.slice(1)]
+export const WALLPAPERS = ORIGINAL_WALLPAPERS
 
 // The design shows five tiles and a "More" tile that reveals the rest.
 export const VISIBLE_WALLPAPERS = 5

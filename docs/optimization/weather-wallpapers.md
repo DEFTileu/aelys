@@ -1,5 +1,22 @@
 # Weather-based wallpapers
 
+Current assets (owner requested 2026-11-01): the automatic scenes and manual
+wallpaper gallery now use the 12 original PNGs from `Downloads/Aelys_backgrounds`,
+bundled under `public/backgrounds/originals`. All PNGs are 1672×941 and were copied
+byte-for-byte; they are not 4K. Previous 13 JPG previews are no longer referenced
+by the active selector or gallery. The history below describes earlier checks.
+
+The 13 weather/time slots retain their IDs. Since the originals are a different
+12-scene set, some slots share an image: morning/night rain use the misty rainy
+boulevard, evening snow shares the snowy ice arena, and night snow uses the
+blizzard scene. These are weather-appropriate artistic fallbacks, not guaranteed
+exact representations of every hour. All 12 originals are selectable manually;
+the existing gallery scene order and saved indexes are preserved.
+
+Replacement validation: all 12 source/installed/HTTP-served PNG hashes match;
+web typecheck, 30 relevant tests across 4 files and production build pass.
+Browser checked the original night scene on launch and Home/Weather.
+
 Task: Phase 3 / Dashboard personal modules. Owner request (2026-11-01): use the
 wallpaper images from Downloads and change them with the weather.
 
