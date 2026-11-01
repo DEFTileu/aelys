@@ -2,6 +2,7 @@
 // Task and settings fields persist to localStorage; the pending question and Customize flag are per session.
 import { useSyncExternalStore } from 'react'
 import { navigate } from './router'
+import type { KnowledgeScope } from '@aelys/shared'
 
 const STORAGE_KEY = 'aelys.desktop.state.v1'
 
@@ -11,6 +12,7 @@ export type DesktopState = DesktopSettings & {
   // Five Today tasks, by position; Home and Tasks read the same slots.
   done: boolean[]
   homeToggles: boolean[]
+  pendingKnowledge?: KnowledgeScope
   pendingAsk: string | null
   customizeHome: boolean
 }
@@ -84,14 +86,14 @@ export function setHomeToggle(index: number, value: boolean) {
 }
 
 // Hands the question to ChatScreen, which takes it once; any Ask Aelys surface can call this.
-export function askAelys(text: string) {
-  update({ pendingAsk: text })
+export function askAelys(text: string, knowledge?: KnowledgeScope) {
+  update({ pendingAsk: text, pendingKnowledge: knowledge })
   navigate('/ai')
 }
 
 export function takePendingAsk(): string | null {
   const text = state.pendingAsk
-  if (text) update({ pendingAsk: null })
+  if (text) update({ pendingAsk: null, pendingKnowledge: undefined })
   return text
 }
 

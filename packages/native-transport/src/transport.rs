@@ -641,6 +641,16 @@ pub struct TaskInput {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NoteInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    knowledge_enabled: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "present_optional",
+        skip_serializing_if = "Option::is_none"
+    )]
+    folder: Option<Option<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tags: Option<Vec<String>>,
     title: String,
     #[serde(default)]
     markdown_body: String,
@@ -685,10 +695,28 @@ fn valid_project_patch(project: &ProjectPatchInput) -> bool {
             .as_deref()
             .is_none_or(|value| value.len() <= 20)
 }
+fn present_optional<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
 fn valid_note(note: &NoteInput) -> bool {
     !note.title.trim().is_empty()
         && note.title.len() <= 300
         && note.markdown_body.len() <= 500_000
+        && note.folder.as_ref().is_none_or(|value| {
+            value
+                .as_ref()
+                .is_none_or(|folder| folder.chars().count() <= 120)
+        })
+        && note.tags.as_ref().is_none_or(|tags| {
+            tags.len() <= 50
+                && tags
+                    .iter()
+                    .all(|tag| !tag.trim().is_empty() && tag.chars().count() <= 80)
+        })
         && note.parent_id.as_deref().is_none_or(valid_id)
         && note.project_id.as_deref().is_none_or(valid_id)
 }
@@ -1864,6 +1892,12 @@ struct Deleted {
 }
 #[derive(Serialize, Deserialize)]
 struct Note {
+    #[serde(default)]
+    knowledge_enabled: bool,
+    #[serde(default)]
+    folder: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
     id: String,
     version: u64,
     title: String,
@@ -2200,6 +2234,8 @@ struct AIProvider {
 }
 #[derive(Serialize, Deserialize)]
 struct AIConversation {
+    #[serde(default)]
+    tool_scope_json: HashMap<String, Value>,
     id: String,
     owner_id: String,
     project_id: Option<String>,
@@ -2212,7 +2248,8 @@ struct AIMessage {
     conversation_id: String,
     role: String,
     content: String,
-    source_refs: Vec<Value>,
+    #[serde(default, alias = "source_refs")]
+    source_refs_json: Vec<Value>,
     created_at: String,
 }
 #[derive(Serialize, Deserialize)]
@@ -2246,6 +2283,8 @@ pub enum AIStreamMessage {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AIConversationInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    knowledge: Option<KnowledgeScopeInput>,
     #[serde(default = "default_conversation_title")]
     title: String,
     project_id: Option<String>,
@@ -2266,6 +2305,8 @@ pub struct AIMessageInput {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AIRunInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    knowledge: Option<KnowledgeScopeInput>,
     conversation_id: String,
     message: String,
     #[serde(default)]
@@ -2274,8 +2315,22 @@ pub struct AIRunInput {
     tool_scope: HashMap<String, Value>,
     idempotency_key: String,
 }
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeScopeInput {
+    #[serde(default)]
+    note_ids: Vec<String>,
+    #[serde(default)]
+    project_id: Option<String>,
+}
+fn valid_knowledge_scope(value: &KnowledgeScopeInput) -> bool {
+    value.note_ids.len() <= 20
+        && value.note_ids.iter().all(|id| valid_id(id))
+        && value.project_id.as_deref().is_none_or(valid_id)
+}
 fn valid_ai_run(value: &AIRunInput) -> bool {
-    valid_id(&value.conversation_id)
+    value.knowledge.as_ref().is_none_or(valid_knowledge_scope)
+        && valid_id(&value.conversation_id)
         && !value.message.trim().is_empty()
         && value.message.len() <= 500_000
         && !value.idempotency_key.is_empty()
@@ -2284,7 +2339,8 @@ fn valid_ai_run(value: &AIRunInput) -> bool {
         && value.tool_scope.len() <= 20
 }
 fn valid_ai_conversation(value: &AIConversationInput) -> bool {
-    value.title.len() <= 300
+    value.knowledge.as_ref().is_none_or(valid_knowledge_scope)
+        && value.title.len() <= 300
         && value.project_id.as_deref().is_none_or(valid_id)
         && value.tool_scope.len() <= 20
 }
@@ -2772,7 +2828,7 @@ mod tests {
 
     #[test]
     fn note_mutation_http_responses_are_single_objects() {
-        let note = json!({"id":"note-1","title":"Note","markdown_body":"Body","parent_id":null,"project_id":null,"version":1});
+        let note = json!({"id":"note-1","title":"Note","markdown_body":"Body","parent_id":null,"project_id":null,"version":1,"knowledge_enabled":false,"folder":null,"tags":[]});
         let mut backend_response = note.clone();
         backend_response["server_only"] = json!("excluded");
         assert_domain_http_response(
@@ -3005,6 +3061,28 @@ mod tests {
         assert_eq!(path, "/api/v1/notifications/notification-1/read");
         assert!(body.is_none());
     }
+    #[test]
+    fn knowledge_consent_and_scope_survive_bounded_native_transport() {
+        let operation: Operation = serde_json::from_value(json!({
+            "type":"note_patch", "id":"note-1", "version":2,
+            "note":{"title":"Source", "markdown_body":"Body", "knowledge_enabled":true, "folder":"Docs", "tags":["reference"]}
+        })).unwrap();
+        let (_, _, body) = route(operation).unwrap();
+        assert_eq!(body.unwrap()["knowledge_enabled"], true);
+        let scope = json!({"note_ids":["note-1"], "project_id":null});
+        let operation: Operation = serde_json::from_value(json!({
+            "type":"ai_run_create", "run":{"conversation_id":"chat-1", "message":"Explain", "idempotency_key":"rag-1", "knowledge":scope}
+        })).unwrap();
+        let (_, _, body) = route(operation).unwrap();
+        assert_eq!(body.unwrap()["knowledge"]["note_ids"][0], "note-1");
+        let note = sanitize_response("note", json!({"id":"note-1","version":2,"title":"Source","markdown_body":"Body","parent_id":null,"project_id":null,"knowledge_enabled":true})).unwrap();
+        assert_eq!(note["knowledge_enabled"], true);
+        assert!(serde_json::from_value::<KnowledgeScopeInput>(
+            json!({"note_ids":[],"arbitrary_path":"/tmp"})
+        )
+        .is_err());
+    }
+
     #[test]
     fn ai_run_lifecycle_is_typed_without_provider_secrets() {
         let run: Operation = serde_json::from_value(json!({

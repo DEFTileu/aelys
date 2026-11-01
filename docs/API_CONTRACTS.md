@@ -593,3 +593,9 @@ Errors include `503 CALENDAR_NOT_CONFIGURED`, `404 CALENDAR_NOT_CONNECTED`,
 `422 CALENDAR_INVALID_DATA`/`CALENDAR_SYNC_LIMIT`, `502 CALENDAR_UNAVAILABLE` and
 `403 POLICY_DENIED`. HTTP 410 is consumed internally by one full refetch. Provider
 payloads and token-bearing URLs are never returned in error messages or logs.
+
+## Knowledge retrieval (2026-11-01)
+
+See [KNOWLEDGE_RAG.md](KNOWLEDGE_RAG.md) for implemented consent, bounded retrieval,
+read-only AI scope, source events, migration and acceptance limits. The generated
+OpenAPI includes `KnowledgeScope`, `KnowledgeQuery` and `KnowledgeSource`.
