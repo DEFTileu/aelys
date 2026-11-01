@@ -21,13 +21,13 @@ describe('AutomationView', () => {
     client.automations.mockResolvedValue([rule])
     client.automationRuns.mockResolvedValue([{ id: 'e1', rule_id: 'r1', rule_name: 'Capture', event_id: 'x', status: 'blocked_by_policy', attempt: 1, started_at: '2026-10-30T10:00:00Z', finished_at: null, error_code: 'POLICY_DENIED' }])
     await mount(<AutomationView apiStatus="ready" />)
-    expect(host.textContent).toContain('When'); expect(host.textContent).toContain('task.created'); expect(host.textContent).toContain('create_note'); expect(host.textContent).toContain('policy-1')
+    expect(host.textContent).toContain('When'); expect(host.textContent).toContain('Task created'); expect(host.textContent).toContain('create_note'); expect(host.textContent).toContain('policy-1')
     expect(host.textContent).toContain('Last run'); expect(host.textContent).toContain('Blocked by policy')
     expect(host.textContent).not.toContain('private-action-data')
   })
   it('shows honest empty states', async () => {
     await mount(<AutomationView apiStatus="ready" />)
-    expect(host.textContent).toContain('No automations configured'); expect(host.textContent).toContain('No runs recorded yet')
+    expect(host.textContent).toContain('Let Aelys handle the routine'); expect(host.textContent).toContain('Start from a template'); expect(host.textContent).not.toContain('Recent runs')
   })
   it('labels every real run status', async () => {
     client.automations.mockResolvedValue([rule])
@@ -49,7 +49,7 @@ describe('AutomationView', () => {
     await describe_('Make a note when a task is created')
     expect(client.draftAutomation).toHaveBeenCalledWith({ description: 'Make a note when a task is created' }, expect.objectContaining({ queueOnOffline: false }))
     const review = host.querySelector('[aria-label="Review rule"]')!.textContent!
-    expect(review).toContain('task.created'); expect(review).toContain('create_note'); expect(review).toContain('Allowed'); expect(review).toContain('Drafted by AI'); expect(client.createAutomation).not.toHaveBeenCalled()
+    expect(review).toContain('Task created'); expect(review).toContain('create_note'); expect(review).toContain('Allowed'); expect(review).toContain('Drafted by AI'); expect(client.createAutomation).not.toHaveBeenCalled()
     await press('Save rule')
     expect(client.createAutomation).toHaveBeenCalledWith(expect.objectContaining({ name: 'Note new tasks', reviewed_draft: true }), expect.objectContaining({ queueOnOffline: false }))
     expect(host.querySelector('[aria-label="Review rule"]')).toBeNull()
@@ -63,6 +63,13 @@ describe('AutomationView', () => {
     await press('Cancel'); expect(host.querySelector('[aria-label="Review rule"]')).toBeNull()
     client.draftAutomation.mockRejectedValueOnce(new ApiError(422, 'DRAFT_UNSUPPORTED', 'This rule is not supported.'))
     await describe_('gibberish'); expect(host.textContent).toContain('DRAFT_UNSUPPORTED: This rule is not supported.')
+  })
+  it('drafts a template through the draft API and saves only after review', async () => {
+    client.draftAutomation.mockResolvedValue({ ...draft, source: 'structured' }); client.createAutomation.mockResolvedValue({})
+    await mount(<AutomationView apiStatus="ready" />)
+    await press('Use')
+    expect(client.draftAutomation).toHaveBeenCalledWith({ rule: expect.objectContaining({ name: 'Celebrate finished tasks', trigger_kind: 'task.completed' }) }, expect.objectContaining({ queueOnOffline: false }))
+    expect(client.createAutomation).not.toHaveBeenCalled(); expect(host.textContent).toContain('Review before saving')
   })
   it('toggles a rule only through the API and refreshes', async () => {
     client.automations.mockResolvedValue([rule]); client.updateAutomation.mockResolvedValue({})

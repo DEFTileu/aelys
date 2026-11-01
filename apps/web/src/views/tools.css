@@ -50,27 +50,6 @@
 .tl-week i { display: block; width: 100%; border-radius: 6px; }
 .tl-week span { font-size: 11px; color: var(--muted, #625d69); }
 
-/* Automation */
-.tl-ai { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 8px 0 16px; border-radius: 16px; background: var(--surface-solid, #fff); border: 1px solid var(--glass-edge, #ede8e3); }
-.tl-ai svg { color: var(--purple, #6a4cf2); flex: none; }
-.tl-ai input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; color: inherit; }
-.tl-ai input:disabled { cursor: not-allowed; }
-.tl-ai button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--purple, #6a4cf2); color: #fff; display: flex; align-items: center; justify-content: center; }
-.tl-ai button:disabled { opacity: .45; cursor: not-allowed; }
-.tl-rule { display: flex; flex-direction: column; gap: 12px; }
-.tl-rule--off { opacity: .6; }
-.tl-rule__name { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
-.tl-sentence { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; }
-.tl-sentence b { color: var(--muted, #625d69); font-weight: 600; }
-.tl-chip { height: 30px; padding: 0 10px; border-radius: 10px; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
-.tl-chip--when { background: #e4eefd; color: #2f6fe4; }
-.tl-chip--then { background: #eee8fd; color: #5132d6; }
-.tl-chip--policy { height: 26px; padding: 0 8px; border-radius: 8px; background: #f7f4f1; color: var(--muted, #625d69); font-size: 12px; margin-left: auto; }
-.tl-run { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid #f1edea; }
-.tl-run:first-of-type { border-top: 0; }
-.tl-run__mark { flex: none; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-.tl-run__title { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
-
 /* Developer Hub */
 .tl-dev { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; align-items: start; }
 .tl-sessions { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
