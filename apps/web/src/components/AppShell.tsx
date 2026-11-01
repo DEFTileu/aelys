@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Terminal, Timer, Wallet, Workflow, type AelysIconComponent } from '../icons'
+import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
 import { WALLPAPERS, accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { getSharedApiClient } from '../lib/api'
@@ -7,7 +7,6 @@ import { useOwner } from '../lib/owner'
 import { navigate } from '../lib/router'
 import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
-import { isMacPlatform } from '../data/navigation'
 import { formatDate, greetingForHour } from '../lib/format'
 import { CommandPalette, pages as PALETTE_PAGES } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
@@ -62,12 +61,6 @@ const NAV: NavItem[] = [
   { id: 'utilities', label: 'Apps', icon: LayoutGrid, route: '/utilities' },
 ]
 
-const TOOLS: NavItem[] = [
-  { id: 'timer', label: 'Timer', icon: Timer, route: '/timer' },
-  { id: 'automation', label: 'Automation', icon: Workflow, route: '/automation' },
-  { id: 'developer', label: 'Developer Hub', icon: Terminal, route: '/developer' },
-]
-
 // Hero copy from the reference; `dated` pages show today's date above the title.
 const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: boolean }>> = {
   '/ai': { title: 'AI Chat', sub: 'Your personal assistant for a productive life' },
@@ -89,7 +82,8 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
 
 function screenFor(route: RoutePath): string | null {
   if (route === '/settings') return 'settings'
-  return [...NAV, ...TOOLS].find((item) => item.route === route)?.id ?? null
+  if (route === '/timer' || route === '/automation' || route === '/developer') return 'utilities'
+  return NAV.find((item) => item.route === route)?.id ?? null
 }
 
 // theme and onToggleTheme stay in the signature for App.tsx; the design has no theme toggle in the window chrome.
@@ -161,10 +155,6 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
           </div>
           <nav aria-label="Primary" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {NAV.map(navButton)}
-          </nav>
-          <div className="shell-nav-group" role="presentation" style={{ margin: '16px 8px 6px', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>Tools</div>
-          <nav aria-label="Tools" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {TOOLS.filter((item) => item.id !== 'developer' || isMacPlatform()).map(navButton)}
           </nav>
           <div style={{ flex: 1 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 14, background: screen === 'settings' ? 'rgba(106,76,242,.10)' : 'transparent' }}>
