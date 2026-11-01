@@ -15,8 +15,9 @@ describe('weather background selector', () => {
     expect(selectWeatherBackground('night', 'cloudy').id).toBe('night-clear')
   })
 
-  it('contains exactly the 13 supplied backgrounds', () => {
+  it('keeps 13 weather/time slots backed by the original PNGs', () => {
     expect(weatherManifest).toHaveLength(13)
-    expect(new Set(weatherManifest.map((entry) => entry.file)).size).toBe(13)
+    expect(weatherManifest.every(entry => entry.file.endsWith('.png'))).toBe(true)
+    expect(new Set(weatherManifest.map((entry) => entry.id)).size).toBe(13)
   })
 })

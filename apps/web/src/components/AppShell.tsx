@@ -1,7 +1,8 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
-import { WALLPAPERS, accentColors } from '../data/desktop/settings'
+import { accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
+import { useWallpaper } from '../lib/wallpaper'
 import { getSharedApiClient } from '../lib/api'
 import { useOwner } from '../lib/owner'
 import { usePrefs, type Prefs } from '../lib/prefs'
@@ -16,10 +17,10 @@ import { AelysMark } from './AelysMark'
 import { MobileShell } from './MobileShell'
 import './actual-shell.css'
 
-// Photo band gradients from the reference: Home fades out at 420px, module pages at 230px.
+// Keep the wallpaper clear; fade only its lower edge into the page canvas.
 const BAND_GRADIENT = {
-  light: { home: 'linear-gradient(180deg,rgba(18,18,40,.22) 0,rgba(18,18,40,.04) 220px,rgba(246,241,236,0) 330px,rgba(246,241,236,.8) 385px,#F5F0EB 420px)', page: 'linear-gradient(180deg,rgba(18,18,40,.32) 0,rgba(18,18,40,.05) 110px,rgba(246,241,236,.75) 150px,rgba(245,240,235,.97) 230px)' },
-  dark: { home: 'linear-gradient(180deg,rgba(8,6,20,.45) 0,rgba(8,6,20,.25) 220px,rgba(20,18,25,0) 330px,rgba(20,18,25,.85) 385px,#141219 420px)', page: 'linear-gradient(180deg,rgba(8,6,20,.45) 0,rgba(8,6,20,.2) 110px,rgba(20,18,25,.8) 170px,#141219 230px)' },
+  light: { home: 'linear-gradient(180deg,rgba(18,18,40,.18) 0,transparent 160px,transparent 356px,#F5F0EB 420px)', page: 'linear-gradient(180deg,rgba(18,18,40,.24) 0,transparent 100px,transparent 182px,#F5F0EB 230px)' },
+  dark: { home: 'linear-gradient(180deg,rgba(8,6,20,.24) 0,transparent 160px,transparent 356px,#141219 420px)', page: 'linear-gradient(180deg,rgba(8,6,20,.3) 0,transparent 100px,transparent 182px,#141219 230px)' },
 } as const
 const DEFAULT_ACCENT = '#6A4CF2'
 
@@ -133,7 +134,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
   const hero = HEROES[route]
   const showGreeting = settings.homeToggles[0]
   const sideW = useWindowWidth() >= 900 ? 240 : 200
-  const wallpaper = settings.wallpaper === -1 && settings.customWallpaper ? settings.customWallpaper : WALLPAPERS[settings.wallpaper] ?? WALLPAPERS[0]
+  const wallpaper = useWallpaper()
   const go = (path: RoutePath) => { setPaletteOpen(false); navigate(path) }
 
   const navButton = (item: NavItem) => {

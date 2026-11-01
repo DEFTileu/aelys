@@ -25,7 +25,7 @@
 .apps-group__head span { font-size: 13px; line-height: 22px; color: var(--muted); white-space: nowrap; }
 .apps-group__head .apps-group__sub { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.apps-card { position: relative; display: flex; gap: 14px; align-items: flex-start; padding: 16px; border-radius: 20px; background: var(--surface); border: 1px solid var(--edge); transition: transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .18s; }
+.apps-card { position: relative; display: flex; min-height: 122px; gap: 14px; align-items: flex-start; padding: 16px; border-radius: 20px; background: var(--surface); border: 1px solid var(--edge); transition: transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .18s; }
 :root[data-theme='dark'] .apps-card { background: rgba(32, 29, 40, .86); }
 .apps-card:hover:not(.apps-card--soon) { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(20, 10, 30, .08); }
 :root[data-theme='dark'] .apps-card:hover:not(.apps-card--soon) { box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
@@ -36,11 +36,12 @@
 .apps-card__open { all: unset; display: block; font-size: 15px; line-height: 22px; font-weight: 600; cursor: pointer; }
 .apps-card__open::after { content: ''; position: absolute; inset: 0; border-radius: 20px; }
 .apps-card__open:disabled { cursor: default; }
-.apps-card__desc { font-size: 13px; line-height: 18px; color: var(--muted); }
+.apps-card__desc { font-size: 13px; line-height: 18px; color: var(--muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .apps-card__status { font-size: 12px; font-weight: 600; color: var(--deep); margin-top: 8px; }
+.apps-card--soon .apps-card__body { margin-right: 44px; }
 .apps-card--soon .apps-card__icon, .apps-card--soon .apps-card__body { opacity: .6; }
 .apps-card--soon .apps-card__status { color: var(--muted); font-weight: 500; }
-.apps-soon { position: relative; flex: none; padding: 2px 8px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 11px; font-weight: 600; }
+.apps-soon { position: absolute; top: 16px; right: 16px; z-index: 1; padding: 2px 8px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 11px; font-weight: 600; }
 .apps-pin { position: relative; z-index: 1; width: 30px; height: 30px; flex: none; padding: 0; border: 0; border-radius: 9px; background: transparent; color: #BDB7C2; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .apps-pin:hover { background: var(--surface-soft); }
 .apps-pin[aria-pressed='true'] { color: var(--purple-deep); }

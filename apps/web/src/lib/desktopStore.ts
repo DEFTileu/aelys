@@ -2,15 +2,17 @@
 // Task and settings fields persist to localStorage; the pending question and Customize flag are per session.
 import { useSyncExternalStore } from 'react'
 import { navigate } from './router'
+import type { KnowledgeScope } from '@aelys/shared'
 
 const STORAGE_KEY = 'aelys.desktop.state.v1'
 
-export type DesktopSettings = { wallpaper: number; customWallpaper: string | null; transparency: number; blur: number; accent: number }
+export type DesktopSettings = { wallpaper: number; wallpaperMode: 'weather' | 'manual'; customWallpaper: string | null; transparency: number; blur: number; accent: number }
 
 export type DesktopState = DesktopSettings & {
   // Five Today tasks, by position; Home and Tasks read the same slots.
   done: boolean[]
   homeToggles: boolean[]
+  pendingKnowledge?: KnowledgeScope
   pendingAsk: string | null
   customizeHome: boolean
 }
@@ -18,6 +20,7 @@ export type DesktopState = DesktopSettings & {
 const DEFAULTS: DesktopState = {
   done: [true, true, false, false, false],
   wallpaper: 0,
+  wallpaperMode: 'weather',
   customWallpaper: null,
   homeToggles: [true, true, true, true],
   transparency: 70,
@@ -38,6 +41,8 @@ function load(): DesktopState {
       const value = stored[key]
       if (typeof value === 'number') base[key] = value
     }
+    base.wallpaperMode = stored.wallpaperMode === 'weather' || stored.wallpaperMode === 'manual'
+      ? stored.wallpaperMode : base.wallpaper !== 0 ? 'manual' : 'weather'
   } catch {
     // Unreadable or blocked storage falls back to the defaults.
   }
@@ -50,8 +55,8 @@ const listeners = new Set<() => void>()
 function update(patch: Partial<DesktopState>) {
   state = { ...state, ...patch }
   try {
-    const { done, homeToggles, wallpaper, customWallpaper, transparency, blur, accent } = state
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ done, homeToggles, wallpaper, customWallpaper, transparency, blur, accent }))
+    const { done, homeToggles, wallpaper, wallpaperMode, customWallpaper, transparency, blur, accent } = state
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ done, homeToggles, wallpaper, wallpaperMode, customWallpaper, transparency, blur, accent }))
   } catch {
     // Storage can be blocked; the state still applies for this session.
   }
@@ -76,7 +81,7 @@ export function toggleTask(index: number) {
 }
 
 export function setSettings(patch: Partial<DesktopSettings>) {
-  update(patch)
+  update({ ...patch, ...(patch.wallpaper !== undefined && patch.wallpaperMode === undefined ? { wallpaperMode: 'manual' as const } : {}) })
 }
 
 export function setHomeToggle(index: number, value: boolean) {
@@ -84,14 +89,14 @@ export function setHomeToggle(index: number, value: boolean) {
 }
 
 // Hands the question to ChatScreen, which takes it once; any Ask Aelys surface can call this.
-export function askAelys(text: string) {
-  update({ pendingAsk: text })
+export function askAelys(text: string, knowledge?: KnowledgeScope) {
+  update({ pendingAsk: text, pendingKnowledge: knowledge })
   navigate('/ai')
 }
 
 export function takePendingAsk(): string | null {
   const text = state.pendingAsk
-  if (text) update({ pendingAsk: null })
+  if (text) update({ pendingAsk: null, pendingKnowledge: undefined })
   return text
 }
 

@@ -356,3 +356,11 @@ export async function checkApi(config = getApiConfig()): Promise<void> {
 }
 
 export { API_BASE_STORAGE_KEY, ACCESS_TOKEN_STORAGE_KEY, DEFAULT_API_BASE_URL }
+
+/** Cache partition hint only; never grants server access. Works on offline reload. */
+export async function getDraftPartition(kind: string): Promise<string> {
+  if (isSignedOut()) throw new Error('Signed out')
+  const owner = isNativeHost() ? nativeOwner ?? (await getSharedApiClient().me()).id : cacheOwner()
+  if (!owner) throw new Error('Owner session required for private drafts')
+  return JSON.stringify([window.location.origin, getApiConfig().baseUrl, owner, kind])
+}

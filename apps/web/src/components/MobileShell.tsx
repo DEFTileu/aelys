@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ArrowLeft, ArrowUp, Blocks, BookOpen, Calendar, Folder, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, Sparkles, SquareCheck, Terminal, Timer, User, Wallet, Workflow, X, Plus, type AelysIconComponent } from '../icons'
 import { MOBILE_ACTIONS, useMobileActions } from '../lib/mobilePreferences'
-import { WALLPAPERS } from '../data/desktop/settings'
+import { useWallpaper } from '../lib/wallpaper'
 import { askAelys, useDesktopState } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
 import type { ApiStatus, RoutePath } from '../types'
@@ -40,7 +40,7 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
   const shell = useRef<HTMLDivElement>(null)
   const bar = useRef<HTMLDivElement>(null)
   const isHome = route === '/'
-  const wallpaper = settings.wallpaper === -1 && settings.customWallpaper ? settings.customWallpaper : WALLPAPERS[settings.wallpaper] ?? WALLPAPERS[0]
+  const wallpaper = useWallpaper()
   const title = route === '/widgets' ? 'Customize home' : APPS.find((app) => app.route === route)?.label ?? 'Aelys'
 
   useEffect(() => { setAppsOpen(false) }, [route])

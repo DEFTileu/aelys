@@ -6703,6 +6703,56 @@
           }
         }
       }
+    },
+    "/api/v1/knowledge/search": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Search",
+        "operationId": "search_api_v1_knowledge_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeSource"
+                  },
+                  "type": "array",
+                  "title": "Response Search Api V1 Knowledge Search Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -7338,6 +7388,16 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Tool Scope"
+          },
+          "knowledge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8569,6 +8629,117 @@
         ],
         "title": "KeyRegister"
       },
+      "KnowledgeQuery": {
+        "properties": {
+          "note_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Note Ids"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "KnowledgeQuery"
+      },
+      "KnowledgeScope": {
+        "properties": {
+          "note_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Note Ids"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "KnowledgeScope"
+      },
+      "KnowledgeSource": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "note_id": {
+            "type": "string",
+            "title": "Note Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "heading": {
+            "type": "string",
+            "title": "Heading"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "title": "End"
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "note_id",
+          "title",
+          "version",
+          "heading",
+          "start",
+          "end",
+          "excerpt"
+        ],
+        "title": "KnowledgeSource"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -9208,6 +9379,11 @@
       },
       "NoteIn": {
         "properties": {
+          "knowledge_enabled": {
+            "type": "boolean",
+            "title": "Knowledge Enabled",
+            "default": false
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -9273,6 +9449,11 @@
       },
       "NoteOut": {
         "properties": {
+          "knowledge_enabled": {
+            "type": "boolean",
+            "title": "Knowledge Enabled",
+            "default": false
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -11188,18 +11369,26 @@
           "routing": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Routing",
-            "default": {}
+            "title": "Routing"
           },
           "tool_scope": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Tool Scope",
-            "default": {}
+            "title": "Tool Scope"
           },
           "idempotency_key": {
             "type": "string",
             "title": "Idempotency Key"
+          },
+          "knowledge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

@@ -1,28 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NoteOut, ProjectResponse } from '@aelys/shared'
-import { ArrowLeft, FileText, Search, Sparkles } from '../icons'
+import { ArrowLeft, FileText, Search } from '../icons'
 import { askAelys } from '../lib/desktopStore'
 import { projectColor } from './tasks/taskModel'
 import './desktop/page-tokens.css'
 import { ApiStatusPill } from '../components/ApiStatusPill'
 import { PageSkeleton } from '../components/PageSkeleton'
-import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import './actual-knowledge.css'
 import './desktop/knowledge.css'
-
-function MarkdownText({ text }: { text: string }) {
-  return <div className="knowledge-markdown">{text.split('\n').map((line, index) => {
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line)
-    if (heading) {
-      if (heading[1].length === 1) return <h2 key={index}>{heading[2]}</h2>
-      if (heading[1].length === 2) return <h3 key={index}>{heading[2]}</h3>
-      return <h4 key={index}>{heading[2]}</h4>
-    }
-    return <div key={index}>{line || '\u00a0'}</div>
-  })}</div>
-}
+import { MarkdownContent } from '../components/MarkdownContent'
 
 const updatedLabel = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
@@ -31,7 +19,13 @@ export function KnowledgeView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [projects, setProjects] = useState<readonly ProjectResponse[]>([])
   const [status, setStatus] = useState<ApiStatus>(apiStatus === 'ready' ? 'loading' : apiStatus)
   const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [managing, setManaging] = useState(false)
+  const [projectId, setProjectId] = useState('')
+  const [question, setQuestion] = useState('')
+  const [askScope, setAskScope] = useState('document')
+  const [notice, setNotice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('note'))
   const [reading, setReading] = useState(false)
   const requestSequence = useRef(0)
 
@@ -55,8 +49,8 @@ export function KnowledgeView({ apiStatus }: { apiStatus: ApiStatus }) {
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return notes.filter((note) => !needle || `${note.title} ${note.markdown_body}`.toLowerCase().includes(needle))
-  }, [notes, query])
+    return notes.filter((note) => (managing || note.knowledge_enabled) && (!projectId || note.project_id === projectId) && (!needle || `${note.title} ${note.markdown_body}`.toLowerCase().includes(needle)))
+  }, [notes, query, managing, projectId])
   const groups = useMemo(() => {
     const parents = new Map(notes.map((note) => [note.id, note.title]))
     const projectNames = new Map(projects.map((project) => [project.id, project.name]))
@@ -72,21 +66,36 @@ export function KnowledgeView({ apiStatus }: { apiStatus: ApiStatus }) {
   }, [notes, visible, projects])
   const selected = visible.find((note) => note.id === selectedId) ?? visible[0]
   const selectedGroup = groups.find(([, group]) => group.items.some((note) => note.id === selected?.id))?.[0] ?? 'documents'
+  const toggleSource = async (note: NoteOut) => {
+    if (busy) return
+    setBusy(true); setNotice('')
+    try {
+      const saved = await getSharedApiClient().updateNote(note.id, { title: note.title, markdown_body: note.markdown_body, project_id: note.project_id, parent_id: note.parent_id, folder: note.folder, tags: note.tags, knowledge_enabled: !note.knowledge_enabled }, { query: { version: note.version }, queueOnOffline: false })
+      setNotes(current => current.map(item => item.id === saved.id ? saved : item))
+      setNotice(saved.knowledge_enabled ? 'Source enabled. Questions may send excerpts to your selected AI provider.' : 'Source removed from future AI retrieval. Previous chat answers are retained.')
+    } catch { setNotice('Could not update the source. Refresh before retrying; it may have changed elsewhere.') }
+    finally { setBusy(false) }
+  }
   const edit = (id: string) => {
     window.history.pushState({}, '', `/notes?note=${encodeURIComponent(id)}`)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
   return <div className={`knowledge-view page${reading ? ' knowledge-view--reading' : ''}`}>
-    <div className="knowledge-status"><ApiStatusPill status={status} /></div>
+    <div className="knowledge-status"><ApiStatusPill status={status} /><button className="knowledge-button" type="button" aria-pressed={managing} onClick={() => setManaging(!managing)}>{managing ? 'Show library' : 'Manage sources'}</button><button className="knowledge-button" type="button" onClick={() => { window.history.pushState({}, '', '/notes?create=1'); window.dispatchEvent(new PopStateEvent('popstate')) }}>New document</button><label>Project <select aria-label="Knowledge project" value={projectId} onChange={event => setProjectId(event.target.value)}><option value="">All projects</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label></div>
+    <p className="knowledge-warning">Only enabled sources are available to AI. Asking a question sends relevant excerpts to the selected provider. Agent transcripts are excluded.</p>
+    {notice && <p role="status">{notice}</p>}
     {status !== 'ready' && notes.length === 0 ? <PageSkeleton kind="split" label="knowledge base" phase={status === 'loading' ? 'loading' : 'error'} onRetry={() => void load()} /> : <>
       {status !== 'ready' && <div className="knowledge-warning" role="status">{status === 'loading' ? 'Refreshing notes…' : 'Could not refresh notes.'} {status !== 'loading' && <button type="button" className="knowledge-button" onClick={() => void load()}>Try again</button>}</div>}
       <div className="knowledge-grid">
         <section className="knowledge-card knowledge-list" aria-label="Knowledge documents">
           <label className="knowledge-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search documents" aria-label="Search documents" /></label>
-          <div className="knowledge-items">{groups.map(([key, group]) => <div key={key}><h2>{group.label}</h2>{group.items.map((note) => <button type="button" key={note.id} className={`knowledge-item${selected?.id === note.id ? ' knowledge-item--selected' : ''}`} aria-pressed={selected?.id === note.id} onClick={() => { setSelectedId(note.id); setReading(true) }}><span className="knowledge-icon" style={{ color: projectColor(key), background: `${projectColor(key)}1A` }}><FileText size={16} /></span><span className="knowledge-item-text"><strong>{note.title}</strong><small>{note.updated_at ? `Updated ${updatedLabel(note.updated_at)}` : `Note · v${note.version}`}</small></span></button>)}</div>)}{visible.length === 0 && <p className="knowledge-empty">{notes.length ? 'Nothing found.' : 'No notes yet.'}</p>}</div>
+          <div className="knowledge-items">{groups.map(([key, group]) => <div key={key}><h2>{group.label}</h2>{group.items.map((note) => <button type="button" key={note.id} className={`knowledge-item${selected?.id === note.id ? ' knowledge-item--selected' : ''}`} aria-pressed={selected?.id === note.id} onClick={() => { setSelectedId(note.id); setReading(true) }}><span className="knowledge-icon" style={{ color: projectColor(key), background: `${projectColor(key)}1A` }}><FileText size={16} /></span><span className="knowledge-item-text"><strong>{note.title}</strong><small>Note · v{note.version} · {note.knowledge_enabled ? 'AI enabled' : 'AI disabled'}</small></span></button>)}</div>)}{visible.length === 0 && <p className="knowledge-empty">{notes.length ? 'No enabled sources match. Use Manage sources to add notes.' : 'No notes yet.'}</p>}</div>
         </section>
-        <section className="knowledge-card knowledge-reader" aria-label="Document reader">{selected ? <><div className="knowledge-reader-head"><button type="button" className="knowledge-button knowledge-back" onClick={() => setReading(false)}><ArrowLeft size={16} />Back</button><span className="knowledge-kind" style={{ color: projectColor(selectedGroup), background: `${projectColor(selectedGroup)}1A` }}>{groups.find(([, group]) => group.items.some((note) => note.id === selected.id))?.[1].label ?? 'Documents'}</span><span className="knowledge-updated">{selected.updated_at ? `Updated ${updatedLabel(selected.updated_at)}` : `Version ${selected.version}`}</span><span className="knowledge-grow" /><button type="button" className="knowledge-button" onClick={() => askAelys(`Tell me about my note "${selected.title}".`)}><Sparkles size={15} />Ask Aelys about this</button><button type="button" className="knowledge-button knowledge-edit" onClick={() => edit(selected.id)}>Edit note</button></div><article className="knowledge-content"><h1>{selected.title}</h1>{selected.markdown_body ? <MarkdownText text={selected.markdown_body} /> : <p className="knowledge-empty">This note is empty.</p>}</article></> : <div className="knowledge-placeholder">Select a note to read it.</div>}</section>
+        <section className="knowledge-card knowledge-reader" aria-label="Document reader">{selected ? <><div className="knowledge-reader-head"><button type="button" className="knowledge-button knowledge-back" onClick={() => setReading(false)}><ArrowLeft size={16} />Back</button><span className="knowledge-kind" style={{ color: projectColor(selectedGroup), background: `${projectColor(selectedGroup)}1A` }}>{groups.find(([, group]) => group.items.some(note => note.id === selected.id))?.[1].label ?? 'Documents'} · v{selected.version}</span><span className="knowledge-updated">{selected.updated_at ? `Updated ${updatedLabel(selected.updated_at)}` : `Version ${selected.version}`}</span><button type="button" className="knowledge-button" disabled={busy || apiStatus !== 'ready'} onClick={() => void toggleSource(selected)}>{selected.knowledge_enabled ? 'Disable for AI' : 'Enable for AI'}</button><button type="button" className="knowledge-button knowledge-edit" onClick={() => edit(selected.id)}>Edit note</button></div><article className="knowledge-content"><h1>{selected.title}</h1>{selected.markdown_body ? <MarkdownContent text={selected.markdown_body} /> : <p className="knowledge-empty">This note is empty.</p>}</article>{selected.knowledge_enabled && <form className="knowledge-ask" onSubmit={event => { event.preventDefault(); if (question.trim()) askAelys(question.trim(), askScope === 'document' ? { note_ids: [selected.id] } : projectId ? { project_id: projectId } : {}) }}>
+          <label>Ask about<select aria-label="Question scope" value={askScope} onChange={event => setAskScope(event.target.value)}><option value="document">This document</option><option value="library">{projectId ? 'Selected project' : 'Enabled library'}</option></select></label>
+          <input aria-label="Question about knowledge" value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask Aelys about these sources…" required maxLength={4000} />
+          <button type="submit" className="knowledge-button" disabled={apiStatus !== 'ready'}>Ask Aelys</button></form>}</> : <div className="knowledge-placeholder">Select a note to read it.</div>}</section>
       </div>
     </>}
   </div>

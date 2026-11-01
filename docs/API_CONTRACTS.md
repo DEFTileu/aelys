@@ -651,3 +651,14 @@ formats are rejected. Codes include `TELEGRAM_MEDIA_TOO_LARGE` (413),
 model access. Shared clients download capped blobs with authorization headers,
 no cache/outbox, and the UI revokes in-memory object URLs on unmount/change.
 Migration 0036 adds two nullable fields; encryption-key rotation covers metadata.
+
+## Knowledge retrieval (2026-11-01)
+
+See [KNOWLEDGE_RAG.md](KNOWLEDGE_RAG.md) for implemented consent, bounded retrieval,
+read-only AI scope, source events, migration and acceptance limits. The generated
+OpenAPI includes `KnowledgeScope`, `KnowledgeQuery` and `KnowledgeSource`.
+
+Combined main migrations: `0037_merge_telegram_knowledge` joins the published
+`0035_knowledge_consent` and `0036_telegram_reply_media` branches. Deployments
+upgrade to this single head before serving the combined Knowledge/Telegram API;
+there are no new endpoint permissions in the merge revision.

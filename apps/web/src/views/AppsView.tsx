@@ -120,7 +120,7 @@ export function AppsView({ apiStatus }: { apiStatus: ApiStatus }) {
       <div className="apps-grid">{section.items.map(entry => { const Icon = entry.icon; const status = statusOf(entry); const on = pins.includes(entry.id)
         return <div className={`apps-card apps-tone--${toneOf(entry)}${entry.soon ? ' apps-card--soon' : ''}`} key={entry.id}>
           <span className="apps-card__icon"><Icon size={20} aria-hidden="true" /></span>
-          <div className="apps-card__body"><button type="button" className="apps-card__open" disabled={entry.soon} onClick={() => launch(entry)}>{entry.title}</button><div className="apps-card__desc">{entry.desc}</div>{status && <div className="apps-card__status">{status}</div>}</div>
+          <div className="apps-card__body"><button type="button" className="apps-card__open" disabled={entry.soon} onClick={() => launch(entry)}>{entry.title}</button><div className="apps-card__desc" title={entry.desc}>{entry.desc}</div>{status && <div className="apps-card__status">{status}</div>}</div>
           {entry.soon ? <span className="apps-soon">Soon</span> : <button type="button" className="apps-pin" aria-label={`${on ? 'Unpin' : 'Pin'} ${entry.title}`} aria-pressed={on} onClick={() => togglePin(entry.id)}><Pin size={15} aria-hidden="true" /></button>}
         </div> })}</div>
     </section>)}

@@ -251,13 +251,6 @@ function MailBody({ size, data }: BodyProps) {
   return <div className="wb-col">{unread.slice(0, size === 'M' ? 3 : 5).map(item => row(item, false))}</div>
 }
 
-function Activity({ size, data }: BodyProps) {
-  const items = data.activity ?? []
-  if (!items.length) return <Empty text="No recorded activity yet." />
-  const count = size === 'S' ? 1 : size === 'M' ? 3 : size === 'Tall' ? 6 : 8
-  return <div className="home-activity wb-col">{items.slice(0, count).map(item => <div key={item.id} className="wb-row"><span className="wb-grow"><strong>{item.event_kind.replace(/[._]/g, ' ')}</strong><small>{item.actor_kind}</small></span><time className="wb-muted">{ageLabel(item.occurred_at)}</time></div>)}</div>
-}
-
 export function WidgetBody(props: BodyProps & { onRetry: () => void }) {
   const { id, size, data, onRetry } = props
   const state = data.states?.[id]
@@ -268,11 +261,11 @@ export function WidgetBody(props: BodyProps & { onRetry: () => void }) {
     case 'today': return <Today {...props} />
     case 'cal': return <Calendar {...props} />
     case 'focus': return <Focus {...props} />
-    case 'weather': return <WeatherCard size={size === 'Full' ? 'M' : size} />
+    case 'weather': return <WeatherCard size={size} />
     case 'proj': return <Projects {...props} />
     case 'notes': case 'kb': return <Notes {...props} />
     case 'fin': return <Finances {...props} />
     case 'mail': return <MailBody {...props} />
-    default: return <Activity {...props} />
+    default: return null
   }
 }

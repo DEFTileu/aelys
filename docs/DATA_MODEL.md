@@ -196,3 +196,13 @@ paths are never stored. A safe computed media descriptor exposes kind/size only.
 Nullable `reply_to_telegram_message_id` stores a same-chat remote quote reference,
 without persisting a second copy of quoted text. Both fields are erased with the
 existing Business deletion/retention policy. No new sync/export resource.
+
+### Knowledge source consent (migration 0035_knowledge_consent)
+
+`notes.knowledge_enabled` is a non-null boolean defaulting to false. The source
+body remains `markdown_body`; no duplicate document/chunk or vector table is
+introduced. PostgreSQL has a partial GIN full-text index for enabled live notes.
+AI run/conversation `tool_scope_json.knowledge` stores the explicit retrieval
+scope; assistant `source_refs_json` stores references and redacted excerpts of
+ordinary enabled notes. Mac-only session contents remain excluded. See
+[KNOWLEDGE_RAG.md](KNOWLEDGE_RAG.md) for implementation limits.

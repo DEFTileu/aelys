@@ -1,6 +1,6 @@
 import { PageSkeleton } from '../components/PageSkeleton'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import type { AIConversation, AIMessage, AIProvider } from '@aelys/shared'
+import type { AIConversation, AIMessage, AIProvider, KnowledgeScope, KnowledgeSource } from '@aelys/shared'
 import { ApiError } from '@aelys/shared'
 import { AelysMark } from '../components/AelysMark'
 import { ApiStatusPill } from '../components/ApiStatusPill'
@@ -14,10 +14,13 @@ import type { ApiStatus } from '../types'
 import './actual-ai.css'
 import './desktop/page-tokens.css'
 import './desktop/ai.css'
+import { MarkdownContent } from '../components/MarkdownContent'
 
-type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at'>>
+type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at' | 'source_refs_json'>>
 export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [message, setMessage] = useState('')
+  const [knowledgeScope, setKnowledgeScope] = useState<KnowledgeScope>()
+  const [sources, setSources] = useState<readonly KnowledgeSource[]>([])
   const [search, setSearch] = useState('')
   const [providers, setProviders] = useState<readonly AIProvider[]>([])
   const [providerId, setProviderId] = useState('')
@@ -32,8 +35,14 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
   const runId = useRef<string>('')
   const busy = useRef(false)
   const controller = useRef<AbortController | null>(null)
-  const { pendingAsk } = useDesktopState()
-  useEffect(() => { if (pendingAsk) setMessage(takePendingAsk() ?? '') }, [pendingAsk])
+  const { pendingAsk, pendingKnowledge } = useDesktopState()
+  useEffect(() => {
+    if (!pendingAsk) return
+    const question = takePendingAsk()
+    // StrictMode replays effects: consuming twice must not erase the first draft.
+    if (!question) return
+    setKnowledgeScope(pendingKnowledge); setConversationId(''); setLines([]); setSources([]); setMessage(question)
+  }, [pendingAsk, pendingKnowledge])
   useEffect(() => {
     let active = true
     const client = getSharedApiClient()
@@ -59,14 +68,15 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
     const abort = new AbortController(); controller.current = abort
     try {
       const client = getSharedApiClient()
-      const conversation = conversationId ? conversations.find((item) => item.id === conversationId) : await client.createAIConversation({ title: prompt.slice(0, 80) }, { queueOnOffline: false })
+      const conversation = conversationId ? conversations.find((item) => item.id === conversationId) : await client.createAIConversation({ title: prompt.slice(0, 80), ...(knowledgeScope ? { knowledge: knowledgeScope, project_id: knowledgeScope.project_id } : {}) }, { queueOnOffline: false })
       if (!conversation) throw new Error('Choose a conversation or start a new chat.')
       if (!conversationId) { setConversations((items) => [conversation, ...items]); setConversationId(conversation.id) }
       const provider = providers.find((item) => item.id === providerId)!
-      const run = await client.createAIRun({ conversation_id: conversation.id, message: prompt, routing: { provider_id: providerId, provider: provider.kind, model: String(provider.model_policy?.default_model ?? 'auto') }, idempotency_key: crypto.randomUUID() }, { queueOnOffline: false })
+      const run = await client.createAIRun({ conversation_id: conversation.id, message: prompt, routing: { provider_id: providerId, provider: provider.kind, model: String(provider.model_policy?.default_model ?? 'auto') }, idempotency_key: crypto.randomUUID(), ...(knowledgeScope ? { knowledge: knowledgeScope } : {}) }, { queueOnOffline: false })
       runId.current = run.id; setMessage(''); setLines((items) => [...items, { id: run.id, role: 'user', content: prompt }])
       let terminal = false
       await consumeSse(await client.aiRunEvents(run.id, { signal: abort.signal }), (name, data) => {
+        if (name === 'ai.knowledge.sources' && Array.isArray(data.sources)) setSources(data.sources as unknown as readonly KnowledgeSource[])
         if (name === 'ai.text.delta') setPartial((value) => value + String(data.text ?? ''))
         if (name === 'ai.run.failed') { terminal = true; setNotice(String(data.message ?? 'Provider failed. Check its key and model in Settings.')) }
         if (name === 'ai.run.cancelled') { terminal = true; setNotice('Run cancelled.') }
@@ -84,7 +94,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
   }
   const filteredConversations = conversations.filter((item) => (item.title ?? '').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
   const selectedTitle = conversations.find((item) => item.id === conversationId)?.title || 'New conversation'
-  const newChat = () => { setConversationId(''); setLines([]); setPartial(''); setNotice(''); setHistoryOpen(false) }
+  const newChat = () => { setKnowledgeScope(undefined); setSources([]); setConversationId(''); setLines([]); setPartial(''); setNotice(''); setHistoryOpen(false) }
   const prompts = [
     { label: 'Plan my day', text: 'Help me make a realistic plan for today.' },
     { label: 'Break down a task', text: 'Help me break a task into manageable steps.' },
@@ -97,7 +107,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
       <button type="button" className="actual-ai__new" disabled={running} onClick={newChat}><Plus size={18} />New chat</button>
       <div className="actual-ai__list" aria-label="Conversation list">
         <p className="actual-ai__list-label">Your chats</p>
-        {filteredConversations.map(item => <button type="button" disabled={running || loading} className={`actual-ai__conversation${item.id === conversationId ? ' actual-ai__conversation--selected' : ''}`} key={item.id} aria-current={item.id === conversationId ? 'true' : undefined} onClick={() => { setConversationId(item.id); setHistoryOpen(false) }}><span className="actual-ai__list-icon"><MessageSquareText size={17} /></span><span>{item.title || 'Untitled conversation'}</span></button>)}
+        {filteredConversations.map(item => <button type="button" disabled={running || loading} className={`actual-ai__conversation${item.id === conversationId ? ' actual-ai__conversation--selected' : ''}`} key={item.id} aria-current={item.id === conversationId ? 'true' : undefined} onClick={() => { setConversationId(item.id); setKnowledgeScope(item.tool_scope_json?.knowledge); setSources([]); setHistoryOpen(false) }}><span className="actual-ai__list-icon"><MessageSquareText size={17} /></span><span>{item.title || 'Untitled conversation'}</span></button>)}
         {!filteredConversations.length && <p className="actual-ai__empty-list">{search.trim() ? 'No matching conversations.' : 'No conversations yet.'}</p>}
       </div>
     </aside>
@@ -105,11 +115,13 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
       <div className="actual-ai__thread-head"><div><h2>{selectedTitle}</h2><p>Your conversation with Aelys</p></div><ApiStatusPill status={apiStatus} /><button type="button" className="actual-ai__settings" onClick={() => navigate('/settings')}><Settings size={16} />AI settings</button></div>
       <div className="actual-ai__provider"><SelectField label="Chat provider" value={providerId} disabled={running || !providers.length} onChange={setProviderId} options={providers.map(item => ({ value: item.id, label: `${item.kind} · ${String(item.model_policy?.default_model ?? 'auto')}` }))} placeholder="Configure a provider" />{!providers.length && <button type="button" onClick={() => navigate('/settings')}>Configure provider</button>}</div>
       <div className="actual-ai__lines" aria-live="polite">
-        {lines.map(line => <article key={line.id} className={`actual-ai__line${line.role === 'user' ? ' actual-ai__line--user' : ''}`}><span className="actual-ai__avatar" aria-hidden="true">{line.role === 'user' ? 'You' : <AelysMark size={32} />}</span><div className="actual-ai__bubble"><strong>{line.role === 'user' ? 'You' : line.role === 'assistant' ? 'Aelys' : line.role}</strong><div>{line.content}</div>{line.created_at && !Number.isNaN(Date.parse(line.created_at)) && <time dateTime={line.created_at}>{new Date(line.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</time>}</div></article>)}
-        {partial && <article className="actual-ai__line"><span className="actual-ai__avatar" aria-hidden="true"><AelysMark size={32} /></span><div className="actual-ai__bubble"><strong>Aelys</strong><div>{partial}</div></div></article>}
+        {lines.map(line => <article key={line.id} className={`actual-ai__line${line.role === 'user' ? ' actual-ai__line--user' : ''}`}><span className="actual-ai__avatar" aria-hidden="true">{line.role === 'user' ? 'You' : <AelysMark size={32} />}</span><div className="actual-ai__bubble"><strong>{line.role === 'user' ? 'You' : line.role === 'assistant' ? 'Aelys' : line.role}</strong><MarkdownContent text={line.content} />{line.source_refs_json?.length ? <SourceList sources={line.source_refs_json} /> : null}{line.created_at && !Number.isNaN(Date.parse(line.created_at)) && <time dateTime={line.created_at}>{new Date(line.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</time>}</div></article>)}
+        {partial && <article className="actual-ai__line"><span className="actual-ai__avatar" aria-hidden="true"><AelysMark size={32} /></span><div className="actual-ai__bubble"><strong>Aelys</strong><MarkdownContent text={partial} /></div></article>}
         {loading && !lines.length && !partial && <PageSkeleton kind="chat" compact label="conversation" />}
-        {!loading && !lines.length && !partial && <div className="actual-ai__welcome"><span className="actual-ai__welcome-icon"><Sparkles size={25} /></span><h2>How can I help?</h2><p>{providers.length ? 'Ask a question or choose a prompt to get started.' : 'Configure a provider in AI settings to start a conversation.'}</p></div>}
+        {!loading && !lines.length && !partial && <div className="actual-ai__welcome"><span className="actual-ai__welcome-icon"><Sparkles size={25} /></span><h2>{loading ? 'Loading conversation…' : 'How can I help?'}</h2><p>{providers.length ? 'Ask a question or choose a prompt to get started.' : 'Configure a provider in AI settings to start a conversation.'}</p></div>}
       </div>
+      {sources.length > 0 && running && <SourceList sources={sources} />}
+      {knowledgeScope && <p className="actual-ai__notice">Knowledge question · {knowledgeScope.note_ids?.length ? 'selected document' : knowledgeScope.project_id ? 'selected project' : 'enabled library'} · excerpts go to the selected provider <button type="button" disabled={running} onClick={() => { setKnowledgeScope(undefined); setConversationId(''); setLines([]); setSources([]) }}>Clear sources</button></p>}
       {notice && <p className="actual-ai__notice" role="status">{notice}</p>}
       <form className="actual-ai__compose" onSubmit={submit}><span className="actual-ai__compose-icon" aria-hidden="true"><AelysMark size={44} /></span><div className="actual-ai__compose-field"><textarea aria-label="Message Aelys" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask Aelys or take an action…" disabled={running || loading} rows={2} /><button className="actual-ai__send" type="submit" aria-label="Send message" disabled={running || loading || !message.trim() || !providerId || apiStatus !== 'ready'}><ArrowUp size={18} /><span>Send</span></button></div>{running && <button type="button" className="actual-ai__stop" onClick={() => void cancel()}>Stop</button>}</form>
     </section>
@@ -123,4 +135,8 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
       <section className="actual-ai__card actual-ai__side-card actual-ai__useful"><h2>Useful prompts</h2><p className="actual-ai__side-copy">Choose a prompt to edit before sending.</p><div className="actual-ai__prompts">{prompts.map(prompt => <button type="button" key={prompt.label} disabled={running || loading} onClick={() => setMessage(prompt.text)}><Sparkles size={16} />{prompt.label}</button>)}</div></section>
     </aside>
   </div>
+}
+
+function SourceList({ sources }: { sources: readonly KnowledgeSource[] }) {
+  return <details className="knowledge-sources"><summary>Retrieved sources ({sources.length})</summary><ul>{sources.map(source => <li key={source.label}><a href={`/notes?note=${encodeURIComponent(source.note_id)}&version=${source.version}&start=${source.start}`} target="_blank" rel="noopener noreferrer">[{source.label}] {source.title} · v{source.version}{source.heading ? ` · ${source.heading}` : ''}</a><blockquote>{source.excerpt}</blockquote></li>)}</ul></details>
 }
