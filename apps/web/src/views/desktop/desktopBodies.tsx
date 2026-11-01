@@ -1,4 +1,4 @@
-// Desktop card bodies drawn like the reference design. S and Tall use one column, M, L and Full use two (four for Full activity); Tall and L add rows.
+// Desktop card bodies drawn like the reference design. S and Tall use one column, M and L use two; Tall and L add rows.
 import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { CloudDrizzle, CloudUpload } from 'lucide-react'
 import { Calendar, Check, ChevronDown, Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, FileText, Folder, MapPin, Mail, Moon, Pause, Play, Plus, Sun, Zap, Square, type AelysIconComponent } from '../../icons'
@@ -223,29 +223,6 @@ function MailBody({ size, data }: BodyProps) {
   return <div className="dw-grid dw-list" style={{ '--dw-cols': columnsOf(size) } as CSSProperties}>{rows.slice(0, tall(size) ? 10 : 4).map((item, index) => <button type="button" key={item.id} className="home-btn dw-row" onClick={() => navigate('/mail')}><span className="dw-tile" style={tile(cycle(mailColors, index))}><Mail size={16} aria-hidden="true" /></span><div className="dw-row-main"><div className="dw-row-title dw-row-title--head"><span>{senderName(item.sender)}</span><span>{ageLabel(item.received_at)}</span></div><div className="dw-row-sub">{item.subject || '(No subject)'}</div></div></button>)}</div>
 }
 
-function activityLook(kind: string): { title: string; icon: ReactNode; key: AccentKey } {
-  const text = kind.replace(/[._]/g, ' ')
-  const area = kind.split(/[._]/)[0]
-  if (area === 'mail') return { title: 'New email', icon: <Mail size={16} aria-hidden="true" />, key: 'coral' }
-  if (area === 'task') return { title: text.includes('complet') ? 'Task completed' : 'Task updated', icon: <Check size={16} aria-hidden="true" />, key: 'green' }
-  if (area === 'note') return { title: 'Note updated', icon: <FileText size={16} aria-hidden="true" />, key: 'blue' }
-  if (area === 'calendar' || area === 'event') return { title: 'Event updated', icon: <Calendar size={16} aria-hidden="true" />, key: 'red' }
-  if (area === 'file' || area === 'upload') return { title: 'File uploaded', icon: <CloudUpload size={16} aria-hidden="true" />, key: 'violet' }
-  return { title: text.charAt(0).toUpperCase() + text.slice(1), icon: <Zap size={16} aria-hidden="true" />, key: 'violet' }
-}
-const subtitleOf = (item: ActivityEvent) => { const meta = item.non_sensitive_metadata as Record<string, unknown>; const named = ['title', 'name', 'subject'].map((field) => meta?.[field]).find((value) => typeof value === 'string' && value) as string | undefined; return named ?? (item.actor_kind === 'user' ? 'You' : item.actor_kind) }
-
-function ActivityBody({ size, data }: BodyProps) {
-  const items = data.activity ?? []
-  if (!items.length) return <Empty text="No recorded activity yet." />
-  const cols = size === 'Full' ? 4 : columnsOf(size)
-  const limit = size === 'Full' ? 4 : tall(size) ? 8 : size === 'S' ? 3 : 4
-  return <div className="dw-grid dw-act" style={{ '--dw-cols': cols } as CSSProperties}>{items.slice(0, limit).map((item) => {
-    const look = activityLook(item.event_kind)
-    return <div key={item.id} className="dw-act-item"><span className="dw-tile" style={tile(look.key)}>{look.icon}</span><div className="dw-act-main"><div className="dw-act-line"><span>{look.title}</span><span>{ageLabel(item.occurred_at)}</span></div><div className="dw-row-sub">{subtitleOf(item)}</div></div></div>
-  })}</div>
-}
-
 export function DesktopBody(props: BodyProps) {
   switch (props.id) {
     case 'today': return <Today {...props} />
@@ -256,6 +233,6 @@ export function DesktopBody(props: BodyProps) {
     case 'notes': case 'kb': return <NotesBody {...props} />
     case 'fin': return <FinanceBody {...props} />
     case 'mail': return <MailBody {...props} />
-    default: return <ActivityBody {...props} />
+    default: return null
   }
 }

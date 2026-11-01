@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, type FormEvent, type ReactNode } from 'react'
 import type { ProjectResponse, TaskOut } from '@aelys/shared'
 import type { TaskDraft } from './taskModel'
 import './task-editor.css'
+import { RichTextEditor } from '../../components/RichTextEditor'
 
 export interface TaskEditorProps {
   value: TaskDraft
@@ -97,9 +98,7 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
         <label className="task-editor__field"><span>Title</span>
           <input ref={titleRef} aria-label="Task title" type="text" value={value.title} required disabled={pending} onChange={(event) => patch({ title: event.target.value })} />
         </label>
-        <label className="task-editor__field"><span>Description</span>
-          <textarea aria-label="Description" placeholder="Add details, links or a checklist" value={value.description} disabled={pending} onChange={(event) => patch({ description: event.target.value })} />
-        </label>
+        <div className="task-editor__field"><span>Description</span><RichTextEditor key={task.id} label="Description" compact value={value.description} disabled={pending} onChange={description => patch({ description })} /></div>
         <div className="task-editor__date-fields">
           <label className="task-editor__field"><span>Date</span>
             <input aria-label="Due date" type="date" value={value.dueDate} disabled={pending} aria-describedby={dateHelpId} onChange={(event) => patch({ dueDate: event.target.value, ...(event.target.value ? {} : { dueTime: '' }) })} />

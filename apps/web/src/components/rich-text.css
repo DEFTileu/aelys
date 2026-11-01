@@ -46,3 +46,46 @@
 :root[data-theme='dark'] .rte__content hr { border-color: #34303D; }
 :root[data-theme='dark'] .rte__content ul[data-check] > li::before { background-color: #201D28; border-color: #5A5466; }
 :root[data-theme='dark'] .rte__content ul[data-check] > li[data-done="1"]::before { background-color: #6A4CF2; border-color: #6A4CF2; }
+
+.rich-text { min-width:0; border:1px solid var(--line); border-radius:12px; background:var(--surface-solid); overflow:hidden; }
+.rich-text__toolbar { display:flex; gap:4px; flex-wrap:wrap; padding:8px; border-bottom:1px solid var(--line); }
+.rich-text__toolbar button { min-height:36px; padding:5px 9px; border:0; border-radius:6px; color:var(--ink); background:transparent; cursor:pointer; }
+.rich-text__toolbar button[aria-pressed=true] { background:var(--accent-soft,var(--purple-soft)); }
+.rich-text__toolbar button:disabled { opacity:.45; cursor:default; }
+.rich-text .tiptap { padding:16px; min-height:240px; outline-offset:-3px; overflow-wrap:anywhere; }
+.rich-text--compact .tiptap { min-height:120px; }
+.rich-text textarea { width:100%; min-height:240px; padding:16px; font-family:monospace; }
+.rich-text .tiptap, .markdown-content { line-height:1.7; overflow-wrap:anywhere; }
+.rich-text .tiptap p, .markdown-content p { margin:0 0 12px; }
+.rich-text .tiptap ul, .rich-text .tiptap ol, .markdown-content ul, .markdown-content ol { padding-left:24px; list-style:revert; }
+.rich-text .tiptap pre, .markdown-content pre { white-space:pre; overflow:auto; background:var(--surface-soft); border-radius:8px; padding:12px; }
+.rich-text .tiptap blockquote, .markdown-content blockquote { border-left:3px solid var(--accent,var(--purple)); padding-left:16px; margin:12px 0; }
+.rich-text .tiptap table, .markdown-content table { border-collapse:collapse; display:block; max-width:100%; overflow:auto; }
+.rich-text .tiptap td, .rich-text .tiptap th, .markdown-content td, .markdown-content th { border:1px solid var(--line-strong); padding:6px 12px; min-width:60px; }
+.rich-text .tiptap ul[data-type=taskList] { list-style:none; padding-left:0; }
+.rich-text .tiptap li[data-type=taskItem] { display:flex; gap:8px; }
+.rich-text .tiptap li[data-type=taskItem] > div { flex:1; min-width:0; }
+.markdown-content a { color:var(--accent,var(--purple)); text-decoration:underline; }
+@media(max-width:700px) { .rich-text__toolbar button { min-height:44px; } }
+.rich-text .tiptap ul:has(> li[data-checked]) { list-style:none; padding-left:0; }
+.rich-text .tiptap li[data-checked] { display:flex; align-items:flex-start; gap:8px; }
+.rich-text .tiptap li[data-checked] > label { flex:0 0 auto; display:inline-flex; width:auto; margin:4px 0 0; }
+.rich-text .tiptap li[data-checked] > div { flex:1; min-width:0; }
+.rich-text .tiptap input[type=checkbox] { flex:none; width:16px; height:16px; margin:0; padding:0; }
+.rich-text__link { display:flex; gap:8px; padding:8px; flex-wrap:wrap; }
+.rich-text__link input { flex:1; min-width:150px; padding:8px; border:1px solid var(--line); border-radius:6px; }
+.rich-text__link button { padding:8px; border:1px solid var(--line); border-radius:6px; }
+
+.nl-organization select { min-height:36px; max-width:100%; border:1px solid var(--line); border-radius:8px; padding:6px; background:var(--surface-soft); color:var(--ink); }
+
+.knowledge-sources { margin:12px 20px; padding:12px; border:1px solid var(--line); border-radius:12px; overflow-wrap:anywhere; }
+.knowledge-sources blockquote { white-space:pre-wrap; max-height:180px; overflow:auto; }
+.knowledge-sources a { color:var(--accent,var(--purple)); }
+
+/* Use the main branch editor chrome with the Tiptap document model. */
+.rte.rich-text { border:0; border-radius:0; background:transparent; overflow:visible; }
+.rte.rich-text .tiptap { padding:0; }
+.rte .rte__tool:disabled { opacity:.45; cursor:default; }
+.rte .rte__toolbar > button:last-child { margin-left:auto; border:0; border-radius:8px; padding:6px 10px; background:var(--pg-card); color:var(--pg-ink-2); cursor:pointer; flex:none; }
+.rte .tiptap p.is-editor-empty:first-child::before { content:attr(data-placeholder); }
+.rte .rte__content li[data-checked=true] > div { color:var(--pg-mute); text-decoration:line-through; }

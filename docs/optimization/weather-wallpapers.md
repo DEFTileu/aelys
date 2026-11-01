@@ -94,3 +94,12 @@ Validation: 28 shell, appearance and wallpaper tests plus production build pass.
 Browser confirms main photo filter/transform `none` and Weather backdrop-filter
 `none`; selected Алматы forecast and both supplied backgrounds remain visible.
 Source image resolution is unchanged.
+
+
+Main integration (2026-11-01, based on `8b1b3b2`): upstream merged without
+conflicts; retained current Knowledge, Notes, activity and Apps changes.
+Web/shared typecheck, 67 web test files / 524 tests, 37 shared tests, 5 mobile
+packaging checks and production build passed. Build reports the existing large
+chunk advisory (>500kB). No backend/native implementation is changed relative
+to main. The separate checkout holding local main has unrelated staged changes
+and is intentionally not modified by this integration.

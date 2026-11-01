@@ -15,7 +15,6 @@
 .actual-desktop .home-widget-grid { --widget-columns: 4; grid-template-columns: repeat(var(--widget-columns), minmax(0, 1fr)); grid-auto-rows: auto; grid-auto-flow: row; align-items: start; border-radius: 0; }
 .actual-desktop .home-widget-grid > .home-widget { min-height: 264px; height: auto; }
 .actual-desktop .home-widget-grid > .home-widget[data-rows='2'] { min-height: 544px; }
-.actual-desktop .home-widget-grid > .home-widget[data-size-key='Full'] { min-height: 0; }
 @media (max-width: 1239px) { .actual-desktop .home-widget-grid { --widget-columns: 2; } }
 @media (max-width: 899px) { .actual-desktop .home-widget-grid { --widget-columns: 1; } }
 .actual-desktop .home-widget { border: 1px solid var(--dw-edge); }
@@ -161,3 +160,9 @@
 .actual-desktop .home-size-badge { left: 50%; top: 50%; bottom: auto; z-index: 7; transform: translate(-50%, -50%); box-shadow: 0 6px 18px rgba(106, 76, 242, .4); }
 .actual-desktop .home-widget-grid--editing { padding: 0; margin: 0; background: none; }
 .actual-desktop .home-layout-help { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Recent activity is a fixed section under the grid: four entries across, two and one column on narrower windows. */
+.actual-desktop .home-activity-section { min-height: 0; }
+.dw-act--section { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1239px) { .dw-act--section { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 899px) { .dw-act--section { grid-template-columns: 1fr; } }

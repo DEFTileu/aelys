@@ -8,6 +8,7 @@ import { dateKey, dayDiff, fmtDay, projectColor, draftFromTask, parseQuickTokens
 import { PageSkeleton } from '../components/PageSkeleton'
 import './desktop/page-tokens.css'
 import './desktop/tasks.css'
+import { useDurableDrafts } from '../lib/durableDrafts'
 
 type TaskView = 'inbox' | 'today' | 'upcoming' | 'completed' | 'matrix' | 'all'
 type EditorState = { task: TaskOut; draft: TaskDraft; error: string; conflict: boolean; latest: TaskOut | null; fieldBase?: TaskOut }
@@ -59,6 +60,24 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const editDrafts = useRef(new Map<string, EditorState>())
+  const { drafts: durable, setDrafts: persistDrafts, ready: draftsReady, status: draftStatus } = useDurableDrafts<{ edits?: Record<string, EditorState>; quick?: TaskDraft }>('tasks')
+  const restoredDrafts = useRef(false)
+  useEffect(() => {
+    if (!draftsReady) return
+    if (!restoredDrafts.current) {
+      restoredDrafts.current = true
+      for (const [id, saved] of Object.entries(durable.edits ?? {})) if (!editDrafts.current.has(id)) editDrafts.current.set(id, saved)
+      if (durable.quick) setNewDraft(current => current.title || current.description ? current : durable.quick!)
+      return
+    }
+    const edits = Object.fromEntries(editDrafts.current)
+    if (editor) {
+      if (JSON.stringify(editor.draft) !== JSON.stringify(draftFromTask(editor.task))) edits[editor.task.id] = editor
+      else delete edits[editor.task.id]
+    }
+    const next = { edits, quick: newDraft }
+    if (JSON.stringify(next) !== JSON.stringify(durable)) persistDrafts(next)
+  })
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
   const [message, setMessage] = useState('')
@@ -372,7 +391,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     </div>
     {editor && <TaskEditor value={editor.draft} onChange={draft => setEditor({ ...editor, draft })} task={editor.task} projects={projects} projectsUnavailable={projectsUnavailable} pending={pending} saveDisabled={!writeAllowed || editor.conflict} error={editor.error} onSave={() => void saveEditor()} onClose={closeEditor} dirty={JSON.stringify(editor.draft) !== JSON.stringify(draftFromTask(editor.task))} onRevert={() => { editDrafts.current.delete(editor.task.id); setEditor({ ...editor, draft: draftFromTask(editor.task), error: editor.conflict ? editor.error : '' }); setConfirmDelete(false) }} confirmDelete={confirmDelete} onDelete={() => { if (confirmDelete) void deleteEditor(); else setConfirmDelete(true) }} onCancelDelete={() => setConfirmDelete(false)} deleteDisabled={!writeAllowed || editor.conflict} notice={<>
       {!writeAllowed && <p className="tasks-source">Saving requires a connection. You can keep editing this draft.</p>}
-      <p className="task-editor__sr">Closing keeps your draft here until you leave Tasks. {editor.task.rrule ? 'Existing recurrence is preserved.' : ''}</p>
+      <p className="task-editor__help">{draftStatus}. Closing keeps your draft available here. {editor.task.rrule ? 'Existing recurrence is preserved.' : ''}</p>
       {editor.conflict && <div className="tasks-conflict"><p>This task changed elsewhere. Compare before replacing its fields.</p><button type="button" disabled={pending || !writeAllowed} onClick={() => void compareLatest()}>Compare latest</button>{editor.latest && <><h3>Latest saved version</h3><dl><dt>Title</dt><dd>{editor.latest.title}</dd><dt>Description</dt><dd>{editor.latest.description || 'None'}</dd><dt>Date</dt><dd>{editor.latest.due_at ? new Date(editor.latest.due_at).toLocaleString() : 'No date'}</dd><dt>Priority</dt><dd>{PRIORITIES[editor.latest.priority] ?? editor.latest.priority}</dd><dt>Project</dt><dd>{projectName(editor.latest) || 'None'}</dd><dt>Status</dt><dd>{editor.latest.status}</dd></dl><p>Keep my draft replaces these fields when you save. Parent and recurrence keep the latest saved values.</p><button type="button" disabled={pending} onClick={() => { const latest = editor.latest!; upsert(latest); setEditor({ ...editor, fieldBase: editor.fieldBase ?? editor.task, task: latest, conflict: false, latest: null, error: '' }) }}>Keep my draft</button><button type="button" disabled={pending} onClick={() => { const latest = editor.latest!; upsert(latest); setEditor({ task: latest, draft: draftFromTask(latest), conflict: false, latest: null, error: '' }) }}>Use latest version</button></>}</div>}
     </>} />}
   </div>

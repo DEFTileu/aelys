@@ -138,6 +138,11 @@ class ResourceLink(Owned):
 
 class Note(Owned):
     __tablename__ = "notes"
+    knowledge_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
+    __table_args__ = (Index(
+        "ix_notes_knowledge_fts", text("to_tsvector('simple', title || ' ' || markdown_body)"),
+        postgresql_using="gin", postgresql_where=text("knowledge_enabled AND deleted_at IS NULL"),
+    ).ddl_if(dialect="postgresql"),)
     title: Mapped[str] = mapped_column(String(300))
     markdown_body: Mapped[str] = mapped_column(Text, default="")
     parent_id: Mapped[str | None] = mapped_column(String(36))

@@ -1,7 +1,8 @@
-import { act } from 'react'
+import { act, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AiView } from '../views/AiView'
+import { askAelys } from '../lib/desktopStore'
 
 const client = vi.hoisted(() => ({ aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
@@ -42,4 +43,13 @@ describe('AI chat workspace', () => {
     expect(host.querySelector('.actual-ai__thread-head h2')?.textContent).toBe('New conversation')
     expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')?.value).toContain('realistic plan')
   })
+})
+
+it('keeps a Knowledge handoff and its scope through StrictMode effect replay', async () => {
+  act(() => root.unmount())
+  askAelys('Explain this source', { note_ids: ['note-1'] })
+  root = createRoot(host)
+  await act(async () => root.render(<StrictMode><AiView apiStatus="ready" /></StrictMode>))
+  expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')?.value).toBe('Explain this source')
+  expect(host.textContent).toContain('selected document')
 })

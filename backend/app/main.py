@@ -104,3 +104,7 @@ app.include_router(telegram_router, prefix="/api/v1")
 
 async def init_db():
     async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)
+
+from .ai.knowledge import router as knowledge_router
+
+app.include_router(knowledge_router, prefix="/api/v1")
