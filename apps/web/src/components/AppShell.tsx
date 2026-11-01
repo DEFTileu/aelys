@@ -74,6 +74,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
   '/settings': { title: 'Settings', sub: 'Make Aelys your own' },
   '/utilities': { title: 'Apps', sub: 'Small tools for everything else. Pin the ones you use.' },
   '/automation': { title: 'Automation', sub: 'When this happens, Aelys does that.' },
+  '/messages': { title: 'Messages', sub: 'Telegram chats. Aelys drafts, you approve.' },
   '/widgets': { title: 'Customize home' },
   '/timer': { title: 'Focus' },
   '/developer': { title: 'Developer Hub' },
@@ -82,7 +83,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
 
 function screenFor(route: RoutePath): string | null {
   if (route === '/settings') return 'settings'
-  if (route === '/timer' || route === '/automation' || route === '/developer') return 'utilities'
+  if (route === '/timer' || route === '/automation' || route === '/messages' || route === '/developer') return 'utilities'
   return NAV.find((item) => item.route === route)?.id ?? null
 }
 

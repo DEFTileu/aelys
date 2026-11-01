@@ -13,6 +13,7 @@ export type RoutePath =
   | '/utilities'
   | '/developer'
   | '/automation'
+  | '/messages'
   | '/search'
   | '/settings'
   | '/components'

@@ -1,36 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { ApiError as SharedApiError, type AIProvider, type TelegramBusinessMessage, type TelegramSettingsPatch, type TelegramStatus } from '@aelys/shared'
+import { type AIProvider, type TelegramBusinessMessage, type TelegramSettingsPatch, type TelegramStatus } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
+import { sendIdempotencyKey, telegramErrorNotice as errorNotice } from '../lib/telegramMessages'
 import { Checkbox, SelectField } from '../components/controls/SelectionControls'
 import './connected.css'
-
-// API messages and provider text can contain secrets; only display a constrained error code.
-function errorNotice(error: unknown): string {
-  const messages: Record<string, string> = {
-    TELEGRAM_MESSAGE_UNAVAILABLE: 'Replies are available only for incoming messages. Select a message from the other person; the connection must be active.',
-    TELEGRAM_REPLY_DENIED: 'The bot cannot reply in this chat. Check the connection and reply permissions in Telegram Business settings.',
-    TELEGRAM_REPLY_WINDOW_EXPIRED: 'The Telegram reply window (24 hours) has expired. Wait for a new message from the other person.',
-    TELEGRAM_PAUSED: 'The connection is paused. Resume it before drafting or sending a reply.',
-    TELEGRAM_RATE_LIMITED: 'Telegram is limiting requests. Wait before trying again.',
-    ALREADY_SENT: 'A reply has already been sent to this message. Select a new incoming message.',
-    TELEGRAM_PROVIDER_REQUIRED: 'Choose an AI provider with a saved API key for automatic replies.',
-    TELEGRAM_BINDING_REQUIRED: 'Link the owner and connect the bot to Telegram Business.',
-    TELEGRAM_INSTRUCTIONS_REQUIRED: 'Enter assistant instructions before turning on automatic replies.',
-    TELEGRAM_WEBHOOK_CONFLICT: 'The bot has a webhook configured. Remove it in Telegram before connecting.',
-    TELEGRAM_TOKEN_INVALID: 'The bot token is invalid. Check the token in BotFather.',
-    TELEGRAM_VERSION_CONFLICT: 'Settings changed. Refresh and try again.',
-    TELEGRAM_DELIVERY_UNKNOWN: 'The send result is unknown. Check the Telegram chat before sending again.',
-    PROVIDER_REQUIRED: 'Choose an AI provider with a saved API key for automatic replies.',
-    BINDING_REQUIRED: 'Link the owner and connect the bot to Telegram Business.',
-    INSTRUCTIONS_REQUIRED: 'Enter assistant instructions before turning on automatic replies.',
-    WEBHOOK_CONFLICT: 'The bot has a webhook configured. Remove it in Telegram before connecting.',
-    TOKEN_INVALID: 'The bot token is invalid. Check the token in BotFather.',
-    VERSION_CONFLICT: 'Settings changed. Refresh and try again.',
-    DELIVERY_UNKNOWN: 'The send result is unknown. Check the Telegram chat before sending again.',
-  }
-  if (error instanceof SharedApiError && Object.hasOwn(messages, error.code)) return messages[error.code]
-  return 'The request failed. Check your connection and try again.'
-}
 
 export function TelegramSettings() {
   const [status, setStatus] = useState<TelegramStatus | null>(null)
@@ -99,13 +72,9 @@ export function TelegramSettings() {
     if (message.direction !== 'inbound' || message.deleted_at) return
     const text = drafts[message.id] ?? message.draft_text ?? ''
     if (!text.trim()) return
-    const signature = JSON.stringify([message.version, text])
-    let entry = sendKeys.current[message.id]
-    if (!entry || entry.signature !== signature) {
-      entry = { signature, key: globalThis.crypto.randomUUID() }; sendKeys.current[message.id] = entry
-    }
+    const key = sendIdempotencyKey(sendKeys.current, message, text)
     void action(async () => {
-      replaceMessage(await getSharedApiClient().sendTelegramMessage(message.id, { version: message.version, text }, { idempotencyKey: entry.key }))
+      replaceMessage(await getSharedApiClient().sendTelegramMessage(message.id, { version: message.version, text }, { idempotencyKey: key }))
       delete sendKeys.current[message.id]; setNotice('Message sent.')
     })
   }

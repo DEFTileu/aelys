@@ -2,7 +2,7 @@ import type { RoutePath } from '../types'
 
 export function getRoute(pathname = window.location.pathname): RoutePath {
   const path = pathname.replace(/\/$/, '') || '/'
-  const validRoutes: RoutePath[] = ['/', '/projects', '/notes', '/tasks', '/calendar', '/mail', '/finance', '/knowledge', '/widgets', '/timer', '/ai', '/utilities', '/developer', '/automation', '/search', '/settings', ...(import.meta.env.DEV ? ['/components' as const] : [])]
+  const validRoutes: RoutePath[] = ['/', '/projects', '/notes', '/tasks', '/calendar', '/mail', '/finance', '/knowledge', '/widgets', '/timer', '/ai', '/utilities', '/developer', '/automation', '/messages', '/search', '/settings', ...(import.meta.env.DEV ? ['/components' as const] : [])]
   return validRoutes.includes(path as RoutePath) ? (path as RoutePath) : '/'
 }
 
