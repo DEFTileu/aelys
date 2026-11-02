@@ -3,6 +3,7 @@ import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText,
 import { accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { useWallpaper } from '../lib/wallpaper'
+import { CrossfadePhoto } from './CrossfadePhoto'
 import { getSharedApiClient } from '../lib/api'
 import { useOwner } from '../lib/owner'
 import { usePrefs, type Prefs } from '../lib/prefs'
@@ -176,7 +177,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
 
         <main className={mobile ? 'mobile-shell__content' : 'shell-main'} style={isHome || mobile ? undefined : { background: 'var(--canvas)', color: 'var(--ink)' }}>
           {!mobile && <>
-            <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, backgroundImage: `url('${wallpaper}')` }} />
+            <CrossfadePhoto url={wallpaper} height={isHome ? 420 : 230} />
             <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, background: BAND_GRADIENT[theme][isHome ? 'home' : 'page'] }} />
           </>}
           <div style={{ position: 'relative' }}>
