@@ -112,7 +112,7 @@
 
 @media (max-width: 1000px) { .cl-layout { grid-template-columns: minmax(0, 1fr); } .cl-side { display: grid; grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px) {
-  .calendar-live { padding: 0 12px 24px; }
+  .calendar-live { padding: 0 16px 24px; }
   .cl-assistant, .cl-assistant-action { display: none; }
   .cl-week-toolbar { padding: 12px; }
   .cl-range { flex-basis: 100%; margin: 4px 0 0; order: 3; }
@@ -176,6 +176,9 @@
   .cl-mobile-agenda h2 { display: flex; align-items: baseline; margin: 0; padding: 8px 4px; font-size: 15px; font-weight: 600; line-height: normal; }
   .cl-mobile-agenda h2 small { margin-left: auto; color: var(--pg-mute); font-size: 12px; font-weight: 400; }
   .cl-mobile-agenda p { margin: 0; padding: 24px 4px; text-align: center; font-size: 14px; }
+  /* The design has no toolbar above the week: only the strip and the day card. Week navigation lives in the day card. */
+  .cl-toolbar, .cl-week-toolbar { display: none; }
+  .cl-mobile-nav { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-left: 6px; padding: 0; border: 0; border-radius: 50%; background: var(--pg-field, #F7F4F1); color: var(--pg-ink); cursor: pointer; }
   .cl-mobile-event > span { width: 44px; flex: none; padding-top: 8px; font-size: 13px; line-height: 20px; }
   .cl-mobile-event > div { border-left-width: 4px; border-left-style: solid; background: var(--ev-bg, var(--purple-soft)); }
   :root[data-theme='dark'] .cl-mobile-event > div { background: var(--ev-bg-dark, var(--purple-soft)); }
