@@ -102,6 +102,11 @@
 .st-head { display: flex; align-items: center; gap: 10px; }
 .st-title { font-size: 22px; line-height: 30px; font-weight: 600; }
 .st-sub { color: var(--st-mute); font-size: 14px; }
+/* On desktop the panel heading sits on the photo band (like the page hero), so it needs the hero's light text and shadow. */
+@media (min-width: 701px) {
+  .st-head .st-title, .st-head .st-sub { color: #fff; text-shadow: 0 0 10px rgba(8, 6, 20, .85), 0 1px 3px rgba(8, 6, 20, .75); }
+  .st-head .st-sub { font-weight: 500; }
+}
 .st-card { border: 1px solid var(--st-line); border-radius: 16px; background: var(--st-card); }
 .st-list > * + * { border-top: 1px solid var(--st-rule); }
 .st-group { display: flex; flex-direction: column; gap: 8px; }
