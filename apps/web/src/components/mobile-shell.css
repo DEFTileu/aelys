@@ -72,3 +72,8 @@
 
 /* AI Chat is a full-screen page of its own: no shell header, photo, subtitle or bottom bar (the chat has its own header). */
 .mobile-shell[data-route='/ai'] :is(.mobile-shell__header, .mobile-shell__wallpaper, .mobile-shell__sub, .mobile-shell__bottom) { display: none; }
+
+/* A <details> menu (Mail's more actions) in the action slot is a round 36px button. */
+.mobile-shell__action > details { display: block; position: relative; width: 36px; padding: 0; }
+.mobile-shell__action > details > summary { display: grid; place-items: center; width: 36px; height: 36px; list-style: none; cursor: pointer; }
+.mobile-shell__action > details > summary::-webkit-details-marker { display: none; }

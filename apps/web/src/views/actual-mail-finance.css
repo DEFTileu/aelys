@@ -202,7 +202,8 @@
   .actual-mail-list .actual-search input { font-size: 15px; height: auto; }
   .actual-mail-list .actual-search svg { width: 18px; height: 18px; }
   .actual-mail-list .actual-compose-icon { display: none; }
-  .actual-mobile-mail-actions { gap: 8px; }
+  /* On a phone the actions menu sits in the header, as the design has no row above the folders. */
+  .actual-mobile-mail-actions { display: none !important; }
   .actual-mobile-mail-actions .button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 18px; font-size: 13px; font-weight: 600; }
   .actual-mobile-folders button { border: 0; background: var(--amf-surface); color: var(--amf-text); }
   .actual-mobile-folders button[aria-pressed='true'] { background: #6a4cf2; color: #fff; }

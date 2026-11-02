@@ -277,7 +277,7 @@
   .st-nav-item { min-height: 60px; }
   .st-nav-item[aria-current='page'] { background: transparent; font-weight: 500; }
   .st-nav-desc, .st-nav-chevron { display: block !important; }
-  .st-nav-desc { overflow: hidden; color: var(--st-mute); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+  .st-nav-desc { overflow: hidden; color: var(--st-mute); font-size: 12px; font-weight: 400; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
   .st-nav-chevron { color: var(--st-faint); }
   .st-themes .st-theme-art { height: 64px; }
   .st-wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); }

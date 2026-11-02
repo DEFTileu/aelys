@@ -139,7 +139,7 @@
   .cl-month-grid button { min-height: 52px; padding: 4px; }
   .cl-weekends-toggle { display: none; }
 }
-.mobile-shell .calendar-live { padding: 0 12px 24px; }
+.mobile-shell .calendar-live { padding: 0 16px 24px; }
 .mobile-shell .cl-layout { display: block; }
 .mobile-shell .cl-side, .mobile-shell .cl-grid-scroll, .mobile-shell .cl-zone { display: none; }
 .mobile-shell .cl-week { overflow: visible; border: 0; background: transparent; box-shadow: none; }
