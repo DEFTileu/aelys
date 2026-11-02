@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ApiError, type ProjectResponse, type TaskOut } from '@aelys/shared'
-import { Calendar, CalendarDays, Check, CircleCheck, CircleCheckBig, CirclePlus, Clock, Ellipsis, Flag, Inbox, Search } from '../icons'
+import { Calendar, CalendarDays, Check, CircleCheck, CircleCheckBig, CirclePlus, Clock, Flag, Inbox, ListFilter, Search } from '../icons'
 import { getSharedApiClient } from '../lib/api'
 import type { ApiStatus } from '../types'
 import { TaskEditor } from './tasks/TaskEditor'
@@ -336,31 +336,31 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
           {VIEWS.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" aria-label={label} id={`tasks-tab-${id}`} aria-controls="tasks-panel" aria-selected={view === id} tabIndex={view === id || ((view === 'all' || view === 'matrix') && id === 'today') ? 0 : -1} onClick={() => setView(id)}><Icon size={16} /><span>{label}</span><b aria-hidden="true">{tasks.filter(task => inView(task, id)).length}</b></button>)}
         </div>
         <span className="tasks-spacer" />
-        <label className="tasks-search"><Search size={16} /><input aria-label="Search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} />
+        <label className="tasks-search"><Search size={16} /><input aria-label="Search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} /></label>
         <div className="tasks-more" ref={moreRef}>
-            <button type="button" className="tasks-more-button" aria-label="More views and filters" aria-haspopup="true" aria-expanded={moreOpen} onClick={() => setMoreOpen(value => !value)}><Ellipsis size={18} /></button>
-            {moreOpen && <div className="tasks-more-panel">
-              <button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>All tasks</button>
-              <button type="button" aria-pressed={view === 'matrix'} onClick={() => setView('matrix')}>Matrix</button>
-              <button type="button" aria-pressed={highOnly} onClick={() => setHighOnly(value => !value)}><Flag size={15} />High priority</button>
-              <button type="button" aria-pressed={overdueOnly} onClick={() => { setOverdueOnly(value => !value); if (!overdueOnly) setView('all') }}>Overdue</button>
-              <div className="tasks-more-status">Status<select aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="completed">Completed</option></select></div>
-              {activeFilters && <button type="button" onClick={clearFilters}>Clear filters</button>}
-              <button type="button" aria-label="Refresh tasks" disabled={refreshing || pending} onClick={() => void load()}>Refresh</button>
-            </div>}
-          </div>
-        </label>
-        <select className="tasks-select" aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}>{priorityOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-        <select className="tasks-select" aria-label="Filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{projectIds.map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</select>
+          <button type="button" className="tasks-filter-button" aria-label="Filters and views" aria-haspopup="true" aria-expanded={moreOpen} data-active={activeFilters ? 'true' : undefined} onClick={() => setMoreOpen(value => !value)}><ListFilter size={16} />Filter{filterCount > 0 && <b>{filterCount}</b>}</button>
+          {moreOpen && <div className="tasks-more-panel">
+            <div className="tasks-more-status">Priority<select aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}>{priorityOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+            <div className="tasks-more-status">Project<select aria-label="Filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{projectIds.map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</select></div>
+            <div className="tasks-more-status">Status<select aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="completed">Completed</option></select></div>
+            <button type="button" aria-pressed={highOnly} onClick={() => setHighOnly(value => !value)}><Flag size={15} />High priority</button>
+            <button type="button" aria-pressed={overdueOnly} onClick={() => { setOverdueOnly(value => !value); if (!overdueOnly) setView('all') }}>Overdue</button>
+            <button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>All tasks</button>
+            <button type="button" aria-pressed={view === 'matrix'} onClick={() => setView('matrix')}>Matrix</button>
+            {activeFilters && <button type="button" onClick={clearFilters}>Clear filters</button>}
+          </div>}
+        </div>
         {filterCount > 0 && <button type="button" className="tasks-reset" onClick={() => { setPriorityFilter('all'); setProjectFilter('all'); setQuery('') }}>Reset</button>}
       </div>
       <form className="tasks-quick" aria-label="Quick add task" onSubmit={createTask} onKeyDown={quickKeys}>
         <CirclePlus size={20} className="tasks-quick-icon" />
         <input ref={quickTitle} aria-label="Add a task" aria-describedby="tasks-quick-hint" placeholder="Add a task — Enter to save, Q to focus" value={newDraft.title} disabled={pending} onChange={event => { const parsed = parseQuickTokens(event.target.value, projects, new Date(), false); patchQuick(tokenPatch(parsed, newDraft)) }} />
         <span id="tasks-quick-hint" className="tasks-sr">Try @tomorrow, @14:30, !p1 or #project</span>
+        {newDraft.title.trim() && <>
         <select className="tasks-quick-select" aria-label="Date" value={newDateValue} disabled={pending} onChange={event => pickNewDate(event.target.value)}><option value="none">No date</option><option value="today">Today</option><option value="tomorrow">Tomorrow</option>{!['none', 'today', 'tomorrow'].includes(newDateValue) && <option value={newDateValue}>{fmtDay(newDateValue, today)}</option>}</select>
         <select className="tasks-quick-select" aria-label="Priority" value={newDraft.priority} disabled={pending} onChange={event => patchQuick({ priority: event.target.value })}><option value="0">No priority</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option></select>
         <select className="tasks-quick-select tasks-quick-project" aria-label="Project" value={newDraft.projectId} disabled={pending} onChange={event => patchQuick({ projectId: event.target.value })}><option value="">No project</option>{projectIds.map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</select>
+        </>}
         <button className="tasks-add" aria-label="Add task" type="submit" data-ready={newDraft.title.trim() ? 'true' : 'false'} disabled={!writeAllowed || pending || createUncertain || !newDraft.title.trim()}>{pending ? 'Saving…' : 'Add'}</button>
         {createError && <p ref={quickError} tabIndex={-1} className="tasks-error tasks-quick-error" role="alert">{createError}</p>}
         {createUncertain && <div className="tasks-recovery"><button type="button" disabled={pending || refreshing} onClick={async () => { if (await load()) { setCheckedUncertain(true); setView('all'); clearFilters() } }}>Check task list</button>{checkedUncertain && <><span>If it is already in the list, close this draft. Otherwise:</span><button type="button" onClick={() => { setCreateUncertain(false); setCreateError(''); setCheckedUncertain(false) }}>Allow another attempt</button></>}</div>}

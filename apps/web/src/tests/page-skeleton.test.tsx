@@ -17,11 +17,12 @@ describe('PageSkeleton', () => {
     expect(skeletonLayout('settings', false).cards[0].rows).toHaveLength(9)
     expect(skeletonLayout('list', true).cards[0].rows).toHaveLength(7)
   })
-  it('shows the slow notice after 8 seconds and retries', () => {
+  it('shows the slow notice after 2.5 seconds, hidden for the first 200ms and retries', () => {
     vi.useFakeTimers(); const retry = vi.fn()
     const host = mount(<PageSkeleton kind="list" label="Tasks" onRetry={retry} />)
-    expect(host.textContent).toContain('Loading Tasks…'); expect(host.textContent).not.toContain('Taking longer than usual')
-    act(() => { vi.advanceTimersByTime(8000) })
+    expect(host.textContent).toContain('Loading Tasks…'); expect(host.textContent).not.toContain('Taking longer than usual'); expect(host.querySelector('.pskel__grid')).toBeNull()
+    act(() => { vi.advanceTimersByTime(200) }); expect(host.querySelector('.pskel__grid')).not.toBeNull()
+    act(() => { vi.advanceTimersByTime(2500) })
     expect(host.textContent).toContain('Taking longer than usual')
     act(() => host.querySelector<HTMLButtonElement>('.pskel__slow button')!.click()); expect(retry).toHaveBeenCalledTimes(1)
   })
