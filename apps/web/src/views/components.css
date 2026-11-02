@@ -46,23 +46,6 @@
 .component-gallery__icons div { display: grid; justify-items: start; gap: 8px; min-width: 0; color: var(--ink-soft); font-size: 12px; }
 .component-gallery__layout { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .component-gallery :focus-visible { outline: 2px solid var(--purple); outline-offset: 3px; }
-@media (max-width: 700px) {
-  .component-gallery__header { padding: 0 20px; }
-  .component-gallery__page { display: block; padding: 28px 20px 64px; }
-  .component-gallery__sidebar nav { position: static; }
-  .component-gallery__nav-title { margin-top: 0; }
-  .component-gallery__nav-links { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 32px; }
-  .component-gallery__nav-links a { padding: 7px 10px; border: 1px solid var(--line); background: var(--surface-solid); font-size: 13px; }
-  .component-gallery__specimen { padding: 18px; }
-}
-@media (max-width: 420px) {
-  .component-gallery__header { gap: 8px; }
-  .component-gallery__header-actions { gap: 10px; }
-  .component-gallery__open { font-size: 13px; }
-  .component-gallery__switches { grid-template-columns: 1fr; }
-  .component-gallery__icons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .component-gallery__layout { align-items: flex-start; flex-direction: column; }
-}
 @media (prefers-reduced-motion: reduce) { .component-gallery *, .component-gallery *::before, .component-gallery *::after { scroll-behavior: auto; transition-duration: 0s; animation-duration: 0s; } }
 
 .component-gallery__sidebar nav { max-height: calc(100dvh - 48px); overflow-y: auto; scrollbar-width: thin; }
@@ -88,5 +71,3 @@ textarea.component-gallery__field { resize: vertical; line-height: 1.5; min-heig
 .component-gallery__stepper button { width: 44px; height: 44px; border: 0; background: var(--surface-soft); font-size: 19px; }
 .component-gallery__stepper input { appearance: textfield; -moz-appearance: textfield; width: 56px; height: 44px; padding: 0 4px; border: 0; text-align: center; background: var(--surface-solid); color: var(--ink); font: inherit; }
 .component-gallery__stepper input::-webkit-inner-spin-button { -webkit-appearance: none; }
-@media (max-width: 700px) { .component-gallery__sidebar nav { max-height: none; overflow: visible; } }
-@media (max-width: 560px) { .component-gallery__control-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; } }

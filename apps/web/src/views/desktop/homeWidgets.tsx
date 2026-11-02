@@ -5,6 +5,7 @@ import type { ActivityEvent, EventOut, FinanceBudget, FinanceTransaction, FocusO
 import { accentOf } from '../../data/desktop/home'
 import { openWeatherSettings, refreshWeather, useWeather } from '../../lib/weather'
 import { navigate } from '../../lib/router'
+import { useLongPress } from '../../lib/useLongPress'
 import { WIDGET_CATALOG, type WidgetId } from './homeLayout'
 import type { ApiStatus } from '../../types'
 import { WidgetFrame, type WidgetFrameControls } from './WidgetFrame'
@@ -37,9 +38,11 @@ export function HomeWidget({ id, editing, mobile = false, focus, data, onToggleT
   const route = def.link?.route ?? ({ today: '/tasks', focus: '/timer', fin: '/finance' } as const)[id as 'today' | 'focus' | 'fin']
   const meta = id === 'weather' ? location?.name : id === 'cal' ? new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : id === 'fin' ? new Date().toLocaleDateString('en-US', { month: 'long' }) : id === 'focus' && sessions ? `Session ${sessions}` : ''
   const Icon = def.icon
-  return <WidgetFrame controls={frame} style={style} editing={editing} onRemove={onRemove} onLongPress={onLongPress}>
+  // Mobile: long-press the heading to open Customize; the card body stays free for scrolling and taps.
+  const headPress = useLongPress(() => onLongPress?.())
+  return <WidgetFrame controls={frame} style={style} editing={editing} onRemove={onRemove}>
     {size => <>
-    <div data-widget-heading="" className="dw-head">
+    <div data-widget-heading="" className="dw-head" {...(mobile && onLongPress ? headPress : {})}>
       {editing && !mobile
         ? <span className="dw-head-move" title="Drag"><Move size={16} aria-hidden="true" /></span>
         : <span className="dw-head-icon" style={{ background: dark ? 'rgba(255,255,255,.22)' : soft, color: dark ? '#fff' : ink }}><Icon size={16} /></span>}

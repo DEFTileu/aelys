@@ -1,0 +1,23 @@
+.customize-m { display: flex; flex-direction: column; gap: 16px; padding: 8px 16px 32px; }
+.customize-m__section { display: flex; flex-direction: column; gap: 8px; }
+.customize-m__head { display: flex; align-items: center; gap: 12px; }
+.customize-m__head > div { flex: 1; min-width: 0; }
+.customize-m__head h2 { margin: 0; font-size: 18px; line-height: 24px; font-weight: 600; }
+.customize-m__head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.customize-m__reset { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border: 0; border-radius: 22px; background: var(--surface-soft); color: var(--ink); font: inherit; font-size: 14px; font-weight: 500; }
+.customize-m__list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--surface-solid); }
+.customize-m__row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 8px 0 12px; }
+.customize-m__row + .customize-m__row { border-top: 1px solid var(--line); }
+.customize-m__icon { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 12px; background: var(--purple-soft); color: var(--purple-deep); }
+.customize-m__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 500; }
+.customize-m__remove { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #C9302C; }
+.customize-m__add { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 26px; background: #6A4CF2; color: #fff; font: inherit; font-size: 16px; font-weight: 600; }
+.customize-m__notice { margin: 0; padding: 10px 14px; border-radius: 12px; background: #1C1B22; color: #fff; font-size: 14px; }
+/* Add widget opens as a bottom sheet over this screen. */
+.customize-m .add-widget-backdrop { place-items: end stretch; padding: 0; }
+.customize-m .add-widget { width: 100%; height: auto; max-height: 88%; grid-template-columns: 1fr; border-radius: 28px 28px 0 0; box-shadow: 0 -12px 40px rgba(20,10,30,.25); }
+.customize-m .add-widget__list { max-height: 34vh; border-right: 0; border-bottom: 1px solid var(--line); }
+.customize-m .add-widget__detail { padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+.customize-m .add-widget__preview { transform: scale(.82); transform-origin: left bottom; }
+.customize-m .add-widget__sizes { gap: 4px; }
+.customize-m .add-widget__cancel, .customize-m .add-widget__add { min-height: 44px; }

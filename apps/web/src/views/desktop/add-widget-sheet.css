@@ -36,12 +36,4 @@
 .add-widget__add:disabled { opacity: .45; cursor: default; }
 .add-widget-backdrop--full { padding: 0; background: var(--bg, #fff); }
 .add-widget-backdrop--full .add-widget, .mobile-shell .add-widget { width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
-@media (max-width: 700px) {
-  .add-widget-backdrop { padding: 0; }
-  .add-widget { width: 100%; height: 100%; border-radius: 0; grid-template-columns: 1fr; grid-template-rows: minmax(0, 40%) minmax(0, 1fr); }
-  .add-widget__list { border-right: 0; border-bottom: 1px solid var(--line); }
-  .add-widget__detail { padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
-  .add-widget__preview { transform: scale(.82); transform-origin: left bottom; }
-  .add-widget__sizes { gap: 4px; }
-}
 .add-widget-notice { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 210; margin: 0; padding: 10px 16px; border-radius: 12px; background: #1C1B22; color: #fff; font-size: 13px; }

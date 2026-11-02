@@ -372,17 +372,15 @@ describe('dashboard customization', () => {
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
   })
 
-  it('enters the same edit mode on mobile with a long press', async () => {
+  it('opens Customize on mobile with a long press on the widget heading', async () => {
     vi.useFakeTimers()
-    const width = window.innerWidth
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 700px)', addEventListener() {}, removeEventListener() {} }))
     try {
-      const { host, grid } = await mount()
-      expect(host.querySelector('[aria-label="Remove Today"]')).toBeNull()
-      await act(async () => pointer(card(host, 'today'), 'pointerdown', 15, 25))
+      const { host } = await mount()
+      const heading = card(host, 'today').querySelector<HTMLElement>('[data-widget-heading]')!
+      await act(async () => pointer(heading, 'pointerdown', 15, 25))
       await act(async () => { vi.advanceTimersByTime(600) })
-      expect(host.querySelector('[aria-label="Remove Today"]')).not.toBeNull()
-      expect(grid.classList.contains('home-widget-grid--editing')).toBe(true)
-    } finally { vi.useRealTimers(); Object.defineProperty(window, 'innerWidth', { configurable: true, value: width }) }
+      expect(window.location.pathname).toBe('/widgets')
+    } finally { vi.useRealTimers(); window.history.replaceState({}, '', '/') }
   })
 })

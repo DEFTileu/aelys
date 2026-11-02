@@ -5,7 +5,9 @@ import { Checkbox } from '../components/controls/SelectionControls'
 import { SelectExamples, CheckboxExamples, RangeExamples } from '../components/gallery/SelectionExamples'
 import { FeedbackExamples, MotionExamples } from '../components/gallery/FeedbackExamples'
 import { Calendar, Check, Folder, House, Inbox, Moon, NotebookText, Search, Settings, SquareCheck, Sun } from '../icons'
+import { useIsMobile } from '../lib/useIsMobile'
 import './components.css'
+import './components-mobile.css'
 
 type Props = { theme: 'light' | 'dark'; onToggleTheme: () => void }
 
@@ -29,6 +31,8 @@ export function ComponentsView({ theme, onToggleTheme }: Props) {
   const [setting, setSetting] = useState(false)
   const [selected, setSelected] = useState(false)
   const invalid = submitted && !name.trim()
+  // Same markup on both; only the layout CSS differs, so one component with a root modifier.
+  const mobile = useIsMobile()
 
   function saveExample(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -36,7 +40,7 @@ export function ComponentsView({ theme, onToggleTheme }: Props) {
     setSaved(Boolean(name.trim()))
   }
 
-  return <div className="component-gallery">
+  return <div className={mobile ? 'component-gallery component-gallery--m' : 'component-gallery'}>
     <header className="component-gallery__header">
       <a className="component-gallery__brand" href="/" aria-label="Aelys — home"><AelysMark size={32} /><span>Aelys</span></a>
       <div className="component-gallery__header-actions">
