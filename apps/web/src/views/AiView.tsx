@@ -3,9 +3,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AIConversation, AIMessage, AIProvider, KnowledgeScope, KnowledgeSource } from '@aelys/shared'
 import { ApiError } from '@aelys/shared'
 import { AelysMark } from '../components/AelysMark'
-import { ApiStatusPill } from '../components/ApiStatusPill'
 import { SelectField } from '../components/controls/SelectionControls'
-import { ArrowUp, Calendar, ChevronRight, Folder, MessageSquareText, Plus, Search, Settings, Sparkles, SquareCheck } from '../icons'
+import { ArrowUp, Calendar, ChevronRight, Folder, MessageSquareText, Plus, Search, Sparkles, SquareCheck } from '../icons'
 import { getSharedApiClient } from '../lib/api'
 import { takePendingAsk, useDesktopState } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
@@ -112,10 +111,10 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
       </div>
     </aside>
     <section className="actual-ai__card actual-ai__thread" aria-label="AI conversation">
-      <div className="actual-ai__thread-head"><div><h2>{selectedTitle}</h2><p>Your conversation with Aelys</p></div><ApiStatusPill status={apiStatus} /><button type="button" className="actual-ai__settings" onClick={() => navigate('/settings')}><Settings size={16} />AI settings</button></div>
-      <div className="actual-ai__provider"><SelectField label="Chat provider" value={providerId} disabled={running || !providers.length} onChange={setProviderId} options={providers.map(item => ({ value: item.id, label: `${({ claude: 'Claude', openrouter: 'OpenRouter' } as Record<string, string>)[item.kind] ?? item.kind} · ${String(item.model_policy?.default_model ?? 'auto')}` }))} placeholder="Configure a provider" />{!providers.length && <button type="button" onClick={() => navigate('/settings')}>Configure provider</button>}</div>
+      <div className="actual-ai__thread-head"><div><h2>{selectedTitle}</h2><p>Your conversation with Aelys</p></div></div>
+      <div className="actual-ai__provider"><SelectField label="Model" value={providerId} disabled={running || !providers.length} onChange={setProviderId} options={providers.map(item => ({ value: item.id, label: `${({ claude: 'Claude', openrouter: 'OpenRouter' } as Record<string, string>)[item.kind] ?? item.kind} · ${String(item.model_policy?.default_model ?? 'auto')}` }))} placeholder="Configure a provider" />{!providers.length && <button type="button" onClick={() => navigate('/settings')}>Manage providers</button>}</div>
       <div className="actual-ai__lines" aria-live="polite">
-        {lines.map(line => <article key={line.id} className={`actual-ai__line${line.role === 'user' ? ' actual-ai__line--user' : ''}`}><span className="actual-ai__avatar" aria-hidden="true">{line.role === 'user' ? 'You' : <AelysMark size={32} />}</span><div className="actual-ai__bubble"><strong>{line.role === 'user' ? 'You' : line.role === 'assistant' ? 'Aelys' : line.role}</strong><MarkdownContent text={line.content} />{line.source_refs_json?.length ? <SourceList sources={line.source_refs_json} /> : null}{line.created_at && !Number.isNaN(Date.parse(line.created_at)) && <time dateTime={line.created_at}>{new Date(line.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</time>}</div></article>)}
+        {lines.map(line => <article key={line.id} className={`actual-ai__line${line.role === 'user' ? ' actual-ai__line--user' : ''}`}><span className="actual-ai__avatar" aria-hidden="true">{line.role === 'user' ? 'You' : <AelysMark size={32} />}</span><div className="actual-ai__bubble"><strong>{line.role === 'user' ? 'You' : line.role === 'assistant' ? 'Aelys' : line.role}</strong><MarkdownContent text={line.content} />{line.role === 'assistant' && <button type="button" className="actual-ai__copy" onClick={() => void navigator.clipboard?.writeText(line.content)}>Copy</button>}{line.source_refs_json?.length ? <SourceList sources={line.source_refs_json} /> : null}{line.created_at && !Number.isNaN(Date.parse(line.created_at)) && <time dateTime={line.created_at}>{new Date(line.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</time>}</div></article>)}
         {partial && <article className="actual-ai__line"><span className="actual-ai__avatar" aria-hidden="true"><AelysMark size={32} /></span><div className="actual-ai__bubble"><strong>Aelys</strong><MarkdownContent text={partial} /></div></article>}
         {loading && !lines.length && !partial && <PageSkeleton kind="chat" compact label="conversation" />}
         {!loading && !lines.length && !partial && <div className="actual-ai__welcome"><span className="actual-ai__welcome-icon"><Sparkles size={25} /></span><h2>{loading ? 'Loading conversation…' : 'How can I help?'}</h2><p>{providers.length ? 'Ask a question or choose a prompt to get started.' : 'Configure a provider in AI settings to start a conversation.'}</p></div>}

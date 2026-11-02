@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { type AIProvider, type TelegramBusinessMessage, type TelegramSettingsPatch, type TelegramStatus } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
-import { sendIdempotencyKey, telegramErrorNotice as errorNotice } from '../lib/telegramMessages'
+import { telegramErrorNotice as errorNotice } from '../lib/telegramMessages'
 import { Checkbox } from '../components/controls/SelectionControls'
 import { ChevronRight, MessageSquareText, Send } from '../icons'
 import { navigate } from '../lib/router'
@@ -24,10 +24,8 @@ export function TelegramSettings() {
   const [deadlineReminders, setDeadlineReminders] = useState(false)
   const [quietStart, setQuietStart] = useState('')
   const [quietEnd, setQuietEnd] = useState('')
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const sendKeys = useRef<Record<string, { signature: string; key: string }>>({})
 
   const applyStatus = (value: TelegramStatus) => {
     setStatus(value); setInstructions(value.instructions); setProvider(value.provider_id ?? ''); setModel(value.model ?? ''); setTimezone(value.timezone); setDigestTime(value.digest_time ?? ''); setReplyDelay(value.reply_delay_seconds)
@@ -68,23 +66,9 @@ export function TelegramSettings() {
     event.preventDefault()
     void action(async () => { const next = await getSharedApiClient().connectTelegram({ bot_token: token }); setToken(''); setBinding(null); applyStatus(next) })
   }
-  const replaceMessage = (item: TelegramBusinessMessage) => {
-    setMessages((current) => current.map((message) => message.id === item.id ? item : message))
-    setDrafts((current) => ({ ...current, [item.id]: item.draft_text ?? '' }))
-  }
-  const send = (message: TelegramBusinessMessage) => {
-    if (message.direction !== 'inbound' || message.deleted_at) return
-    const text = drafts[message.id] ?? message.draft_text ?? ''
-    if (!text.trim()) return
-    const key = sendIdempotencyKey(sendKeys.current, message, text)
-    void action(async () => {
-      replaceMessage(await getSharedApiClient().sendTelegramMessage(message.id, { version: message.version, text }, { idempotencyKey: key }))
-      delete sendKeys.current[message.id]; setNotice('Message sent.')
-    })
-  }
   const connected = status?.connections.some((connection) => connection.enabled) ?? false
 
-  const draftsReady = messages.filter((message) => !!(drafts[message.id] ?? message.draft_text)).length
+  const draftsReady = messages.filter((message) => !!message.draft_text).length
   const autoOff = !status?.auto_reply
   const state = !status?.configured ? 'Bot not set up' : !status.enabled ? 'Paused' : connected ? 'Connected to your Business account' : 'Telegram Business connection pending'
   const connectForm = <form className="st-form" onSubmit={connect}>
@@ -137,25 +121,6 @@ export function TelegramSettings() {
         <ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--st-mute)' }} />
       </button>
 
-      <Card>
-        <div className="st-row st-row--14"><div className="st-grow"><div className="st-label">Manual replies</div><div className="st-hint">Review incoming messages, edit a draft and send it yourself</div></div></div>
-        <div className="st-msgs">
-          {messages.length === 0 && <div className="st-hint">No messages yet.</div>}
-          {messages.map((message) => <details className="st-msg-item" key={message.id}>
-            <summary>{message.chat_title} · {message.direction}</summary><p>{message.sent_at}{message.deleted_at ? ' · deleted' : ''}</p>
-            <div className="mail-body">{message.text || (message.direction === 'owner' ? 'Message without text' : '')}</div>
-            {message.direction === 'owner' && <p>Your outgoing message. Select an incoming message from the other person to reply.</p>}
-            {message.direction === 'inbound' && <>
-              <p>Draft: {message.draft_status}{message.draft_error_code ? ' · draft failed' : ''}</p>
-              {message.owner_note && <p>For the owner: {message.owner_note}</p>}
-              <label className="st-field-label">Reply text<textarea className="st-textarea" value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
-              <div className="st-actions" style={{ marginTop: 10 }}><button className="st-btn st-btn--ghost" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Create draft</button>
-                <button className="st-btn st-btn--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Send reply</button></div>
-            </>}
-          </details>)}
-        </div>
-      </Card>
-
       <Group title="Connection">
         <Card>
           <Row title="Owner link" hint={status.owner_telegram_id ? `Linked to Telegram ID ${status.owner_telegram_id}` : 'Open the one-time link in Telegram to link the owner'} wrap>
@@ -163,7 +128,6 @@ export function TelegramSettings() {
           </Row>
           {binding && <div className="st-msg"><a href={binding.url} target="_blank" rel="noreferrer">Open one-time owner link</a> · valid until {binding.expires_at}</div>}
           <Row title="Business mode" hint={`${status.business_capable ? 'Available' : 'Not enabled'} · ${status.enabled ? 'active' : 'paused'}${status.last_polled_at ? ` · last check ${status.last_polled_at}` : ''}`} wrap>
-            <button type="button" className="st-btn" disabled={busy} onClick={() => void action(load)}>Refresh</button>
             <button type="button" className="st-btn" disabled={busy || !status.configured} onClick={() => void action(async () => { const result = await getSharedApiClient().syncTelegram(); await load(); setNotice(`Check complete. Processed: ${result.processed}.`) })}>Check connection</button>
           </Row>
           <details className="st-pad st-steps"><summary>Business connections</summary>
