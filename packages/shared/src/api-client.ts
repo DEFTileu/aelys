@@ -1,7 +1,7 @@
 import type {
   KnowledgeSource, KnowledgeScope,
   MemoryFactIn, MemoryFactPatch, OwnerMemoryFact,
-  ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
+  ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIAction, AIAttachment, AIAttachmentIn, AIConversation, AIFeedback, AIMessage, AIMessageIn, ConversationPatch, AIProvider, AIProviderSecretResponse,
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
@@ -496,6 +496,13 @@ export class ApiClient {
   public setAIProviderSecret(providerId: Id, body: { readonly api_key: string }, options?: RequestOptions) { return this.request<AIProviderSecretResponse>(`/api/v1/ai/providers/${encodeURIComponent(providerId)}/secret`, this.write(body, { ...options, queueOnOffline: false }, "PUT")); }
   public deleteAIProviderSecret(providerId: Id, options?: RequestOptions) { return this.request<{ readonly deleted: boolean; readonly provider_id: Id }>(`/api/v1/ai/providers/${encodeURIComponent(providerId)}/secret`, this.write(undefined, { ...options, queueOnOffline: false }, "DELETE")); }
   public createAIConversation(body: ConversationIn, options?: RequestOptions) { return this.request<AIConversation>("/api/v1/ai/conversations", this.write(body, options)); }
+  public updateAIConversation(id: Id, body: ConversationPatch) { return this.request<AIConversation>(`/api/v1/ai/conversations/${encodeURIComponent(id)}`, this.write(body, { queueOnOffline: false }, "PATCH")); }
+  public aiConversationActions(conversationId: Id, options?: RequestOptions) { return this.request<readonly AIAction[]>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/actions`, this.read(options)); }
+  public approveAIAction(id: Id) { return this.request<AIAction>(`/api/v1/ai/actions/${encodeURIComponent(id)}/approve`, this.write(undefined, { queueOnOffline: false })); }
+  public rejectAIAction(id: Id) { return this.request<AIAction>(`/api/v1/ai/actions/${encodeURIComponent(id)}/reject`, this.write(undefined, { queueOnOffline: false })); }
+  public uploadAIAttachment(body: AIAttachmentIn) { return this.request<AIAttachment>("/api/v1/ai/attachments", this.write(body, { queueOnOffline: false })); }
+  public deleteAIAttachment(id: Id) { return this.request<{ readonly deleted?: boolean }>(`/api/v1/ai/attachments/${encodeURIComponent(id)}`, this.write(undefined, { queueOnOffline: false }, "DELETE")); }
+  public setAIMessageFeedback(id: Id, feedback: AIFeedback) { return this.request<AIMessage>(`/api/v1/ai/messages/${encodeURIComponent(id)}`, this.write({ feedback }, { queueOnOffline: false }, "PATCH")); }
   public aiMessages(conversationId: Id, options?: RequestOptions) { return this.request<readonly AIMessage[]>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/messages`, this.read(options)); }
   public addAIMessage(conversationId: Id, body: AIMessageIn, options?: RequestOptions) { return this.request<AIMessage>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/messages`, this.write(body, options)); }
   public createAIRun(body: AIRunIn, options?: RequestOptions) { return this.request<AIRun>("/api/v1/ai/runs", this.write(body, options)); }

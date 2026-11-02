@@ -361,3 +361,27 @@ it('binds optional reply target in the manual send request',async()=>{
  await client.sendTelegramChatMessage({business_connection_id:'c',chat_id:1,text:'Reply',reply_to_message_id:7},{idempotencyKey:'quoted-key'});
  expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toEqual({business_connection_id:'c',chat_id:1,text:'Reply',reply_to_message_id:7});
 });
+
+it("calls the AI chat endpoints: pin, scopes, actions, attachments, feedback and attachment_ids", async () => {
+  const fetchImpl = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ id: "x" })));
+  const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl });
+  await client.updateAIConversation("c 1", { pinned: true, scopes: ["tasks.read"] });
+  await client.aiConversationActions("c1");
+  await client.approveAIAction("a1");
+  await client.rejectAIAction("a2");
+  await client.uploadAIAttachment({ name: "n.txt", content_base64: "aGk=" });
+  await client.deleteAIAttachment("f1");
+  await client.setAIMessageFeedback("m1", "up");
+  await client.createAIRun({ conversation_id: "c1", message: "hi", attachment_ids: ["f1"], idempotency_key: "k" });
+  const calls = fetchImpl.mock.calls.map(([url, init]) => [String(url).replace("https://api.example.test", ""), init?.method, init?.body === undefined ? undefined : JSON.parse(String(init.body))]);
+  expect(calls).toEqual([
+    ["/api/v1/ai/conversations/c%201", "PATCH", { pinned: true, scopes: ["tasks.read"] }],
+    ["/api/v1/ai/conversations/c1/actions", "GET", undefined],
+    ["/api/v1/ai/actions/a1/approve", "POST", undefined],
+    ["/api/v1/ai/actions/a2/reject", "POST", undefined],
+    ["/api/v1/ai/attachments", "POST", { name: "n.txt", content_base64: "aGk=" }],
+    ["/api/v1/ai/attachments/f1", "DELETE", undefined],
+    ["/api/v1/ai/messages/m1", "PATCH", { feedback: "up" }],
+    ["/api/v1/ai/runs", "POST", { conversation_id: "c1", message: "hi", attachment_ids: ["f1"], idempotency_key: "k" }],
+  ]);
+});
