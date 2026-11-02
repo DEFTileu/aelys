@@ -367,3 +367,11 @@ code { padding: 1px 5px; border-radius: 5px; background: var(--purple-soft); col
 
 /* Settings > Appearance > Reduce motion: fades instead of animations, on top of the system preference. */
 :root[data-reduce-motion="true"] *, :root[data-reduce-motion="true"] *::before, :root[data-reduce-motion="true"] *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+
+/* No focus frames around text fields or on mouse-focused controls: the field surface and caret already show where you are.
+   Placed last with !important so view-level rules (many of which draw 2px rings) cannot bring them back. */
+input:focus, input:focus-visible, textarea:focus, textarea:focus-visible, select:focus, select:focus-visible,
+[contenteditable]:focus, [contenteditable]:focus-visible, .ProseMirror:focus, .ProseMirror:focus-visible,
+[role='textbox']:focus, [role='textbox']:focus-visible, [role='combobox']:focus, [role='combobox']:focus-visible,
+[role='searchbox']:focus-visible, .apps-card:focus-within, .apps-card:focus-within :focus-visible { outline: none !important; }
+.home-composer:has(:focus-visible), .mod-create input:focus { box-shadow: none !important; }
