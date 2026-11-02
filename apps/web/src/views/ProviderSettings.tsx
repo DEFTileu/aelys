@@ -101,7 +101,7 @@ export function ProviderSettings() {
             <label className="st-field-label">Estimate per transcription (USD)<input className="st-input" type="number" min="0.01" step="0.01" required value={transcriptionCost} onChange={event => setTranscriptionCost(event.target.value)} /></label>
             <div className="st-hint">This estimate counts toward the monthly limit before each attempt, including failed attempts. Check actual charges with your provider.</div>
           </div>}
-          <label className="st-field-label">{editing ? 'Replace API key (optional)' : 'API key'}<input className="st-input" type="password" autoComplete="off" required={!editing} minLength={8} value={apiKey} onChange={(event) => setApiKey(event.target.value)} /></label>
+          <label className="st-field-label">{editing && current?.has_secret ? 'Replace API key (optional)' : 'API key'}<input className="st-input" type="password" autoComplete="off" required={!editing || !current?.has_secret} minLength={8} value={apiKey} onChange={(event) => setApiKey(event.target.value)} /></label>
           <div className="st-actions">
             <button className="st-btn st-btn--primary" disabled={busy} type="submit">{busy ? 'Saving…' : 'Save provider'}</button>
             {current && <>
