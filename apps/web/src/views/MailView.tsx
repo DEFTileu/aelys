@@ -7,8 +7,9 @@ import './connected.css'
 import './actual-mail-finance.css'
 import './desktop/page-tokens.css'
 import './desktop/mail.css'
-import { FileUp, Inbox, Search, SquarePen, Mail, MailOpen, Reply, Save, ShieldCheck, Upload, ArrowLeft } from '../icons'
-import type { ApiStatus } from '../types'
+import { Ellipsis, FileUp, Inbox, Search, SquarePen, Mail, MailOpen, Reply, Save, ShieldCheck, Upload, ArrowLeft } from '../icons'
+import { navigate } from '../lib/router'
+import type { ApiStatus, RoutePath } from '../types'
 
 const senderName = (sender: string) => sender.replace(/\s*<[^>]*>\s*$/, '').trim() || sender
 const senderEmail = (sender: string) => sender.match(/<([^>]+)>/)?.[1] ?? (sender.includes('@') ? sender : '')
@@ -23,7 +24,6 @@ export function MailView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [messages, setMessages] = useState<readonly MailMessage[]>([])
   const [drafts, setDrafts] = useState<readonly MailDraft[]>([])
   const [accounts, setAccounts] = useState<readonly MailAccount[]>([])
-  const [gmailConfigured, setGmailConfigured] = useState(false)
   const [gmailAccount, setGmailAccount] = useState('')
   const [nextPages, setNextPages] = useState<Record<string, string | null>>({})
   const [tab, setTab] = useState<'inbox' | 'drafts'>('inbox')
@@ -45,9 +45,9 @@ export function MailView({ apiStatus }: { apiStatus: ApiStatus }) {
   const load = useCallback(async () => {
     try {
       const client = getSharedApiClient()
-      const [inbox, saved, connected, gmail] = await Promise.all([client.mailMessages(), client.mailDrafts(), client.mailAccounts(), client.gmailStatus()])
+      const [inbox, saved, connected] = await Promise.all([client.mailMessages(), client.mailDrafts(), client.mailAccounts()])
       setMessages(inbox); setDrafts(saved)
-      setAccounts(connected); setGmailConfigured(gmail.configured)
+      setAccounts(connected)
       setPhase('ready')
       setGmailAccount((id) => connected.some((item) => item.id === id && item.connection_status === 'connected') ? id : connected.find((item) => item.provider === 'gmail' && item.connection_status === 'connected')?.id ?? '')
     } catch { setPhase('error'); setNotice('Could not load mail. Check the connection and owner session in Settings.') }
@@ -110,11 +110,6 @@ export function MailView({ apiStatus }: { apiStatus: ApiStatus }) {
     try { await getSharedApiClient().deleteMailDraft(draft.id, draft.version, { queueOnOffline: false }); await load(); setCompose(false); setEditing(null); setNotice('Draft discarded.') }
     catch (error) { report(error) } finally { setBusy(false) }
   }
-  const connect = async () => {
-    setBusy(true)
-    try { const result = await getSharedApiClient().connectGmail(); window.location.assign(result.authorization_url) }
-    catch (error) { report(error); setBusy(false) }
-  }
   const sync = async (more = false) => {
     if (!gmailAccount) return
     setBusy(true); setNotice('')
@@ -124,22 +119,13 @@ export function MailView({ apiStatus }: { apiStatus: ApiStatus }) {
       await load(); setNotice(`Loaded ${result.imported} new Gmail messages.`)
     } catch (error) { report(error) } finally { setBusy(false) }
   }
-  const loadGmailDrafts = async (more = false) => {
-    if (!gmailAccount) return
-    setBusy(true)
-    const cursorKey = `${gmailAccount}:drafts`
-    try {
-      const result = await getSharedApiClient().importGmailDrafts(gmailAccount, more ? nextPages[cursorKey] ?? undefined : undefined)
-      setNextPages((pages) => ({ ...pages, [cursorKey]: result.next_page_token }))
-      await load(); setTab('drafts'); setCompose(false); setNotice(`Imported ${result.imported} Gmail drafts. Existing local edits were kept.`)
-    } catch (error) { report(error) } finally { setBusy(false) }
-  }
-  const disconnect = async () => {
-    if (!gmailAccount) return
-    setBusy(true)
-    try { const result = await getSharedApiClient().disconnectGmail(gmailAccount); await load(); setNotice(result.provider_revoked ? 'Gmail disconnected.' : 'Local Gmail access removed. Revoke Aelys access in your Google account to finish disconnecting.') }
-    catch (error) { report(error) } finally { setBusy(false) }
-  }
+  const closeMenu = (event: { currentTarget: Element }) => { const d = event.currentTarget.closest('details'); if (d) d.open = false }
+  const moreMenu = <details className="actual-more"><summary aria-label="More mail actions" title="More"><Ellipsis size={18} /></summary><div className="actual-more-menu">
+    <button type="button" disabled={busy || apiStatus !== 'ready'} onClick={(event) => { closeMenu(event); upload.current?.click() }}><FileUp size={15} />Import .eml</button>
+    {gmailAccount && <button type="button" disabled={busy || apiStatus !== 'ready'} onClick={(event) => { closeMenu(event); void sync() }}>Load latest Gmail</button>}
+    {nextPages[gmailAccount] && <button type="button" disabled={busy} onClick={(event) => { closeMenu(event); void sync(true) }}>Load older mail</button>}
+    <button type="button" onClick={() => navigate('/settings?section=accounts' as RoutePath)}>Manage accounts</button>
+  </div></details>
   return <div className="connected-workspace actual-workspace actual-mail">
 
     <input ref={upload} type="file" accept=".eml,message/rfc822" aria-label="Import EML file" hidden onChange={(event) => void importFile(event)} />
@@ -147,11 +133,9 @@ export function MailView({ apiStatus }: { apiStatus: ApiStatus }) {
     {!compose && (recipients || subject || content) && <p role="status">Compose draft kept. <button type="button" onClick={() => { setCompose(true); setReaderOpen(true) }}>Resume draft</button></p>}
     {phase !== 'ready' && !messages.length && !drafts.length && <PageSkeleton kind="split" label="mail" phase={phase === 'error' ? 'error' : 'loading'} onRetry={() => { setPhase('loading'); setNotice(''); void load() }} />}
     <div hidden={phase !== 'ready' && !messages.length && !drafts.length} className={`actual-mail-grid ${readerOpen ? 'actual-reader-open' : ''}`}>
-      <aside className="actual-panel actual-folders"><button className="button actual-import" disabled={busy || apiStatus !== 'ready'} onClick={() => upload.current?.click()}><FileUp size={16} />Import .eml</button><div className="actual-folder-heading">Mailboxes</div><nav aria-label="Mail folders">{(['inbox', 'drafts'] as const).map((folder) => { const count = folder === 'inbox' ? messages.filter((item) => item.is_read === false).length : drafts.length; return <button key={folder} type="button" aria-pressed={tab === folder} onClick={() => { setTab(folder); setCompose(false); setReaderOpen(false) }}>{folder === 'inbox' ? <Inbox size={16} /> : <Save size={16} />}<span className="actual-folder-name">{folder === 'inbox' ? 'Inbox' : 'Drafts'}</span><span>{count || ''}</span></button> })}</nav>{accounts.length > 0 && <><div className="actual-folder-heading">Accounts</div>{accounts.map((account) => <div className="actual-mail-account" key={account.id}><span className="actual-account-icon"><Mail size={16} /></span><div><strong>{account.provider === 'gmail' ? 'Gmail' : account.provider}</strong><span>{account.external_id}</span>{account.connection_status === 'connected' ? <small className="actual-account-ok"><i />Read &amp; drafts</small> : <small>{account.connection_status}</small>}</div></div>)}</>}    <div className="actual-topline actual-topline--panel"><details className="actual-mail-tools"><summary>Mail tools</summary>    <div className="actual-actions"><button className="button button--quiet" disabled={busy || apiStatus !== 'ready' || !gmailConfigured} onClick={() => void connect()}>Connect Gmail</button><StyledSelect aria-label="Gmail account" value={gmailAccount} onChange={(event) => setGmailAccount(event.target.value)}><option value="">Select connected Gmail</option>{accounts.filter((item) => item.provider === 'gmail' && item.connection_status === 'connected').map((item) => <option key={item.id} value={item.id}>{item.external_id}</option>)}</StyledSelect><button className="button button--quiet" disabled={busy || !gmailAccount || apiStatus !== 'ready'} onClick={() => void sync()}>Load latest Gmail</button>{nextPages[gmailAccount] && <button className="button button--quiet" disabled={busy} onClick={() => void sync(true)}>Load older mail</button>}<button className="button button--quiet" disabled={busy || !gmailAccount || apiStatus !== 'ready'} onClick={() => void loadGmailDrafts()}>Load Gmail drafts</button>{nextPages[`${gmailAccount}:drafts`] && <button className="button button--quiet" disabled={busy} onClick={() => void loadGmailDrafts(true)}>Load older drafts</button>}<button className="button button--quiet" disabled={busy || !gmailAccount} onClick={() => void disconnect()}>Disconnect Gmail</button></div>
-    <p className="connected-help">Gmail loads 25 messages per page into your Aelys store. Disconnecting removes access; loaded mail and local drafts stay here. Save replies locally or explicitly save a draft in Gmail. Sending is unavailable.</p>
-    {!gmailConfigured && <p className="connected-help">Gmail needs server setup before you can connect your account. You can import EML files while it is being configured.</p>}
-</details></div><p className="actual-mail-policy"><ShieldCheck size={14} />Aelys reads mail and prepares drafts. It never sends email.</p></aside>
-      <section className="actual-panel actual-mail-list" aria-label={tab === 'inbox' ? 'Messages' : 'Drafts'}><div className="actual-mobile-mail-actions"><button className="button button--primary" disabled={busy} onClick={() => edit()}>Compose</button><button className="button button--quiet" disabled={busy || apiStatus !== 'ready'} onClick={() => upload.current?.click()}>Import .eml</button></div><div className="actual-mobile-folders" aria-label="Mail folders">{(['inbox', 'drafts'] as const).map((folder) => <button type="button" key={folder} aria-pressed={tab === folder} onClick={() => { setTab(folder); setCompose(false); setReaderOpen(false) }}>{folder === 'inbox' ? 'Inbox' : 'Drafts'}</button>)}</div><label className="actual-search"><Search size={16} /><input aria-label="Search mail" placeholder="Search mail" value={query} onChange={(event) => setQuery(event.target.value)} /><button type="button" className="actual-compose-icon" aria-label="Compose" title="Compose a new draft" disabled={busy} onClick={() => edit()}><SquarePen size={16} /></button></label><div className="actual-folder-select">Folder<StyledSelect aria-label="Mail folder" value={tab} onChange={(event) => { setTab(event.target.value as 'inbox' | 'drafts'); setCompose(false); setReaderOpen(false) }}><option value="inbox">Inbox</option><option value="drafts">Drafts</option></StyledSelect></div>
+      {!compose && <button type="button" className="actual-fab" aria-label="Compose" disabled={busy} onClick={() => edit()}><SquarePen size={24} /></button>}
+      <aside className="actual-panel actual-folders"><div className="actual-compose-row"><button type="button" className="button button--primary actual-compose" disabled={busy} onClick={() => edit()}><SquarePen size={16} />Compose</button>{moreMenu}</div><div className="actual-folder-heading">Mailboxes</div><nav aria-label="Mail folders">{(['inbox', 'drafts'] as const).map((folder) => { const count = folder === 'inbox' ? messages.filter((item) => item.is_read === false).length : drafts.length; return <button key={folder} type="button" aria-pressed={tab === folder} onClick={() => { setTab(folder); setCompose(false); setReaderOpen(false) }}>{folder === 'inbox' ? <Inbox size={16} /> : <Save size={16} />}<span className="actual-folder-name">{folder === 'inbox' ? 'Inbox' : 'Drafts'}</span><span>{count || ''}</span></button> })}</nav><p className="actual-mail-policy"><ShieldCheck size={14} />Aelys reads mail and prepares drafts. It never sends email.</p></aside>
+      <section className="actual-panel actual-mail-list" aria-label={tab === 'inbox' ? 'Messages' : 'Drafts'}><div className="actual-mobile-mail-actions">{moreMenu}</div><div className="actual-mobile-folders" aria-label="Mail folders">{(['inbox', 'drafts'] as const).map((folder) => <button type="button" key={folder} aria-pressed={tab === folder} onClick={() => { setTab(folder); setCompose(false); setReaderOpen(false) }}>{folder === 'inbox' ? 'Inbox' : 'Drafts'}</button>)}</div><label className="actual-search"><Search size={16} /><input aria-label="Search mail" placeholder="Search mail" value={query} onChange={(event) => setQuery(event.target.value)} /><button type="button" className="actual-compose-icon" aria-label="Compose" title="Compose a new draft" disabled={busy} onClick={() => edit()}><SquarePen size={16} /></button></label><div className="actual-folder-select">Folder<StyledSelect aria-label="Mail folder" value={tab} onChange={(event) => { setTab(event.target.value as 'inbox' | 'drafts'); setCompose(false); setReaderOpen(false) }}><option value="inbox">Inbox</option><option value="drafts">Drafts</option></StyledSelect></div>
         <div className="actual-mail-rows">{tab === 'inbox' ? visible.map((item) => { const unread = item.is_read === false; return <button key={item.id} className={`actual-mail-row${unread ? ' actual-mail-row--unread' : ''}`} aria-pressed={selected?.id === item.id} disabled={busy} onClick={() => { setSelectedId(item.id); setCompose(false); setReaderOpen(true) }}><span className="actual-avatar" aria-hidden="true">{senderName(item.sender).charAt(0).toUpperCase()}</span><span className="actual-mail-row-text"><span className="actual-row-top">{unread && <i className="actual-unread-dot" />}<strong>{senderName(item.sender)}</strong><time>{mailWhen(item.received_at)}</time></span><span className="actual-row-subject">{item.subject || '(No subject)'}</span><span className="actual-row-snippet">{item.thread_id && drafts.some((draft) => draft.thread_id === item.thread_id) && <em>Draft</em>}<small>{item.body.replace(/\s+/g, ' ')}</small></span></span></button> }) : visibleDrafts.map((draft) => <button key={draft.id} className="actual-mail-row" disabled={busy} onClick={() => edit(draft)}><span className="actual-avatar" aria-hidden="true">{(draft.recipients[0] || 'D').charAt(0).toUpperCase()}</span><span className="actual-mail-row-text"><strong>{draft.recipients.join(', ') || 'No recipient yet'}</strong><span>{draft.subject || '(No subject)'}</span><small>{draft.content}</small></span></button>)}
         {(tab === 'inbox' ? visible : visibleDrafts).length === 0 && <p className="actual-empty">{query ? 'No mail matches. Try another folder or search.' : tab === 'inbox' ? 'No imported messages.' : 'No drafts yet.'}</p>}</div>
       </section>
