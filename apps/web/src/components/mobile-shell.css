@@ -60,3 +60,6 @@
 
 .mobile-shell__logo { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .mobile-shell__logo .mobile-shell__brand { flex: 0 1 auto; margin-left: 0; }
+
+/* The phone design starts every inner screen 20px below the header; these screens carry no top spacing of their own. */
+.mobile-shell:not(.mobile-shell--home):is([data-screen-label='tasks'], [data-screen-label='calendar'], [data-screen-label='projects'], [data-screen-label='notes'], [data-screen-label='mail'], [data-screen-label='finance'], [data-screen-label='kb'], [data-screen-label='settings']) .mobile-shell__content { padding-top: 20px; }
