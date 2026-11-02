@@ -72,5 +72,5 @@
 .mobile-shell--home .home-layout-toolbar { order:3; margin:0; }
 .mobile-shell--home .home-layout-toolbar > div:first-child { display:none !important; }
 .mobile-shell--home .home-screen:not(.home-screen--editing) .home-layout-toolbar .home-tool { width:100%; display:flex; justify-content:center; border-radius:20px; border:1.5px dashed #cfc9d4; background:transparent; color:var(--ink-soft); font-size:14px; }
-.mobile-shell--home .home-screen { padding-top:24px !important; }
+/* the greeting carries its own top margin (mobile-home.css) */
 .mobile-shell--home .home-screen--editing .home-layout-toolbar { order:-1; flex-wrap:nowrap; justify-content:flex-end; }

@@ -62,7 +62,7 @@ export const sizeByKey = (key: SizeKey): WidgetSize => WIDGET_SIZES.find(size =>
 
 // Desktop default is the reference design: eight cards, every one 1x1. Recent activity is a fixed section below the grid, not a widget.
 export const DEFAULT_SIZES: Record<WidgetId, SizeKey> = { today: 'S', cal: 'S', focus: 'S', weather: 'S', proj: 'S', notes: 'S', fin: 'S', kb: 'S', mail: 'S' }
-const MOBILE_SIZES: Record<WidgetId, SizeKey> = { today: 'M', cal: 'M', focus: 'S', weather: 'S', proj: 'M', notes: 'S', fin: 'M', kb: 'M', mail: 'S' }
+const MOBILE_SIZES: Record<WidgetId, SizeKey> = { today: 'M', cal: 'M', focus: 'S', weather: 'S', proj: 'M', notes: 'S', fin: 'S', kb: 'M', mail: 'M' }
 const sized = (id: WidgetId, sizes = DEFAULT_SIZES): LayoutEntry => { const size = sizeByKey(sizes[id]); return [id, size.span, size.height] }
 export const layoutKey = (entry: LayoutEntry) => entry[3] ?? entry[0]
 /** A second copy of a widget gets its own stable key so cards can be told apart. */

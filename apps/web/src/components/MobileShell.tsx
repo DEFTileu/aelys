@@ -101,7 +101,8 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
     <div className={`mobile-shell__wallpaper${isHome ? '' : ' mobile-shell__wallpaper--inner'}`} aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(wallpaper)})` }} />
     <header className="mobile-shell__header">
       {isHome ? <div className="mobile-shell__logo"><DeveloperLogo size={36} /><strong className="mobile-shell__brand">Aelys</strong></div> : <><button className="mobile-shell__circle mobile-shell__back" type="button" aria-label="Back" onClick={backFromPage}><ArrowLeft size={20} /></button><strong className="mobile-shell__title">{title}</strong><span id="mobile-header-action" className="mobile-shell__action" /></>}
-      <button ref={trigger} className="mobile-shell__circle" type="button" aria-label="All apps" aria-expanded={appsOpen} onClick={() => setAppsOpen(true)}><LayoutGrid size={18} /></button>
+      {/* The design shows the apps grid on Home only; inner screens go back to Home first. */}
+      {isHome && <button ref={trigger} className="mobile-shell__circle" type="button" aria-label="All apps" aria-expanded={appsOpen} onClick={() => setAppsOpen(true)}><LayoutGrid size={18} /></button>}
       {isHome && <><button className="mobile-shell__circle" type="button" aria-label="Search" onClick={() => go('/search')}><Search size={18} /></button><NotificationCenter apiStatus={apiStatus} route={route} /><button className="mobile-shell__profile" type="button" aria-label="Profile and settings" onClick={() => go('/settings')} /></>}
     </header>
     {!isHome && <div id="mobile-header-sub" className="mobile-shell__sub" />}

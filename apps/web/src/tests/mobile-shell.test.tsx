@@ -51,8 +51,11 @@ describe('MobileShell', () => {
   it('navigates between modules through the app sheet and returns home', async () => {
     const host = await render(); await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Finances'))
     expect(location.pathname).toBe('/finance'); expect(host.textContent).toContain('Content /finance'); expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(host.querySelector('.mobile-shell__wallpaper--inner')).not.toBeNull()
+    // The design puts the apps grid on Home only: inner screens go back first.
+    expect(host.querySelector('button[aria-label="All apps"]')).toBeNull()
+    await click(button(host, 'Back')); expect(location.pathname).toBe('/')
     await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Tasks')); expect(location.pathname).toBe('/tasks')
-    await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Apps')); expect(location.pathname).toBe('/apps'); expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Apps')
+    await click(button(host, 'Back')); await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Apps')); expect(location.pathname).toBe('/apps'); expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Apps')
     await click(button(host, 'Back')); expect(location.pathname).toBe('/')
   })
   it('names the open settings section in the header, with one back button', async () => {
