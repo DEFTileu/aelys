@@ -92,6 +92,7 @@ class ProviderRequest:
     temperature: Decimal = Decimal(0)
     tools: tuple[Mapping[str, Any], ...] = ()
     stream: bool = False
+    effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,7 @@ class RoutingRequest:
     manual_provider: ProviderKind | None = None
     manual_model: str | None = None
     favorite_model: str | None = None
+    effort: str | None = None  # low|medium|high; validated at the API boundary
 
 
 @dataclass(frozen=True)

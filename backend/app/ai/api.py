@@ -352,6 +352,11 @@ async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSes
         if convo.project_id and body.knowledge.project_id != convo.project_id:
             raise HTTPException(403, detail={"code": "POLICY_DENIED", "message": "Knowledge scope must match the conversation project"})
         await validate_scope(db, user.id, body.knowledge)
+    effort = body.routing.get("effort")
+    if effort in (None, "off"):
+        effort = None
+    elif effort not in {"low", "medium", "high"}:
+        raise HTTPException(400, detail={"code": "INVALID_EFFORT", "message": "routing.effort must be low, medium or high"})
     fingerprint = _request_fingerprint(body, conversation_scopes)
     existing=(await db.execute(select(AIRun).where(AIRun.owner_id==user.id,AIRun.idempotency_key==body.idempotency_key))).scalar_one_or_none()
     if existing:
@@ -369,7 +374,7 @@ async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSes
     provider=configured.kind if configured else "configured"; model=body.routing.get("model","auto")
     message = AIMessage(conversation_id=body.conversation_id,role="user",content=body.message)
     db.add(message); await db.flush()
-    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider_id=configured.id if configured else None,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint,tool_scope_json={"scopes":sorted(conversation_scopes), **({"knowledge":body.knowledge.model_dump()} if body.knowledge else {})}); db.add(item)
+    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider_id=configured.id if configured else None,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint,tool_scope_json={"scopes":sorted(conversation_scopes), **({"knowledge":body.knowledge.model_dump()} if body.knowledge else {}), **({"effort":effort} if effort else {})}); db.add(item)
     try:
         await db.commit()
     except IntegrityError:
@@ -455,7 +460,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 await db.commit()
                 yield await emit("ai.run.failed", {"run_id": run_id, "code": "BUDGET_EXCEEDED", "message": "Configured monthly AI budget is exhausted"})
                 return
-            request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=min(Decimal(100), remaining_budget))
+            request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=min(Decimal(100), remaining_budget),effort=(item.tool_scope_json or {}).get("effort"))
             prior = list((await db.execute(select(AIMessage).where(
                 AIMessage.conversation_id == item.conversation_id,
                 AIMessage.created_at <= last_message.created_at,
@@ -494,7 +499,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             if requested_scopes:
                 registry = _tool_registry(db, user.id, run_id)
                 context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
-                tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget))
+                tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget), effort=(item.tool_scope_json or {}).get("effort"))
                 pending_events: list[str] = []
                 async def tool_event(kind: str, payload: Mapping[str, Any]) -> None:
                     pending_events.append(await emit(kind, payload))

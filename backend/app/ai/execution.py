@@ -80,7 +80,7 @@ class AIExecutionService:
             raise ProviderError("configured provider adapter is unavailable")
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
-        response = await adapter.complete(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, tools=tools))
+        response = await adapter.complete(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, tools=tools, effort=request.effort))
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
         usage = self.usage.record(run_id, decision.provider, next(m for m in self.models if m.provider == decision.provider and m.model == decision.model), response.usage)
@@ -97,9 +97,9 @@ class AIExecutionService:
                 raise ProviderError("configured provider adapter is unavailable")
             if await cancelled():
                 raise RunCancelled("run cancelled")
-            yield self._event("ai.run.started", {"run_id": str(run_id), "provider": decision.provider.value, "model": decision.model})
+            yield self._event("ai.run.started", {"run_id": str(run_id), "provider": decision.provider.value, "model": decision.model, **({"effort": request.effort} if request.effort else {})})
             text = []
-            async for chunk in adapter.stream(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, stream=True)):
+            async for chunk in adapter.stream(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, stream=True, effort=request.effort)):
                 if await cancelled():
                     raise RunCancelled("run cancelled")
                 text.append(chunk)
