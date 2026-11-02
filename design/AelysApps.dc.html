@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="display:flex;flex-direction:column;gap:{{ gap }};color:#1C1B22">
+  <label style="height:44px;padding:0 14px;border-radius:14px;background:#fff;border:1px solid #EDE8E3;display:flex;align-items:center;gap:10px;color:#625D69;max-width:420px"><i class="icon-search"></i><input value="{{ q }}" onChange="{{ onQ }}" placeholder="Search apps" aria-label="Search apps" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"><sc-if value="{{ wide }}"><span style="font-size:12px;padding:2px 6px;border-radius:6px;background:#F7F4F1">⌘K</span></sc-if></label>
+
+  <sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:16px;font-weight:600">{{ g.t }}</span><span style="font-size:13px;color:#625D69;white-space:nowrap">{{ g.d }}</span></div>
+      <sc-if value="{{ wide }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
+          <sc-for list="{{ g.items }}" as="u" hint-placeholder-count="4">
+            <div onClick="{{ u.open }}" role="button" tabindex="0" style="position:relative;display:flex;gap:14px;align-items:flex-start;padding:16px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;cursor:pointer;transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s" style-hover="transform:translateY(-2px);box-shadow:0 12px 30px rgba(20,10,30,.08)">
+              <span style="width:44px;height:44px;flex:none;border-radius:12px;background:{{ u.soft }};color:{{ u.c }};display:flex;align-items:center;justify-content:center;font-size:20px"><i class="icon-{{ u.i }}"></i></span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;font-weight:600;line-height:22px">{{ u.t }}</div>
+                <div style="font-size:13px;line-height:18px;color:#625D69">{{ u.d }}</div>
+                <div style="font-size:12px;font-weight:600;color:{{ u.deep }};margin-top:8px">{{ u.g }}</div>
+              </div>
+              <span onClick="{{ u.pin }}" role="button" aria-label="{{ u.pinLabel }}" aria-pressed="{{ u.pinned }}" style="width:30px;height:30px;flex:none;border-radius:9px;display:flex;align-items:center;justify-content:center;color:{{ u.pinC }};cursor:pointer" style-hover="background:#F7F4F1"><i class="icon-pin" style="font-size:15px"></i></span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ compact }}">
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 8px">
+          <sc-for list="{{ g.items }}" as="u" hint-placeholder-count="4">
+            <div onClick="{{ u.open }}" role="button" tabindex="0" style="display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer">
+              <span style="position:relative;width:60px;height:60px;border-radius:18px;background:{{ u.soft }};color:{{ u.c }};display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 4px 12px rgba(40,30,30,.06)"><i class="icon-{{ u.i }}"></i><sc-if value="{{ u.dot }}"><span style="position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;background:#6A4CF2;border:2px solid #F5F0EB"></span></sc-if></span>
+              <span style="font-size:12px;line-height:16px;font-weight:500;text-align:center">{{ u.t }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </sc-for>
+  <sc-if value="{{ empty }}"><div style="padding:32px;text-align:center;color:#625D69">No apps match “{{ q }}”</div></sc-if>
+
+  <sc-if value="{{ showExt }}">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px"><span style="font-size:16px;font-weight:600">Your sites</span><span style="flex:1;font-size:13px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ extSub }}</span><sc-if value="{{ notAdding }}"><span onClick="{{ startAdd }}" role="button" tabindex="0" style="height:34px;padding:0 12px;border-radius:10px;background:#fff;border:1px solid #EDE8E3;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap" style-hover="background:#FAF7F4"><i class="icon-plus"></i>Add site</span></sc-if></div>
+      <sc-if value="{{ adding }}">
+        <div style="padding:14px;border-radius:16px;background:#fff;border:1.5px solid #D6CCF8;display:flex;flex-direction:column;gap:10px">
+          <div style="display:grid;grid-template-columns:{{ formCols }};gap:10px">
+            <input value="{{ fUrl }}" onChange="{{ onUrl }}" onKeyDown="{{ onFormKey }}" placeholder="Address, e.g. notion.so" aria-label="Site address" style="height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;border:0;outline:0;font:inherit;color:#1C1B22;min-width:0">
+            <input value="{{ fName }}" onChange="{{ onName }}" onKeyDown="{{ onFormKey }}" placeholder="{{ namePh }}" aria-label="Name" style="height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;border:0;outline:0;font:inherit;color:#1C1B22;min-width:0">
+          </div>
+          <sc-if value="{{ fErr }}"><div style="font-size:13px;color:#C9302C">{{ fErr }}</div></sc-if>
+          <div style="display:flex;gap:8px;align-items:center"><span onClick="{{ saveSite }}" role="button" tabindex="0" style="height:38px;padding:0 16px;border-radius:10px;background:#6A4CF2;color:#fff;font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer">{{ saveT }}</span><span onClick="{{ cancelAdd }}" role="button" tabindex="0" style="height:38px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">Cancel</span><span style="flex:1"></span><sc-if value="{{ editing }}"><span onClick="{{ removeSite }}" role="button" tabindex="0" style="height:38px;padding:0 14px;border-radius:10px;color:#C9302C;font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer">Remove</span></sc-if></div>
+        </div>
+      </sc-if>
+      <div style="display:grid;grid-template-columns:{{ extCols }};gap:10px">
+        <sc-for list="{{ ext }}" as="e" hint-placeholder-count="4"><div onClick="{{ e.open }}" role="link" tabindex="0" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;border:1px solid #E2DBD4;cursor:pointer" style-hover="background:rgba(255,255,255,.6)"><span style="width:36px;height:36px;flex:none;border-radius:10px;background:{{ e.bg }};color:{{ e.fg }};font-weight:700;display:flex;align-items:center;justify-content:center"><sc-if value="{{ e.i }}"><i class="icon-{{ e.i }}"></i></sc-if><sc-if value="{{ e.letter }}">{{ e.letter }}</sc-if></span><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.t }}</div><div style="font-size:12px;color:#625D69;font-family:'JetBrains Mono',ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.u }}</div></div><span onClick="{{ e.edit }}" role="button" aria-label="Edit {{ e.t }}" style="width:30px;height:30px;flex:none;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#8C869A;cursor:pointer" style-hover="background:#F7F4F1;color:#1C1B22"><i class="icon-pencil" style="font-size:14px"></i></span><i class="icon-arrow-up-right" style="color:#625D69"></i></div></sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;onOpen&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(id: string) =&gt; void&quot;}}">
+class Component extends DCLogic {
+  KEY = 'aelys.apps.sites.v1';
+  DEF = [['SDU Shooter', 'game.javazhan.tech', 'crosshair'], ['MDE 162 Law', 'law.javazhan.tech', 'graduation-cap'], ['INF 376 NLP', 'nlp.javazhan.tech', 'brain'], ['INF 345 DevOps', 'devops.javazhan.tech', 'square-terminal']].map(([t, u, i], k) => ({ id: 'd' + k, t, u, i }));
+  state = { q: '', pins: null, sites: (() => { try { const v = JSON.parse(localStorage.getItem('aelys.apps.sites.v1')); if (Array.isArray(v)) return v; } catch (e) {} return null; })(), form: null };
+  saveSites(list) { this.setState({ sites: list, form: null }); try { localStorage.setItem(this.KEY, JSON.stringify(list)); } catch (e) {} }
+  host(u) { return String(u).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, ''); }
+  siteVals() {
+    const S = this.state, sites = S.sites || this.DEF, F = S.form;
+    const tints = [['#EEE8FD', '#5132D6'], ['#E4EEFD', '#1F55B8'], ['#DCF5EC', '#0E7A57'], ['#FDE6E1', '#B8402F'], ['#FDF1D9', '#8A5A00']];
+    const setF = p => this.setState({ form: Object.assign({}, F, p, { err: '' }) });
+    const save = () => {
+      const u = this.host(F.url || '');
+      if (!/^[^\s/]+\.[^\s]{2,}/.test(u)) { this.setState({ form: Object.assign({}, F, { err: 'Enter an address like notion.so or mysite.com/app' }) }); return; }
+      const t = (F.name || '').trim() || u.split('/')[0].replace(/^www\./, '').split('.')[0].replace(/^./, c => c.toUpperCase());
+      if (F.id) this.saveSites(sites.map(s => s.id === F.id ? Object.assign({}, s, { t, u }) : s));
+      else this.saveSites(sites.concat({ id: 's' + Date.now().toString(36), t, u }));
+    };
+    return {
+      extSub: sites.length ? 'Open in the browser' : 'Add the sites you use every day',
+      adding: !!F, notAdding: !F, editing: !!(F && F.id), fUrl: F ? F.url : '', fName: F ? F.name : '', fErr: F ? F.err : '',
+      namePh: 'Name (optional)', saveT: F && F.id ? 'Save' : 'Add',
+      startAdd: () => this.setState({ form: { url: '', name: '', err: '' } }), cancelAdd: () => this.setState({ form: null }),
+      onUrl: e => setF({ url: e.target.value }), onName: e => setF({ name: e.target.value }),
+      onFormKey: e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') this.setState({ form: null }); },
+      saveSite: save, removeSite: () => this.saveSites(sites.filter(s => s.id !== F.id)),
+      ext: sites.map((s, k) => { const tn = tints[k % tints.length]; return { t: s.t, u: s.u, i: s.i || '', letter: s.i ? '' : s.t.charAt(0).toUpperCase(), bg: s.i ? '#fff' : tn[0], fg: s.i ? '#625D69' : tn[1],
+        open: () => { try { window.open('https://' + this.host(s.u), '_blank', 'noopener'); } catch (e) {} },
+        edit: e => { e.stopPropagation(); this.setState({ form: { id: s.id, url: s.u, name: s.t, err: '' } }); } }; }),
+    };
+  }
+  renderVals() {
+    const S = this.state, compact = !!this.props.compact;
+    const pinned = S.pins || ['focus', 'messages', 'habits', 'countdowns'];
+    const A = { blue: ['#2F6FE4', '#E4EEFD', '#1F55B8'], coral: ['#F06A58', '#FDE6E1', '#B8402F'], violet: ['#6A4CF2', '#EEE8FD', '#5132D6'], orange: ['#B36B00', '#FDF1D9', '#8A5A00'], green: ['#14966C', '#DCF5EC', '#0E7A57'] };
+    const U = [
+      ['plan', 'review', 'Review', 'clipboard-check', 'Weekly look back and plan ahead', 'Week 44 · not started'],
+      ['plan', 'weeks', 'Weeks', 'calendar-range', 'Your year as a grid of weeks', 'Week 44 of 52'],
+      ['plan', 'habits', 'Habits', 'flame', 'Daily streaks and check-ins', '3 of 5 today'],
+      ['plan', 'countdowns', 'Countdowns', 'hourglass', 'Days left to what matters', 'Exam · in 12 days'],
+      ['mind', 'focus', 'Focus', 'timer', 'Pomodoro, breaks and stopwatch', '1h 15m today'],
+      ['mind', 'breathe', 'Breathe', 'wind', 'Guided breathing patterns', 'Box · 4 min'],
+      ['quick', 'calc', 'Calculator', 'calculator', 'Math, units, percent and tips', 'Last: 24 × 12 = 288'],
+      ['quick', 'zones', 'Zones', 'globe', 'Time across cities', 'London 09:14 · NYC 04:14'],
+      ['quick', 'decide', 'Decide', 'dices', 'Coin, dice and a choice wheel', 'Coin · dice · wheel'],
+      ['quick', 'toolbox', 'Toolbox', 'wrench', 'JSON, Base64, UUID, color', '7 tools'],
+      ['learn', 'cards', 'Cards', 'layers', 'Flashcards with spaced repetition', '18 due today'],
+      ['learn', 'reader', 'Reader', 'book-open', 'Saved articles, distraction-free', '2 unread'],
+      ['learn', 'type', 'Type', 'keyboard', 'Typing practice', 'Best 72 wpm'],
+      ['learn', 'sketch', 'Sketch', 'brush', 'Quick drawings and diagrams', 'Last: Widget grid'],
+      ['talk', 'messages', 'Messages', 'message-square', 'Telegram chats with AI reply drafts', '3 drafts waiting', 1],
+      ['power', 'automation', 'Automation', 'workflow', 'When this happens, do that', '3 rules on'],
+      ['power', 'dev', 'Developer Hub', 'terminal', 'Local coding agent sessions', '2 running'],
+    ].filter(r => !(compact && r[1] === 'dev'));
+    const GR = [['plan', 'Plan & reflect', '', 'blue'], ['mind', 'Focus & calm', '', 'coral'], ['quick', 'Quick tools', '', 'violet'], ['learn', 'Learn & create', '', 'orange'], ['talk', 'Communicate', '', 'blue'], ['power', 'Power tools', compact ? '' : 'macOS', 'green']];
+    const q = S.q.trim().toLowerCase();
+    const mk = r => { const [gid, id, t, i, d, g, dot] = r; const k = A[GR.find(x => x[0] === gid)[3]]; const on = pinned.includes(id); return { t, i, d, g, dot: !!dot, c: k[0], soft: k[1], deep: k[2], pinned: on, pinLabel: on ? 'Unpin' : 'Pin', pinC: on ? '#5132D6' : '#BDB7C2', open: () => this.props.onOpen && this.props.onOpen(id), pin: e => { e.stopPropagation(); this.setState({ pins: on ? pinned.filter(x => x !== id) : [...pinned, id] }); } }; };
+    const hit = U.filter(r => !q || (r[2] + ' ' + r[4]).toLowerCase().includes(q));
+    let groups;
+    if (q) groups = hit.length ? [{ t: 'Results', d: String(hit.length), items: hit.map(mk) }] : [];
+    else groups = [{ t: 'Pinned', d: compact ? '' : 'Also in ⌘K', items: pinned.map(id => U.find(r => r[1] === id)).filter(Boolean).map(mk) }].filter(g => g.items.length)
+      .concat(GR.map(([gid, t, d]) => ({ t, d, items: U.filter(r => r[0] === gid && !pinned.includes(r[1])).map(mk) })).filter(g => g.items.length));
+    return {
+      compact, wide: !compact, gap: compact ? '20px' : '24px', q: S.q, onQ: e => this.setState({ q: e.target.value }), groups, empty: !!q && !hit.length, showExt: !q,
+      extCols: compact ? 'minmax(0,1fr)' : 'repeat(auto-fill,minmax(280px,1fr))', formCols: compact ? 'minmax(0,1fr)' : 'minmax(0,1.4fr) minmax(0,1fr)',
+      ...this.siteVals(),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,33 +1,11 @@
 import {
-  Blocks,
   History,
   House,
-  Keyboard,
   LayoutGrid,
-  LayoutPanelLeft,
-  Paintbrush,
-  RefreshCw,
-  Shield,
-  Sparkles,
-  User,
   Zap,
   type AelysIconComponent,
 } from '../../icons'
 
-
-export type SettingsNavItem = { title: string; subtitle: string; icon: AelysIconComponent; active?: boolean }
-
-export const settingsNav: SettingsNavItem[] = [
-  { title: 'Profile', subtitle: 'Personal data and account', icon: User },
-  { title: 'Appearance', subtitle: 'Theme, wallpaper, styling', icon: Paintbrush, active: true },
-  { title: 'Home screen', subtitle: 'Blocks and widgets', icon: LayoutPanelLeft },
-  { title: 'Widgets', subtitle: 'Widget settings', icon: LayoutGrid },
-  { title: 'AI & models', subtitle: 'Models and parameters', icon: Sparkles },
-  { title: 'Integrations', subtitle: 'Connected services', icon: Blocks },
-  { title: 'Sync', subtitle: 'Data across devices', icon: RefreshCw },
-  { title: 'Shortcuts', subtitle: 'Quick access', icon: Keyboard },
-  { title: 'Privacy', subtitle: 'Security and data', icon: Shield },
-]
 
 export type ThemeId = 'light' | 'system' | 'dark'
 

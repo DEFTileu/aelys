@@ -33,6 +33,7 @@ fn runtime_capabilities() -> Vec<aelys_runtime::adapter::AdapterCapabilities> {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             use tauri::Manager;
             app.manage(native::NativeStorage::new(app.handle()));

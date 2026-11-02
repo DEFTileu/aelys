@@ -80,7 +80,7 @@ class AIExecutionService:
             raise ProviderError("configured provider adapter is unavailable")
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
-        response = await adapter.complete(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, tools=tools))
+        response = await adapter.complete(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, tools=tools, effort=request.effort))
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
         usage = self.usage.record(run_id, decision.provider, next(m for m in self.models if m.provider == decision.provider and m.model == decision.model), response.usage)
@@ -97,9 +97,9 @@ class AIExecutionService:
                 raise ProviderError("configured provider adapter is unavailable")
             if await cancelled():
                 raise RunCancelled("run cancelled")
-            yield self._event("ai.run.started", {"run_id": str(run_id), "provider": decision.provider.value, "model": decision.model})
+            yield self._event("ai.run.started", {"run_id": str(run_id), "provider": decision.provider.value, "model": decision.model, **({"effort": request.effort} if request.effort else {})})
             text = []
-            async for chunk in adapter.stream(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, stream=True)):
+            async for chunk in adapter.stream(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, stream=True, effort=request.effort)):
                 if await cancelled():
                     raise RunCancelled("run cancelled")
                 text.append(chunk)
@@ -110,7 +110,7 @@ class AIExecutionService:
             # Streaming providers may report usage only in a terminal frame. The
             # conservative zero-count record avoids inventing cost data.
             usage = self.usage.record(run_id, decision.provider, model, getattr(adapter, "last_usage", Usage()))
-            yield self._event("ai.run.completed", {"run_id": str(run_id), "text_length": len("".join(text)), "estimated_cost": str(usage.estimated_cost)})
+            yield self._event("ai.run.completed", {"run_id": str(run_id), "text_length": len("".join(text)), "input_tokens": usage.usage.input_tokens, "output_tokens": usage.usage.output_tokens, "estimated_cost": str(usage.estimated_cost)})
         except RunCancelled:
             yield self._event("ai.run.cancelled", {"run_id": str(run_id)})
         except (AIError, BudgetExceeded) as exc:

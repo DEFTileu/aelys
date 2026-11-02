@@ -102,6 +102,8 @@ async def clear_messages(db: AsyncSession, integration_id: str, connection_id: s
 
 
 async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None:
+    from .telegram_avatar import forget
+    forget(item.id)
     await db.execute(delete(TelegramChatSend).where(TelegramChatSend.integration_id == item.id))
     await db.execute(delete(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id))
     await db.execute(delete(TelegramBusinessConnection).where(TelegramBusinessConnection.integration_id == item.id))

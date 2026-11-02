@@ -30,8 +30,8 @@ export function HomeWidget({ id, editing, mobile = false, focus, data, onToggleT
   const unread = (data.mail ?? []).filter((item) => item.is_read === false).length
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
   const sessions = (data.focusSessions ?? []).filter((session) => Date.parse(session.started_at) >= todayStart.getTime()).length
-  const open = id === 'today' ? (mobile ? data.tasks.filter((task) => !isDone(task)) : dayTasks(data.tasks).filter((task) => !isDone(task))).length : 0
-  const badge = id === 'today' ? (mobile ? (data.tasks.length ? String(open) : '') : (dayTasks(data.tasks).length ? String(open) : '')) : id === 'mail' && unread ? String(unread) : ''
+  const open = id === 'today' ? dayTasks(data.tasks).filter((task) => !isDone(task)).length : 0
+  const badge = id === 'today' ? (dayTasks(data.tasks).length ? String(open) : '') : id === 'mail' && unread ? String(unread) : ''
   const style: CSSProperties = {
     background: dark ? `linear-gradient(180deg,rgba(30,34,60,.30),rgba(20,22,40,.72)),url(${JSON.stringify(wallpaper)}) center/cover` : 'var(--glass-bg, rgba(255,255,255,.88))',
     color: dark ? '#fff' : 'var(--ink)',
@@ -48,7 +48,7 @@ export function HomeWidget({ id, editing, mobile = false, focus, data, onToggleT
       <span className="dw-head-title">{def.title}</span>
       {!editing && badge && <span className="dw-head-badge" style={id === 'mail' ? { background: 'var(--dw-mail-badge)', color: 'var(--dw-mail-badge-ink)' } : undefined}>{badge}</span>}
       {mobile
-        ? <span style={{ flex: 1 }} />
+        ? null
         : id === 'weather' && !editing && location
           ? <button type="button" className="home-btn dw-head-meta home-widget-meta" title="Change city" onClick={openWeatherSettings}>{meta}</button>
           : <span className="dw-head-meta home-widget-meta" title={editing ? undefined : meta}>{editing ? '' : meta}</span>}

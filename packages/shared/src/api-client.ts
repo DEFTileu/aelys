@@ -1,7 +1,7 @@
 import type {
   KnowledgeSource, KnowledgeScope,
   MemoryFactIn, MemoryFactPatch, OwnerMemoryFact,
-  ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
+  ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIAction, AIAttachment, AIAttachmentIn, AIConversation, AIFeedback, AIMessage, AIMessageIn, ConversationPatch, AIProvider, AIProviderSecretResponse,
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
@@ -432,7 +432,14 @@ export class ApiClient {
   public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
   public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
   /** Private media is downloaded only to memory, with no cache/outbox/token in its URL. */
-  public async telegramMessageMedia(id: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+  public telegramMessageMedia(id: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+    return this.privateBlob(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/media`, options);
+  }
+  /** Chat profile picture; the server caches it briefly in memory, nothing is stored there on disk. */
+  public telegramChatAvatar(chatId: number, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+    return this.privateBlob(`/api/v1/integrations/telegram/chats/${encodeURIComponent(String(chatId))}/avatar`, options);
+  }
+  private async privateBlob(path: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
     const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
     const headers: Record<string,string> = { Accept: "image/*,audio/*" };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -443,7 +450,7 @@ export class ApiClient {
     if (options?.signal?.aborted) controller.abort();
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
-      const response = await this.fetchImpl(`${this.baseUrl}/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/media`, {method:"GET", headers, signal:controller.signal, cache:"no-store"});
+      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {method:"GET", headers, signal:controller.signal, cache:"no-store"});
       if (!response.ok) return await this.parseResponse<never>(response);
       const type = (response.headers.get("Content-Type") ?? "").split(";")[0]!.trim().toLowerCase();
       if (!["image/jpeg","image/png","image/webp","image/gif","audio/ogg","audio/mpeg","audio/mp4","audio/wav","audio/flac","audio/webm"].includes(type)) throw new ApiError(415,"TELEGRAM_MEDIA_UNSUPPORTED","Unsupported media format");
@@ -489,6 +496,13 @@ export class ApiClient {
   public setAIProviderSecret(providerId: Id, body: { readonly api_key: string }, options?: RequestOptions) { return this.request<AIProviderSecretResponse>(`/api/v1/ai/providers/${encodeURIComponent(providerId)}/secret`, this.write(body, { ...options, queueOnOffline: false }, "PUT")); }
   public deleteAIProviderSecret(providerId: Id, options?: RequestOptions) { return this.request<{ readonly deleted: boolean; readonly provider_id: Id }>(`/api/v1/ai/providers/${encodeURIComponent(providerId)}/secret`, this.write(undefined, { ...options, queueOnOffline: false }, "DELETE")); }
   public createAIConversation(body: ConversationIn, options?: RequestOptions) { return this.request<AIConversation>("/api/v1/ai/conversations", this.write(body, options)); }
+  public updateAIConversation(id: Id, body: ConversationPatch) { return this.request<AIConversation>(`/api/v1/ai/conversations/${encodeURIComponent(id)}`, this.write(body, { queueOnOffline: false }, "PATCH")); }
+  public aiConversationActions(conversationId: Id, options?: RequestOptions) { return this.request<readonly AIAction[]>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/actions`, this.read(options)); }
+  public approveAIAction(id: Id) { return this.request<AIAction>(`/api/v1/ai/actions/${encodeURIComponent(id)}/approve`, this.write(undefined, { queueOnOffline: false })); }
+  public rejectAIAction(id: Id) { return this.request<AIAction>(`/api/v1/ai/actions/${encodeURIComponent(id)}/reject`, this.write(undefined, { queueOnOffline: false })); }
+  public uploadAIAttachment(body: AIAttachmentIn) { return this.request<AIAttachment>("/api/v1/ai/attachments", this.write(body, { queueOnOffline: false })); }
+  public deleteAIAttachment(id: Id) { return this.request<{ readonly deleted?: boolean }>(`/api/v1/ai/attachments/${encodeURIComponent(id)}`, this.write(undefined, { queueOnOffline: false }, "DELETE")); }
+  public setAIMessageFeedback(id: Id, feedback: AIFeedback) { return this.request<AIMessage>(`/api/v1/ai/messages/${encodeURIComponent(id)}`, this.write({ feedback }, { queueOnOffline: false }, "PATCH")); }
   public aiMessages(conversationId: Id, options?: RequestOptions) { return this.request<readonly AIMessage[]>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/messages`, this.read(options)); }
   public addAIMessage(conversationId: Id, body: AIMessageIn, options?: RequestOptions) { return this.request<AIMessage>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/messages`, this.write(body, options)); }
   public createAIRun(body: AIRunIn, options?: RequestOptions) { return this.request<AIRun>("/api/v1/ai/runs", this.write(body, options)); }

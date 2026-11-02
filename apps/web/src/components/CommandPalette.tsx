@@ -12,7 +12,7 @@ export const pages: { label: string; icon: AelysIconComponent; route: RoutePath;
   { label: 'Projects', icon: Folder, route: '/projects', color: 'green' }, { label: 'Notes', icon: NotebookText, route: '/notes', color: 'orange' },
   { label: 'Mail', icon: Mail, route: '/mail', color: 'blue' }, { label: 'Finances', icon: Wallet, route: '/finance', color: 'green' },
   { label: 'Knowledge base', icon: BookOpen, route: '/knowledge', color: 'violet' }, { label: 'Settings', icon: Settings, route: '/settings', color: 'gray' },
-  { label: 'Apps', icon: Blocks, route: '/utilities', color: 'violet' },
+  { label: 'Apps', icon: Blocks, route: '/apps', color: 'violet' },
 ]
 const kindIcons: Record<SearchKind, AelysIconComponent> = { task: SquareCheck, note: NotebookText, mail: Mail }
 const kindColors: Record<SearchKind, string> = { task: 'blue', note: 'orange', mail: 'violet' }

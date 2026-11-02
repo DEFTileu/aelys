@@ -108,6 +108,7 @@
 :root[data-theme='dark'] .cl-month-grid button small { background: rgba(139, 108, 240, .22); }
 .cl-month-grid .cl-outside-month { color: #A29DA8; }
 .cl-mobile-agenda { display: none; }
+.cl-dot { display: none; }
 
 @media (max-width: 1000px) { .cl-layout { grid-template-columns: minmax(0, 1fr); } .cl-side { display: grid; grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px) {
@@ -154,3 +155,54 @@
 .mobile-shell .cl-mobile-event strong, .mobile-shell .cl-mobile-event small { display: block; }
 .mobile-shell .cl-mobile-event small { color: var(--pg-mute); }
 .mobile-shell .cl-weekends-toggle, .mobile-shell .cl-assistant, .mobile-shell .cl-assistant-action { display: none; }
+
+@media (max-width: 700px) {
+  .cl-week { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .cl-week-toolbar { padding: 0 0 12px; gap: 8px; }
+  .cl-btn, .cl-week-toolbar > .cl-btn { height: 36px; padding: 0 14px; border-radius: 18px; font-size: 13px; font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .06); }
+  .cl-nav-button, .cl-week-toolbar > .cl-nav-button { width: 36px; padding: 0; }
+  .cl-btn--primary { border: 0; background: var(--pg-violet); color: #fff; }
+  .cl-week-head, .cl-view--week .cl-week-head, .cl-view--day .cl-week-head { gap: 4px; border-color: var(--pg-line); box-shadow: 0 6px 20px rgba(40, 30, 30, .06); }
+  .cl-week-head > button { gap: 2px; }
+  .cl-week-head > button.cl-today { background: transparent; color: var(--pg-acc); }
+  .cl-week-head > button .cl-dn, .cl-week-head > button.cl-today .cl-dn { font-size: 11px; font-weight: 600; line-height: normal; opacity: .8; color: inherit; }
+  .cl-week-head > button .cl-date, .cl-week-head > button.cl-today .cl-date { padding: 0; border-radius: 0; background: none; color: inherit; font-size: 17px; font-weight: 700; line-height: normal; }
+  .cl-week-head > button.cl-selected { background: var(--pg-violet); color: #fff; }
+  .cl-week-head > button.cl-selected .cl-dn, .cl-week-head > button.cl-selected .cl-date { color: #fff; }
+  .cl-week-head .cl-dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+  .cl-week-head .cl-dot[data-on] { background: var(--pg-violet); }
+  .cl-week-head .cl-selected .cl-dot[data-on] { background: #fff; }
+  .cl-mobile-agenda { padding: 8px 12px; border-color: var(--pg-line); border-radius: 22px; box-shadow: 0 6px 20px rgba(40, 30, 30, .06); }
+  .cl-mobile-agenda h2 { display: flex; align-items: baseline; margin: 0; padding: 8px 4px; font-size: 15px; font-weight: 600; line-height: normal; }
+  .cl-mobile-agenda h2 small { margin-left: auto; color: var(--pg-mute); font-size: 12px; font-weight: 400; }
+  .cl-mobile-agenda p { margin: 0; padding: 24px 4px; text-align: center; font-size: 14px; }
+  .cl-mobile-event > span { width: 44px; flex: none; padding-top: 8px; font-size: 13px; line-height: 20px; }
+  .cl-mobile-event > div { border-left-width: 4px; border-left-style: solid; background: var(--ev-bg, var(--purple-soft)); }
+  :root[data-theme='dark'] .cl-mobile-event > div { background: var(--ev-bg-dark, var(--purple-soft)); }
+  .cl-mobile-event strong { font-size: 15px; line-height: 20px; font-weight: 600; }
+  .cl-mobile-event small { margin-top: 0; color: var(--pg-ink-3); font-size: 12px; line-height: 16px; }
+}
+.mobile-shell .cl-week { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.mobile-shell .cl-week-toolbar { padding: 0 0 12px; gap: 8px; }
+.mobile-shell .cl-btn, .mobile-shell .cl-week-toolbar > .cl-btn { height: 36px; padding: 0 14px; border-radius: 18px; font-size: 13px; font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .06); }
+.mobile-shell .cl-nav-button, .mobile-shell .cl-week-toolbar > .cl-nav-button { width: 36px; padding: 0; }
+.mobile-shell .cl-btn--primary { border: 0; background: var(--pg-violet); color: #fff; }
+.mobile-shell .cl-week-head, .mobile-shell .cl-view--week .cl-week-head, .mobile-shell .cl-view--day .cl-week-head { gap: 4px; border-color: var(--pg-line); box-shadow: 0 6px 20px rgba(40, 30, 30, .06); }
+.mobile-shell .cl-week-head > button { gap: 2px; }
+.mobile-shell .cl-week-head > button.cl-today { background: transparent; color: var(--pg-acc); }
+.mobile-shell .cl-week-head > button .cl-dn, .mobile-shell .cl-week-head > button.cl-today .cl-dn { font-size: 11px; font-weight: 600; line-height: normal; opacity: .8; color: inherit; }
+.mobile-shell .cl-week-head > button .cl-date, .mobile-shell .cl-week-head > button.cl-today .cl-date { padding: 0; border-radius: 0; background: none; color: inherit; font-size: 17px; font-weight: 700; line-height: normal; }
+.mobile-shell .cl-week-head > button.cl-selected { background: var(--pg-violet); color: #fff; }
+.mobile-shell .cl-week-head > button.cl-selected .cl-dn, .mobile-shell .cl-week-head > button.cl-selected .cl-date { color: #fff; }
+.mobile-shell .cl-week-head .cl-dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+.mobile-shell .cl-week-head .cl-dot[data-on] { background: var(--pg-violet); }
+.mobile-shell .cl-week-head .cl-selected .cl-dot[data-on] { background: #fff; }
+.mobile-shell .cl-mobile-agenda { padding: 8px 12px; border-color: var(--pg-line); border-radius: 22px; box-shadow: 0 6px 20px rgba(40, 30, 30, .06); }
+.mobile-shell .cl-mobile-agenda h2 { display: flex; align-items: baseline; margin: 0; padding: 8px 4px; font-size: 15px; font-weight: 600; line-height: normal; }
+.mobile-shell .cl-mobile-agenda h2 small { margin-left: auto; color: var(--pg-mute); font-size: 12px; font-weight: 400; }
+.mobile-shell .cl-mobile-agenda p { margin: 0; padding: 24px 4px; text-align: center; font-size: 14px; }
+.mobile-shell .cl-mobile-event > span { width: 44px; flex: none; padding-top: 8px; font-size: 13px; line-height: 20px; }
+.mobile-shell .cl-mobile-event > div { border-left-width: 4px; border-left-style: solid; background: var(--ev-bg, var(--purple-soft)); }
+:root[data-theme='dark'] .mobile-shell .cl-mobile-event > div { background: var(--ev-bg-dark, var(--purple-soft)); }
+.mobile-shell .cl-mobile-event strong { font-size: 15px; line-height: 20px; font-weight: 600; }
+.mobile-shell .cl-mobile-event small { margin-top: 0; color: var(--pg-ink-3); font-size: 12px; line-height: 16px; }

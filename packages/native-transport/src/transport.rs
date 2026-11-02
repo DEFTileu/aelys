@@ -233,6 +233,56 @@ async fn request_with_key<T: DeserializeOwned>(
     }
     serde_json::from_slice(&bytes).map_err(|_| err("INVALID_RESPONSE"))
 }
+/// Generic owner-API request. Unlike the typed operations it keeps the server's
+/// machine-readable `detail.code` (as "<status>:<CODE>") so screens can show
+/// specific messages; 401 stays "UNAUTHORIZED" for session handling.
+async fn request_api(
+    client: &Client,
+    method: Method,
+    url: &str,
+    body: Option<Value>,
+    idempotency_key: Option<&str>,
+    access: &str,
+) -> Result<Value, String> {
+    let mut builder = client.request(method, url).bearer_auth(access);
+    if let Some(body) = body {
+        builder = builder.json(&body);
+    }
+    if let Some(key) = idempotency_key {
+        builder = builder.header("Idempotency-Key", key);
+    }
+    let mut response = builder.send().await.map_err(|_| err("NETWORK_ERROR"))?;
+    let status = response.status();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| err("NETWORK_ERROR"))? {
+        if bytes.len().saturating_add(chunk.len()) > MAX_JSON {
+            return Err(err("RESPONSE_TOO_LARGE"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(err("UNAUTHORIZED"));
+    }
+    if !status.is_success() {
+        if status.is_client_error() {
+            let code = serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .and_then(|v| v["detail"]["code"].as_str().map(str::to_owned))
+                .filter(|c| {
+                    (3..=64).contains(&c.len())
+                        && c.bytes()
+                            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+                })
+                .unwrap_or_else(|| "BAD_REQUEST".into());
+            return Err(format!("{}:{code}", status.as_u16()));
+        }
+        return Err(err("BACKEND_ERROR"));
+    }
+    if bytes.is_empty() {
+        return Ok(Value::Null);
+    }
+    serde_json::from_slice(&bytes).map_err(|_| err("INVALID_RESPONSE"))
+}
 async fn request_ai_events(
     client: &Client,
     url: &str,
@@ -783,6 +833,22 @@ impl From<TaskUpdate> for TaskInput {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
     Me {},
+    /// Binary GET (Telegram media and avatars); answered as base64 plus content type.
+    ApiBinary {
+        path: String,
+    },
+    /// Generic owner-API call for modules that have no typed operation. The path
+    /// must match `API_ALLOWLIST`; credentials and device/sync routes never do.
+    Api {
+        method: String,
+        path: String,
+        #[serde(default)]
+        query: Option<std::collections::BTreeMap<String, String>>,
+        #[serde(default)]
+        body: Option<Value>,
+        #[serde(default)]
+        idempotency_key: Option<String>,
+    },
     Projects {},
     ProjectCreate {
         project: ProjectInput,
@@ -946,8 +1012,280 @@ fn valid_task(t: &TaskInput) -> bool {
         && t.due_timezone.as_ref().is_none_or(|s| s.len() <= 100)
         && t.rrule.as_ref().is_none_or(|s| s.len() <= 1000)
 }
+/// (method, path under /api/v1; `*` is exactly one id segment). Anything not
+/// listed is refused: auth, devices, sync, credential leases and SSE/binary
+/// routes are deliberately absent.
+const API_ALLOWLIST: &[(&str, &str)] = &[
+    ("GET", "integrations/telegram/status"),
+    ("GET", "integrations/telegram/messages"),
+    ("GET", "integrations/telegram/chats"),
+    ("POST", "integrations/telegram/connect"),
+    ("POST", "integrations/telegram/binding"),
+    ("POST", "integrations/telegram/disconnect"),
+    ("POST", "integrations/telegram/sync"),
+    ("POST", "integrations/telegram/chats/send"),
+    ("PATCH", "integrations/telegram/settings"),
+    ("POST", "integrations/telegram/messages/*/draft"),
+    ("POST", "integrations/telegram/messages/*/send"),
+    ("POST", "mail/gmail/connect"),
+    ("POST", "mail/gmail/*/sync"),
+    ("POST", "mail/gmail/*/drafts/import"),
+    ("POST", "mail/gmail/*/drafts/*"),
+    ("POST", "mail/gmail/*/disconnect"),
+    ("POST", "mail/accounts"),
+    ("POST", "mail/messages"),
+    ("PATCH", "mail/messages/*"),
+    ("POST", "focus/sessions/*/pause"),
+    ("POST", "focus/sessions/*/resume"),
+    ("GET", "automations"),
+    ("GET", "automations/runs"),
+    ("GET", "automations/*/executions"),
+    ("POST", "automations"),
+    ("POST", "automations/draft"),
+    ("POST", "automations/dispatch"),
+    ("POST", "automations/*/dry-run"),
+    ("PATCH", "automations/*"),
+    ("DELETE", "automations/*"),
+    ("GET", "agents/devices"),
+    ("GET", "agents/sessions"),
+    ("POST", "agents/sessions/search"),
+    ("POST", "agents/sessions/*/stop"),
+    ("POST", "agents/runs"),
+    ("GET", "agents/runs/*"),
+    ("POST", "agents/runs/*/cancel"),
+    ("GET", "ai/memory"),
+    ("POST", "ai/memory"),
+    ("PATCH", "ai/memory/*"),
+    ("DELETE", "ai/memory/*"),
+    ("POST", "ai/providers"),
+    ("PATCH", "ai/providers/*"),
+    ("POST", "ai/providers/*/probe"),
+    ("PUT", "ai/providers/*/secret"),
+    ("DELETE", "ai/providers/*/secret"),
+    ("PATCH", "ai/conversations/*"),
+    ("GET", "ai/conversations/*/actions"),
+    ("POST", "ai/actions/*/approve"),
+    ("POST", "ai/actions/*/reject"),
+    ("POST", "ai/attachments"),
+    ("DELETE", "ai/attachments/*"),
+    ("PATCH", "ai/messages/*"),
+    ("GET", "calendar/google/status"),
+    ("POST", "calendar/google/connect"),
+    ("POST", "calendar/google/sync"),
+    ("DELETE", "calendar/google/connection"),
+    ("GET", "calendar/events/*"),
+    ("GET", "notes/*"),
+    ("GET", "notes/*/revisions"),
+    ("POST", "notes/*/restore"),
+    ("GET", "tasks/*"),
+    ("GET", "tasks/*/reminders"),
+    ("POST", "tasks/*/reminders"),
+    ("POST", "knowledge/search"),
+    ("GET", "search"),
+    ("GET", "history"),
+    ("PUT", "finance/budgets"),
+    ("POST", "notifications"),
+    ("GET", "projects/*"),
+    ("GET", "projects/*/resources"),
+    ("POST", "projects/*/grants"),
+    ("POST", "projects/*/grants/*/revoke"),
+    ("POST", "resources"),
+    ("POST", "resource-links"),
+    ("DELETE", "resource-links/*"),
+];
+fn api_allowed(method: &str, path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/v1/") else {
+        return false;
+    };
+    let segments: Vec<&str> = rest.split('/').collect();
+    API_ALLOWLIST.iter().any(|(m, pattern)| {
+        let want: Vec<&str> = pattern.split('/').collect();
+        *m == method
+            && want.len() == segments.len()
+            && want
+                .iter()
+                .zip(&segments)
+                .all(|(w, s)| if *w == "*" { valid_id(s) } else { w == s })
+    })
+}
+const BINARY_ALLOWLIST: &[&str] = &[
+    "integrations/telegram/messages/*/media",
+    "integrations/telegram/chats/*/avatar",
+];
+const BINARY_TYPES: &[&str] = &[
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "audio/ogg",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/wav",
+    "audio/flac",
+    "audio/webm",
+];
+const MAX_BINARY: usize = 20 * 1024 * 1024;
+fn binary_allowed(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/v1/") else {
+        return false;
+    };
+    let segments: Vec<&str> = rest.split('/').collect();
+    BINARY_ALLOWLIST.iter().any(|pattern| {
+        let want: Vec<&str> = pattern.split('/').collect();
+        want.len() == segments.len()
+            && want
+                .iter()
+                .zip(&segments)
+                .all(|(w, s)| if *w == "*" { valid_id(s) } else { w == s })
+    })
+}
+async fn request_binary(client: &Client, url: &str, access: &str) -> Result<Value, String> {
+    let mut response = client
+        .get(url)
+        .bearer_auth(access)
+        .header("Accept", "image/*,audio/*")
+        .send()
+        .await
+        .map_err(|_| err("NETWORK_ERROR"))?;
+    let status = response.status();
+    if status == StatusCode::UNAUTHORIZED {
+        return Err(err("UNAUTHORIZED"));
+    }
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| {
+            v.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase()
+        })
+        .unwrap_or_default();
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_BINARY as u64)
+    {
+        return Err(err("413:TELEGRAM_MEDIA_TOO_LARGE"));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| err("NETWORK_ERROR"))? {
+        if bytes.len().saturating_add(chunk.len()) > MAX_BINARY {
+            return Err(err("413:TELEGRAM_MEDIA_TOO_LARGE"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if !status.is_success() {
+        if status.is_client_error() {
+            let code = serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .and_then(|v| v["detail"]["code"].as_str().map(str::to_owned))
+                .filter(|c| {
+                    (3..=64).contains(&c.len())
+                        && c.bytes()
+                            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+                })
+                .unwrap_or_else(|| "BAD_REQUEST".into());
+            return Err(format!("{}:{code}", status.as_u16()));
+        }
+        return Err(err("BACKEND_ERROR"));
+    }
+    if !BINARY_TYPES.contains(&content_type.as_str()) {
+        return Err(err("415:TELEGRAM_MEDIA_UNSUPPORTED"));
+    }
+    Ok(json!({
+        "content_type": content_type,
+        "data": base64_encode(&bytes),
+    }))
+}
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        out.push(TABLE[(n >> 18) as usize & 63] as char);
+        out.push(TABLE[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[n as usize & 63] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+async fn execute_binary(state: &NativeState, origin: &str, path: &str) -> Result<Value, String> {
+    if !binary_allowed(path) {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    let access = {
+        let guard = state.0.lock().await;
+        guard
+            .as_ref()
+            .filter(|s| s.origin == origin)
+            .map(|s| s.access.clone())
+            .ok_or_else(|| err("SIGN_IN_REQUIRED"))?
+    };
+    let response = request_binary(&client()?, &format!("{origin}{path}"), &access).await;
+    let value = session_response(state, origin, &access, response).await?;
+    ensure_operation_session(state, origin, &access, false).await?;
+    Ok(value)
+}
+fn api_route(
+    method: String,
+    path: String,
+    query: Option<std::collections::BTreeMap<String, String>>,
+    body: Option<Value>,
+) -> Result<(Method, String, Option<Value>), String> {
+    if path.len() > 512 || !api_allowed(&method, &path) {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    let http = Method::from_bytes(method.as_bytes()).map_err(|_| err("VALIDATION_ERROR"))?;
+    if let Some(body) = &body {
+        if !body.is_object() || http == Method::GET {
+            return Err(err("VALIDATION_ERROR"));
+        }
+        if serde_json::to_vec(body).map_or(true, |bytes| bytes.len() > 1024 * 1024) {
+            return Err(err("VALIDATION_ERROR"));
+        }
+    }
+    let mut full = path;
+    if let Some(query) = query.filter(|q| !q.is_empty()) {
+        let valid = query.len() <= 20
+            && query.iter().all(|(k, v)| {
+                !k.is_empty()
+                    && k.len() <= 40
+                    && k.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+                    && v.len() <= 512
+            });
+        if !valid {
+            return Err(err("VALIDATION_ERROR"));
+        }
+        let mut pairs = url::form_urlencoded::Serializer::new(String::new());
+        for (k, v) in &query {
+            pairs.append_pair(k, v);
+        }
+        full = format!("{full}?{}", pairs.finish());
+    }
+    Ok((http, full, body))
+}
 fn route(op: Operation) -> Result<(Method, String, Option<Value>), String> {
     match op {
+        Operation::Api {
+            method,
+            path,
+            query,
+            body,
+            ..
+        } => api_route(method, path, query, body),
+        Operation::ApiBinary { .. } => Err(err("VALIDATION_ERROR")),
         Operation::Me {} => Ok((Method::GET, "/api/v1/me".into(), None)),
         Operation::Projects {} => Ok((Method::GET, "/api/v1/projects".into(), None)),
         Operation::ProjectCreate { project } if valid_project(&project) => Ok((
@@ -1687,13 +2025,24 @@ async fn execute_operation(
     origin: &str,
     operation: Operation,
 ) -> Result<Value, String> {
+    if let Operation::ApiBinary { path } = &operation {
+        return execute_binary(state, origin, path).await;
+    }
     let ai_events = matches!(&operation, Operation::AIRunEvents { .. });
     let idempotency_key = match &operation {
         Operation::FocusStart {
             idempotency_key, ..
         } => idempotency_key.clone(),
+        Operation::Api {
+            idempotency_key, ..
+        } => idempotency_key.clone().filter(|k| {
+            (8..=128).contains(&k.len())
+                && k.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"-_:.".contains(&b))
+        }),
         _ => None,
     };
+    let is_api = matches!(&operation, Operation::Api { .. });
     let (method, path, body) = route(operation)?;
     // Copy only the in-memory access credential. Network waits must not hold the
     // session lock: cancellation and logout need to proceed during an AI run.
@@ -1717,7 +2066,9 @@ async fn execute_operation(
         return serde_json::to_value(events).map_err(|_| err("INVALID_RESPONSE"));
     }
     // No automatic retries: a rejected/ambiguous mutation is never replayed.
-    let kind = if path == "/api/v1/me" {
+    let kind = if is_api {
+        "api"
+    } else if path == "/api/v1/me" {
         "me"
     } else if path == "/api/v1/projects" {
         if method == Method::GET {
@@ -1837,15 +2188,27 @@ async fn execute_operation(
         "task"
     };
     let is_mutation = method != Method::GET;
-    let response: Result<Value, String> = request_with_key(
-        &client()?,
-        method,
-        &format!("{origin}{path}"),
-        body,
-        idempotency_key.as_deref(),
-        Some(&access),
-    )
-    .await;
+    let response: Result<Value, String> = if is_api {
+        request_api(
+            &client()?,
+            method,
+            &format!("{origin}{path}"),
+            body,
+            idempotency_key.as_deref(),
+            &access,
+        )
+        .await
+    } else {
+        request_with_key(
+            &client()?,
+            method,
+            &format!("{origin}{path}"),
+            body,
+            idempotency_key.as_deref(),
+            Some(&access),
+        )
+        .await
+    };
     let value = session_response(state, origin, &access, response)
         .await
         .map_err(|e| {
@@ -2403,6 +2766,14 @@ struct AIConversation {
     project_id: Option<String>,
     title: String,
     version: u64,
+    #[serde(default)]
+    pinned: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    preview: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    usage: Option<Value>,
 }
 #[derive(Serialize, Deserialize)]
 struct AIMessage {
@@ -2413,6 +2784,10 @@ struct AIMessage {
     #[serde(default, alias = "source_refs")]
     source_refs_json: Vec<Value>,
     created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    feedback: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attachments: Option<Vec<Value>>,
 }
 #[derive(Serialize, Deserialize)]
 struct AIRun {
@@ -2476,6 +2851,8 @@ pub struct AIRunInput {
     #[serde(default)]
     tool_scope: HashMap<String, Value>,
     idempotency_key: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attachment_ids: Vec<String>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -2499,6 +2876,8 @@ fn valid_ai_run(value: &AIRunInput) -> bool {
         && value.idempotency_key.len() <= 150
         && value.routing.len() <= 20
         && value.tool_scope.len() <= 20
+        && value.attachment_ids.len() <= 5
+        && value.attachment_ids.iter().all(|id| valid_id(id))
 }
 fn valid_ai_conversation(value: &AIConversationInput) -> bool {
     value.knowledge.as_ref().is_none_or(valid_knowledge_scope)
@@ -2585,6 +2964,7 @@ fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
         serde_json::to_value(parsed).map_err(|_| err("INVALID_RESPONSE"))
     }
     match kind {
+        "api" => Ok(value),
         "me" => convert::<Me>(value),
         "projects" => convert::<Vec<Project>>(value),
         "project" => convert::<Project>(value),
@@ -3111,7 +3491,10 @@ mod tests {
         .unwrap();
         assert_eq!(capability["windows"], json!(["main"]));
         assert!(capability.get("remote").is_none());
-        assert_eq!(capability["permissions"], json!(["core:default"]));
+        assert_eq!(
+            capability["permissions"],
+            json!(["core:default", "notification:default"])
+        );
     }
     #[test]
     fn http_errors_do_not_return_server_content_and_redirects_are_denied() {
@@ -3291,6 +3674,9 @@ mod tests {
             loop {
                 match listener.accept() {
                     Ok((mut cancel, _)) => {
+                        // Accepted sockets can inherit nonblocking mode on macOS.
+                        // Read the cancel request with the bounded timeout below.
+                        cancel.set_nonblocking(false).unwrap();
                         cancel
                             .set_read_timeout(Some(Duration::from_secs(3)))
                             .unwrap();
@@ -3696,6 +4082,135 @@ mod tests {
                 .unwrap()
                 .refresh_token,
             "rotated"
+        );
+    }
+
+    #[test]
+    fn generic_api_operation_deserializes_like_the_web_client_sends_it() {
+        let provider = json!({
+            "type": "api", "method": "POST", "path": "/api/v1/ai/providers",
+            "body": {"kind": "claude", "enabled": false, "model_policy": {"default_model": "m", "models": [{"name": "m", "capabilities": ["streaming"], "context_tokens": 100000}]}},
+            "idempotency_key": "idem-1234567890"
+        });
+        let op: Operation = serde_json::from_value(provider).expect("provider create");
+        let (method, path, body) = route(op).expect("allowed");
+        assert_eq!(
+            (method, path.as_str()),
+            (Method::POST, "/api/v1/ai/providers")
+        );
+        assert!(body.is_some());
+        let patch = json!({
+            "type": "api", "method": "PATCH", "path": "/api/v1/ai/providers/3f2b8c1e-aaaa-bbbb-cccc-1234567890ab",
+            "body": {"enabled": true}
+        });
+        let op: Operation = serde_json::from_value(patch).expect("provider patch");
+        assert!(route(op).is_ok());
+        let secret = json!({"type": "api", "method": "PUT", "path": "/api/v1/ai/providers/3f2b8c1e-aaaa-bbbb-cccc-1234567890ab/secret", "body": {"api_key": "k-12345678"}});
+        assert!(route(serde_json::from_value(secret).expect("secret")).is_ok());
+    }
+
+    #[test]
+    fn base64_matches_rfc4648_vectors() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn binary_route_is_allowlisted() {
+        assert!(binary_allowed(
+            "/api/v1/integrations/telegram/messages/abc123/media"
+        ));
+        assert!(binary_allowed(
+            "/api/v1/integrations/telegram/chats/1234567/avatar"
+        ));
+        assert!(!binary_allowed(
+            "/api/v1/integrations/telegram/messages/abc/media/x"
+        ));
+        assert!(!binary_allowed("/api/v1/me"));
+        assert!(!binary_allowed(
+            "/api/v1/integrations/telegram/messages/../media"
+        ));
+    }
+
+    #[test]
+    fn ai_chat_routes_are_allowlisted_and_typed_fields_survive() {
+        assert!(api_allowed("PATCH", "/api/v1/ai/conversations/abc123"));
+        assert!(api_allowed(
+            "GET",
+            "/api/v1/ai/conversations/abc123/actions"
+        ));
+        assert!(api_allowed("POST", "/api/v1/ai/actions/abc123/approve"));
+        assert!(api_allowed("POST", "/api/v1/ai/actions/abc123/reject"));
+        assert!(api_allowed("POST", "/api/v1/ai/attachments"));
+        assert!(api_allowed("DELETE", "/api/v1/ai/attachments/abc123"));
+        assert!(api_allowed("PATCH", "/api/v1/ai/messages/abc123"));
+        assert!(!api_allowed("DELETE", "/api/v1/ai/conversations/abc123"));
+        assert!(!api_allowed("POST", "/api/v1/ai/actions/abc123/execute"));
+        assert!(!api_allowed("GET", "/api/v1/ai/attachments/abc123"));
+        let conversation = sanitize_response("ai-conversations", json!([{
+            "id": "c1", "owner_id": "o", "project_id": null, "title": "T", "version": 2, "tool_scope_json": {"scopes": ["tasks.read"]},
+            "pinned": true, "updated_at": "2026-11-02T10:00:00Z", "preview": "Hi", "unknown": 1,
+            "usage": {"input_tokens": 3, "output_tokens": 4, "estimated_cost": "0.1"}
+        }])).unwrap();
+        assert_eq!(conversation[0]["pinned"], true);
+        assert_eq!(conversation[0]["usage"]["output_tokens"], 4);
+        assert!(conversation[0].get("unknown").is_none());
+        let messages = sanitize_response("ai-messages", json!([
+            {"id": "m1", "conversation_id": "c1", "role": "user", "content": "x", "created_at": "t", "feedback": null, "attachments": [{"name": "a.txt", "size": 3}]},
+            {"id": "m2", "conversation_id": "c1", "role": "assistant", "content": "y", "created_at": "t", "feedback": "up"}
+        ])).unwrap();
+        assert_eq!(messages[0]["attachments"][0]["name"], "a.txt");
+        assert_eq!(messages[1]["feedback"], "up");
+        let run: Operation = serde_json::from_value(json!({
+            "type": "ai_run_create",
+            "run": {"conversation_id": "c1", "message": "Hi", "idempotency_key": "k", "attachment_ids": ["a1", "a2"]}
+        })).unwrap();
+        let (_, _, body) = route(run).unwrap();
+        assert_eq!(body.unwrap()["attachment_ids"][1], "a2");
+        let too_many: Operation = serde_json::from_value(json!({
+            "type": "ai_run_create",
+            "run": {"conversation_id": "c1", "message": "Hi", "idempotency_key": "k", "attachment_ids": ["1", "2", "3", "4", "5", "6"]}
+        })).unwrap();
+        assert!(route(too_many).is_err());
+    }
+
+    #[test]
+    fn generic_api_route_is_allowlisted() {
+        let ok = |m: &str, p: &str| api_allowed(m, p);
+        assert!(ok("POST", "/api/v1/integrations/telegram/connect"));
+        assert!(ok("POST", "/api/v1/focus/sessions/abc123/pause"));
+        assert!(ok("GET", "/api/v1/notes/abc123/revisions"));
+        // wrong method, auth/device/sync/credential routes, traversal and extra segments
+        assert!(!ok("GET", "/api/v1/integrations/telegram/connect"));
+        assert!(!ok("POST", "/api/v1/auth/login"));
+        assert!(!ok("POST", "/api/v1/devices/enroll"));
+        assert!(!ok("POST", "/api/v1/sync/push"));
+        assert!(!ok("POST", "/api/v1/agents/runs/abc123/credential-lease"));
+        assert!(!ok("GET", "/api/v1/notes/../me"));
+        assert!(!ok("GET", "/api/v1/notes/abc/revisions/extra"));
+        assert!(!ok("GET", "/other/notes/abc"));
+        let (m, path, _) = api_route(
+            "PATCH".into(),
+            "/api/v1/integrations/telegram/settings".into(),
+            None,
+            Some(json!({"version": 1})),
+        )
+        .unwrap();
+        assert_eq!(
+            (m, path.as_str()),
+            (Method::PATCH, "/api/v1/integrations/telegram/settings")
+        );
+        assert!(api_route("GET".into(), "/api/v1/search".into(), None, Some(json!({}))).is_err());
+        let mut q = std::collections::BTreeMap::new();
+        q.insert("q".to_string(), "a b".to_string());
+        assert_eq!(
+            api_route("GET".into(), "/api/v1/search".into(), Some(q), None)
+                .unwrap()
+                .1,
+            "/api/v1/search?q=a+b"
         );
     }
 }

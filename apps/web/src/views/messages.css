@@ -70,7 +70,7 @@
 :root[data-theme='dark'] .msg__tabs { background: #2A2733; }
 :root[data-theme='dark'] .msg__row.is-on, :root[data-theme='dark'] .msg__chip { background: rgba(139, 108, 240, .22); }
 :root[data-theme='dark'] .msg__send:not(.is-on) { background: #3A3546; color: #A6A0B2; }
-@media (max-width: 700px) { .msg-page { padding: 0 12px 24px; } }
+@media (max-width: 700px) { .msg-page { padding: 0 16px 24px; } }
 
 .msg__send:disabled { cursor: not-allowed; }
 .msg__send:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 3px; }

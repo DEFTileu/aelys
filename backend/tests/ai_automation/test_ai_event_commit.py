@@ -94,7 +94,7 @@ async def test_terminal_sse_is_committed_with_run_state_before_delivery(
                 json={"api_key": "test-only-provider-key"},
             )
             conversation = await client.post(
-                "/api/v1/ai/conversations", headers=headers, json={}
+                "/api/v1/ai/conversations", headers=headers, json={"tool_scope": {"scopes": []}}
             )
             run = await client.post(
                 "/api/v1/ai/runs",

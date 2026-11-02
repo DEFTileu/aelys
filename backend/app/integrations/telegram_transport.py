@@ -121,6 +121,11 @@ class TelegramClient:
     async def get_me(self) -> dict[str, Any]:
         return await self._object("getMe", {})
 
+    async def get_user_profile_photos(self, user_id: int) -> dict[str, Any]:
+        if type(user_id) is not int or user_id <= 0:
+            raise TelegramError('invalid_user_id')
+        return await self._object('getUserProfilePhotos', {'user_id': user_id, 'limit': 1})
+
     async def get_file(self, file_id: str) -> dict[str, Any]:
         if not isinstance(file_id, str) or not 1 <= len(file_id) <= 512 or any(char.isspace() for char in file_id):
             raise TelegramError('invalid_file_id')

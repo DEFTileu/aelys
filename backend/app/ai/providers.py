@@ -29,6 +29,9 @@ class ProviderAdapter(Protocol):
     def stream(self, request: ProviderRequest) -> AsyncIterator[str]: ...
 
 
+THINKING_BUDGETS = {"low": 2048, "medium": 8192, "high": 24576}
+
+
 def _usage(body: Mapping[str, Any]) -> Usage:
     u = body.get("usage") or {}
     return Usage(int(u.get("input_tokens", u.get("prompt_tokens", 0)) or 0), int(u.get("output_tokens", u.get("completion_tokens", 0)) or 0))
@@ -96,7 +99,14 @@ class ClaudeAdapter(_BaseAdapter):
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
         system = [m.content for m in request.messages if m.role == "system"]
         messages = [{"role": m.role, "content": _content(m, claude=True)} for m in request.messages if m.role != "system"]
-        return {"model": request.model, "max_tokens": request.max_tokens, "temperature": float(request.temperature), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
+        payload = {"model": request.model, "max_tokens": request.max_tokens, "temperature": float(request.temperature), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
+        if request.effort:
+            budget = THINKING_BUDGETS[request.effort]
+            # Extended thinking requires max_tokens > budget_tokens and temperature 1 (unset).
+            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            payload["max_tokens"] = budget + request.max_tokens
+            del payload["temperature"]
+        return payload
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
         response = await self._post("/v1/messages", self._payload(request), media=any(m.media for m in request.messages))
@@ -124,7 +134,7 @@ class OpenRouterAdapter(_BaseAdapter):
 
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
         tools = [{"type": "function", "function": {"name": str(tool["name"]), "description": str(tool.get("description", "")), "parameters": tool.get("input_schema") or {"type": "object"}}} for tool in request.tools]
-        return {"model": request.model, "messages": [{"role": m.role, "content": _content(m, claude=False)} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {})}
+        return {"model": request.model, "messages": [{"role": m.role, "content": _content(m, claude=False)} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {}), **({"reasoning": {"effort": request.effort}} if request.effort else {})}
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
         response = await self._post("/api/v1/chat/completions", self._payload(request), media=any(m.media for m in request.messages))

@@ -69,7 +69,7 @@ it('defers protected routes, keeps the shell through loading and recovers from a
   await act(async () => { host.querySelector('button')!.click() })
   expect(host.textContent).toContain('Settings: error dark')
   expect(host.querySelector('[data-testid="shell"]')).toBe(shell)
-  await act(async () => { navigate('/utilities') })
+  await act(async () => { navigate('/apps') })
   expect(host.textContent).toContain('Local Utilities')
   expect(host.querySelector('[data-testid="shell"]')).toBe(shell)
   expect(controls.shellMounted).toHaveBeenCalledTimes(1)

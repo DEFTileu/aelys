@@ -3,12 +3,14 @@ import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText,
 import { accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { useWallpaper } from '../lib/wallpaper'
+import { CrossfadePhoto } from './CrossfadePhoto'
 import { getSharedApiClient } from '../lib/api'
 import { useOwner } from '../lib/owner'
 import { usePrefs, type Prefs } from '../lib/prefs'
 import { navigate } from '../lib/router'
 import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
+import { OfflineGate } from './OfflineGate'
 import { formatDate, greetingForHour } from '../lib/format'
 import { CommandPalette, pages as PALETTE_PAGES } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
@@ -61,7 +63,7 @@ const NAV: NavItem[] = [
   { id: 'mail', label: 'Mail', icon: Mail, route: '/mail' },
   { id: 'finance', label: 'Finances', icon: Wallet, route: '/finance' },
   { id: 'kb', label: 'Knowledge base', icon: BookOpen, route: '/knowledge' },
-  { id: 'utilities', label: 'Apps', icon: LayoutGrid, route: '/utilities' },
+  { id: 'utilities', label: 'Apps', icon: LayoutGrid, route: '/apps' },
 ]
 
 // Hero copy from the reference; `dated` pages show today's date above the title.
@@ -75,7 +77,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
   '/finance': { title: 'Finances', sub: 'Record spending in seconds and see where it goes.', dated: true },
   '/knowledge': { title: 'Knowledge base', sub: 'Docs and references for everything you build.', dated: true },
   '/settings': { title: 'Settings', sub: 'Make Aelys your own' },
-  '/utilities': { title: 'Apps', sub: 'Small tools for everything else. Pin the ones you use.' },
+  '/apps': { title: 'Apps', sub: 'Small tools for everything else. Pin the ones you use.' },
   '/automation': { title: 'Automation', sub: 'When this happens, Aelys does that.' },
   '/messages': { title: 'Messages', sub: 'Telegram chats. Aelys drafts, you approve.' },
   '/widgets': { title: 'Customize home' },
@@ -176,7 +178,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
 
         <main className={mobile ? 'mobile-shell__content' : 'shell-main'} style={isHome || mobile ? undefined : { background: 'var(--canvas)', color: 'var(--ink)' }}>
           {!mobile && <>
-            <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, backgroundImage: `url('${wallpaper}')` }} />
+            <CrossfadePhoto url={wallpaper} height={isHome ? 420 : 230} />
             <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, background: BAND_GRADIENT[theme][isHome ? 'home' : 'page'] }} />
           </>}
           <div style={{ position: 'relative' }}>
@@ -202,7 +204,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             {hero?.sub && <div style={{ fontSize: 14, lineHeight: '22px', marginTop: 2 }}>{hero.sub}</div>}
           </div>)}
 
-          {children}
+          <OfflineGate route={route} apiStatus={apiStatus} compact={mobile}>{children}</OfflineGate>
           </div>
         </main>
 

@@ -18,7 +18,7 @@ describe('utility views', () => {
     await mount(<ModuleView config={moduleConfigs.developer} apiStatus="ready" />)
     expect(host.textContent).toContain('No sessions found'); expect(host.textContent).not.toContain('Mac runtime is offline')
     client.agentSessions.mockResolvedValue([{ id: 's1', adapter: 'codex_cli', state: 'active', opaque_local_session_ref: 'private-reference', last_activity_at: '2026-10-30' }])
-    await act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Refresh')!.click())
+    await act(async () => root.unmount()); host.remove(); await mount(<ModuleView config={moduleConfigs.developer} apiStatus="ready" />)
     expect(host.textContent).toContain('codex_cli'); expect(host.textContent).toContain('active'); expect(host.textContent).not.toContain('private-reference')
   })
   it('shows a restricted state for policy denial without exposing server messages', async () => {

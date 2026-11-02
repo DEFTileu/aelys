@@ -29,10 +29,10 @@ describe('MobileShell', () => {
     expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(document.activeElement).toBe(trigger)
     await click(trigger); await click(host.querySelector<HTMLElement>('.mobile-shell__backdrop')!); expect(host.querySelector('[role="dialog"]')).toBeNull()
   })
-  it('keeps the Home header to one line: logo, search, notifications and avatar', async () => {
+  it('keeps the Home header to one line: logo, apps, search, notifications and avatar', async () => {
     const host = await render()
     const header = host.querySelector('.mobile-shell__header')!
-    expect([...header.children].map(node => node.getAttribute('aria-label') ?? node.textContent)).toEqual(['All apps', 'Search', 'Notifications /', 'Profile and settings'])
+    expect([...header.children].map(node => node.getAttribute('aria-label') ?? node.textContent)).toEqual(['Aelys', 'All apps', 'Search', 'Notifications /', 'Profile and settings'])
     expect(header.querySelector('.mobile-shell__logo svg, .mobile-shell__logo img, .mobile-shell__logo [class*="mark"]')).not.toBeNull()
     expect(host.querySelector('.mobile-shell__weather')).toBeNull()
     expect(header.nextElementSibling?.tagName).toBe('MAIN')
@@ -50,9 +50,9 @@ describe('MobileShell', () => {
   })
   it('navigates between modules through the app sheet and returns home', async () => {
     const host = await render(); await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Finances'))
-    expect(location.pathname).toBe('/finance'); expect(host.textContent).toContain('Content /finance'); expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(host.querySelector('.mobile-shell__wallpaper')).toBeNull()
+    expect(location.pathname).toBe('/finance'); expect(host.textContent).toContain('Content /finance'); expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(host.querySelector('.mobile-shell__wallpaper--inner')).not.toBeNull()
     await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Tasks')); expect(location.pathname).toBe('/tasks')
-    await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Utilities')); expect(location.pathname).toBe('/utilities'); expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Utilities')
+    await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Apps')); expect(location.pathname).toBe('/apps'); expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Apps')
     await click(button(host, 'Back to Home')); expect(location.pathname).toBe('/')
   })
   it('uses the selected wallpaper on home and routes the composer to AI', async () => {

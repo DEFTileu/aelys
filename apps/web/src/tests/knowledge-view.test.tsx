@@ -31,7 +31,7 @@ describe('knowledge view', () => {
     expect(host.querySelector('.knowledge-content .markdown-content h1')?.textContent).toBe('Heading')
     expect(host.querySelector('.knowledge-content script')).toBeNull()
     expect(host.querySelector('.knowledge-content')?.textContent).toContain('<script>alert(1)</script>')
-    expect(host.querySelector('.knowledge-reader-head')?.textContent).toContain('Version 1')
+    expect(host.querySelector('.knowledge-reader-head')?.textContent).not.toContain('Version 1')
     await input('Search documents', 'findable')
     expect(host.querySelector('.knowledge-content h1')?.textContent).toBe('Beta')
     expect(host.querySelector('.knowledge-items')?.textContent).not.toContain('Alpha')
@@ -46,7 +46,7 @@ describe('knowledge view', () => {
   it('retries errors and handles empty records without inventing metadata', async () => {
     client.notes.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([])
     await mount(); expect(host.textContent).toContain('Can’t reach Aelys')
-    await click('Try again'); expect(host.textContent).toContain('No notes yet.')
+    await click('Retry'); expect(host.textContent).toContain('No notes yet.')
     expect(client.notes).toHaveBeenCalledTimes(2)
   })
   it('opens the selected note in the Notes editor using an encoded deep link', async () => {

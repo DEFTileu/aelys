@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { NoteOut, ProjectResponse, TaskOut } from '@aelys/shared'
 import { ApiError, OfflineQueuedError } from '@aelys/shared'
-import { ApiStatusPill } from '../components/ApiStatusPill'
 import { Icon } from '../components/Icon'
 import { StateCard } from '../components/StateCard'
 import { PageSkeleton } from '../components/PageSkeleton'
@@ -150,7 +149,7 @@ export function ProjectsView({ apiStatus }: { apiStatus: ApiStatus }) {
   return <div className="page projects-view">
     {!selected && <div className="pv-toolbar">
       <div className="pv-filters" role="group" aria-label="Filter projects">{(['active', 'archived', 'all'] as const).map((item) => <button key={item} type="button" aria-pressed={filter === item} onClick={() => { setFilter(item); setSelectedId(null) }}>{item[0].toUpperCase() + item.slice(1)} <span>{item === 'all' ? projects.length : projects.filter((project) => item === 'archived' ? project.status === 'archived' : project.status !== 'archived').length}</span></button>)}</div>
-      <ApiStatusPill status={apiStatus} />
+      
       <label className="pv-search"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects…" aria-label="Search projects" /></label>
       <button className="pv-new" type="button" onClick={() => { setSelectedId(null); setFormOpen((open) => !open) }}><Icon name="plus" size={17} />New project</button>
     </div>}

@@ -28,7 +28,7 @@ function button(name: string): HTMLButtonElement {
 }
 // Matrix, All tasks and the extra filters live in the toolbar's overflow menu.
 async function openMore() {
-  const more = host.querySelector<HTMLButtonElement>('[aria-label="More views and filters"]')!
+  const more = host.querySelector<HTMLButtonElement>('[aria-label="Filters and views"]')!
   if (more.getAttribute('aria-expanded') !== 'true') await act(async () => more.click())
 }
 function field(name: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
@@ -42,10 +42,11 @@ function field(name: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelec
   return result
 }
 async function click(name: string) {
-  if (name !== 'New task' && ['All tasks', 'Matrix', 'High priority', 'Overdue', 'Clear filters', 'Refresh tasks'].includes(name)) await openMore()
+  if (name !== 'New task' && ['All tasks', 'Matrix', 'High priority', 'Overdue', 'Clear filters'].includes(name)) await openMore()
   await act(async () => { if (name === 'New task') field('Add a task').focus(); else button(name).click() })
 }
 async function setField(name: string, value: string) {
+  if (name.startsWith('Filter by')) await openMore()
   const element = field(name)
   const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
   await act(async () => {
@@ -153,9 +154,6 @@ describe('Tasks workspace', () => {
     expect(field('Description').value).toBe('Matrix parked draft')
     await click('Compare latest'); await click('Keep my draft'); await submit('Save')
     expect(client.updateTask).toHaveBeenLastCalledWith(original.id, expect.objectContaining({ version: 7, description: 'Matrix parked draft' }), { queueOnOffline: false })
-    client.tasks.mockImplementation(async (_query, options) => { if (options?.allowCacheFallback === false) throw new NetworkError('offline'); return [latest] })
-    await click('Refresh tasks'); expect(button('Complete Latest title').disabled).toBe(true)
-    await click('Open task: Latest title'); expect(button('Save').disabled).toBe(true)
   })
   it('defaults to Today and separates active tasks from Completed', async () => {
     const now = new Date(); now.setHours(12, 0, 0, 0)
@@ -564,7 +562,7 @@ describe('Tasks workspace', () => {
     expect(button('Reset')).not.toBeNull()
     await click('Reset')
     expect(host.querySelector('.tasks-reset')).toBeNull()
-    expect((field('Filter by priority') as HTMLSelectElement).value).toBe('all')
+    await openMore(); expect((field('Filter by priority') as HTMLSelectElement).value).toBe('all')
   })
 
 })

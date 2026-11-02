@@ -135,6 +135,8 @@ Run request (example):
 {"conversation_id":"<uuid>","message":"Summarize today's tasks","routing":{"mode":"auto"},"tool_scope":{"project_ids":["<uuid>"]},"idempotency_key":"<uuid>"}
 ```
 
+`routing.effort` (optional): `off` (or omitted) sends no reasoning field; `low|medium|high` maps to Claude `thinking: {type:"enabled", budget_tokens: 2048|8192|24576}` and OpenRouter `reasoning: {effort}`. Any other value returns HTTP 400 `INVALID_EFFORT`. A non-off effort is echoed in the `ai.run.started` payload.
+
 SSE event envelope:
 
 ```text
@@ -662,3 +664,38 @@ Combined main migrations: `0037_merge_telegram_knowledge` joins the published
 `0035_knowledge_consent` and `0036_telegram_reply_media` branches. Deployments
 upgrade to this single head before serving the combined Knowledge/Telegram API;
 there are no new endpoint permissions in the merge revision.
+
+## AI Chat sources, approvals and attachments (migration `0038_ai_chat_design`)
+
+- `GET /ai/conversations` items add `pinned`, `updated_at` (bumped by every new
+  message), `preview` (first 90 plain-text chars of the last message) and
+  `usage {input_tokens, output_tokens, estimated_cost}` summed over the chat's
+  runs. `PATCH /ai/conversations/{id}` takes `{version?, pinned?, title? (1..80),
+  scopes?}`; a stale `version` returns `VERSION_CONFLICT`. Pinning alone keeps
+  `updated_at`.
+- Source scopes `tasks.read`, `calendar.read`, `notes.read`, `knowledge.read` live
+  in `tool_scope_json.scopes`. A new chat that omits `tool_scope.scopes` gets
+  `tasks.read, calendar.read, notes.read`. Read tools (`list_tasks`, `read_calendar`,
+  `read_note`) are offered and authorized only for switched-on sources. No mail or
+  finance scopes exist. A chat with no scopes, or whose models lack tool calling,
+  answers as plain text. Knowledge questions reject write scopes only.
+- Write tools (`create_task`, `update_task`, `complete_task`, `create_note`,
+  `create_event`, `create_reminder`) never execute in a run. They persist an
+  `ai_actions` row and emit SSE `ai.action.proposed`
+  `{run_id, action_id, tool, title, summary, items[{title, detail, meta}]}`.
+  `GET /ai/conversations/{id}/actions` lists them (`status`: `pending|approved|rejected|failed`,
+  `result`). `POST /ai/actions/{id}/approve` executes once through the tool registry
+  with the owner's write scope (a repeat returns the stored result; a failure stores
+  `result.error {code, message}` and status `failed`; rejected actions return 409).
+  `POST /ai/actions/{id}/reject` is idempotent for rejected actions.
+- `ai.tool.requested` / `ai.tool.result` carry `label` ("Read your tasks"),
+  `source` (`tasks|calendar|notes`) and, on results, `detail` ("6 tasks, 2 due this
+  week"). `ai.run.completed` carries `input_tokens`, `output_tokens`, `estimated_cost`.
+- `POST /ai/attachments {name, content_base64}` accepts `.txt .md .csv .json .pdf`
+  up to 2 MB (413 `ATTACHMENT_TOO_LARGE`, 422 for other types or unreadable files),
+  extracts text, keeps it 24 h owner-scoped and returns `{id, name, size, chars}`.
+  `DELETE /ai/attachments/{id}` removes it. `POST /ai/runs` accepts `attachment_ids`
+  (max 5); text is injected as `<untrusted_data>` (20 000 chars per file, 40 000 total)
+  and `GET .../messages` returns `attachments [{name, size}]` on user messages.
+- `PATCH /ai/messages/{id} {feedback: "up"|"down"|null}` (assistant messages only);
+  `GET .../messages` returns `feedback`.

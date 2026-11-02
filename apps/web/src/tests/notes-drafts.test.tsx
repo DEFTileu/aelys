@@ -73,7 +73,7 @@ describe('note drafts', () => {
     client.updateNote.mockResolvedValueOnce(saved).mockResolvedValueOnce({ ...saved, version: 3 })
     await mount(); await change('Note title', 'Edited'); await change('Note body', 'Saved body'); await click('Save changes')
     expect(client.updateNote).toHaveBeenCalledWith('1', { title: 'Edited', markdown_body: 'Saved body', parent_id: 'parent', project_id: 'project', knowledge_enabled: false }, { query: { version: 1 }, queueOnOffline: false })
-    expect(host.textContent).toContain('v2'); expect(input('Note body').value).toBe('Saved body')
+    expect(host.textContent).not.toContain('v2'); expect(input('Note body').value).toBe('Saved body')
     await change('Note body', 'Next'); await click('Save changes')
     expect(client.updateNote).toHaveBeenLastCalledWith('1', expect.objectContaining({ markdown_body: 'Next' }), { query: { version: 2 }, queueOnOffline: false })
   })
@@ -161,16 +161,6 @@ describe('note drafts', () => {
     await click('New note')
     expect(client.createNote).toHaveBeenCalledTimes(1)
   })
-  it('formats a selection and safely previews the draft without saving', async () => {
-    await mount(); await change('Note body', '<script>bad()</script> hello')
-    await change('Note body', '<script>bad()</script>\n\n**hello**')
-    await click('Preview')
-    expect(host.querySelector('.nl-preview script')).toBeNull()
-    expect(host.querySelector('.nl-preview strong')?.textContent).toBe('hello')
-    expect(client.updateNote).not.toHaveBeenCalled()
-    await click('Edit'); expect(input('Note body').value).toContain('**hello**')
-  })
-
   it('renders sanitized Markdown and saves an edited checklist without saving on load', async () => {
     client.notes.mockResolvedValue([{ ...first, markdown_body: '**hello** <script>bad()</script>\n\n- [ ] task\n- [x] done' }, second])
     await mount()

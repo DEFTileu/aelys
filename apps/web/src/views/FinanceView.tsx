@@ -2,7 +2,6 @@ import { StyledSelect } from '../components/controls/StyledSelect'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { FinanceAccount, FinanceBudget, FinanceCategory, FinanceSummary, FinanceTransaction } from '@aelys/shared'
 import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
-import { ApiStatusPill } from '../components/ApiStatusPill'
 import { PageSkeleton } from '../components/PageSkeleton'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
@@ -148,7 +147,7 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
       </section>
       <div className="actual-finance-columns"><div className="actual-finance-left">
         {(form === null || form === 'transaction') && <form className={`actual-panel actual-record ${mobileRecord ? 'actual-record-open' : ''}`} onSubmit={submit}>
-          <div className="actual-record-title"><h2>Record</h2><ApiStatusPill status={apiStatus} /><button type="button" className="actual-refresh" aria-label="Refresh" title="Refresh" onClick={() => void load()}>Refresh</button><button type="button" className="actual-record-close" onClick={() => setMobileRecord(false)} aria-label="Close record">×</button></div>
+          <div className="actual-record-title"><h2>Record</h2><button type="button" className="actual-record-close" onClick={() => setMobileRecord(false)} aria-label="Close record">×</button></div>
           <div className="actual-record-types" role="radiogroup" aria-label="Transaction type">{(['expense', 'income'] as const).map((type) => <button type="button" role="radio" aria-checked={kind === type} key={type} onClick={() => { setKind(type); setCategoryId('') }}>{type === 'expense' ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}{type === 'expense' ? 'Expense' : 'Income'}</button>)}</div>
           <label><span className="actual-label">Amount</span><span className="actual-amount"><input required aria-label="Amount (decimal)" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00"/><span>{symbolOf(selectedAccount?.currency ?? currency)}</span></span></label>
           <div className="actual-record-fields"><label><span className="actual-label">Account</span><select aria-label="Account" required value={accountId} onChange={(event) => changeAccount(event.target.value)}><option value="">Choose account</option>{accounts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.currency}</option>)}</select></label><label><span className="actual-label">Category</span><select aria-label="Category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Uncategorized</option>{categories.filter((item) => item.kind === kind).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span className="actual-label">Date</span><input required type="date" value={recordDate} onChange={(event) => setRecordDate(event.target.value)}/></label><label><span className="actual-label">Note</span><input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional"/></label></div>

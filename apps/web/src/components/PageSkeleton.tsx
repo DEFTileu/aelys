@@ -6,7 +6,7 @@ import './page-skeleton.css'
 
 export type SkeletonKind = 'home' | 'list' | 'split' | 'grid' | 'calendar' | 'chat' | 'settings'
 export type SkeletonPhase = 'loading' | 'slow' | 'error'
-const SLOW_AFTER_MS = 8000
+const SHOW_AFTER_MS = 200, SLOW_AFTER_MS = 2500 // design: no flash for fast loads; slow notice after 2.5s
 
 type Row = { hasAv: boolean; av: string; avR: string; w1: string; two: boolean; w2: string; tail: boolean; tw: string; th: string; tr: string; mh: string }
 type Line = { w: string; h: string; r: string; ml: string }
@@ -34,16 +34,20 @@ const Bone = ({ style, fixed }: { style: CSSProperties; fixed?: boolean }) => <s
 
 export function PageSkeleton({ kind = 'list', phase = 'loading', compact = false, label = 'page', onRetry }: { kind?: SkeletonKind; phase?: SkeletonPhase; compact?: boolean; label?: string; onRetry?: () => void }) {
   const [waited, setWaited] = useState(false)
+  const [shown, setShown] = useState(false)
   useEffect(() => {
-    setWaited(false)
+    setWaited(false); setShown(false)
     if (phase !== 'loading') return
+    const show = window.setTimeout(() => setShown(true), SHOW_AFTER_MS)
     const timer = window.setTimeout(() => setWaited(true), SLOW_AFTER_MS)
-    return () => window.clearTimeout(timer)
+    return () => { window.clearTimeout(show); window.clearTimeout(timer) }
   }, [phase])
   const error = phase === 'error', slow = phase === 'slow' || (phase === 'loading' && waited)
   const { cols, cards } = skeletonLayout(kind, compact)
+  const hidden = phase === 'loading' && !shown
   return <div className="pskel" role="status" aria-live="polite" aria-busy={!error}>
     <span className="pskel__sr">{error ? `Could not load ${label}` : `Loading ${label}…`}</span>
+    {hidden ? null : <>
     {!error && <div className="pskel__bar" aria-hidden="true"><span data-bar="" /></div>}
     {slow && <div className="pskel__slow">
       <span className="pskel__spin" data-spin="" />
@@ -54,7 +58,7 @@ export function PageSkeleton({ kind = 'list', phase = 'loading', compact = false
       <span className="pskel__error-icon"><LucideGlyph name="wifi-off" size={26} /></span>
       <div className="pskel__error-title">Can’t reach Aelys</div>
       <div className="pskel__error-text">Check your connection. Anything you change is saved on this device and syncs when you’re back online.</div>
-      <div className="pskel__error-actions"><button type="button" onClick={onRetry}><RotateCcw size={14} />Try again</button></div>
+      <div className="pskel__error-actions"><button type="button" onClick={onRetry}><RotateCcw size={14} />Retry</button></div>
     </div>}
     {!error && <div className="pskel__grid" aria-hidden="true" style={{ gridTemplateColumns: cols, gap: compact ? 12 : 16 }}>
       {cards.map((c, i) => <div key={i} className="pskel__card" style={{ gridColumn: c.col, minHeight: c.h, padding: compact ? 14 : 18 }}>
@@ -67,5 +71,6 @@ export function PageSkeleton({ kind = 'list', phase = 'loading', compact = false
         {c.lines.map((l, j) => <Bone key={j} style={{ width: l.w, height: l.h, marginLeft: l.ml, borderRadius: l.r }} />)}
       </div>)}
     </div>}
+    </>}
   </div>
 }

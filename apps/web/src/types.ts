@@ -10,7 +10,7 @@ export type RoutePath =
   | '/widgets'
   | '/timer'
   | '/ai'
-  | '/utilities'
+  | '/apps'
   | '/developer'
   | '/automation'
   | '/messages'

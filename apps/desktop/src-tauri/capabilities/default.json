@@ -4,5 +4,5 @@
   "description": "Minimal Aelys desktop permissions",
   "windows": ["main"],
   "platforms": ["macOS", "linux", "windows"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "notification:default"]
 }

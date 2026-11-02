@@ -67,7 +67,29 @@ function bodyValue(body: BodyInit | null | undefined): Record<string, unknown> {
   } catch { return {} }
 }
 
+// Rust holds the real allowlist (API_ALLOWLIST); this only keeps obviously forbidden areas off the bridge.
+const GENERIC_BLOCKED = /^\/api\/v1\/(auth|devices|sync|pairing)(\/|$)/
+
+function genericOperation(url: URL, init?: RequestInit): NativeOperation | undefined {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (!url.pathname.startsWith('/api/v1/') || GENERIC_BLOCKED.test(url.pathname)) return undefined
+  if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return undefined
+  if (init?.body !== undefined && init.body !== null && typeof init.body !== 'string') return undefined
+  const query = Object.fromEntries(url.searchParams.entries())
+  const key = new Headers(init?.headers).get('Idempotency-Key') ?? undefined
+  return {
+    type: 'api', method, path: url.pathname,
+    ...(Object.keys(query).length ? { query } : {}),
+    ...(method !== 'GET' && init?.body ? { body: bodyValue(init.body) } : {}),
+    ...(key ? { idempotency_key: key } : {}),
+  }
+}
+
 function operationFor(url: URL, init?: RequestInit): NativeOperation | undefined {
+  return typedOperationFor(url, init) ?? genericOperation(url, init)
+}
+
+function typedOperationFor(url: URL, init?: RequestInit): NativeOperation | undefined {
   const method = (init?.method ?? 'GET').toUpperCase()
   const path = url.pathname
   if (method === 'GET' && path === '/api/v1/me') return { type: 'me' }
@@ -208,29 +230,59 @@ function operationFor(url: URL, init?: RequestInit): NativeOperation | undefined
   return undefined
 }
 
+function nativeErrorResponse(error: unknown, origin: string, init?: RequestInit): Response {
+  if (init?.signal?.aborted) throw init.signal.reason ?? new DOMException('Aborted', 'AbortError')
+  // Like a failed fetch, so ApiClient can fall back to cache or queue the write.
+  if (error === 'NETWORK_ERROR') throw new TypeError('Network request failed')
+  // Generic API calls report the server's own error as "<status>:<CODE>".
+  const passthrough = typeof error === 'string' ? /^(4\d\d):([A-Z0-9_]{3,64})$/.exec(error) : null
+  if (passthrough) return jsonResponse({ detail: { code: passthrough[2], message: 'The server rejected the request.' } }, Number(passthrough[1]))
+  const code = typeof error === 'string' ? error : 'NATIVE_TRANSPORT_ERROR'
+  const expired = code === 'UNAUTHORIZED' || code === 'SIGN_IN_REQUIRED'
+  if (expired && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))
+  return jsonResponse({ detail: { code, message: expired ? 'Sign in again.' : 'Native operation failed.' } }, expired ? 401 : 502)
+}
+
 /**
  * Adapt only the Rust operation allowlist to the shared client's fetch shape.
  * Unsupported routes return a typed error; they never fall back to browser fetch.
  */
-export function createNativeFetch(transport: NativeTransport, origin: string): typeof fetch {
+/** Console trace of every native call (method, path, status), never bodies or tokens, for the devtools builds. */
+function traced(run: typeof fetch): typeof fetch {
   return async (input, init) => {
+    const started = Date.now()
+    const label = `${(init?.method ?? 'GET').toUpperCase()} ${new URL(String(input), 'http://x/').pathname}`
+    try {
+      const response = await run(input, init)
+      console.debug(`[aelys:native] ${label} -> ${response.status} (${Date.now() - started}ms)`)
+      if (!response.ok) void response.clone().json().then((body: { detail?: { code?: string } }) => console.debug(`[aelys:native] ${label} error code`, body?.detail?.code)).catch(() => undefined)
+      return response
+    } catch (error) {
+      console.debug(`[aelys:native] ${label} failed before a response`, error)
+      throw error
+    }
+  }
+}
+
+export function createNativeFetch(transport: NativeTransport, origin: string): typeof fetch {
+  return traced(async (input, init) => {
     const url = new URL(String(input), `${origin}/`)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (method === 'GET' && /^\/api\/v1\/integrations\/telegram\/(messages\/[A-Za-z0-9_-]+\/media|chats\/\d+\/avatar)$/.test(url.pathname)) {
+      try {
+        const binary = await transport.operation<{ content_type: string; data: string }>(origin, { type: 'api_binary', path: url.pathname })
+        const bytes = Uint8Array.from(atob(binary.data), (c) => c.charCodeAt(0))
+        return new Response(bytes, { status: 200, headers: { 'Content-Type': binary.content_type, 'Content-Length': String(bytes.byteLength) } })
+      } catch (error) { return nativeErrorResponse(error, origin, init) }
+    }
     const operation = operationFor(url, init)
     if (!operation) return jsonResponse({ detail: { code: 'NATIVE_OPERATION_UNSUPPORTED', message: 'This module is not available in the native pilot.' } }, 501)
     try {
       if (operation.type === 'ai_run_events') return await nativeAIEventResponse(transport, origin, operation.id, init?.signal)
       const value = await transport.operation<unknown>(origin, operation)
       return jsonResponse(value)
-    } catch (error) {
-      if (init?.signal?.aborted) throw init.signal.reason ?? new DOMException('Aborted', 'AbortError')
-      // Like a failed fetch, so ApiClient can fall back to cache or queue the write.
-      if (error === 'NETWORK_ERROR') throw new TypeError('Network request failed')
-      const code = typeof error === 'string' ? error : 'NATIVE_TRANSPORT_ERROR'
-      const expired = code === 'UNAUTHORIZED' || code === 'SIGN_IN_REQUIRED'
-      if (expired && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))
-      return jsonResponse({ detail: { code, message: expired ? 'Sign in again.' : 'Native operation failed.' } }, expired ? 401 : 502)
-    }
-  }
+    } catch (error) { return nativeErrorResponse(error, origin, init) }
+  })
 }
 
 export function createNativeFetchFromInvoke(invoke: NativeInvoke, origin: string): typeof fetch {

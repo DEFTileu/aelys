@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useOwner } from '../lib/owner'
-import { Bell, Calendar, ChevronLeft, ChevronRight, CloudSun, Info, Paintbrush, Search, Send, Shield, Sparkles, User, Wifi, type AelysIconComponent } from '../icons'
+import { Bell, Calendar, ChevronLeft, ChevronRight, CloudSun, Info, Mail, Paintbrush, Search, Send, Shield, Sparkles, User, Wifi, type AelysIconComponent } from '../icons'
 import type { ApiStatus } from '../types'
 import { AppearancePanel } from './settings/AppearancePanel'
 import { AboutPanel, ConnectionPanel, NotificationsPanel, ProfilePanel, SecurityPanel } from './settings/panels'
 import { WeatherPanel } from './settings/WeatherPanel'
+import { AccountsPanel } from './settings/AccountsPanel'
 import { GoogleCalendarSettings } from './GoogleCalendarSettings'
 import { MemorySettings } from './MemorySettings'
 import { ProviderSettings } from './ProviderSettings'
@@ -12,7 +13,7 @@ import { TelegramSettings } from './TelegramSettings'
 import './actual-settings.css'
 import './settings/settings.css'
 
-type PanelId = 'profile' | 'notifications' | 'appearance' | 'weather' | 'calendar' | 'ai' | 'memory' | 'telegram' | 'connection' | 'security' | 'about'
+type PanelId = 'profile' | 'notifications' | 'appearance' | 'weather' | 'calendar' | 'ai' | 'memory' | 'telegram' | 'accounts' | 'connection' | 'security' | 'about'
 type Section = { id: PanelId; title: string; desc: string; icon: AelysIconComponent; tone: string }
 
 // Groups, titles, descriptions and tile colors are the design's. Memory and Google Calendar are Aelys sections the design lacks.
@@ -32,6 +33,7 @@ const GROUPS: readonly { title: string; items: readonly Section[] }[] = [
     { id: 'telegram', title: 'Telegram', desc: 'Connection, auto-reply and instructions', icon: Send, tone: 'blue' },
   ] },
   { title: 'System', items: [
+    { id: 'accounts', title: 'Connected accounts', desc: 'Gmail and Telegram', icon: Mail, tone: 'blue' },
     { id: 'connection', title: 'Connection', desc: 'Backend address and your session', icon: Wifi, tone: 'green' },
     { id: 'security', title: 'Security', desc: 'Touch ID and session unlock', icon: Shield, tone: 'coral' },
     { id: 'about', title: 'Data & about', desc: 'Version and sync', icon: Info, tone: 'gray' },
@@ -80,6 +82,7 @@ export function SettingsView({ apiStatus }: { apiStatus: ApiStatus; theme: 'ligh
       {panel === 'weather' && <WeatherPanel />}
       {panel === 'ai' && <ProviderSettings />}
       {panel === 'telegram' && <TelegramSettings />}
+      {panel === 'accounts' && <AccountsPanel apiStatus={apiStatus} onGo={go} />}
       {panel === 'connection' && <ConnectionPanel apiStatus={apiStatus} owner={owner} />}
       {panel === 'security' && <SecurityPanel />}
       {panel === 'about' && <AboutPanel />}
