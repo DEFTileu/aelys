@@ -247,8 +247,25 @@ function nativeErrorResponse(error: unknown, origin: string, init?: RequestInit)
  * Adapt only the Rust operation allowlist to the shared client's fetch shape.
  * Unsupported routes return a typed error; they never fall back to browser fetch.
  */
-export function createNativeFetch(transport: NativeTransport, origin: string): typeof fetch {
+/** Console trace of every native call (method, path, status), never bodies or tokens, for the devtools builds. */
+function traced(run: typeof fetch): typeof fetch {
   return async (input, init) => {
+    const started = Date.now()
+    const label = `${(init?.method ?? 'GET').toUpperCase()} ${new URL(String(input), 'http://x/').pathname}`
+    try {
+      const response = await run(input, init)
+      console.debug(`[aelys:native] ${label} -> ${response.status} (${Date.now() - started}ms)`)
+      if (!response.ok) void response.clone().json().then((body: { detail?: { code?: string } }) => console.debug(`[aelys:native] ${label} error code`, body?.detail?.code)).catch(() => undefined)
+      return response
+    } catch (error) {
+      console.debug(`[aelys:native] ${label} failed before a response`, error)
+      throw error
+    }
+  }
+}
+
+export function createNativeFetch(transport: NativeTransport, origin: string): typeof fetch {
+  return traced(async (input, init) => {
     const url = new URL(String(input), `${origin}/`)
     const method = (init?.method ?? 'GET').toUpperCase()
     if (method === 'GET' && /^\/api\/v1\/integrations\/telegram\/(messages\/[A-Za-z0-9_-]+\/media|chats\/\d+\/avatar)$/.test(url.pathname)) {
@@ -265,7 +282,7 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
       const value = await transport.operation<unknown>(origin, operation)
       return jsonResponse(value)
     } catch (error) { return nativeErrorResponse(error, origin, init) }
-  }
+  })
 }
 
 export function createNativeFetchFromInvoke(invoke: NativeInvoke, origin: string): typeof fetch {

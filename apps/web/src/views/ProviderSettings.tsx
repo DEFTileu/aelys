@@ -15,6 +15,8 @@ const LOOKS: Record<string, { name: string; letter: string; tone: string; hint: 
 }
 const KINDS: AIProviderKind[] = ['claude', 'openrouter', 'transcription']
 
+const errorCode = (error: unknown) => { const code = (error as { code?: unknown })?.code; return typeof code === 'string' ? ` (${code})` : '' }
+
 export function ProviderSettings() {
   const [providers, setProviders] = useState<readonly AIProvider[]>([])
   const [editing, setEditing] = useState<string>('')
@@ -62,7 +64,7 @@ export function ProviderSettings() {
     try {
       const id = await persist()
       if (id) { setNotice(kind === 'transcription' ? 'Transcription saved. You can send voice messages to your Telegram bot.' : 'Provider saved. Test the connection, then open AI Chat.'); await load() }
-    } catch { setNotice('Could not save provider. Check the connection and owner session, then retry.') }
+    } catch (error) { console.debug('[aelys] save provider failed', error); setNotice(`Could not save provider${errorCode(error)}. Check the connection and owner session, then retry.`) }
     finally { setApiKey(''); setBusy(false) }
   }
   const test = async () => {
@@ -76,7 +78,7 @@ export function ProviderSettings() {
       const result = await getSharedApiClient().probeAIProvider(id)
       setNotice(result.connected ? 'Connected: the provider accepted the API key. Model access is checked when you send a message.' : `The provider rejected the request (${result.code}). Check the key and model ID.`)
       await load()
-    } catch { setNotice('Could not reach the provider test. Check your connection and owner session, then retry.') }
+    } catch (error) { console.debug('[aelys] provider test failed', error); setNotice(`Could not reach the provider test${errorCode(error)}. Check your connection and owner session, then retry.`) }
     finally { setBusy(false) }
   }
   const action = async (work: () => Promise<unknown>, message: string) => {

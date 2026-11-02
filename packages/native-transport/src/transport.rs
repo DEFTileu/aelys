@@ -3883,6 +3883,27 @@ mod tests {
     }
 
     #[test]
+    fn generic_api_operation_deserializes_like_the_web_client_sends_it() {
+        let provider = json!({
+            "type": "api", "method": "POST", "path": "/api/v1/ai/providers",
+            "body": {"kind": "claude", "enabled": false, "model_policy": {"default_model": "m", "models": [{"name": "m", "capabilities": ["streaming"], "context_tokens": 100000}]}},
+            "idempotency_key": "idem-1234567890"
+        });
+        let op: Operation = serde_json::from_value(provider).expect("provider create");
+        let (method, path, body) = route(op).expect("allowed");
+        assert_eq!((method, path.as_str()), (Method::POST, "/api/v1/ai/providers"));
+        assert!(body.is_some());
+        let patch = json!({
+            "type": "api", "method": "PATCH", "path": "/api/v1/ai/providers/3f2b8c1e-aaaa-bbbb-cccc-1234567890ab",
+            "body": {"enabled": true}
+        });
+        let op: Operation = serde_json::from_value(patch).expect("provider patch");
+        assert!(route(op).is_ok());
+        let secret = json!({"type": "api", "method": "POST", "path": "/api/v1/ai/providers/3f2b8c1e-aaaa-bbbb-cccc-1234567890ab/secret", "body": {"api_key": "k-12345678"}});
+        assert!(route(serde_json::from_value(secret).expect("secret")).is_ok());
+    }
+
+    #[test]
     fn base64_matches_rfc4648_vectors() {
         assert_eq!(base64_encode(b""), "");
         assert_eq!(base64_encode(b"f"), "Zg==");
