@@ -1040,7 +1040,7 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "ai/providers"),
     ("PATCH", "ai/providers/*"),
     ("POST", "ai/providers/*/probe"),
-    ("POST", "ai/providers/*/secret"),
+    ("PUT", "ai/providers/*/secret"),
     ("DELETE", "ai/providers/*/secret"),
     ("GET", "calendar/google/status"),
     ("POST", "calendar/google/connect"),
@@ -3294,7 +3294,7 @@ mod tests {
         .unwrap();
         assert_eq!(capability["windows"], json!(["main"]));
         assert!(capability.get("remote").is_none());
-        assert_eq!(capability["permissions"], json!(["core:default"]));
+        assert_eq!(capability["permissions"], json!(["core:default", "notification:default"]));
     }
     #[test]
     fn http_errors_do_not_return_server_content_and_redirects_are_denied() {
@@ -3899,7 +3899,7 @@ mod tests {
         });
         let op: Operation = serde_json::from_value(patch).expect("provider patch");
         assert!(route(op).is_ok());
-        let secret = json!({"type": "api", "method": "POST", "path": "/api/v1/ai/providers/3f2b8c1e-aaaa-bbbb-cccc-1234567890ab/secret", "body": {"api_key": "k-12345678"}});
+        let secret = json!({"type": "api", "method": "PUT", "path": "/api/v1/ai/providers/3f2b8c1e-aaaa-bbbb-cccc-1234567890ab/secret", "body": {"api_key": "k-12345678"}});
         assert!(route(serde_json::from_value(secret).expect("secret")).is_ok());
     }
 
