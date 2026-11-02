@@ -97,10 +97,3 @@
 /* Matrix (extra view): the same cards in a 2-column grid */
 .tasks-matrix { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .tasks-matrix .tasks-help { padding-bottom: 12px; }
-
-@media (max-width: 700px) {
-  .tasks-screen { padding: 0 16px 24px; }
-  .tasks-navigation { max-width: 100%; overflow-x: auto; }
-  .tasks-search { flex: 1 1 140px; width: auto; }
-  .tasks-matrix { grid-template-columns: minmax(0, 1fr); }
-}
