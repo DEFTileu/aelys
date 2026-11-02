@@ -2,7 +2,10 @@
 # Build and sign the Mac app with a stable local identity so the Keychain device key
 # stays readable across rebuilds (an ad-hoc signature changes every build).
 #
-#   scripts/build-mac-app.sh [--install]
+#   scripts/build-mac-app.sh [--install] [--devtools]
+#
+# --devtools builds with the web inspector (right-click > Inspect Element, or Cmd+Option+I) for
+# looking at requests and logs. Leave it off for builds you hand to anyone else.
 #
 # First run: creates a self-signed "Aelys Local Signing" code-signing identity in the
 # login keychain. Override with AELYS_SIGNING_IDENTITY, or the API with VITE_API_BASE_URL.
@@ -25,13 +28,16 @@ if ! security find-identity -p codesigning | grep -q "\"$IDENTITY\""; then
   security import "$tmp/id.p12" -k "$HOME/Library/Keychains/login.keychain-db" -P aelys-local -T /usr/bin/codesign
 fi
 
+FEATURES=()
+for arg in "$@"; do [[ "$arg" == "--devtools" ]] && FEATURES=(--features devtools); done
+
 cd "$ROOT/apps/desktop"
-pnpm tauri:build --bundles app
+pnpm tauri:build --bundles app "${FEATURES[@]}"
 APP="src-tauri/target/release/bundle/macos/Aelys.app"
 codesign --verify --deep --strict "$APP"
 codesign -d -r- "$APP" 2>&1 | tail -1
 
-if [[ "${1:-}" == "--install" ]]; then
+if [[ " $* " == *" --install "* ]]; then
   osascript -e 'tell application "Aelys" to quit' 2>/dev/null || true
   sleep 2
   rm -rf "$HOME/Applications/Aelys.app"

@@ -23,3 +23,5 @@ tauri-plugin-notification = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+# Opt-in inspector for release builds (right-click > Inspect Element on Mac, chrome://inspect on Android).
+devtools = ["tauri/devtools"]
