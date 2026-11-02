@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { ApiError, type ProjectResponse, type TaskOut } from '@aelys/shared'
 import { Calendar, CalendarDays, Check, CircleCheck, CircleCheckBig, CirclePlus, Clock, Flag, Inbox, ListFilter, Search } from '../icons'
 import { getSharedApiClient } from '../lib/api'
+import { useIsMobile } from '../lib/useIsMobile'
 import type { ApiStatus } from '../types'
 import { TaskEditor } from './tasks/TaskEditor'
 import { dateKey, dayDiff, fmtDay, projectColor, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
@@ -50,6 +51,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [highOnly, setHighOnly] = useState(false)
   const [priorityFilter, setPriorityFilter] = useState('all')
+  const mobile = useIsMobile()
   const [overdueOnly, setOverdueOnly] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const moreRef = useRef<HTMLDivElement>(null)
@@ -325,6 +327,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
       {source === 'error' && !!tasks.length && <div className="tasks-error" role="alert">Tasks could not be loaded. Previously loaded records may be out of date. <button type="button" disabled={refreshing} onClick={() => void load()}>Try again</button></div>}
       {offline && source !== 'loading' && source !== 'auth' && <p className="tasks-source" role="status">Offline or connection unavailable. Showing cached or previously loaded tasks. Saving requires a connection; drafts stay open while you work here.</p>}
       {projectsUnavailable && <p className="tasks-source" role="status">Projects could not be refreshed. Existing links are preserved; reconnect to choose a project.</p>}
+      {mobile && <p className="tasks-m-sub">{tasks.filter(task => !isCompleted(task) && task.due_at && dateKey(task.due_at)! <= today).length} left for today</p>}
       <div className="tasks-top-row">
         <div className="tasks-navigation" role="tablist" aria-label="Task views" onKeyDown={event => {
           if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return
@@ -333,13 +336,14 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? VIEWS.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + VIEWS.length) % VIEWS.length
           setView(VIEWS[next].id); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
         }}>
-          {VIEWS.map(({ id, label, Icon }) => <button key={id} type="button" role="tab" aria-label={label} id={`tasks-tab-${id}`} aria-controls="tasks-panel" aria-selected={view === id} tabIndex={view === id || ((view === 'all' || view === 'matrix') && id === 'today') ? 0 : -1} onClick={() => setView(id)}><Icon size={16} /><span>{label}</span><b aria-hidden="true">{tasks.filter(task => inView(task, id)).length}</b></button>)}
+          {VIEWS.map(({ id, label: fullLabel, Icon }) => { const label = mobile && id === 'completed' ? 'Done' : fullLabel; return <button key={id} type="button" role="tab" aria-label={label} id={`tasks-tab-${id}`} aria-controls="tasks-panel" aria-selected={view === id} tabIndex={view === id || ((view === 'all' || view === 'matrix') && id === 'today') ? 0 : -1} onClick={() => setView(id)}><Icon size={16} /><span>{label}</span><b aria-hidden="true">{tasks.filter(task => inView(task, id)).length}</b></button> })}
         </div>
         <span className="tasks-spacer" />
-        <label className="tasks-search"><Search size={16} /><input aria-label="Search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} /></label>
+        {!mobile && <label className="tasks-search"><Search size={16} /><input aria-label="Search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} /></label>}
         <div className="tasks-more" ref={moreRef}>
-          <button type="button" className="tasks-filter-button" aria-label="Filters and views" aria-haspopup="true" aria-expanded={moreOpen} data-active={activeFilters ? 'true' : undefined} onClick={() => setMoreOpen(value => !value)}><ListFilter size={16} />Filter{filterCount > 0 && <b>{filterCount}</b>}</button>
+          <button type="button" className="tasks-filter-button" aria-label="Filters and views" aria-haspopup="true" aria-expanded={moreOpen} data-active={activeFilters ? 'true' : undefined} onClick={() => setMoreOpen(value => !value)}><ListFilter size={16} />{!mobile && 'Filter'}{filterCount > 0 && <b>{filterCount}</b>}</button>
           {moreOpen && <div className="tasks-more-panel">
+            {mobile && <label className="tasks-more-search"><Search size={16} /><input aria-label="Search tasks" placeholder="Search tasks" value={query} onChange={event => setQuery(event.target.value)} /></label>}
             <div className="tasks-more-status">Priority<select aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}>{priorityOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
             <div className="tasks-more-status">Project<select aria-label="Filter by project" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">All projects</option><option value="none">No project</option>{projectIds.map(id => <option key={id} value={id}>{projectNames.get(id) ?? 'Unavailable project'}</option>)}</select></div>
             <div className="tasks-more-status">Status<select aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="completed">Completed</option></select></div>
@@ -354,7 +358,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
       </div>
       <form className="tasks-quick" aria-label="Quick add task" onSubmit={createTask} onKeyDown={quickKeys}>
         <CirclePlus size={20} className="tasks-quick-icon" />
-        <input ref={quickTitle} aria-label="Add a task" aria-describedby="tasks-quick-hint" placeholder="Add a task — Enter to save, Q to focus" value={newDraft.title} disabled={pending} onChange={event => { const parsed = parseQuickTokens(event.target.value, projects, new Date(), false); patchQuick(tokenPatch(parsed, newDraft)) }} />
+        <input ref={quickTitle} aria-label="Add a task" aria-describedby="tasks-quick-hint" placeholder={mobile ? 'Add a task' : 'Add a task — Enter to save, Q to focus'} value={newDraft.title} disabled={pending} onChange={event => { const parsed = parseQuickTokens(event.target.value, projects, new Date(), false); patchQuick(tokenPatch(parsed, newDraft)) }} />
         <span id="tasks-quick-hint" className="tasks-sr">Try @tomorrow, @14:30, !p1 or #project</span>
         {newDraft.title.trim() && <>
         <select className="tasks-quick-select" aria-label="Date" value={newDateValue} disabled={pending} onChange={event => pickNewDate(event.target.value)}><option value="none">No date</option><option value="today">Today</option><option value="tomorrow">Tomorrow</option>{!['none', 'today', 'tomorrow'].includes(newDateValue) && <option value={newDateValue}>{fmtDay(newDateValue, today)}</option>}</select>

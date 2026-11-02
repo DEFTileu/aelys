@@ -106,8 +106,18 @@
   .tasks-screen { padding: 0 16px 24px; }
   .tasks-main { gap: 14px; }
   /* Pill tabs, as in the design: 36px pills with a count badge, scrolling sideways */
-  .tasks-navigation { flex: 1 0 100%; gap: 8px; margin: 0 -16px; padding: 0 16px; border-radius: 0; background: none; overflow-x: auto; scrollbar-width: none; }
-  .tasks-navigation::-webkit-scrollbar { display: none; }
+  .tasks-top-row { flex-wrap: nowrap; align-items: center; gap: 8px; margin: 0 -16px; padding: 0 16px; overflow-x: auto; scrollbar-width: none; }
+  .tasks-top-row::-webkit-scrollbar, .tasks-navigation::-webkit-scrollbar { display: none; }
+  .tasks-navigation { flex: none; gap: 8px; margin: 0; padding: 0; border-radius: 0; background: none; }
+  /* The design lists Today, Upcoming, Inbox, Done */
+  #tasks-tab-today { order: 0; } #tasks-tab-upcoming { order: 1; } #tasks-tab-inbox { order: 2; } #tasks-tab-completed { order: 3; }
+  .tasks-m-sub { margin: -8px 0 0; color: #fff; font-size: 14px; line-height: 20px; text-shadow: 0 1px 10px rgba(20, 20, 45, .5); }
+  .tasks-more { flex: none; }
+  .tasks-filter-button { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50%; }
+  /* A fixed sheet escapes the sideways-scrolling row */
+  .tasks-more-panel { position: fixed; z-index: 30; top: 170px; right: 16px; left: 16px; width: auto; }
+  .tasks-more-search { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; border-radius: 14px; background: var(--pg-field, #F7F4F1); }
+  .tasks-more-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--pg-ink); font: inherit; font-size: 15px; }
   .tasks-navigation button { flex: none; height: 36px; padding: 0 14px; border-radius: 18px; font-weight: 600; background: var(--pg-card); color: var(--pg-ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .06); }
   .tasks-navigation button svg { display: none; }
   .tasks-navigation button[aria-selected='true'] { background: var(--pg-violet); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .06); }
