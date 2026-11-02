@@ -53,7 +53,12 @@ describe('MobileShell', () => {
     expect(location.pathname).toBe('/finance'); expect(host.textContent).toContain('Content /finance'); expect(host.querySelector('[role="dialog"]')).toBeNull(); expect(host.querySelector('.mobile-shell__wallpaper--inner')).not.toBeNull()
     await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Tasks')); expect(location.pathname).toBe('/tasks')
     await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Apps')); expect(location.pathname).toBe('/apps'); expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Apps')
-    await click(button(host, 'Back to Home')); expect(location.pathname).toBe('/')
+    await click(button(host, 'Back')); expect(location.pathname).toBe('/')
+  })
+  it('steps back from a settings panel to the list before going Home', async () => {
+    history.replaceState({}, '', '/settings?section=notifications'); const host = await render()
+    await click(button(host, 'Back')); expect(location.pathname + location.search).toBe('/settings')
+    await click(button(host, 'Back')); expect(location.pathname).toBe('/')
   })
   it('uses the selected wallpaper on home and routes the composer to AI', async () => {
     const previous = getDesktopState(); setSettings({ wallpaper: 1, customWallpaper: null }); const host = await render()

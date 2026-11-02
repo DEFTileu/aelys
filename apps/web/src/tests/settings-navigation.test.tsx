@@ -62,7 +62,8 @@ describe('settings navigation', () => {
     await mount()
     expect(host.querySelector('.st')?.getAttribute('data-open')).toBe('false')
     await click('Notifications'); expect(host.querySelector('.st')?.getAttribute('data-open')).toBe('true')
-    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Back to settings"]')!.click())
+    // The shell's back button navigates to the bare settings URL, which the panel follows.
+    await act(async () => { window.history.replaceState({}, '', '/settings'); window.dispatchEvent(new PopStateEvent('popstate')) })
     expect(host.querySelector('.st')?.getAttribute('data-open')).toBe('false')
   })
   it('sends Notifications to Telegram until the bot is connected, then edits reminders and quiet hours there', async () => {

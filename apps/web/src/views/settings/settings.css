@@ -84,7 +84,7 @@
 .st-tile { display: flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--tile-bg); color: var(--tile-ink); }
 .st-nav-text { flex: 1; min-width: 0; }
 .st-nav-text > span { display: block; }
-.st-nav-desc, .st-nav-chevron, .st-back { display: none !important; }
+.st-nav-desc, .st-nav-chevron { display: none !important; }
 .st-nav-empty { padding: 0 12px; color: var(--st-mute); font-size: 13px; }
 .st-tone-profile { --tile-ink: var(--st-acc); --tile-bg: var(--st-violet-bg); }
 .st-tone-alert { --tile-ink: var(--st-red-2); --tile-bg: var(--st-red-bg); }
@@ -276,7 +276,6 @@
   .st-nav-desc, .st-nav-chevron { display: block !important; }
   .st-nav-desc { overflow: hidden; color: var(--st-mute); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
   .st-nav-chevron { color: var(--st-faint); }
-  .st-back { display: flex !important; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; margin-left: -6px; border-radius: 50%; background: var(--st-solid) !important; }
   .st-themes .st-theme-art { height: 64px; }
   .st-wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

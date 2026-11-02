@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useOwner } from '../lib/owner'
-import { Bell, Calendar, ChevronLeft, ChevronRight, CloudSun, Info, Mail, Paintbrush, Search, Send, Shield, Sparkles, User, Wifi, type AelysIconComponent } from '../icons'
+import { Bell, Calendar, ChevronRight, CloudSun, Info, Mail, Paintbrush, Search, Send, Shield, Sparkles, User, Wifi, type AelysIconComponent } from '../icons'
 import type { ApiStatus } from '../types'
 import { AppearancePanel } from './settings/AppearancePanel'
 import { AboutPanel, ConnectionPanel, NotificationsPanel, ProfilePanel, SecurityPanel } from './settings/panels'
@@ -44,14 +44,21 @@ const ALL = GROUPS.flatMap((group) => group.items)
 export function SettingsView({ apiStatus }: { apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void }) {
   const owner = useOwner(apiStatus)
   const [query, setQuery] = useState('')
-  const initial = (() => { const section = new URLSearchParams(window.location.search).get('section'); return ALL.find((item) => item.id === section)?.id })()
+  const sectionFromUrl = () => ALL.find((item) => item.id === new URLSearchParams(window.location.search).get('section'))?.id
+  const initial = sectionFromUrl()
   const [panel, setPanel] = useState<PanelId>(initial ?? 'profile')
-  // On a phone the list and the panel take turns, as in the design's compact layout.
+  // On a phone the list and the panel take turns, as in the design's compact layout. The open panel lives in the URL,
+  // so the shell's back button can step from a panel to the list.
   const [open, setOpen] = useState(!!initial)
+  useEffect(() => {
+    const onPopState = () => { const id = sectionFromUrl(); if (id) setPanel(id); setOpen(!!id) }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   const q = query.trim().toLocaleLowerCase()
   const groups = GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => !q || `${item.title} ${item.desc}`.toLocaleLowerCase().includes(q)) })).filter((group) => group.items.length)
-  const go = (id: PanelId) => { setPanel(id); setOpen(true) }
+  const go = (id: PanelId) => { setPanel(id); setOpen(true); window.history.pushState({}, '', `?section=${id}`) }
   const current = ALL.find((item) => item.id === panel)!
 
   return <div className="st" data-open={open}>
@@ -73,7 +80,6 @@ export function SettingsView({ apiStatus }: { apiStatus: ApiStatus; theme: 'ligh
     </aside>
     <main className="st-panel">
       <div className="st-head">
-        <button type="button" className="st-back" aria-label="Back to settings" onClick={() => setOpen(false)}><ChevronLeft size={20} aria-hidden="true" /></button>
         <div><h2 className="st-title">{current.title}</h2><div className="st-sub">{current.desc}</div></div>
       </div>
       {panel === 'profile' && <ProfilePanel owner={owner} />}
