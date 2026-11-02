@@ -61,11 +61,14 @@
 .mobile-shell__logo { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .mobile-shell__logo .mobile-shell__brand { flex: 0 1 auto; margin-left: 0; }
 
-/* The phone design starts every inner screen 20px below the header; these screens carry no top spacing of their own. */
-.mobile-shell:not(.mobile-shell--home):is([data-screen-label='tasks'], [data-screen-label='calendar'], [data-screen-label='projects'], [data-screen-label='notes'], [data-screen-label='mail'], [data-screen-label='finance'], [data-screen-label='kb'], [data-screen-label='settings']) .mobile-shell__content { padding-top: 20px; }
+/* The design starts the content of every inner screen 70px below the header block (title and subtitle), so the photo shows in the gap. Timer and Developer Hub are not in the design and keep their own spacing. */
+.mobile-shell:is([data-route='/tasks'], [data-route='/calendar'], [data-route='/projects'], [data-route='/notes'], [data-route='/mail'], [data-route='/finance'], [data-route='/knowledge'], [data-route='/settings'], [data-route='/apps'], [data-route='/messages'], [data-route='/automation'], [data-route='/search']) .mobile-shell__content { padding-top: 70px; }
 
 /* Header slots for the design's subtitle and action pill (see MobileHeader). */
 .mobile-shell__action:empty { display: none; }
 .mobile-shell__action > * { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: rgba(255,255,255,.9); color: #1c1b22; font: 600 13px/20px var(--font-ui); white-space: nowrap; cursor: pointer; }
 .mobile-shell__sub { position: relative; z-index: 3; padding: 0 16px; color: #fff; }
 .mobile-shell__sub > span { display: block; margin-top: 12px; font-size: 14px; line-height: 20px; text-shadow: 0 1px 10px rgba(20,20,45,.5); }
+
+/* AI Chat is a full-screen page of its own: no shell header, photo, subtitle or bottom bar (the chat has its own header). */
+.mobile-shell[data-route='/ai'] :is(.mobile-shell__header, .mobile-shell__wallpaper, .mobile-shell__sub, .mobile-shell__bottom) { display: none; }

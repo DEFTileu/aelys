@@ -150,7 +150,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
     </button>
   }
 
-  return <div className={mobile ? `mobile-shell${isHome ? ' mobile-shell--home' : ''}` : 'shell-root actual-desktop'} data-screen-label={screen ?? route} style={mobile ? shellVars(settings, theme, glass) : { ...shellVars(settings, theme, glass), '--side-w': `${sideW}px`, gridTemplateColumns: `${sideW}px minmax(0,1fr)` } as CSSProperties}>
+  return <div className={mobile ? `mobile-shell${isHome ? ' mobile-shell--home' : ''}` : 'shell-root actual-desktop'} data-screen-label={screen ?? route} data-route={route} style={mobile ? shellVars(settings, theme, glass) : { ...shellVars(settings, theme, glass), '--side-w': `${sideW}px`, gridTemplateColumns: `${sideW}px minmax(0,1fr)` } as CSSProperties}>
         {mobile && <MobileShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={onToggleTheme} chromeOnly>{null}</MobileShell>}
         {!mobile && <aside className="shell-sidebar" aria-label="Main navigation">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px 24px' }}>

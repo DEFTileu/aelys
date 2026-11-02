@@ -58,7 +58,7 @@ export function SettingsView({ apiStatus }: { apiStatus: ApiStatus; theme: 'ligh
 
   const q = query.trim().toLocaleLowerCase()
   const groups = GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => !q || `${item.title} ${item.desc}`.toLocaleLowerCase().includes(q)) })).filter((group) => group.items.length)
-  const go = (id: PanelId) => { setPanel(id); setOpen(true); window.history.pushState({}, '', `?section=${id}`) }
+  const go = (id: PanelId) => { setPanel(id); setOpen(true); window.history.pushState({}, '', `?section=${id}`); window.dispatchEvent(new PopStateEvent('popstate')) }
   const current = ALL.find((item) => item.id === panel)!
 
   return <div className="st" data-open={open}>

@@ -31,6 +31,8 @@ const APPS: App[] = [
 ]
 
 
+const SETTINGS_TITLES: Record<string, string> = { profile: 'Profile', notifications: 'Notifications', appearance: 'Appearance', weather: 'Weather & location', calendar: 'Google Calendar', ai: 'AI & models', memory: 'Memory', telegram: 'Telegram', accounts: 'Connected accounts', connection: 'Connection', security: 'Security', about: 'Data & about' }
+
 // The design's subtitle under each inner title. Screens with data-dependent ones (tasks, calendar, notes) set them via MobileHeader.
 const STATIC_SUBS: Partial<Record<RoutePath, string>> = {
   '/settings': 'Make Aelys your own',
@@ -51,8 +53,12 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
   const shell = useRef<HTMLDivElement>(null)
   const bar = useRef<HTMLDivElement>(null)
   const isHome = route === '/'
+  // The open settings section lives in the URL; the header names it and its back button leaves it.
+  const [search, setSearch] = useState(() => window.location.search)
+  useEffect(() => { const sync = () => setSearch(window.location.search); window.addEventListener('popstate', sync); return () => window.removeEventListener('popstate', sync) }, [])
+  const settingsSection = route === '/settings' ? new URLSearchParams(search).get('section') : null
   const wallpaper = useWallpaper()
-  const title = route === '/widgets' ? 'Customize home' : APPS.find((app) => app.route === route)?.label ?? 'Aelys'
+  const title = route === '/widgets' ? 'Customize home' : settingsSection ? SETTINGS_TITLES[settingsSection] ?? 'Settings' : APPS.find((app) => app.route === route)?.label ?? 'Aelys'
 
   useEffect(() => { setAppsOpen(false) }, [route])
   // The pinned AI bar overlays the page, so content reserves exactly its height.
@@ -84,7 +90,7 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
 
   const go = (path: RoutePath) => { setAppsOpen(false); navigate(path) }
   // A settings panel opened from the list goes back to the list; the page itself goes back to Home.
-  const backFromPage = () => { if (route === '/settings' && window.location.search.includes('section=')) navigate('/settings'); else go('/') }
+  const backFromPage = () => { if (settingsSection) navigate('/settings'); else go('/') }
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const text = draft.trim()
@@ -99,7 +105,7 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
       {isHome && <><button className="mobile-shell__circle" type="button" aria-label="Search" onClick={() => go('/search')}><Search size={18} /></button><NotificationCenter apiStatus={apiStatus} route={route} /><button className="mobile-shell__profile" type="button" aria-label="Profile and settings" onClick={() => go('/settings')} /></>}
     </header>
     {!isHome && <div id="mobile-header-sub" className="mobile-shell__sub" />}
-    {!isHome && STATIC_SUBS[route] && <MobileHeader sub={STATIC_SUBS[route]} />}
+    {!isHome && !settingsSection && STATIC_SUBS[route] && <MobileHeader sub={STATIC_SUBS[route]} />}
     {!chromeOnly && <main className="mobile-shell__content">{children}</main>}
     <div ref={bar} className={`mobile-shell__bottom${isHome ? '' : ' mobile-shell__bottom--fab'}`}>
       {isHome && <form className="mobile-shell__ask" onSubmit={submit}><label className="mobile-shell__ask-field"><span className="mobile-shell__sr-only">Ask Aelys</span><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask or search" /><button className="mobile-shell__add" type="button" aria-label="Add task" onClick={() => { window.history.pushState({},'', '/tasks?create=1'); window.dispatchEvent(new PopStateEvent('popstate')) }}><Plus size={20} /></button></label><button className="mobile-shell__orb" type="submit" aria-label={draft.trim() ? 'Send to Aelys' : 'Open AI Chat'}>{draft.trim() ? <ArrowUp size={21} /> : <Sparkles size={21} />}</button></form>}

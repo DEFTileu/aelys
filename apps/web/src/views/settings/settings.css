@@ -270,6 +270,9 @@
 @media (max-width: 700px) {
   .st { grid-template-columns: minmax(0, 1fr); }
   .st[data-open='true'] .st-nav, .st[data-open='false'] .st-panel { display: none; }
+  /* The shell header names the section; the panel keeps only its one-line description. */
+  .st-head .st-title { display: none; }
+  .st-head .st-sub { color: var(--st-mute); }
   .st-nav-list { border: 1px solid var(--st-line); border-radius: 16px; background: var(--st-card); }
   .st-nav-item { min-height: 60px; }
   .st-nav-item[aria-current='page'] { background: transparent; font-weight: 500; }

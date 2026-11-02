@@ -55,6 +55,12 @@ describe('MobileShell', () => {
     await click(button(host, 'All apps')); await click(button(host.querySelector('[role="dialog"]')!, 'Apps')); expect(location.pathname).toBe('/apps'); expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Apps')
     await click(button(host, 'Back')); expect(location.pathname).toBe('/')
   })
+  it('names the open settings section in the header, with one back button', async () => {
+    history.replaceState({}, '', '/settings?section=profile'); const host = await render()
+    expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Profile')
+    expect(host.querySelectorAll('button[aria-label="Back"]')).toHaveLength(1)
+    await click(button(host, 'Back')); expect(host.querySelector('.mobile-shell__title')?.textContent).toBe('Settings')
+  })
   it('steps back from a settings panel to the list before going Home', async () => {
     history.replaceState({}, '', '/settings?section=notifications'); const host = await render()
     await click(button(host, 'Back')); expect(location.pathname + location.search).toBe('/settings')

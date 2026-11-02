@@ -15,6 +15,7 @@ import { ActionCard, AnswerActions, FileChip, RunSteps, SourceRows, SourcesPopov
 import { ACCEPTED_FILES, clock, DEFAULT_SOURCES, MAX_FILE_BYTES, SOURCES, SOURCE_IDS, chatTone, estimateTokens, formatCost, formatTokens, formatWindow, groupConversations, scopesFor, sourceChip, sourceSummary, sourcesOn, toolLabel, whenLabel, type RunStep, type SourceId } from './ai/chatModel'
 import './desktop/page-tokens.css'
 import './ai/ai-chat.css'
+import { navigate } from '../lib/router'
 import { MarkdownContent } from '../components/MarkdownContent'
 
 type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at' | 'source_refs_json' | 'attachments' | 'feedback'>>
@@ -87,6 +88,14 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
   const pinned = useRef(true)
   const picker = useRef<HTMLInputElement>(null)
   const compact = useCompact(root)
+  // With the keyboard open the pinned composer rises above it.
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!compact || !viewport) return
+    const lift = () => root.current?.style.setProperty('--ai-kb', `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`)
+    lift(); viewport.addEventListener('resize', lift); viewport.addEventListener('scroll', lift)
+    return () => { viewport.removeEventListener('resize', lift); viewport.removeEventListener('scroll', lift); root.current?.style.removeProperty('--ai-kb') }
+  }, [compact])
   const owner = useOwner(apiStatus)
   const { pendingAsk, pendingKnowledge } = useDesktopState()
   const providers = allProviders.filter(isReady)
@@ -326,9 +335,10 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
 
     <section className="actual-ai__thread" aria-label="AI conversation">
       <div className="actual-ai__thread-head">
-        {compact && <button type="button" className="actual-ai__square" aria-label="All chats" aria-expanded={historyOpen} onClick={() => setHistoryOpen(true)}><MessageSquareText size={18} /></button>}
+        {compact && <button type="button" className="actual-ai__square" aria-label="Back" onClick={() => navigate('/')}><ArrowLeft size={18} /></button>}
         <div className="actual-ai__head-main"><h2>{selectedTitle}</h2>
           <ModelPicker providers={allProviders} value={active} onChange={applyChoice} disabled={running} showEffort short={compact} isDefault={isDefault} onToggleDefault={toggleDefault} /></div>
+        {compact && <button type="button" className="actual-ai__square" aria-label="All chats" aria-expanded={historyOpen} onClick={() => setHistoryOpen(true)}><MessageSquareText size={18} /></button>}
         {compact && <button type="button" className="actual-ai__square" aria-label="New chat" disabled={running} onClick={newChat}><SquarePen size={18} /></button>}
       </div>
       <div className="actual-ai__lines" ref={scroller} aria-live="polite" onScroll={(event) => { const el = event.currentTarget; pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60 }}>
@@ -380,7 +390,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
           <textarea ref={field} aria-label="Message Aelys" value={message} rows={draftRows} disabled={loading}
             onChange={(event) => setMessage(event.target.value)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() }
+              if (!compact && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() }
               if (event.key === 'Escape' && running) { event.preventDefault(); void cancel() }
             }}
             placeholder={running ? 'Aelys is answering… you can type the next message' : compact ? 'Message Aelys' : 'Message Aelys. Ask, plan or give a task'} />
