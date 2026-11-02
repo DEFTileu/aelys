@@ -1,0 +1,14 @@
+/* Phone layout for Settings: one screen at a time, the grouped list or a panel with a Back button. Scoped to .st-m. */
+.st.st-m { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px 28px; }
+.st-m .st-m-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.st-m .st-nav-list { border: 1px solid var(--st-line); border-radius: 16px; background: var(--st-card); }
+.st-m .st-nav-item { min-height: 60px; }
+.st-m .st-nav-item[aria-current='page'] { background: transparent; font-weight: 500; }
+.st-m .st-nav-desc { overflow: hidden; color: var(--st-mute); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.st-m .st-nav-chevron { display: block; color: var(--st-faint); }
+.st-m .st-back { display: flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; margin-left: -6px; border-radius: 50%; background: var(--st-solid); }
+.st-m .st-themes .st-theme-art { height: 64px; }
+.st-m .st-wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.st-m .actual-settings-content .actual-settings-forms .settings-card { padding: 18px 16px; border-radius: 22px; }
+.st-m .actual-settings-content .actual-settings-forms .provider-actions > button { flex: 1 1 auto; min-height: 44px; }
+.st-m .actual-settings-content .actual-settings-forms .settings-form > button { width: 100%; min-height: 44px; }
