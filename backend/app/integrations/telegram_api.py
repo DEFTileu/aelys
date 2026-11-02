@@ -3,17 +3,19 @@ import hmac
 import re
 import secrets
 from datetime import datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from app.ai.crypto import decrypt_secret, encrypt_secret
 from app.core.db import get_db
 from app.core.models import AIProvider, AIProviderSecret, now
 from app.core.security import current_principal, token_hash
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import telegram_chat
 from . import telegram_service as service
 from .telegram_models import TelegramBusinessMessage, TelegramIntegration
 from .telegram_transport import TelegramClient, TelegramError
@@ -99,6 +101,11 @@ class BindingOut(BaseModel):
     expires_at: datetime
 
 
+class MessageMediaOut(BaseModel):
+    kind: Literal['photo','voice','audio']
+    file_size: int | None
+
+
 class MessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -116,6 +123,14 @@ class MessageOut(BaseModel):
     draft_status: str
     draft_error_code: str | None
     deleted_at: datetime | None
+    media: MessageMediaOut | None = None
+    reply_message_id: int | None = None
+    reply_to_telegram_message_id: int | None = None
+
+    @field_validator("sent_at", "deleted_at")
+    @classmethod
+    def utc_instant(cls,value: datetime | None) -> datetime | None:
+        return service.utc(value) if value is not None else None
 
 
 @router.get("/status", response_model=StatusOut)
@@ -262,3 +277,63 @@ async def send(message_id: str, body: SendIn, principal=Depends(current_principa
         return await service.send_reply(db, item, message, body.version, body.text)
     except TelegramError as exc:
         raise service.error(503, service.remote_code(exc), "Telegram недоступен.") from None
+
+
+class ChatSendIn(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    business_connection_id: str = Field(min_length=1,max_length=256)
+    chat_id: int = Field(strict=True,gt=0,le=2**52)
+    text: str = Field(min_length=1,max_length=4096)
+    reply_to_message_id: int | None = Field(default=None,strict=True,gt=0,le=2**52)
+
+
+class ChatOut(BaseModel):
+    business_connection_id: str
+    chat_id: int
+    can_send: bool
+    send_disabled_code: str | None
+    reply_window_expires_at: datetime | None
+
+
+@router.get("/chats",response_model=list[ChatOut])
+async def chats(response: Response,principal=Depends(current_principal),db: AsyncSession=Depends(get_db)):
+    response.headers["Cache-Control"]="no-store"
+    item=(await db.execute(select(TelegramIntegration).where(TelegramIntegration.owner_id==principal[0].id))).scalar_one_or_none()
+    return await telegram_chat.chats(db,item) if item is not None else []
+
+
+@router.get("/chats/{chat_id}/avatar", response_class=Response,
+            responses={200:{"content":{"image/jpeg":{},"image/png":{},"image/webp":{},"image/gif":{}}}})
+async def chat_avatar(chat_id: int,principal=Depends(current_principal),db: AsyncSession=Depends(get_db)):
+    from .telegram_avatar import chat_avatar as load_avatar
+    item=await service.get_integration(db,principal[0].id)
+    known=(await db.execute(select(TelegramBusinessMessage.id).where(TelegramBusinessMessage.owner_id==principal[0].id,
+        TelegramBusinessMessage.integration_id==item.id,TelegramBusinessMessage.chat_id==chat_id).limit(1))).first()
+    if known is None:
+        raise service.error(404,"NOT_FOUND","Чат не найден.")
+    content,kind=await load_avatar(item,chat_id)
+    return Response(content,media_type=kind,headers={"Cache-Control":"private, max-age=21600",
+        "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox",
+        "Content-Disposition":"inline"})
+
+
+@router.post("/chats/send",response_model=MessageOut)
+async def send_chat(body: ChatSendIn,response: Response,idempotency_key: str=Header(min_length=1,max_length=150),
+                    principal=Depends(current_principal),db: AsyncSession=Depends(get_db)):
+    response.headers["Cache-Control"]="no-store"
+    item=await service.get_integration(db,principal[0].id)
+    try:
+        return await telegram_chat.send_chat(db,item,body.business_connection_id,body.chat_id,body.text,idempotency_key,body.reply_to_message_id)
+    except TelegramError as exc:
+        raise service.error(503,service.remote_code(exc),"Telegram недоступен.") from None
+
+
+@router.get("/messages/{message_id}/media", response_class=Response,
+            responses={200:{"content":{"image/jpeg":{},"image/png":{},"image/webp":{},"image/gif":{},"audio/ogg":{},"audio/mpeg":{},"audio/mp4":{},"audio/wav":{},"audio/flac":{},"audio/webm":{}}}})
+async def message_media(message_id: str,principal=Depends(current_principal),db: AsyncSession=Depends(get_db)):
+    from .telegram_business_media import preview_media
+    item,message=await owned_message(db,principal[0].id,message_id)
+    content,content_type=await preview_media(db,item,message)
+    return Response(content,media_type=content_type,headers={"Cache-Control":"no-store",
+        "X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox",
+        "Content-Disposition":"inline"})

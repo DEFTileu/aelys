@@ -2,12 +2,26 @@
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "default",
   "description": "Minimal Aelys mobile permissions",
-  "windows": ["main"],
-  "platforms": ["android", "iOS"],
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "android",
+    "iOS"
+  ],
   "permissions": [
-    "core:default", "allow-runtime-policy", "allow-native-status",
-    "allow-native-health", "allow-native-biometric-status", "allow-native-login", "allow-native-resume",
-    "allow-native-logout", "allow-native-operation", "allow-native-ai-events",
+    "core:default",
+    "notification:default",
+    "allow-runtime-policy",
+    "allow-native-status",
+    "allow-native-health",
+    "allow-native-biometric-status",
+    "allow-native-login",
+    "allow-native-enroll",
+    "allow-native-resume",
+    "allow-native-logout",
+    "allow-native-operation",
+    "allow-native-ai-events",
     "allow-native-ai-events-close"
   ]
 }

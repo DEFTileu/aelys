@@ -4,6 +4,12 @@ import { createNativeTransport, isNativeHost, nativeBackendOrigin, type NativeIn
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ })
 
 describe('native transport', () => {
+  it('connects with a one-time code through the bounded native command', async () => {
+    const invoke = vi.fn(async () => ({ signed_in: true, owner_id: 'owner', device_id: 'device' }))
+    const value = await createNativeTransport(invoke as NativeInvoke).enroll('https://aelys.example', 'one-time-connection-code', 'My device')
+    expect(value.signed_in).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('native_enroll', { origin: 'https://aelys.example', token: 'one-time-connection-code', displayName: 'My device' })
+  })
   it('forwards the exact Keychain authorization scopes to native IPC', async () => {
     const invoke = vi.fn(async () => true)
     const transport = createNativeTransport(invoke as NativeInvoke)

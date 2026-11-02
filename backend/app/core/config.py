@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     runtime_signing_key: str | None = None
     runtime_trust_public_key: str | None = None
     runtime_trust_manifest: str | None = None
+    @field_validator("database_url")
+    @classmethod
+    def normalize_database_url(cls, url: str) -> str:
+        for prefix in ("postgres://", "postgresql://"):
+            if url.startswith(prefix):
+                return "postgresql+asyncpg://" + url[len(prefix):]
+        return url
+
     model_config = SettingsConfigDict(env_prefix="AELYS_", env_file=".env", extra="ignore")
 
 @lru_cache

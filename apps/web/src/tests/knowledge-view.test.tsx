@@ -4,11 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KnowledgeView } from '../views/KnowledgeView'
 import { NotesView } from '../views/NotesView'
 
-const client = vi.hoisted(() => ({ notes: vi.fn(), projects: vi.fn() }))
+const client = vi.hoisted(() => ({ notes: vi.fn(), projects: vi.fn(), updateNote: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
+const ask = vi.hoisted(() => vi.fn())
+vi.mock('../lib/desktopStore', () => ({ askAelys: ask }))
 const records = [
-  { id: 'first', title: 'Alpha', markdown_body: '# Heading\n<script>alert(1)</script>', parent_id: null, project_id: null, version: 1 },
-  { id: 'second/with space', title: 'Beta', markdown_body: 'Findable text', parent_id: null, project_id: null, version: 2 },
+  { id: 'first', title: 'Alpha', markdown_body: '# Heading\n<script>alert(1)</script>', parent_id: null, project_id: null, version: 1, knowledge_enabled: true },
+  { id: 'second/with space', title: 'Beta', markdown_body: 'Findable text', parent_id: null, project_id: null, version: 2, knowledge_enabled: true },
 ]
 let host: HTMLDivElement
 let root: ReturnType<typeof createRoot>
@@ -26,10 +28,10 @@ describe('knowledge view', () => {
   it('reads real notes safely and searches their body', async () => {
     await mount()
     expect(host.querySelector('.knowledge-content h1')?.textContent).toBe('Alpha')
-    expect(host.querySelector('.knowledge-content h2')?.textContent).toBe('Heading')
+    expect(host.querySelector('.knowledge-content .markdown-content h1')?.textContent).toBe('Heading')
     expect(host.querySelector('.knowledge-content script')).toBeNull()
     expect(host.querySelector('.knowledge-content')?.textContent).toContain('<script>alert(1)</script>')
-    expect(host.querySelector('.knowledge-reader-head')?.textContent).toContain('Version 1')
+    expect(host.querySelector('.knowledge-reader-head')?.textContent).not.toContain('Version 1')
     await input('Search documents', 'findable')
     expect(host.querySelector('.knowledge-content h1')?.textContent).toBe('Beta')
     expect(host.querySelector('.knowledge-items')?.textContent).not.toContain('Alpha')
@@ -44,7 +46,7 @@ describe('knowledge view', () => {
   it('retries errors and handles empty records without inventing metadata', async () => {
     client.notes.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([])
     await mount(); expect(host.textContent).toContain('Can’t reach Aelys')
-    await click('Try again'); expect(host.textContent).toContain('No notes yet.')
+    await click('Retry'); expect(host.textContent).toContain('No notes yet.')
     expect(client.notes).toHaveBeenCalledTimes(2)
   })
   it('opens the selected note in the Notes editor using an encoded deep link', async () => {
@@ -64,4 +66,33 @@ describe('knowledge view', () => {
     expect(headings).toContain('Real project')
   })
 
+})
+
+it('requires explicit source opt-in and preserves current note fields and version', async () => {
+  const note = { ...records[0], knowledge_enabled: false }
+  client.notes.mockResolvedValue([note])
+  client.updateNote.mockResolvedValue({ ...note, knowledge_enabled: true, version: 2 })
+  await mount()
+  expect(host.querySelector('.knowledge-content')).toBeNull()
+  await click('Manage sources'); await click('Enable for AI')
+  expect(client.updateNote).toHaveBeenCalledWith('first', expect.objectContaining({ title: 'Alpha', markdown_body: note.markdown_body, knowledge_enabled: true }), { query: { version: 1 }, queueOnOffline: false })
+  expect(host.textContent).toContain('Disable for AI')
+  expect(host.textContent).toContain('Questions may send excerpts')
+})
+it('hands a document or project question to AI with an explicit retrieval scope', async () => {
+  client.projects.mockResolvedValue([{ id: 'p1', name: 'Project' }])
+  client.notes.mockResolvedValue([{ ...records[0], project_id: 'p1' }])
+  await mount()
+  await input('Question about knowledge', 'Explain this document')
+  const form = host.querySelector<HTMLFormElement>('.knowledge-ask')!
+  await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(ask).toHaveBeenLastCalledWith('Explain this document', { note_ids: ['first'] })
+  await act(async () => {
+    const project = host.querySelector<HTMLSelectElement>('[aria-label="Knowledge project"]')!
+    project.value = 'p1'; project.dispatchEvent(new Event('change', { bubbles: true }))
+    const scope = host.querySelector<HTMLSelectElement>('[aria-label="Question scope"]')!
+    scope.value = 'library'; scope.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(ask).toHaveBeenLastCalledWith('Explain this document', { project_id: 'p1' })
 })

@@ -1,13 +1,16 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
-import { WALLPAPERS, accentColors } from '../data/desktop/settings'
+import { accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
+import { useWallpaper } from '../lib/wallpaper'
+import { CrossfadePhoto } from './CrossfadePhoto'
 import { getSharedApiClient } from '../lib/api'
 import { useOwner } from '../lib/owner'
 import { usePrefs, type Prefs } from '../lib/prefs'
 import { navigate } from '../lib/router'
 import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
+import { OfflineGate } from './OfflineGate'
 import { formatDate, greetingForHour } from '../lib/format'
 import { CommandPalette, pages as PALETTE_PAGES } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
@@ -16,10 +19,10 @@ import { AelysMark } from './AelysMark'
 import { MobileShell } from './MobileShell'
 import './actual-shell.css'
 
-// Photo band gradients from the reference: Home fades out at 420px, module pages at 230px.
+// Keep the wallpaper clear; fade only its lower edge into the page canvas.
 const BAND_GRADIENT = {
-  light: { home: 'linear-gradient(180deg,rgba(18,18,40,.22) 0,rgba(18,18,40,.04) 220px,rgba(246,241,236,0) 330px,rgba(246,241,236,.8) 385px,#F5F0EB 420px)', page: 'linear-gradient(180deg,rgba(18,18,40,.32) 0,rgba(18,18,40,.05) 110px,rgba(246,241,236,.75) 150px,rgba(245,240,235,.97) 230px)' },
-  dark: { home: 'linear-gradient(180deg,rgba(8,6,20,.45) 0,rgba(8,6,20,.25) 220px,rgba(20,18,25,0) 330px,rgba(20,18,25,.85) 385px,#141219 420px)', page: 'linear-gradient(180deg,rgba(8,6,20,.45) 0,rgba(8,6,20,.2) 110px,rgba(20,18,25,.8) 170px,#141219 230px)' },
+  light: { home: 'linear-gradient(180deg,rgba(18,18,40,.18) 0,transparent 160px,transparent 356px,#F5F0EB 420px)', page: 'linear-gradient(180deg,rgba(18,18,40,.24) 0,transparent 100px,transparent 182px,#F5F0EB 230px)' },
+  dark: { home: 'linear-gradient(180deg,rgba(8,6,20,.24) 0,transparent 160px,transparent 356px,#141219 420px)', page: 'linear-gradient(180deg,rgba(8,6,20,.3) 0,transparent 100px,transparent 182px,#141219 230px)' },
 } as const
 const DEFAULT_ACCENT = '#6A4CF2'
 
@@ -60,7 +63,7 @@ const NAV: NavItem[] = [
   { id: 'mail', label: 'Mail', icon: Mail, route: '/mail' },
   { id: 'finance', label: 'Finances', icon: Wallet, route: '/finance' },
   { id: 'kb', label: 'Knowledge base', icon: BookOpen, route: '/knowledge' },
-  { id: 'utilities', label: 'Apps', icon: LayoutGrid, route: '/utilities' },
+  { id: 'utilities', label: 'Apps', icon: LayoutGrid, route: '/apps' },
 ]
 
 // Hero copy from the reference; `dated` pages show today's date above the title.
@@ -74,7 +77,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
   '/finance': { title: 'Finances', sub: 'Record spending in seconds and see where it goes.', dated: true },
   '/knowledge': { title: 'Knowledge base', sub: 'Docs and references for everything you build.', dated: true },
   '/settings': { title: 'Settings', sub: 'Make Aelys your own' },
-  '/utilities': { title: 'Apps', sub: 'Small tools for everything else. Pin the ones you use.' },
+  '/apps': { title: 'Apps', sub: 'Small tools for everything else. Pin the ones you use.' },
   '/automation': { title: 'Automation', sub: 'When this happens, Aelys does that.' },
   '/messages': { title: 'Messages', sub: 'Telegram chats. Aelys drafts, you approve.' },
   '/widgets': { title: 'Customize home' },
@@ -133,7 +136,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
   const hero = HEROES[route]
   const showGreeting = settings.homeToggles[0]
   const sideW = useWindowWidth() >= 900 ? 240 : 200
-  const wallpaper = settings.wallpaper === -1 && settings.customWallpaper ? settings.customWallpaper : WALLPAPERS[settings.wallpaper] ?? WALLPAPERS[0]
+  const wallpaper = useWallpaper()
   const go = (path: RoutePath) => { setPaletteOpen(false); navigate(path) }
 
   const navButton = (item: NavItem) => {
@@ -175,7 +178,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
 
         <main className={mobile ? 'mobile-shell__content' : 'shell-main'} style={isHome || mobile ? undefined : { background: 'var(--canvas)', color: 'var(--ink)' }}>
           {!mobile && <>
-            <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, backgroundImage: `url('${wallpaper}')` }} />
+            <CrossfadePhoto url={wallpaper} height={isHome ? 420 : 230} />
             <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, background: BAND_GRADIENT[theme][isHome ? 'home' : 'page'] }} />
           </>}
           <div style={{ position: 'relative' }}>
@@ -201,7 +204,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             {hero?.sub && <div style={{ fontSize: 14, lineHeight: '22px', marginTop: 2 }}>{hero.sub}</div>}
           </div>)}
 
-          {children}
+          <OfflineGate route={route} apiStatus={apiStatus} compact={mobile}>{children}</OfflineGate>
           </div>
         </main>
 

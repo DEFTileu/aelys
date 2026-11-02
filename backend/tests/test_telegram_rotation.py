@@ -149,3 +149,16 @@ async def test_rotates_separate_google_tokens_sync_cursor_and_pending_state(rota
         for encrypted,plain in [(connection.encrypted_sync_token,'sync-token'),(credential.encrypted_tokens,'calendar-tokens'),(state.encrypted_verifier,'calendar-verifier')]:
             assert decrypt_secret(encrypted,NEW_KEY)==plain
             with pytest.raises(InvalidTag):decrypt_secret(encrypted,OLD_KEY)
+
+
+async def test_rotates_business_media_metadata_without_storing_file_bytes(rotation_db):
+    body='{"kind":"voice","file_id":"private-business-file","file_size":32}'
+    async with rotation_db() as db:
+        await db.execute(text('UPDATE telegram_business_messages SET media_metadata=:body WHERE id=:id'),
+            {'body':encrypt_secret(body,OLD_KEY),'id':'message'})
+        await db.commit()
+    assert await rotate_provider_secrets.rotate()==7
+    async with rotation_db() as db:
+        raw=(await db.execute(text("SELECT media_metadata FROM telegram_business_messages WHERE id='message'"))).scalar_one()
+        assert decrypt_secret(raw,NEW_KEY)==body
+        with pytest.raises(InvalidTag):decrypt_secret(raw,OLD_KEY)

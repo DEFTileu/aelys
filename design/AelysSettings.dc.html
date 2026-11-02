@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="display:grid;grid-template-columns:{{ cols }};gap:28px;align-items:start;color:#1C1B22">
+  <sc-if value="{{ showNav }}">
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <label style="height:44px;padding:0 12px;border-radius:12px;background:#fff;border:1px solid #EDE8E3;display:flex;align-items:center;gap:8px;color:#625D69;margin-bottom:8px"><i class="icon-search"></i><input value="{{ q }}" onChange="{{ onQ }}" placeholder="Search settings" aria-label="Search settings" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"></label>
+      <sc-for list="{{ nav }}" as="g" hint-placeholder-count="4">
+        <div style="font-size:12px;font-weight:600;color:#625D69;padding:12px 12px 4px">{{ g.t }}</div>
+        <div style="display:flex;flex-direction:column;gap:2px;border-radius:{{ navR }};background:{{ navBg }};border:{{ navBd }};overflow:hidden">
+          <sc-for list="{{ g.items }}" as="s" hint-placeholder-count="2"><div onClick="{{ s.pick }}" role="button" tabindex="0" aria-current="{{ s.on }}" style="display:flex;align-items:center;gap:12px;min-height:{{ rowH }};padding:0 10px;border-radius:12px;background:{{ s.bg }};cursor:pointer" style-hover="background:rgba(106,76,242,.07)"><span style="width:30px;height:30px;flex:none;border-radius:9px;background:{{ s.soft }};color:{{ s.c }};display:flex;align-items:center;justify-content:center"><i class="icon-{{ s.i }}"></i></span><span style="flex:1;min-width:0"><span style="display:block;font-weight:{{ s.fw }}">{{ s.t }}</span><sc-if value="{{ compact }}"><span style="display:block;font-size:12px;line-height:16px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.d }}</span></sc-if></span><sc-if value="{{ s.badge }}"><span style="font-size:11px;font-weight:600;color:#625D69;padding:1px 6px;border-radius:6px;background:#EFE9E3">{{ s.badge }}</span></sc-if><sc-if value="{{ compact }}"><i class="icon-chevron-right" style="color:#A29DA8"></i></sc-if></div></sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showPanel }}">
+  <div style="display:flex;flex-direction:column;gap:20px;max-width:760px;min-width:0">
+    <div style="display:flex;align-items:center;gap:10px"><sc-if value="{{ compact }}"><span onClick="{{ back }}" role="button" aria-label="Back to settings" style="width:36px;height:36px;margin-left:-6px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#fff"><i class="icon-chevron-left" style="font-size:20px"></i></span></sc-if><div><div style="font-size:22px;line-height:30px;font-weight:600">{{ cur.t }}</div><div style="font-size:14px;color:#625D69">{{ cur.d }}</div></div></div>
+
+    <sc-if value="{{ is.profile }}">
+      <div style="display:flex;align-items:center;gap:16px;padding:18px;border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;flex-wrap:wrap"><span style="width:64px;height:64px;flex:none;border-radius:50%;background:radial-gradient(circle at 50% 30%,#F6C79A,#C77C5A 45%,#3A2F45 46%,#2A2438)"></span><div style="flex:1;min-width:140px"><div style="font-size:18px;font-weight:600">Tileuzhan</div><div style="font-size:13px;color:#625D69">tileuzhan@gmail.com</div></div><span role="button" tabindex="0" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer;white-space:nowrap">Change photo</span></div>
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <div style="padding:14px 18px"><div style="font-weight:500">Name</div><input value="{{ name }}" onChange="{{ onName }}" aria-label="Name" style="margin-top:8px;width:100%;height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;border:0;outline:0;font:inherit;color:#1C1B22"></div>
+        <div style="padding:14px 18px;border-top:1px solid #F1EDEA"><div style="font-weight:500">About you</div><div style="font-size:13px;color:#625D69">Shown under your name. Aelys uses it as context</div><input value="{{ about }}" onChange="{{ onAbout }}" aria-label="About you" style="margin-top:8px;width:100%;height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;border:0;outline:0;font:inherit;color:#1C1B22"></div>
+        <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">Greeting</div><div style="font-size:13px;color:#625D69">“Good morning, {{ name }}” on Home</div></div><span style="height:36px;padding:0 12px;border-radius:10px;border:1px solid #EDE8E3;background:#fff;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;white-space:nowrap">By time of day<i class="icon-chevron-down" style="color:#625D69"></i></span></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ is.notifications }}">
+      <div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#625D69">Notify me about</div>
+        <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+          <sc-for list="{{ swN }}" as="r" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:{{ r.bt }}"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" aria-label="{{ r.t }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+        </div>
+      </div>
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+        <div><div style="font-weight:500">Quiet hours</div><div style="font-size:13px;color:#625D69">Everything waits in the bell until quiet hours end</div></div>
+        <div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3;align-self:flex-start;max-width:100%"><sc-for list="{{ quiet }}" as="u" hint-placeholder-count="3"><span onClick="{{ u.pick }}" role="radio" aria-checked="{{ u.on }}" style="height:32px;padding:0 12px;border-radius:9px;background:{{ u.bg }};box-shadow:{{ u.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer;white-space:nowrap">{{ u.t }}</span></sc-for></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ is.appearance }}">
+      <div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#625D69">Theme</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+          <sc-for list="{{ themes }}" as="t" hint-placeholder-count="3"><div onClick="{{ t.pick }}" role="radio" tabindex="0" aria-checked="{{ t.on }}" style="padding:6px;border-radius:16px;background:#fff;border:2px solid {{ t.bd }};cursor:pointer"><div style="height:{{ thH }};border-radius:10px;background:{{ t.bg }};padding:8px;display:flex;gap:5px"><span style="width:22%;border-radius:5px;background:{{ t.side }}"></span><span style="flex:1;display:flex;flex-direction:column;gap:5px"><span style="height:18px;border-radius:5px;background:{{ t.card }}"></span><span style="flex:1;display:flex;gap:5px"><span style="flex:1;border-radius:5px;background:{{ t.card }}"></span><span style="flex:1;border-radius:5px;background:{{ t.card }}"></span></span></span></div><div style="display:flex;align-items:center;gap:6px;padding:8px 4px 2px"><span style="flex:1;font-weight:600;font-size:13px">{{ t.t }}</span><span style="width:16px;height:16px;border-radius:50%;border:{{ t.radio }}"></span></div></div></sc-for>
+        </div>
+      </div>
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;flex-wrap:wrap"><div style="flex:1;min-width:160px"><div style="font-weight:500">Accent color</div><div style="font-size:13px;color:#625D69">Buttons, selection and focus</div></div><div style="display:flex;gap:10px"><sc-for list="{{ accents }}" as="a" hint-placeholder-count="6"><span onClick="{{ a.pick }}" role="radio" aria-checked="{{ a.on }}" aria-label="{{ a.n }}" style="width:26px;height:26px;border-radius:50%;background:{{ a.c }};box-shadow:{{ a.ring }};cursor:pointer"></span></sc-for></div></div>
+        <div style="display:flex;align-items:center;gap:14px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><span style="width:56px;height:40px;flex:none;border-radius:10px;background:url('assets/wallpaper.png') 70% 40%/cover"></span><div style="flex:1"><div style="font-weight:500">Background photo</div><div style="font-size:13px;color:#625D69">Changes with the weather and time of day in {{ city }}</div></div></div>
+        <sc-for list="{{ swA }}" as="r" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" aria-label="{{ r.t }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ is.weather }}">
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <div style="display:flex;align-items:center;gap:14px;min-height:64px;padding:12px 18px"><span style="width:36px;height:36px;flex:none;border-radius:10px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center"><i class="icon-map-pin"></i></span><div style="flex:1"><div style="font-weight:500">{{ city }}, Kazakhstan</div><div style="font-size:13px;color:#625D69">Used by Weather, the background photo and the morning plan</div></div></div>
+        <div style="padding:0 18px 14px"><label style="height:44px;padding:0 12px;border-radius:12px;background:#F7F4F1;display:flex;align-items:center;gap:8px;color:#625D69"><i class="icon-search"></i><input value="{{ cq }}" onChange="{{ onCq }}" placeholder="Search city" aria-label="Search city" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"></label>
+          <div style="display:flex;flex-direction:column;margin-top:6px"><sc-for list="{{ cities }}" as="c" hint-placeholder-count="3"><div onClick="{{ c.pick }}" role="option" aria-selected="{{ c.on }}" style="display:flex;align-items:center;gap:10px;height:44px;padding:0 10px;border-radius:10px;cursor:pointer" style-hover="background:#F7F4F1"><span style="flex:1"><b style="font-weight:500">{{ c.n }}</b> <span style="color:#625D69">· {{ c.r }}</span></span><sc-if value="{{ c.on }}"><i class="icon-check" style="color:#6A4CF2"></i></sc-if></div></sc-for></div>
+        </div>
+      </div>
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;flex-wrap:wrap"><div style="flex:1;min-width:120px"><div style="font-weight:500">Units</div><div style="font-size:13px;color:#625D69">Temperature and wind</div></div><div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3"><sc-for list="{{ units }}" as="u" hint-placeholder-count="2"><span onClick="{{ u.pick }}" role="radio" aria-checked="{{ u.on }}" style="height:32px;padding:0 12px;border-radius:9px;background:{{ u.bg }};box-shadow:{{ u.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer;white-space:nowrap">{{ u.t }}</span></sc-for></div></div>
+        <sc-for list="{{ swW }}" as="r" hint-placeholder-count="1"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" aria-label="{{ r.t }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ is.ai }}">
+      <div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#625D69">Providers</div>
+        <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+          <sc-for list="{{ prov }}" as="p" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:14px;min-height:72px;padding:12px 18px;border-bottom:1px solid #F1EDEA"><span style="width:40px;height:40px;flex:none;border-radius:12px;background:{{ p.soft }};color:{{ p.c }};display:flex;align-items:center;justify-content:center;font-weight:700">{{ p.l }}</span><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600">{{ p.n }}</span><sc-if value="{{ p.def }}"><span style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:6px;background:#EEE8FD;color:#5132D6">Default</span></sc-if></div><div style="font-size:13px;color:#3A3640;font-family:'JetBrains Mono',ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.m }}</div><sc-if value="{{ compact }}"><div style="font-size:12px;color:#625D69;font-family:'JetBrains Mono',ui-monospace,monospace">{{ p.k }}</div></sc-if></div><sc-if value="{{ wide }}"><span style="font-size:13px;color:#625D69;font-family:'JetBrains Mono',ui-monospace,monospace">{{ p.k }}</span></sc-if><span role="button" tabindex="0" style="height:34px;padding:0 12px;border-radius:10px;background:#F7F4F1;font-size:13px;font-weight:500;display:flex;align-items:center;cursor:pointer">Edit</span></div></sc-for>
+          <div role="button" tabindex="0" style="display:flex;align-items:center;gap:10px;height:52px;padding:0 18px;color:#5132D6;font-weight:600;cursor:pointer"><i class="icon-plus"></i>Add provider</div>
+        </div>
+      </div>
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <sc-for list="{{ defaults }}" as="r" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:12px 16px;min-height:64px;padding:12px 18px;border-top:{{ r.bt }};flex-wrap:wrap"><div style="flex:1;min-width:180px"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span style="height:36px;padding:0 12px;border-radius:10px;border:1px solid #EDE8E3;background:#fff;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;white-space:nowrap">{{ r.v }}<i class="icon-chevron-down" style="color:#625D69"></i></span></div></sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#625D69"><i class="icon-lock"></i>Keys are encrypted on your Aelys backend and never shown again.</div>
+    </sc-if>
+
+    <sc-if value="{{ is.telegram }}">
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;flex-wrap:wrap"><span style="width:44px;height:44px;flex:none;border-radius:12px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="icon-send"></i></span><div style="flex:1;min-width:160px"><div style="font-weight:600">@aelys_assistant_bot</div><div style="font-size:13px;color:#625D69;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#14966C"></span>Connected to your Business account</div></div><span role="button" tabindex="0" style="height:36px;padding:0 14px;border-radius:10px;background:#FDE8E7;color:#C9302C;font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer">Disconnect</span></div>
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <sc-for list="{{ swT }}" as="r" hint-placeholder-count="1"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" aria-label="{{ r.t }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+        <div style="display:flex;align-items:center;gap:12px 16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA;opacity:{{ tgOp }};flex-wrap:wrap"><div style="flex:1;min-width:160px"><div style="font-weight:500">Reply with</div><div style="font-size:13px;color:#625D69">Provider and model for drafts</div></div><span style="height:36px;padding:0 12px;border-radius:10px;border:1px solid #EDE8E3;background:#fff;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;white-space:nowrap">Claude · sonnet-4-5<i class="icon-chevron-down" style="color:#625D69"></i></span></div>
+        <div style="padding:14px 18px;border-top:1px solid #F1EDEA;opacity:{{ tgOp }}"><div style="font-weight:500">Instructions</div><div style="font-size:13px;color:#625D69;margin-bottom:10px">How the assistant writes on your behalf</div><textarea value="{{ instr }}" onChange="{{ onInstr }}" aria-label="Instructions" style="width:100%;min-height:96px;padding:12px 14px;border-radius:12px;background:#F7F4F1;border:0;outline:0;font:inherit;line-height:22px;color:#1C1B22;resize:vertical"></textarea><div style="font-size:12px;color:#625D69;text-align:right;margin-top:4px">{{ instrN }} / 10,000</div></div>
+      </div>
+      <div onClick="{{ openMessages }}" role="button" tabindex="0" style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;cursor:pointer" style-hover="background:#fff"><span style="width:36px;height:36px;flex:none;border-radius:10px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center"><i class="icon-message-square"></i></span><div style="flex:1"><div style="font-weight:500">Conversations and drafts</div><div style="font-size:13px;color:#625D69">Open the Messages app</div></div><span style="font-size:12px;font-weight:600;padding:2px 8px;border-radius:8px;background:#EEE8FD;color:#5132D6;white-space:nowrap">3 drafts</span><i class="icon-chevron-right" style="color:#625D69"></i></div>
+    </sc-if>
+
+    <sc-if value="{{ is.connection }}">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:16px;background:#DCF5EC;color:#0E7A57;flex-wrap:wrap"><span style="width:8px;height:8px;border-radius:50%;background:#14966C"></span><span style="flex:1;font-weight:600">Connected</span><span style="font-size:13px;font-family:'JetBrains Mono',ui-monospace,monospace">api.aelys.app · 42 ms</span></div>
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;padding:16px 18px">
+        <div style="font-weight:500">API base URL</div><div style="font-size:13px;color:#625D69;margin-bottom:10px">Default /api/v1</div>
+        <div style="display:flex;gap:10px"><input value="{{ url }}" onChange="{{ onUrl }}" aria-label="API base URL" style="flex:1;min-width:0;height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;border:0;outline:0;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;color:#1C1B22"><span onClick="{{ saveUrl }}" role="button" tabindex="0" style="height:44px;padding:0 18px;border-radius:12px;background:{{ saveBg }};color:#fff;font-weight:600;display:flex;align-items:center;cursor:pointer">{{ saveT }}</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#625D69">Owner session</div>
+        <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+          <div style="display:flex;align-items:center;gap:16px;min-height:56px;padding:12px 18px"><div style="flex:1;font-weight:500">Signed in as</div><span style="color:#625D69">tileuzhan@gmail.com</span></div>
+          <div style="display:flex;align-items:center;gap:16px;min-height:56px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1;font-weight:500">Session expires</div><span style="color:#625D69">in 29 days</span></div>
+          <div style="display:flex;justify-content:flex-end;padding:12px 18px;border-top:1px solid #F1EDEA"><span role="button" tabindex="0" style="height:36px;padding:0 14px;border-radius:10px;background:#FDE8E7;color:#C9302C;font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer">Sign out</span></div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ is.security }}">
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <sc-for list="{{ swS }}" as="r" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:{{ r.bt }}"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" aria-label="{{ r.t }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+        <div style="padding:14px 18px;border-top:1px solid #F1EDEA;display:flex;flex-direction:column;gap:10px"><div><div style="font-weight:500">Lock after</div><div style="font-size:13px;color:#625D69">Inactivity before Aelys locks</div></div><div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3;align-self:flex-start"><sc-for list="{{ lock }}" as="u" hint-placeholder-count="4"><span onClick="{{ u.pick }}" role="radio" aria-checked="{{ u.on }}" style="height:32px;padding:0 12px;border-radius:9px;background:{{ u.bg }};box-shadow:{{ u.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer;white-space:nowrap">{{ u.t }}</span></sc-for></div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#625D69"><i class="icon-lock"></i>{{ bioNote }}</div>
+    </sc-if>
+
+    <sc-if value="{{ is.about }}">
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><div style="flex:1"><div style="font-weight:500">Export my data</div><div style="font-size:13px;color:#625D69">Tasks, notes, events and finances as JSON</div></div><span role="button" tabindex="0" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer"><i class="icon-download"></i>Export</span></div>
+        <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">Last synced</div><div style="font-size:13px;color:#625D69">Mac, Android and web share one backend</div></div><span style="color:#625D69;white-space:nowrap">2 min ago</span></div>
+      </div>
+      <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <div style="display:flex;align-items:center;gap:14px;min-height:64px;padding:12px 18px;flex-wrap:wrap"><img src="assets/aelys-mark.svg" alt="" style="width:36px;height:36px"><div style="flex:1;min-width:120px"><div style="font-weight:500">Aelys 1.0.0</div><div style="font-size:13px;color:#625D69">You’re up to date</div></div><span role="button" tabindex="0" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer;white-space:nowrap">Check for updates</span></div>
+        <div style="display:flex;align-items:center;gap:16px;min-height:56px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1;font-weight:500">Show intro guides again</div><span onClick="{{ resetGuides }}" role="button" tabindex="0" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer;white-space:nowrap">{{ guidesT }}</span></div>
+      </div>
+    </sc-if>
+  </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:900},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;platform&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mac&quot;,&quot;android&quot;],&quot;default&quot;:&quot;mac&quot;,&quot;tsType&quot;:&quot;'mac'|'android'&quot;},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;,&quot;system&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;onTheme&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(t: string) =&gt; void&quot;},&quot;onOpen&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(id: string) =&gt; void&quot;}}">
+class Component extends DCLogic {
+  state = { st: null, q: '', sw: {}, acc: 0, city: 'Almaty', cq: '', unit: 'c', quiet: 'night', lock: '5', name: 'Tileuzhan', about: 'Student · Developer', instr: 'Reply briefly and politely. Never confirm meetings or payments; say I\'ll get back to them. Write in the language of the incoming message.', url: '/api/v1', saved: false, guides: false };
+  renderVals() {
+    const S = this.state, P = this.props, compact = !!P.compact, mac = P.platform !== 'android';
+    const st = S.st || (compact ? null : 'profile');
+    const sw = Object.assign({ nTask: true, nCal: true, nMsg: true, nAuto: false, glass: true, reduce: false, party: true, geo: false, tgAuto: true, touch: true, sleep: true }, S.sw);
+    const flip = k => () => this.setState(s => ({ sw: Object.assign({}, s.sw, { [k]: !sw[k] }) }));
+    const mkSw = (k, t, d, i) => ({ t, d, on: sw[k], trk: sw[k] ? '#6A4CF2' : '#CFC9D4', knob: sw[k] ? '21px' : '3px', toggle: flip(k), bt: i ? '1px solid #F1EDEA' : '0' });
+    const seg = (list, cur, key) => list.map(([v, t]) => { const on = cur === v; return { t, on, bg: on ? '#fff' : 'transparent', sh: on ? '0 1px 3px rgba(20,10,30,.1)' : 'none', pick: () => this.setState({ [key]: v }) }; });
+    const SEC = [['Account', [['profile', 'Profile', 'user', '#5132D6', '#EEE8FD', 'Name, photo and how Aelys addresses you'], ['notifications', 'Notifications', 'bell', '#D93636', '#FDE8E7', 'What can interrupt you, and when']]],
+      ['General', [['appearance', 'Appearance', 'paintbrush', '#6A4CF2', '#EEE8FD', 'Theme, accent and motion'], ['weather', 'Weather & location', 'cloud-sun', '#2F6FE4', '#E4EEFD', 'City and units']]],
+      ['Assistant', [['ai', 'AI & models', 'sparkles', '#6A4CF2', '#EEE8FD', 'Providers and the models Aelys uses'], ['telegram', 'Telegram', 'send', '#2F6FE4', '#E4EEFD', 'Connection, auto-reply and instructions']]],
+      ['System', [['connection', 'Connection', 'wifi', '#14966C', '#DCF5EC', 'Backend address and your session'], ['security', 'Security', 'shield', '#F06A58', '#FDE6E1', mac ? 'Touch ID and auto-lock' : 'Fingerprint and auto-lock'], ['about', 'Data & about', 'info', '#625D69', '#EFE9E3', 'Export, version and updates']]]];
+    const q = S.q.toLowerCase();
+    const nav = SEC.map(([t, items]) => ({ t, items: items.filter(x => !q || (x[1] + ' ' + x[5]).toLowerCase().includes(q)).map(([id, n, i, c, soft, d]) => { const on = !compact && st === id; return { t: n, d, i, c, soft, badge: '', on, bg: on ? '#fff' : 'transparent', fw: on ? 600 : 500, pick: () => this.setState({ st: id }) }; }) })).filter(g => g.items.length);
+    const cur = SEC.flatMap(g => g[1]).find(x => x[0] === (st || 'profile'));
+    const theme = P.theme || 'light';
+    const T = { light: ['Light', '#F5F0EB', '#FAF7F4', '#fff'], dark: ['Dark', '#141219', '#1A1720', '#2A2733'], system: ['System', 'linear-gradient(90deg,#F5F0EB 50%,#141219 50%)', 'linear-gradient(90deg,#FAF7F4 50%,#1A1720 50%)', 'linear-gradient(90deg,#fff 50%,#2A2733 50%)'] };
+    const ids = ['profile', 'notifications', 'appearance', 'weather', 'ai', 'telegram', 'connection', 'security', 'about'];
+    const is = {}; ids.forEach(id => { is[id] = st === id; });
+    const cq = S.cq.toLowerCase();
+    return {
+      compact, wide: !compact, cols: compact ? 'minmax(0,1fr)' : '260px minmax(0,1fr)', showNav: !compact || !st, showPanel: !!st,
+      rowH: compact ? '60px' : '44px', navR: compact ? '16px' : '0', navBg: compact ? 'rgba(255,255,255,.88)' : 'transparent', navBd: compact ? '1px solid #EDE8E3' : '0', thH: compact ? '64px' : '88px',
+      q: S.q, onQ: e => this.setState({ q: e.target.value }), nav, cur: { t: cur[1], d: cur[5] }, is, back: () => this.setState({ st: null }),
+      name: S.name, onName: e => this.setState({ name: e.target.value }), about: S.about, onAbout: e => this.setState({ about: e.target.value }),
+      swN: [mkSw('nTask', 'Task reminders', 'At the time set on a task', 0), mkSw('nCal', 'Calendar', '10 minutes before events', 1), mkSw('nMsg', 'Messages', 'New drafts waiting for approval', 2), mkSw('nAuto', 'Automation', 'Only when a rule fails or is blocked', 3)],
+      quiet: seg([['off', 'Off'], ['night', '22:00–08:00'], ['focus', 'During focus']], S.quiet, 'quiet'),
+      themes: Object.entries(T).map(([id, [t, bg, side, card]]) => { const on = theme === id; return { t, bg, side, card, on, bd: on ? '#6A4CF2' : '#EDE8E3', radio: on ? '5px solid #6A4CF2' : '2px solid #CFC9D4', pick: () => P.onTheme && P.onTheme(id) }; }),
+      accents: [['Violet', '#6A4CF2'], ['Blue', '#2F6FE4'], ['Green', '#14966C'], ['Coral', '#F06A58'], ['Rose', '#D9468F'], ['Graphite', '#1C1B22']].map(([n, c], i) => ({ n, c, on: S.acc === i, ring: S.acc === i ? '0 0 0 2px #fff, 0 0 0 4px ' + c : 'none', pick: () => this.setState({ acc: i }) })),
+      swA: [mkSw('glass', 'Glass cards', 'Blur the photo behind widgets', 1), mkSw('reduce', 'Reduce motion', 'Fades instead of animations. Also follows the system', 2), mkSw('party', 'Celebrations', 'Star bursts when you finish tasks', 3)],
+      city: S.city, cq: S.cq, onCq: e => this.setState({ cq: e.target.value }),
+      cities: [['Almaty', 'Kazakhstan'], ['Astana', 'Kazakhstan'], ['Shymkent', 'Kazakhstan'], ['Karaganda', 'Kazakhstan'], ['Bishkek', 'Kyrgyzstan']].filter(([n]) => !cq || n.toLowerCase().includes(cq)).slice(0, 3).map(([n, r]) => ({ n, r, on: S.city === n, pick: () => this.setState({ city: n, cq: '' }) })),
+      units: seg([['c', '°C · m/s'], ['f', '°F · mph']], S.unit, 'unit'),
+      swW: [mkSw('geo', 'Use current location', 'Update the city automatically on this device', 1)],
+      prov: [['C', 'Claude', 'claude-sonnet-4-5', '•••• 3f2a', 1, '#B8402F', '#FDE6E1'], ['O', 'OpenRouter', 'meta-llama/llama-3.3-70b-instruct', '•••• 91cd', 0, '#5132D6', '#EEE8FD']].map(([l, n, m, k, def, c, soft]) => ({ l, n, m, k, def: !!def, c, soft })),
+      defaults: [['Chat and composer', 'AI Chat and the Home composer', 'Claude · sonnet-4-5'], ['Background tasks', 'Summaries, inbox sorting, automations', 'OpenRouter · llama-3.3']].map(([t, d, v], i) => ({ t, d, v, bt: i ? '1px solid #F1EDEA' : '0' })),
+      swT: [mkSw('tgAuto', 'Auto-reply', 'Read incoming messages and draft replies in allowed chats', 0)], tgOp: sw.tgAuto ? 1 : .5,
+      instr: S.instr, onInstr: e => this.setState({ instr: e.target.value }), instrN: S.instr.length.toLocaleString('en-US'),
+      openMessages: () => P.onOpen && P.onOpen('messages'),
+      url: S.url, onUrl: e => this.setState({ url: e.target.value, saved: false }), saveUrl: () => this.setState({ saved: true }), saveT: S.saved ? 'Saved' : 'Save', saveBg: S.saved ? '#14966C' : '#6A4CF2',
+      swS: [mkSw('touch', mac ? 'Unlock with Touch ID' : 'Unlock with fingerprint', 'Instead of the password', 0), mkSw('sleep', mac ? 'Lock when Mac sleeps' : 'Lock when the screen turns off', 'Ask again after waking', 1)],
+      lock: seg([['1', '1 min'], ['5', '5 min'], ['15', '15 min'], ['0', 'Never']], S.lock, 'lock'),
+      bioNote: mac ? 'Biometric data never leaves this Mac.' : 'Biometric data never leaves this phone.',
+      resetGuides: () => this.setState({ guides: true }), guidesT: S.guides ? 'Done' : 'Reset guides',
+    };
+  }
+}
+</script>
+</body>
+</html>

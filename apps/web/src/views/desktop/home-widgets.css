@@ -95,3 +95,6 @@
 }
 .wb-presets { display: flex; gap: 6px; margin-top: 8px; }
 .wb-presets .wb-chip { margin-top: 0; }
+
+/* Photo-backed Weather stays clear even when other cards use frosted glass. */
+.home-widget[data-widget-id='weather'] { backdrop-filter: none; -webkit-backdrop-filter: none; }

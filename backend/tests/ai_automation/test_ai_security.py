@@ -82,7 +82,7 @@ async def test_ai_routes_bind_owner_project_idempotency_and_provider_endpoint(tm
             )
             assert conversation.status_code == 404
 
-            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={"tool_scope": {"scopes": []}})
             assert conversation.status_code == 200
             payload = {
                 "conversation_id": conversation.json()["id"],
@@ -143,7 +143,7 @@ async def test_repeated_ai_sse_reads_do_not_reexecute_provider(tmp_path, monkeyp
                 },
             )
             await client.put(f"/api/v1/ai/providers/{provider.json()['id']}/secret", headers=headers, json={"api_key": "test-only-provider-key"})
-            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={"tool_scope": {"scopes": []}})
             run = await client.post(
                 "/api/v1/ai/runs",
                 headers=headers,
@@ -168,7 +168,7 @@ async def test_repeated_ai_sse_reads_do_not_reexecute_provider(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_mounted_ai_tool_call_is_validated_authorized_and_executed_once(tmp_path, monkeypatch):
+async def test_mounted_ai_write_tool_is_proposed_and_executes_once_on_approval(tmp_path, monkeypatch):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/ai-tool.db")
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
@@ -202,7 +202,14 @@ async def test_mounted_ai_tool_call_is_validated_authorized_and_executed_once(tm
                 body = (await response.aread()).decode()
             assert response.status_code == 200
             assert "ai.tool.requested" in body and "ai.tool.result" in body and "ai.run.completed" in body
-            assert transport.calls == 1
+            assert "event: ai.action.proposed" in body
+            async with factory() as session:
+                assert (await session.execute(select(Task))).scalars().all() == []
+            actions = (await client.get(f"/api/v1/ai/conversations/{conversation.json()['id']}/actions", headers=headers)).json()
+            assert len(actions) == 1 and actions[0]["status"] == "pending" and actions[0]["tool"] == "create_task"
+            for _ in range(2):
+                approved = await client.post(f"/api/v1/ai/actions/{actions[0]['id']}/approve", headers=headers)
+                assert approved.status_code == 200 and approved.json()["status"] == "approved"
             async with factory() as session:
                 tasks = (await session.execute(select(Task))).scalars().all()
                 assert len(tasks) == 1 and tasks[0].title == "Created by AI"
@@ -225,7 +232,7 @@ async def test_provider_failure_is_terminal_failed_not_completed(tmp_path, monke
             headers = {"Authorization": f"Bearer {bootstrap.json()['access_token']}"}
             provider = await client.post("/api/v1/ai/providers", headers=headers, json={"kind": "claude", "model_policy": {"models": [{"name": "failure-model", "capabilities": ["streaming"], "context_tokens": 4096}]}})
             await client.put(f"/api/v1/ai/providers/{provider.json()['id']}/secret", headers=headers, json={"api_key": "test-only-provider-key"})
-            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={"tool_scope": {"scopes": []}})
             run = await client.post("/api/v1/ai/runs", headers=headers, json={"conversation_id": conversation.json()["id"], "message": "fail", "routing": {"provider": "claude", "model": "failure-model"}, "idempotency_key": "failure-once"})
             async with client.stream("GET", f"/api/v1/ai/runs/{run.json()['id']}/events", headers=headers) as response:
                 body = (await response.aread()).decode()
@@ -251,7 +258,7 @@ async def test_exhausted_monthly_budget_fails_closed(tmp_path, monkeypatch):
             headers = {"Authorization": f"Bearer {bootstrap.json()['access_token']}"}
             provider = await client.post("/api/v1/ai/providers", headers=headers, json={"kind": "claude", "model_policy": {"monthly_budget": "0", "models": [{"name": "budget-model", "capabilities": ["streaming"], "context_tokens": 4096}]}})
             await client.put(f"/api/v1/ai/providers/{provider.json()['id']}/secret", headers=headers, json={"api_key": "test-only-provider-key"})
-            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+            conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={"tool_scope": {"scopes": []}})
             run = await client.post("/api/v1/ai/runs", headers=headers, json={"conversation_id": conversation.json()["id"], "message": "budget", "routing": {"provider": "claude", "model": "budget-model"}, "idempotency_key": "budget-exhausted"})
             async with client.stream("GET", f"/api/v1/ai/runs/{run.json()['id']}/events", headers=headers) as response:
                 body = (await response.aread()).decode()

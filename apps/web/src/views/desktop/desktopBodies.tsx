@@ -1,4 +1,4 @@
-// Desktop card bodies drawn like the reference design. S and Tall use one column, M, L and Full use two (four for Full activity); Tall and L add rows.
+// Desktop card bodies drawn like the reference design. S and Tall use one column, M and L use two; Tall and L add rows.
 import { useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { CloudDrizzle, CloudUpload } from 'lucide-react'
 import { Calendar, Check, ChevronDown, Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, FileText, Folder, MapPin, Mail, Moon, Pause, Play, Plus, Sun, Zap, Square, type AelysIconComponent } from '../../icons'
@@ -10,7 +10,7 @@ import { navigate } from '../../lib/router'
 import { getPrefs, usePrefs } from '../../lib/prefs'
 import { openWeatherSettings, refreshWeather, useWeather, weatherDescription } from '../../lib/weather'
 import type { RoutePath } from '../../types'
-import type { SizeKey } from './homeLayout'
+import type { SizeKey, WidgetId } from './homeLayout'
 import type { BodyProps } from './widgetBodies'
 import { isDone } from './widgetBodies'
 import './home-desktop.css'
@@ -26,6 +26,9 @@ const tall = (size: SizeKey) => size === 'L' || size === 'Tall'
 export const columnsOf = (size: SizeKey) => size === 'S' || size === 'Tall' ? 1 : 2
 const soft = (key: AccentKey) => `${ACCENT[key]}1A`
 const tile = (key: AccentKey): CSSProperties => ({ background: soft(key), color: accentOf(key).ink })
+// ACTUAL mobile caps each card's rows by size (design rowsFor); other sizes show two.
+const MOBILE_ROWS: Partial<Record<WidgetId, Partial<Record<SizeKey, number>>>> = { today: { M: 3, L: 5 }, cal: { M: 3, L: 4 }, mail: { M: 2, L: 4 }, proj: { M: 2, L: 4 }, notes: { S: 1, M: 3, L: 4 } }
+const rowsOf = (mobile: boolean, id: WidgetId, size: SizeKey, desktop: number) => mobile ? MOBILE_ROWS[id]?.[size === 'Tall' ? 'L' : size] ?? 2 : desktop
 const cycle = <T,>(items: readonly T[], index: number) => items[index % items.length]!
 
 function Empty({ text, action }: { text: string; action?: { label: string; route: RoutePath } }) {
@@ -48,13 +51,13 @@ function QuickAdd({ onAdd }: { onAdd: (title: string) => Promise<boolean> }) {
   return <form className="dw-quickadd" onSubmit={(event) => void submit(event)}><Plus size={16} aria-hidden="true" /><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Add a task" aria-label="Add a task" /></form>
 }
 
-function Today({ size, data, onToggleTask, onAddTask }: BodyProps) {
+function Today({ id, size, mobile, data, onToggleTask, onAddTask }: BodyProps) {
   const list = dayTasks(data.tasks)
   if (!list.length && !tall(size)) return <Empty text="Nothing due today." action={{ label: 'Add task', route: '/tasks' }} />
   const start = dayStart()
   return <div className="dw-tasks">
     {tall(size) && <QuickAdd onAdd={onAddTask} />}
-    {list.slice(0, tall(size) ? 11 : 5).map((task) => {
+    {list.slice(0, rowsOf(mobile, id, size, tall(size) ? 11 : 5)).map((task) => {
       const checked = isDone(task)
       return <div key={task.id} className="home-task-row dw-task">
         <button type="button" role="checkbox" aria-checked={checked} aria-label={task.title} className={`home-btn dw-check${checked ? ' dw-check--on' : ''}`} onClick={() => onToggleTask(task)}>{checked && <Check size={12} aria-hidden="true" />}</button>
@@ -80,12 +83,13 @@ function MonthGrid() {
   </div>
 }
 
-function CalendarBody({ size, data }: BodyProps) {
+function CalendarBody({ id, size, mobile, data }: BodyProps) {
   const events = [...data.events].sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
   if (!events.length && size !== 'L') return <Empty text="No events today." action={{ label: 'Open calendar', route: '/calendar' }} />
-  const limit = size === 'Tall' ? 8 : size === 'L' ? 4 : 4
+  const limit = rowsOf(mobile, id, size, size === 'Tall' ? 8 : 4)
   return <div>
     {size === 'L' && <MonthGrid />}
+    {mobile && <div className="dw-cal-date">Today, {new Date().toLocaleDateString('en', { month: 'long', day: 'numeric' })}</div>}
     <div className="dw-cal">
       {events.slice(0, limit).map((event, index) => {
         const [bg, border] = cycle(TINTS, index)
@@ -125,16 +129,16 @@ function FocusBody({ size, focus, data }: BodyProps) {
   </div>
 }
 
-function WeatherIcon({ code, day = true, size = 16 }: { code: number; day?: boolean; size?: number }) {
+export function WeatherIcon({ code, day = true, size = 16 }: { code: number; day?: boolean; size?: number }) {
   if (code >= 51 && code <= 57) return <CloudDrizzle size={size} aria-hidden="true" />
   const Icon: AelysIconComponent = code === 0 ? day ? Sun : Moon : code <= 2 ? CloudSun : code <= 3 ? Cloud : code <= 48 ? CloudFog : code <= 67 ? CloudRain : code <= 77 ? CloudSnow : code <= 82 ? CloudRain : code <= 86 ? CloudSnow : CloudLightning
   return <Icon size={size} aria-hidden="true" />
 }
 // Reads the unit at render time; WeatherBody subscribes through usePrefs so a change re-renders it.
 const inUnits = (celsius: number) => getPrefs().units === 'f' ? celsius * 9 / 5 + 32 : celsius
-const degrees = (celsius: number) => { const value = getPrefs().units === 'f' ? celsius * 9 / 5 + 32 : celsius; return `${value > 0 ? '+' : ''}${Math.round(value)}°` }
+export const degrees = (celsius: number) => { const value = getPrefs().units === 'f' ? celsius * 9 / 5 + 32 : celsius; return `${value > 0 ? '+' : ''}${Math.round(value)}°` }
 
-function WeatherBody({ size }: BodyProps) {
+function WeatherBody({ size, mobile }: BodyProps) {
   const { location, forecast, status } = useWeather()
   usePrefs()
   if (!location) return <div className="dw-empty"><button type="button" className="home-btn dw-action" onClick={openWeatherSettings}><MapPin size={16} aria-hidden="true" />Set location</button></div>
@@ -144,18 +148,19 @@ function WeatherBody({ size }: BodyProps) {
   const columns = [...[0, 2, 4].flatMap((index) => hours[index] ? [{ label: hhmm(new Date(hours[index]!.time.replace('Z', ''))), code: hours[index]!.code, temperature: hours[index]!.temperature, day: true }] : []), ...(forecast.days[1] ? [{ label: new Date(forecast.days[1].date).toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' }), code: forecast.days[1].code, temperature: forecast.days[1].max, day: true }] : [])]
   return <div className="dw-weather">
     <div className="dw-weather-now"><WeatherIcon code={forecast.code} day={forecast.isDay} size={44} /><div><div className="dw-weather-temp">{degrees(forecast.temperature)}</div><div className="dw-weather-desc">{weatherDescription(forecast.code)}</div></div></div>
+    {mobile && <div className="dw-weather-loc"><MapPin size={14} aria-hidden="true" /><span>{location.name}</span>{forecast.days[0] && <span>↑{Math.round(inUnits(forecast.days[0].max))}° ↓{Math.round(inUnits(forecast.days[0].min))}°</span>}</div>}
     {tall(size) && <div className="dw-weather-days">{forecast.days.slice(0, 5).map((day) => <div key={day.date}><span>{new Date(day.date).toLocaleDateString('en', { weekday: 'short', timeZone: 'UTC' })}</span><WeatherIcon code={day.code} size={16} /><span>{Math.round(inUnits(day.max))}° / {Math.round(inUnits(day.min))}°</span></div>)}</div>}
     <div className="dw-weather-hours">{columns.map((column) => <div key={column.label}><span>{column.label}</span><WeatherIcon code={column.code} day={column.day} /><b>{degrees(column.temperature)}</b></div>)}</div>
   </div>
 }
 
 const projectColors: AccentKey[] = ['violet', 'blue', 'green']
-function ProjectsBody({ size, data }: BodyProps) {
+function ProjectsBody({ id, size, mobile, data }: BodyProps) {
   if (!data.projects.length) return <Empty text="No projects yet." action={{ label: 'New project', route: '/projects' }} />
   const ready = data.states?.today === 'ready'
   const stat = (project: ProjectResponse) => { const own = data.tasks.filter((task) => task.project_id === project.id); return { count: own.length, pct: own.length ? Math.round(own.filter(isDone).length / own.length * 100) : 0 } }
   return <div className="dw-grid dw-proj" style={{ '--dw-cols': columnsOf(size) } as CSSProperties}>
-    {data.projects.slice(0, tall(size) ? 8 : 3).map((project, index) => {
+    {data.projects.slice(0, rowsOf(mobile, id, size, tall(size) ? 8 : 3)).map((project, index) => {
       const { count, pct } = stat(project); const key = cycle(projectColors, index)
       return <div key={project.id} className="dw-proj-item"><span className="dw-tile" style={tile(key)}><Folder size={18} aria-hidden="true" /></span><div className="dw-proj-main"><div className="dw-proj-line"><span>{project.name}</span><span>{ready ? `${pct}%` : ''}</span></div><div className="dw-proj-sub">{ready ? `${count} ${count === 1 ? 'task' : 'tasks'}` : project.status}</div><div className="dw-proj-bar"><div style={{ width: `${ready ? pct : 0}%`, background: ACCENT[key] }} /></div></div></div>
     })}
@@ -163,7 +168,7 @@ function ProjectsBody({ size, data }: BodyProps) {
 }
 
 const noteColors: AccentKey[] = ['blue', 'violet', 'orange', 'red']
-function NotesBody({ id, size, data }: BodyProps) {
+function NotesBody({ id, size, mobile, data }: BodyProps) {
   const route: RoutePath = id === 'kb' ? '/knowledge' : '/notes'
   const updated = (note: NoteOut) => Date.parse(note.updated_at ?? '') || 0
   const notes = [...data.notes].sort((a, b) => (size === 'L' ? Number(!!b.pinned) - Number(!!a.pinned) : 0) || updated(b) - updated(a))
@@ -172,6 +177,7 @@ function NotesBody({ id, size, data }: BodyProps) {
     const colors: AccentKey[] = ['green', 'red', 'violet', 'blue']
     return <div className="dw-grid dw-list" style={{ '--dw-cols': columnsOf(size) } as CSSProperties}>{notes.slice(0, tall(size) ? 10 : 4).map((note, index) => <button type="button" key={note.id} className="home-btn dw-row" onClick={() => navigate(route)}><span className="dw-tile" style={tile(cycle(colors, index))}><FileText size={16} aria-hidden="true" /></span><div className="dw-row-main"><div className="dw-row-title">{note.title || 'Untitled'}</div><div className="dw-row-sub">{note.updated_at ? `Updated ${ageLabel(note.updated_at)}` : excerpt(note.markdown_body, 40)}</div></div></button>)}</div>
   }
+  if (mobile) return <div>{notes.slice(0, rowsOf(true, id, size, 0)).map((note) => <button type="button" key={note.id} className="home-btn dw-note-m" onClick={() => navigate(route)}><span className="dw-note-m-head"><span>{note.title || 'Untitled'}</span>{note.updated_at && <span>{ageLabel(note.updated_at)}</span>}</span><span className="dw-note-m-sum">{excerpt(note.markdown_body, 140)}</span></button>)}</div>
   return <div className="dw-grid dw-notes" style={{ '--dw-cols': columnsOf(size) } as CSSProperties}>{notes.slice(0, tall(size) ? 10 : 4).map((note, index) => <button type="button" key={note.id} className="home-btn dw-note" onClick={() => navigate(route)}><span className="dw-tile" style={tile(cycle(noteColors, index))}><FileText size={16} aria-hidden="true" /></span><span className="dw-grow">{note.title || 'Untitled'}</span>{note.updated_at && <span className="dw-note-when">{ageLabel(note.updated_at)}</span>}</button>)}</div>
 }
 
@@ -215,35 +221,12 @@ function FinanceBody({ size, data }: BodyProps) {
 }
 
 const mailColors: AccentKey[] = ['blue', 'violet', 'green', 'orange']
-function MailBody({ size, data }: BodyProps) {
+function MailBody({ id, size, mobile, data }: BodyProps) {
   const mail = data.mail ?? []
   const unread = mail.filter((item: MailMessage) => item.is_read === false)
   if (!mail.length || (!unread.length && size !== 'L')) return <Empty text="Inbox is clear" action={{ label: 'Import', route: '/mail' }} />
   const rows = size === 'L' ? mail : unread
-  return <div className="dw-grid dw-list" style={{ '--dw-cols': columnsOf(size) } as CSSProperties}>{rows.slice(0, tall(size) ? 10 : 4).map((item, index) => <button type="button" key={item.id} className="home-btn dw-row" onClick={() => navigate('/mail')}><span className="dw-tile" style={tile(cycle(mailColors, index))}><Mail size={16} aria-hidden="true" /></span><div className="dw-row-main"><div className="dw-row-title dw-row-title--head"><span>{senderName(item.sender)}</span><span>{ageLabel(item.received_at)}</span></div><div className="dw-row-sub">{item.subject || '(No subject)'}</div></div></button>)}</div>
-}
-
-function activityLook(kind: string): { title: string; icon: ReactNode; key: AccentKey } {
-  const text = kind.replace(/[._]/g, ' ')
-  const area = kind.split(/[._]/)[0]
-  if (area === 'mail') return { title: 'New email', icon: <Mail size={16} aria-hidden="true" />, key: 'coral' }
-  if (area === 'task') return { title: text.includes('complet') ? 'Task completed' : 'Task updated', icon: <Check size={16} aria-hidden="true" />, key: 'green' }
-  if (area === 'note') return { title: 'Note updated', icon: <FileText size={16} aria-hidden="true" />, key: 'blue' }
-  if (area === 'calendar' || area === 'event') return { title: 'Event updated', icon: <Calendar size={16} aria-hidden="true" />, key: 'red' }
-  if (area === 'file' || area === 'upload') return { title: 'File uploaded', icon: <CloudUpload size={16} aria-hidden="true" />, key: 'violet' }
-  return { title: text.charAt(0).toUpperCase() + text.slice(1), icon: <Zap size={16} aria-hidden="true" />, key: 'violet' }
-}
-const subtitleOf = (item: ActivityEvent) => { const meta = item.non_sensitive_metadata as Record<string, unknown>; const named = ['title', 'name', 'subject'].map((field) => meta?.[field]).find((value) => typeof value === 'string' && value) as string | undefined; return named ?? (item.actor_kind === 'user' ? 'You' : item.actor_kind) }
-
-function ActivityBody({ size, data }: BodyProps) {
-  const items = data.activity ?? []
-  if (!items.length) return <Empty text="No recorded activity yet." />
-  const cols = size === 'Full' ? 4 : columnsOf(size)
-  const limit = size === 'Full' ? 4 : tall(size) ? 8 : size === 'S' ? 3 : 4
-  return <div className="dw-grid dw-act" style={{ '--dw-cols': cols } as CSSProperties}>{items.slice(0, limit).map((item) => {
-    const look = activityLook(item.event_kind)
-    return <div key={item.id} className="dw-act-item"><span className="dw-tile" style={tile(look.key)}>{look.icon}</span><div className="dw-act-main"><div className="dw-act-line"><span>{look.title}</span><span>{ageLabel(item.occurred_at)}</span></div><div className="dw-row-sub">{subtitleOf(item)}</div></div></div>
-  })}</div>
+  return <div className="dw-grid dw-list" style={{ '--dw-cols': columnsOf(size) } as CSSProperties}>{rows.slice(0, rowsOf(mobile, id, size, tall(size) ? 10 : 4)).map((item, index) => <button type="button" key={item.id} className="home-btn dw-row" onClick={() => navigate('/mail')}><span className="dw-tile" style={mobile ? { background: accentOf(cycle(mailColors, index)).c, color: '#fff' } : tile(cycle(mailColors, index))}>{mobile ? senderName(item.sender)[0]?.toUpperCase() : <Mail size={16} aria-hidden="true" />}</span><div className="dw-row-main"><div className="dw-row-title dw-row-title--head"><span>{senderName(item.sender)}</span><span>{ageLabel(item.received_at)}</span></div><div className="dw-row-sub">{item.subject || '(No subject)'}</div></div>{mobile && item.is_read === false && <span className="dw-unread" />}</button>)}</div>
 }
 
 export function DesktopBody(props: BodyProps) {
@@ -256,6 +239,6 @@ export function DesktopBody(props: BodyProps) {
     case 'notes': case 'kb': return <NotesBody {...props} />
     case 'fin': return <FinanceBody {...props} />
     case 'mail': return <MailBody {...props} />
-    default: return <ActivityBody {...props} />
+    default: return null
   }
 }

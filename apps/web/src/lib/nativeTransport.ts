@@ -3,6 +3,8 @@ export type NativeInvoke = <T>(command: string, args?: Record<string, unknown>) 
 
 export type NativeOperation =
   | { type: 'me' }
+  | { type: 'api_binary'; path: string }
+  | { type: 'api'; method: string; path: string; query?: Record<string, string>; body?: Record<string, unknown>; idempotency_key?: string }
   | { type: 'projects' }
   | { type: 'project_create'; project: Record<string, unknown> }
   | { type: 'project_patch'; id: string; version: number; project: Record<string, unknown> }
@@ -109,6 +111,8 @@ export function createNativeTransport(invoke: NativeInvoke, makeChannel?: Native
     health: (origin: string) => invoke<boolean>('native_health', { origin }),
     login: (origin: string, email: string, password: string, bootstrap = false) =>
       invoke<NativeStatus>('native_login', { origin, email, password, bootstrap }),
+    enroll: (origin: string, token: string, displayName: string) =>
+      invoke<NativeStatus>('native_enroll', { origin, token, displayName }),
     resume: (origin: string) => invoke<NativeStatus>('native_resume', { origin }),
     logout: (origin: string) => invoke<NativeStatus>('native_logout', { origin }),
     operation: <T>(origin: string, operation: NativeOperation) => invoke<T>('native_operation', { origin, operation }),

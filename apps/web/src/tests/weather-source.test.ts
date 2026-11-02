@@ -109,7 +109,7 @@ describe('weather source and consent', () => {
     const forecast = await weather.fetchForecast(city)
     const url = fetchImpl.mock.calls[0]![0]
     expect(url.origin).toBe('https://api.open-meteo.com'); expect(url.searchParams.get('hourly')).toBe('temperature_2m,weather_code'); expect(url.searchParams.get('forecast_days')).toBe('5')
-    expect(forecast.days).toHaveLength(5); expect(forecast.hours).toHaveLength(6)
+    expect(forecast.utcOffsetSeconds).toBe(18000); expect(forecast.days).toHaveLength(5); expect(forecast.hours).toHaveLength(6)
     expect(forecast.hours!.map((item) => item.temperature)).toEqual([2, 3, 4, 5, 6, 7])
   })
 

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+[data-rte] h1{font-size:24px;line-height:32px;font-weight:700;letter-spacing:-.01em;margin:18px 0 6px}
+[data-rte] h2{font-size:18px;line-height:26px;font-weight:600;margin:16px 0 4px}
+[data-rte] > :first-child{margin-top:0}
+[data-rte] p{margin:0 0 8px}
+[data-rte] ul,[data-rte] ol{margin:0 0 10px;padding-left:24px}
+[data-rte] li{margin:3px 0;padding-left:2px}
+[data-rte] ul[data-check]{list-style:none;padding-left:2px}
+[data-rte] ul[data-check] > li{position:relative;padding-left:30px}
+[data-rte] ul[data-check] > li::before{content:"";position:absolute;left:0;top:4px;width:18px;height:18px;box-sizing:border-box;border-radius:6px;border:2px solid #BDB7C2;background:#fff;cursor:pointer}
+[data-rte] ul[data-check] > li[data-done="1"]{color:#8C869A;text-decoration:line-through}
+[data-rte] ul[data-check] > li[data-done="1"]::before{border-color:#6A4CF2;background:#6A4CF2 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E") center/12px no-repeat}
+[data-rte] blockquote{margin:8px 0 10px;padding:2px 0 2px 14px;border-left:3px solid #D6CCF8;color:#3A3640}
+[data-rte] pre{margin:8px 0 10px;padding:12px 14px;border-radius:12px;background:#1C1B22;color:#E8E4EE;font:13px/21px "JetBrains Mono",ui-monospace,monospace;white-space:pre-wrap}
+[data-rte] code{padding:1px 5px;border-radius:5px;background:#F1EDEA;font:.88em "JetBrains Mono",ui-monospace,monospace}
+[data-rte] pre code{padding:0;background:none}
+[data-rte] a{color:#5132D6;text-decoration:underline;text-underline-offset:2px}
+[data-rte] hr{border:0;border-top:1px solid #EDE8E3;margin:16px 0}
+html[data-aelys-theme="dark"] [data-rte]{color:#E9E5EF!important}
+html[data-aelys-theme="dark"] [data-rte] code{background:#2A2733}
+html[data-aelys-theme="dark"] [data-rte] blockquote{color:#C9C3D3;border-color:#4A3F86}
+html[data-aelys-theme="dark"] [data-rte] a{color:#B9A8FF}
+html[data-aelys-theme="dark"] [data-rte] hr{border-color:#34303D}
+html[data-aelys-theme="dark"] [data-rte] ul[data-check] > li::before{background-color:#201D28;border-color:#5A5466}
+html[data-aelys-theme="dark"] [data-rte] ul[data-check] > li[data-done="1"]::before{background-color:#6A4CF2;border-color:#6A4CF2}
+</style>
+</helmet>
+<div style="display:flex;flex-direction:column;gap:10px;min-width:0;flex:1">
+  <div role="toolbar" aria-label="Formatting" style="display:flex;align-items:center;gap:2px;padding:4px;border-radius:12px;background:#F7F4F1;flex-wrap:{{ wrap }};overflow-x:{{ ovx }};scrollbar-width:none;flex:none;position:sticky;top:0;z-index:2">
+    <sc-for list="{{ tools }}" as="t" hint-placeholder-count="13">
+      <sc-if value="{{ t.sep }}"><span aria-hidden="true" style="width:1px;height:18px;background:#E2DBD4;margin:0 4px;flex:none"></span></sc-if>
+      <sc-if value="{{ t.btn }}"><button type="button" onMouseDown="{{ t.down }}" aria-label="{{ t.label }}" title="{{ t.title }}" aria-pressed="{{ t.on }}" style="width:{{ bw }};height:{{ bw }};flex:none;border-radius:8px;display:flex;align-items:center;justify-content:center;background:{{ t.bg }};color:{{ t.fg }};cursor:pointer" style-hover="background:rgba(106,76,242,.10)"><i class="icon-{{ t.icon }}" style="font-size:16px"></i></button></sc-if>
+    </sc-for>
+  </div>
+  <sc-if value="{{ linkOpen }}">
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:12px;background:#fff;border:1.5px solid #D6CCF8;flex:none">
+      <i class="icon-link" style="color:#6A4CF2"></i>
+      <input ref="{{ linkRef }}" value="{{ linkUrl }}" onChange="{{ onLink }}" onKeyDown="{{ linkKey }}" placeholder="Paste a link" aria-label="Link address" style="flex:1;min-width:0;height:32px;border:0;outline:0;background:transparent;font:inherit;font-size:14px;color:#1C1B22">
+      <button type="button" onMouseDown="{{ applyLink }}" style="height:32px;padding:0 12px;border-radius:9px;background:#6A4CF2;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Apply</button>
+      <sc-if value="{{ hasLink }}"><button type="button" onMouseDown="{{ unlink }}" style="height:32px;padding:0 10px;border-radius:9px;background:#F7F4F1;font-size:13px;font-weight:500;cursor:pointer">Remove</button></sc-if>
+      <button type="button" onMouseDown="{{ closeLink }}" aria-label="Cancel" style="width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:#F7F4F1"><i class="icon-x"></i></button>
+    </div>
+  </sc-if>
+  <div style="position:relative;flex:1;min-height:{{ minH }}">
+    <sc-if value="{{ empty }}"><div aria-hidden="true" style="position:absolute;top:0;left:0;right:0;pointer-events:none;color:#A29DA8;font-size:{{ fs }};line-height:26px">{{ ph }}</div></sc-if>
+    <div ref="{{ ref }}" data-rte="" contentEditable="true" role="textbox" aria-multiline="true" aria-label="{{ label }}" spellCheck="true" onInput="{{ onInput }}" onKeyDown="{{ onKey }}" onMouseDown="{{ onDown }}" onPaste="{{ onPaste }}" style="outline:none;min-height:{{ minH }};font-size:{{ fs }};line-height:26px;color:#2A2732;word-break:break-word;caret-color:#6A4CF2"></div>
+  </div>
+  <sc-if value="{{ footer }}"><div style="display:flex;align-items:center;gap:12px;font-size:12px;color:#625D69;flex:none"><span>{{ words }} words</span><span style="flex:1"></span><sc-if value="{{ wide }}"><span>Type <b style="font-weight:600">#</b> heading · <b style="font-weight:600">-</b> list · <b style="font-weight:600">[]</b> checklist · <b style="font-weight:600">&gt;</b> quote</span></sc-if></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:720,&quot;height&quot;:520},&quot;value&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Release checklist\n[x] Sign the macOS build\n[ ] Notarize\n[ ] Test Touch ID on a clean account\n\nNotes\n• Check the Android APK on a real device\n• Tag after QA&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;docKey&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;string&quot;},&quot;onChange&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;(html: string, text: string) =&gt; void&quot;},&quot;placeholder&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Start writing…&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;minHeight&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;240px&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;footer&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;label&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Text&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  ref = React.createRef(); linkRef = React.createRef();
+  state = { act: {}, empty: true, words: 0, linkOpen: false, linkUrl: '', hasLink: false };
+  componentDidMount() { this.load(); this.onSel = () => this.sync(); document.addEventListener('selectionchange', this.onSel); }
+  componentWillUnmount() { document.removeEventListener('selectionchange', this.onSel); }
+  componentDidUpdate(p) { if (p.docKey !== this.props.docKey) this.load(); }
+  esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  toHtml(v) {
+    v = v || ''; if (/^\s*</.test(v)) return v;
+    const lines = v.split('\n'), out = []; let list = null;
+    const flush = () => { if (list) { out.push('<ul>' + list.join('') + '</ul>'); list = null; } };
+    lines.forEach((ln, i) => {
+      const t = ln.trim(), b = t.match(/^[•\-*]\s+(.*)$/), c = t.match(/^\[( |x)\]\s+(.*)$/i);
+      if (c) { flush(); out.push('<ul data-check=""><li' + (c[1].toLowerCase() === 'x' ? ' data-done="1"' : '') + '>' + this.esc(c[2]) + '</li></ul>'); return; }
+      if (b) { (list = list || []).push('<li>' + this.esc(b[1]) + '</li>'); return; }
+      flush(); if (!t) return;
+      const next = (lines[i + 1] || '').trim();
+      if (t.length <= 32 && !/[.!?:,]$/.test(t) && next) out.push('<h2>' + this.esc(t) + '</h2>'); else out.push('<p>' + this.esc(t) + '</p>');
+    });
+    flush(); return out.join('').replace(/<\/ul><ul data-check="">/g, '');
+  }
+  load() { const el = this.ref.current; if (!el) return; el.innerHTML = this.toHtml(this.props.value); this.measure(); }
+  measure() { const el = this.ref.current; if (!el) return; const txt = el.innerText || ''; const empty = !txt.trim() && !el.querySelector('li,hr,img'); const words = (txt.match(/\S+/g) || []).length; if (empty !== this.state.empty || words !== this.state.words) this.setState({ empty, words }); return txt; }
+  emit() { const el = this.ref.current; if (!el) return; const txt = this.measure(); this.props.onChange && this.props.onChange(el.innerHTML, txt); }
+  inside() { const s = window.getSelection(), el = this.ref.current; return !!(s && s.rangeCount && el && el.contains(s.anchorNode)); }
+  up(tag, attr) { const s = window.getSelection(); if (!s || !s.rangeCount) return null; let n = s.anchorNode; while (n && n !== this.ref.current) { if (n.nodeName === tag && (!attr || n.hasAttribute(attr))) return n; n = n.parentNode; } return null; }
+  sync() {
+    if (!this.inside()) return;
+    const q = c => { try { return document.queryCommandState(c); } catch (e) { return false; } };
+    const chk = !!this.up('UL', 'data-check');
+    const act = { bold: q('bold'), italic: q('italic'), strike: q('strikeThrough'), h1: !!this.up('H1'), h2: !!this.up('H2'), ul: !!this.up('UL') && !chk, ol: !!this.up('OL'), check: chk, quote: !!this.up('BLOCKQUOTE'), code: !!this.up('CODE') && !this.up('PRE'), pre: !!this.up('PRE'), link: !!this.up('A') };
+    if (JSON.stringify(act) !== JSON.stringify(this.state.act)) this.setState({ act });
+  }
+  focus() { const el = this.ref.current; if (el && !this.inside()) { el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } }
+  exec(cmd, val) { this.focus(); document.execCommand(cmd, false, val); this.emit(); this.sync(); }
+  block(tag) { this.focus(); const on = !!this.up(tag.toUpperCase()); document.execCommand('formatBlock', false, on ? '<p>' : '<' + tag + '>'); this.emit(); this.sync(); }
+  list(kind) {
+    this.focus();
+    const chk = this.up('UL', 'data-check');
+    if (kind === 'check') { if (chk) { document.execCommand('insertUnorderedList'); } else { if (!this.up('UL')) document.execCommand('insertUnorderedList'); const u = this.up('UL'); if (u) u.setAttribute('data-check', ''); } }
+    else if (kind === 'ul' && chk) { chk.removeAttribute('data-check'); chk.querySelectorAll('li[data-done]').forEach(li => li.removeAttribute('data-done')); }
+    else document.execCommand(kind === 'ul' ? 'insertUnorderedList' : 'insertOrderedList');
+    this.emit(); this.sync();
+  }
+  inlineCode() {
+    this.focus(); const c = this.up('CODE');
+    if (c) { c.replaceWith(document.createTextNode(c.textContent)); this.emit(); this.sync(); return; }
+    const s = window.getSelection(); const txt = s.toString() || 'code';
+    document.execCommand('insertHTML', false, '<code>' + this.esc(txt) + '</code>&#8203;'); this.emit(); this.sync();
+  }
+  openLink() { const s = window.getSelection(); this.saved = s && s.rangeCount && this.inside() ? s.getRangeAt(0).cloneRange() : null; const a = this.up('A'); this.setState({ linkOpen: true, linkUrl: a ? a.getAttribute('href') : '', hasLink: !!a }, () => { this.linkRef.current && this.linkRef.current.focus(); }); }
+  restore() { const el = this.ref.current; el.focus(); if (this.saved) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(this.saved); } }
+  applyLink() {
+    let u = this.state.linkUrl.trim(); if (!u) { this.setState({ linkOpen: false }); return; }
+    if (!/^(https?:|mailto:|\/)/i.test(u)) u = 'https://' + u;
+    this.restore(); const s = window.getSelection();
+    if (s.isCollapsed && !this.up('A')) document.execCommand('insertHTML', false, '<a href="' + this.esc(u) + '">' + this.esc(u.replace(/^https?:\/\//, '')) + '</a>&nbsp;');
+    else document.execCommand('createLink', false, u);
+    this.ref.current.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+    this.setState({ linkOpen: false }); this.emit();
+  }
+  shortcut(e) {
+    const s = window.getSelection(); if (!s.rangeCount || !s.isCollapsed) return false;
+    const n = s.anchorNode; if (!n || n.nodeType !== 3) return false;
+    const before = n.textContent.slice(0, s.anchorOffset);
+    const map = { '#': ['block', 'h1'], '##': ['block', 'h2'], '>': ['block', 'blockquote'], '```': ['block', 'pre'], '-': ['list', 'ul'], '*': ['list', 'ul'], '1.': ['list', 'ol'], '[]': ['list', 'check'], '[ ]': ['list', 'check'] };
+    const hit = map[before]; if (!hit) return false;
+    let p = n.parentNode; const blocks = ['P', 'DIV', 'H1', 'H2', 'LI', 'BLOCKQUOTE'];
+    if (p !== this.ref.current && !blocks.includes(p.nodeName)) return false;
+    if (n.previousSibling) return false;
+    if (p.nodeName === 'LI' && hit[0] === 'list') return false;
+    e.preventDefault();
+    n.textContent = n.textContent.slice(s.anchorOffset);
+    const r = document.createRange(); r.setStart(n, 0); r.collapse(true); s.removeAllRanges(); s.addRange(r);
+    if (hit[0] === 'block') this.block(hit[1]); else this.list(hit[1]);
+    if (!n.textContent) { const li = this.up('LI') || this.up(hit[1].toUpperCase()); if (li && !li.innerHTML) li.innerHTML = '<br>'; }
+    return true;
+  }
+  renderVals() {
+    const P = this.props, a = this.state.act, compact = !!P.compact;
+    const T = [
+      ['h1', 'heading-1', 'Heading', () => this.block('h1')], ['h2', 'heading-2', 'Subheading', () => this.block('h2')], 0,
+      ['bold', 'bold', 'Bold  ⌘B', () => this.exec('bold')], ['italic', 'italic', 'Italic  ⌘I', () => this.exec('italic')], ['strike', 'strikethrough', 'Strikethrough', () => this.exec('strikeThrough')], ['code', 'code', 'Inline code', () => this.inlineCode()], ['link', 'link', 'Link', () => this.openLink()], 0,
+      ['ul', 'list', 'Bulleted list', () => this.list('ul')], ['ol', 'list-ordered', 'Numbered list', () => this.list('ol')], ['check', 'list-checks', 'Checklist', () => this.list('check')], 0,
+      ['quote', 'quote', 'Quote', () => this.block('blockquote')], ['pre', 'square-code', 'Code block', () => this.block('pre')], ['hr', 'minus', 'Divider', () => this.exec('insertHorizontalRule')],
+    ].filter(t => !(compact && t && (t[0] === 'pre' || t[0] === 'hr' || t[0] === 'strike')));
+    const tools = T.map(t => t === 0 ? { sep: true, btn: false } : { btn: true, sep: false, icon: t[1], label: t[2].split('  ')[0], title: t[2], on: !!a[t[0]], bg: a[t[0]] ? '#EEE8FD' : 'transparent', fg: a[t[0]] ? '#5132D6' : '#3A3640', down: e => { e.preventDefault(); t[3](); } });
+    return {
+      tools, wrap: compact ? 'nowrap' : 'wrap', ovx: compact ? 'auto' : 'visible', ref: this.ref, linkRef: this.linkRef, bw: compact ? '36px' : '32px',
+      minH: P.minHeight || '240px', fs: compact ? '16px' : '15px', ph: P.placeholder || 'Start writing…', label: P.label || 'Text', empty: this.state.empty,
+      footer: P.footer !== false, wide: !compact, words: this.state.words,
+      onInput: () => {
+        const el = this.ref.current;
+        el.querySelectorAll('ul[data-check] > li[data-done="1"]').forEach(li => { if (!li.textContent.trim() && li.previousElementSibling) li.removeAttribute('data-done'); });
+        this.emit();
+      },
+      onKey: e => {
+        if (e.key === ' ' && this.shortcut(e)) return;
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); e.stopPropagation(); this.openLink(); return; }
+        if (e.key === 'Tab') { const li = this.up('LI'); if (li) { e.preventDefault(); this.exec(e.shiftKey ? 'outdent' : 'indent'); } }
+        e.stopPropagation();
+      },
+      onDown: e => {
+        const li = e.target.closest && e.target.closest('li');
+        if (li && li.parentNode && li.parentNode.hasAttribute && li.parentNode.hasAttribute('data-check') && e.clientX - li.getBoundingClientRect().left < 24) {
+          e.preventDefault(); if (li.getAttribute('data-done') === '1') li.removeAttribute('data-done'); else li.setAttribute('data-done', '1'); this.emit();
+        }
+      },
+      onPaste: e => { const t = e.clipboardData && e.clipboardData.getData('text/plain'); if (t == null) return; e.preventDefault(); document.execCommand('insertHTML', false, this.toHtml(t).replace(/<h2>/g, '<p>').replace(/<\/h2>/g, '</p>') || this.esc(t)); this.emit(); },
+      linkOpen: this.state.linkOpen, linkUrl: this.state.linkUrl, hasLink: this.state.hasLink,
+      onLink: e => this.setState({ linkUrl: e.target.value }),
+      linkKey: e => { if (e.key === 'Enter') { e.preventDefault(); this.applyLink(); } if (e.key === 'Escape') { this.setState({ linkOpen: false }); this.restore(); } },
+      applyLink: e => { e.preventDefault(); this.applyLink(); },
+      unlink: e => { e.preventDefault(); this.restore(); const a = this.up('A'); if (a) a.replaceWith(...a.childNodes); this.setState({ linkOpen: false }); this.emit(); },
+      closeLink: e => { e.preventDefault(); this.setState({ linkOpen: false }); this.restore(); },
+    };
+  }
+}
+</script>
+</body>
+</html>

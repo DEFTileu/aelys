@@ -35,12 +35,28 @@ describe('provider settings form', () => {
     act(() => root.unmount())
   })
 
+it('explains a missing key instead of failing silently and tests with the stored key', async () => {
+  client.aiProviders.mockResolvedValue([{ id: 'p1', kind: 'claude', enabled: true, has_secret: false, model_policy: { default_model: 'model' } }])
+  client.updateAIProvider.mockResolvedValue(undefined); client.setAIProviderSecret.mockResolvedValue(undefined)
+  const probe = vi.fn().mockResolvedValue({ connected: true, code: 'OK' }); Object.assign(client, { probeAIProvider: probe })
+  const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host)
+  await act(async () => root.render(<ProviderSettings />))
+  await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Add key')!.click())
+  await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(host.querySelector('[role=alert]')?.textContent).toContain('API key'); expect(client.updateAIProvider).not.toHaveBeenCalled()
+  const key = host.querySelector<HTMLInputElement>('input[type=password]')!
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(key, 'typed-secret-key'); key.dispatchEvent(new Event('input', { bubbles: true })) })
+  await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Test connection')!.click())
+  expect(client.setAIProviderSecret).toHaveBeenCalledWith('p1', { api_key: 'typed-secret-key' }); expect(probe).toHaveBeenCalledWith('p1')
+  expect(host.textContent).toContain('Connected')
+  act(() => root.unmount())
+})
+
 it('saves a separate transcription provider and clears its key', async () => {
   client.aiProviders.mockResolvedValue([]); client.createAIProvider.mockResolvedValue({ id: 'audio-provider' }); client.setAIProviderSecret.mockResolvedValue(undefined); client.updateAIProvider.mockResolvedValue(undefined)
   const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host)
   await act(async () => root.render(<ProviderSettings />))
-  await act(async () => host.querySelector<HTMLButtonElement>('[role=combobox]')!.click())
-  const option = Array.from(document.querySelectorAll<HTMLButtonElement>('[role=option]')).find(item => item.textContent === 'Transcription (OpenAI compatible)')
+  const option = Array.from(host.querySelectorAll<HTMLButtonElement>('[role=radio]')).find(item => item.textContent?.includes('Transcription'))
   expect(option).toBeTruthy(); await act(async () => option!.click())
   const set = async (label: string, value: string) => {
     const field = Array.from(host.querySelectorAll('label')).find(item => item.textContent?.startsWith(label))!.querySelector('input')!

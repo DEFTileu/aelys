@@ -1,4 +1,0 @@
-.home-m { display: flex; flex-direction: column; gap: 12px; padding: 0 16px; }
-.home-m__title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
-.home-m__customize { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1.5px dashed var(--line-strong); border-radius: 22px; background: transparent; color: var(--ink-soft); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
-.home-m .home-widget [data-widget-heading] { touch-action: manipulation; user-select: none; -webkit-touch-callout: none; }

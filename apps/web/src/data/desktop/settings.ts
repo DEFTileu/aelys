@@ -1,33 +1,11 @@
 import {
-  Blocks,
   History,
   House,
-  Keyboard,
   LayoutGrid,
-  LayoutPanelLeft,
-  Paintbrush,
-  RefreshCw,
-  Shield,
-  Sparkles,
-  User,
   Zap,
   type AelysIconComponent,
 } from '../../icons'
 
-
-export type SettingsNavItem = { title: string; subtitle: string; icon: AelysIconComponent; active?: boolean }
-
-export const settingsNav: SettingsNavItem[] = [
-  { title: 'Profile', subtitle: 'Personal data and account', icon: User },
-  { title: 'Appearance', subtitle: 'Theme, wallpaper, styling', icon: Paintbrush, active: true },
-  { title: 'Home screen', subtitle: 'Blocks and widgets', icon: LayoutPanelLeft },
-  { title: 'Widgets', subtitle: 'Widget settings', icon: LayoutGrid },
-  { title: 'AI & models', subtitle: 'Models and parameters', icon: Sparkles },
-  { title: 'Integrations', subtitle: 'Connected services', icon: Blocks },
-  { title: 'Sync', subtitle: 'Data across devices', icon: RefreshCw },
-  { title: 'Shortcuts', subtitle: 'Quick access', icon: Keyboard },
-  { title: 'Privacy', subtitle: 'Security and data', icon: Shield },
-]
 
 export type ThemeId = 'light' | 'system' | 'dark'
 
@@ -48,8 +26,8 @@ export const accentColors: { name: string; color: string }[] = [
   { name: 'Graphite', color: '#1C1B22' },
 ]
 
-// Wallpapers in public/backgrounds/aelys; the stored `wallpaper` setting is an index into this list.
-const LEGACY_WALLPAPERS = [
+// Original PNGs; keep the existing scene order for persisted wallpaper indexes.
+const ORIGINAL_WALLPAPERS = [
   'golden-sunrise-over-mountain-cityscape',
   'sunset-garden-avenue-with-alpine-peaks',
   'alpine-skyline-cityscape',
@@ -62,10 +40,9 @@ const LEGACY_WALLPAPERS = [
   'rainy-park-path-to-the-ornate-cathedral',
   'snowy-alpine-ice-arena',
   'blizzard-over-the-alpine-gondola',
-].map((name) => `/backgrounds/aelys/${name}.jpg`)
+].map((name) => `/backgrounds/originals/${name}.png`)
 
-// Keep persisted wallpaper indexes stable; the default tile adopts ACTUAL artwork.
-export const WALLPAPERS = ['/backgrounds/aelys/actual-home.png', ...LEGACY_WALLPAPERS.slice(1)]
+export const WALLPAPERS = ORIGINAL_WALLPAPERS
 
 // The design shows five tiles and a "More" tile that reveals the rest.
 export const VISIBLE_WALLPAPERS = 5

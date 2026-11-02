@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthGate } from '../components/AuthGate'
 import { isKeychainAccessRequired } from '../lib/nativeTransport'
 
-const native = vi.hoisted(() => ({ status: vi.fn(), resume: vi.fn(), login: vi.fn(), authorizeKeychain: vi.fn() }))
+const native = vi.hoisted(() => ({ status: vi.fn(), resume: vi.fn(), enroll: vi.fn(), authorizeKeychain: vi.fn() }))
 vi.mock('../lib/nativeTransport', async (importOriginal) => ({
   ...await importOriginal<typeof import('../lib/nativeTransport')>(),
   isNativeHost: () => true,
@@ -14,7 +14,7 @@ let root: ReturnType<typeof createRoot> | undefined
 beforeEach(() => {
   localStorage.removeItem('aelys.signedOut')
   native.status.mockReset().mockResolvedValue({ signed_in: false, initialized: true, can_resume: true, biometric_locked: true })
-  native.resume.mockReset(); native.login.mockReset(); native.authorizeKeychain.mockReset()
+  native.resume.mockReset(); native.enroll.mockReset(); native.authorizeKeychain.mockReset()
 })
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; vi.restoreAllMocks() })
 async function mount(apiStatus: 'ready' | 'error' = 'ready') {
@@ -34,7 +34,7 @@ describe('native biometric entry', () => {
     expect(native.resume).not.toHaveBeenCalled()
     expect(host.textContent).not.toContain('Protected data')
   })
-  it('shows password entry on Android even if a session is reported as biometric locked', async () => {
+  it('shows device connection on Android even if a session is reported as biometric locked', async () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Android')
     const host = await mount()
     expect(host.querySelector('input[type=password]')).not.toBeNull()
@@ -81,7 +81,7 @@ describe('native biometric entry', () => {
     await act(async () => { recoveryButton.click() })
     expect(recoveryButton.disabled).toBe(true)
     expect(unlockButton.disabled).toBe(true)
-    expect(button(host, 'Sign in with password').disabled).toBe(true)
+    expect(button(host, 'Connect another device').disabled).toBe(true)
     await act(async () => { reject('cancelled private detail') })
     expect(button(host, 'Allow macOS access').disabled).toBe(false)
     expect(host.textContent).not.toContain('cancelled private detail')
@@ -128,13 +128,13 @@ describe('native biometric entry', () => {
     await act(async () => { button(host, 'Unlock with Touch ID').click() })
     expect(host.querySelector('[role=alert]')?.textContent).toContain('Keychain access is required')
     expect(button(host, 'Unlock with Touch ID').disabled).toBe(false)
-    expect(button(host, 'Sign in with password').disabled).toBe(false)
+    expect(button(host, 'Connect another device').disabled).toBe(false)
     expect(host.textContent).not.toContain('Protected data')
   })
-  it('shows the Keychain notice when password sign-in is denied', async () => {
-    native.login.mockRejectedValue(new Error('KEYCHAIN_ACCESS_REQUIRED'))
+  it('shows the Keychain notice when device connection is denied', async () => {
+    native.enroll.mockRejectedValue(new Error('KEYCHAIN_ACCESS_REQUIRED'))
     const host = await mount()
-    await act(async () => { button(host, 'Sign in with password').click() })
+    await act(async () => { button(host, 'Connect another device').click() })
     await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
     expect(host.querySelector('[role=alert]')?.textContent).toContain('Keychain access is required')
   })
@@ -151,9 +151,9 @@ describe('native biometric entry', () => {
     expect(native.resume).toHaveBeenCalledTimes(2)
     expect(host.textContent).toContain('Protected data')
   })
-  it('offers password login without prompting Touch ID', async () => {
+  it('offers device reconnection without prompting Touch ID', async () => {
     const host = await mount()
-    await act(async () => { button(host, 'Sign in with password').click() })
+    await act(async () => { button(host, 'Connect another device').click() })
     expect(host.querySelector('input[type=password]')).not.toBeNull()
     expect(native.resume).not.toHaveBeenCalled()
     await act(async () => { button(host, 'Back to Touch ID').click() })
@@ -165,5 +165,50 @@ describe('native biometric entry', () => {
     const host = await mount('error')
     await act(async () => { button(host, 'Server address').click() })
     expect(host.textContent).not.toContain('Android')
+  })
+})
+
+
+describe('native passwordless connection', () => {
+  it('never offers account email/password on an unpaired native device', async () => {
+    native.status.mockResolvedValue({ signed_in: false, initialized: true, can_resume: false, biometric_locked: false })
+    const host = await mount()
+    expect(host.querySelector('#aelys-entry-email')).toBeNull()
+    expect(host.querySelector('#aelys-entry-password')).toBeNull()
+    expect(host.querySelector('#aelys-entry-token')).not.toBeNull()
+    expect(host.textContent).toContain('Connect this device')
+    expect(host.textContent).not.toContain('Create account with password')
+  })
+  it('automatically opens a connected device without biometric policy', async () => {
+    native.status.mockResolvedValue({ signed_in: false, initialized: true, can_resume: true, biometric_locked: false })
+    native.resume.mockResolvedValue({ signed_in: true, owner_id: 'owner' })
+    const host = await mount()
+    expect(native.resume).toHaveBeenCalledOnce()
+    expect(host.textContent).toContain('Protected data')
+    expect(native.enroll).not.toHaveBeenCalled()
+  })
+  it('reopens automatically after access expiry while preserving explicit biometric gates', async () => {
+    native.status.mockResolvedValueOnce({ signed_in: true, owner_id: 'owner' }).mockResolvedValue({ signed_in: false, initialized: true, can_resume: true, biometric_locked: false })
+    native.resume.mockResolvedValue({ signed_in: true, owner_id: 'owner' })
+    const host = await mount()
+    await act(async () => { window.dispatchEvent(new CustomEvent('aelys:native-session-expired', { detail: { origin: 'http://127.0.0.1:8000' } })) })
+    expect(native.resume).toHaveBeenCalledOnce()
+    expect(host.textContent).toContain('Protected data')
+  })
+  it('claims a one-time code through native IPC and clears it before showing protected data', async () => {
+    native.status.mockResolvedValue({ signed_in: false, initialized: true, can_resume: false, biometric_locked: false })
+    native.enroll.mockResolvedValue({ signed_in: true, owner_id: 'owner', device_id: 'device' })
+    const host = await mount()
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      const token = host.querySelector<HTMLInputElement>('#aelys-entry-token')!
+      setter.call(token, 'one-time-connection-code'); token.dispatchEvent(new Event('input', { bubbles: true }))
+      const name = host.querySelector<HTMLInputElement>('#aelys-entry-device-name')!
+      setter.call(name, 'My Mac'); name.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
+    expect(native.enroll).toHaveBeenCalledWith('http://127.0.0.1:8000', 'one-time-connection-code', 'My Mac')
+    expect(host.textContent).toContain('Protected data')
+    expect(host.querySelector('#aelys-entry-token')).toBeNull()
   })
 })

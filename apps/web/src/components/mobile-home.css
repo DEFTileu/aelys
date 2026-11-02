@@ -1,0 +1,99 @@
+/* Bell: the design's 26px circle in a 36px target with an 8px unread dot; the count stays in the aria-label. */
+.mobile-shell__header .notification-center__trigger { width: 36px; height: 36px; padding: 5px; justify-content: center; border: 0; border-radius: 50%; background: rgba(255,255,255,.88); background-clip: content-box; color: #1c1b22; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.mobile-shell__header .notification-center__badge { top: 13px; right: 14px; min-width: 0; width: 8px; height: 8px; padding: 0; border: 1.5px solid #fff; border-radius: 50%; font-size: 0; }
+
+/* ACTUAL mobile Home. Card bodies come from desktopBodies.tsx; these tokens and metrics are the design's. */
+.mobile-shell {
+  --dw-edge: rgba(255,255,255,.35); --dw-pill: rgba(255,255,255,.88); --dw-section: rgba(255,255,255,.72);
+  --dw-btn: #fff; --dw-btn-line: #E7E2DE; --dw-chip: #F1EDEA; --dw-chip-ink: #3A3640; --dw-hover: rgba(128,118,140,.14);
+  --dw-line: #EFEAE6; --dw-ink2: #4F4A56; --dw-sub: #F7F4F1; --dw-track: #ECE7E3; --dw-ring-bg: #FDFBFA; --dw-check: #BDB7C2;
+  --dw-green: #0E7A57; --dw-focus-btn: #FDE3DC; --dw-focus-ink: #D63F2C; --dw-focus-btn-hover: rgba(240,115,98,.24);
+  --dw-mail-badge: #FDE3E1; --dw-mail-badge-ink: #C9302C; --dw-ring-track: #ECE5DF;
+  --dw-tint-0: #E4EEFD; --dw-tint-1: #EEE8FD; --dw-tint-2: #FDE6E1; --dw-tint-3: #DCF5EC; --dw-tint-4: #FDF1D9;
+}
+:root[data-theme='dark'] .mobile-shell {
+  --dw-edge: rgba(255,255,255,.08); --dw-pill: rgba(32,29,40,.86); --dw-section: rgba(32,29,40,.86);
+  --dw-btn: #201D28; --dw-btn-line: #34303D; --dw-chip: #2A2733; --dw-chip-ink: #CBC6D5;
+  --dw-line: #34303D; --dw-ink2: #CBC6D5; --dw-sub: #2A2733; --dw-track: #2A2733; --dw-ring-bg: #201D28; --dw-green: #5FD7A8;
+  --dw-focus-btn: rgba(240,115,98,.18); --dw-mail-badge: rgba(240,115,98,.18); --dw-mail-badge-ink: #FF8A84; --dw-ring-track: rgba(130,120,140,.22);
+  --dw-tint-0: rgba(74,142,240,.2); --dw-tint-1: rgba(139,108,240,.22); --dw-tint-2: rgba(240,115,98,.18); --dw-tint-3: rgba(54,190,138,.18); --dw-tint-4: rgba(239,178,62,.18);
+}
+.mobile-shell--home .home-screen { padding: 0 16px !important; gap: 12px !important; }
+.home-greeting { margin-top: 24px; color: #fff; text-shadow: 0 1px 12px rgba(20,20,45,.45); }
+.home-greeting__date { font-size: 14px; line-height: 20px; }
+.home-greeting h1 { margin: 4px 0 0; font-size: 26px; line-height: 32px; font-weight: 700; letter-spacing: -.02em; }
+.home-greeting__row { display: flex; align-items: flex-end; gap: 12px; margin-top: 6px; font-size: 14px; line-height: 20px; }
+.home-greeting__row > div:first-child { flex: 1; min-width: 0; }
+.home-greeting__weather { flex: none; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 18px; font-weight: 600; text-shadow: none; background: rgba(255,255,255,.22); backdrop-filter: blur(16px) saturate(1.6); -webkit-backdrop-filter: blur(16px) saturate(1.6); border: 1px solid rgba(255,255,255,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 14px rgba(20,20,45,.18); }
+.home-greeting__weather svg { color: #ffd27a; }
+.mobile-shell .home-widget-grid { --widget-columns: 2; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: auto; grid-auto-flow: row; gap: 12px; margin: 12px 0 0; border-radius: 0; }
+.mobile-shell .home-widget-grid--editing { padding: 0; background: none; }
+.mobile-shell .home-widget-grid > .home-widget { grid-row: auto; min-height: 0; }
+.mobile-shell .home-widget { padding: 16px; border-radius: 22px; border: 1px solid var(--dw-edge); box-shadow: 0 6px 20px rgba(40,30,30,.07); }
+.mobile-shell .home-widget--editing { border: 1.5px dashed rgba(106,76,242,.55); }
+.mobile-shell .home-widget-drag-bar { height: auto; overflow: visible; }
+.mobile-shell .home-widget-body { display: block; overflow: visible; }
+.mobile-shell .home-customize { display: flex; align-items: center; justify-content: center; gap: 8px; height: 40px; border: 1.5px dashed var(--pg-disabled, #cfc9d4); border-radius: 20px; color: var(--pg-ink-3, #4f4a56); font-size: 14px; font-weight: 500; }
+.mobile-shell--home .home-layout-help { color: #fff; }
+
+/* Card header: 28px row, title 14/600, count badge, 36px chevron target. */
+.mobile-shell .dw-head { gap: 8px; height: 28px; margin-bottom: 8px; }
+.mobile-shell .dw-head-icon { display: none; }
+.mobile-shell .dw-head-title { flex: 1; font-size: 14px; line-height: 20px; }
+.mobile-shell .dw-head-badge { min-width: 0; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 13px; line-height: 22px; }
+.mobile-shell .home-mobile-open { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin: -6px -8px -6px 0; opacity: .8; }
+.mobile-shell .dw-grid { grid-template-columns: minmax(0,1fr) !important; }
+
+/* Today / Calendar */
+.mobile-shell .dw-task { height: 40px; }
+.mobile-shell .dw-check { width: 22px; height: 22px; font-size: 13px; }
+.mobile-shell .dw-cal-date { margin: -6px 0 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.mobile-shell .dw-ev-time { width: 44px; font-size: 13px; line-height: 20px; }
+.mobile-shell .dw-ev-pill { padding: 6px 12px; border-radius: 12px; }
+.mobile-shell .dw-ev-title { font-size: 14px; line-height: 20px; }
+
+/* Focus */
+.mobile-shell .dw-focus { gap: 16px; }
+.mobile-shell .dw-focus--row { justify-content: flex-start; }
+.mobile-shell .dw-focus--row .dw-ctrls { margin-left: auto; }
+.mobile-shell .dw-ring { width: 108px; height: 108px; padding: 7px; }
+.mobile-shell .dw-ring-time { font-size: 20px; line-height: 28px; letter-spacing: 0; }
+.mobile-shell .dw-round { width: 36px; height: 36px; }
+.mobile-shell .dw-select { display: none; }
+
+/* Weather: icon + temperature, place row, and the four-column forecast on wide cards only. */
+.mobile-shell .dw-weather-now { gap: 10px; margin-top: 0; }
+.mobile-shell .dw-weather-now svg { width: 36px; height: 36px; }
+.mobile-shell .dw-weather-temp { font-size: 26px; line-height: 32px; }
+.mobile-shell .dw-weather-desc { font-size: 12px; line-height: 16px; }
+.mobile-shell .dw-weather-loc { display: flex; align-items: center; gap: 4px; margin-top: 12px; font-size: 12px; line-height: 16px; }
+.mobile-shell .dw-weather-loc > span:first-of-type { flex: 1; min-width: 0; }
+.mobile-shell .dw-weather-hours { position: static; display: none; margin-top: 12px; }
+.mobile-shell .home-widget[data-size-key='M'] .dw-weather-hours, .mobile-shell .home-widget[data-size-key='L'] .dw-weather-hours { display: grid; }
+.mobile-shell .dw-weather-hours svg { width: 18px; height: 18px; }
+
+/* Mail / Projects / Notes */
+.mobile-shell .dw-list { gap: 0; }
+.mobile-shell .dw-row { min-height: 48px; }
+.mobile-shell .dw-row .dw-tile { width: 36px; height: 36px; border-radius: 10px; font-size: 15px; font-weight: 700; }
+.mobile-shell .dw-row-title--head { font-weight: 600; }
+.mobile-shell .dw-row-title--head > span:last-child { font-size: 13px; }
+.dw-unread { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #2f6fe4; }
+.mobile-shell .dw-proj { gap: 12px; }
+.mobile-shell .dw-proj-item .dw-tile { width: 36px; height: 36px; }
+.mobile-shell .dw-proj-line > span:last-child { font-size: 13px; }
+.dw-note-m { display: block; width: 100%; padding: 4px 0 8px; text-align: left; }
+.dw-note-m-head { display: flex; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 600; }
+.dw-note-m-head > span:first-child { flex: 1; min-width: 0; }
+.dw-note-m-head > span:last-child { font-size: 13px; font-weight: 400; color: var(--muted); }
+.dw-note-m-sum { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 16px; color: var(--muted); }
+
+/* Finances: S shows the seven bars under the total, wider cards show the spending rows. */
+.mobile-shell .dw-fin-head { flex-direction: column; align-items: stretch; margin-bottom: 0; }
+.mobile-shell .dw-fin-total { font-size: 20px; line-height: 28px; }
+.mobile-shell .dw-fin-bars { gap: 4px; margin-top: 12px; }
+.mobile-shell .dw-fin-bars span { flex: 1; width: auto; }
+.mobile-shell .home-widget:not([data-size-key='S']):not([data-size-key='Tall']) .dw-fin-bars { display: none; }
+.mobile-shell .dw-fin-row { gap: 10px; height: 36px; font-size: 14px; }
+.mobile-shell .dw-fin-row:first-of-type { margin-top: 8px; }
+.mobile-shell .home-widget[data-size-key='S'] .dw-fin-row { display: none; }

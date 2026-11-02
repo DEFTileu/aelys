@@ -114,7 +114,7 @@ async def test_cancel_endpoint_stops_active_provider_stream_and_keeps_cancelled_
             conversation = await client.post(
                 "/api/v1/ai/conversations",
                 headers=headers,
-                json={"tool_scope": {"scopes": ["tasks.write"]}} if tool_mode else {},
+                json={"tool_scope": {"scopes": ["tasks.write"]}} if tool_mode else {"tool_scope": {"scopes": []}},
             )
             assert conversation.status_code == 200
             run = await client.post(

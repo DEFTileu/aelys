@@ -136,3 +136,126 @@
   .actual-finance { position:relative; }
   .actual-finance > .actual-topline { position:absolute; top:-56px; right:28px; z-index:4; margin:0; }
 }
+
+/* Mobile parity with ACTUAL-Mobile: Mail list/reader and Finances (card 22px, 1px #EDE8E3, 0 6px 20px shadow). */
+.actual-mail-rows { display: contents; }
+@media (max-width: 700px) {
+  .actual-workspace { --m-shadow: 0 6px 20px rgba(40,30,30,.06); }
+  :root[data-theme='dark'] .actual-workspace { --m-shadow: var(--shadow); }
+  .actual-workspace .actual-panel, .actual-workspace .connected-card { border-radius: 22px; box-shadow: var(--m-shadow); }
+  .actual-mail-list { padding: 0; gap: 12px; border: 0; background: transparent; box-shadow: none; }
+  .actual-mail-list > label.actual-search { height: 48px; margin: 0; padding: 0 14px; gap: 10px; border: 1px solid var(--amf-border); border-radius: 22px; background: var(--amf-surface); box-shadow: var(--m-shadow); }
+  .actual-mail-list .actual-search input { font-size: 15px; height: auto; }
+  .actual-mail-list .actual-search svg { width: 18px; height: 18px; }
+  .actual-mail-list .actual-compose-icon { display: none; }
+  .actual-mobile-mail-actions { gap: 8px; }
+  .actual-mobile-mail-actions .button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 18px; font-size: 13px; font-weight: 600; }
+  .actual-mobile-folders button { border: 0; background: var(--amf-surface); color: var(--amf-text); }
+  .actual-mobile-folders button[aria-pressed='true'] { background: #6a4cf2; color: #fff; }
+  .actual-mail-rows { display: block; padding: 6px; border: 1px solid var(--amf-border); border-radius: 22px; background: var(--amf-surface); box-shadow: var(--m-shadow); }
+  .actual-mail-row { gap: 12px; padding: 12px 10px; border-radius: 14px; }
+  .actual-mail-row[aria-pressed='true'] { background: transparent; }
+  .actual-mail-row:active { background: rgba(128,118,140,.14); }
+  .actual-mail-row .actual-avatar { background: #ede7fb; color: #5132d6; }
+  .actual-mail-row-text { gap: 0; line-height: 20px; }
+  .actual-row-top { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 500; }
+  .actual-mail-row--unread .actual-row-top, .actual-mail-row--unread .actual-row-subject { font-weight: 600; }
+  .actual-row-top strong { flex: 1; min-width: 0; font-size: 15px; font-weight: inherit; }
+  .actual-row-top time { font-size: 12px; font-weight: 400; color: var(--amf-muted); }
+  .actual-unread-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #2f6fe4; }
+  .actual-row-subject { display: block; font-size: 14px; font-weight: 500; }
+  .actual-row-snippet { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--amf-muted); }
+  .actual-row-snippet small { min-width: 0; font-size: 12px; }
+  .actual-row-snippet em { flex: none; padding: 0 6px; border-radius: 6px; background: #fdf1d9; color: #8a5a00; font-style: normal; font-weight: 600; }
+  .actual-empty { margin: 0; padding: 24px; font-size: 14px; color: var(--amf-muted); }
+  /* Reader: subject card, then reply card, 10px apart. */
+  .actual-mail-reader article > h2 { padding: 18px 18px 0; font-weight: 600; }
+  .actual-sender .actual-avatar { width: 36px; height: 36px; background: #ede7fb; color: #5132d6; }
+  .actual-sender p { display: grid; flex: 1; min-width: 0; }
+  .actual-sender p strong { font-size: 14px; font-weight: 600; }
+  .actual-sender p span { font-size: 12px; color: var(--amf-muted); }
+  .actual-mail-reader .mail-body { font-size: 15px; line-height: 24px; color: var(--amf-text); }
+  .actual-reply { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--amf-border); box-shadow: var(--m-shadow); }
+  .actual-reply-heading { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; }
+  .actual-reply-heading strong { flex: 1; font-weight: 600; }
+  .actual-reply-heading em { height: 22px; padding: 0 8px; border-radius: 11px; background: #eeeafd; color: #5132d6; font-size: 11px; line-height: 22px; font-weight: 600; font-style: normal; }
+  .actual-reply-heading em[data-state='none'] { background: #f1edea; color: #4f4a56; }
+  .actual-reply textarea { padding: 12px; border-radius: 14px; font-size: 15px; line-height: 22px; resize: none; }
+  .actual-reply-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+  .actual-reply-actions .button { height: 44px; min-height: 44px; border-radius: 14px; font-size: 14px; font-weight: 600; justify-content: center; }
+  .actual-reply-actions .button--primary { background: #6a4cf2; color: #fff; }
+  .actual-reply-actions > span { grid-column: 1 / -1; font-size: 12px; }
+
+  /* Finances */
+  .actual-finance-mobile-total { box-shadow: 0 12px 30px rgba(81,50,214,.35); margin-bottom: 0; }
+  .actual-finance-mobile-total > div:not(.actual-mobile-record-actions) span { opacity: .9; }
+  .actual-mobile-record-actions button { display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+  .actual-finance .actual-accounts { gap: 10px; margin: 0 -16px; padding: 0 16px; scrollbar-width: none; }
+  .actual-finance .actual-account, .actual-finance .actual-new-account { flex: none; width: 168px; min-height: 0; padding: 14px; border-width: 1px; border-radius: 22px; box-shadow: var(--m-shadow); }
+  .actual-finance .actual-account { display: block; }
+  .actual-finance .actual-account-heading { gap: 8px; font-size: 13px; }
+  .actual-finance .actual-account-heading .actual-icon { width: auto; height: auto; background: transparent; color: #6a4cf2; }
+  .actual-finance .actual-account-heading strong { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; line-height: normal; text-align: left; }
+  .actual-finance .actual-account-balance { margin-top: 8px; font-size: 18px; line-height: normal; letter-spacing: 0; }
+  .actual-finance .actual-history { padding: 6px; }
+  .actual-finance .actual-history-head { padding: 10px 10px 4px; }
+  .actual-finance .actual-history-head h2 { font-size: 15px; font-weight: 600; line-height: normal; }
+  .actual-finance .actual-history-day { display: flex; align-items: baseline; gap: 8px; padding: 10px 10px 2px; }
+  .actual-finance .actual-history-day span { font-size: 12px; font-weight: 600; color: var(--amf-muted); }
+  .actual-finance .actual-history-day small { font-size: 12px; color: var(--amf-muted); }
+  .actual-finance .actual-history-row { min-height: 56px; padding: 4px 10px; gap: 12px; }
+  .actual-finance .actual-history-row .actual-icon { width: 38px; height: 38px; border-radius: 12px; }
+  .actual-finance .actual-history-row strong { font-size: 15px; font-weight: 500; }
+  .actual-finance .actual-history-row small { font-size: 12px; }
+  .actual-finance .actual-history-row > b { font-size: 15px; font-weight: 600; }
+  .actual-finance .actual-history-row > b.is-income { color: #0e7a57; }
+  /* Record bottom sheet */
+  .actual-record.actual-record-open { gap: 14px; max-height: 86vh; padding: 10px 18px 28px; border: 0; border-radius: 28px 28px 0 0; background: #fbf9f7; box-shadow: 0 -12px 40px rgba(20,10,30,.25), 0 -20px 0 100vmax rgba(20,14,30,.35); color: #1c1b22; }
+  :root[data-theme='dark'] .actual-record.actual-record-open { background: var(--amf-surface); color: var(--amf-text); }
+  .actual-record-open::before { content: ''; flex: none; width: 40px; height: 5px; margin: 0 auto; border-radius: 3px; background: #d6d0da; }
+  .actual-record-open .actual-record-title h2 { flex: 1; font-size: 18px; line-height: normal; font-weight: 700; }
+  .actual-record-open .actual-record-close { width: 36px; height: 36px; padding: 0; border-radius: 50%; background: #ece7e3; color: #1c1b22; font-size: 20px; line-height: 36px; text-align: center; }
+  .actual-record-open .actual-record-types { background: #efeae5; border-radius: 14px; }
+  .actual-record-open .actual-record-types button { height: 38px; border-radius: 11px; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .actual-record-open .actual-record-types button[aria-checked='true'] { background: #fff; color: #5132d6; box-shadow: none; }
+  .actual-record-open .actual-amount { background: #fff; color: #625d69; font-size: 22px; font-weight: 600; }
+  .actual-record-open .actual-amount input { background: transparent; color: #1c1b22; }
+  .actual-record-open .actual-record-fields input { height: 44px; padding: 0 14px; border-radius: 14px; background: #f7f4f1; font-size: 15px; }
+  .actual-record-open .actual-label, .actual-record-mobile-choices { color: #4f4a56; }
+  .actual-record-mobile-choices button { border-color: #e7e2de; background: #fff; color: #1c1b22; font-weight: 600; }
+  .actual-record-mobile-choices button[aria-pressed='true'] { background: #6a4cf2; border-color: #e7e2de; color: #fff; }
+  .actual-record-open .actual-record-submit { height: 52px; border-radius: 14px; background: #6a4cf2; font-size: 15px; font-weight: 600; }
+}
+
+/* Compose + "..." menu (desktop: left column; compact: menu in the list header and a 56px FAB). */
+.actual-compose-row { display: flex; gap: 8px; margin-bottom: 12px; flex: none; }
+.actual-compose-row .actual-compose { flex: 1; height: 40px; justify-content: center; gap: 8px; }
+.actual-more { position: relative; flex: none; }
+.actual-more > summary { list-style: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--line-strong, var(--amf-border)); border-radius: 10px; background: var(--surface-solid, var(--amf-surface)); color: var(--amf-text); cursor: pointer; }
+.actual-more > summary::-webkit-details-marker { display: none; }
+.actual-more-menu { position: absolute; z-index: 20; top: 46px; left: 0; min-width: 190px; display: grid; gap: 2px; padding: 6px; border: 1px solid var(--amf-border); border-radius: 14px; background: var(--surface-solid, var(--amf-surface)); box-shadow: 0 12px 36px #140a1e26; }
+.actual-more-menu button { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--amf-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; white-space: nowrap; }
+.actual-more-menu button:hover:not(:disabled) { background: var(--amf-selected); }
+.actual-more-menu button:disabled { opacity: .5; cursor: default; }
+.actual-fab { display: none; }
+.actual-mobile-mail-actions { justify-content: flex-end; }
+@media (max-width: 1199px) {
+  .actual-fab { display: flex; align-items: center; justify-content: center; position: fixed; z-index: 11; right: 16px; bottom: calc(28px + env(safe-area-inset-bottom)); width: 56px; height: 56px; border: 0; border-radius: 50%; background: var(--accent, #6A4CF2); color: #fff; box-shadow: 0 10px 26px rgba(142,115,245,.5); cursor: pointer; }
+  .actual-more-menu { left: auto; right: 0; }
+  /* The shell's AI orb sits in the same corner; Compose takes it on Mail. */
+  .mobile-shell:has(.actual-mail) .mobile-shell__fab { display: none; }
+}
+@media (max-width: 700px) { .actual-reader-open .actual-fab { display: none; } }
+/* Later desktop rules set the reader to display:flex; on phones only one pane shows at a time (list, or the reader once a message is open). */
+@media (max-width: 700px) {
+  .actual-mail-grid .actual-mail-reader { display: none; }
+  .actual-mail-grid.actual-reader-open .actual-mail-reader { display: flex; }
+  .actual-mail-grid.actual-reader-open .actual-mail-list { display: none; }
+}
+/* In the phone column layout the cards must span the width (align-items: start from the desktop grid shrank them). */
+@media (max-width: 700px) { .actual-finance-columns { align-items: stretch; } .actual-finance-columns > * { min-width: 0; } }
+/* The search label is already the pill: the input inside it must not draw a second box. */
+@media (max-width: 700px) {
+  .actual-mail-list .actual-search input { border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+  .actual-mail-list > .actual-mobile-mail-actions { justify-content: flex-end; margin-top: 8px; }
+}

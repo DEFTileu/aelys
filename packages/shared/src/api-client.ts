@@ -1,6 +1,7 @@
 import type {
+  KnowledgeSource, KnowledgeScope,
   MemoryFactIn, MemoryFactPatch, OwnerMemoryFact,
-  ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIConversation, AIMessage, AIMessageIn, AIProvider, AIProviderSecretResponse,
+  ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIAction, AIAttachment, AIAttachmentIn, AIConversation, AIFeedback, AIMessage, AIMessageIn, ConversationPatch, AIProvider, AIProviderSecretResponse,
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
@@ -14,7 +15,7 @@ import type {
 import type { EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
 import type { GoogleCalendarStatus, GoogleCalendarSync, DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
 
-import type { TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
+import type { TelegramChatAvailability, TelegramChatSendIn, TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
 
 export type QueryValue = string | number | boolean | null | undefined;
 export type Query = Readonly<Record<string, QueryValue>>;
@@ -331,6 +332,9 @@ export class ApiClient {
   public createResourceLink(body: ResourceLinkCreate, options?: RequestOptions) { return this.request<ResourceLinkResponse>("/api/v1/resource-links", this.write(body, options)); }
   public deleteResourceLink(linkId: Id, options?: RequestOptions) { return this.request<DeleteResponse>(`/api/v1/resource-links/${encodeURIComponent(linkId)}`, this.write(undefined, options, "DELETE")); }
 
+  public searchKnowledge(query: string, scope: KnowledgeScope = {}, options?: RequestOptions) {
+    return this.request<readonly KnowledgeSource[]>("/api/v1/knowledge/search", { ...options, method: "POST", body: { query, ...scope }, queueOnOffline: false });
+  }
   public notes(options?: RequestOptions) { return this.request<readonly NoteOut[]>("/api/v1/notes", this.read(options, "notes")); }
   public createNote(body: NoteIn, options?: RequestOptions) { return this.request<NoteOut>("/api/v1/notes", this.write(body, options)); }
   public note(itemId: Id, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.read(options)); }
@@ -427,6 +431,56 @@ export class ApiClient {
   public syncTelegram(options?: RequestOptions) { return this.request<{ readonly processed: number }>("/api/v1/integrations/telegram/sync", this.write({}, { ...options, queueOnOffline: false })); }
   public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
   public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
+  /** Private media is downloaded only to memory, with no cache/outbox/token in its URL. */
+  public telegramMessageMedia(id: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+    return this.privateBlob(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/media`, options);
+  }
+  /** Chat profile picture; the server caches it briefly in memory, nothing is stored there on disk. */
+  public telegramChatAvatar(chatId: number, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+    return this.privateBlob(`/api/v1/integrations/telegram/chats/${encodeURIComponent(String(chatId))}/avatar`, options);
+  }
+  private async privateBlob(path: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {
+    const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
+    const headers: Record<string,string> = { Accept: "image/*,audio/*" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timer = globalThis.setTimeout(() => controller.abort(), 60_000);
+    const abort = () => controller.abort();
+    options?.signal?.addEventListener("abort", abort, { once:true });
+    if (options?.signal?.aborted) controller.abort();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {method:"GET", headers, signal:controller.signal, cache:"no-store"});
+      if (!response.ok) return await this.parseResponse<never>(response);
+      const type = (response.headers.get("Content-Type") ?? "").split(";")[0]!.trim().toLowerCase();
+      if (!["image/jpeg","image/png","image/webp","image/gif","audio/ogg","audio/mpeg","audio/mp4","audio/wav","audio/flac","audio/webm"].includes(type)) throw new ApiError(415,"TELEGRAM_MEDIA_UNSUPPORTED","Unsupported media format");
+      const limit=20*1024*1024;
+      const length=response.headers.get("Content-Length");
+      if (length !== null && (!/^\d+$/.test(length) || Number(length)>limit)) throw new ApiError(413,"TELEGRAM_MEDIA_TOO_LARGE","Media exceeds the preview limit");
+      reader=response.body?.getReader();
+      if (!reader) throw new ApiError(422,"TELEGRAM_MEDIA_UNAVAILABLE","Media is unavailable");
+      const chunks:ArrayBuffer[]=[];
+      let size=0;
+      while (true) {
+        const part=await reader.read(); if(part.done)break;
+        size+=part.value.byteLength;
+        if(size>limit)throw new ApiError(413,"TELEGRAM_MEDIA_TOO_LARGE","Media exceeds the preview limit");
+        chunks.push(Uint8Array.from(part.value).buffer);
+      }
+      if(size===0)throw new ApiError(422,"TELEGRAM_MEDIA_UNAVAILABLE","Media is empty");
+      return new Blob(chunks,{type});
+    } catch(error) {
+      if(error instanceof ApiError)throw error;
+      throw new NetworkError("Media download failed",error);
+    } finally {
+      void reader?.cancel().catch(()=>undefined);
+      globalThis.clearTimeout(timer);
+      options?.signal?.removeEventListener("abort",abort);
+      controller.abort();
+    }
+  }
+  public telegramChats(options?: RequestOptions) { return this.request<readonly TelegramChatAvailability[]>("/api/v1/integrations/telegram/chats", this.read({ ...options, cacheKey: undefined })); }
+  public sendTelegramChatMessage(body: TelegramChatSendIn, options: RequestOptions & { readonly idempotencyKey: string }) { return this.request<TelegramBusinessMessage>("/api/v1/integrations/telegram/chats/send", this.write(body, { ...options, queueOnOffline: false })); }
   public sendTelegramMessage(id: string, body: { readonly version: number; readonly text: string }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/send`, this.write(body, { ...options, queueOnOffline: false })); }
 
   public ownerMemory(query?: string) { return this.request<readonly OwnerMemoryFact[]>("/api/v1/ai/memory", { method: "GET", query: query ? { query } : undefined, allowCacheFallback: false }); }
@@ -442,6 +496,13 @@ export class ApiClient {
   public setAIProviderSecret(providerId: Id, body: { readonly api_key: string }, options?: RequestOptions) { return this.request<AIProviderSecretResponse>(`/api/v1/ai/providers/${encodeURIComponent(providerId)}/secret`, this.write(body, { ...options, queueOnOffline: false }, "PUT")); }
   public deleteAIProviderSecret(providerId: Id, options?: RequestOptions) { return this.request<{ readonly deleted: boolean; readonly provider_id: Id }>(`/api/v1/ai/providers/${encodeURIComponent(providerId)}/secret`, this.write(undefined, { ...options, queueOnOffline: false }, "DELETE")); }
   public createAIConversation(body: ConversationIn, options?: RequestOptions) { return this.request<AIConversation>("/api/v1/ai/conversations", this.write(body, options)); }
+  public updateAIConversation(id: Id, body: ConversationPatch) { return this.request<AIConversation>(`/api/v1/ai/conversations/${encodeURIComponent(id)}`, this.write(body, { queueOnOffline: false }, "PATCH")); }
+  public aiConversationActions(conversationId: Id, options?: RequestOptions) { return this.request<readonly AIAction[]>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/actions`, this.read(options)); }
+  public approveAIAction(id: Id) { return this.request<AIAction>(`/api/v1/ai/actions/${encodeURIComponent(id)}/approve`, this.write(undefined, { queueOnOffline: false })); }
+  public rejectAIAction(id: Id) { return this.request<AIAction>(`/api/v1/ai/actions/${encodeURIComponent(id)}/reject`, this.write(undefined, { queueOnOffline: false })); }
+  public uploadAIAttachment(body: AIAttachmentIn) { return this.request<AIAttachment>("/api/v1/ai/attachments", this.write(body, { queueOnOffline: false })); }
+  public deleteAIAttachment(id: Id) { return this.request<{ readonly deleted?: boolean }>(`/api/v1/ai/attachments/${encodeURIComponent(id)}`, this.write(undefined, { queueOnOffline: false }, "DELETE")); }
+  public setAIMessageFeedback(id: Id, feedback: AIFeedback) { return this.request<AIMessage>(`/api/v1/ai/messages/${encodeURIComponent(id)}`, this.write({ feedback }, { queueOnOffline: false }, "PATCH")); }
   public aiMessages(conversationId: Id, options?: RequestOptions) { return this.request<readonly AIMessage[]>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/messages`, this.read(options)); }
   public addAIMessage(conversationId: Id, body: AIMessageIn, options?: RequestOptions) { return this.request<AIMessage>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}/messages`, this.write(body, options)); }
   public createAIRun(body: AIRunIn, options?: RequestOptions) { return this.request<AIRun>("/api/v1/ai/runs", this.write(body, options)); }

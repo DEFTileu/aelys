@@ -56,3 +56,15 @@ imports into versioned CalendarEvent projections. Manual import and the existing
 15-minute connector step never write Google events. Local and live acceptance
 are reported separately in PERSONAL_OS_BOT_REPORT.md; no credentialed OAuth is
 implied by implementation. Attachments storage and other OPEN decisions remain.
+
+2026-11-01 owner-approved Telegram follow-up: allow independent manual text
+messages in existing permitted Business chats, with a persistent composer and
+Send disabled while unavailable. This does not remove can_reply, the incoming
+24-hour window, Policy Engine, secretary CAS or unknown-delivery protections.
+Implementation and validation: optimization/telegram-chat-compose.md.
+
+2026-11-01 owner-approved follow-up: ordinary Telegram messages by default,
+explicit in-chat Reply selection, and owner-only viewing/listening to received
+Business photos/voice/audio. This supersedes the previous exclusion only for
+private ephemeral viewing; permanent attachments, AI Business media processing
+and media sending remain outside this slice. No can_reply/24-hour/policy bypass.

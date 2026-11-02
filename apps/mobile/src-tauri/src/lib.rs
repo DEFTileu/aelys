@@ -21,6 +21,7 @@ fn runtime_policy() -> MobileRuntimePolicy {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_aelys_session_store::init())
         .setup(|app| {
             app.manage(native::NativeStorage::new(app.handle()));
@@ -35,6 +36,7 @@ pub fn run() {
             native::native_biometric_status,
             native::native_biometric_set,
             native::native_login,
+            native::native_enroll,
             native::native_resume,
             native::native_logout,
             native::native_operation,

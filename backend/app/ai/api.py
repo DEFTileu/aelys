@@ -6,15 +6,17 @@ import ipaddress
 import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.models import (
+    AIAction,
+    AIAttachment,
     AIConversation,
     AIMessage,
     AIProvider,
@@ -28,17 +30,31 @@ from app.core.models import (
 from app.core.security import bearer_scheme, current_principal, decode_token
 from app.domains import capture
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .chat_support import (
+    ATTACHMENT_INJECT_CHARS,
+    ATTACHMENT_INJECT_TOTAL,
+    DEFAULT_SCOPES,
+    READ_SCOPES,
+    SYSTEM_POLICY,
+    WRITE_SCOPES,
+    extract_attachment,
+    gate_writes,
+    preview,
+    tool_meta,
+)
 from .crypto import decrypt_secret, encrypt_secret
-from .errors import PolicyDenied, RunCancelled, ToolValidationError
+from .errors import PolicyDenied, RunCancelled, ToolValidationError, redact_error
 from .execution import Adapter, AIExecutionService
 from .http_transport import HttpxTransport
+from .knowledge import KnowledgeScope, context_messages, retrieve, validate_scope
 from .models import (
     Capability,
     ChatMessage,
@@ -59,9 +75,33 @@ from .turn import run_tool_turn
 router=APIRouter()
 _active_cancellations: dict[str, asyncio.Event] = {}
 class ProviderIn(BaseModel): kind:str=Field(pattern="^(claude|openrouter|transcription)$"); base_url:str|None=None; enabled:bool=True; model_policy:dict={}; secret_ref:str|None=None
-class ConversationIn(BaseModel): project_id:str|None=None; title:str="Conversation"; tool_scope:dict=Field(default_factory=dict)
+class ConversationIn(BaseModel):
+    project_id: str | None = None
+    title: str = "Conversation"
+    tool_scope: dict = Field(default_factory=dict)
+    knowledge: KnowledgeScope | None = None
 class MessageIn(BaseModel): role:str=Field(pattern="^(user|assistant|system|tool)$"); content:str; source_refs:list[dict]=[]
-class RunIn(BaseModel): conversation_id:str; message:str; routing:dict={}; tool_scope:dict={}; idempotency_key:str
+class RunIn(BaseModel):
+    conversation_id: str
+    message: str
+    routing: dict = Field(default_factory=dict)
+    tool_scope: dict = Field(default_factory=dict)
+    idempotency_key: str
+    knowledge: KnowledgeScope | None = None
+    attachment_ids: list[str] = Field(default_factory=list, max_length=5)
+class ConversationPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: int | None = Field(default=None, ge=1)
+    pinned: bool | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=80)
+    scopes: list[str] | None = None
+class MessagePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feedback: Literal["up", "down"] | None
+class AttachmentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    content_base64: str = Field(min_length=1, max_length=2_900_000)
 class SecretIn(BaseModel): api_key:str=Field(min_length=8,max_length=4096)
 
 class ProviderPatch(BaseModel):
@@ -87,7 +127,7 @@ class CreateNoteToolArgs(BaseModel):
 
 # This is the server-registered, non-external AI policy. `tool_scope` is only a
 # request for a subset of this set; it cannot introduce a new permission.
-_REGISTERED_AI_TOOL_SCOPES = frozenset({"tasks.write", "notes.write"})
+_REGISTERED_AI_TOOL_SCOPES = frozenset({"tasks.write", "notes.write"}) | READ_SCOPES
 
 def _requested_tool_scopes(raw: Mapping[str, Any]) -> frozenset[str]:
     values = raw.get("scopes", [])
@@ -97,6 +137,9 @@ def _requested_tool_scopes(raw: Mapping[str, Any]) -> frozenset[str]:
     if not scopes.issubset(_REGISTERED_AI_TOOL_SCOPES):
         raise HTTPException(status_code=403, detail={"code":"POLICY_DENIED","message":"Requested AI tool scope is not registered"})
     return scopes
+
+def _has_writes(scopes: frozenset[str]) -> bool:
+    return any(scope.endswith(".write") for scope in scopes)
 
 def _tool_call(raw: Mapping[str, Any]) -> ToolCall:
     if "function" in raw and isinstance(raw["function"], Mapping):
@@ -194,7 +237,13 @@ def _provider_base_url(kind: str, value: str | None) -> str:
     return value.rstrip("/")
 
 def _request_fingerprint(body: RunIn, effective_scope: frozenset[str]) -> str:
-    canonical = json.dumps({"conversation_id":body.conversation_id,"message":body.message,"routing":body.routing,"tool_scope":{"scopes":sorted(effective_scope)}}, sort_keys=True, separators=(",",":"), ensure_ascii=False)
+    value = {"conversation_id": body.conversation_id, "message": body.message, "routing": body.routing, "tool_scope": {"scopes": sorted(effective_scope)}}
+    # Preserve pre-RAG idempotency fingerprints for ordinary conversations.
+    if body.knowledge is not None:
+        value["knowledge"] = body.knowledge.model_dump()
+    if body.attachment_ids:
+        value["attachment_ids"] = body.attachment_ids
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 async def _remaining_monthly_budget(db: AsyncSession, owner_id: str, provider: AIProvider) -> Decimal:
@@ -296,30 +345,118 @@ async def create_conversation(body:ConversationIn,principal=Depends(current_prin
         project = await db.get(Project, body.project_id)
         if not project or project.owner_id != user.id or project.deleted_at is not None:
             raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation project not found"})
-    scopes = _requested_tool_scopes(body.tool_scope)
-    item=AIConversation(owner_id=user.id,project_id=body.project_id,title=body.title,tool_scope_json={"scopes":sorted(scopes)}); db.add(item); await db.commit(); await db.refresh(item); return item
+    scopes = _requested_tool_scopes(body.tool_scope) if "scopes" in body.tool_scope or body.knowledge is not None else frozenset(DEFAULT_SCOPES)
+    if body.knowledge is not None:
+        if _has_writes(scopes):
+            raise HTTPException(403, detail={"code": "POLICY_DENIED", "message": "Knowledge conversations are read-only"})
+        await validate_scope(db, user.id, body.knowledge)
+        if body.project_id and body.knowledge.project_id != body.project_id:
+            raise HTTPException(403, detail={"code": "POLICY_DENIED", "message": "Knowledge scope must match the conversation project"})
+    item=AIConversation(owner_id=user.id,project_id=body.project_id,title=body.title,tool_scope_json={"scopes":sorted(scopes), **({"knowledge":body.knowledge.model_dump()} if body.knowledge else {})}); db.add(item); await db.commit(); await db.refresh(item); return item
 @router.get("/ai/conversations")
 async def conversations(principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
     user, _ = principal
-    return list((await db.execute(select(AIConversation).where(AIConversation.owner_id == user.id, AIConversation.deleted_at.is_(None)).order_by(AIConversation.created_at.desc()))).scalars())
+    rows = list((await db.execute(select(AIConversation).where(AIConversation.owner_id == user.id, AIConversation.deleted_at.is_(None)).order_by(AIConversation.updated_at.desc()))).scalars())
+    ids = [row.id for row in rows]
+    latest: dict[str, str] = {}
+    usage: dict[str, dict[str, Any]] = {}
+    if ids:
+        newest = select(AIMessage.conversation_id, func.max(AIMessage.created_at).label("at")).where(AIMessage.conversation_id.in_(ids)).group_by(AIMessage.conversation_id).subquery()
+        for message in (await db.execute(select(AIMessage).join(newest, (AIMessage.conversation_id == newest.c.conversation_id) & (AIMessage.created_at == newest.c.at)))).scalars():
+            latest[message.conversation_id] = message.content
+        for conversation_id, counts, cost in (await db.execute(select(AIRun.conversation_id, AIRun.token_counts, AIRun.cost_estimate).where(AIRun.owner_id == user.id, AIRun.conversation_id.in_(ids)))).all():
+            total = usage.setdefault(conversation_id, {"input_tokens": 0, "output_tokens": 0, "cost": Decimal(0)})
+            total["input_tokens"] += int((counts or {}).get("input", 0) or 0)
+            total["output_tokens"] += int((counts or {}).get("output", 0) or 0)
+            total["cost"] += Decimal(str(cost or 0))
+    columns = [column.name for column in AIConversation.__table__.columns]
+    empty = {"input_tokens": 0, "output_tokens": 0, "cost": Decimal(0)}
+    return [{**{name: getattr(row, name) for name in columns}, "preview": preview(latest.get(row.id, "")),
+             "usage": {"input_tokens": (u := usage.get(row.id, empty))["input_tokens"], "output_tokens": u["output_tokens"],
+                       "estimated_cost": str(u["cost"])}} for row in rows]
+async def _owned_conversation(db: AsyncSession, user_id: str, conversation_id: str) -> AIConversation:
+    convo = await db.get(AIConversation, conversation_id)
+    if not convo or convo.owner_id != user_id or convo.deleted_at is not None:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Conversation not found"})
+    return convo
+@router.patch("/ai/conversations/{conversation_id}")
+async def update_conversation(conversation_id: str, body: ConversationPatch, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    convo = await _owned_conversation(db, user.id, conversation_id)
+    values: dict[str, Any] = {}
+    if body.pinned is not None:
+        values["pinned"] = body.pinned
+    if body.title is not None:
+        values["title"] = body.title.strip() or convo.title
+    if body.scopes is not None:
+        scopes = _requested_tool_scopes({"scopes": body.scopes})
+        stored = convo.tool_scope_json or {}
+        if "knowledge" in stored and _has_writes(scopes):
+            raise HTTPException(403, detail={"code": "POLICY_DENIED", "message": "Knowledge conversations are read-only"})
+        values["tool_scope_json"] = {**stored, "scopes": sorted(scopes)}
+    expected = body.version if body.version is not None else convo.version
+    # Pinning alone must not reorder the list by recency.
+    values["updated_at"] = convo.updated_at if set(values) <= {"pinned"} else datetime.now(UTC)
+    result = await db.execute(update(AIConversation).where(AIConversation.id == conversation_id, AIConversation.owner_id == user.id, AIConversation.version == expected).values(**values, version=expected + 1))
+    if int(getattr(result, "rowcount", 0) or 0) != 1:
+        server_version = convo.version
+        await db.rollback()
+        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Conversation changed. Reload before saving.", "details": {"server_version": server_version}})
+    await db.commit()
+    await db.refresh(convo)
+    return convo
+def _message_out(message: AIMessage) -> dict[str, Any]:
+    out = {"id": message.id, "conversation_id": message.conversation_id, "role": message.role, "content": message.content,
+           "source_refs_json": message.source_refs_json, "created_at": message.created_at, "feedback": message.feedback}
+    if message.role == "user":
+        out["attachments"] = [{"name": a["name"], "size": a["size"]} for a in message.attachments_json or []]
+    return out
 @router.get("/ai/conversations/{conversation_id}/messages")
 async def messages(conversation_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,conversation_id)
     if not convo or convo.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation not found"})
-    return list((await db.execute(select(AIMessage).where(AIMessage.conversation_id==conversation_id).order_by(AIMessage.created_at))).scalars())
+    return [_message_out(m) for m in (await db.execute(select(AIMessage).where(AIMessage.conversation_id==conversation_id).order_by(AIMessage.created_at))).scalars()]
 @router.post("/ai/conversations/{conversation_id}/messages")
 async def add_message(conversation_id:str,body:MessageIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,conversation_id)
     if not convo or convo.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation not found"})
-    item=AIMessage(conversation_id=conversation_id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
+    item=AIMessage(conversation_id=conversation_id,**body.model_dump()); db.add(item); convo.updated_at = datetime.now(UTC); await db.commit(); await db.refresh(item); return _message_out(item)
+@router.patch("/ai/messages/{message_id}")
+async def update_message(message_id: str, body: MessagePatch, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    message = await db.get(AIMessage, message_id)
+    if not message:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Message not found"})
+    await _owned_conversation(db, user.id, message.conversation_id)
+    if message.role != "assistant":
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Feedback applies to assistant messages only"})
+    message.feedback = body.feedback
+    await db.commit()
+    return _message_out(message)
 @router.post("/ai/runs")
 async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,body.conversation_id)
     if not convo or convo.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation not found"})
+    stored_knowledge = (convo.tool_scope_json or {}).get("knowledge")
+    if body.knowledge is None and stored_knowledge is not None:
+        body = body.model_copy(update={"knowledge": KnowledgeScope.model_validate(stored_knowledge)})
     conversation_scopes = _requested_tool_scopes(convo.tool_scope_json or {})
     requested_scopes = _requested_tool_scopes(body.tool_scope)
     if requested_scopes and requested_scopes != conversation_scopes:
         raise HTTPException(status_code=403, detail={"code":"POLICY_DENIED","message":"AI run cannot change the conversation tool policy"})
+    if body.knowledge is not None:
+        if not body.message.strip() or len(body.message) > 4000:
+            raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "Knowledge questions must contain 1 to 4000 characters"})
+        if _has_writes(conversation_scopes):
+            raise HTTPException(403, detail={"code": "POLICY_DENIED", "message": "Knowledge questions are read-only"})
+        if convo.project_id and body.knowledge.project_id != convo.project_id:
+            raise HTTPException(403, detail={"code": "POLICY_DENIED", "message": "Knowledge scope must match the conversation project"})
+        await validate_scope(db, user.id, body.knowledge)
+    effort = body.routing.get("effort")
+    if effort in (None, "off"):
+        effort = None
+    elif effort not in {"low", "medium", "high"}:
+        raise HTTPException(400, detail={"code": "INVALID_EFFORT", "message": "routing.effort must be low, medium or high"})
     fingerprint = _request_fingerprint(body, conversation_scopes)
     existing=(await db.execute(select(AIRun).where(AIRun.owner_id==user.id,AIRun.idempotency_key==body.idempotency_key))).scalar_one_or_none()
     if existing:
@@ -335,9 +472,11 @@ async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSes
     if requested_id and not configured:
         raise HTTPException(404, detail={"code":"NOT_FOUND","message":"Enabled provider not found"})
     provider=configured.kind if configured else "configured"; model=body.routing.get("model","auto")
-    message = AIMessage(conversation_id=body.conversation_id,role="user",content=body.message)
+    attachments = await _load_attachments(db, user.id, body.attachment_ids)
+    message = AIMessage(conversation_id=body.conversation_id,role="user",content=body.message,attachments_json=[{"id":a.id,"name":a.name,"size":a.size} for a in attachments])
+    convo.updated_at = datetime.now(UTC)
     db.add(message); await db.flush()
-    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider_id=configured.id if configured else None,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint,tool_scope_json={"scopes":sorted(conversation_scopes)}); db.add(item)
+    item=AIRun(owner_id=user.id,conversation_id=body.conversation_id,prompt_message_id=message.id,provider_id=configured.id if configured else None,provider=provider,model=model,status="queued",idempotency_key=body.idempotency_key,request_fingerprint=fingerprint,tool_scope_json={"scopes":sorted(conversation_scopes), **({"knowledge":body.knowledge.model_dump()} if body.knowledge else {}), **({"effort":effort} if effort else {})}); db.add(item)
     try:
         await db.commit()
     except IntegrityError:
@@ -347,6 +486,90 @@ async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSes
             raise HTTPException(409,detail={"code":"IDEMPOTENCY_CONFLICT","message":"Idempotency key is bound to a different AI request"}) from None
         return existing
     await db.refresh(item); return item
+async def _load_attachments(db: AsyncSession, owner_id: str, ids: list[str]) -> list[AIAttachment]:
+    unique = list(dict.fromkeys(ids))
+    if not unique:
+        return []
+    rows = {a.id: a for a in (await db.execute(select(AIAttachment).where(AIAttachment.owner_id == owner_id, AIAttachment.id.in_(unique), AIAttachment.deleted_at.is_(None), AIAttachment.expires_at > datetime.now(UTC)))).scalars()}
+    if len(rows) != len(unique):
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Attachment not found or expired"})
+    return [rows[i] for i in unique]
+@router.post("/ai/attachments")
+async def upload_attachment(body: AttachmentIn, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    name, size, text = extract_attachment(body.name, body.content_base64)
+    now_utc = datetime.now(UTC)
+    await db.execute(delete(AIAttachment).where(AIAttachment.owner_id == user.id, AIAttachment.expires_at <= now_utc))
+    item = AIAttachment(owner_id=user.id, name=name, size=size, text=text, expires_at=now_utc + timedelta(hours=24))
+    db.add(item)
+    await db.commit()
+    return {"id": item.id, "name": item.name, "size": item.size, "chars": len(item.text)}
+@router.delete("/ai/attachments/{attachment_id}")
+async def delete_attachment(attachment_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    item = await db.get(AIAttachment, attachment_id)
+    if not item or item.owner_id != user.id or item.deleted_at is not None:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Attachment not found"})
+    await db.delete(item)
+    await db.commit()
+    return {"deleted": True, "id": attachment_id}
+
+def _action_out(action: AIAction) -> dict[str, Any]:
+    return {"id": action.id, "conversation_id": action.conversation_id, "run_id": action.run_id, "tool": action.tool,
+            "title": action.title, "summary": action.summary, "items": action.items_json, "status": action.status,
+            "result": action.result_json, "created_at": action.created_at, "updated_at": action.updated_at}
+async def _owned_action(db: AsyncSession, owner_id: str, action_id: str) -> AIAction:
+    action = await db.get(AIAction, action_id)
+    if not action or action.owner_id != owner_id:
+        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Action not found"})
+    return action
+@router.get("/ai/conversations/{conversation_id}/actions")
+async def conversation_actions(conversation_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    await _owned_conversation(db, user.id, conversation_id)
+    return [_action_out(a) for a in (await db.execute(select(AIAction).where(AIAction.owner_id == user.id, AIAction.conversation_id == conversation_id).order_by(AIAction.created_at, AIAction.id))).scalars()]
+@router.post("/ai/actions/{action_id}/approve")
+async def approve_action(action_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    action = await _owned_action(db, user.id, action_id)
+    if action.status == "rejected":
+        raise HTTPException(409, detail={"code": "ACTION_REJECTED", "message": "This action was rejected"})
+    if action.status != "pending":
+        return _action_out(action)  # approved or failed: second call returns the stored result
+    from .personal_tools import personal_tool_registry
+    claimed = await db.execute(update(AIAction).where(AIAction.id == action_id, AIAction.owner_id == user.id, AIAction.status == "pending").values(status="approved"))
+    if int(getattr(claimed, "rowcount", 0) or 0) != 1:
+        await db.rollback()
+        await db.refresh(action)
+        return _action_out(action)
+    registry = personal_tool_registry(db, user.id, action.id)
+    call = ToolCall(action.tool, action.arguments_json or {}, action.id)
+    project_id = (action.arguments_json or {}).get("project_id")
+    try:
+        context = PermissionContext(actor=f"owner:{user.id}", scopes=frozenset({registry.descriptor(action.tool).required_scope}),
+                                    project_ids=frozenset({str(project_id)}) if project_id is not None else frozenset(), policy_id="ai-action-approval")
+        result = dict(await registry.invoke(call, context))
+        await db.execute(update(AIAction).where(AIAction.id == action_id).values(result_json=jsonable_encoder(result)))
+        await db.commit()
+    except (PolicyDenied, ToolValidationError, RuntimeError) as error:
+        await db.rollback()
+        code = "POLICY_DENIED" if isinstance(error, PolicyDenied) else "VALIDATION_ERROR" if isinstance(error, ToolValidationError) else "TOOL_ERROR"
+        await db.execute(update(AIAction).where(AIAction.id == action_id, AIAction.status == "pending").values(status="failed", result_json={"error": {"code": code, "message": redact_error(error)}}))
+        await db.commit()
+    await db.refresh(action)
+    return _action_out(action)
+@router.post("/ai/actions/{action_id}/reject")
+async def reject_action(action_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    user, _ = principal
+    action = await _owned_action(db, user.id, action_id)
+    if action.status == "pending":
+        await db.execute(update(AIAction).where(AIAction.id == action_id, AIAction.owner_id == user.id, AIAction.status == "pending").values(status="rejected"))
+        await db.commit()
+        await db.refresh(action)
+    if action.status != "rejected":
+        raise HTTPException(409, detail={"code": "ACTION_NOT_PENDING", "message": f"This action is already {action.status}"})
+    return _action_out(action)
+
 @router.get("/ai/runs/{run_id}")
 async def get_run(run_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await db.get(AIRun,run_id)
@@ -423,22 +646,66 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 await db.commit()
                 yield await emit("ai.run.failed", {"run_id": run_id, "code": "BUDGET_EXCEEDED", "message": "Configured monthly AI budget is exhausted"})
                 return
-            request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=min(Decimal(100), remaining_budget))
+            request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=min(Decimal(100), remaining_budget),effort=(item.tool_scope_json or {}).get("effort"))
             prior = list((await db.execute(select(AIMessage).where(
                 AIMessage.conversation_id == item.conversation_id,
                 AIMessage.created_at <= last_message.created_at,
                 AIMessage.role.in_(["user", "assistant"]),
             ).order_by(AIMessage.created_at.desc()).limit(100))).scalars())
             chat_messages = tuple(ChatMessage(message.role, message.content) for message in reversed(prior))
+            source_refs: list[dict] = []
+            knowledge_scope = (item.tool_scope_json or {}).get("knowledge")
+            if knowledge_scope is not None:
+                try:
+                    sources = await retrieve(db, user.id, KnowledgeScope.model_validate(knowledge_scope), last_message.content)
+                except HTTPException as error:
+                    await db.execute(update(AIRun).where(AIRun.id == run_id, AIRun.status == "running").values(status="failed", completed_at=datetime.now(UTC)))
+                    await db.commit()
+                    yield await emit("ai.run.failed", {"run_id": run_id, "code": "KNOWLEDGE_SCOPE_TOO_LARGE" if error.status_code == 422 else "KNOWLEDGE_SOURCE_UNAVAILABLE", "message": "Choose a smaller knowledge scope or select available sources again."})
+                    return
+                if await durable_cancel_check():
+                    raise RunCancelled("run cancelled")
+                source_refs = [source.model_dump() for source in sources]
+                if not sources:
+                    answer = "Не найдено подходящих материалов в выбранных источниках. Уточните вопрос или добавьте документ в Knowledge."
+                    completed = await db.execute(update(AIRun).where(AIRun.id == run_id, AIRun.status == "running").values(status="completed", completed_at=datetime.now(UTC)))
+                    if int(getattr(completed, "rowcount", 0) or 0) != 1:
+                        raise RunCancelled("run cancelled")
+                    db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content=answer))
+                    await db.execute(update(AIConversation).where(AIConversation.id == item.conversation_id).values(updated_at=datetime.now(UTC)))
+                    await db.commit()
+                    yield await emit("ai.text.delta", {"run_id": run_id, "text": answer})
+                    yield await emit("ai.run.completed", {"run_id": run_id, "input_tokens": 0, "output_tokens": 0, "estimated_cost": "0"})
+                    return
+                # Each question is grounded afresh; previous answers from a
+                # different scope must never become an implicit extra source.
+                chat_messages = context_messages(sources) + (ChatMessage("user", last_message.content),)
+                yield await emit("ai.knowledge.sources", {"run_id": run_id, "sources": source_refs})
             await db.refresh(item)
+            attachment_ids = [a["id"] for a in (last_message.attachments_json or [])]
+            if attachment_ids:
+                budget = ATTACHMENT_INJECT_TOTAL
+                injected = []
+                for attachment in await _load_attachments(db, user.id, attachment_ids):
+                    text = attachment.text[:min(ATTACHMENT_INJECT_CHARS, budget)]
+                    budget -= len(text)
+                    if text:
+                        injected.append(ChatMessage("user", f"Attached file {attachment.name!r}:\n{text}", untrusted=True))
+                chat_messages = (*chat_messages[:-1], *injected, *chat_messages[-1:])
             requested_scopes = frozenset((item.tool_scope_json or {}).get("scopes", []))
-            if requested_scopes:
-                registry = _tool_registry(db, user.id, run_id)
-                context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
-                tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget))
+            # Without a tool-calling model the chat keeps answering as plain text.
+            if requested_scopes and any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models):
+                from .personal_tools import personal_tool_registry
+                registry = personal_tool_registry(db, user.id, run_id)
                 pending_events: list[str] = []
                 async def tool_event(kind: str, payload: Mapping[str, Any]) -> None:
+                    if kind in {"ai.tool.requested", "ai.tool.result"}:
+                        payload = {**payload, **tool_meta(str(payload.get("tool", "")), payload.get("result") if kind == "ai.tool.result" else None)}
                     pending_events.append(await emit(kind, payload))
+                gate_writes(registry, db, user.id, conversation_id=item.conversation_id, run_id=run_id, message_id=item.prompt_message_id, announce=tool_event)
+                chat_messages = (ChatMessage("system", SYSTEM_POLICY), *chat_messages)
+                context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes | WRITE_SCOPES, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
+                tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget), effort=(item.tool_scope_json or {}).get("effort"))
                 async def account_tool_usage(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
                     item.cost_estimate = cost
                     item.token_counts = {'input': input_tokens, 'output': output_tokens}
@@ -448,7 +715,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                     result = await run_tool_turn(
                         service, __import__('uuid').UUID(run_id), tool_request, chat_messages,
                         registry, context, parse_call=_tool_call, on_event=tool_event, on_usage=account_tool_usage,
-                        cancel=cancel_event, cancel_check=durable_cancel_check, max_steps=1,
+                        cancel=cancel_event, cancel_check=durable_cancel_check, max_steps=4,
                     )
                 except (PolicyDenied, ToolValidationError, RuntimeError) as error:
                     await db.rollback()
@@ -470,8 +737,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 item.token_counts={"input":result.input_tokens,"output":result.output_tokens}; item.cost_estimate=result.cost
                 if result.text:
                     db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content=result.text))
+                    await db.execute(update(AIConversation).where(AIConversation.id == item.conversation_id).values(updated_at=datetime.now(UTC)))
                 await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(UTC),token_counts=item.token_counts,cost_estimate=item.cost_estimate)); await db.commit()
-                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.text), "estimated_cost": str(result.cost)})
+                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.text), "input_tokens": result.input_tokens, "output_tokens": result.output_tokens, "estimated_cost": str(result.cost)})
                 return
             failure_event: str | None = None
             completion_event: str | None = None
@@ -519,7 +787,8 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 item.cost_estimate=usage.estimated_cost
             completed=await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(UTC),token_counts=item.token_counts,cost_estimate=item.cost_estimate))
             if int(getattr(completed, "rowcount", 0) or 0) == 1 and reply_parts:
-                db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content="".join(reply_parts)))
+                db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content="".join(reply_parts), source_refs_json=source_refs))
+                await db.execute(update(AIConversation).where(AIConversation.id == item.conversation_id).values(updated_at=datetime.now(UTC)))
             completion_wire = await _persist_event(db, run_id, completion_event) if int(getattr(completed, "rowcount", 0) or 0) == 1 and completion_event is not None else None
             await db.commit()
             if completion_wire is not None:

@@ -5,7 +5,7 @@ import { ApiError, type TelegramBusinessMessage, type TelegramStatus } from '@ae
 import { MessagesView } from '../views/MessagesView'
 import { draftOf, groupChats } from '../lib/telegramMessages'
 
-const client = vi.hoisted(() => ({ telegramStatus: vi.fn(), telegramMessages: vi.fn(), draftTelegramMessage: vi.fn(), sendTelegramMessage: vi.fn() }))
+const client = vi.hoisted(() => ({ telegramChats: vi.fn(), sendTelegramChatMessage: vi.fn(), telegramStatus: vi.fn(), telegramMessages: vi.fn(), draftTelegramMessage: vi.fn(), sendTelegramMessage: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 
 const status = { configured: true, enabled: true, connections: [] } as unknown as TelegramStatus
@@ -18,7 +18,7 @@ const mom = [msg({ id: 'p1', chat_id: 3, chat_title: 'Mom', text: 'Call me', sen
 let root: ReturnType<typeof createRoot> | undefined, host: HTMLDivElement
 const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === text || b.getAttribute('aria-label') === text)!
 async function mount() { host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host); await act(async () => root!.render(<MessagesView apiStatus="ready" />)) }
-beforeEach(() => { vi.resetAllMocks(); client.telegramStatus.mockResolvedValue(status); client.telegramMessages.mockResolvedValue([aidana, dana, ...mom]) })
+beforeEach(() => { vi.resetAllMocks(); client.telegramStatus.mockResolvedValue(status); client.telegramChats.mockResolvedValue([1, 2, 3].map(chat_id => ({business_connection_id:'c',chat_id,can_send:chat_id!==3,send_disabled_code:chat_id===3?'TELEGRAM_REPLY_WINDOW_EXPIRED':null,reply_window_expires_at:iso(chat_id===3?6:-23)}))); client.telegramMessages.mockResolvedValue([aidana, dana, ...mom]) })
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = '' })
 
 describe('groupChats', () => {
@@ -88,6 +88,88 @@ describe('MessagesView', () => {
   it('shows the skeleton error with a retry when the API is unreachable', async () => {
     client.telegramStatus.mockRejectedValueOnce(new Error('offline'))
     await mount(); expect(host.textContent).toContain('Can’t reach Aelys')
-    await act(async () => button('Try again').click()); expect(host.textContent).toContain('Needs reply')
+    await act(async () => button('Retry').click()); expect(host.textContent).toContain('Needs reply')
   })
+})
+
+
+describe('manual chat composer', () => {
+  async function type(value: string) {
+    const input=host.querySelector<HTMLInputElement>('[aria-label="Write a reply"]')!
+    await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}))})
+    return input
+  }
+  it('sends multiple independent messages after an inbound reply was already sent',async()=>{
+    client.telegramMessages.mockResolvedValue([{...aidana,draft_status:'sent'}])
+    client.sendTelegramChatMessage.mockResolvedValueOnce(msg({id:'out1',direction:'owner',text:'First',telegram_message_id:501,sent_at:iso(0)})).mockResolvedValueOnce(msg({id:'out2',direction:'owner',text:'Second',telegram_message_id:502,sent_at:iso(0)}))
+    await mount();await type('First');await act(async()=>host.querySelector<HTMLButtonElement>('.msg__send')!.click())
+    await type('Second');await act(async()=>host.querySelector<HTMLButtonElement>('.msg__send')!.click())
+    expect(client.sendTelegramChatMessage.mock.calls.map(call=>call[0])).toEqual([
+      {business_connection_id:'c',chat_id:1,text:'First'},{business_connection_id:'c',chat_id:1,text:'Second'}])
+    expect(client.sendTelegramChatMessage.mock.calls[0][1].idempotencyKey).not.toBe(client.sendTelegramChatMessage.mock.calls[1][1].idempotencyKey)
+    expect(client.sendTelegramMessage).not.toHaveBeenCalled();expect(host.textContent).toContain('First');expect(host.textContent).toContain('Second')
+  })
+  it.each(['TELEGRAM_REPLY_WINDOW_EXPIRED','TELEGRAM_REPLY_DENIED','TELEGRAM_PAUSED'])('keeps the input but disables click and Enter for %s',async code=>{
+    client.telegramChats.mockResolvedValue([{business_connection_id:'c',chat_id:1,can_send:false,send_disabled_code:code,reply_window_expires_at:iso(-23)}])
+    await mount();const input=await type('Keep my text')
+    const submit=host.querySelector<HTMLButtonElement>('.msg__send')!
+    expect(submit.tagName).toBe('BUTTON');expect(submit.disabled).toBe(true);expect(input.disabled).toBe(false)
+    await act(async()=>{submit.click();input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))})
+    expect(client.sendTelegramChatMessage).not.toHaveBeenCalled();expect(client.sendTelegramMessage).not.toHaveBeenCalled();expect(input.value).toBe('Keep my text')
+  })
+  it('retains text and reuses its request key after an ambiguous failure',async()=>{
+    client.sendTelegramChatMessage.mockRejectedValue(new ApiError(503,'TELEGRAM_DELIVERY_UNKNOWN','private provider content'))
+    await mount();const input=await type('Check this send');await act(async()=>host.querySelector<HTMLButtonElement>('.msg__send')!.click())
+    expect(input.value).toBe('Check this send');expect(host.textContent).not.toContain('private provider content')
+    expect(client.sendTelegramChatMessage).toHaveBeenCalledTimes(1)
+    expect(host.querySelector<HTMLButtonElement>('.msg__send')!.disabled).toBe(true)
+  })
+  it('blocks another submit while preserving newly typed text after completion',async()=>{
+    let finish!:(value:TelegramBusinessMessage)=>void
+    client.sendTelegramChatMessage.mockReturnValue(new Promise<TelegramBusinessMessage>(resolve=>{finish=resolve}))
+    await mount();await type('First')
+    await act(async()=>{const send=host.querySelector<HTMLButtonElement>('.msg__send')!;send.click();send.click()})
+    expect(client.sendTelegramChatMessage).toHaveBeenCalledTimes(1)
+    await type('Next draft')
+    await act(async()=>finish(msg({id:'outgoing',direction:'owner',text:'First',telegram_message_id:555,sent_at:iso(0)})))
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Write a reply"]')!.value).toBe('Next draft')
+    expect(host.querySelector<HTMLButtonElement>('.msg__send')!.disabled).toBe(false)
+    expect(host.querySelector('.msg__draft')).toBeNull()
+  })
+  it('disables sending exactly when the server window expires',async()=>{
+    vi.useFakeTimers()
+    try {
+      client.telegramChats.mockResolvedValue([{business_connection_id:'c',chat_id:1,can_send:true,send_disabled_code:null,reply_window_expires_at:new Date(Date.now()+1000).toISOString()}])
+      await mount();const input=await type('At the boundary')
+      expect(host.querySelector<HTMLButtonElement>('.msg__send')!.disabled).toBe(false)
+      await act(async()=>{vi.advanceTimersByTime(1001)})
+      expect(host.querySelector<HTMLButtonElement>('.msg__send')!.disabled).toBe(true)
+      await act(async()=>input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
+      expect(client.sendTelegramChatMessage).not.toHaveBeenCalled();expect(input.value).toBe('At the boundary')
+    } finally {vi.useRealTimers()}
+  })
+
+  it('lets the owner select a quote and sends that remote target only when selected',async()=>{
+    client.sendTelegramChatMessage.mockResolvedValue(msg({id:'quoted-send',direction:'owner',text:'Quoted answer',telegram_message_id:501,reply_to_telegram_message_id:1,sent_at:iso(0)}))
+    await mount();await act(async()=>host.querySelector<HTMLButtonElement>('.msg__reply')!.click())
+    expect(host.querySelector('[aria-label="Replying to message"]')?.textContent).toContain(aidana.text)
+    await type('Quoted answer');await act(async()=>host.querySelector<HTMLButtonElement>('.msg__send')!.click())
+    expect(client.sendTelegramChatMessage).toHaveBeenCalledWith({business_connection_id:'c',chat_id:1,text:'Quoted answer',reply_to_message_id:1},expect.anything())
+    expect(host.querySelector('[aria-label="Replying to message"]')).toBeNull()
+    expect(host.querySelector('.msg__quote')?.textContent).toContain(aidana.text)
+    expect(client.sendTelegramMessage).not.toHaveBeenCalled()
+  })
+  it('cancels a quote without clearing the composed message',async()=>{
+    client.sendTelegramChatMessage.mockResolvedValue(msg({id:'plain-send',direction:'owner',text:'Plain text',telegram_message_id:501,sent_at:iso(0)}))
+    await mount();await act(async()=>host.querySelector<HTMLButtonElement>('.msg__reply')!.click());await type('Plain text')
+    await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Cancel reply"]')!.click())
+    await act(async()=>host.querySelector<HTMLButtonElement>('.msg__send')!.click())
+    expect(client.sendTelegramChatMessage).toHaveBeenCalledWith({business_connection_id:'c',chat_id:1,text:'Plain text'},expect.anything())
+  })
+  it('shows received photo and audio controls without sending them to AI',async()=>{
+    client.telegramMessages.mockResolvedValue([msg({media:{kind:'photo',file_size:32},text:'Photo caption'}),msg({id:'voice',telegram_message_id:2,media:{kind:'voice',file_size:32},text:''})])
+    await mount();expect(host.textContent).toContain('View photo');expect(host.textContent).toContain('Load voice message')
+    expect(host.querySelector('.msg__draft')).toBeNull();expect(client.draftTelegramMessage).not.toHaveBeenCalled()
+  })
+
 })

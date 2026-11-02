@@ -213,3 +213,46 @@ consent, sync and disconnect live in Settings → Google Calendar; import is rea
 and runs in the existing connector iteration every 15 minutes independently of
 Telegram enablement. No Google calendar context is added to the Business secretary.
 Real Telegram /today with an actual Google account remains an owner live check.
+
+## Manual chat composition — 2026-11-01
+
+Owner-approved Phase 3 follow-up: Messages now sends independently typed text as
+new chat messages. A prior secretary reply does not prevent further owner text.
+The secretary draft Send/Edit path retains its one-answer/CAS protection. The
+composer stays visible and editable in a selected chat; the real Send button is
+disabled when empty, pending, offline, paused/unbound, without permissions or
+outside the server's 24-hour window. Enter/Cmd+Enter follow the same checks.
+An inline reason explains unavailable sending; polling and an exact expiry timer
+update the state. Per-chat drafts and text typed during I/O are preserved. Unknown
+manual delivery keeps text and disables repeating the same pending message until
+the owner checks Telegram and changes their composition. No live messages are
+sent by validation.
+
+Manual messages use a separate content-free durable receipt and the existing
+encrypted Business message table (migration 0035); each intentional message gets
+its own key, retries preserve the key, and every claim is committed before I/O.
+Sending/unknown manual activity suppresses secretary replies. An owner echo
+already ingested during transport is adopted by its remote message identity.
+A restart marks abandoned claims unknown, never replays them. Arbitrary new chat
+initiation and bypassing Telegram's can_reply/24-hour rules remain unsupported.
+
+## Optional quotes and photo/audio viewing — 2026-11-01
+
+Owner-approved follow-up: ordinary text, including secretary drafts, is sent
+without a forced Telegram reply. Messages has a Reply action per available
+message, a visible selected target with Cancel reply and a quote block on sent/
+received replies. The target stays within the current Business chat and remains
+part of idempotency. Composer/window/rights/unknown-delivery controls still apply.
+
+Photo, voice and audio updates now create owner-visible media cards. View photo /
+Load voice message / Load audio fetches only after the owner asks; native image
+and audio controls use transient browser blobs, with no autoplay. Captions are
+shown as text; a media-only card is not labelled as an empty text message. The
+backend stores only encrypted Telegram metadata, downloads within 10/20 MiB caps,
+validates content type and serves private no-store bytes. Raw bytes never enter
+DB, disk, logs, sync, exports, AI history or attachments. Deletion/TTL/disconnect
+remove metadata; key rotation re-encrypts it. Previously ignored customer media
+now also counts as a new incoming message and suppresses a stale text auto-reply.
+Media generation is explicitly preview-only: no model analysis, transcription,
+new Business media send path or AI permissions are introduced. Forwarded media,
+video and other unsupported types remain outside this viewing slice.

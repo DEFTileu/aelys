@@ -322,3 +322,66 @@ it("does not cache owner memory or replay an unconfirmed forget", async () => {
   expect(store.cache.size).toBe(0); expect(store.outbox).toHaveLength(0);
   expect(fetchImpl.mock.calls[2]?.[0]).toContain("/ai/memory/fact?version=3");
 });
+
+it("never caches chat permissions or queues manual Telegram sends",async()=>{
+  const store=new MemoryStore();const fetchImpl=vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify([]),{status:200}))
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValueOnce(new Response(JSON.stringify({id:'outgoing'}),{status:200}));
+  const client=new ApiClient({baseUrl:'https://api.example.test',fetch:fetchImpl,offlineStore:store});
+  await client.telegramChats({cacheKey:'forged-cache'});
+  await expect(client.sendTelegramChatMessage({business_connection_id:'c',chat_id:1,text:'One message'},{idempotencyKey:'stable-key',queueOnOffline:true})).rejects.toBeInstanceOf(NetworkError);
+  await client.sendTelegramChatMessage({business_connection_id:'c',chat_id:1,text:'One message'},{idempotencyKey:'stable-key'});
+  expect(store.cache.size).toBe(0);expect(store.outbox).toHaveLength(0);
+  expect(new Headers(fetchImpl.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe('stable-key');
+});
+
+it('downloads private media in memory with auth only in headers and no cache',async()=>{
+ const store=new MemoryStore();const fetchImpl=vi.fn().mockResolvedValue(new Response(new Uint8Array([0x89,0x50,0x4e,0x47]),{headers:{'Content-Type':'image/png'}}));
+ const client=new ApiClient({baseUrl:'https://api.example.test',token:'synthetic-access',fetch:fetchImpl,offlineStore:store});
+ const blob=await client.telegramMessageMedia('photo/id');expect(blob.type).toBe('image/png');expect(blob.size).toBe(4);
+ expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.test/api/v1/integrations/telegram/messages/photo%2Fid/media');
+ expect(new Headers(fetchImpl.mock.calls[0]?.[1]?.headers).get('Authorization')).toBe('Bearer synthetic-access');
+ expect(fetchImpl.mock.calls[0]?.[1]?.cache).toBe('no-store');expect(store.cache.size).toBe(0);expect(store.outbox).toHaveLength(0);
+});
+
+it.each([
+ [200,{'Content-Type':'image/svg+xml'},'<svg>secret</svg>','TELEGRAM_MEDIA_UNSUPPORTED'],
+ [200,{'Content-Type':'image/png','Content-Length':'20971521'},'too big','TELEGRAM_MEDIA_TOO_LARGE'],
+ [403,{'Content-Type':'application/json'},JSON.stringify({detail:{code:'POLICY_DENIED',message:'Denied'}}),'POLICY_DENIED'],
+] as const)('rejects unsafe media response %s without caching',async(status,headers,body,code)=>{
+ const store=new MemoryStore();const fetchImpl=vi.fn().mockResolvedValue(new Response(body,{status,headers}));
+ const client=new ApiClient({baseUrl:'https://api.example.test',fetch:fetchImpl,offlineStore:store});
+ await expect(client.telegramMessageMedia('media')).rejects.toMatchObject({code});expect(store.cache.size).toBe(0);
+});
+
+it('binds optional reply target in the manual send request',async()=>{
+ const fetchImpl=vi.fn().mockResolvedValue(new Response(JSON.stringify({id:'quoted'}),{status:200}));
+ const client=new ApiClient({baseUrl:'https://api.example.test',fetch:fetchImpl});
+ await client.sendTelegramChatMessage({business_connection_id:'c',chat_id:1,text:'Reply',reply_to_message_id:7},{idempotencyKey:'quoted-key'});
+ expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toEqual({business_connection_id:'c',chat_id:1,text:'Reply',reply_to_message_id:7});
+});
+
+it("calls the AI chat endpoints: pin, scopes, actions, attachments, feedback and attachment_ids", async () => {
+  const fetchImpl = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ id: "x" })));
+  const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl });
+  await client.updateAIConversation("c 1", { pinned: true, scopes: ["tasks.read"] });
+  await client.aiConversationActions("c1");
+  await client.approveAIAction("a1");
+  await client.rejectAIAction("a2");
+  await client.uploadAIAttachment({ name: "n.txt", content_base64: "aGk=" });
+  await client.deleteAIAttachment("f1");
+  await client.setAIMessageFeedback("m1", "up");
+  await client.createAIRun({ conversation_id: "c1", message: "hi", attachment_ids: ["f1"], idempotency_key: "k" });
+  const calls = fetchImpl.mock.calls.map(([url, init]) => [String(url).replace("https://api.example.test", ""), init?.method, init?.body === undefined ? undefined : JSON.parse(String(init.body))]);
+  expect(calls).toEqual([
+    ["/api/v1/ai/conversations/c%201", "PATCH", { pinned: true, scopes: ["tasks.read"] }],
+    ["/api/v1/ai/conversations/c1/actions", "GET", undefined],
+    ["/api/v1/ai/actions/a1/approve", "POST", undefined],
+    ["/api/v1/ai/actions/a2/reject", "POST", undefined],
+    ["/api/v1/ai/attachments", "POST", { name: "n.txt", content_base64: "aGk=" }],
+    ["/api/v1/ai/attachments/f1", "DELETE", undefined],
+    ["/api/v1/ai/messages/m1", "PATCH", { feedback: "up" }],
+    ["/api/v1/ai/runs", "POST", { conversation_id: "c1", message: "hi", attachment_ids: ["f1"], idempotency_key: "k" }],
+  ]);
+});

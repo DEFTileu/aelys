@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="height:{{ h }};min-height:560px;display:grid;grid-template-columns:{{ cols }};border-radius:24px;overflow:hidden;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;color:#1C1B22">
+  <sc-if value="{{ showList }}">
+    <div style="border-right:{{ listBorder }};display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px 14px 10px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2"><span onClick="{{ t.pick }}" role="tab" aria-selected="{{ t.on }}" style="flex:1;height:34px;border-radius:9px;background:{{ t.bg }};box-shadow:{{ t.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap">{{ t.t }}</span></sc-for></div>
+        <label style="height:40px;padding:0 12px;border-radius:12px;background:#F7F4F1;display:flex;align-items:center;gap:8px;color:#625D69"><i class="icon-search"></i><input value="{{ q }}" onChange="{{ onQ }}" placeholder="Search chats" aria-label="Search chats" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"></label>
+      </div>
+      <div style="flex:1;overflow:auto;padding:0 8px 10px;display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ list }}" as="c" hint-placeholder-count="5"><div onClick="{{ c.pick }}" role="option" aria-selected="{{ c.on }}" style="display:flex;gap:12px;padding:10px;border-radius:14px;background:{{ c.bg }};cursor:pointer" style-hover="background:rgba(106,76,242,.06)"><span style="width:44px;height:44px;flex:none;border-radius:50%;background:{{ c.soft }};color:{{ c.c }};font-weight:600;display:flex;align-items:center;justify-content:center">{{ c.a }}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:8px"><span style="flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.n }}</span><span style="font-size:12px;color:#625D69">{{ c.t }}</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:2px"><span style="flex:1;font-size:13px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.last }}</span><sc-if value="{{ c.draft }}"><span style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:6px;background:#EEE8FD;color:#5132D6;display:flex;align-items:center;gap:3px"><i class="icon-sparkles"></i>Draft</span></sc-if><sc-if value="{{ c.unread }}"><span style="min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#2F6FE4;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ c.unread }}</span></sc-if></div></div></div></sc-for>
+        <sc-if value="{{ empty }}"><div style="padding:48px 16px;text-align:center;color:#625D69"><i class="icon-check" style="font-size:28px;color:#14966C"></i><div style="font-weight:600;color:#1C1B22;margin-top:8px">All caught up</div><div style="font-size:13px">No chats need a reply</div></div></sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showChat }}">
+    <div style="display:flex;flex-direction:column;min-height:0;background:#F7F3EF">
+      <div style="height:64px;padding:0 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EDE8E3;background:#fff">
+        <sc-if value="{{ compact }}"><span onClick="{{ back }}" role="button" aria-label="Back" style="width:36px;height:36px;margin-left:-6px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="icon-chevron-left" style="font-size:20px"></i></span></sc-if>
+        <span style="width:40px;height:40px;flex:none;border-radius:50%;background:{{ cur.soft }};color:{{ cur.c }};font-weight:600;display:flex;align-items:center;justify-content:center">{{ cur.a }}</span>
+        <div style="flex:1;min-width:0"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ cur.n }}</div><div style="font-size:12px;color:#625D69">{{ cur.sub }}</div></div>
+        <sc-if value="{{ wide }}"><span style="font-size:13px;color:#625D69">Auto-reply</span></sc-if>
+        <span onClick="{{ cur.toggle }}" role="switch" aria-checked="{{ cur.auto }}" aria-label="Auto-reply in this chat" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ cur.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ cur.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span>
+      </div>
+      <div style="flex:1;overflow:auto;padding:20px 16px;display:flex;flex-direction:column;gap:8px;justify-content:flex-end">
+        <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;align-items:{{ m.al }};gap:3px"><div style="max-width:{{ bubbleW }};padding:10px 14px;border-radius:18px;border-bottom-left-radius:{{ m.rl }};border-bottom-right-radius:{{ m.rr }};background:{{ m.bg }};color:{{ m.fg }};font-size:14px;line-height:21px;box-shadow:0 1px 2px rgba(20,10,30,.05)">{{ m.x }}</div><div style="font-size:11px;color:#625D69;display:flex;align-items:center;gap:4px;padding:0 6px"><sc-if value="{{ m.ai }}"><i class="icon-sparkles" style="color:#6A4CF2"></i>Sent by Aelys ·</sc-if>{{ m.t }}</div></div></sc-for>
+      </div>
+      <div style="padding:0 12px 12px;display:flex;flex-direction:column;gap:10px">
+        <sc-if value="{{ hasDraft }}">
+          <div style="padding:12px 14px;border-radius:18px;background:#fff;border:1.5px solid #D6CCF8;box-shadow:0 8px 24px rgba(106,76,242,.08)">
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#5132D6"><i class="icon-sparkles"></i>Aelys draft</div>
+            <div style="font-size:14px;line-height:22px;margin-top:4px">{{ draft }}</div>
+            <div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">
+              <span onClick="{{ send }}" role="button" style="height:36px;padding:0 16px;border-radius:10px;background:#6A4CF2;color:#fff;font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer" style-hover="background:#5132D6"><i class="icon-send"></i>Send</span>
+              <span onClick="{{ edit }}" role="button" style="height:36px;padding:0 12px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">Edit</span>
+              <span onClick="{{ regen }}" role="button" aria-label="Rewrite" style="height:36px;padding:0 12px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer"><i class="icon-rotate-ccw"></i>{{ regenT }}</span>
+              <span onClick="{{ skip }}" role="button" style="height:36px;padding:0 10px;border-radius:10px;font-weight:500;font-size:13px;color:#625D69;display:flex;align-items:center;cursor:pointer">Skip</span>
+              <sc-if value="{{ wide }}"><span style="flex:1"></span><span style="font-size:12px;color:#625D69">⌘↵ send · J / K next chat</span></sc-if>
+            </div>
+          </div>
+        </sc-if>
+        <div style="display:flex;align-items:center;gap:10px;height:48px;padding:0 6px 0 16px;border-radius:24px;background:#fff;border:1px solid #EDE8E3"><input value="{{ text }}" onChange="{{ onText }}" onKeyDown="{{ onKey }}" placeholder="Write a reply…" aria-label="Write a reply" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"><span onClick="{{ sendOwn }}" role="button" aria-label="Send" style="width:36px;height:36px;border-radius:50%;background:{{ btnBg }};color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="icon-arrow-up"></i></span></div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:760},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { chats: null, tab: 'need', cur: null, text: '', q: '', view: 'list' };
+  init() {
+    const C = [
+      ['aidana', 'A', 'Aidana', 'Personal', 'blue', true, '12:40', 1, [['in', 'Hey! Are you free tomorrow at 3?', '12:38'], ['in', 'Want to go over the NLP project together', '12:40']], 'Hi! I\'ll check my schedule and get back to you today.'],
+      ['course', 'M', 'Marat · INF 376 chat', '42 members', 'violet', true, '11:05', 3, [['in', 'Did anyone get the slides from Monday?', '11:01'], ['in', 'The link in the LMS is broken', '11:05']], 'Yes, I have them, sharing in a bit.'],
+      ['client', 'D', 'Dana Studio', 'Business · client', 'green', true, '09:20', 1, [['out', 'Sent you the first version of the landing page', 'Yesterday', 0], ['in', 'Looks great. Can we move the call to Friday?', '09:20']], 'Thanks! Friday works. What time suits you best?'],
+      ['mom', 'M', 'Mom', 'Personal', 'coral', false, 'Yesterday', 0, [['in', 'Call me when you\'re free', 'Yesterday'], ['out', 'Will do tonight!', 'Yesterday', 0]], ''],
+      ['bank', 'K', 'Kaspi Bank', 'Notifications', 'orange', false, 'Oct 29', 0, [['in', 'Payment of 12 000 ₸ to Internet received', 'Oct 29'], ['out', 'Thanks, received.', 'Oct 29', 1]], ''],
+    ];
+    return C.map(([id, a, n, sub, k, auto, t, unread, msgs, draft]) => ({ id, a, n, sub, k, auto, t, unread, msgs, draft }));
+  }
+  renderVals() {
+    const S = this.state, compact = !!this.props.compact;
+    const chats = S.chats || this.init();
+    const A = { blue: ['#2F6FE4', '#E4EEFD'], violet: ['#5132D6', '#EEE8FD'], green: ['#0E7A57', '#DCF5EC'], coral: ['#B8402F', '#FDE6E1'], orange: ['#8A5A00', '#FDF1D9'] };
+    const need = chats.filter(c => c.draft || c.unread);
+    const q = S.q.trim().toLowerCase();
+    const list = (S.tab === 'need' ? need : chats).filter(c => !q || c.n.toLowerCase().includes(q));
+    const curId = S.cur && chats.some(c => c.id === S.cur) ? S.cur : (list[0] || chats[0]).id;
+    const cur = chats.find(c => c.id === curId);
+    const upd = (id, fn) => chats.map(c => c.id === id ? fn(Object.assign({}, c)) : c);
+    const nextId = next => { const w = next.filter(c => (c.draft || c.unread) && c.id !== curId); return w.length ? w[0].id : curId; };
+    const after = next => compact ? { chats: next, view: 'list' } : { chats: next, cur: nextId(next) };
+    const sendText = (txt, ai) => { if (!txt.trim()) return; const next = upd(curId, c => { c.msgs = c.msgs.concat([['out', txt.trim(), 'now', ai ? 1 : 0]]); c.draft = ''; c.unread = 0; c.t = 'now'; return c; }); this.setState(Object.assign({ text: '' }, ai ? after(next) : { chats: next })); };
+    const alt = ['Sure, let me confirm and I\'ll text you back within the hour.', 'Got it, thanks! I\'ll reply properly this evening.', 'Sounds good. I\'ll send details shortly.'];
+    const k = A[cur.k];
+    const showChat = !compact || S.view === 'chat', showList = !compact || S.view === 'list';
+    return {
+      compact, wide: !compact, showChat, showList,
+      h: compact ? '640px' : 'calc(100vh - 200px)', cols: compact ? 'minmax(0,1fr)' : '340px minmax(0,1fr)', listBorder: compact ? '0' : '1px solid #EDE8E3', bubbleW: compact ? '82%' : '64%',
+      q: S.q, onQ: e => this.setState({ q: e.target.value }),
+      tabs: [['need', 'Needs reply · ' + need.length], ['all', 'All']].map(([v, t]) => { const on = S.tab === v; return { t, on, bg: on ? '#fff' : 'transparent', sh: on ? '0 1px 3px rgba(20,10,30,.1)' : 'none', pick: () => this.setState({ tab: v }) }; }),
+      list: list.map(c => { const on = !compact && c.id === curId; const last = c.msgs[c.msgs.length - 1]; return { a: c.a, n: c.n, t: c.t, last: (last[0] === 'out' ? 'You: ' : '') + last[1], draft: !!c.draft, unread: c.unread || 0, c: A[c.k][0], soft: A[c.k][1], on, bg: on ? '#EEE8FD' : 'transparent', pick: () => this.setState({ cur: c.id, view: 'chat', chats: upd(c.id, x => { x.unread = 0; return x; }) }) }; }),
+      empty: list.length === 0,
+      back: () => this.setState({ view: 'list' }),
+      cur: { a: cur.a, n: cur.n, sub: cur.sub, c: k[0], soft: k[1], auto: cur.auto, trk: cur.auto ? '#6A4CF2' : '#CFC9D4', knob: cur.auto ? '21px' : '3px', toggle: () => this.setState({ chats: upd(curId, c => { c.auto = !c.auto; return c; }) }) },
+      msgs: cur.msgs.map(([d, x, t, ai]) => { const o = d === 'out'; return { x, t, ai: !!ai, al: o ? 'flex-end' : 'flex-start', bg: o ? '#6A4CF2' : '#fff', fg: o ? '#fff' : '#1C1B22', rl: o ? '18px' : '6px', rr: o ? '6px' : '18px' }; }),
+      hasDraft: !!cur.draft, draft: cur.draft, regenT: compact ? '' : 'Rewrite',
+      send: () => sendText(cur.draft, true),
+      edit: () => this.setState({ text: cur.draft, chats: upd(curId, c => { c.draft = ''; return c; }) }),
+      regen: () => this.setState({ chats: upd(curId, c => { c.draft = alt[(alt.indexOf(c.draft) + 1) % alt.length]; return c; }) }),
+      skip: () => this.setState(after(upd(curId, c => { c.draft = ''; c.unread = 0; return c; }))),
+      text: S.text, onText: e => this.setState({ text: e.target.value }),
+      onKey: e => { if (e.key === 'Enter') sendText(S.text, false); },
+      sendOwn: () => sendText(S.text, false), btnBg: S.text.trim() ? '#6A4CF2' : '#CFC9D4',
+    };
+  }
+}
+</script>
+</body>
+</html>

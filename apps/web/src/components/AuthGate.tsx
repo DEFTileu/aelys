@@ -13,6 +13,7 @@ import { localBrowserLaunchId } from '../lib/localBrowserLogin'
 type AuthState = 'checking' | 'ready' | 'login' | 'setup' | 'connection' | 'biometric'
 
 function defaultDeviceName(): string {
+  if (isNativeHost()) return /Android/i.test(navigator.userAgent) ? 'Aelys Android' : 'Aelys Mac'
   const platform = typeof navigator === 'undefined' ? '' : (navigator.platform || '').trim()
   return platform ? `Browser (${platform})` : 'Browser'
 }
@@ -43,7 +44,6 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
   const [passwordSetup, setPasswordSetup] = useState(true)
   const [deviceKnown, setDeviceKnown] = useState(false)
   const generation = useRef(0)
-  const explicitReauthentication = useRef(false)
   const nativeHost = isNativeHost()
   const localLogin = !!localBrowserLaunchId()
   const androidHost = nativeHost && /Android/i.test(navigator.userAgent)
@@ -52,7 +52,6 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
     const storage = (event: StorageEvent) => { if (event.key === 'aelys.signedOut') update() }
     const expired = (event: Event) => {
       if ((event as CustomEvent<{ origin: string }>).detail?.origin !== nativeBackendOrigin(getApiConfig().baseUrl)) return
-      explicitReauthentication.current = true
       generation.current += 1; setPassword(''); setNotice('Your session ended. Confirm sign-in again.'); setState('login'); setRetry((value) => value + 1)
     }
     window.addEventListener(SESSION_EVENT, update)
@@ -72,13 +71,13 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
           const transport = await loadNativeTransport()
           const origin = nativeBackendOrigin(getApiConfig().baseUrl)
           const native = await transport.status(origin)
+          if (alive && generation.current === run) setDeviceKnown(!!native.can_resume)
           if (native.signed_in) setNativeCacheOwner(native.owner_id)
           if (isSignedOut()) { setCanUnlock(false); publish('login'); return }
           if (alive && generation.current === run) setCanUnlock(!androidHost && !!native.biometric_locked && !!native.can_resume)
           if (native.signed_in) { publish('ready'); return }
           if (native.biometric_locked && native.can_resume) { publish(androidHost ? 'login' : 'biometric'); return }
           if (!native.initialized) { publish('setup'); return }
-          if (explicitReauthentication.current) { publish('login', 'Your session ended. Sign in again.'); return }
           if (native.can_resume) {
             try { setNativeCacheOwner((await transport.resume(origin)).owner_id); publish('ready'); return }
             catch (error) {
@@ -117,9 +116,10 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       const result = await transport.resume(origin)
       if (!result.signed_in) throw new Error('Resume failed')
       setNativeCacheOwner(result.owner_id)
-      if (run === generation.current && origin === nativeBackendOrigin(getApiConfig().baseUrl)) { explicitReauthentication.current = false; setState('ready') }
+      clearNativeSignedOut()
+      if (run === generation.current && origin === nativeBackendOrigin(getApiConfig().baseUrl)) { setState('ready') }
     } catch (error) {
-      if (run === generation.current) setNotice(isKeychainAccessRequired(error) ? KEYCHAIN_ACCESS_NOTICE : 'Could not unlock with Touch ID. Try again or sign in with your password.')
+      if (run === generation.current) setNotice(isKeychainAccessRequired(error) ? KEYCHAIN_ACCESS_NOTICE : 'Could not unlock with Touch ID. Try again or reconnect this device.')
     } finally { setBusy(false) }
   }
   const authorizeKeychain = async () => {
@@ -132,7 +132,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       const found = await transport.authorizeKeychain(origin, 'session')
       if (run !== generation.current || origin !== nativeBackendOrigin(getApiConfig().baseUrl)) return
       if (!found) {
-        setCanUnlock(false); setState('login'); setNotice('No saved session found. Sign in with your password.')
+        setCanUnlock(false); setState('login'); setNotice('No saved session found. Connect this device with a one-time code.')
         return
       }
       const status = await transport.status(origin)
@@ -140,7 +140,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       if (!androidHost && status.can_resume && status.biometric_locked) {
         setCanUnlock(true); setState('biometric'); setNotice('')
       } else {
-        setCanUnlock(false); setState('login'); setNotice('Sign in with your Aelys password.')
+        setDeviceKnown(!!status.can_resume); setCanUnlock(false); setState('login'); setNotice('Device found. Open Aelys to continue.')
       }
     } catch {
       if (run === generation.current) setNotice(KEYCHAIN_ACCESS_NOTICE)
@@ -161,7 +161,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
         clearNativeSignedOut()
       } else if (state === 'setup') await bootstrapOwner(email.trim(), password)
       else await login(email.trim(), password)
-      if (run === generation.current && base === getApiConfig().baseUrl) { explicitReauthentication.current = false; setPassword(''); setState('ready') }
+      if (run === generation.current && base === getApiConfig().baseUrl) { setPassword(''); setState('ready') }
     } catch (error) {
       if (run === generation.current) {
         if (error instanceof ApiError && error.code === 'ALREADY_INITIALIZED') setState('login')
@@ -176,10 +176,17 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
     const base = getApiConfig().baseUrl
     setBusy(true); setNotice('')
     try {
-      await claimSetupToken(token, deviceName)
+      if (nativeHost) {
+        const transport = await loadNativeTransport()
+        const result = await transport.enroll(nativeBackendOrigin(base), token.trim(), deviceName.trim())
+        if (!result.signed_in) throw new Error('Device connection failed')
+        if (run !== generation.current || base !== getApiConfig().baseUrl) return
+        setNativeCacheOwner(result.owner_id)
+        clearNativeSignedOut()
+      } else await claimSetupToken(token, deviceName)
       if (run === generation.current && base === getApiConfig().baseUrl) { setToken(''); setTokenMode(false); setState('ready') }
     } catch (error) {
-      if (run === generation.current) setNotice(claimMessage(error))
+      if (run === generation.current) setNotice(isKeychainAccessRequired(error) ? KEYCHAIN_ACCESS_NOTICE : claimMessage(error))
     } finally { setBusy(false) }
   }
   const useThisDevice = async () => {
@@ -206,18 +213,20 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
           <p className="auth-description">Confirm sign-in with Touch ID.</p>
           <div className="auth-actions">
             <button type="button" className={`auth-submit${keychainDenied ? ' auth-submit--secondary' : ''}`} disabled={busy} onClick={() => void unlock()}>{busy ? 'Opening…' : 'Unlock with Touch ID'}</button>
-            <button type="button" className="auth-text-action" disabled={busy} onClick={() => { setNotice(''); setState('login') }}>Sign in with password</button>
+            <button type="button" className="auth-text-action" disabled={busy} onClick={() => { setNotice(''); setState('login') }}>Connect another device</button>
           </div>
-        </> : (state === 'setup' || state === 'login') && tokenMode ? <>
-          <h1>Setup token</h1>
-          <p className="auth-description">{state === 'setup' ? 'Enter the one-time token the server printed to the console on first start.' : 'A recovery token adds this device to your account.'}</p>
+        </> : (state === 'setup' || state === 'login') && (nativeHost || tokenMode) ? <>
+          <h1>{nativeHost ? 'Connect this device' : 'Setup token'}</h1>
+          <p className="auth-description">{nativeHost ? 'Connect once with a one-time code. This device will then open Aelys automatically, without an email or password.' : state === 'setup' ? 'Enter the one-time token the server printed to the console on first start.' : 'A recovery token adds this device to your account.'}</p>
+          {nativeHost && deviceKnown && <button type="button" className="auth-submit" disabled={busy} onClick={() => void unlock()}>Open Aelys</button>}
           <form className="auth-form" onSubmit={claim}>
-            <label htmlFor="aelys-entry-token">Token<input id="aelys-entry-token" className="auth-token" autoFocus required disabled={busy} type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="Paste the token" value={token} onChange={(event) => setToken(event.target.value)} /></label>
+            <label htmlFor="aelys-entry-token">{nativeHost ? 'Connection code' : 'Token'}<input id="aelys-entry-token" className="auth-token" autoFocus required disabled={busy} type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="Paste the token" value={token} onChange={(event) => setToken(event.target.value)} /></label>
             <label htmlFor="aelys-entry-device-name">Device name<input id="aelys-entry-device-name" required disabled={busy} maxLength={200} autoComplete="off" value={deviceName} onChange={(event) => setDeviceName(event.target.value)} /></label>
             <button type="submit" className="auth-submit" disabled={busy || token.trim().length < 20}>{busy ? 'Checking…' : 'Connect device'}</button>
           </form>
-          <p className="auth-field-help">New token: <code>python -m app.core.admin setup-token</code>{state === 'login' ? ' --recovery' : ''}. It is valid for 30 minutes and works once.</p>
-          {(state === 'login' || passwordSetup) && <button type="button" className="auth-text-action" disabled={busy} onClick={() => { setNotice(''); setToken(''); setTokenMode(false) }}>{state === 'login' ? 'Back to sign in' : 'Create account with password'}</button>}
+          {!nativeHost && <p className="auth-field-help">New token: <code>python -m app.core.admin setup-token</code>{state === 'login' ? ' --recovery' : ''}. It is valid for 30 minutes and works once.</p>}
+          {nativeHost && canUnlock && <button type="button" className="auth-text-action" disabled={busy} onClick={() => { setNotice(''); setState('biometric') }}>Back to Touch ID</button>}
+          {!nativeHost && (state === 'login' || passwordSetup) && <button type="button" className="auth-text-action" disabled={busy} onClick={() => { setNotice(''); setToken(''); setTokenMode(false) }}>{state === 'login' ? 'Back to sign in' : 'Create account with password'}</button>}
         </> : <>
           <h1>{state === 'setup' ? 'Create account' : 'Sign in to Aelys'}</h1>
           <p className="auth-description">{state === 'setup' ? 'One account for all your devices.' : localLogin ? 'Enter your username and password.' : 'Enter your account email and password.'}</p>

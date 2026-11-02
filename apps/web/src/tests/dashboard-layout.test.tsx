@@ -38,8 +38,32 @@ const tasks = (count: number) => Array.from({ length: count }, (_, index) => ({ 
 describe('dashboard widgets', () => {
   it('renders the design default sizes with no automatic sizing and saves nothing', async () => {
     const { grid } = await mount()
-    expect([...grid.children].map(card => [card.getAttribute('data-widget-id'), (card as HTMLElement).dataset.sizeKey])).toEqual([['today', 'S'], ['cal', 'S'], ['focus', 'S'], ['weather', 'S'], ['proj', 'S'], ['notes', 'S'], ['fin', 'S'], ['kb', 'S'], ['activity', 'Full']])
+    expect([...grid.children].map(card => [card.getAttribute('data-widget-id'), (card as HTMLElement).dataset.sizeKey])).toEqual([['today', 'S'], ['cal', 'S'], ['focus', 'S'], ['weather', 'S'], ['proj', 'S'], ['notes', 'S'], ['fin', 'S'], ['kb', 'S']])
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
+  })
+
+  it('shows Recent activity as a fixed last section outside the grid: no edit controls, not in the Add widget sheet or the catalog', async () => {
+    client.activity.mockResolvedValue([{ id: 'a1', event_kind: 'task.completed', actor_kind: 'user', occurred_at: new Date().toISOString(), non_sensitive_metadata: { title: 'Pay bill' } }])
+    localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify([['today', 1, 264], ['activity', 4, 264]]))
+    const { host, grid } = await mount()
+    expect([...grid.children].map(card => card.getAttribute('data-widget-id'))).toEqual(['today'])
+    expect(WIDGET_IDS).not.toContain('activity')
+    const section = host.querySelector<HTMLElement>('section[aria-label="Recent activity"]')!
+    expect(section.textContent).toContain('Task completed')
+    expect(section.textContent).toContain('Pay bill')
+    expect(section.textContent).toContain('All events')
+    expect(section.previousElementSibling).toBe(grid)
+    await customize(host)
+    expect(section.querySelector('.home-remove-widget, .home-resize-handle')).toBeNull()
+    expect(section.hasAttribute('tabindex')).toBe(false)
+    await click(button(host, 'Widget'))
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"][aria-label="Add widget"]')!
+    expect(dialog.textContent).not.toContain('Recent activity')
+  })
+
+  it('shows one muted line when Recent activity has no events', async () => {
+    const { host } = await mount()
+    expect(host.querySelector('section[aria-label="Recent activity"]')!.textContent).toContain('No recorded activity yet.')
   })
 
   it('does not grow a card with its record count: Today S always shows at most five tasks', async () => {
@@ -168,7 +192,7 @@ describe('dashboard customization', () => {
     expect(grid.querySelector('.home-widget-body[inert]')).toBeNull()
     await customize(host)
     const bodies = [...grid.querySelectorAll('.home-widget-body')]
-    expect(bodies.length).toBe(9)
+    expect(bodies.length).toBe(8)
     expect(bodies.every(body => body.hasAttribute('inert'))).toBe(true)
     expect(grid.classList.contains('home-widget-grid--editing')).toBe(true)
   })
@@ -372,15 +396,17 @@ describe('dashboard customization', () => {
     expect(localStorage.getItem(HOME_LAYOUT_KEY)).toBeNull()
   })
 
-  it('opens Customize on mobile with a long press on the widget heading', async () => {
+  it('enters the same edit mode on mobile with a long press', async () => {
     vi.useFakeTimers()
-    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 700px)', addEventListener() {}, removeEventListener() {} }))
+    const width = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
     try {
-      const { host } = await mount()
-      const heading = card(host, 'today').querySelector<HTMLElement>('[data-widget-heading]')!
-      await act(async () => pointer(heading, 'pointerdown', 15, 25))
+      const { host, grid } = await mount()
+      expect(host.querySelector('[aria-label="Remove Today"]')).toBeNull()
+      await act(async () => pointer(card(host, 'today'), 'pointerdown', 15, 25))
       await act(async () => { vi.advanceTimersByTime(600) })
-      expect(window.location.pathname).toBe('/widgets')
-    } finally { vi.useRealTimers(); window.history.replaceState({}, '', '/') }
+      expect(host.querySelector('[aria-label="Remove Today"]')).not.toBeNull()
+      expect(grid.classList.contains('home-widget-grid--editing')).toBe(true)
+    } finally { vi.useRealTimers(); Object.defineProperty(window, 'innerWidth', { configurable: true, value: width }) }
   })
 })

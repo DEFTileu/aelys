@@ -4568,6 +4568,58 @@
         ]
       }
     },
+    "/api/v1/ai/conversations/{conversation_id}": {
+      "patch": {
+        "summary": "Update Conversation",
+        "operationId": "update_conversation_api_v1_ai_conversations__conversation_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/conversations/{conversation_id}/messages": {
       "get": {
         "summary": "Messages",
@@ -4660,6 +4712,58 @@
         }
       }
     },
+    "/api/v1/ai/messages/{message_id}": {
+      "patch": {
+        "summary": "Update Message",
+        "operationId": "update_message_api_v1_ai_messages__message_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessagePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/runs": {
       "post": {
         "summary": "Create Run",
@@ -4699,6 +4803,215 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/ai/attachments": {
+      "post": {
+        "summary": "Upload Attachment",
+        "operationId": "upload_attachment_api_v1_ai_attachments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/attachments/{attachment_id}": {
+      "delete": {
+        "summary": "Delete Attachment",
+        "operationId": "delete_attachment_api_v1_ai_attachments__attachment_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/conversations/{conversation_id}/actions": {
+      "get": {
+        "summary": "Conversation Actions",
+        "operationId": "conversation_actions_api_v1_ai_conversations__conversation_id__actions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/actions/{action_id}/approve": {
+      "post": {
+        "summary": "Approve Action",
+        "operationId": "approve_action_api_v1_ai_actions__action_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/actions/{action_id}/reject": {
+      "post": {
+        "summary": "Reject Action",
+        "operationId": "reject_action_api_v1_ai_actions__action_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/ai/runs/{run_id}": {
@@ -6562,6 +6875,243 @@
           }
         }
       }
+    },
+    "/api/v1/integrations/telegram/chats": {
+      "get": {
+        "tags": [
+          "Telegram Business"
+        ],
+        "summary": "Chats",
+        "operationId": "chats_api_v1_integrations_telegram_chats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChatOut"
+                  },
+                  "type": "array",
+                  "title": "Response Chats Api V1 Integrations Telegram Chats Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/telegram/chats/{chat_id}/avatar": {
+      "get": {
+        "tags": [
+          "Telegram Business"
+        ],
+        "summary": "Chat Avatar",
+        "operationId": "chat_avatar_api_v1_integrations_telegram_chats__chat_id__avatar_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {},
+              "image/gif": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/telegram/chats/send": {
+      "post": {
+        "tags": [
+          "Telegram Business"
+        ],
+        "summary": "Send Chat",
+        "operationId": "send_chat_api_v1_integrations_telegram_chats_send_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 150,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSendIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/telegram/messages/{message_id}/media": {
+      "get": {
+        "tags": [
+          "Telegram Business"
+        ],
+        "summary": "Message Media",
+        "operationId": "message_media_api_v1_integrations_telegram_messages__message_id__media_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {},
+              "image/gif": {},
+              "audio/ogg": {},
+              "audio/mpeg": {},
+              "audio/mp4": {},
+              "audio/wav": {},
+              "audio/flac": {},
+              "audio/webm": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/search": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Search",
+        "operationId": "search_api_v1_knowledge_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeSource"
+                  },
+                  "type": "array",
+                  "title": "Response Search Api V1 Knowledge Search Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -6594,6 +7144,29 @@
           "delete"
         ],
         "title": "Action"
+      },
+      "AttachmentIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "content_base64": {
+            "type": "string",
+            "maxLength": 2900000,
+            "minLength": 1,
+            "title": "Content Base64"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "content_base64"
+        ],
+        "title": "AttachmentIn"
       },
       "AutomationDraftIn": {
         "properties": {
@@ -7038,6 +7611,97 @@
         ],
         "title": "ChallengeResponse"
       },
+      "ChatOut": {
+        "properties": {
+          "business_connection_id": {
+            "type": "string",
+            "title": "Business Connection Id"
+          },
+          "chat_id": {
+            "type": "integer",
+            "title": "Chat Id"
+          },
+          "can_send": {
+            "type": "boolean",
+            "title": "Can Send"
+          },
+          "send_disabled_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Disabled Code"
+          },
+          "reply_window_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Window Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_connection_id",
+          "chat_id",
+          "can_send",
+          "send_disabled_code",
+          "reply_window_expires_at"
+        ],
+        "title": "ChatOut"
+      },
+      "ChatSendIn": {
+        "properties": {
+          "business_connection_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Business Connection Id"
+          },
+          "chat_id": {
+            "type": "integer",
+            "maximum": 4503599627370496.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Chat Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 4503599627370496.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "business_connection_id",
+          "chat_id",
+          "text"
+        ],
+        "title": "ChatSendIn"
+      },
       "ConnectIn": {
         "properties": {
           "bot_token": {
@@ -7106,10 +7770,77 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Tool Scope"
+          },
+          "knowledge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
         "title": "ConversationIn"
+      },
+      "ConversationPatch": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConversationPatch"
       },
       "CreateNotificationAction": {
         "properties": {
@@ -8337,6 +9068,117 @@
         ],
         "title": "KeyRegister"
       },
+      "KnowledgeQuery": {
+        "properties": {
+          "note_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Note Ids"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "KnowledgeQuery"
+      },
+      "KnowledgeScope": {
+        "properties": {
+          "note_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Note Ids"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "KnowledgeScope"
+      },
+      "KnowledgeSource": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "note_id": {
+            "type": "string",
+            "title": "Note Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "heading": {
+            "type": "string",
+            "title": "Heading"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "title": "End"
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "note_id",
+          "title",
+          "version",
+          "heading",
+          "start",
+          "end",
+          "excerpt"
+        ],
+        "title": "KnowledgeSource"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -8639,6 +9481,36 @@
         ],
         "title": "MemoryFactPatch"
       },
+      "MessageMediaOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "voice",
+              "audio"
+            ],
+            "title": "Kind"
+          },
+          "file_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "file_size"
+        ],
+        "title": "MessageMediaOut"
+      },
       "MessageOut": {
         "properties": {
           "id": {
@@ -8737,6 +9609,38 @@
               }
             ],
             "title": "Deleted At"
+          },
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageMediaOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reply_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Message Id"
+          },
+          "reply_to_telegram_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Telegram Message Id"
           }
         },
         "type": "object",
@@ -8758,6 +9662,31 @@
           "deleted_at"
         ],
         "title": "MessageOut"
+      },
+      "MessagePatch": {
+        "properties": {
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "up",
+                  "down"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "feedback"
+        ],
+        "title": "MessagePatch"
       },
       "MessageReadIn": {
         "properties": {
@@ -8914,6 +9843,11 @@
       },
       "NoteIn": {
         "properties": {
+          "knowledge_enabled": {
+            "type": "boolean",
+            "title": "Knowledge Enabled",
+            "default": false
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -8979,6 +9913,11 @@
       },
       "NoteOut": {
         "properties": {
+          "knowledge_enabled": {
+            "type": "boolean",
+            "title": "Knowledge Enabled",
+            "default": false
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -10894,18 +11833,34 @@
           "routing": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Routing",
-            "default": {}
+            "title": "Routing"
           },
           "tool_scope": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Tool Scope",
-            "default": {}
+            "title": "Tool Scope"
           },
           "idempotency_key": {
             "type": "string",
             "title": "Idempotency Key"
+          },
+          "knowledge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Attachment Ids"
           }
         },
         "type": "object",

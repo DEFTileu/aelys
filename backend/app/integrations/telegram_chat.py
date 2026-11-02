@@ -1,0 +1,477 @@
+"""Explicit owner sends to an existing Business chat, independent of AI replies."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import hmac
+import json
+from datetime import timedelta
+from typing import Any
+
+from app.ai.crypto import decrypt_secret
+from app.ai.errors import PolicyDenied
+from app.ai.models import PermissionContext, ToolCall
+from app.ai.policy import ServerPolicyEngine
+from app.ai.tools import ToolDescriptor
+from app.core.config import get_settings
+from app.core.models import now
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from . import telegram_service as service
+from .telegram_models import (
+    TelegramBusinessConnection,
+    TelegramBusinessMessage,
+    TelegramChatSend,
+    TelegramIntegration,
+)
+from .telegram_transport import TelegramError
+
+
+def authorize(item: TelegramIntegration) -> None:
+    descriptor = ToolDescriptor(
+        "telegram.chat.send",
+        "Send an owner message to a verified chat",
+        "telegram.reply",
+        lambda arguments: arguments,
+        lambda arguments: asyncio.sleep(0, result={}),
+        external_effect=True,
+    )
+    try:
+        ServerPolicyEngine().authorize(
+            descriptor,
+            ToolCall("telegram.chat.send", {}),
+            PermissionContext(
+                actor=f"owner:{item.owner_id}",
+                scopes=frozenset({"telegram.reply"}),
+                allow_external_effects=True,
+                policy_id="telegram-business",
+            ),
+        )
+    except PolicyDenied:
+        raise service.error(
+            403, "POLICY_DENIED", "Отправка запрещена политикой."
+        ) from None
+
+
+def availability(
+    item: TelegramIntegration, connection: TelegramBusinessConnection | None, latest
+) -> dict[str, Any]:
+    expires = service.utc(latest) + timedelta(hours=24) if latest else None
+    code = None
+    if not item.encrypted_token:
+        code = "TELEGRAM_NOT_CONFIGURED"
+    elif not item.enabled:
+        code = "TELEGRAM_PAUSED"
+    elif not item.owner_telegram_id:
+        code = "TELEGRAM_BINDING_REQUIRED"
+    elif (
+        not connection
+        or not connection.enabled
+        or connection.owner_id != item.owner_id
+        or connection.integration_id != item.id
+        or connection.telegram_user_id != item.owner_telegram_id
+        or connection.rights.get("can_reply") is not True
+    ):
+        code = "TELEGRAM_REPLY_DENIED"
+    elif expires is None or expires <= now():
+        code = "TELEGRAM_REPLY_WINDOW_EXPIRED"
+    elif (
+        item.last_error_code == "TELEGRAM_RATE_LIMITED"
+        and item.lease_expires_at
+        and service.utc(item.lease_expires_at) > now()
+    ):
+        code = "TELEGRAM_RATE_LIMITED"
+    return {
+        "can_send": code is None,
+        "send_disabled_code": code,
+        "reply_window_expires_at": expires,
+    }
+
+
+async def chats(db: AsyncSession, item: TelegramIntegration) -> list[dict[str, Any]]:
+    pairs = (
+        await db.execute(
+            select(
+                TelegramBusinessMessage.business_connection_id,
+                TelegramBusinessMessage.chat_id,
+                func.max(TelegramBusinessMessage.sent_at).label("latest"),
+            )
+            .where(
+                TelegramBusinessMessage.owner_id == item.owner_id,
+                TelegramBusinessMessage.integration_id == item.id,
+                TelegramBusinessMessage.deleted_at.is_(None),
+            )
+            .group_by(
+                TelegramBusinessMessage.business_connection_id,
+                TelegramBusinessMessage.chat_id,
+            )
+            .order_by(func.max(TelegramBusinessMessage.sent_at).desc())
+            .limit(100)
+        )
+    ).all()
+    connections = {
+        c.id: c
+        for c in (
+            await db.execute(
+                select(TelegramBusinessConnection).where(
+                    TelegramBusinessConnection.owner_id == item.owner_id,
+                    TelegramBusinessConnection.integration_id == item.id,
+                )
+            )
+        ).scalars()
+    }
+    incoming = {
+        (row.business_connection_id, row.chat_id): row.latest
+        for row in (
+            await db.execute(
+                select(
+                    TelegramBusinessMessage.business_connection_id,
+                    TelegramBusinessMessage.chat_id,
+                    func.max(TelegramBusinessMessage.sent_at).label("latest"),
+                )
+                .where(
+                    TelegramBusinessMessage.owner_id == item.owner_id,
+                    TelegramBusinessMessage.integration_id == item.id,
+                    TelegramBusinessMessage.direction == "inbound",
+                    TelegramBusinessMessage.deleted_at.is_(None),
+                )
+                .group_by(
+                    TelegramBusinessMessage.business_connection_id,
+                    TelegramBusinessMessage.chat_id,
+                )
+            )
+        ).all()
+    }
+    return [
+        {
+            "business_connection_id": connection_id,
+            "chat_id": chat_id,
+            **availability(
+                item,
+                connections.get(connection_id),
+                incoming.get((connection_id, chat_id)),
+            ),
+        }
+        for connection_id, chat_id, _ in pairs
+    ]
+
+
+def fingerprint(connection_id: str, chat_id: int, body: str, reply_to_message_id: int | None = None) -> str:
+    # HMAC prevents a content-free receipt becoming an offline dictionary of short messages.
+    payload = json.dumps(
+        [connection_id, chat_id, body] + ([reply_to_message_id] if reply_to_message_id is not None else []), ensure_ascii=False, separators=(",", ":")
+    )
+    return hmac.new(
+        get_settings().secret_key.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
+
+
+async def replay(
+    db: AsyncSession, receipt: TelegramChatSend, digest: str
+) -> TelegramBusinessMessage:
+    if not hmac.compare_digest(receipt.request_hash, digest):
+        raise service.error(
+            409,
+            "IDEMPOTENCY_CONFLICT",
+            "Этот ключ уже использован для другого сообщения.",
+        )
+    if receipt.send_status == "sent":
+        stored = (
+            await db.get(TelegramBusinessMessage, receipt.message_id)
+            if receipt.message_id
+            else None
+        )
+        if stored is not None:
+            return stored
+    if receipt.send_status == "sending":
+        raise service.error(
+            409,
+            "TELEGRAM_SEND_IN_PROGRESS",
+            "Отправка уже начата. Не повторяйте сообщение, проверьте чат Telegram.",
+        )
+    raise service.error(
+        503,
+        receipt.error_code or "TELEGRAM_DELIVERY_UNKNOWN",
+        "Проверьте переписку Telegram. Эта отправка не повторяется автоматически.",
+    )
+
+
+async def _latest(
+    db: AsyncSession, item: TelegramIntegration, connection_id: str, chat_id: int
+) -> TelegramBusinessMessage | None:
+    return (
+        await db.execute(
+            select(TelegramBusinessMessage)
+            .where(
+                TelegramBusinessMessage.owner_id == item.owner_id,
+                TelegramBusinessMessage.integration_id == item.id,
+                TelegramBusinessMessage.business_connection_id == connection_id,
+                TelegramBusinessMessage.chat_id == chat_id,
+                TelegramBusinessMessage.direction == "inbound",
+                TelegramBusinessMessage.deleted_at.is_(None),
+            )
+            .order_by(TelegramBusinessMessage.sent_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def send_chat(
+    db: AsyncSession,
+    item: TelegramIntegration,
+    connection_id: str,
+    chat_id: int,
+    body: str,
+    key: str,
+    reply_to_message_id: int | None = None,
+) -> TelegramBusinessMessage:
+    authorize(item)
+    digest = fingerprint(connection_id, chat_id, body, reply_to_message_id)
+    old = (
+        await db.execute(
+            select(TelegramChatSend).where(
+                TelegramChatSend.owner_id == item.owner_id,
+                TelegramChatSend.idempotency_key == key,
+            )
+        )
+    ).scalar_one_or_none()
+    if old:
+        return await replay(db, old, digest)
+    connection = await db.get(TelegramBusinessConnection, connection_id)
+    incoming = await _latest(db, item, connection_id, chat_id)
+    if (
+        connection is None
+        or connection.owner_id != item.owner_id
+        or connection.integration_id != item.id
+        or incoming is None
+    ):
+        raise service.error(404, "NOT_FOUND", "Доступный входящий чат не найден.")
+    if not body.strip() or len(body) > 4096:
+        raise service.error(
+            422, "VALIDATION_ERROR", "Сообщение должно содержать от 1 до 4096 символов."
+        )
+    if reply_to_message_id is not None:
+        from sqlalchemy import or_
+        target=(await db.execute(select(TelegramBusinessMessage.id).where(
+            TelegramBusinessMessage.owner_id==item.owner_id,TelegramBusinessMessage.integration_id==item.id,
+            TelegramBusinessMessage.business_connection_id==connection_id,TelegramBusinessMessage.chat_id==chat_id,
+            TelegramBusinessMessage.deleted_at.is_(None),or_(TelegramBusinessMessage.telegram_message_id==reply_to_message_id,
+                TelegramBusinessMessage.reply_message_id==reply_to_message_id)))).first()
+        if target is None:
+            raise service.error(404,'TELEGRAM_REPLY_TARGET_UNAVAILABLE','Сообщение для ответа недоступно в этом чате.')
+    state = availability(item, connection, incoming.sent_at)
+    if not state["can_send"]:
+        raise service.error(
+            403
+            if state["send_disabled_code"]
+            in {"TELEGRAM_REPLY_DENIED", "TELEGRAM_REPLY_WINDOW_EXPIRED"}
+            else 409,
+            state["send_disabled_code"],
+            "Отправка в этот чат сейчас недоступна.",
+        )
+    token = item.encrypted_token
+    async with service.TelegramClient(decrypt_secret(token)) as client:
+        # Fresh Telegram authority is mandatory, even when the browser's snapshot says open.
+        connection = await service.verified_connection(
+            db, item, client, connection_id, fresh=True
+        )
+        await db.commit()
+        await db.refresh(item)
+        incoming = await _latest(db, item, connection_id, chat_id)
+        state = availability(item, connection, incoming.sent_at if incoming else None)
+        if item.encrypted_token != token or not state["can_send"]:
+            raise service.error(
+                403,
+                state["send_disabled_code"] or "TELEGRAM_NOT_CONFIGURED",
+                "Отправка в этот чат сейчас недоступна.",
+            )
+        authorize(item)
+        receipt = TelegramChatSend(
+            owner_id=item.owner_id,
+            integration_id=item.id,
+            business_connection_id=connection_id,
+            chat_id=chat_id,
+            idempotency_key=key,
+            request_hash=digest,
+            send_status="sending",
+        )
+        db.add(receipt)
+        receipt_owner_id = item.owner_id
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            existing = (
+                await db.execute(
+                    select(TelegramChatSend).where(
+                        TelegramChatSend.owner_id == receipt_owner_id,
+                        TelegramChatSend.idempotency_key == key,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing:
+                return await replay(db, existing, digest)
+            raise service.error(
+                409, "VERSION_CONFLICT", "Подключение изменилось. Обновите чат."
+            ) from None
+        receipt_id, owner_id, integration_id = receipt.id, item.owner_id, item.id
+        await db.refresh(item)
+        current_connection = await db.get(
+            TelegramBusinessConnection, connection_id, populate_existing=True
+        )
+        current_incoming = await _latest(db, item, connection_id, chat_id)
+        current_state = availability(
+            item,
+            current_connection,
+            current_incoming.sent_at if current_incoming else None,
+        )
+        if item.encrypted_token != token or not current_state["can_send"]:
+            receipt.send_status = "failed"
+            receipt.error_code = (
+                current_state["send_disabled_code"] or "TELEGRAM_PAUSED"
+            )
+            receipt.version += 1
+            await db.commit()
+            raise service.error(
+                409, receipt.error_code, "Подключение или доступность чата изменились."
+            )
+        authorize(item)
+        try:
+            reply_arguments={"reply_to_message_id":reply_to_message_id} if reply_to_message_id is not None else {}
+            sent = await client.send_message(chat_id, body, business_connection_id=connection_id, **reply_arguments)
+            if (
+                not service.integer(sent.get("message_id"))
+                or sent["message_id"] <= 0
+                or (
+                    isinstance(sent.get("chat"), dict)
+                    and sent["chat"].get("id") != chat_id
+                )
+            ):
+                raise TelegramError("invalid_response")
+        except TelegramError as exc:
+            ambiguous = exc.code in {
+                "timeout",
+                "network_error",
+                "invalid_response",
+            } or (isinstance(exc.code, int) and exc.code >= 500)
+            code = (
+                "TELEGRAM_DELIVERY_UNKNOWN" if ambiguous else service.remote_code(exc)
+            )
+            if exc.code == 429:
+                item.last_error_code = "TELEGRAM_RATE_LIMITED"
+                item.lease_expires_at = now() + timedelta(
+                    seconds=min(max(exc.retry_after or 30, 1), 86400)
+                )
+            authorize(item)
+            await db.execute(
+                update(TelegramChatSend)
+                .where(
+                    TelegramChatSend.id == receipt_id,
+                    TelegramChatSend.send_status == "sending",
+                )
+                .values(
+                    send_status="unknown" if ambiguous else "failed",
+                    error_code=code,
+                    version=TelegramChatSend.version + 1,
+                )
+            )
+            await db.commit()
+            raise service.error(
+                503, code, "Проверьте переписку Telegram перед новой отправкой."
+            ) from None
+        # Disconnect/replacement while I/O was in flight must not resurrect purged data.
+        await db.refresh(item)
+        active = (
+            await db.execute(
+                select(TelegramChatSend)
+                .where(TelegramChatSend.id == receipt_id)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if active is None or item.encrypted_token != token or not item.enabled:
+            raise service.error(
+                503, "TELEGRAM_DELIVERY_UNKNOWN", "Проверьте переписку Telegram."
+            )
+        authorize(item)
+        # A poll can observe the owner echo before sendMessage returns. Adopt its
+        # canonical remote identity instead of inserting a duplicate conversation line.
+        conditions = (
+            TelegramBusinessMessage.owner_id == owner_id,
+            TelegramBusinessMessage.integration_id == integration_id,
+            TelegramBusinessMessage.business_connection_id == connection_id,
+            TelegramBusinessMessage.chat_id == chat_id,
+            TelegramBusinessMessage.telegram_message_id == sent["message_id"],
+        )
+        outgoing = (
+            await db.execute(select(TelegramBusinessMessage).where(*conditions))
+        ).scalar_one_or_none()
+        if outgoing is None:
+            outgoing = TelegramBusinessMessage(
+                owner_id=owner_id,
+                integration_id=integration_id,
+                business_connection_id=connection_id,
+                chat_id=chat_id,
+                telegram_message_id=sent["message_id"],
+                sender_id=item.owner_telegram_id,
+                chat_title=incoming.chat_title if incoming else "",
+                text=body,
+                sent_at=now(),
+                direction="owner",
+                draft_status="none",
+                reply_to_telegram_message_id=reply_to_message_id,
+            )
+            try:
+                async with db.begin_nested():
+                    db.add(outgoing)
+                    await db.flush()
+            except IntegrityError:
+                outgoing = (
+                    await db.execute(select(TelegramBusinessMessage).where(*conditions))
+                ).scalar_one()
+        if reply_to_message_id is not None and outgoing.reply_to_telegram_message_id is None:
+            outgoing.reply_to_telegram_message_id = reply_to_message_id
+            outgoing.version += 1
+        active.message_id = outgoing.id
+        active.send_status = "sent"
+        active.version += 1
+        await db.commit()
+        await db.refresh(outgoing)
+        return outgoing
+
+
+async def recover_stale_sends(db: AsyncSession) -> None:
+    """The connector marks abandoned claims unknown; it never replays their I/O."""
+    cutoff = now() - timedelta(minutes=3)
+    pending = (
+        (
+            await db.execute(
+                select(TelegramChatSend).where(
+                    TelegramChatSend.send_status == "sending",
+                    TelegramChatSend.updated_at < cutoff,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for receipt in pending:
+        item = await db.get(TelegramIntegration, receipt.integration_id)
+        if item is None or item.owner_id != receipt.owner_id:
+            continue
+        authorize(item)
+        await db.execute(
+            update(TelegramChatSend)
+            .where(
+                TelegramChatSend.id == receipt.id,
+                TelegramChatSend.version == receipt.version,
+                TelegramChatSend.send_status == "sending",
+            )
+            .values(
+                send_status="unknown",
+                error_code="TELEGRAM_DELIVERY_UNKNOWN",
+                version=receipt.version + 1,
+            )
+        )

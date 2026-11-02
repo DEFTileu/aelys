@@ -787,13 +787,13 @@ async def test_owner_nontext_or_forward_on_fast_poll_suppresses_reply(setup, mon
     async with sessions() as session:
         owners = list((await session.execute(select(TelegramBusinessMessage).where(
             TelegramBusinessMessage.direction == 'owner'))).scalars())
-        assert len(owners) == 1 and owners[0].text == ''
+        assert len(owners) == 1 and owners[0].text == ('do not store caption' if kind == 'voice' else '')
     response = (await client.get(PREFIX + '/messages')).text
     assert 'do-not-store-media-secret' not in response and 'forwarded private content' not in response
-    assert 'do not store caption' not in response
+    assert ('do not store caption' in response) is (kind == 'voice')
 
 
-@pytest.mark.parametrize('kind', ['business_bot', 'is_bot', 'customer_media'])
+@pytest.mark.parametrize('kind', ['business_bot', 'is_bot'])
 async def test_ignored_echo_or_customer_media_does_not_cancel_reply(setup, monkeypatch, kind):
     client, sessions, fake = setup
     item, row = await seed_message(client, sessions, fake)

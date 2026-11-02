@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { type AIProvider, type TelegramBusinessMessage, type TelegramSettingsPatch, type TelegramStatus } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
-import { sendIdempotencyKey, telegramErrorNotice as errorNotice } from '../lib/telegramMessages'
+import { telegramErrorNotice as errorNotice } from '../lib/telegramMessages'
 import { Checkbox } from '../components/controls/SelectionControls'
 import { ChevronRight, MessageSquareText, Send } from '../icons'
 import { navigate } from '../lib/router'
-import { Card, Group, Row, SelectChip, SwitchRow } from './settings/ui'
+import { Card, Group, Row, SwitchRow } from './settings/ui'
+import { ModelPicker } from '../components/ModelPicker'
 import './connected.css'
 
 export function TelegramSettings() {
   const [status, setStatus] = useState<TelegramStatus | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [providers, setProviders] = useState<readonly AIProvider[]>([])
   const [messages, setMessages] = useState<readonly TelegramBusinessMessage[]>([])
   const [token, setToken] = useState('')
@@ -23,10 +25,8 @@ export function TelegramSettings() {
   const [deadlineReminders, setDeadlineReminders] = useState(false)
   const [quietStart, setQuietStart] = useState('')
   const [quietEnd, setQuietEnd] = useState('')
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const sendKeys = useRef<Record<string, { signature: string; key: string }>>({})
 
   const applyStatus = (value: TelegramStatus) => {
     setStatus(value); setInstructions(value.instructions); setProvider(value.provider_id ?? ''); setModel(value.model ?? ''); setTimezone(value.timezone); setDigestTime(value.digest_time ?? ''); setReplyDelay(value.reply_delay_seconds)
@@ -36,8 +36,8 @@ export function TelegramSettings() {
     const client = getSharedApiClient()
     try {
       const [next, items, ai] = await Promise.all([client.telegramStatus(), client.telegramMessages(), client.aiProviders()])
-      applyStatus(next); setMessages(items); setProviders(ai.filter(item => item.kind !== 'transcription'))
-    } catch (error) { setNotice(errorNotice(error)) }
+      applyStatus(next); setMessages(items); setProviders(ai.filter(item => item.kind !== 'transcription')); setLoadFailed(false)
+    } catch (error) { setLoadFailed(true); setNotice(errorNotice(error)) }
   }, [])
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -67,23 +67,9 @@ export function TelegramSettings() {
     event.preventDefault()
     void action(async () => { const next = await getSharedApiClient().connectTelegram({ bot_token: token }); setToken(''); setBinding(null); applyStatus(next) })
   }
-  const replaceMessage = (item: TelegramBusinessMessage) => {
-    setMessages((current) => current.map((message) => message.id === item.id ? item : message))
-    setDrafts((current) => ({ ...current, [item.id]: item.draft_text ?? '' }))
-  }
-  const send = (message: TelegramBusinessMessage) => {
-    if (message.direction !== 'inbound' || message.deleted_at) return
-    const text = drafts[message.id] ?? message.draft_text ?? ''
-    if (!text.trim()) return
-    const key = sendIdempotencyKey(sendKeys.current, message, text)
-    void action(async () => {
-      replaceMessage(await getSharedApiClient().sendTelegramMessage(message.id, { version: message.version, text }, { idempotencyKey: key }))
-      delete sendKeys.current[message.id]; setNotice('Message sent.')
-    })
-  }
   const connected = status?.connections.some((connection) => connection.enabled) ?? false
 
-  const draftsReady = messages.filter((message) => !!(drafts[message.id] ?? message.draft_text)).length
+  const draftsReady = messages.filter((message) => !!message.draft_text).length
   const autoOff = !status?.auto_reply
   const state = !status?.configured ? 'Bot not set up' : !status.enabled ? 'Paused' : connected ? 'Connected to your Business account' : 'Telegram Business connection pending'
   const connectForm = <form className="st-form" onSubmit={connect}>
@@ -108,8 +94,8 @@ export function TelegramSettings() {
         </ol>
         <p>Local Telegram polling needs the Aelys backend to be running; no public URL is required.</p>
         <p>Messages are stored encrypted for up to 7 days. Disconnecting the bot deletes them.</p></details>
-        {connectForm}
-        <div className="st-msg">{status ? state : 'Checking Telegram…'}</div>
+        {status ? connectForm : null}
+        <div className="st-msg">{status ? state : loadFailed ? <>Could not load Telegram status. <button type="button" className="st-btn" onClick={() => { setLoadFailed(false); setNotice(''); void load() }}>Retry</button></> : 'Checking Telegram…'}</div>
       </Card>
     </Group>}
     {status?.configured && <>
@@ -117,8 +103,7 @@ export function TelegramSettings() {
         <SwitchRow title="Auto-reply" hint="Read incoming messages and draft replies in allowed chats" checked={status.auto_reply} disabled={busy || status.version == null} onChange={(enabled) => { void action(() => update(enabled ? { auto_reply: true, provider_id: provider || null, model: model.trim() || null, instructions } : { auto_reply: false })) }} />
         <div className="st-row st-row--wrap" style={{ opacity: autoOff ? .5 : 1 }}>
           <div className="st-grow"><div className="st-label">Reply with</div><div className="st-hint">Provider and model for drafts</div></div>
-          <SelectChip label="AI provider" value={provider} onChange={setProvider} options={[['', 'Not selected'], ...providers.map((item) => [item.id, `${item.kind.charAt(0).toUpperCase()}${item.kind.slice(1)} · ${String(item.model_policy?.default_model ?? item.id)}`] as const)]} />
-          <input className="st-input st-input--mono st-inline" aria-label="Model" maxLength={200} placeholder="Model" value={model} onChange={(event) => setModel(event.target.value)} />
+          <ModelPicker compact label="Reply with" providers={providers} value={{ providerId: provider, model }} onChange={(choice) => { setProvider(choice.providerId); setModel(choice.model) }} />
         </div>
         <form className="st-pad" style={{ opacity: autoOff ? .5 : 1 }} onSubmit={(event) => { event.preventDefault(); void action(() => update({ instructions, provider_id: provider || null, model: model.trim() || null })) }}>
           <label className="st-field-label" htmlFor="telegram-instructions">Instructions</label>
@@ -136,25 +121,6 @@ export function TelegramSettings() {
         <ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--st-mute)' }} />
       </button>
 
-      <Card>
-        <div className="st-row st-row--14"><div className="st-grow"><div className="st-label">Manual replies</div><div className="st-hint">Review incoming messages, edit a draft and send it yourself</div></div></div>
-        <div className="st-msgs">
-          {messages.length === 0 && <div className="st-hint">No messages yet.</div>}
-          {messages.map((message) => <details className="st-msg-item" key={message.id}>
-            <summary>{message.chat_title} · {message.direction}</summary><p>{message.sent_at}{message.deleted_at ? ' · deleted' : ''}</p>
-            <div className="mail-body">{message.text || (message.direction === 'owner' ? 'Message without text' : '')}</div>
-            {message.direction === 'owner' && <p>Your outgoing message. Select an incoming message from the other person to reply.</p>}
-            {message.direction === 'inbound' && <>
-              <p>Draft: {message.draft_status}{message.draft_error_code ? ' · draft failed' : ''}</p>
-              {message.owner_note && <p>For the owner: {message.owner_note}</p>}
-              <label className="st-field-label">Reply text<textarea className="st-textarea" value={drafts[message.id] ?? message.draft_text ?? ''} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: event.target.value }))} /></label>
-              <div className="st-actions" style={{ marginTop: 10 }}><button className="st-btn st-btn--ghost" disabled={busy || !!message.deleted_at} onClick={() => void action(async () => replaceMessage(await getSharedApiClient().draftTelegramMessage(message.id, { version: message.version })))}>Create draft</button>
-                <button className="st-btn st-btn--primary" disabled={busy || !!message.deleted_at || !(drafts[message.id] ?? message.draft_text ?? '').trim()} onClick={() => send(message)}>Send reply</button></div>
-            </>}
-          </details>)}
-        </div>
-      </Card>
-
       <Group title="Connection">
         <Card>
           <Row title="Owner link" hint={status.owner_telegram_id ? `Linked to Telegram ID ${status.owner_telegram_id}` : 'Open the one-time link in Telegram to link the owner'} wrap>
@@ -162,7 +128,6 @@ export function TelegramSettings() {
           </Row>
           {binding && <div className="st-msg"><a href={binding.url} target="_blank" rel="noreferrer">Open one-time owner link</a> · valid until {binding.expires_at}</div>}
           <Row title="Business mode" hint={`${status.business_capable ? 'Available' : 'Not enabled'} · ${status.enabled ? 'active' : 'paused'}${status.last_polled_at ? ` · last check ${status.last_polled_at}` : ''}`} wrap>
-            <button type="button" className="st-btn" disabled={busy} onClick={() => void action(load)}>Refresh</button>
             <button type="button" className="st-btn" disabled={busy || !status.configured} onClick={() => void action(async () => { const result = await getSharedApiClient().syncTelegram(); await load(); setNotice(`Check complete. Processed: ${result.processed}.`) })}>Check connection</button>
           </Row>
           <details className="st-pad st-steps"><summary>Business connections</summary>

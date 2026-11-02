@@ -135,6 +135,8 @@ Run request (example):
 {"conversation_id":"<uuid>","message":"Summarize today's tasks","routing":{"mode":"auto"},"tool_scope":{"project_ids":["<uuid>"]},"idempotency_key":"<uuid>"}
 ```
 
+`routing.effort` (optional): `off` (or omitted) sends no reasoning field; `low|medium|high` maps to Claude `thinking: {type:"enabled", budget_tokens: 2048|8192|24576}` and OpenRouter `reasoning: {effort}`. Any other value returns HTTP 400 `INVALID_EFFORT`. A non-off effort is echoed in the `ai.run.started` payload.
+
 SSE event envelope:
 
 ```text
@@ -593,3 +595,107 @@ Errors include `503 CALENDAR_NOT_CONFIGURED`, `404 CALENDAR_NOT_CONNECTED`,
 `422 CALENDAR_INVALID_DATA`/`CALENDAR_SYNC_LIMIT`, `502 CALENDAR_UNAVAILABLE` and
 `403 POLICY_DENIED`. HTTP 410 is consumed internally by one full refetch. Provider
 payloads and token-bearing URLs are never returned in error messages or logs.
+
+### Independent manual Telegram chat messages (2026-11-01)
+
+- `GET /integrations/telegram/chats` returns up to 100 known Business chats:
+  `{business_connection_id,chat_id,can_send,send_disabled_code,reply_window_expires_at}`.
+  It uses owner-scoped stored connection rights, pause/binding/cooldown and the
+  latest visible incoming message. Timestamps include their timezone; sends
+  additionally refresh Telegram authority before claiming transport. No-store.
+- `POST /integrations/telegram/chats/send` requires `Idempotency-Key` (1..150)
+  and `{business_connection_id,chat_id,text}` (1..4096). It sends a new owner
+  message to that existing private chat without a reply target. Multiple messages
+  are allowed while can_reply and the 24-hour incoming window remain valid.
+  The response is the canonical `MessageOut` (`direction=owner`), also returned
+  by `/messages`. Only incoming messages extend the window. No arbitrary new
+  contacts, groups, media sending, offline outbox or automatic transport retry.
+- Migration 0035 stores a content-free owner-scoped request receipt before I/O.
+  Same key/payload replays a confirmed success; changed payload returns
+  `409 IDEMPOTENCY_CONFLICT`. A concurrent claim returns
+  `409 TELEGRAM_SEND_IN_PROGRESS`. Failed/unknown requests are not sent again
+  with the same key; `TELEGRAM_DELIVERY_UNKNOWN` means check Telegram first.
+  Stale sending claims become unknown. Text remains encrypted in the existing
+  Business message table, not duplicated in receipts. Receipt payload hashes use
+  HMAC and neither plaintext nor credentials are exposed in status/errors.
+- Existing `/messages/{id}/send` keeps version CAS and one secretary reply per
+  incoming message. Manual chat claims/activity suppress stale automatic replies.
+  Policy, owner/device isolation, fresh permissions, pause, cooldown and window
+  checks remain authoritative. Disconnect purges receipts before messages.
+
+### Explicit Telegram reply and private media viewing (2026-11-01)
+
+The secretary `/messages/{id}/send` path now sends ordinary text by default: the
+internal inbound draft target is not a Telegram quote target. Independent
+`POST /chats/send` additionally accepts optional positive `reply_to_message_id`
+(the Telegram remote ID of an existing message in this same owner/connection/chat,
+including known secretary sends). Omit it for ordinary messages. An explicit
+reply must resolve locally to an undeleted same-chat message; otherwise
+`404 TELEGRAM_REPLY_TARGET_UNAVAILABLE`. The durable receipt HMAC binds the
+optional target. A key used for a reply cannot silently become a plain send.
+
+MessageOut adds `reply_message_id` (existing secretary outbound remote ID),
+nullable `reply_to_telegram_message_id` and nullable `media:{kind:photo|voice|audio,
+file_size:number|null}`. File IDs, paths, filenames, bot tokens and download URLs
+are excluded. Received caption/quote reference and encrypted metadata persist in
+Business message storage, under its existing seven-day TTL; raw bytes never do.
+Business media is visible only to the owner and does not enter AI processing.
+
+`GET /integrations/telegram/messages/{id}/media` returns a bounded binary photo
+or audio response for an authenticated active owner/Business connection. Limits:
+photo 10 MiB, voice/audio 20 MiB. Fixed Telegram getFile/download paths are used
+only on the backend; authority, message deletion and metadata are rechecked after
+I/O. Headers: no-store, nosniff, inline and a sandboxed `default-src 'none'` CSP.
+Content is identified by supported image/audio signatures; HTML/SVG/unknown
+formats are rejected. Codes include `TELEGRAM_MEDIA_TOO_LARGE` (413),
+`TELEGRAM_MEDIA_UNSUPPORTED` (415), `TELEGRAM_MEDIA_UNAVAILABLE` (422), policy
+403 and deleted/foreign/not-present 404. Viewing does not grant message-send or
+model access. Shared clients download capped blobs with authorization headers,
+no cache/outbox, and the UI revokes in-memory object URLs on unmount/change.
+Migration 0036 adds two nullable fields; encryption-key rotation covers metadata.
+
+## Knowledge retrieval (2026-11-01)
+
+See [KNOWLEDGE_RAG.md](KNOWLEDGE_RAG.md) for implemented consent, bounded retrieval,
+read-only AI scope, source events, migration and acceptance limits. The generated
+OpenAPI includes `KnowledgeScope`, `KnowledgeQuery` and `KnowledgeSource`.
+
+Combined main migrations: `0037_merge_telegram_knowledge` joins the published
+`0035_knowledge_consent` and `0036_telegram_reply_media` branches. Deployments
+upgrade to this single head before serving the combined Knowledge/Telegram API;
+there are no new endpoint permissions in the merge revision.
+
+## AI Chat sources, approvals and attachments (migration `0038_ai_chat_design`)
+
+- `GET /ai/conversations` items add `pinned`, `updated_at` (bumped by every new
+  message), `preview` (first 90 plain-text chars of the last message) and
+  `usage {input_tokens, output_tokens, estimated_cost}` summed over the chat's
+  runs. `PATCH /ai/conversations/{id}` takes `{version?, pinned?, title? (1..80),
+  scopes?}`; a stale `version` returns `VERSION_CONFLICT`. Pinning alone keeps
+  `updated_at`.
+- Source scopes `tasks.read`, `calendar.read`, `notes.read`, `knowledge.read` live
+  in `tool_scope_json.scopes`. A new chat that omits `tool_scope.scopes` gets
+  `tasks.read, calendar.read, notes.read`. Read tools (`list_tasks`, `read_calendar`,
+  `read_note`) are offered and authorized only for switched-on sources. No mail or
+  finance scopes exist. A chat with no scopes, or whose models lack tool calling,
+  answers as plain text. Knowledge questions reject write scopes only.
+- Write tools (`create_task`, `update_task`, `complete_task`, `create_note`,
+  `create_event`, `create_reminder`) never execute in a run. They persist an
+  `ai_actions` row and emit SSE `ai.action.proposed`
+  `{run_id, action_id, tool, title, summary, items[{title, detail, meta}]}`.
+  `GET /ai/conversations/{id}/actions` lists them (`status`: `pending|approved|rejected|failed`,
+  `result`). `POST /ai/actions/{id}/approve` executes once through the tool registry
+  with the owner's write scope (a repeat returns the stored result; a failure stores
+  `result.error {code, message}` and status `failed`; rejected actions return 409).
+  `POST /ai/actions/{id}/reject` is idempotent for rejected actions.
+- `ai.tool.requested` / `ai.tool.result` carry `label` ("Read your tasks"),
+  `source` (`tasks|calendar|notes`) and, on results, `detail` ("6 tasks, 2 due this
+  week"). `ai.run.completed` carries `input_tokens`, `output_tokens`, `estimated_cost`.
+- `POST /ai/attachments {name, content_base64}` accepts `.txt .md .csv .json .pdf`
+  up to 2 MB (413 `ATTACHMENT_TOO_LARGE`, 422 for other types or unreadable files),
+  extracts text, keeps it 24 h owner-scoped and returns `{id, name, size, chars}`.
+  `DELETE /ai/attachments/{id}` removes it. `POST /ai/runs` accepts `attachment_ids`
+  (max 5); text is injected as `<untrusted_data>` (20 000 chars per file, 40 000 total)
+  and `GET .../messages` returns `attachments [{name, size}]` on user messages.
+- `PATCH /ai/messages/{id} {feedback: "up"|"down"|null}` (assistant messages only);
+  `GET .../messages` returns `feedback`.

@@ -64,7 +64,7 @@ export function WeatherSettingsContent() {
       <p>Once your browser allows it, the weather updates for your location. Open-Meteo receives coordinates rounded to 0.1°; your exact position is not stored.</p>
       <button type="button" className="button button--quiet" disabled={locating} onClick={() => { setMessage(''); void detectWeatherLocation() }}><LocateFixed size={16} />{locating ? 'Detecting…' : 'Use my location'}</button>
     </div>
-    {location && <div className="weather-selection"><p><strong>{location.name}</strong><br/><small>{location.mode === 'auto' ? 'Automatic detection is on' : 'City chosen manually'}{status === 'loading' ? ' · loading forecast' : ''}</small></p><button type="button" className="text-button" onClick={() => { disableWeather(); setMessage('Weather turned off') }}>Turn off weather</button></div>}
+    {location && <div className="weather-selection"><p><strong>{location.name}</strong><br/><small>{location.mode === 'auto' ? 'Automatic location on' : 'City chosen manually'}{status === 'loading' ? ' · loading forecast' : ''}</small></p><button type="button" className="text-button" onClick={() => { disableWeather(); setMessage('Weather turned off') }}>Turn off weather</button></div>}
     {notice && <p role="status">{notice}</p>}
     <small className="weather-privacy">The city, forecast and allowed automatic mode are stored in this browser only. City search and forecast are provided by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>.</small>
   </div>

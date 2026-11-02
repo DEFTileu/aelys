@@ -135,6 +135,7 @@ export interface DeleteResponse {
 }
 
 export interface NoteIn {
+  readonly knowledge_enabled?: boolean;
   readonly folder?: string | null;
   readonly tags?: readonly string[];
   readonly title: string;
@@ -145,6 +146,7 @@ export interface NoteIn {
   readonly pinned?: boolean;
 }
 export interface NoteOut {
+  readonly knowledge_enabled?: boolean;
   readonly folder?: string | null;
   readonly tags?: readonly string[];
   /** Absent when talking to a backend that predates the field. */
@@ -575,31 +577,77 @@ export interface ProviderPatch { readonly enabled?: boolean; readonly model_poli
 export interface ProviderProbe { readonly connected: boolean; readonly code: string; }
 export interface SecretIn { readonly api_key: string; }
 export interface ConversationIn {
+  readonly knowledge?: KnowledgeScope;
   readonly project_id?: Id | null;
   readonly title?: string;
 }
+/** Read scopes a chat can grant to Aelys (stored in tool_scope_json.scopes). */
+export type AIReadScope = "tasks.read" | "calendar.read" | "notes.read" | "knowledge.read";
+export interface AIUsage { readonly input_tokens: number; readonly output_tokens: number; readonly estimated_cost: number | string }
 export interface AIConversation extends ConversationIn {
+  readonly tool_scope_json?: { readonly scopes?: readonly string[]; readonly knowledge?: KnowledgeScope };
   readonly id: Id;
   readonly owner_id: Id;
   readonly version: number;
+  readonly pinned?: boolean;
+  readonly updated_at?: IsoDateTime;
+  readonly preview?: string;
+  readonly usage?: AIUsage;
 }
+export interface ConversationPatch { readonly pinned?: boolean; readonly title?: string; readonly scopes?: readonly string[] }
 export type AIMessageRole = "user" | "assistant" | "system" | "tool";
 export interface AIMessageIn {
   readonly role: AIMessageRole;
   readonly content: string;
   readonly source_refs?: readonly JsonObject[];
 }
+export type AIFeedback = "up" | "down" | null;
 export interface AIMessage extends AIMessageIn {
+  readonly source_refs_json?: readonly KnowledgeSource[];
+  readonly attachments?: readonly { readonly name: string; readonly size: number }[];
+  readonly feedback?: AIFeedback;
   readonly id: Id;
   readonly conversation_id: Id;
   readonly created_at: IsoDateTime;
 }
+export interface KnowledgeScope {
+  readonly note_ids?: readonly Id[];
+  readonly project_id?: Id | null;
+}
+export interface KnowledgeSource {
+  readonly label: string;
+  readonly note_id: Id;
+  readonly title: string;
+  readonly version: number;
+  readonly heading: string;
+  readonly start: number;
+  readonly end: number;
+  readonly excerpt: string;
+}
+export type AIRoutingEffort = "low" | "medium" | "high";
+export type RoutingInput = JsonObject & { readonly provider_id?: string; readonly provider?: string; readonly model?: string; readonly effort?: AIRoutingEffort };
 export interface AIRunIn {
+  readonly knowledge?: KnowledgeScope;
   readonly conversation_id: Id;
   readonly message: string;
-  readonly routing?: JsonObject;
+  readonly routing?: RoutingInput;
   readonly tool_scope?: JsonObject;
+  readonly attachment_ids?: readonly Id[];
   readonly idempotency_key: string;
+}
+export interface AIAttachmentIn { readonly name: string; readonly content_base64: string }
+export interface AIAttachment { readonly id: Id; readonly name: string; readonly size: number; readonly chars: number }
+export interface AIActionItem { readonly title: string; readonly detail?: string; readonly meta?: string }
+export type AIActionStatus = "pending" | "approved" | "rejected" | "failed";
+/** A change Aelys proposed and will only apply once the owner approves it. */
+export interface AIAction {
+  readonly id: Id;
+  readonly tool: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly items: readonly AIActionItem[];
+  readonly status: AIActionStatus;
+  readonly result?: unknown;
 }
 export interface AIRun {
   readonly id: Id;
