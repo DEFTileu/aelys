@@ -111,7 +111,6 @@
   .tasks-navigation { flex: none; gap: 8px; margin: 0; padding: 0; border-radius: 0; background: none; }
   /* The design lists Today, Upcoming, Inbox, Done */
   #tasks-tab-today { order: 0; } #tasks-tab-upcoming { order: 1; } #tasks-tab-inbox { order: 2; } #tasks-tab-completed { order: 3; }
-  .tasks-m-sub { margin: -8px 0 0; color: #fff; font-size: 14px; line-height: 20px; text-shadow: 0 1px 10px rgba(20, 20, 45, .5); }
   .tasks-more { flex: none; }
   .tasks-filter-button { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 50%; }
   /* A fixed sheet escapes the sideways-scrolling row */

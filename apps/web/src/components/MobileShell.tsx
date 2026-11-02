@@ -6,6 +6,7 @@ import { askAelys, useDesktopState } from '../lib/desktopStore'
 import { navigate } from '../lib/router'
 import type { ApiStatus, RoutePath } from '../types'
 import { DeveloperLogo } from './DeveloperLogo'
+import { MobileHeader } from './MobileHeader'
 import { NotificationCenter } from './NotificationCenter'
 import { WeatherSettingsDialog } from './Weather'
 import './mobile-shell.css'
@@ -29,6 +30,16 @@ const APPS: App[] = [
   { label: 'Automation', route: '/automation', icon: Workflow, color: 'blue' },
 ]
 
+
+// The design's subtitle under each inner title. Screens with data-dependent ones (tasks, calendar, notes) set them via MobileHeader.
+const STATIC_SUBS: Partial<Record<RoutePath, string>> = {
+  '/settings': 'Make Aelys your own',
+  '/apps': 'Small tools for everything else',
+  '/messages': 'Telegram · Aelys drafts, you approve',
+  '/automation': 'When this happens, Aelys does that',
+  '/search': 'Tasks, notes, mail and more',
+  '/finance': new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+}
 
 export function MobileShell({ route, apiStatus, children, chromeOnly = false }: { chromeOnly?: boolean; route: RoutePath; apiStatus: ApiStatus; theme: 'light' | 'dark'; onToggleTheme: () => void; children: ReactNode }) {
   const settings = useDesktopState()
@@ -83,10 +94,12 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
   return <div ref={shell} style={chromeOnly ? { display: 'contents' } : undefined} className={chromeOnly ? undefined : `mobile-shell${isHome ? ' mobile-shell--home' : ''}`}>
     <div className={`mobile-shell__wallpaper${isHome ? '' : ' mobile-shell__wallpaper--inner'}`} aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(wallpaper)})` }} />
     <header className="mobile-shell__header">
-      {isHome ? <div className="mobile-shell__logo"><DeveloperLogo size={36} /><strong className="mobile-shell__brand">Aelys</strong></div> : <><button className="mobile-shell__circle mobile-shell__back" type="button" aria-label="Back" onClick={backFromPage}><ArrowLeft size={20} /></button><strong className="mobile-shell__title">{title}</strong></>}
+      {isHome ? <div className="mobile-shell__logo"><DeveloperLogo size={36} /><strong className="mobile-shell__brand">Aelys</strong></div> : <><button className="mobile-shell__circle mobile-shell__back" type="button" aria-label="Back" onClick={backFromPage}><ArrowLeft size={20} /></button><strong className="mobile-shell__title">{title}</strong><span id="mobile-header-action" className="mobile-shell__action" /></>}
       <button ref={trigger} className="mobile-shell__circle" type="button" aria-label="All apps" aria-expanded={appsOpen} onClick={() => setAppsOpen(true)}><LayoutGrid size={18} /></button>
       {isHome && <><button className="mobile-shell__circle" type="button" aria-label="Search" onClick={() => go('/search')}><Search size={18} /></button><NotificationCenter apiStatus={apiStatus} route={route} /><button className="mobile-shell__profile" type="button" aria-label="Profile and settings" onClick={() => go('/settings')} /></>}
     </header>
+    {!isHome && <div id="mobile-header-sub" className="mobile-shell__sub" />}
+    {!isHome && STATIC_SUBS[route] && <MobileHeader sub={STATIC_SUBS[route]} />}
     {!chromeOnly && <main className="mobile-shell__content">{children}</main>}
     <div ref={bar} className={`mobile-shell__bottom${isHome ? '' : ' mobile-shell__bottom--fab'}`}>
       {isHome && <form className="mobile-shell__ask" onSubmit={submit}><label className="mobile-shell__ask-field"><span className="mobile-shell__sr-only">Ask Aelys</span><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask or search" /><button className="mobile-shell__add" type="button" aria-label="Add task" onClick={() => { window.history.pushState({},'', '/tasks?create=1'); window.dispatchEvent(new PopStateEvent('popstate')) }}><Plus size={20} /></button></label><button className="mobile-shell__orb" type="submit" aria-label={draft.trim() ? 'Send to Aelys' : 'Open AI Chat'}>{draft.trim() ? <ArrowUp size={21} /> : <Sparkles size={21} />}</button></form>}

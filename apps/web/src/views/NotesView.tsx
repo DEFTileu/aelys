@@ -10,6 +10,7 @@ import type { ApiStatus } from '../types'
 import './actual-projects-notes.css'
 import './desktop/notes.css'
 import { useDurableDrafts } from '../lib/durableDrafts'
+import { MobileHeader } from '../components/MobileHeader'
 
 const ORG_COLORS = ['#14966C', '#D93636', '#D97706', '#2F6FE4', '#0F9488', '#D9367E', '#6A4CF2']
 const orgColor = (name: string) => ORG_COLORS[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % ORG_COLORS.length]
@@ -172,6 +173,7 @@ export function NotesView({ apiStatus }: { apiStatus: ApiStatus }) {
   }
 
   return <div className={`notes-live page${mobileEditor ? ' notes-live--editing' : ''}`} >
+    <MobileHeader sub={mobileEditor ? undefined : `${notes.length} notes`} action={mobileEditor ? undefined : <button type="button" onClick={() => void newNote()}><SquarePen size={16} />New</button>} />
     <div className="nl-toolbar"><h1>Notes</h1>{status !== 'ready' && notes.length === 0 && <button className="nl-btn nl-btn--primary" type="button" onClick={() => void newNote()}><Plus size={16} />New note</button>}</div>
     {(message || showSavedNotice) && <p className="nl-message" role="status">{message || 'Changes saved.'}</p>}
     {selected && conflictId === selected.id && <div className="nl-form"><button className="nl-btn" type="button" disabled={!canWrite || writing} onClick={() => void reviewLatest()}>Review latest version</button>{latestConflict?.id === selected.id && <div><p>Server title: {latestConflict.title} (v{latestConflict.version})</p><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{latestConflict.markdown_body}</pre><button className="nl-btn" type="button" onClick={useLatestVersion}>Keep my draft and use this version</button></div>}</div>}

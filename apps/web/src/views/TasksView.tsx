@@ -3,6 +3,7 @@ import { ApiError, type ProjectResponse, type TaskOut } from '@aelys/shared'
 import { Calendar, CalendarDays, Check, CircleCheck, CircleCheckBig, CirclePlus, Clock, Flag, Inbox, ListFilter, Search } from '../icons'
 import { getSharedApiClient } from '../lib/api'
 import { useIsMobile } from '../lib/useIsMobile'
+import { MobileHeader } from '../components/MobileHeader'
 import type { ApiStatus } from '../types'
 import { TaskEditor } from './tasks/TaskEditor'
 import { dateKey, dayDiff, fmtDay, projectColor, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './tasks/taskModel'
@@ -327,7 +328,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
       {source === 'error' && !!tasks.length && <div className="tasks-error" role="alert">Tasks could not be loaded. Previously loaded records may be out of date. <button type="button" disabled={refreshing} onClick={() => void load()}>Try again</button></div>}
       {offline && source !== 'loading' && source !== 'auth' && <p className="tasks-source" role="status">Offline or connection unavailable. Showing cached or previously loaded tasks. Saving requires a connection; drafts stay open while you work here.</p>}
       {projectsUnavailable && <p className="tasks-source" role="status">Projects could not be refreshed. Existing links are preserved; reconnect to choose a project.</p>}
-      {mobile && <p className="tasks-m-sub">{tasks.filter(task => !isCompleted(task) && task.due_at && dateKey(task.due_at)! <= today).length} left for today</p>}
+      <MobileHeader sub={`${tasks.filter(task => !isCompleted(task) && task.due_at && dateKey(task.due_at)! <= today).length} left for today`} />
       <div className="tasks-top-row">
         <div className="tasks-navigation" role="tablist" aria-label="Task views" onKeyDown={event => {
           if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return

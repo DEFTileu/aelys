@@ -63,3 +63,9 @@
 
 /* The phone design starts every inner screen 20px below the header; these screens carry no top spacing of their own. */
 .mobile-shell:not(.mobile-shell--home):is([data-screen-label='tasks'], [data-screen-label='calendar'], [data-screen-label='projects'], [data-screen-label='notes'], [data-screen-label='mail'], [data-screen-label='finance'], [data-screen-label='kb'], [data-screen-label='settings']) .mobile-shell__content { padding-top: 20px; }
+
+/* Header slots for the design's subtitle and action pill (see MobileHeader). */
+.mobile-shell__action:empty { display: none; }
+.mobile-shell__action > * { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: rgba(255,255,255,.9); color: #1c1b22; font: 600 13px/20px var(--font-ui); white-space: nowrap; cursor: pointer; }
+.mobile-shell__sub { position: relative; z-index: 3; padding: 0 16px; color: #fff; }
+.mobile-shell__sub > span { display: block; margin-top: 12px; font-size: 14px; line-height: 20px; text-shadow: 0 1px 10px rgba(20,20,45,.5); }

@@ -11,6 +11,7 @@ import { Archive, ArrowLeft, Check, External, SquarePen, Trash2, ChevronRight, E
 import './desktop/page-tokens.css'
 import './actual-projects-notes.css'
 import './desktop/projects.css'
+import { MobileHeader } from '../components/MobileHeader'
 
 type ProjectCard = ProjectResponse & { taskCount: number; completedCount: number }
 
@@ -147,6 +148,7 @@ export function ProjectsView({ apiStatus }: { apiStatus: ApiStatus }) {
   const openNote = (id: string) => { window.history.pushState({}, '', `/notes?note=${encodeURIComponent(id)}`); window.dispatchEvent(new PopStateEvent('popstate')) }
 
   return <div className="page projects-view">
+    <MobileHeader sub={selected ? 'Project' : `${projects.filter((project) => project.status !== 'archived').length} active projects`} />
     {!selected && <div className="pv-toolbar">
       <div className="pv-filters" role="group" aria-label="Filter projects">{(['active', 'archived', 'all'] as const).map((item) => <button key={item} type="button" aria-pressed={filter === item} onClick={() => { setFilter(item); setSelectedId(null) }}>{item[0].toUpperCase() + item.slice(1)} <span>{item === 'all' ? projects.length : projects.filter((project) => item === 'archived' ? project.status === 'archived' : project.status !== 'archived').length}</span></button>)}</div>
       
