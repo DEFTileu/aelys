@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/lucide-static@0.469.0/font/lucide.css">
+<link rel="stylesheet" href="assets/aelys-icons.css">
+<link rel="stylesheet" href="assets/aelys-dark.css">
+<style>
+body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,Roboto,"Segoe UI",sans-serif;font-size:14px;line-height:20px;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;color:#1C1B22;background:#E9E2DC}
+*{box-sizing:border-box}a{color:#5132D6;text-decoration:none}a:hover{color:#3A1FB8}
+:focus{outline:none}
+:focus-visible{outline:2px solid rgba(106,76,242,.55);outline-offset:2px}
+input:focus,textarea:focus,select:focus{outline:none}
+input{font:inherit;color:inherit;border:0;outline:0;background:transparent}
+::-webkit-scrollbar{display:none}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){[data-glass]{background:rgba(252,250,248,.98)!important}}
+@media (prefers-reduced-transparency:reduce){[data-glass]{background:rgba(252,250,248,.98)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
+@keyframes lgSpin{0%{transform:rotate(0) scale(1)}25%{transform:rotate(-14deg) scale(.86)}70%{transform:rotate(372deg) scale(1.14)}100%{transform:rotate(360deg) scale(1)}}
+@keyframes lgGlow{0%{opacity:.9;transform:scale(.5)}100%{opacity:0;transform:scale(2.4)}}
+@keyframes lgBurst{0%{opacity:1;transform:translate(0,0) scale(.3) rotate(0)}70%{opacity:1}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1) rotate(200deg)}}
+@keyframes lgFall{0%{opacity:0;transform:translate3d(0,-40px,0) rotate(0)}8%{opacity:1}100%{opacity:0;transform:translate3d(var(--sx),900px,0) rotate(var(--rot))}}
+@keyframes lgPop{0%{opacity:0;transform:translate(-50%,10px) scale(.9)}15%{opacity:1;transform:translate(-50%,0) scale(1)}85%{opacity:1}100%{opacity:0;transform:translate(-50%,-6px)}}
+@media (prefers-reduced-motion:reduce){[data-fx]{animation:none!important;display:none}[data-fx-anim]{animation:none!important}}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;gap:40px;justify-content:center;align-items:flex-start;padding:40px 24px;flex-wrap:wrap">
+  <div style="width:220px;flex:none;display:flex;flex-direction:column;gap:2px;padding:14px;border-radius:20px;background:#fff;border:1px solid #EDE8E3">
+    <div style="font-size:12px;line-height:16px;font-weight:600;color:#4F4A56;padding:4px 8px 8px">Screens</div>
+    <sc-for list="{{ screens }}" as="s" hint-placeholder-count="12"><button type="button" onClick="{{ s.pick }}" style="height:36px;padding:0 10px;border:0;border-radius:10px;display:flex;align-items:center;gap:10px;font:500 14px Inter,sans-serif;text-align:left;cursor:pointer;background:{{ s.bg }};color:{{ s.fg }}"><i class="icon-{{ s.icon }}" style="font-size:16px"></i>{{ s.t }}</button></sc-for>
+    <button type="button" onClick="{{ replayLaunch }}" style="margin-top:10px;height:38px;border-radius:12px;border:1px solid #E7E2DE;background:#fff;font:500 13px Inter,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer"><i class="icon-rotate-ccw" style="font-size:15px"></i>Replay launch</button>
+  </div>
+  <sc-for list="{{ phones }}" as="ph" hint-placeholder-count="3">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+      <div style="font-size:12px;line-height:16px;font-weight:600;color:#4F4A56;letter-spacing:.04em;text-transform:uppercase">{{ ph.label }}</div>
+      <div data-screen-label="{{ ph.label }}" style="width:412px;height:892px;border-radius:52px;padding:10px;background:#1A1A1F;box-shadow:0 30px 70px rgba(40,20,20,.3),inset 0 0 0 2px #3A3A42">
+        <div style="position:relative;width:100%;height:100%;border-radius:43px;overflow:hidden;background:#F5F0EB">
+          {{ fx }}
+          <sc-if value="{{ booting }}"><dc-import name="AelysLaunch_ACTUAL" variant="unlock" platform="android" compact="{{ true }}" on-done="{{ bootDone }}" hint-size="100%,100%" style="position:absolute;inset:0;z-index:60;border-radius:43px;overflow:hidden"></dc-import></sc-if>
+          <div style="position:absolute;left:0;right:0;top:0;height:{{ ph.photoH }}px;background:url('assets/wallpaper.png') 80% 0/auto {{ ph.photoBg }}px no-repeat"></div>
+          <div style="position:absolute;left:0;right:0;top:0;height:{{ ph.photoH }}px;background:linear-gradient(180deg,rgba(20,20,45,.46) 0,rgba(20,20,45,.36) 58%,rgba(20,20,45,.10) 80%,rgba(245,240,235,.8) 93%,#F5F0EB 100%)"></div>
+
+          <div style="position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding-bottom:{{ ph.padB }}px">
+            <div style="display:flex;align-items:center;height:44px;padding:0 28px;color:#fff;font-size:14px;font-weight:600"><span style="flex:1">9:41</span><span style="width:20px;height:20px;border-radius:50%;background:#0B0B10;position:absolute;left:50%;margin-left:-10px;top:12px"></span><span style="display:flex;gap:6px;align-items:center;font-size:14px"><i class="icon-wifi"></i><i class="icon-signal"></i><i class="icon-battery-full"></i>100%</span></div>
+
+            <sc-if value="{{ ph.home }}">
+              <div style="padding:8px 16px 0;color:#fff">
+                <div style="display:flex;align-items:center;gap:8px">
+                  {{ logo }}
+                  <span style="font-size:18px;line-height:26px;font-weight:700;flex:1;margin-left:4px;text-shadow:0 1px 10px rgba(20,20,45,.4)">Aelys</span>
+                  <span onClick="{{ ph.openApps }}" role="button" tabindex="0" aria-label="All apps" style="width:36px;height:36px;padding:5px;background-clip:content-box;border-radius:50%;background:rgba(255,255,255,.88);color:#1C1B22;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="icon-layout-grid" style="font-size:18px"></i></span>
+                  <span onClick="{{ ph.openSearch }}" role="button" tabindex="0" aria-label="Search" style="cursor:pointer;width:36px;height:36px;padding:5px;background-clip:content-box;border-radius:50%;background:rgba(255,255,255,.88);color:#1C1B22;display:flex;align-items:center;justify-content:center"><i class="icon-search" style="font-size:18px"></i></span>
+                  <span onClick="{{ ph.openNotif }}" role="button" tabindex="0" aria-label="Notifications" style="cursor:pointer;position:relative;width:36px;height:36px;padding:5px;background-clip:content-box;border-radius:50%;background:rgba(255,255,255,.88);color:#1C1B22;display:flex;align-items:center;justify-content:center"><i class="icon-bell" style="font-size:18px"></i><span style="position:absolute;top:13px;right:14px;width:8px;height:8px;border-radius:50%;background:#E5484D;border:1.5px solid #fff"></span></span>
+                  <span role="button" tabindex="0" aria-label="Profile" style="width:36px;height:36px;flex:none;border-radius:50%;background:radial-gradient(circle at 50% 30%,#F6C79A,#C77C5A 45%,#3A2F45 46%,#2A2438);border:2px solid rgba(255,255,255,.9)"></span>
+                </div>
+                <div style="text-shadow:0 1px 12px rgba(20,20,45,.45)">
+                  <div style="font-size:14px;line-height:20px;margin-top:24px">Wednesday, October 28</div>
+                  <div style="font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.02em;margin-top:4px">Good morning,<br>Tileuzhan</div>
+                  <div style="display:flex;align-items:flex-end;gap:12px;margin-top:6px"><div style="flex:1;font-size:14px;line-height:20px">A calm day creates bigger results.</div><div title="Rain tonight" style="flex:none;height:32px;padding:0 12px;border-radius:18px;display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;background:rgba(255,255,255,.22);backdrop-filter:blur(16px) saturate(1.6);-webkit-backdrop-filter:blur(16px) saturate(1.6);border:1px solid rgba(255,255,255,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 4px 14px rgba(20,20,45,.18)"><i class="icon-cloud-sun" style="font-size:18px;color:#FFD27A"></i>+14°</div></div>
+                </div>
+              </div>
+              
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:24px 16px 0">
+                <sc-for list="{{ homeW }}" as="w" hint-placeholder-count="8">
+                  <div data-glass="" style="grid-column:span {{ w.span }};min-width:0;padding:16px;border-radius:22px;background:{{ w.bg }};backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.35);box-shadow:0 6px 20px rgba(40,30,30,.07);color:{{ w.fg }}">
+                    <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:8px">
+                      <span style="font-size:14px;line-height:20px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ w.title }}</span>
+                      <sc-if value="{{ w.badge }}"><span style="height:22px;padding:0 8px;border-radius:11px;background:{{ w.badgeBg }};color:{{ w.badgeFg }};font-size:13px;line-height:22px;font-weight:600">{{ w.badge }}</span></sc-if>
+                      <span onClick="{{ w.open }}" role="button" tabindex="0" aria-label="Open" style="cursor:pointer;width:36px;height:36px;margin:-6px -8px -6px 0;display:flex;align-items:center;justify-content:center;opacity:.8"><i class="icon-chevron-right" style="font-size:20px"></i></span>
+                    </div>
+
+                    <sc-if value="{{ w.k.today }}">
+                      <sc-for list="{{ w.rows }}" as="t" hint-placeholder-count="3"><div onClick="{{ t.toggle }}" role="checkbox" tabindex="0" style="display:flex;align-items:center;gap:12px;height:40px;cursor:pointer"><span style="width:22px;height:22px;flex:none;border-radius:50%;border:{{ t.bd }};background:{{ t.bg }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px"><sc-if value="{{ t.done }}"><i class="icon-check"></i></sc-if></span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ t.fg }};text-decoration:{{ t.deco }}">{{ t.t }}</span><span style="font-size:13px;color:#625D69">{{ t.time }}</span></div></sc-for>
+                    </sc-if>
+                    <sc-if value="{{ w.k.cal }}">
+                      <div style="font-size:12px;line-height:16px;color:#625D69;margin:-6px 0 8px">Today, October 28</div>
+                      <div style="display:flex;flex-direction:column;gap:6px"><sc-for list="{{ w.rows }}" as="e" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:12px"><span style="width:44px;flex:none;font-size:13px;color:#625D69">{{ e.time }}</span><div style="flex:1;min-width:0;padding:6px 12px;border-radius:12px;background:{{ e.bg }};border-left:3px solid {{ e.bd }}"><div style="font-size:14px;line-height:20px;font-weight:500">{{ e.t }}</div><div style="font-size:12px;line-height:16px;color:#4F4A56">{{ e.r }}</div></div></div></sc-for></div>
+                    </sc-if>
+                    <sc-if value="{{ w.k.focus }}">
+                      <div style="display:flex;align-items:center;gap:16px;flex-direction:{{ w.dir }}">
+                        <div style="width:108px;height:108px;flex:none;border-radius:50%;background:conic-gradient(#F9C29A,#F06A58 72%,#ECE5DF 72%);padding:7px"><div style="width:100%;height:100%;border-radius:50%;background:#FDFBFA;display:flex;flex-direction:column;align-items:center;justify-content:center"><b style="font-size:20px;line-height:28px;font-weight:700">18:42</b><span style="font-size:12px;line-height:16px;color:#625D69">Deep work</span></div></div>
+                        <sc-if value="{{ w.wide }}"><div style="flex:1"><div style="font-size:14px;font-weight:500">Aelys · AI Chat block</div><div style="font-size:12px;line-height:16px;color:#625D69">Session 2 of 4 · ends 19:00</div></div></sc-if>
+                        <div style="display:flex;gap:8px"><span role="button" tabindex="0" aria-label="Pause" style="width:36px;height:36px;border-radius:50%;background:#FDE3DC;color:#D63F2C;display:flex;align-items:center;justify-content:center;font-size:18px"><i class="icon-pause"></i></span><span role="button" tabindex="0" aria-label="Stop" style="width:36px;height:36px;border-radius:50%;background:#fff;border:1px solid #E7E2DE;display:flex;align-items:center;justify-content:center;font-size:14px"><i class="icon-square"></i></span></div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ w.k.weather }}">
+                      <div style="display:flex;align-items:center;gap:10px;text-shadow:0 1px 8px rgba(0,0,0,.35)"><i class="icon-cloud-rain" style="font-size:36px"></i><div><div style="font-size:26px;line-height:32px;font-weight:700">+14°</div><div style="font-size:12px;line-height:16px">Rain tonight</div></div></div>
+                      <div style="display:flex;align-items:center;gap:4px;margin-top:12px;font-size:12px;line-height:16px;text-shadow:0 1px 8px rgba(0,0,0,.35)"><i class="icon-map-pin" style="font-size:14px"></i><span style="flex:1">Almaty</span><span>↑16° ↓8°</span></div>
+                      <sc-if value="{{ w.wide }}"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:12px;text-align:center;font-size:12px;line-height:16px;text-shadow:0 1px 8px rgba(0,0,0,.35)"><sc-for list="{{ forecast }}" as="f" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;align-items:center;gap:2px"><span>{{ f.h }}</span><i class="icon-{{ f.icon }}" style="font-size:18px"></i><b style="font-weight:600">{{ f.t }}</b></div></sc-for></div></sc-if>
+                    </sc-if>
+                    <sc-if value="{{ w.k.mail }}">
+                      <sc-for list="{{ w.rows }}" as="m" hint-placeholder-count="2"><div role="button" tabindex="0" style="display:flex;gap:12px;align-items:center;min-height:48px"><span style="width:36px;height:36px;flex:none;border-radius:10px;background:{{ m.bg }};color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ m.l }}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:8px;font-size:14px;line-height:20px;font-weight:600"><span style="flex:1">{{ m.t }}</span><span style="font-weight:400;font-size:13px;color:#625D69">{{ m.when }}</span></div><div style="font-size:12px;line-height:16px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.s }}</div></div><span style="width:8px;height:8px;flex:none;border-radius:50%;background:#2F6FE4"></span></div></sc-for>
+                    </sc-if>
+                    <sc-if value="{{ w.k.proj }}">
+                      <div style="display:flex;flex-direction:column;gap:12px"><sc-for list="{{ w.rows }}" as="p" hint-placeholder-count="2"><div style="display:flex;gap:12px;align-items:center"><span style="width:36px;height:36px;flex:none;border-radius:12px;background:{{ p.soft }};color:{{ p.c }};display:flex;align-items:center;justify-content:center;font-size:18px"><i class="icon-{{ p.icon }}"></i></span><div style="flex:1;min-width:0"><div style="display:flex;font-size:14px;line-height:20px;font-weight:500"><span style="flex:1">{{ p.t }}</span><span style="font-size:13px;color:#625D69">{{ p.pct }}%</span></div><div style="font-size:12px;line-height:16px;color:#625D69">{{ p.s }}</div><div style="height:4px;border-radius:2px;background:#ECE7E3;margin-top:4px"><div style="height:100%;border-radius:2px;width:{{ p.pct }}%;background:{{ p.c }}"></div></div></div></div></sc-for></div>
+                    </sc-if>
+                    <sc-if value="{{ w.k.notes }}">
+                      <sc-for list="{{ w.rows }}" as="n" hint-placeholder-count="1"><div style="padding:4px 0 8px"><div style="display:flex;gap:8px;font-size:14px;line-height:20px;font-weight:600"><span style="flex:1;min-width:0">{{ n.t }}</span><span style="font-size:13px;font-weight:400;color:#625D69">{{ n.when }}</span></div><div style="font-size:12px;line-height:16px;color:#625D69;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ n.s }}</div></div></sc-for>
+                    </sc-if>
+                    <sc-if value="{{ w.k.fin }}">
+                      <div style="font-size:20px;line-height:28px;font-weight:700">48 250 ₸</div>
+                      <div style="font-size:12px;line-height:16px;color:#0E7A57;font-weight:600">+12% this month</div>
+                      <sc-if value="{{ w.narrow }}"><div style="display:flex;gap:4px;align-items:flex-end;height:32px;margin-top:12px"><sc-for list="{{ bars }}" as="b" hint-placeholder-count="7"><span style="flex:1;border-radius:3px;background:#2BC48F;height:{{ b }}px"></span></sc-for></div></sc-if>
+                      <sc-if value="{{ w.wide }}"><div style="margin-top:8px"><sc-for list="{{ spend }}" as="s" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:10px;height:36px;border-top:1px solid #EFEAE6"><span style="width:8px;height:8px;border-radius:50%;background:{{ s.c }}"></span><span style="flex:1">{{ s.t }}</span><span style="font-weight:500">{{ s.v }}</span></div></sc-for></div></sc-if>
+                    </sc-if>
+                    <sc-if value="{{ w.k.goals }}">
+                      <div style="display:flex;flex-direction:column;gap:12px"><sc-for list="{{ w.rows }}" as="g" hint-placeholder-count="2"><div><div style="display:flex;font-size:14px;line-height:20px"><span style="flex:1;min-width:0">{{ g.t }}</span><span style="font-size:13px;color:#625D69">{{ g.pct }}%</span></div><div style="height:6px;border-radius:3px;background:#ECE7E3;margin-top:6px"><div style="height:100%;border-radius:3px;width:{{ g.pct }}%;background:#6A4CF2"></div></div></div></sc-for></div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+                <div role="button" tabindex="0" onClick="{{ ph.toCustom }}" style="grid-column:span 2;height:40px;border-radius:20px;border:1.5px dashed #CFC9D4;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:500;color:#4F4A56"><i class="icon-layout-grid" style="font-size:18px"></i>Customize home</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ ph.custom }}">
+              <div style="padding:8px 16px 0;color:#fff">
+                <div style="display:flex;align-items:center;gap:12px"><span onClick="{{ ph.toHome }}" role="button" tabindex="0" aria-label="Back" style="cursor:pointer;width:36px;height:36px;flex:none;border-radius:50%;background:rgba(255,255,255,.88);color:#1C1B22;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="icon-arrow-left"></i></span><span style="flex:1;font-size:22px;line-height:28px;font-weight:700;text-shadow:0 1px 12px rgba(20,20,45,.45)">Customize home</span><span role="button" tabindex="0" aria-label="Profile" style="width:36px;height:36px;flex:none;border-radius:50%;background:radial-gradient(circle at 50% 30%,#F6C79A,#C77C5A 45%,#3A2F45 46%,#2A2438);border:2px solid rgba(255,255,255,.9)"></span></div>
+                <div style="font-size:14px;line-height:20px;margin-top:16px;max-width:300px;text-shadow:0 1px 10px rgba(20,20,45,.5)">Choose widgets, their size and order. Changes are saved automatically.</div>
+              </div>
+              <div data-glass="" role="tablist" style="margin:20px 16px 0;padding:4px;border-radius:28px;background:rgba(255,255,255,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.35);display:flex">
+                <sc-for list="{{ customTabs }}" as="t" hint-placeholder-count="3"><div onClick="{{ t.pick }}" role="tab" tabindex="0" style="cursor:pointer;flex:1;height:40px;border-radius:20px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;background:{{ t.bg }};color:{{ t.fg }};box-shadow:{{ t.sh }}"><i class="icon-{{ t.icon }}" style="font-size:16px"></i>{{ t.t }}</div></sc-for>
+              </div>
+
+              <sc-if value="{{ tab0 }}">
+                <div data-glass="" style="margin:12px 16px 0;padding:16px;border-radius:22px;background:rgba(255,255,255,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.35)">
+                  <div style="display:flex;align-items:center;gap:8px"><div style="flex:1"><div style="font-size:14px;line-height:20px;font-weight:600">My widgets</div><div style="font-size:12px;line-height:16px;color:#625D69">{{ myCount }} on home</div></div><span onClick="{{ resetWidgets }}" role="button" tabindex="0" style="cursor:pointer;height:36px;padding:0 12px;border-radius:24px;background:#F4F0EC;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500"><i class="icon-rotate-ccw" style="font-size:16px"></i>Reset</span></div>
+                  <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+                    <sc-for list="{{ myWidgets }}" as="w" hint-placeholder-count="8">
+                      <div style="padding:8px 8px 8px 12px;border-radius:16px;background:#F7F4F1">
+                        <div style="display:flex;align-items:center;gap:12px"><span style="width:36px;height:36px;flex:none;border-radius:12px;background:{{ w.soft }};color:{{ w.c }};display:flex;align-items:center;justify-content:center;font-size:18px"><i class="icon-{{ w.icon }}"></i></span><div style="flex:1;min-width:0"><div style="font-size:14px;line-height:20px;font-weight:600">{{ w.t }}</div><div style="font-size:12px;line-height:16px;color:#625D69">{{ w.sizeLabel }}</div></div><span onClick="{{ w.remove }}" role="button" tabindex="0" aria-label="Remove widget" style="cursor:pointer;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#C9302C;font-size:20px"><i class="icon-circle-minus"></i></span></div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+                          <div role="radiogroup" aria-label="Size" style="flex:1;display:flex;padding:3px;border-radius:14px;background:#ECE7E3"><sc-for list="{{ w.sizes }}" as="s" hint-placeholder-count="2"><span onClick="{{ s.pick }}" role="radio" tabindex="0" style="cursor:pointer;flex:1;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:{{ s.bg }};color:{{ s.fg }}">{{ s.t }}</span></sc-for></div>
+                          <span onClick="{{ w.up }}" role="button" tabindex="0" aria-label="Move up" style="cursor:pointer;width:36px;height:36px;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;opacity:{{ w.upOp }}"><i class="icon-arrow-up"></i></span>
+                          <span onClick="{{ w.down }}" role="button" tabindex="0" aria-label="Move down" style="cursor:pointer;width:36px;height:36px;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;opacity:{{ w.downOp }}"><i class="icon-arrow-down"></i></span>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div data-glass="" style="margin:12px 16px 0;padding:16px;border-radius:22px;background:rgba(255,255,255,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.35)">
+                  <div style="font-size:14px;line-height:20px;font-weight:600">Available widgets</div><div style="font-size:12px;line-height:16px;color:#625D69">Add what matters to you</div>
+                  <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+                    <sc-for list="{{ available }}" as="a" hint-placeholder-count="1">
+                      <div style="display:flex;align-items:center;gap:12px;padding:8px 8px 8px 12px;border-radius:16px;background:#F7F4F1"><span style="width:36px;height:36px;flex:none;border-radius:12px;background:{{ a.soft }};color:{{ a.c }};display:flex;align-items:center;justify-content:center;font-size:18px"><i class="icon-{{ a.icon }}"></i></span><div style="flex:1;min-width:0"><div style="font-size:14px;line-height:20px;font-weight:600">{{ a.t }}</div><div style="font-size:12px;line-height:16px;color:#625D69">{{ a.s }}</div></div><span onClick="{{ a.add }}" role="button" tabindex="0" style="cursor:pointer;height:36px;padding:0 12px;border-radius:24px;background:#EEEAFD;color:#5132D6;display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600"><i class="icon-plus" style="font-size:16px"></i>Add</span></div>
+                    </sc-for>
+                    <sc-if value="{{ allAdded }}"><div style="padding:12px;text-align:center;font-size:13px;color:#625D69">All widgets are on your home screen</div></sc-if>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ tab1 }}">
+                <div data-glass="" style="margin:12px 16px 0;padding:16px;border-radius:22px;background:rgba(255,255,255,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.35)">
+                  <div style="font-size:14px;line-height:20px;font-weight:600">Quick actions</div><div style="font-size:12px;line-height:16px;color:#625D69;margin-bottom:8px">Shown above the command bar and in the command bar</div>
+                  <sc-for list="{{ qa }}" as="q" hint-placeholder-count="5">
+                    <div onClick="{{ q.flip }}" role="switch" tabindex="0" style="display:flex;align-items:center;gap:12px;min-height:48px;cursor:pointer;border-top:1px solid #EFEAE6"><span style="width:36px;height:36px;flex:none;border-radius:10px;background:{{ q.soft }};color:{{ q.c }};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-{{ q.icon }}"></i></span><span style="flex:1">{{ q.t }}</span><span style="width:48px;height:28px;flex:none;border-radius:14px;padding:3px;display:flex;justify-content:{{ q.jc }};background:{{ q.tbg }}"><span style="width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span></span></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ tab2 }}">
+                <div data-glass="" style="margin:12px 16px 0;padding:16px;border-radius:22px;background:rgba(255,255,255,.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.35)">
+                  <div style="font-size:14px;line-height:20px;font-weight:600;margin-bottom:12px">Theme</div>
+                  <div role="radiogroup" style="display:flex;padding:3px;border-radius:14px;background:#ECE7E3"><sc-for list="{{ mThemes }}" as="s" hint-placeholder-count="3"><span onClick="{{ s.pick }}" role="radio" tabindex="0" style="cursor:pointer;flex:1;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:{{ s.bg }};color:{{ s.fg }}">{{ s.t }}</span></sc-for></div>
+                  <div style="font-size:14px;line-height:20px;font-weight:600;margin:20px 0 12px">Wallpaper</div>
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"><sc-for list="{{ mWalls }}" as="w" hint-placeholder-count="3"><div onClick="{{ w.pick }}" role="radio" tabindex="0" style="cursor:pointer;height:96px;border-radius:14px;background:{{ w.g }};box-shadow:{{ w.ring }}"></div></sc-for></div>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ ph.chat }}">
+              <div style="padding:8px 16px 0;color:#fff">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span onClick="{{ ph.toHome }}" role="button" tabindex="0" aria-label="Back" style="width:40px;height:40px;flex:none;border-radius:50%;background:rgba(255,255,255,.88);color:#1C1B22;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer"><i class="icon-arrow-left"></i></span>
+                  <span style="font-size:22px;line-height:28px;font-weight:700;flex:1;text-shadow:0 1px 12px rgba(20,20,45,.45)">AI Chat</span>
+                </div>
+              </div>
+              <div style="padding:14px 12px 0">
+                <dc-import name="AelysChat" compact="{{ true }}" height="680px" on-open-settings="{{ ph.toSettings }}" hint-size="100%,680px"></dc-import>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ ph.inner }}">
+              <div style="padding:8px 16px 0;color:#fff">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span onClick="{{ ph.back }}" role="button" tabindex="0" aria-label="Back" style="width:40px;height:40px;flex:none;border-radius:50%;background:rgba(255,255,255,.88);color:#1C1B22;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer"><i class="icon-arrow-left"></i></span>
+                  <span style="flex:1;min-width:0;font-size:22px;line-height:28px;font-weight:700;text-shadow:0 1px 12px rgba(20,20,45,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ph.title }}</span>
+                  <sc-if value="{{ ph.actionT }}"><span onClick="{{ ph.action }}" role="button" tabindex="0" style="height:36px;padding:0 14px;border-radius:18px;background:rgba(255,255,255,.9);color:#1C1B22;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap"><i class="icon-{{ ph.actionIcon }}" style="font-size:16px"></i>{{ ph.actionT }}</span></sc-if>
+                </div>
+                <div style="font-size:14px;line-height:20px;margin-top:12px;text-shadow:0 1px 10px rgba(20,20,45,.5)">{{ ph.sub }}</div>
+              </div>
+              <div style="padding:20px 16px 0;display:flex;flex-direction:column;gap:12px">
+
+                <sc-if value="{{ ph.loading }}">
+                  <dc-import name="AelysSkeleton" compact="{{ true }}" kind="{{ ph.loadKind }}" phase="{{ ph.loadPhase }}" label="{{ ph.loadLabel }}" on-retry="{{ ph.retryLoad }}" hint-size="100%,560px"></dc-import>
+                </sc-if>
+
+                <sc-if value="{{ ph.tasks }}">
+                  <div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px"><sc-for list="{{ mt.views }}" as="v" hint-placeholder-count="4"><span onClick="{{ v.pick }}" role="tab" style="flex:none;height:36px;padding:0 14px;border-radius:18px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;background:{{ v.bg }};color:{{ v.fg }};box-shadow:0 1px 3px rgba(0,0,0,.06)">{{ v.t }}<span style="min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:{{ v.nbg }};font-size:11px;line-height:20px;text-align:center">{{ v.n }}</span></span></sc-for></div>
+                  <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:6px 6px 6px 16px;display:flex;align-items:center;gap:8px"><i class="icon-plus" style="font-size:18px;color:#6A4CF2"></i><input value="{{ mt.newT }}" onChange="{{ mt.setNew }}" onKeyDown="{{ mt.newKey }}" placeholder="Add a task" aria-label="New task" style="flex:1;min-width:0;height:40px;font-size:15px"></input><span onClick="{{ mt.add }}" role="button" style="height:36px;padding:0 14px;border-radius:12px;background:{{ mt.addBg }};color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;cursor:pointer">Add</span></div>
+                  <sc-for list="{{ mt.groups }}" as="g" hint-placeholder-count="2">
+                    <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:6px">
+                      <div style="display:flex;align-items:baseline;gap:8px;padding:10px 10px 4px"><span style="font-size:15px;font-weight:600;color:{{ g.c }}">{{ g.t }}</span><span style="font-size:12px;color:#625D69">{{ g.sub }}</span></div>
+                      <sc-for list="{{ g.items }}" as="t" hint-placeholder-count="3">
+                        <div onClick="{{ t.open }}" role="button" tabindex="0" style="display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 10px;border-radius:14px;cursor:pointer" style-active="background:rgba(128,118,140,.14)">
+                          <span onClick="{{ t.toggle }}" role="checkbox" aria-checked="{{ t.done }}" style="width:24px;height:24px;flex:none;border-radius:50%;border:{{ t.bd }};background:{{ t.bg }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer"><sc-if value="{{ t.done }}"><i class="icon-check"></i></sc-if></span>
+                          <span style="flex:1;min-width:0"><span style="display:block;font-size:15px;line-height:20px;font-weight:500;color:{{ t.fg }};text-decoration:{{ t.deco }}">{{ t.title }}</span><span style="display:flex;gap:6px;align-items:center;font-size:12px;line-height:16px;color:{{ t.metaC }};margin-top:2px"><sc-if value="{{ t.when }}"><span>{{ t.when }}</span></sc-if><sc-if value="{{ t.proj }}"><span style="padding:0 6px;border-radius:6px;background:{{ t.pSoft }};color:{{ t.pC }}">{{ t.proj }}</span></sc-if></span></span>
+                          <sc-if value="{{ t.flag }}"><i class="icon-flag" style="font-size:15px;color:{{ t.flagC }}"></i></sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ mt.empty }}"><div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:36px 16px;text-align:center;color:#625D69;font-size:14px"><i class="icon-circle-check" style="font-size:28px;color:#6A4CF2"></i><div style="font-weight:600;color:#1C1B22;margin-top:8px">{{ mt.emptyT }}</div>Add a task above.</div></sc-if>
+                </sc-if>
+
+                <sc-if value="{{ ph.calendar }}">
+                  <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:10px;display:grid;grid-template-columns:repeat(7,1fr);gap:4px"><sc-for list="{{ mc.days }}" as="d" hint-placeholder-count="7"><span onClick="{{ d.pick }}" role="button" tabindex="0" style="height:64px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;background:{{ d.bg }};color:{{ d.fg }}"><span style="font-size:11px;font-weight:600;opacity:.8">{{ d.dn }}</span><span style="font-size:17px;font-weight:700">{{ d.n }}</span><span style="width:5px;height:5px;border-radius:50%;background:{{ d.dot }}"></span></span></sc-for></div>
+                  <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:8px 12px">
+                    <div style="display:flex;align-items:baseline;padding:8px 4px"><span style="flex:1;font-size:15px;font-weight:600">{{ mc.dayT }}</span><span style="font-size:12px;color:#625D69">{{ mc.count }}</span></div>
+                    <sc-for list="{{ mc.events }}" as="e" hint-placeholder-count="4"><div style="display:flex;gap:12px;padding:6px 0"><span style="width:44px;flex:none;font-size:13px;line-height:20px;color:#625D69;padding-top:8px">{{ e.time }}</span><div style="flex:1;min-width:0;padding:8px 12px;border-radius:14px;background:{{ e.bg }};border-left:4px solid {{ e.bd }}"><div style="font-size:15px;line-height:20px;font-weight:600">{{ e.t }}</div><div style="font-size:12px;line-height:16px;color:#4F4A56">{{ e.r }}</div></div></div></sc-for>
+                    <sc-if value="{{ mc.empty }}"><div style="padding:24px 4px;text-align:center;font-size:14px;color:#625D69">No events. Tap “Event” to add one.</div></sc-if>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ ph.projects }}">
+                  <sc-if value="{{ mp.list }}">
+                    <sc-for list="{{ mp.cards }}" as="p" hint-placeholder-count="4">
+                      <div onClick="{{ p.open }}" role="button" tabindex="0" style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:16px;display:flex;flex-direction:column;gap:12px;cursor:pointer">
+                        <div style="display:flex;align-items:center;gap:12px"><span style="width:44px;height:44px;flex:none;border-radius:14px;background:{{ p.soft }};color:{{ p.c }};display:flex;align-items:center;justify-content:center;font-size:20px"><i class="icon-{{ p.icon }}"></i></span><span style="flex:1;min-width:0"><span style="display:block;font-size:16px;font-weight:600">{{ p.name }}</span><span style="display:block;font-size:12px;color:#625D69">{{ p.meta }}</span></span><span style="font-size:15px;font-weight:700">{{ p.pctT }}</span></div>
+                        <div style="height:6px;border-radius:3px;background:#ECE7E3"><div style="height:100%;border-radius:3px;width:{{ p.pct }}%;background:{{ p.c }}"></div></div>
+                        <div style="font-size:13px;color:#4F4A56">Next: <b style="font-weight:600;color:#1C1B22">{{ p.next }}</b></div>
+                      </div>
+                    </sc-for>
+                  </sc-if>
+                  <sc-if value="{{ mp.detail }}">
+                    <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:16px;display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;gap:12px"><span style="width:48px;height:48px;border-radius:14px;background:{{ mp.d.soft }};color:{{ mp.d.c }};display:flex;align-items:center;justify-content:center;font-size:22px"><i class="icon-{{ mp.d.icon }}"></i></span><span style="flex:1;font-size:13px;line-height:18px;color:#4F4A56">{{ mp.d.desc }}</span></div><div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:#625D69">{{ mp.d.meta }}</span><b>{{ mp.d.pctT }}</b></div><div style="height:6px;border-radius:3px;background:#ECE7E3"><div style="height:100%;border-radius:3px;width:{{ mp.d.pct }}%;background:{{ mp.d.c }}"></div></div></div>
+                    <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:6px">
+                      <div style="display:flex;align-items:center;gap:8px;margin:6px;padding:0 6px 0 12px;border-radius:12px;background:#F7F4F1"><i class="icon-plus" style="font-size:16px;color:#6A4CF2"></i><input value="{{ mp.newT }}" onChange="{{ mp.setNew }}" onKeyDown="{{ mp.newKey }}" placeholder="Add a task to this project" style="flex:1;min-width:0;height:42px;font-size:14px"></input></div>
+                      <sc-for list="{{ mp.d.tasks }}" as="t" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:12px;min-height:52px;padding:6px 10px"><span onClick="{{ t.toggle }}" role="checkbox" aria-checked="{{ t.done }}" style="width:24px;height:24px;flex:none;border-radius:50%;border:{{ t.bd }};background:{{ t.bg }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer"><sc-if value="{{ t.done }}"><i class="icon-check"></i></sc-if></span><span style="flex:1;font-size:15px;color:{{ t.fg }};text-decoration:{{ t.deco }}">{{ t.title }}</span><span style="font-size:12px;color:#625D69">{{ t.when }}</span></div></sc-for>
+                    </div>
+                  </sc-if>
+                </sc-if>
+
+                <sc-if value="{{ ph.notes }}">
+                  <sc-if value="{{ mn.list }}">
+                    <label style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);height:48px;padding:0 14px;display:flex;align-items:center;gap:10px"><i class="icon-search" style="font-size:18px;color:#625D69"></i><input value="{{ mn.q }}" onChange="{{ mn.setQ }}" placeholder="Search notes" style="flex:1;min-width:0;font-size:15px"></input></label>
+                    <div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px"><sc-for list="{{ mn.folders }}" as="f" hint-placeholder-count="4"><span onClick="{{ f.pick }}" style="flex:none;height:36px;padding:0 14px;border-radius:18px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }}">{{ f.t }}</span></sc-for></div>
+                    <sc-for list="{{ mn.items }}" as="n" hint-placeholder-count="4"><div onClick="{{ n.open }}" role="button" tabindex="0" style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:14px 16px;cursor:pointer"><div style="display:flex;gap:8px;font-size:15px;font-weight:600"><span style="flex:1;min-width:0">{{ n.title }}</span><span style="font-size:12px;font-weight:400;color:#625D69">{{ n.when }}</span></div><div style="font-size:13px;line-height:18px;color:#625D69;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ n.snippet }}</div></div></sc-for>
+                    <sc-if value="{{ mn.empty }}"><div style="padding:24px;text-align:center;color:#625D69;font-size:14px">No notes found.</div></sc-if>
+                  </sc-if>
+                  <sc-if value="{{ mn.editing }}">
+                    <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:18px;display:flex;flex-direction:column;gap:10px;min-height:520px">
+                      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#625D69"><i class="icon-folder" style="font-size:14px"></i>{{ mn.sel.folder }}<span style="flex:1"></span><i class="icon-check" style="font-size:14px;color:#14966C"></i>Saved locally</div>
+                      <input value="{{ mn.sel.title }}" onChange="{{ mn.setTitle }}" placeholder="Untitled" aria-label="Title" style="font-size:24px;line-height:32px;font-weight:700;width:100%"></input>
+                      <dc-import name="AelysRichText" value="{{ mn.sel.body }}" doc-key="{{ mn.sel.id }}" on-change="{{ mn.setBodyHtml }}" compact="{{ true }}" placeholder="Start writing…" min-height="380px" label="Note" hint-size="100%,440px"></dc-import>
+                    </div>
+                  </sc-if>
+                </sc-if>
+
+                <sc-if value="{{ ph.mail }}">
+                  <sc-if value="{{ mm.list }}">
+                    <div style="display:flex;gap:8px"><sc-for list="{{ mm.folders }}" as="f" hint-placeholder-count="2"><span onClick="{{ f.pick }}" style="flex:none;height:36px;padding:0 14px;border-radius:18px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }}">{{ f.t }}</span></sc-for></div>
+                    <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:6px">
+                      <sc-for list="{{ mm.items }}" as="m" hint-placeholder-count="5"><div onClick="{{ m.open }}" role="button" tabindex="0" style="display:flex;gap:12px;padding:12px 10px;border-radius:14px;cursor:pointer" style-active="background:rgba(128,118,140,.14)"><span style="width:40px;height:40px;flex:none;border-radius:50%;background:#EDE7FB;color:#5132D6;font-weight:600;display:flex;align-items:center;justify-content:center">{{ m.letter }}</span><span style="flex:1;min-width:0"><span style="display:flex;gap:6px;align-items:center;font-size:15px;font-weight:{{ m.fw }}"><sc-if value="{{ m.unread }}"><span style="width:8px;height:8px;flex:none;border-radius:50%;background:#2F6FE4"></span></sc-if><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.from }}</span><span style="font-size:12px;font-weight:400;color:#625D69">{{ m.when }}</span></span><span style="display:block;font-size:14px;font-weight:{{ m.fw }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.subject }}</span><span style="display:block;font-size:12px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.snippet }}</span></span></div></sc-for>
+                      <sc-if value="{{ mm.empty }}"><div style="padding:24px;text-align:center;color:#625D69;font-size:14px">Nothing here.</div></sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ mm.reading }}">
+                    <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:18px"><div style="font-size:19px;line-height:26px;font-weight:600">{{ mm.r.subject }}</div><div style="display:flex;align-items:center;gap:10px;margin:12px 0"><span style="width:36px;height:36px;border-radius:50%;background:#EDE7FB;color:#5132D6;font-weight:600;display:flex;align-items:center;justify-content:center">{{ mm.r.letter }}</span><span style="flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:600">{{ mm.r.from }}</span><span style="display:block;font-size:12px;color:#625D69">{{ mm.r.email }} · {{ mm.r.when }}</span></span></div><div style="font-size:15px;line-height:24px;white-space:pre-wrap;color:#2A2732">{{ mm.r.body }}</div></div>
+                    <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:14px;display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;gap:8px"><i class="icon-reply" style="font-size:16px"></i><span style="flex:1;font-size:14px;font-weight:600">Reply draft</span><span style="height:22px;padding:0 8px;border-radius:11px;background:{{ mm.r.stBg }};color:{{ mm.r.stFg }};font-size:11px;line-height:22px;font-weight:600">{{ mm.r.statusT }}</span></div><textarea value="{{ mm.r.text }}" onChange="{{ mm.r.setText }}" rows="4" placeholder="Write a reply…" style="width:100%;padding:12px;border-radius:14px;background:#F7F4F1;border:1px solid #EDE8E3;font:400 15px/22px Inter,sans-serif;resize:none;outline:0"></textarea><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><span onClick="{{ mm.r.save }}" role="button" style="height:44px;border-radius:14px;border:1px solid #E7E2DE;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;cursor:pointer;opacity:{{ mm.r.saveOp }}">Save draft</span><span onClick="{{ mm.r.publish }}" role="button" style="height:44px;border-radius:14px;background:#6A4CF2;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;cursor:pointer;opacity:{{ mm.r.pubOp }}">To Gmail drafts</span></div><div style="font-size:12px;color:#625D69;text-align:center">Aelys never sends email.</div></div>
+                  </sc-if>
+                </sc-if>
+
+                <sc-if value="{{ ph.finance }}">
+                  <div style="padding:18px;border-radius:24px;color:#fff;background:linear-gradient(135deg,#7B5CF5,#5132D6);box-shadow:0 12px 30px rgba(81,50,214,.35)"><div style="font-size:13px;opacity:.9">Total balance · KZT</div><div style="font-size:30px;line-height:38px;font-weight:700;margin-top:2px">{{ mf.total }}</div><div style="font-size:13px;opacity:.9;margin-top:2px">{{ mf.other }}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px"><span onClick="{{ mf.expense }}" role="button" style="height:44px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600;cursor:pointer"><i class="icon-arrow-up-right" style="font-size:16px"></i>Expense</span><span onClick="{{ mf.income }}" role="button" style="height:44px;border-radius:14px;background:#fff;color:#3B1C70;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:600;cursor:pointer"><i class="icon-arrow-down-left" style="font-size:16px"></i>Income</span></div></div>
+                  <div style="display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px"><sc-for list="{{ mf.accounts }}" as="a" hint-placeholder-count="3"><div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);flex:none;width:168px;padding:14px"><div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600"><i class="icon-{{ a.icon }}" style="font-size:16px;color:#6A4CF2"></i>{{ a.name }}</div><div style="font-size:18px;font-weight:700;margin-top:8px">{{ a.bal }}</div></div></sc-for></div>
+                  <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:6px">
+                    <div style="font-size:15px;font-weight:600;padding:10px 10px 4px">History</div>
+                    <sc-for list="{{ mf.groups }}" as="g" hint-placeholder-count="2"><div style="font-size:12px;font-weight:600;color:#625D69;padding:10px 10px 2px">{{ g.t }}</div><sc-for list="{{ g.items }}" as="x" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:12px;min-height:56px;padding:4px 10px"><span style="width:38px;height:38px;flex:none;border-radius:12px;background:{{ x.soft }};color:{{ x.c }};display:flex;align-items:center;justify-content:center;font-size:17px"><i class="icon-{{ x.icon }}"></i></span><span style="flex:1;min-width:0"><span style="display:block;font-size:15px;font-weight:500">{{ x.t }}</span><span style="display:block;font-size:12px;color:#625D69">{{ x.cat }} · {{ x.acc }}</span></span><span style="font-size:15px;font-weight:600;color:{{ x.amtC }}">{{ x.amt }}</span></div></sc-for></sc-for>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ ph.settings }}">
+                  <dc-import name="AelysSettings" compact="{{ true }}" platform="android" theme="{{ mTheme }}" on-theme="{{ pickTheme }}" on-open="{{ openApp }}" hint-size="100%,640px"></dc-import>
+                </sc-if>
+
+                <sc-if value="{{ ph.apps }}">
+                  <dc-import name="AelysApps" compact="{{ true }}" on-open="{{ openApp }}" hint-size="100%,900px"></dc-import>
+                </sc-if>
+
+                <sc-if value="{{ ph.messages }}">
+                  <dc-import name="AelysMessages" compact="{{ true }}" hint-size="100%,640px"></dc-import>
+                </sc-if>
+
+                <sc-if value="{{ ph.automation }}">
+                  <dc-import name="AelysAutomation" compact="{{ true }}" hint-size="100%,640px"></dc-import>
+                </sc-if>
+
+                <sc-if value="{{ ph.notif }}">
+                  <sc-for list="{{ mo.groups }}" as="g" hint-placeholder-count="2">
+                    <div style="align-self:flex-start;font-size:12px;line-height:16px;font-weight:600;color:#3A3640;padding:4px 10px;border-radius:10px;background:rgba(255,255,255,.94);box-shadow:0 1px 3px rgba(20,10,30,.08)">{{ g.t }}</div>
+                    <sc-for list="{{ g.items }}" as="n" hint-placeholder-count="3"><div onClick="{{ n.open }}" role="button" tabindex="0" style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:14px;display:flex;gap:12px;cursor:pointer;background:{{ n.bg }}"><span style="width:40px;height:40px;flex:none;border-radius:12px;background:{{ n.soft }};color:{{ n.c }};display:flex;align-items:center;justify-content:center;font-size:18px"><i class="icon-{{ n.icon }}"></i></span><span style="flex:1;min-width:0"><span style="display:flex;gap:8px;font-size:14px;font-weight:600"><span style="flex:1;min-width:0">{{ n.t }}</span><span style="font-size:12px;font-weight:400;color:#625D69">{{ n.when }}</span></span><span style="display:block;font-size:13px;line-height:18px;color:#4F4A56;margin-top:2px">{{ n.s }}</span></span><sc-if value="{{ n.unread }}"><span style="width:9px;height:9px;flex:none;border-radius:50%;background:#6A4CF2;margin-top:4px"></span></sc-if></div></sc-for>
+                  </sc-for>
+                  <sc-if value="{{ mo.empty }}"><div style="padding:40px;text-align:center;color:#625D69">You’re all caught up</div></sc-if>
+                </sc-if>
+
+                <sc-if value="{{ ph.search }}">
+                  <label style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);height:52px;padding:0 16px;display:flex;align-items:center;gap:10px"><i class="icon-search" style="font-size:20px;color:#4F4A56"></i><input value="{{ mx.q }}" onChange="{{ mx.setQ }}" autoFocus="{{ true }}" placeholder="Search Aelys" aria-label="Search" style="flex:1;min-width:0;font-size:17px"></input><sc-if value="{{ mx.hasQ }}"><span onClick="{{ mx.clear }}" role="button" aria-label="Clear" style="width:28px;height:28px;border-radius:50%;background:#ECE7E3;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="icon-x" style="font-size:14px"></i></span></sc-if></label>
+                  <sc-for list="{{ mx.groups }}" as="g" hint-placeholder-count="2">
+                    <div style="align-self:flex-start;font-size:12px;line-height:16px;font-weight:600;color:#3A3640;padding:4px 10px;border-radius:10px;background:rgba(255,255,255,.94);box-shadow:0 1px 3px rgba(20,10,30,.08)">{{ g.t }}</div>
+                    <div style="background:#fff;border-radius:22px;border:1px solid #EDE8E3;box-shadow:0 6px 20px rgba(40,30,30,.06);padding:4px 6px"><sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3"><div onClick="{{ it.run }}" role="button" tabindex="0" style="display:flex;align-items:center;gap:12px;min-height:52px;padding:4px 10px;cursor:pointer"><span style="width:34px;height:34px;flex:none;border-radius:10px;background:{{ it.soft }};color:{{ it.c }};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-{{ it.icon }}"></i></span><span style="flex:1;min-width:0"><span style="display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.t }}</span><sc-if value="{{ it.s }}"><span style="display:block;font-size:12px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.s }}</span></sc-if></span><i class="icon-chevron-right" style="font-size:16px;color:#A29DA8"></i></div></sc-for></div>
+                  </sc-for>
+                  <sc-if value="{{ mx.empty }}"><div style="padding:24px;text-align:center;color:#625D69;font-size:14px">No results. Ask Aelys instead?</div></sc-if>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{ ph.bar }}">
+            <div style="position:absolute;left:0;right:0;bottom:0;padding:12px 16px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(245,240,235,0),rgba(245,240,235,.96) 28%)">
+              <div style="display:flex;align-items:center;gap:8px">
+                
+                <label style="flex:1;min-width:0;height:48px;border-radius:24px;background:#fff;box-shadow:0 4px 14px rgba(40,30,30,.08),inset 0 0 0 1px rgba(28,27,34,.06);display:flex;align-items:center;gap:4px;padding:0 6px 0 20px"><input value="{{ ph.draft }}" onChange="{{ ph.setDraft }}" onKeyDown="{{ ph.onKey }}" placeholder="{{ ph.prompt }}" style="flex:1;min-width:0;font-size:15px"></input><span role="button" tabindex="0" aria-label="Attach or add" style="width:36px;height:36px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;color:#1C1B22"><i class="icon-plus"></i></span></label>
+                <span onClick="{{ ph.orbClick }}" role="button" tabindex="0" aria-label="{{ ph.orbLabel }}" style="width:52px;height:52px;flex:none;border-radius:50%;background:radial-gradient(circle at 30% 26%,rgba(255,255,255,.95) 0,rgba(255,255,255,0) 30%),radial-gradient(circle at 80% 78%,#FFB089 0,rgba(255,176,137,0) 55%),radial-gradient(circle at 20% 80%,#B9A6FF 0,rgba(185,166,255,0) 60%),linear-gradient(135deg,#A98BFF,#8E73F5 55%,#C795E8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;box-shadow:0 8px 24px rgba(142,115,245,.45),inset 0 1px 1px rgba(255,255,255,.6);transition:transform .15s" style-active="transform:scale(.94)"><i class="icon-{{ ph.orbIcon }}" style="text-shadow:0 1px 4px rgba(80,50,160,.35)"></i></span>
+              </div>
+              <sc-if value="{{ ph.home }}">
+                <div style="display:flex;gap:8px;margin-top:8px;overflow-x:auto;scrollbar-width:none">
+                  <sc-for list="{{ bottomChips }}" as="c" hint-placeholder-count="3"><div role="button" tabindex="0" style="flex:none;height:32px;padding:0 12px;border-radius:24px;background:#fff;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;white-space:nowrap"><i class="icon-{{ c.icon }}" style="font-size:16px;color:{{ c.c }}"></i>{{ c.t }}</div></sc-for>
+                </div>
+              </sc-if>
+              <div style="width:130px;height:5px;border-radius:3px;background:#1C1B22;margin:10px auto 0"></div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ ph.custom }}">
+            <div style="position:absolute;right:16px;bottom:calc(28px + env(safe-area-inset-bottom));height:48px;padding:0 18px 0 6px;border-radius:24px;background:#1C1B22;color:#fff;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;box-shadow:0 10px 28px rgba(20,10,30,.3)" role="button" tabindex="0"><span style="width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#fff 0,rgba(235,225,255,.9) 9%,transparent 28%),radial-gradient(circle at 72% 72%,#FF7AD9 0,transparent 48%),radial-gradient(circle at 24% 72%,#46D2FF 0,transparent 46%),radial-gradient(circle at 50% 50%,#6E4CF5 0,#2A1590 82%)"></span>Ask Aelys</div>
+            <div style="position:absolute;left:50%;margin-left:-65px;bottom:10px;width:130px;height:5px;border-radius:3px;background:#1C1B22"></div>
+          </sc-if>
+
+          <sc-if value="{{ ph.fab }}"><span onClick="{{ ph.toChat }}" role="button" tabindex="0" aria-label="Ask Aelys" style="position:absolute;right:16px;bottom:28px;z-index:20;width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 30% 26%,rgba(255,255,255,.95) 0,rgba(255,255,255,0) 30%),radial-gradient(circle at 80% 78%,#FFB089 0,rgba(255,176,137,0) 55%),radial-gradient(circle at 20% 80%,#B9A6FF 0,rgba(185,166,255,0) 60%),linear-gradient(135deg,#A98BFF,#8E73F5 55%,#C795E8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;box-shadow:0 10px 26px rgba(142,115,245,.5)"><i class="icon-sparkles"></i></span><div style="position:absolute;left:50%;margin-left:-65px;bottom:10px;width:130px;height:5px;border-radius:3px;background:#1C1B22;z-index:20"></div></sc-if>
+          <sc-if value="{{ sheet.on }}">
+            <div onClick="{{ sheet.close }}" style="position:absolute;inset:0;z-index:40;background:rgba(20,14,30,.35)"></div>
+            <div role="dialog" aria-label="{{ sheet.title }}" style="position:absolute;left:0;right:0;bottom:0;z-index:41;max-height:86%;overflow-y:auto;padding:10px 18px 28px;border-radius:28px 28px 0 0;background:#FBF9F7;box-shadow:0 -12px 40px rgba(20,10,30,.25);display:flex;flex-direction:column;gap:14px">
+              <div style="width:40px;height:5px;border-radius:3px;background:#D6D0DA;margin:0 auto"></div>
+              <div style="display:flex;align-items:center"><span style="flex:1;font-size:18px;font-weight:700">{{ sheet.title }}</span><span onClick="{{ sheet.close }}" role="button" aria-label="Close" style="width:36px;height:36px;border-radius:50%;background:#ECE7E3;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="icon-x" style="font-size:16px"></i></span></div>
+              <sc-if value="{{ sheet.apps }}"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"><sc-for list="{{ apps }}" as="a" hint-placeholder-count="9"><div onClick="{{ a.go }}" role="button" tabindex="0" style="height:92px;border-radius:20px;background:#fff;border:1px solid #EDE8E3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:500;cursor:pointer"><span style="width:40px;height:40px;border-radius:12px;background:{{ a.soft }};color:{{ a.c }};display:flex;align-items:center;justify-content:center;font-size:20px"><i class="icon-{{ a.icon }}"></i></span>{{ a.t }}</div></sc-for></div></sc-if>
+              <sc-if value="{{ sheet.task }}">
+                <input value="{{ te.title }}" onChange="{{ te.setTitle }}" aria-label="Title" style="height:44px;padding:0 14px;border-radius:14px;background:#F7F4F1;border:1px solid #EDE8E3;font-size:15px;width:100%;outline:0;font-size:17px;font-weight:600"></input>
+                <div style="font-size:12px;line-height:16px;font-weight:600;color:#4F4A56">Date</div><div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ te.dates }}" as="d" hint-placeholder-count="3"><span onClick="{{ d.pick }}" style="flex:none;height:36px;padding:0 14px;border-radius:18px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;background:{{ d.bg }};color:{{ d.fg }};border:1px solid #E7E2DE">{{ d.t }}</span></sc-for></div>
+                <div style="font-size:12px;line-height:16px;font-weight:600;color:#4F4A56">Priority</div><div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ te.prios }}" as="d" hint-placeholder-count="4"><span onClick="{{ d.pick }}" style="flex:none;height:36px;padding:0 14px;border-radius:18px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;background:{{ d.bg }};color:{{ d.fg }};border:1px solid #E7E2DE">{{ d.t }}</span></sc-for></div>
+                <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-top:4px"><span onClick="{{ te.remove }}" role="button" style="height:48px;border-radius:14px;border:1px solid #F3C7C4;color:#C9302C;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;cursor:pointer">Delete</span><span onClick="{{ te.save }}" role="button" style="height:44px;padding:0 18px;border-radius:14px;background:#6A4CF2;color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;border:0">Save</span></div>
+              </sc-if>
+              <sc-if value="{{ sheet.event }}">
+                <input value="{{ ev.title }}" onChange="{{ ev.setTitle }}" placeholder="Event title" aria-label="Event title" style="height:44px;padding:0 14px;border-radius:14px;background:#F7F4F1;border:1px solid #EDE8E3;font-size:15px;width:100%;outline:0"></input>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label style="display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:16px;font-weight:600;color:#4F4A56">Starts<input type="time" value="{{ ev.start }}" onChange="{{ ev.setStart }}" style="height:44px;padding:0 14px;border-radius:14px;background:#F7F4F1;border:1px solid #EDE8E3;font-size:15px;width:100%;outline:0"></input></label><label style="display:flex;flex-direction:column;gap:6px;font-size:12px;line-height:16px;font-weight:600;color:#4F4A56">Ends<input type="time" value="{{ ev.end }}" onChange="{{ ev.setEnd }}" style="height:44px;padding:0 14px;border-radius:14px;background:#F7F4F1;border:1px solid #EDE8E3;font-size:15px;width:100%;outline:0"></input></label></div>
+                <sc-if value="{{ ev.err }}"><div role="alert" style="font-size:13px;color:#C9302C">{{ ev.err }}</div></sc-if>
+                <span onClick="{{ ev.add }}" role="button" style="height:44px;padding:0 18px;border-radius:14px;background:#6A4CF2;color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;border:0">Add to {{ ev.dayT }}</span>
+              </sc-if>
+              <sc-if value="{{ sheet.record }}">
+                <div style="display:flex;padding:4px;gap:2px;border-radius:14px;background:#EFEAE5"><sc-for list="{{ fr.types }}" as="v" hint-placeholder-count="2"><span onClick="{{ v.pick }}" style="flex:1;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;cursor:pointer;background:{{ v.bg }};color:{{ v.fg }}">{{ v.t }}</span></sc-for></div>
+                <label style="display:flex;align-items:center;height:64px;padding:0 16px;border-radius:18px;background:#fff;border:1.5px solid {{ fr.bd }}"><input value="{{ fr.amount }}" onChange="{{ fr.setAmount }}" inputMode="decimal" placeholder="0.00" aria-label="Amount" style="flex:1;min-width:0;font-size:28px;font-weight:700"></input><span style="font-size:22px;font-weight:600;color:#625D69">{{ fr.sym }}</span></label>
+                <sc-if value="{{ fr.err }}"><div role="alert" style="font-size:13px;color:#C9302C;margin-top:-6px">{{ fr.err }}</div></sc-if>
+                <div style="font-size:12px;line-height:16px;font-weight:600;color:#4F4A56">Account</div><div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none"><sc-for list="{{ fr.accs }}" as="a" hint-placeholder-count="3"><span onClick="{{ a.pick }}" style="flex:none;height:36px;padding:0 14px;border-radius:18px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;background:{{ a.bg }};color:{{ a.fg }};border:1px solid #E7E2DE">{{ a.t }}</span></sc-for></div>
+                <div style="font-size:12px;line-height:16px;font-weight:600;color:#4F4A56">Category</div><div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ fr.cats }}" as="a" hint-placeholder-count="5"><span onClick="{{ a.pick }}" style="flex:none;height:36px;padding:0 14px;border-radius:18px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;background:{{ a.bg }};color:{{ a.fg }};border:1px solid #E7E2DE">{{ a.t }}</span></sc-for></div>
+                <span onClick="{{ fr.record }}" role="button" style="height:44px;padding:0 18px;border-radius:14px;background:#6A4CF2;color:#fff;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;border:0;height:52px">{{ fr.cta }}</span>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ toast }}"><div role="status" style="position:absolute;left:16px;right:16px;bottom:96px;z-index:45;min-height:48px;padding:0 8px 0 16px;border-radius:16px;background:#1C1B22;color:#fff;font-size:14px;display:flex;align-items:center;gap:8px;box-shadow:0 10px 30px rgba(20,10,30,.3)"><span style="flex:1">{{ toast.msg }}</span><sc-if value="{{ toast.actT }}"><span onClick="{{ toast.act }}" role="button" style="height:36px;padding:0 12px;border-radius:10px;color:#C9BBFF;font-weight:600;display:flex;align-items:center;cursor:pointer">{{ toast.actT }}</span></sc-if></div></sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  KEY = 'aelys.mobile.widgets.v1';
+  DEFAULT = [['today','M'],['focus','S'],['weather','S'],['cal','M'],['mail','M'],['notes','S'],['fin','S'],['proj','M']];
+  CAT = {
+    today:{ t:'Today', icon:'square-check', k:'blue', sizes:['M','L'], desc:'Upcoming tasks with checkboxes' },
+    cal:{ t:'Calendar', icon:'calendar', k:'red', sizes:['M','L'], desc:'Next events today' },
+    focus:{ t:'Focus', icon:'timer', k:'coral', sizes:['S','M'], desc:'Active focus timer' },
+    weather:{ t:'Weather', icon:'cloud-sun', k:'blue', sizes:['S','M'], desc:'Temperature and forecast' },
+    mail:{ t:'Mail', icon:'mail', k:'violet', sizes:['M','L'], desc:'Latest unread emails' },
+    proj:{ t:'Projects', icon:'folder', k:'green', sizes:['M','L'], desc:'Progress across projects' },
+    notes:{ t:'Notes', icon:'notebook-text', k:'orange', sizes:['S','M'], desc:'Your most recent notes' },
+    fin:{ t:'Finances', icon:'wallet', k:'green', sizes:['S','M'], desc:'Balance and spending' },
+    goals:{ t:'Goals', icon:'target', k:'violet', sizes:['S','M'], desc:'Personal goals and progress' }
+  };
+  C = { violet:'#6A4CF2', blue:'#2F6FE4', green:'#14966C', orange:'#D97706', coral:'#E2553F', red:'#D93636', gray:'#6B6672' };
+  col(k){ const c = this.C[k]; return { c, soft: c + '1A' }; }
+  constructor(p){ super(p); let cfg = null; try { cfg = JSON.parse(localStorage.getItem(this.KEY)); } catch (e) {} this.state = { loadPhase: null, loaded: {}, ...this.seedM(), screen: 'home', booting: true, sheet: null, tkView: 'today', tkNew: '', teDraft: null, calDay: '2026-10-28', evDraft: { title: '', start: '16:00', end: '17:00', err: '' }, pjSel: null, pjNew: '', ntSel: null, ntQ: '', ntFolder: 'All', mlSel: null, mlFolder: 'inbox', mlText: {}, frType: 'expense', frAmount: '', frAcc: 'a1', frCat: 'Food', frErr: '', srch: '', toast: null, fpOn: true, notifOn: true, drafts: {}, tab: 0, cfg: Array.isArray(cfg) ? cfg : this.DEFAULT, done: { 0: true }, qa: [true, true, true, true, false], theme: 1, wall: 0 }; }
+  save(cfg){ this.setState({ cfg }); try { localStorage.setItem(this.KEY, JSON.stringify(cfg)); } catch (e) {} }
+
+  seedM(){ return {
+    tasks: [
+      { id:'t1', title:'Team call', date:'2026-10-28', time:'10:00', prio:'low', project:'p1', done:true },
+      { id:'t2', title:'API review', date:'2026-10-28', time:'12:00', prio:'high', project:'p1', done:false },
+      { id:'t3', title:'Pay internet bill', date:'2026-10-28', time:'15:00', prio:'med', project:null, done:false },
+      { id:'t4', title:'Workout', date:'2026-10-28', time:'18:00', prio:null, project:null, done:false },
+      { id:'t5', title:'Read a book', date:'2026-10-28', time:'21:00', prio:null, project:null, done:false },
+      { id:'t6', title:'Submit lab report', date:'2026-10-27', time:'', prio:'high', project:'p4', done:false },
+      { id:'t7', title:'Prepare project report', date:'2026-10-29', time:'10:00', prio:'med', project:'p1', done:false },
+      { id:'t8', title:'Finish BYTAN deck', date:'2026-10-30', time:'', prio:'high', project:'p2', done:false },
+      { id:'t9', title:'Set up schedule parser', date:'2026-11-02', time:'', prio:'low', project:'p3', done:false },
+      { id:'t10', title:'Buy a new notebook', date:null, time:'', prio:null, project:null, done:false },
+      { id:'t11', title:'Ideas for dark theme', date:null, time:'', prio:'low', project:'p1', done:false }],
+    projects: [
+      { id:'p1', name:'Aelys', desc:'Personal OS with AI for tasks, calendar, notes, mail and money.', k:'violet', icon:'sparkles' },
+      { id:'p2', name:'BYTAN', desc:'Pitch deck and demo for Friday’s investor meeting.', k:'blue', icon:'presentation' },
+      { id:'p3', name:'SDU Utilities', desc:'Schedule parser and exam reminders for students.', k:'green', icon:'wrench' },
+      { id:'p4', name:'Study', desc:'Fall semester courses and assignments.', k:'orange', icon:'graduation-cap' }],
+    notes: [
+      { id:'n1', title:'Design ideas', folder:'Projects', updated:'Today', body:'Use the mountain photo as a constant accent. Soft glass panels, calm colors and clear hierarchy.' },
+      { id:'n2', title:'Release plan', folder:'Projects', updated:'Yesterday', body:'v1.0: Tasks and Calendar stable, Notes sync, Mail drafts without sending, Finance ledger.' },
+      { id:'n3', title:'Lecture notes: APIs', folder:'Study', updated:'Oct 26', body:'REST vs RPC. Idempotency keys make retries safe.' },
+      { id:'n4', title:'Personal plan', folder:'Personal', updated:'Oct 24', body:'Goals for November: skills, sport and balance.' }],
+    mails: [
+      { id:'m1', from:'SDU Registrar', email:'registrar@sdu.edu.kz', subject:'Schedule update for week 45', when:'10:24', unread:true, body:'Dear student,\n\nThe Networks lecture on Monday moves to room F-204. Labs stay unchanged.\n\nSDU Registrar' },
+      { id:'m2', from:'GitHub', email:'noreply@github.com', subject:'[aelys] PR #142 is ready for review', when:'09:15', unread:true, body:'Ali requested your review on #142 “Widget grid resize”.' },
+      { id:'m3', from:'Ali Nurlanov', email:'ali@bytan.kz', subject:'Home screen mockups', when:'Tue', unread:false, body:'Hey! Can we discuss the home screen mockups before Friday?\n\n— Ali' },
+      { id:'m4', from:'Aigerim S.', email:'aigerim@gmail.com', subject:'Study group on Thursday?', when:'Mon', unread:true, body:'Are you joining the study group on Thursday at 17:00?' }],
+    mdrafts: {},
+    accounts: [{ id:'a1', name:'Main card', cur:'KZT', open:6000000, icon:'credit-card' }, { id:'a2', name:'Cash', cur:'KZT', open:1500000, icon:'banknote' }, { id:'a3', name:'Savings', cur:'USD', open:120000, icon:'piggy-bank' }],
+    txns: [
+      { id:'x1', acc:'a1', type:'expense', cents:450000, cat:'Food', date:'2026-10-28', note:'Groceries' },
+      { id:'x2', acc:'a1', type:'expense', cents:89000, cat:'Transport', date:'2026-10-28', note:'Taxi' },
+      { id:'x3', acc:'a1', type:'expense', cents:299000, cat:'Subscriptions', date:'2026-10-27', note:'Music + cloud' },
+      { id:'x4', acc:'a1', type:'income', cents:15000000, cat:'Freelance', date:'2026-10-25', note:'Landing page project' },
+      { id:'x5', acc:'a2', type:'expense', cents:120000, cat:'Food', date:'2026-10-27', note:'Coffee' }],
+    events: {
+      '2026-10-26': [['Team call','10:00','11:00','blue','Aelys team'],['Workout','18:00','19:00','green','Gym']],
+      '2026-10-27': [['Design review','12:00','13:00','violet','Figma'],['Client meeting','15:00','16:00','blue','Zoom']],
+      '2026-10-28': [['Team call','10:00','11:00','blue','Aelys team'],['API review','12:00','13:00','violet','Room A'],['Gym','15:00','16:00','coral','Fitness House'],['Workout','18:00','19:00','green','Medeu']],
+      '2026-10-29': [['Project work','11:00','12:30','blue','Library'],['Mentor call','17:00','18:00','violet','Meet']],
+      '2026-10-30': [['Presentation','10:00','11:00','violet','BYTAN'],['Team lunch','13:00','14:00','green','Café']] },
+    notifs: [
+      { id:'n1', k:'mail', t:'SDU Registrar', s:'Schedule update for week 45', when:'10:24', day:'Today', unread:true, go:['mail', { mlSel:'m1' }] },
+      { id:'n2', k:'cal', t:'Team call in 15 minutes', s:'10:00 – 11:00 · Aelys team', when:'09:45', day:'Today', unread:true, go:['calendar', { calDay:'2026-10-28' }] },
+      { id:'n3', k:'task', t:'“Submit lab report” is overdue', s:'Was due yesterday · Study', when:'09:00', day:'Today', unread:true, go:['tasks', { tkView:'today' }] },
+      { id:'n4', k:'ai', t:'Your plan for today is ready', s:'Aelys arranged 8 focus blocks.', when:'08:30', day:'Today', unread:false, go:['chat', {}] },
+      { id:'n5', k:'fin', t:'Subscriptions renewed', s:'Music + cloud · 2 990.00 ₸', when:'Tue', day:'Earlier', unread:false, go:['finance', {}] }]
+  }; }
+  chk(on){ return { done: on, bd: on ? 'none' : '2px solid #BDB7C2', bg: on ? '#6A4CF2' : 'transparent', fg: on ? '#625D69' : '#1C1B22', deco: on ? 'line-through' : 'none' }; }
+  dd(d){ return Math.round((Date.parse(d + 'T00:00:00') - Date.parse('2026-10-28T00:00:00')) / 864e5); }
+  fmt(d){ if (!d) return ''; const n = this.dd(d); if (n === 0) return 'Today'; if (n === 1) return 'Tomorrow'; if (n === -1) return 'Yesterday'; return new Date(d + 'T00:00:00').toLocaleDateString('en-US', n > 1 && n < 7 ? { weekday: 'long' } : { month: 'short', day: 'numeric' }); }
+  money(c, cur, sign){ const a = Math.abs(c), w = String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '), f = String(a % 100).padStart(2, '0'); const s = sign ? (c < 0 ? '− ' : '+ ') : ''; return cur === 'KZT' ? s + w + '.' + f + ' ₸' : s + (cur === 'USD' ? '$' : '€') + w + '.' + f; }
+  cents(v){ v = String(v).trim().replace(/\s/g, '').replace(',', '.'); if (!/^\d+(\.\d{1,2})?$/.test(v)) return null; const p = v.split('.'); return Number(p[0]) * 100 + Number(((p[1] || '') + '00').slice(0, 2)); }
+  uid(p){ return p + Date.now().toString(36) + Math.floor(Math.random() * 1e4); }
+  say(msg, actT, act){ clearTimeout(this.tt); this.setState({ toast: { msg, actT: actT || '', act: act || null } }); this.tt = setTimeout(() => this.setState({ toast: null }), 3500); }
+  componentWillUnmount(){ clearTimeout(this.lt2); clearTimeout(this.lt3); clearTimeout(this.tt); clearTimeout(this.bt); clearTimeout(this.st); }
+  NOLOAD = ['home','custom','search','notif','chat'];
+  goto(screen, extra){ if (!screen) return; this.setState({ screen, sheet: null, ...(extra || {}) }); this.startLoad(screen); }
+  startLoad(s, force){
+    clearTimeout(this.lt2); clearTimeout(this.lt3);
+    const net = force || this.props.network || 'normal';
+    const cached = this.props.cacheScreens !== false && (this.state.loaded || {})[s];
+    if (net === 'instant' || (cached && !force && net !== 'offline') || this.NOLOAD.includes(s)) { if (this.state.loadPhase) this.setState({ loadPhase: null }); return; }
+    this.setState({ loadPhase: 'loading' });
+    if (net === 'slow') this.lt2 = setTimeout(() => this.setState({ loadPhase: 'slow' }), 2500);
+    if (net === 'offline') this.lt2 = setTimeout(() => this.setState({ loadPhase: 'error' }), 2200);
+    const dur = { normal: 1100, slow: 6500 }[net];
+    if (dur) this.lt3 = setTimeout(() => this.setState(st => ({ loadPhase: null, loaded: Object.assign({}, st.loaded, { [s]: true }) })), dur);
+  }
+  loadKind(s){ return ({home:'home',tasks:'list',automation:'list',calendar:'calendar',notes:'split',mail:'split',kb:'split',messages:'split',projects:'grid',apps:'grid',finance:'grid',chat:'chat',settings:'settings'})[s] || 'list'; }
+  plain(s){ return String(s || '').replace(/<(br|\/p|\/li|\/h\d|\/div|\/blockquote|\/pre)[^>]*>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;|&#8203;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[•\n]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  toggleTask(id, e){ const t = this.state.tasks.find(x => x.id === id); if (t && !t.done) { if (e) this.burstAt(e); const left = this.state.tasks.filter(x => !x.done && x.id !== id && x.date && this.dd(x.date) <= 0).length; if (t.date && this.dd(t.date) <= 0 && left === 0) setTimeout(() => this.celebrate('All done for today — enjoy the calm.'), 250); } this.setState(s => ({ tasks: s.tasks.map(x => x.id === id ? { ...x, done: !x.done } : x) })); if (t && !t.done) this.say('Completed “' + t.title + '”', 'Undo', () => { this.setState(s => ({ tasks: s.tasks.map(x => x.id === id ? { ...x, done: false } : x), toast: null })); }); }
+
+  burstAt(e){ let x = e.clientX, y = e.clientY; if (!x && !y && e.currentTarget && e.currentTarget.getBoundingClientRect) { const r = e.currentTarget.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + r.height / 2; } clearTimeout(this.bt); this.setState({ burst: { x, y, k: Date.now() } }); this.bt = setTimeout(() => this.setState({ burst: null }), 900); }
+  celebrate(msg){ clearTimeout(this.st); this.setState({ shower: { k: Date.now(), msg } }); this.st = setTimeout(() => this.setState({ shower: null }), 3600); }
+  tapLogo(){ const now = Date.now(); const combo = now - (this.lgLast || 0) < 650 ? (this.lgCombo || 0) + 1 : 1; this.lgLast = now; this.lgCombo = combo; this.setState(s => ({ lgKey: (s.lgKey || 0) + 1 })); if (combo >= 5) { this.lgCombo = 0; this.celebrate('You found the spark. Have a calm day, Tileuzhan.'); } }
+  fxVals(S){
+    const h = React.createElement;
+    const cols = ['#8B6CF0','#B597F7','#6A4CF2','#FFB089','#46D2FF','#FF7AD9'];
+    const star = (size, color, style, key) => h('svg', { key, 'data-fx': 1, viewBox: '0 0 24 24', width: size, height: size, style: { position: 'absolute', overflow: 'visible', ...style }, 'aria-hidden': true }, h('path', { d: 'M12 1c.9 6.4 3.6 9.6 11 11-7.4 1.4-10.1 4.6-11 11-.9-6.4-3.6-9.6-11-11 7.4-1.4 10.1-4.6 11-11Z', fill: color }));
+    const k = S.lgKey || 0;
+    const ring = (key, delay) => h('span', { key, 'data-fx': 1, style: { position: 'absolute', inset: -4, borderRadius: 14, border: '2px solid rgba(255,255,255,.85)', animation: 'lgGlow 700ms ease-out ' + delay + 'ms both', pointerEvents: 'none' } });
+    const logo = h('span', { role: 'button', tabIndex: 0, 'aria-label': 'Aelys', onClick: () => this.tapLogo(), onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.tapLogo(); } }, style: { position: 'relative', width: 40, height: 40, flex: 'none', display: 'block', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' } },
+      k ? ring('r' + k, 0) : null, k ? ring('q' + k, 140) : null,
+      h('img', { key: 'img' + k, src: 'assets/aelys-mark.svg', alt: '', draggable: false, 'data-fx-anim': 1, style: { width: 40, height: 40, display: 'block', objectFit: 'contain', filter: 'drop-shadow(0 3px 8px rgba(30,15,70,.35))', animation: k ? 'lgSpin 900ms cubic-bezier(.4,0,.2,1) both' : 'none' } }),
+      k ? Array.from({ length: 8 }, (_, i) => { const a = (i / 8) * Math.PI * 2 + (k % 3) * .3, d = 32 + (i % 3) * 10; return star(8 + (i % 3) * 3, cols[i % cols.length], { left: 16, top: 16, '--dx': Math.cos(a) * d + 'px', '--dy': Math.sin(a) * d + 'px', animation: 'lgBurst 750ms cubic-bezier(.2,.8,.3,1) ' + (i * 15) + 'ms both', pointerEvents: 'none' }, 'b' + k + '-' + i); }) : null);
+    const parts = [];
+    if (S.burst) { const b = S.burst; parts.push(h('div', { key: 'burst' + b.k, style: { position: 'fixed', left: b.x - 6, top: b.y - 6, width: 12, height: 12, zIndex: 300, pointerEvents: 'none' } }, Array.from({ length: 10 }, (_, i) => { const a = (i / 10) * Math.PI * 2, d = 24 + (i % 2) * 12; return star(7 + (i % 3) * 3, cols[i % cols.length], { left: 0, top: 0, '--dx': Math.cos(a) * d + 'px', '--dy': Math.sin(a) * d + 'px', animation: 'lgBurst 700ms cubic-bezier(.2,.8,.3,1) both' }, i); }))); }
+    if (S.shower) { const s = S.shower; parts.push(h('div', { key: 'shower' + s.k, style: { position: 'absolute', inset: 0, zIndex: 55, pointerEvents: 'none', overflow: 'hidden', borderRadius: 43 } },
+      Array.from({ length: 30 }, (_, i) => { const r = (i * 37 + s.k) % 100; return star(9 + (i % 4) * 4, cols[i % cols.length], { left: r + '%', top: 0, '--sx': ((i % 7) - 3) * 16 + 'px', '--rot': (i % 2 ? 1 : -1) * (360 + i * 20) + 'deg', animation: 'lgFall ' + (2200 + (i % 5) * 260) + 'ms cubic-bezier(.3,.6,.4,1) ' + ((i * 53) % 900) + 'ms both' }, i); }),
+      h('div', { 'data-fx': 1, style: { position: 'absolute', left: '50%', top: '40%', maxWidth: 'calc(100% - 48px)', padding: '12px 18px', borderRadius: 18, background: 'rgba(28,18,58,.84)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', color: '#fff', font: '600 15px/21px Inter, sans-serif', textAlign: 'center', boxShadow: '0 20px 50px rgba(20,10,40,.35)', animation: 'lgPop 3400ms ease both' } }, s.msg))); }
+    return { logo, fx: h(React.Fragment, null, parts) };
+  }
+  phoneCfg(S){
+    const sc = S.screen;
+    const go = (s, x) => () => this.goto(s, x);
+    const nav = { openApps: go('apps'), openSearch: go('search', { srch: '' }), openNotif: go('notif'), toCustom: go('custom'), toHome: go('home'), toChat: go('chat') };
+    if (sc === 'home') return { label:'Android · Home', home:true, bar:true, prompt:'Ask or search', padB:190, photoH:460, photoBg:520, ...nav };
+    if (sc === 'custom') return { label:'Android · Customize home', custom:true, padB:110, photoH:340, photoBg:440, ...nav };
+    if (sc === 'chat') return { label:'Android · AI Chat', chat:true, bar:false, padB:24, toSettings: go('settings'), photoH:400, photoBg:480, ...nav };
+    const P = S.projects.find(p => p.id === S.pjSel), N = S.notes.find(n => n.id === S.ntSel), Ml = S.mails.find(m => m.id === S.mlSel);
+    const unread = S.mails.filter(m => m.unread).length, left = S.tasks.filter(t => !t.done && t.date && this.dd(t.date) <= 0).length;
+    const meta = {
+      tasks: ['Tasks', left + ' left for today'],
+      calendar: ['Calendar', 'Week 44 · October 2026', 'Event', 'plus', () => this.setState({ sheet: 'event', evDraft: { title: '', start: '16:00', end: '17:00', err: '' } })],
+      projects: P ? [P.name, 'Project'] : ['Projects', S.projects.length + ' active projects'],
+      notes: N ? [N.title || 'Untitled', 'Note · ' + N.folder] : ['Notes', S.notes.length + ' notes', 'New', 'square-pen', () => { const n = { id: this.uid('n'), title: '', folder: S.ntFolder === 'All' ? 'Personal' : S.ntFolder, updated: 'Just now', body: '' }; this.setState(s => ({ notes: [n, ...s.notes], ntSel: n.id })); }],
+      mail: Ml ? ['Inbox', Ml.from] : ['Mail', unread + ' unread · Gmail'],
+      finance: ['Finances', 'October 2026'],
+      settings: ['Settings', 'Make Aelys your own'],
+      apps: ['Apps', 'Small tools for everything else'],
+      messages: ['Messages', 'Telegram · Aelys drafts, you approve'],
+      automation: ['Automation', 'When this happens, Aelys does that'],
+      notif: ['Notifications', S.notifs.filter(n => n.unread).length + ' unread', 'Read all', 'check', () => this.setState(s => ({ notifs: s.notifs.map(n => ({ ...n, unread: false })) }))],
+      search: ['Search', 'Tasks, notes, mail and more'] }[sc] || ['Aelys', ''];
+    const back = () => { if (sc === 'projects' && S.pjSel) this.setState({ pjSel: null }); else if (sc === 'notes' && S.ntSel) this.setState({ ntSel: null }); else if (sc === 'mail' && S.mlSel) this.setState({ mlSel: null }); else this.goto('home'); };
+    return { label: 'Android · ' + meta[0], inner: true, [sc]: !S.loadPhase, loading: !!S.loadPhase, loadPhase: S.loadPhase || 'loading', loadKind: this.loadKind(sc), loadLabel: meta[0], retryLoad: () => this.startLoad(sc, 'normal'), padB: 110, photoH: 230, photoBg: 380, fab: sc !== 'search' && sc !== 'messages', title: meta[0], sub: meta[1], actionT: meta[2] || '', actionIcon: meta[3] || '', action: meta[4] || (() => {}), back, ...nav };
+  }
+  appVals(S){
+    const col = k => this.col(k), set = o => this.setState(o), val = k => e => this.setState({ [k]: e.target.value });
+    const C = this.C;
+    const PJ = {}; S.projects.forEach(p => { PJ[p.id] = p; });
+    const prioC = { high:'#D93636', med:'#D97706', low:'#2F6FE4' };
+    const scr = [['home','Home','house'],['tasks','Tasks','square-check'],['calendar','Calendar','calendar'],['projects','Projects','folder'],['notes','Notes','notebook-text'],['mail','Mail','mail'],['finance','Finances','wallet'],['chat','AI Chat','message-square-text'],['notif','Notifications','bell'],['search','Search','search'],['settings','Settings','settings'],['custom','Customize home','layout-grid']];
+    const appsK = { tasks:'blue', calendar:'red', projects:'green', notes:'orange', mail:'violet', finance:'green', chat:'violet', settings:'gray', search:'blue' };
+    // tasks
+    const inV = (t, v) => v === 'inbox' ? !t.done && !t.date : v === 'today' ? !t.done && !!t.date && this.dd(t.date) <= 0 : v === 'upcoming' ? !t.done && !!t.date && this.dd(t.date) > 0 : t.done;
+    const row = t => { const p = t.project && PJ[t.project]; const od = !t.done && t.date && this.dd(t.date) < 0; return { title: t.title, when: [S.tkView === 'today' && !od ? '' : this.fmt(t.date), t.time].filter(Boolean).join(' · '), metaC: od ? '#C9302C' : '#625D69', proj: p ? p.name : '', pSoft: p ? C[p.k] + '1A' : '', pC: p ? C[p.k] : '', flag: !!t.prio, flagC: prioC[t.prio] || '', toggle: e => { e.stopPropagation(); this.toggleTask(t.id, e); }, open: () => set({ sheet: 'task', teDraft: { id: t.id, title: t.title, date: t.date, prio: t.prio || 'none' } }), ...this.chk(t.done) }; };
+    const list = S.tasks.filter(t => inV(t, S.tkView)).sort((a, b) => (a.date || '9').localeCompare(b.date || '9') || (a.time || '9').localeCompare(b.time || '9'));
+    let groups = [];
+    if (S.tkView === 'today') { const od = list.filter(t => this.dd(t.date) < 0), td = list.filter(t => this.dd(t.date) === 0); if (od.length) groups.push({ t: 'Overdue', sub: '', c: '#C9302C', items: od.map(row) }); if (td.length) groups.push({ t: 'Today', sub: 'Wed, Oct 28', c: '#1C1B22', items: td.map(row) }); }
+    else if (S.tkView === 'upcoming') { const by = {}; list.forEach(t => { (by[t.date] = by[t.date] || []).push(t); }); groups = Object.keys(by).sort().map(d => ({ t: this.fmt(d), sub: '', c: '#1C1B22', items: by[d].map(row) })); }
+    else if (list.length) groups = [{ t: S.tkView === 'inbox' ? 'Inbox' : 'Completed', sub: S.tkView === 'inbox' ? 'No date' : '', c: '#1C1B22', items: list.map(row) }];
+    const addT = () => { const title = S.tkNew.trim(); if (!title) return; const date = S.tkView === 'today' ? '2026-10-28' : S.tkView === 'upcoming' ? '2026-10-29' : null; this.setState(s => ({ tasks: [...s.tasks, { id: this.uid('t'), title, date, time: '', prio: null, project: null, done: false }], tkNew: '', tkView: s.tkView === 'done' ? 'inbox' : s.tkView })); this.say('Task added'); };
+    const mt = { views: [['today','Today'],['upcoming','Upcoming'],['inbox','Inbox'],['done','Done']].map(([v, t]) => ({ t, n: S.tasks.filter(x => inV(x, v)).length, bg: S.tkView === v ? '#6A4CF2' : '#fff', fg: S.tkView === v ? '#fff' : '#1C1B22', nbg: S.tkView === v ? 'rgba(255,255,255,.22)' : '#F1EDEA', pick: () => set({ tkView: v }) })),
+      newT: S.tkNew, setNew: val('tkNew'), newKey: e => { if (e.key === 'Enter') addT(); }, add: addT, addBg: S.tkNew.trim() ? '#6A4CF2' : '#CFC9D4', groups, empty: groups.length === 0,
+      emptyT: { today: 'Nothing left for today', upcoming: 'Nothing planned', inbox: 'Inbox is clear', done: 'No completed tasks' }[S.tkView] };
+    const td = S.teDraft || {};
+    const te = { title: td.title || '', setTitle: e => set({ teDraft: { ...td, title: e.target.value } }),
+      dates: [['2026-10-28','Today'],['2026-10-29','Tomorrow'],['2026-10-30','Friday'],[null,'No date']].map(([v, t]) => ({ t, bg: td.date === v ? '#6A4CF2' : '#fff', fg: td.date === v ? '#fff' : '#1C1B22', pick: () => set({ teDraft: { ...td, date: v } }) })),
+      prios: [['none','None'],['low','Low'],['med','Medium'],['high','High']].map(([v, t]) => ({ t, bg: td.prio === v ? '#6A4CF2' : '#fff', fg: td.prio === v ? '#fff' : '#1C1B22', pick: () => set({ teDraft: { ...td, prio: v } }) })),
+      save: () => { if (!td.title || !td.title.trim()) return; this.setState(s => ({ tasks: s.tasks.map(x => x.id === td.id ? { ...x, title: td.title.trim(), date: td.date, prio: td.prio === 'none' ? null : td.prio } : x), sheet: null })); this.say('Task saved'); },
+      remove: () => { const idx = S.tasks.findIndex(x => x.id === td.id), item = S.tasks[idx]; this.setState(s => ({ tasks: s.tasks.filter(x => x.id !== td.id), sheet: null })); this.say('Task deleted', 'Undo', () => this.setState(s => { const a = [...s.tasks]; a.splice(idx, 0, item); return { tasks: a, toast: null }; })); } };
+    // calendar
+    const tint = { blue:['#E4EEFD','#4A8EF0'], violet:['#EEE8FD','#8B6CF0'], coral:['#FDE6E1','#F07362'], green:['#DCF5EC','#36BE8A'] };
+    const days = ['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30','2026-10-31','2026-11-01'];
+    const evs = (S.events[S.calDay] || []).slice().sort((a, b) => a[1].localeCompare(b[1]));
+    const mc = { days: days.map(d => { const on = d === S.calDay, today = d === '2026-10-28'; return { dn: new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' }), n: +d.slice(8), bg: on ? '#6A4CF2' : 'transparent', fg: on ? '#fff' : today ? '#5132D6' : '#1C1B22', dot: (S.events[d] || []).length ? (on ? '#fff' : '#6A4CF2') : 'transparent', pick: () => set({ calDay: d }) }; }),
+      dayT: this.fmt(S.calDay) + ' · ' + new Date(S.calDay + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' }), count: evs.length + (evs.length === 1 ? ' event' : ' events'),
+      events: evs.map(([t, s, e, k, place]) => ({ t, time: s, r: s + ' – ' + e + (place ? ' · ' + place : ''), bg: tint[k][0], bd: tint[k][1] })), empty: evs.length === 0 };
+    const ed = S.evDraft;
+    const ev = { ...ed, dayT: this.fmt(S.calDay), setTitle: e => set({ evDraft: { ...ed, title: e.target.value, err: '' } }), setStart: e => set({ evDraft: { ...ed, start: e.target.value, err: '' } }), setEnd: e => set({ evDraft: { ...ed, end: e.target.value, err: '' } }),
+      add: () => { if (!ed.title.trim()) { set({ evDraft: { ...ed, err: 'Give the event a title' } }); return; } if (!ed.start || !ed.end || ed.end <= ed.start) { set({ evDraft: { ...ed, err: 'End time must be after start time' } }); return; } this.setState(s => ({ events: { ...s.events, [s.calDay]: [...(s.events[s.calDay] || []), [ed.title.trim(), ed.start, ed.end, 'violet', '']] }, sheet: null })); this.say('Event added'); } };
+    // projects
+    const pst = id => { const ts = S.tasks.filter(t => t.project === id), done = ts.filter(t => t.done).length; return { ts, done, open: ts.length - done, pct: ts.length ? Math.round(done / ts.length * 100) : null }; };
+    const mp = { list: !S.pjSel, detail: !!S.pjSel, newT: S.pjNew, setNew: val('pjNew'),
+      cards: S.projects.map(p => { const st = pst(p.id), next = st.ts.filter(t => !t.done)[0]; return { name: p.name, icon: p.icon, ...col(p.k), pct: st.pct || 0, pctT: st.pct === null ? '—' : st.pct + '%', meta: st.open + ' open · ' + st.done + ' done', next: next ? next.title : 'Nothing planned', open: () => set({ pjSel: p.id }) }; }),
+      d: {}, newKey: e => { if (e.key === 'Enter' && S.pjNew.trim()) { this.setState(s => ({ tasks: [...s.tasks, { id: this.uid('t'), title: s.pjNew.trim(), date: null, time: '', prio: null, project: s.pjSel, done: false }], pjNew: '' })); this.say('Task added'); } } };
+    if (S.pjSel && PJ[S.pjSel]) { const p = PJ[S.pjSel], st = pst(p.id); mp.d = { ...col(p.k), icon: p.icon, desc: p.desc, pct: st.pct || 0, pctT: st.pct === null ? 'No tasks yet' : st.pct + '%', meta: st.open + ' open · ' + st.done + ' done', tasks: st.ts.map(t => ({ title: t.title, when: this.fmt(t.date), toggle: e => this.toggleTask(t.id, e), ...this.chk(t.done) })) }; }
+    // notes
+    const nq = S.ntQ.trim().toLowerCase();
+    const sn = S.notes.find(n => n.id === S.ntSel);
+    const upN = (k, v) => this.setState(s => ({ notes: s.notes.map(n => n.id === s.ntSel ? { ...n, [k]: v, updated: 'Just now' } : n) }));
+    const mn = { list: !sn, editing: !!sn, q: S.ntQ, setQ: val('ntQ'),
+      folders: ['All','Projects','Study','Personal'].map(f => ({ t: f, bg: S.ntFolder === f ? '#6A4CF2' : '#fff', fg: S.ntFolder === f ? '#fff' : '#1C1B22', pick: () => set({ ntFolder: f }) })),
+      items: S.notes.filter(n => (S.ntFolder === 'All' || n.folder === S.ntFolder) && (!nq || (n.title + ' ' + n.body).toLowerCase().includes(nq))).map(n => ({ title: n.title || 'Untitled', when: n.updated, snippet: this.plain(n.body) || 'No content yet', open: () => set({ ntSel: n.id }) })),
+      sel: sn || {}, setTitle: e => upN('title', e.target.value), setBody: e => upN('body', e.target.value), setBodyHtml: html => upN('body', html) };
+    mn.empty = mn.items.length === 0;
+    // mail
+    const sm = S.mails.find(m => m.id === S.mlSel);
+    const mm = { list: !sm, reading: !!sm, folders: [['inbox','Inbox'],['drafts','Drafts']].map(([v, t]) => ({ t, bg: S.mlFolder === v ? '#6A4CF2' : '#fff', fg: S.mlFolder === v ? '#fff' : '#1C1B22', pick: () => set({ mlFolder: v }) })),
+      items: S.mails.filter(m => S.mlFolder === 'inbox' || S.mdrafts[m.id]).map(m => ({ from: m.from, subject: m.subject, snippet: m.body.replace(/\n+/g, ' '), when: m.when, letter: m.from.charAt(0), unread: m.unread, fw: m.unread ? 600 : 500, open: () => this.setState(s => ({ mlSel: m.id, mails: s.mails.map(x => x.id === m.id ? { ...x, unread: false } : x) })) })), r: {} };
+    mm.empty = mm.items.length === 0;
+    if (sm) { const saved = S.mdrafts[sm.id], text = S.mlText[sm.id] !== undefined ? S.mlText[sm.id] : saved ? saved.text : ''; const st = saved && text === saved.text ? saved.status : text.trim() ? 'unsaved' : 'none';
+      const SM = { none:['No draft','#F1EDEA','#4F4A56'], unsaved:['Unsaved','#FDF1D9','#8A5A00'], local:['Saved locally','#EEEAFD','#5132D6'], gmail:['In Gmail drafts','#DCF5EC','#0E7A57'] }[st];
+      const keep = s2 => { this.setState(s => { const t2 = { ...s.mlText }; delete t2[sm.id]; return { mdrafts: { ...s.mdrafts, [sm.id]: { text, status: s2 } }, mlText: t2 }; }); this.say(s2 === 'gmail' ? 'Placed in Gmail drafts — not sent' : 'Draft saved'); };
+      mm.r = { ...sm, letter: sm.from.charAt(0), text, setText: e => { const v = e.target.value; this.setState(s => ({ mlText: { ...s.mlText, [sm.id]: v } })); }, statusT: SM[0], stBg: SM[1], stFg: SM[2], saveOp: st === 'unsaved' ? 1 : .45, pubOp: text.trim() && st !== 'gmail' ? 1 : .45, save: () => { if (st === 'unsaved') keep('local'); }, publish: () => { if (text.trim() && st !== 'gmail') keep('gmail'); } }; }
+    // finance
+    const ACC = {}; S.accounts.forEach(a => { ACC[a.id] = a; });
+    const bal = a => S.txns.reduce((s, x) => x.acc !== a.id ? s : s + (x.type === 'income' ? x.cents : -x.cents), a.open);
+    const kzt = S.accounts.filter(a => a.cur === 'KZT').reduce((s, a) => s + bal(a), 0);
+    const catIcon = { Food:'utensils', Transport:'bus', Subscriptions:'repeat', Entertainment:'clapperboard', Shopping:'shopping-bag', Other:'circle-dashed', Salary:'briefcase', Freelance:'laptop', Gift:'gift' };
+    const catK = { Food:'orange', Transport:'blue', Subscriptions:'violet', Entertainment:'coral', Shopping:'green', Other:'gray', Salary:'green', Freelance:'green', Gift:'green' };
+    const hg = {}; S.txns.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach(x => { (hg[x.date] = hg[x.date] || []).push(x); });
+    const mf = { total: this.money(kzt, 'KZT'), other: S.accounts.filter(a => a.cur !== 'KZT').map(a => a.name + ' ' + this.money(bal(a), a.cur)).join(' · '),
+      accounts: S.accounts.map(a => ({ name: a.name, icon: a.icon, bal: this.money(bal(a), a.cur) })),
+      groups: Object.keys(hg).sort().reverse().map(d => ({ t: this.fmt(d), items: hg[d].map(x => { const inc = x.type === 'income', a = ACC[x.acc]; return { t: x.note || x.cat, cat: x.cat, acc: a.name, amt: this.money(inc ? x.cents : -x.cents, a.cur, true), amtC: inc ? '#0E7A57' : '#1C1B22', icon: catIcon[x.cat] || 'circle', ...col(catK[x.cat] || 'gray') }; }) })),
+      expense: () => set({ sheet: 'record', frType: 'expense', frCat: 'Food', frAmount: '', frErr: '' }), income: () => set({ sheet: 'record', frType: 'income', frCat: 'Salary', frAmount: '', frErr: '' }) };
+    const cats = S.frType === 'expense' ? ['Food','Transport','Subscriptions','Entertainment','Shopping','Other'] : ['Salary','Freelance','Gift','Other'];
+    const fa = ACC[S.frAcc] || S.accounts[0];
+    const fr = { types: [['expense','Expense'],['income','Income']].map(([v, t]) => ({ t, bg: S.frType === v ? '#fff' : 'transparent', fg: S.frType === v ? '#5132D6' : '#3A3640', pick: () => set({ frType: v, frCat: v === 'expense' ? 'Food' : 'Salary' }) })),
+      amount: S.frAmount, setAmount: e => set({ frAmount: e.target.value, frErr: '' }), sym: { KZT:'₸', USD:'$', EUR:'€' }[fa.cur], err: S.frErr, bd: S.frErr ? '#D93636' : '#EDE8E3',
+      accs: S.accounts.map(a => ({ t: a.name + ' · ' + a.cur, bg: a.id === fa.id ? '#6A4CF2' : '#fff', fg: a.id === fa.id ? '#fff' : '#1C1B22', pick: () => set({ frAcc: a.id }) })),
+      cats: cats.map(c => ({ t: c, bg: S.frCat === c ? '#6A4CF2' : '#fff', fg: S.frCat === c ? '#fff' : '#1C1B22', pick: () => set({ frCat: c }) })),
+      cta: S.frType === 'expense' ? 'Record expense' : 'Record income',
+      record: () => { const c = this.cents(S.frAmount); if (c === null) { set({ frErr: 'Enter an amount like 1250.25' }); return; } if (c === 0) { set({ frErr: 'Amount must be greater than zero' }); return; } const x = { id: this.uid('x'), acc: fa.id, type: S.frType, cents: c, cat: cats.includes(S.frCat) ? S.frCat : cats[0], date: '2026-10-28', note: '' }; this.setState(s => ({ txns: [x, ...s.txns], sheet: null, frAmount: '' })); this.say((S.frType === 'expense' ? 'Expense' : 'Income') + ' ' + this.money(c, fa.cur) + ' recorded', 'Undo', () => this.setState(s => ({ txns: s.txns.filter(t => t.id !== x.id), toast: null }))); } };
+    // settings
+    const sw = (on, flip) => ({ sw: true, on, jc: on ? 'flex-end' : 'flex-start', tbg: on ? '#6A4CF2' : '#CFC9D4', tap: flip });
+    const ms = { groups: [
+      { t: 'Security', rows: [{ t: 'Fingerprint unlock', s: 'Ask for your fingerprint when Aelys opens', icon: 'fingerprint', ...col('violet'), ...sw(S.fpOn, () => set({ fpOn: !S.fpOn })) }] },
+      { t: 'General', rows: [{ t: 'Notifications', s: 'Reminders, mail and AI updates', icon: 'bell', ...col('red'), ...sw(S.notifOn, () => set({ notifOn: !S.notifOn })) }, { t: 'Home screen', s: 'Widgets, sizes and order', icon: 'layout-grid', ...col('blue'), nav: true, tap: () => this.goto('custom') }, { t: 'Appearance', s: 'Theme and wallpaper', icon: 'palette', ...col('orange'), nav: true, tap: () => this.goto('custom', { tab: 2 }) }] },
+      { t: 'Connection', rows: [{ t: 'Server address', s: 'https://aelys.example/api/v1', icon: 'server', ...col('green'), nav: true, tap: () => this.say('Server settings open on the lock screen') }] }],
+      signOut: () => this.setState({ booting: S.fpOn, screen: 'home' }) };
+    // notifications
+    const nk = { mail:['mail','blue'], cal:['calendar','red'], task:['triangle-alert','red'], ai:['sparkles','violet'], fin:['wallet','green'] };
+    const mo = { groups: ['Today','Earlier'].map(d => ({ t: d, items: S.notifs.filter(n => n.day === d).map(n => ({ ...n, icon: nk[n.k][0], ...col(nk[n.k][1]), bg: n.unread ? '#F6F3FF' : '#fff', open: () => this.setState(s => ({ notifs: s.notifs.map(x => x.id === n.id ? { ...x, unread: false } : x), screen: n.go[0], ...n.go[1] })) })) })).filter(g => g.items.length) };
+    mo.empty = mo.groups.length === 0;
+    // search
+    const q = S.srch.trim().toLowerCase();
+    const sg = [];
+    const push = (t, items) => { if (items.length) sg.push({ t, items }); };
+    if (!q) push('Suggestions', [['Plan my day','sparkles','violet',() => this.goto('chat')],['Today’s tasks','square-check','blue',() => this.goto('tasks', { tkView: 'today' })],['Unread mail','mail','violet',() => this.goto('mail')],['Record expense','wallet','green',() => this.setState({ screen: 'finance', sheet: 'record', frType: 'expense', frAmount: '' })]].map(([t, icon, k, run]) => ({ t, s: '', icon, ...col(k), run })));
+    else {
+      push('Pages', scr.filter(([, t]) => t.toLowerCase().includes(q)).map(([id, t, icon]) => ({ t, s: '', icon, ...col(appsK[id] || 'violet'), run: () => this.goto(id) })));
+      push('Tasks', S.tasks.filter(t => t.title.toLowerCase().includes(q)).slice(0, 5).map(t => ({ t: t.title, s: t.date ? this.fmt(t.date) : 'No date', icon: 'square-check', ...col('blue'), run: () => this.goto('tasks', { tkView: t.done ? 'done' : !t.date ? 'inbox' : this.dd(t.date) <= 0 ? 'today' : 'upcoming' }) })));
+      push('Notes', S.notes.filter(n => (n.title + ' ' + n.body).toLowerCase().includes(q)).slice(0, 4).map(n => ({ t: n.title || 'Untitled', s: n.folder, icon: 'notebook-text', ...col('orange'), run: () => this.goto('notes', { ntSel: n.id }) })));
+      push('Mail', S.mails.filter(m => (m.from + ' ' + m.subject + ' ' + m.body).toLowerCase().includes(q)).slice(0, 4).map(m => ({ t: m.subject, s: m.from, icon: 'mail', ...col('violet'), run: () => this.goto('mail', { mlSel: m.id }) })));
+      push('Ask Aelys', [{ t: 'Ask “' + S.srch.trim() + '”', s: 'Answer from your workspace', icon: 'sparkles', ...col('violet'), run: () => this.goto('chat') }]);
+    }
+    const mx = { q: S.srch, setQ: val('srch'), hasQ: !!q, clear: () => set({ srch: '' }), groups: sg, empty: sg.length === 0 };
+    const titles = { apps: 'All apps', task: 'Edit task', event: 'New event', record: S.frType === 'expense' ? 'Record expense' : 'Record income' };
+    return {
+      screens: scr.map(([id, t, icon]) => ({ t, icon, bg: S.screen === id ? '#EEEAFD' : 'transparent', fg: S.screen === id ? '#5132D6' : '#1C1B22', pick: () => this.goto(id, { pjSel: null, ntSel: null, mlSel: null }) })),
+      mTheme: S.mTheme || 'light', pickTheme: t => { this.setState({ mTheme: t }); document.documentElement.setAttribute('data-aelys-theme', t === 'dark' ? 'dark' : 'light'); },
+      openApp: id => { if (id === 'messages' || id === 'automation') this.goto(id); else { this.setState({ toast: { msg: 'This app is coming soon' } }); clearTimeout(this.appT); this.appT = setTimeout(() => this.setState({ toast: null }), 2500); } },
+      booting: S.booting, bootDone: () => set({ booting: false }), replayLaunch: () => { set({ booting: false }); setTimeout(() => set({ booting: true }), 30); },
+      apps: scr.filter(([id]) => appsK[id]).map(([id, t, icon]) => ({ t, icon, ...col(appsK[id]), go: () => this.goto(id, { pjSel: null, ntSel: null, mlSel: null }) })),
+      sheet: { on: !!S.sheet, title: titles[S.sheet] || '', apps: S.sheet === 'apps', task: S.sheet === 'task', event: S.sheet === 'event', record: S.sheet === 'record', close: () => set({ sheet: null }) },
+      mt, te, mc, ev, mp, mn, mm, mf, fr, ms, mo, mx,
+      toast: S.toast
+    };
+  }
+  renderVals() {
+    const S = this.state, col = k => this.col(k);
+    const tint = { blue:['#E4EEFD','#4A8EF0'], violet:['#EEE8FD','#8B6CF0'], coral:['#FDE6E1','#F07362'], green:['#DCF5EC','#36BE8A'] };
+    const ev = (t, s, e, k) => ({ t, time: s, r: s + ' – ' + e, bg: tint[k][0], bd: tint[k][1] });
+    const tasks = S.tasks.filter(t => t.date === '2026-10-28').slice(0, 5).map(t => ({ t: t.title, time: t.time, toggle: e => { if (e) e.stopPropagation(); this.toggleTask(t.id, e); }, ...this.chk(t.done) }));
+    const data = {
+      today: tasks,
+      cal: [ev('Team call','10:00','11:00','blue'),ev('API review','12:00','13:00','violet'),ev('Gym','15:00','16:00','coral'),ev('Workout','18:00','19:00','green')],
+      mail: [['Google','Sign-in confirmation for your account','09:24','G','#4285F4'],['Notion','Weekly digest — 5 new pages','Tue','N','#1C1B22'],['Telegram','Ali: home screen mockups','Tue','T','#229ED9'],['GitHub','PR #142 is ready for review','Mon','G','#24292F']].map(([t, s, when, l, bg]) => ({ t, s, when, l, bg })),
+      proj: [['Aelys','12 tasks · 2 sessions',64,'violet','sparkles'],['BYTAN','8 tasks',37,'blue','presentation'],['SDU Utilities','6 tasks',20,'green','wrench'],['Study','8 tasks',37,'orange','graduation-cap']].map(([t, s, pct, k, icon]) => ({ t, s, pct, icon, ...col(k) })),
+      notes: [['Design ideas','2h','A new take on the home screen with an atmospheric photo.'],['Release plan','5h','Milestones and key dates for v1.0.'],['Lecture notes','1d','Product design basics and metrics.']].map(([t, when, s]) => ({ t, when, s })),
+      goals: [['Read 2 books','50'],['Workout 3× a week','67'],['Ship Aelys v1.0','64']].map(([t, pct]) => ({ t, pct }))
+    };
+    const rowsFor = (id, size) => { const d = data[id]; if (!d) return []; const n = { today:{M:3,L:5}, cal:{M:3,L:4}, mail:{M:2,L:4}, proj:{M:2,L:4}, notes:{S:1,M:3}, goals:{S:2,M:3} }[id]; return n ? d.slice(0, n[size] || 2) : d; };
+    const cfg = S.cfg.filter(([id]) => this.CAT[id]);
+    const homeW = cfg.map(([id, size]) => {
+      const c = this.CAT[id], span = size === 'S' ? 1 : 2, dark = id === 'weather';
+      return { open: () => this.goto(({ today:'tasks', cal:'calendar', focus:'tasks', weather:'home', mail:'mail', proj:'projects', notes:'notes', fin:'finance', goals:'projects' })[id]), k: { [id]: true }, title: c.t, span, wide: span === 2, narrow: span === 1, dir: span === 2 ? 'row' : 'column', rows: rowsFor(id, size),
+        bg: dark ? "linear-gradient(180deg,rgba(30,34,60,.30),rgba(20,22,40,.72)),url('assets/wallpaper.png') 85% 40%/auto 340px" : 'rgba(255,255,255,.88)', fg: dark ? '#fff' : '#1C1B22',
+        badge: id === 'mail' ? '12' : id === 'today' ? String(tasks.filter(t => !t.done).length) : '', badgeBg: id === 'mail' ? '#FDE3E1' : '#F1EDEA', badgeFg: id === 'mail' ? '#C9302C' : '#3A3640' };
+    });
+    const sizeName = { S:'Small', M:'Medium', L:'Large' };
+    const myWidgets = cfg.map(([id, size], i) => { const c = this.CAT[id]; return { t: c.t, icon: c.icon, ...col(c.k), sizeLabel: sizeName[size] + ' · ' + (size === 'S' ? 'half width' : 'full width'),
+      sizes: c.sizes.map(z => ({ t: sizeName[z], bg: z === size ? '#fff' : 'transparent', fg: z === size ? '#5132D6' : '#3A3640', pick: () => { const a = cfg.map(x => [...x]); a[i][1] = z; this.save(a); } })),
+      upOp: i === 0 ? .35 : 1, downOp: i === cfg.length - 1 ? .35 : 1,
+      up: () => { if (!i) return; const a = [...cfg]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; this.save(a); },
+      down: () => { if (i === cfg.length - 1) return; const a = [...cfg]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; this.save(a); },
+      remove: () => this.save(cfg.filter((_, j) => j !== i)) }; });
+    const ids = cfg.map(x => x[0]);
+    const available = Object.keys(this.CAT).filter(id => !ids.includes(id)).map(id => { const c = this.CAT[id]; return { t: c.t, s: c.desc, icon: c.icon, ...col(c.k), add: () => this.save([...cfg, [id, c.sizes[0]]]) }; });
+    const qaAll = [['Find a task','circle-dot','red'],['Schedule','calendar','blue'],['Sort inbox','sparkles','violet'],['Plan my day','lightbulb','orange'],['Analyze data','chart-column','green']];
+    const seg3 = (arr, cur, key) => arr.map((t, i) => ({ t, bg: i === cur ? '#fff' : 'transparent', fg: i === cur ? '#5132D6' : '#3A3640', pick: () => this.setState({ [key]: i }) }));
+    return {
+      phones: [this.phoneCfg(S)].map((p, i) => { const d = S.drafts[i] || '', has = d.trim().length > 0, send = () => this.setState(s => ({ drafts: { ...s.drafts, [i]: '' } }));
+        return { ...p, draft: d, orbIcon: has ? 'arrow-up' : 'mic', orbLabel: has ? 'Send' : 'Voice input', orbClick: has ? send : () => {}, setDraft: e => { const v = e.target.value; this.setState(s => ({ drafts: { ...s.drafts, [i]: v } })); }, onKey: e => { if (e.key === 'Enter' && has) send(); } }; }),
+      ...this.appVals(S), ...this.fxVals(S),
+      homeChips: qaAll.filter((_, i) => S.qa[i]).map(([t, icon, k]) => ({ t, icon, ...col(k) })),
+      homeW, forecast: [['15:00','cloud-sun','14°'],['18:00','cloud-drizzle','12°'],['21:00','cloud-rain','10°'],['Thu','sun','16°']].map(([h, icon, t]) => ({ h, icon, t })),
+      bars: [10,14,12,18,22,26,32],
+      spend: [['Food','21 400 ₸','#EA6A1A'],['Transport','8 900 ₸','#2F6FE4'],['Subscriptions','6 350 ₸','#6A4CF2']].map(([t, v, c]) => ({ t, v, c })),
+      noop: () => {},
+      bottomChips: qaAll.filter((_, i) => S.qa[i]).map(([t, icon, k]) => ({ t, icon, c: this.C[k] })), _unused: [].map(([t, icon, c]) => ({ t, icon, c })),
+      customTabs: [['Widgets','layout-grid'],['Actions','zap'],['Appearance','palette']].map(([t, icon], i) => { const on = S.tab === i; return { t, icon, bg: on ? '#fff' : 'transparent', fg: on ? '#5132D6' : '#3A3640', sh: on ? '0 1px 4px rgba(0,0,0,.08)' : 'none', pick: () => this.setState({ tab: i }) }; }),
+      tab0: S.tab === 0, tab1: S.tab === 1, tab2: S.tab === 2,
+      myWidgets, myCount: myWidgets.length, available, allAdded: available.length === 0,
+      resetWidgets: () => this.save(this.DEFAULT.map(x => [...x])),
+      qa: qaAll.map(([t, icon, k], i) => ({ t, icon, ...col(k), jc: S.qa[i] ? 'flex-end' : 'flex-start', tbg: S.qa[i] ? '#6A4CF2' : '#CFC9D4', flip: () => this.setState(s => { const a = [...s.qa]; a[i] = !a[i]; return { qa: a }; }) })),
+      mThemes: seg3(['Light','System','Dark'], S.theme, 'theme'),
+      mWalls: ['82% 30%','45% 45%','10% 60%'].map((p, i) => ({ g: "url('assets/wallpaper.png') " + p + "/auto 240px", ring: S.wall === i ? '0 0 0 3px #6A4CF2' : 'none', pick: () => this.setState({ wall: i }) })),
+      ctx4: [['5 tasks','due today','square-check','blue'],['2 meetings','in calendar','calendar','violet'],['Focus','18:00 – 19:00','target','green'],['+14°','Rain tonight','cloud-sun','orange']].map(([v, s, icon, k]) => ({ v, s, icon, ...col(k) })),
+      mPlan: [['10:00 – 11:00','Team call','blue',''],['12:00 – 15:00','Work on the BYTAN deck','violet','Task'],['15:00 – 16:00','Workout','orange','Personal'],['16:00 – 18:00','Pay internet bill','gray','Task'],['18:00 – 19:00','Deep work','green','Focus']].map(([r, t, k, tag]) => ({ r, t, tag, ...col(k) })),
+      mActions: [['Create task','Pay internet bill today at 16:00','square-check','#2F6FE4','#EAF0FD'],['Add to calendar','Block time for the presentation','calendar','#6A4CF2','#EFEBFD'],['Show #BYTAN notes','Ideas, files and notes','file-text','#B45F06','#FDF3E2']].map(([t, s, icon, c, bg]) => ({ t, s, icon, c, bg }))
+    };
+  }
+}
+</script>
+</body>
+</html>

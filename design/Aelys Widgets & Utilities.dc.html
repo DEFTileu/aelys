@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/lucide-static@0.469.0/font/lucide.css">
+<link rel="stylesheet" href="assets/aelys-icons.css">
+<link rel="stylesheet" href="assets/aelys-dark.css">
+<style>
+body{margin:0;background:#E9E3DD;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:22px;color:#1C1B22;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}a{color:#5132D6;text-decoration:none}a:hover{color:#3A1FB8}
+</style>
+</helmet>
+
+<div style="display:flex;flex-direction:column;gap:56px;padding:64px;width:max-content">
+
+<header style="display:flex;align-items:flex-end;gap:24px;max-width:1500px">
+  <img src="assets/aelys-mark.svg" alt="" style="width:56px;height:56px">
+  <div style="flex:1">
+    <div style="font-size:36px;line-height:44px;font-weight:700">Widgets &amp; Utilities</div>
+    <div style="font-size:16px;line-height:24px;color:#625D69;margin-top:4px">Reference for the agents. Replaces the current Home widget sizing, Customize controls, Timer, Automation and Developer Hub.</div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px;white-space:nowrap">
+    <a href="#ut" style="padding:8px 14px;border-radius:12px;background:#6A4CF2;color:#fff">0 · Apps</a>
+    <a href="#ms" style="padding:8px 14px;border-radius:12px;background:#6A4CF2;color:#fff">M · Messages</a>
+    <a href="#st" style="padding:8px 14px;border-radius:12px;background:#fff">S · Settings</a>
+    <a href="#ws" style="padding:8px 14px;border-radius:12px;background:#fff">1 · Widget sizes</a>
+    <a href="#cz" style="padding:8px 14px;border-radius:12px;background:#fff">2 · Customize</a>
+    <a href="#tm" style="padding:8px 14px;border-radius:12px;background:#fff">3 · Timer</a>
+    <a href="#au" style="padding:8px 14px;border-radius:12px;background:#fff">4 · Automation</a>
+    <a href="#dv" style="padding:8px 14px;border-radius:12px;background:#fff">5 · Developer Hub</a>
+  </div>
+</header>
+
+<!-- ============ M. MESSAGES ============ -->
+<section id="ms" data-screen-label="M Messages" style="display:flex;flex-direction:column;gap:24px;padding:40px;border-radius:28px;background:#F5F0EB;width:1600px">
+  <div>
+    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5132D6">M · Messages</div>
+    <div style="font-size:30px;line-height:38px;font-weight:700;margin-top:4px">Messages: a chat app with AI drafts</div>
+    <div style="font-size:14px;color:#625D69;margin-top:4px;max-width:960px">A separate app under Apps › Communicate, opened at <span style="font-family:'JetBrains Mono',monospace">/apps/messages</span>. "Needs reply" is the work queue. In each chat, Aelys's draft sits above the input, and Send moves you straight to the next chat. You can also write yourself; messages Aelys sent are marked. Settings › Telegram keeps only the connection and the rules. Try it: Send, Edit, Skip, and your own message with Enter.</div>
+  </div>
+
+  <div style="width:1520px;height:860px;border-radius:24px;overflow:hidden;border:1px solid #E6DFD8;display:grid;grid-template-columns:240px 360px minmax(0,1fr);background:#F5F0EB">
+    <aside style="background:#FAF7F4;border-right:1px solid #EDE8E3;padding:20px 14px;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:10px;padding:0 8px 20px"><img src="assets/aelys-mark.svg" alt="" style="width:36px;height:36px"><div><div style="font-size:16px;font-weight:700">Aelys</div><div style="font-size:12px;color:#625D69">Personal space</div></div></div>
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="10"><div style="display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border-radius:12px;background:{{ n.bg }};color:{{ n.fg }};font-weight:{{ n.fw }}"><i class="icon-{{ n.i }}" style="font-size:18px"></i>{{ n.t }}</div></sc-for>
+    </aside>
+
+    <div style="border-right:1px solid #EDE8E3;display:flex;flex-direction:column;min-height:0">
+      <div style="padding:20px 16px 12px;display:flex;flex-direction:column;gap:12px">
+        <a href="#ut" style="font-size:13px;color:#625D69;display:flex;align-items:center;gap:2px"><i class="icon-chevron-left"></i>Apps</a>
+        <div style="display:flex;align-items:center;gap:8px"><span style="flex:1;font-size:24px;line-height:30px;font-weight:700">Messages</span><span style="height:26px;padding:0 8px;border-radius:8px;background:#E4EEFD;color:#1F55B8;font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px"><i class="icon-send"></i>Telegram</span></div>
+        <div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3"><sc-for list="{{ mTabs }}" as="t" hint-placeholder-count="2"><span onClick="{{ t.pick }}" role="tab" aria-selected="{{ t.on }}" style="flex:1;height:32px;border-radius:9px;background:{{ t.bg }};box-shadow:{{ t.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer">{{ t.t }}</span></sc-for></div>
+        <label style="height:40px;padding:0 12px;border-radius:12px;background:#fff;border:1px solid #EDE8E3;display:flex;align-items:center;gap:8px;color:#625D69"><i class="icon-search"></i><span>Search chats</span></label>
+      </div>
+      <div style="flex:1;overflow:auto;padding:0 8px 12px;display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ mList }}" as="c" hint-placeholder-count="6"><div onClick="{{ c.pick }}" role="option" aria-selected="{{ c.on }}" style="display:flex;gap:12px;padding:10px;border-radius:14px;background:{{ c.bg }};cursor:pointer" style-hover="background:rgba(255,255,255,.7)"><span style="width:44px;height:44px;flex:none;border-radius:50%;background:{{ c.soft }};color:{{ c.c }};font-weight:600;display:flex;align-items:center;justify-content:center">{{ c.a }}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:8px"><span style="flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.n }}</span><span style="font-size:12px;color:#625D69">{{ c.t }}</span></div><div style="display:flex;align-items:center;gap:6px;margin-top:2px"><span style="flex:1;font-size:13px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.last }}</span><sc-if value="{{ c.draft }}"><span style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:6px;background:#EEE8FD;color:#5132D6;display:flex;align-items:center;gap:3px"><i class="icon-sparkles"></i>Draft</span></sc-if><sc-if value="{{ c.unread }}"><span style="min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#2F6FE4;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ c.unread }}</span></sc-if></div></div></div></sc-for>
+        <sc-if value="{{ mEmpty }}"><div style="padding:48px 16px;text-align:center;color:#625D69"><i class="icon-check" style="font-size:28px;color:#14966C"></i><div style="font-weight:600;color:#1C1B22;margin-top:8px">All caught up</div><div style="font-size:13px">No chats need a reply</div></div></sc-if>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;min-height:0;background:#F5F0EB">
+      <div style="height:72px;padding:0 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EDE8E3;background:rgba(255,255,255,.6)"><span style="width:40px;height:40px;border-radius:50%;background:{{ mCur.soft }};color:{{ mCur.c }};font-weight:600;display:flex;align-items:center;justify-content:center">{{ mCur.a }}</span><div style="flex:1"><div style="font-weight:600">{{ mCur.n }}</div><div style="font-size:12px;color:#625D69">{{ mCur.sub }}</div></div><span style="font-size:13px;color:#625D69">Auto-reply</span><span onClick="{{ mCur.toggle }}" role="switch" aria-checked="{{ mCur.auto }}" style="width:44px;height:26px;border-radius:13px;background:{{ mCur.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ mCur.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div>
+      <div style="flex:1;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:8px;justify-content:flex-end">
+        <sc-for list="{{ mMsgs }}" as="m" hint-placeholder-count="5"><div style="display:flex;flex-direction:column;align-items:{{ m.al }};gap:3px"><div style="max-width:62%;padding:10px 14px;border-radius:18px;border-bottom-left-radius:{{ m.rl }};border-bottom-right-radius:{{ m.rr }};background:{{ m.bg }};color:{{ m.fg }};font-size:14px;line-height:21px;box-shadow:0 1px 2px rgba(20,10,30,.05)">{{ m.x }}</div><div style="font-size:11px;color:#625D69;display:flex;align-items:center;gap:4px;padding:0 6px"><sc-if value="{{ m.ai }}"><i class="icon-sparkles" style="color:#6A4CF2"></i>Sent by Aelys ·</sc-if>{{ m.t }}</div></div></sc-for>
+      </div>
+      <div style="padding:0 24px 20px;display:flex;flex-direction:column;gap:10px">
+        <sc-if value="{{ mHasDraft }}">
+          <div style="padding:14px 16px;border-radius:18px;background:#fff;border:1.5px solid #D6CCF8;box-shadow:0 8px 24px rgba(106,76,242,.08)">
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#5132D6"><i class="icon-sparkles"></i>Aelys draft<span style="flex:1"></span><span style="font-weight:500;color:#625D69">Claude · follows your instructions</span></div>
+            <div style="font-size:14px;line-height:22px;margin-top:6px">{{ mDraft }}</div>
+            <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+              <span onClick="{{ mSend }}" role="button" style="height:36px;padding:0 16px;border-radius:10px;background:#6A4CF2;color:#fff;font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer" style-hover="background:#5132D6"><i class="icon-send"></i>Send</span>
+              <span onClick="{{ mEdit }}" role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">Edit</span>
+              <span onClick="{{ mRegen }}" role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer"><i class="icon-rotate-ccw"></i>Rewrite</span>
+              <span onClick="{{ mSkip }}" role="button" style="height:36px;padding:0 14px;border-radius:10px;font-weight:500;font-size:13px;color:#625D69;display:flex;align-items:center;cursor:pointer">Skip</span>
+              <span style="flex:1"></span><span style="font-size:12px;color:#625D69">⌘↵ send · J / K next chat</span>
+            </div>
+          </div>
+        </sc-if>
+        <div style="display:flex;align-items:center;gap:10px;height:52px;padding:0 8px 0 16px;border-radius:16px;background:#fff;border:1px solid #EDE8E3"><input value="{{ mText }}" onChange="{{ mOnText }}" onKeyDown="{{ mKey }}" placeholder="Write a reply…" style="flex:1;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"><span onClick="{{ mSendOwn }}" role="button" aria-label="Send" style="width:36px;height:36px;border-radius:50%;background:{{ mBtnBg }};color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="icon-arrow-up"></i></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ S. SETTINGS ============ -->
+<section id="st" data-screen-label="S Settings" style="display:flex;flex-direction:column;gap:24px;padding:40px;border-radius:28px;background:#F5F0EB;width:1600px">
+  <div>
+    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5132D6">S · Settings</div>
+    <div style="font-size:30px;line-height:38px;font-weight:700;margin-top:4px">Settings: grouped rows, controls on the right</div>
+    <div style="font-size:14px;color:#625D69;margin-top:4px;max-width:900px">These are the sections that exist in the code: Appearance, Weather &amp; location, AI &amp; models, Telegram, Connection, Security. Each setting is a row with the label and one line of explanation on the left and the control on the right. Rows are grouped into cards. Changes save immediately; the only Save button is for text fields (URL, token). All panels are clickable.</div>
+  </div>
+
+  <div style="width:1520px;border-radius:24px;overflow:hidden;border:1px solid #E6DFD8;display:grid;grid-template-columns:240px minmax(0,1fr);background:#F5F0EB">
+    <aside style="background:#FAF7F4;border-right:1px solid #EDE8E3;padding:20px 14px;display:flex;flex-direction:column;gap:4px;min-height:900px">
+      <div style="display:flex;align-items:center;gap:10px;padding:0 8px 20px"><img src="assets/aelys-mark.svg" alt="" style="width:36px;height:36px"><div><div style="font-size:16px;font-weight:700">Aelys</div><div style="font-size:12px;color:#625D69">Personal space</div></div></div>
+      <sc-for list="{{ navSt }}" as="n" hint-placeholder-count="10"><div style="display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border-radius:12px;color:#1C1B22"><i class="icon-{{ n.i }}" style="font-size:18px"></i>{{ n.t }}</div></sc-for>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:14px;background:#EEE8FD"><span style="width:36px;height:36px;border-radius:50%;background:#fff;color:#5132D6;font-weight:600;display:flex;align-items:center;justify-content:center">T</span><div style="flex:1;min-width:0"><div style="font-weight:600">Tileuzhan</div><div style="font-size:12px;color:#625D69">Student · Developer</div></div><i class="icon-settings" style="color:#5132D6"></i></div>
+    </aside>
+
+    <main style="padding:28px 32px 40px;display:grid;grid-template-columns:260px minmax(0,1fr);gap:28px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:4px;position:sticky;top:0">
+        <div style="font-size:30px;line-height:38px;font-weight:700;margin-bottom:16px">Settings</div>
+        <label style="height:40px;padding:0 12px;border-radius:12px;background:#fff;border:1px solid #EDE8E3;display:flex;align-items:center;gap:8px;color:#625D69;margin-bottom:12px"><i class="icon-search"></i><input value="{{ stQ }}" onChange="{{ onStQ }}" placeholder="Search settings" aria-label="Search settings" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"></label>
+        <sc-for list="{{ stNav }}" as="g" hint-placeholder-count="3">
+          <div style="font-size:12px;font-weight:600;color:#625D69;padding:12px 12px 4px">{{ g.t }}</div>
+          <sc-for list="{{ g.items }}" as="s" hint-placeholder-count="2"><div onClick="{{ s.pick }}" role="button" aria-current="{{ s.on }}" style="display:flex;align-items:center;gap:12px;height:44px;padding:0 10px;border-radius:12px;background:{{ s.bg }};cursor:pointer" style-hover="background:rgba(106,76,242,.07)"><span style="width:28px;height:28px;border-radius:8px;background:{{ s.soft }};color:{{ s.c }};display:flex;align-items:center;justify-content:center"><i class="icon-{{ s.i }}"></i></span><span style="flex:1;font-weight:{{ s.fw }};color:{{ s.fg }}">{{ s.t }}</span><sc-if value="{{ s.badge }}"><span style="font-size:11px;font-weight:600;color:#625D69;padding:1px 6px;border-radius:6px;background:#EFE9E3">{{ s.badge }}</span></sc-if></div></sc-for>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:20px;max-width:760px">
+        <div><div style="font-size:22px;line-height:30px;font-weight:600">{{ stCur.t }}</div><div style="font-size:14px;color:#625D69">{{ stCur.d }}</div></div>
+
+        <sc-if value="{{ stIs.profile }}">
+          <div style="display:flex;align-items:center;gap:18px;padding:20px;border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3"><span style="width:72px;height:72px;border-radius:50%;background:radial-gradient(circle at 50% 30%,#F6C79A,#C77C5A 45%,#3A2F45 46%,#2A2438)"></span><div style="flex:1"><div style="font-size:18px;font-weight:600">Tileuzhan</div><div style="font-size:13px;color:#625D69">tileuzhan@gmail.com</div></div><span role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">Change photo</span></div>
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <div style="padding:14px 18px"><div style="font-weight:500">Name</div><div style="margin-top:8px;height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;display:flex;align-items:center">Tileuzhan</div></div>
+            <div style="padding:14px 18px;border-top:1px solid #F1EDEA"><div style="font-weight:500">About you</div><div style="font-size:13px;color:#625D69">Shown under your name. Aelys uses it as context for answers</div><div style="margin-top:8px;height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;display:flex;align-items:center">Student · Developer</div></div>
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">Greeting</div><div style="font-size:13px;color:#625D69">"Good morning, Tileuzhan" on Home</div></div><span style="height:36px;padding:0 12px;border-radius:10px;border:1px solid #EDE8E3;background:#fff;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500">By time of day<i class="icon-chevron-down" style="color:#625D69"></i></span></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ stIs.notifications }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:13px;font-weight:600;color:#625D69">Notify me about</div>
+            <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+              <sc-for list="{{ stSwN }}" as="r" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:{{ r.bt }}"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+            </div>
+          </div>
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><div style="flex:1"><div style="font-weight:500">Quiet hours</div><div style="font-size:13px;color:#625D69">Everything waits in the bell until quiet hours end</div></div><div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3"><sc-for list="{{ stQuiet }}" as="u" hint-placeholder-count="3"><span onClick="{{ u.pick }}" role="radio" aria-checked="{{ u.on }}" style="height:32px;padding:0 12px;border-radius:9px;background:{{ u.bg }};box-shadow:{{ u.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer;white-space:nowrap">{{ u.t }}</span></sc-for></div></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ stIs.about }}">
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><div style="flex:1"><div style="font-weight:500">Export my data</div><div style="font-size:13px;color:#625D69">Tasks, notes, events and finances as one JSON archive</div></div><span role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer"><i class="icon-download"></i>Export</span></div>
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">Last synced</div><div style="font-size:13px;color:#625D69">Mac, Android and web share one backend</div></div><span style="color:#625D69">2 min ago</span></div>
+          </div>
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><img src="assets/aelys-mark.svg" alt="" style="width:36px;height:36px"><div style="flex:1"><div style="font-weight:500">Aelys 1.0.0</div><div style="font-size:13px;color:#625D69">You're up to date</div></div><span role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">Check for updates</span></div>
+            <div style="display:flex;align-items:center;gap:16px;min-height:56px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1;font-weight:500">Show the intro guides again</div><span role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">Reset guides</span></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ stIs.appearance }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:13px;font-weight:600;color:#625D69">Theme</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+              <sc-for list="{{ stThemes }}" as="t" hint-placeholder-count="3"><div onClick="{{ t.pick }}" role="radio" aria-checked="{{ t.on }}" style="padding:8px;border-radius:16px;background:#fff;border:2px solid {{ t.bd }};cursor:pointer"><div style="height:96px;border-radius:10px;background:{{ t.bg }};padding:10px;display:flex;gap:6px"><span style="width:28px;border-radius:5px;background:{{ t.side }}"></span><span style="flex:1;display:flex;flex-direction:column;gap:6px"><span style="height:22px;border-radius:5px;background:{{ t.card }}"></span><span style="flex:1;display:flex;gap:6px"><span style="flex:1;border-radius:5px;background:{{ t.card }}"></span><span style="flex:1;border-radius:5px;background:{{ t.card }}"></span></span></span></div><div style="display:flex;align-items:center;gap:8px;padding:10px 4px 2px"><span style="flex:1;font-weight:600">{{ t.t }}</span><span style="width:18px;height:18px;border-radius:50%;border:{{ t.radio }}"></span></div></div></sc-for>
+            </div>
+          </div>
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><div style="flex:1"><div style="font-weight:500">Accent color</div><div style="font-size:13px;color:#625D69">Buttons, selection and focus</div></div><div style="display:flex;gap:10px"><sc-for list="{{ stAccents }}" as="a" hint-placeholder-count="6"><span onClick="{{ a.pick }}" role="radio" aria-checked="{{ a.on }}" aria-label="{{ a.n }}" style="width:26px;height:26px;border-radius:50%;background:{{ a.c }};box-shadow:{{ a.ring }};cursor:pointer"></span></sc-for></div></div>
+            <sc-for list="{{ stSwA }}" as="r" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ stIs.weather }}">
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><span style="width:36px;height:36px;border-radius:10px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center"><i class="icon-map-pin"></i></span><div style="flex:1"><div style="font-weight:500">{{ stCity }}</div><div style="font-size:13px;color:#625D69">Used by the Weather widget and morning plan</div></div></div>
+            <div style="padding:0 18px 14px"><label style="height:44px;padding:0 12px;border-radius:12px;background:#F7F4F1;display:flex;align-items:center;gap:8px;color:#625D69"><i class="icon-search"></i><span>Search city</span></label>
+              <div style="display:flex;flex-direction:column;margin-top:6px"><sc-for list="{{ stCities }}" as="c" hint-placeholder-count="3"><div onClick="{{ c.pick }}" role="option" aria-selected="{{ c.on }}" style="display:flex;align-items:center;gap:10px;height:44px;padding:0 10px;border-radius:10px;cursor:pointer" style-hover="background:#F7F4F1"><span style="flex:1"><b style="font-weight:500">{{ c.n }}</b> <span style="color:#625D69">· {{ c.r }}</span></span><sc-if value="{{ c.on }}"><i class="icon-check" style="color:#6A4CF2"></i></sc-if></div></sc-for></div>
+            </div>
+          </div>
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><div style="flex:1"><div style="font-weight:500">Units</div><div style="font-size:13px;color:#625D69">Temperature and wind</div></div><div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3"><sc-for list="{{ stUnits }}" as="u" hint-placeholder-count="2"><span onClick="{{ u.pick }}" role="radio" aria-checked="{{ u.on }}" style="height:32px;padding:0 14px;border-radius:9px;background:{{ u.bg }};box-shadow:{{ u.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">{{ u.t }}</span></sc-for></div></div>
+            <sc-for list="{{ stSwW }}" as="r" hint-placeholder-count="1"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ stIs.ai }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:13px;font-weight:600;color:#625D69">Providers</div>
+            <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+              <sc-for list="{{ stProv }}" as="p" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:14px;min-height:72px;padding:12px 18px;border-bottom:1px solid #F1EDEA"><span style="width:40px;height:40px;border-radius:12px;background:{{ p.soft }};color:{{ p.c }};display:flex;align-items:center;justify-content:center;font-weight:700">{{ p.l }}</span><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600">{{ p.n }}</span><sc-if value="{{ p.def }}"><span style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:6px;background:#EEE8FD;color:#5132D6">Default</span></sc-if></div><div style="font-size:13px;color:#3A3640;font-family:'JetBrains Mono',monospace">{{ p.m }}</div></div><span style="font-size:13px;color:#625D69;font-family:'JetBrains Mono',monospace">{{ p.k }}</span><span role="button" style="height:34px;padding:0 12px;border-radius:10px;background:#F7F4F1;font-size:13px;font-weight:500;display:flex;align-items:center;cursor:pointer">Edit</span></div></sc-for>
+              <div role="button" style="display:flex;align-items:center;gap:10px;height:52px;padding:0 18px;color:#5132D6;font-weight:600;cursor:pointer"><i class="icon-plus"></i>Add provider</div>
+            </div>
+          </div>
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <sc-for list="{{ stDefaults }}" as="r" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:{{ r.bt }}"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span style="height:36px;padding:0 12px;border-radius:10px;border:1px solid #EDE8E3;background:#fff;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500">{{ r.v }}<i class="icon-chevron-down" style="color:#625D69"></i></span></div></sc-for>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#625D69"><i class="icon-lock"></i>Keys are encrypted on your Aelys backend and are never shown again after saving.</div>
+        </sc-if>
+
+        <sc-if value="{{ stIs.telegram }}">
+          <div style="display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3"><span style="width:44px;height:44px;border-radius:12px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center;font-size:20px"><i class="icon-send"></i></span><div style="flex:1"><div style="font-weight:600">@aelys_assistant_bot</div><div style="font-size:13px;color:#625D69;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#14966C"></span>Connected to the Business account Tileuzhan</div></div><span role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#FDE8E7;color:#C9302C;font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer">Disconnect</span></div>
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <sc-for list="{{ stSwT }}" as="r" hint-placeholder-count="1"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA;opacity:{{ stTgOp }}"><div style="flex:1"><div style="font-weight:500">Reply with</div><div style="font-size:13px;color:#625D69">Provider and model for drafts</div></div><span style="height:36px;padding:0 12px;border-radius:10px;border:1px solid #EDE8E3;background:#fff;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500">Claude · claude-sonnet-4-5<i class="icon-chevron-down" style="color:#625D69"></i></span></div>
+            <div style="padding:14px 18px;border-top:1px solid #F1EDEA;opacity:{{ stTgOp }}"><div style="font-weight:500">Instructions</div><div style="font-size:13px;color:#625D69;margin-bottom:10px">How the assistant should write on your behalf</div><div style="min-height:96px;padding:12px 14px;border-radius:12px;background:#F7F4F1;font-size:14px;line-height:22px">Reply briefly and politely. Never confirm meetings or payments; say I'll get back to them. Write in the language of the incoming message.</div><div style="font-size:12px;color:#625D69;text-align:right;margin-top:6px">147 / 10,000</div></div>
+          </div>
+          <a href="#ms" style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;color:#1C1B22" style-hover="background:#fff;color:#1C1B22"><span style="width:36px;height:36px;border-radius:10px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center"><i class="icon-message-square"></i></span><div style="flex:1"><div style="font-weight:500">Conversations and drafts</div><div style="font-size:13px;color:#625D69">Read chats and approve replies in the Messages app</div></div><span style="font-size:12px;font-weight:600;padding:2px 8px;border-radius:8px;background:#EEE8FD;color:#5132D6">3 drafts</span><i class="icon-chevron-right" style="color:#625D69"></i></a>
+        </sc-if>
+
+        <sc-if value="{{ stIs.connection }}">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:16px;background:#DCF5EC;color:#0E7A57"><span style="width:8px;height:8px;border-radius:50%;background:#14966C"></span><span style="flex:1;font-weight:600">Connected</span><span style="font-size:13px;font-family:'JetBrains Mono',monospace">api.aelys.app · 42 ms</span></div>
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;padding:16px 18px">
+            <div style="font-weight:500">API base URL</div><div style="font-size:13px;color:#625D69;margin-bottom:10px">Default <span style="font-family:'JetBrains Mono',monospace">/api/v1</span>. A build can preset it with <span style="font-family:'JetBrains Mono',monospace">VITE_API_BASE_URL</span>.</div>
+            <div style="display:flex;gap:10px"><span style="flex:1;height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;display:flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:13px">/api/v1</span><span role="button" style="height:44px;padding:0 18px;border-radius:12px;background:#6A4CF2;color:#fff;font-weight:600;display:flex;align-items:center;cursor:pointer">Save</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:13px;font-weight:600;color:#625D69">Owner session</div>
+            <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+              <div style="display:flex;align-items:center;gap:16px;min-height:56px;padding:12px 18px"><div style="flex:1;font-weight:500">Signed in as</div><span style="color:#625D69">tileuzhan@gmail.com</span></div>
+              <div style="display:flex;align-items:center;gap:16px;min-height:56px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1;font-weight:500">Session expires</div><span style="color:#625D69">in 29 days</span></div>
+              <div style="display:flex;align-items:center;gap:16px;min-height:56px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"></div><span role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#FDE8E7;color:#C9302C;font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer">Sign out</span></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ stIs.security }}">
+          <div style="border-radius:16px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+            <sc-for list="{{ stSwS }}" as="r" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:{{ r.bt }}"><div style="flex:1"><div style="font-weight:500">{{ r.t }}</div><div style="font-size:13px;color:#625D69">{{ r.d }}</div></div><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div></sc-for>
+            <div style="display:flex;align-items:center;gap:16px;min-height:64px;padding:12px 18px;border-top:1px solid #F1EDEA"><div style="flex:1"><div style="font-weight:500">Lock after</div><div style="font-size:13px;color:#625D69">Inactivity before Aelys locks</div></div><div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3"><sc-for list="{{ stLock }}" as="u" hint-placeholder-count="4"><span onClick="{{ u.pick }}" role="radio" aria-checked="{{ u.on }}" style="height:32px;padding:0 12px;border-radius:9px;background:{{ u.bg }};box-shadow:{{ u.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">{{ u.t }}</span></sc-for></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#625D69"><i class="icon-lock"></i>Biometric data never leaves this Mac. Aelys only gets a yes or no from macOS.</div>
+        </sc-if>
+      </div>
+    </main>
+  </div>
+</section>
+
+<!-- ============ 0. APPS ============ -->
+<section id="ut" data-screen-label="00 Utilities hub" style="display:flex;flex-direction:column;gap:24px;padding:40px;border-radius:28px;background:#F5F0EB;width:1600px">
+  <div style="display:flex;gap:40px;align-items:flex-end">
+    <div style="flex:1">
+      <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5132D6">0 · Apps</div>
+      <div style="font-size:30px;line-height:38px;font-weight:700;margin-top:4px">One door for every small tool</div>
+      <div style="font-size:14px;color:#625D69;margin-top:4px;max-width:900px">The sidebar is a fixed list of core modules and never grows. Every app, including new ones, lives inside the Apps page, grouped by purpose. Pinned apps go to the top of the page and into ⌘K, and each one can be added to Home as a widget. Remove the Tools group and the Widgets item from the sidebar.</div>
+    </div>
+  </div>
+
+  <div style="width:1520px;border-radius:24px;overflow:hidden;border:1px solid #E6DFD8;display:grid;grid-template-columns:240px minmax(0,1fr);background:#F5F0EB">
+    <aside style="background:#FAF7F4;border-right:1px solid #EDE8E3;padding:20px 14px;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:10px;padding:0 8px 20px"><img src="assets/aelys-mark.svg" alt="" style="width:36px;height:36px"><div><div style="font-size:16px;font-weight:700">Aelys</div><div style="font-size:12px;color:#625D69">Personal space</div></div></div>
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="10"><div style="display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border-radius:12px;background:{{ n.bg }};color:{{ n.fg }};font-weight:{{ n.fw }}"><i class="icon-{{ n.i }}" style="font-size:18px"></i>{{ n.t }}</div></sc-for>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px"><span style="width:36px;height:36px;border-radius:50%;background:#EEE8FD;color:#5132D6;font-weight:600;display:flex;align-items:center;justify-content:center">T</span><div style="flex:1;min-width:0"><div style="font-weight:600">Tileuzhan</div><div style="font-size:12px;color:#625D69">Student · Developer</div></div><i class="icon-settings" style="color:#625D69"></i></div>
+    </aside>
+
+    <main style="padding:28px 32px;overflow:hidden;display:flex;flex-direction:column;gap:24px">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="flex:1"><div style="font-size:30px;line-height:38px;font-weight:700">Apps</div></div>
+        <label style="width:340px;height:44px;padding:0 14px;border-radius:12px;background:#fff;border:1px solid #EDE8E3;display:flex;align-items:center;gap:10px;color:#625D69"><i class="icon-search"></i><input value="{{ q }}" onChange="{{ onQ }}" placeholder="Search apps" style="flex:1;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"><span style="font-size:12px;padding:2px 6px;border-radius:6px;background:#F7F4F1">⌘K</span></label>
+      </div>
+
+      <sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:16px;font-weight:600">{{ g.t }}</span><span style="font-size:13px;color:#625D69">{{ g.d }}</span></div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+            <sc-for list="{{ g.items }}" as="u" hint-placeholder-count="4">
+              <a href="{{ u.href }}" style="position:relative;display:flex;gap:14px;align-items:flex-start;padding:16px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;color:#1C1B22;transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s" style-hover="transform:translateY(-2px);box-shadow:0 12px 30px rgba(20,10,30,.08);color:#1C1B22">
+                <span style="width:44px;height:44px;flex:none;border-radius:12px;background:{{ u.soft }};color:{{ u.c }};display:flex;align-items:center;justify-content:center;font-size:20px"><i class="icon-{{ u.i }}"></i></span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:15px;font-weight:600;line-height:22px">{{ u.t }}</div>
+                  <div style="font-size:13px;line-height:18px;color:#625D69">{{ u.d }}</div>
+                  <div style="font-size:12px;font-weight:600;color:{{ u.deep }};margin-top:8px">{{ u.g }}</div>
+                </div>
+                <span onClick="{{ u.pin }}" role="button" aria-label="{{ u.pinLabel }}" aria-pressed="{{ u.pinned }}" style="width:30px;height:30px;flex:none;border-radius:9px;display:flex;align-items:center;justify-content:center;color:{{ u.pinC }};cursor:pointer" style-hover="background:#F7F4F1"><i class="icon-pin" style="font-size:15px"></i></span>
+              </a>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ empty }}"><div style="padding:40px;text-align:center;color:#625D69">No apps match “{{ q }}”</div></sc-if>
+
+      <sc-if value="{{ showExt }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:16px;font-weight:600">Connected apps</span><span style="font-size:13px;color:#625D69">Open in a browser tab</span></div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+            <sc-for list="{{ ext }}" as="e" hint-placeholder-count="4"><a href="#ut" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:transparent;border:1px solid #E2DBD4;color:#1C1B22" style-hover="background:rgba(255,255,255,.6);color:#1C1B22"><span style="width:36px;height:36px;flex:none;border-radius:10px;background:#fff;color:#625D69;display:flex;align-items:center;justify-content:center"><i class="icon-{{ e.i }}"></i></span><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">{{ e.t }}</div><div style="font-size:12px;color:#625D69;font-family:'JetBrains Mono',monospace">{{ e.u }}</div></div><i class="icon-arrow-up-right" style="color:#625D69"></i></a></sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;max-width:1520px">
+    <div style="padding:16px 18px;border-radius:16px;background:#fff;font-size:13px;line-height:20px"><b>Sidebar is closed.</b> The fixed list is Home, AI Chat, Tasks, Calendar, Projects, Notes, Mail, Finances, Knowledge base and Apps. A new feature goes into an Apps group. It is never added to the sidebar.</div>
+    <div style="padding:16px 18px;border-radius:16px;background:#fff;font-size:13px;line-height:20px"><b>Opening an app.</b> It opens at <span style="font-family:'JetBrains Mono',monospace">/apps/&lt;id&gt;</span> with a "‹ Apps" back link in the title row, and Apps stays highlighted in the sidebar. ⌘K opens an app directly.</div>
+    <div style="padding:16px 18px;border-radius:16px;background:#fff;font-size:13px;line-height:20px"><b>Widgets ≠ menu.</b> Widgets are not a page. They are added through Home › Customize › Add widget. Every app tile can also be added from its own menu with "Add to Home".</div>
+  </div>
+</section>
+
+<!-- ============ 1. WIDGET SIZES ============ -->
+<section id="ws" data-screen-label="01 Widget sizes" style="display:flex;flex-direction:column;gap:24px;padding:40px;border-radius:28px;background:#F5F0EB">
+  <div style="display:flex;align-items:flex-end;gap:24px">
+    <div style="flex:1">
+      <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5132D6">1 · Widget sizes</div>
+      <div style="font-size:30px;line-height:38px;font-weight:700;margin-top:4px">Every size shows different content</div>
+      <div style="font-size:14px;color:#625D69;margin-top:4px;max-width:760px">Square cell 264 × 264, gap 16. Three sizes only: S 1×1 (264 × 264), M 2×1 (544 × 264), L 2×2 (544 × 544). The size is chosen by the user — never by record count. Bigger is not "more rows"; each size answers a different question.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:flex-end">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:44px;height:44px;border-radius:8px;border:2px solid #6A4CF2;background:#EEE8FD"></div><span style="font-size:12px;font-weight:600">S</span></div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:92px;height:44px;border-radius:8px;border:2px solid #6A4CF2;background:#EEE8FD"></div><span style="font-size:12px;font-weight:600">M</span></div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:92px;height:92px;border-radius:8px;border:2px solid #6A4CF2;background:#EEE8FD"></div><span style="font-size:12px;font-weight:600">L</span></div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#625D69">
+    <div></div><div>S · glance</div><div>M · scan</div><div>L · act</div>
+  </div>
+
+  <!-- TODAY -->
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;align-items:start">
+    <div><div style="font-size:18px;font-weight:600">Today</div><div style="font-size:13px;color:#625D69;margin-top:4px">S: how much is left, what's next. M: the list. L: grouped list + quick add.</div></div>
+    <div style="width:264px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-square-check"></i></span><span style="font-size:16px;font-weight:600">Today</span></div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:18px"><span style="font-size:44px;line-height:48px;font-weight:700">3</span><span style="font-size:14px;color:#625D69">of 5 left</span></div>
+      <div style="height:6px;border-radius:3px;background:#EFEAE6;margin-top:10px;overflow:hidden"><div style="width:40%;height:100%;border-radius:3px;background:#2F6FE4"></div></div>
+      <div style="flex:1"></div>
+      <div style="font-size:12px;color:#625D69">Next</div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Pay internet bill</span><span style="font-size:13px;color:#625D69">15:00</span></div>
+    </div>
+    <div style="width:544px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:8px"><span style="width:28px;height:28px;border-radius:8px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-square-check"></i></span><span style="font-size:16px;font-weight:600">Today</span><span style="min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:#F1EDEA;font-size:12px;font-weight:600;line-height:20px;text-align:center">3</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">All<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px"><span style="width:20px;height:20px;border-radius:50%;background:#6A4CF2;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px"><i class="icon-check"></i></span><span style="flex:1;color:#625D69;text-decoration:line-through">Team call</span><span style="font-size:13px;color:#625D69">10:00</span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px;border-top:1px solid #F1EDEA"><span style="width:20px;height:20px;border-radius:50%;background:#6A4CF2;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px"><i class="icon-check"></i></span><span style="flex:1;color:#625D69;text-decoration:line-through">API review</span><span style="font-size:13px;color:#625D69">12:00</span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px;border-top:1px solid #F1EDEA"><span style="width:20px;height:20px;border-radius:50%;border:2px solid #BDB7C2"></span><span style="flex:1">Pay internet bill</span><span style="font-size:13px;color:#625D69">15:00</span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px;border-top:1px solid #F1EDEA"><span style="width:20px;height:20px;border-radius:50%;border:2px solid #BDB7C2"></span><span style="flex:1">Workout</span><span style="font-size:13px;color:#625D69">18:00</span></div>
+    </div>
+    <div style="width:544px;height:544px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:12px"><span style="width:28px;height:28px;border-radius:8px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-square-check"></i></span><span style="font-size:16px;font-weight:600">Today</span><span style="font-size:13px;color:#625D69">2 of 6 done</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">All<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:12px;background:#F7F4F1;color:#625D69"><i class="icon-plus" style="font-size:16px;color:#6A4CF2"></i><span style="flex:1">Add a task</span><span style="font-size:12px;padding:2px 6px;border-radius:6px;background:#fff">N</span></div>
+      <div style="font-size:12px;font-weight:600;color:#D93636;margin:16px 0 2px">Overdue</div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px"><span style="width:20px;height:20px;border-radius:50%;border:2px solid #BDB7C2"></span><span style="flex:1">Send invoice to client</span><span style="font-size:13px;color:#D93636">Yesterday</span></div>
+      <div style="font-size:12px;font-weight:600;color:#625D69;margin:12px 0 2px">Today</div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px"><span style="width:20px;height:20px;border-radius:50%;background:#6A4CF2;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px"><i class="icon-check"></i></span><span style="flex:1;color:#625D69;text-decoration:line-through">Team call</span><span style="font-size:13px;color:#625D69">10:00</span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px;border-top:1px solid #F1EDEA"><span style="width:20px;height:20px;border-radius:50%;background:#6A4CF2;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px"><i class="icon-check"></i></span><span style="flex:1;color:#625D69;text-decoration:line-through">API review</span><span style="font-size:13px;color:#625D69">12:00</span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px;border-top:1px solid #F1EDEA"><span style="width:20px;height:20px;border-radius:50%;border:2px solid #BDB7C2"></span><span style="flex:1">Pay internet bill</span><span style="font-size:12px;padding:1px 8px;border-radius:8px;background:#EEE8FD;color:#5132D6">Home</span><span style="font-size:13px;color:#625D69">15:00</span></div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px;border-top:1px solid #F1EDEA"><span style="width:20px;height:20px;border-radius:50%;border:2px solid #BDB7C2"></span><span style="flex:1">Workout</span><span style="font-size:13px;color:#625D69">18:00</span></div>
+      <div style="font-size:12px;font-weight:600;color:#625D69;margin:12px 0 2px">Tomorrow</div>
+      <div style="display:flex;align-items:center;gap:12px;height:40px"><span style="width:20px;height:20px;border-radius:50%;border:2px solid #BDB7C2"></span><span style="flex:1">Prepare release notes</span><span style="font-size:12px;padding:1px 8px;border-radius:8px;background:#EEE8FD;color:#5132D6">Aelys</span><span style="font-size:13px;color:#625D69">11:00</span></div>
+    </div>
+  </div>
+
+  <!-- CALENDAR -->
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;align-items:start">
+    <div><div style="font-size:18px;font-weight:600">Calendar</div><div style="font-size:13px;color:#625D69;margin-top:4px">S: the next event with a countdown. M: today as a timeline. L: month + agenda.</div></div>
+    <div style="width:264px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#FDE8E7;color:#D93636;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-calendar"></i></span><span style="font-size:16px;font-weight:600">Calendar</span></div>
+      <span style="align-self:flex-start;margin-top:20px;padding:3px 10px;border-radius:10px;background:#EEE8FD;color:#5132D6;font-size:12px;font-weight:600">In 25 min</span>
+      <div style="font-size:20px;line-height:28px;font-weight:600;margin-top:10px">API review</div>
+      <div style="font-size:13px;color:#625D69">12:00 – 13:00 · Zoom</div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#625D69;padding-top:10px;border-top:1px solid #F1EDEA"><span style="width:3px;height:16px;border-radius:2px;background:#F06A58"></span>Then: Gym · 15:00</div>
+    </div>
+    <div style="width:544px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#FDE8E7;color:#D93636;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-calendar"></i></span><span style="font-size:16px;font-weight:600">Calendar</span><span style="font-size:13px;color:#625D69">Fri, Oct 31</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">Open<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="position:relative;flex:1;margin-top:20px">
+        <div style="position:absolute;left:0;right:0;top:0;display:grid;grid-template-columns:repeat(10,1fr);font-size:11px;color:#8C869A"><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span></div>
+        <div style="position:absolute;left:0;right:0;top:22px;height:1px;background:#EDE8E3"></div>
+        <div style="position:absolute;top:34px;left:10%;width:14%;height:64px;padding:6px 8px;white-space:nowrap;text-overflow:ellipsis;border-radius:10px;background:#E4EEFD;border-left:3px solid #2F6FE4;font-size:12px;line-height:16px;font-weight:500;overflow:hidden">Team call</div>
+        <div style="position:absolute;top:34px;left:30%;width:14%;height:64px;padding:6px 8px;white-space:nowrap;text-overflow:ellipsis;border-radius:10px;background:#EEE8FD;border-left:3px solid #6A4CF2;font-size:12px;line-height:16px;font-weight:500;overflow:hidden">API review</div>
+        <div style="position:absolute;top:34px;left:60%;width:14%;height:64px;padding:6px 8px;white-space:nowrap;text-overflow:ellipsis;border-radius:10px;background:#FDE6E1;border-left:3px solid #F06A58;font-size:12px;line-height:16px;font-weight:500;overflow:hidden">Gym</div>
+        <div style="position:absolute;top:34px;left:86%;width:14%;height:64px;padding:6px 8px;white-space:nowrap;text-overflow:ellipsis;border-radius:10px;background:#DCF5EC;border-left:3px solid #14966C;font-size:12px;line-height:16px;font-weight:500;overflow:hidden">Run</div>
+        <div style="position:absolute;top:24px;bottom:56px;left:27.5%;width:2px;background:#D93636"></div>
+        <div style="position:absolute;top:19px;left:calc(27.5% - 4px);width:10px;height:10px;border-radius:50%;background:#D93636"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:8px;font-size:13px;color:#625D69"><span style="font-weight:600;color:#1C1B22">4 events</span>· 3h 30m booked · free after 19:00</div>
+      </div>
+    </div>
+    <div style="width:544px;height:544px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:14px"><span style="width:28px;height:28px;border-radius:8px;background:#FDE8E7;color:#D93636;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-calendar"></i></span><span style="font-size:16px;font-weight:600">October 2026</span><span style="flex:1"></span><span style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#625D69"><i class="icon-chevron-left"></i></span><span style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#625D69"><i class="icon-chevron-right"></i></span></div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:12px">
+        <sc-for list="{{ calHead }}" as="d" hint-placeholder-count="7"><span style="color:#8C869A;height:24px">{{ d }}</span></sc-for>
+        <sc-for list="{{ calDays }}" as="d" hint-placeholder-count="35"><span style="height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><span style="width:30px;height:28px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;background:{{ d.bg }};color:{{ d.fg }};font-weight:{{ d.fw }}">{{ d.n }}</span><span style="width:4px;height:4px;border-radius:2px;background:{{ d.dot }}"></span></span></sc-for>
+      </div>
+      <div style="height:1px;background:#EDE8E3;margin:12px 0"></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:12px;align-items:center"><span style="width:44px;font-size:12px;color:#625D69">10:00</span><div style="flex:1;padding:6px 12px;border-radius:10px;background:#E4EEFD;border-left:3px solid #2F6FE4"><div style="font-size:13px;font-weight:500">Team call</div></div></div>
+        <div style="display:flex;gap:12px;align-items:center"><span style="width:44px;font-size:12px;color:#625D69">12:00</span><div style="flex:1;padding:6px 12px;border-radius:10px;background:#EEE8FD;border-left:3px solid #6A4CF2"><div style="font-size:13px;font-weight:500">API review</div></div></div>
+        <div style="display:flex;gap:12px;align-items:center"><span style="width:44px;font-size:12px;color:#625D69">15:00</span><div style="flex:1;padding:6px 12px;border-radius:10px;background:#FDE6E1;border-left:3px solid #F06A58"><div style="font-size:13px;font-weight:500">Gym</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOCUS -->
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;align-items:start">
+    <div><div style="font-size:18px;font-weight:600">Focus</div><div style="font-size:13px;color:#625D69;margin-top:4px">S: ring + one button. M: ring + presets + linked task. L: adds today's sessions and week.</div></div>
+    <div style="width:264px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column;align-items:center">
+      <div style="align-self:stretch;display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#FDE6E1;color:#F06A58;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-timer"></i></span><span style="font-size:16px;font-weight:600">Focus</span></div>
+      <div style="position:relative;width:132px;height:132px;margin-top:12px;border-radius:50%;background:conic-gradient(#F06A58 0 62%,#EFE9E4 62% 100%);padding:8px"><div style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:28px;line-height:32px;font-weight:700">15:32</span><span style="font-size:11px;color:#625D69">left</span></div></div>
+      <div style="flex:1"></div>
+      <span style="width:44px;height:44px;border-radius:50%;background:#F06A58;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 6px 16px rgba(240,106,88,.35)"><i class="icon-pause"></i></span>
+    </div>
+    <div style="width:544px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#FDE6E1;color:#F06A58;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-timer"></i></span><span style="font-size:16px;font-weight:600">Focus</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">Timer<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="flex:1;display:flex;align-items:center;gap:24px">
+        <div style="width:168px;height:168px;flex:none;border-radius:50%;background:conic-gradient(#EFE9E4 0 100%);padding:9px"><div style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:34px;line-height:40px;font-weight:700">25:00</span><span style="font-size:12px;color:#625D69">Ready</span></div></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:6px"><span style="padding:6px 12px;border-radius:10px;background:#1C1B22;color:#fff;font-size:13px;font-weight:600">25 min</span><span style="padding:6px 12px;border-radius:10px;background:#F7F4F1;font-size:13px">50 min</span><span style="padding:6px 12px;border-radius:10px;background:#F7F4F1;font-size:13px">90 min</span></div>
+          <div style="display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:12px;border:1px solid #EDE8E3;font-size:13px"><i class="icon-square-check" style="color:#2F6FE4"></i><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Prepare release notes</span><i class="icon-chevron-down" style="color:#625D69"></i></div>
+          <div style="display:flex;gap:8px"><span style="flex:1;height:40px;border-radius:12px;background:#F06A58;color:#fff;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px"><i class="icon-play"></i>Start</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="width:544px;height:544px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#FDE6E1;color:#F06A58;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-timer"></i></span><span style="font-size:16px;font-weight:600">Focus</span><span style="font-size:13px;color:#625D69">Session 3 of 4</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">Timer<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="display:flex;align-items:center;gap:28px;margin-top:20px">
+        <div style="width:196px;height:196px;flex:none;border-radius:50%;background:conic-gradient(#F06A58 0 62%,#EFE9E4 62% 100%);padding:10px"><div style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:40px;line-height:46px;font-weight:700">15:32</span><span style="font-size:12px;color:#625D69">Prepare release notes</span></div></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:8px"><span style="flex:1;height:44px;border-radius:12px;background:#F06A58;color:#fff;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px"><i class="icon-pause"></i>Pause</span><span style="width:44px;height:44px;border-radius:12px;background:#F7F4F1;display:flex;align-items:center;justify-content:center"><i class="icon-square" style="font-size:14px"></i></span></div>
+          <div style="display:flex;gap:6px;align-items:center"><span style="width:14px;height:14px;border-radius:50%;background:#F06A58"></span><span style="width:14px;height:14px;border-radius:50%;background:#F06A58"></span><span style="width:14px;height:14px;border-radius:50%;border:3px solid #F06A58"></span><span style="width:14px;height:14px;border-radius:50%;background:#EFE9E4"></span><span style="font-size:13px;color:#625D69;margin-left:6px">Long break after 4</span></div>
+        </div>
+      </div>
+      <div style="height:1px;background:#EDE8E3;margin:22px 0 16px"></div>
+      <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:13px;color:#625D69">Today</span><span style="font-size:22px;font-weight:700">1h 15m</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69">This week 8h 40m</span></div>
+      <div style="flex:1;display:grid;grid-template-columns:repeat(7,1fr);gap:14px;align-items:end;margin-top:12px">
+        <sc-for list="{{ week }}" as="b" hint-placeholder-count="7"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end"><div style="width:100%;height:{{ b.h }};border-radius:8px;background:{{ b.c }}"></div><span style="font-size:11px;color:#625D69">{{ b.d }}</span></div></sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- WEATHER -->
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;align-items:start">
+    <div><div style="font-size:18px;font-weight:600">Weather</div><div style="font-size:13px;color:#625D69;margin-top:4px">Photo card. S: now. M: now + 6 hours. L: + 5 days. No city set → one "Set location" button, no placeholder copy.</div></div>
+    <div style="width:264px;height:264px;padding:18px;border-radius:20px;background:linear-gradient(180deg,rgba(30,34,60,.25),rgba(20,22,40,.72)),url('assets/wallpaper.png') 82% 40%/auto 420px;color:#fff;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600"><i class="icon-map-pin"></i>Almaty</div>
+      <div style="flex:1"></div>
+      <i class="icon-cloud-sun" style="font-size:32px"></i>
+      <div style="font-size:52px;line-height:56px;font-weight:700;margin-top:6px">12°</div>
+      <div style="font-size:13px">Partly cloudy · H 15° L 6°</div>
+    </div>
+    <div style="width:544px;height:264px;padding:18px;border-radius:20px;background:linear-gradient(90deg,rgba(20,22,40,.62),rgba(30,34,60,.25)),url('assets/wallpaper.png') 82% 40%/auto 520px;color:#fff;display:flex;gap:20px">
+      <div style="width:180px;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600"><i class="icon-map-pin"></i>Almaty</div>
+        <div style="flex:1"></div>
+        <div style="font-size:56px;line-height:60px;font-weight:700">12°</div>
+        <div style="font-size:13px">Partly cloudy · H 15° L 6°</div>
+      </div>
+      <div style="flex:1;align-self:flex-end;display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:12px 6px;border-radius:16px;background:rgba(255,255,255,.16);backdrop-filter:blur(10px)">
+        <sc-for list="{{ hours }}" as="h" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px"><span style="opacity:.85">{{ h.t }}</span><i class="icon-{{ h.i }}" style="font-size:18px"></i><span style="font-size:14px;font-weight:600">{{ h.v }}</span></div></sc-for>
+      </div>
+    </div>
+    <div style="width:544px;height:544px;padding:18px;border-radius:20px;background:linear-gradient(180deg,rgba(30,34,60,.15),rgba(20,22,40,.82) 55%),url('assets/wallpaper.png') 75% 30%/auto 620px;color:#fff;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600"><i class="icon-map-pin"></i>Almaty</div>
+      <div style="display:flex;align-items:flex-end;gap:12px;margin-top:40px"><div style="font-size:64px;line-height:68px;font-weight:700">12°</div><div style="font-size:14px;padding-bottom:8px">Partly cloudy<br>H 15° L 6° · Wind 3 m/s</div></div>
+      <div style="flex:1"></div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:12px 6px;border-radius:16px;background:rgba(255,255,255,.14)">
+        <sc-for list="{{ hours }}" as="h" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px"><span style="opacity:.85">{{ h.t }}</span><i class="icon-{{ h.i }}" style="font-size:18px"></i><span style="font-size:14px;font-weight:600">{{ h.v }}</span></div></sc-for>
+      </div>
+      <div style="display:flex;flex-direction:column;margin-top:10px">
+        <sc-for list="{{ days }}" as="d" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:56px 28px 36px 1fr 36px;align-items:center;gap:10px;height:34px;font-size:13px"><span style="font-weight:500">{{ d.d }}</span><i class="icon-{{ d.i }}" style="font-size:16px"></i><span style="opacity:.75;text-align:right">{{ d.lo }}</span><span style="height:4px;border-radius:2px;background:rgba(255,255,255,.2);position:relative"><span style="position:absolute;top:0;bottom:0;left:{{ d.l }};width:{{ d.w }};border-radius:2px;background:linear-gradient(90deg,#9CC3FF,#FFC88A)"></span></span><span style="font-weight:600">{{ d.hi }}</span></div></sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- FINANCES -->
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;align-items:start">
+    <div><div style="font-size:18px;font-weight:600">Finances</div><div style="font-size:13px;color:#625D69;margin-top:4px">S: balance + week change. M: + daily spending. L: + categories and one budget. Multiple currencies → one row per currency, never summed.</div></div>
+    <div style="width:264px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#DCF5EC;color:#14966C;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-wallet"></i></span><span style="font-size:16px;font-weight:600">Finances</span></div>
+      <div style="flex:1"></div>
+      <div style="font-size:12px;color:#625D69">Balance</div>
+      <div style="font-size:30px;line-height:36px;font-weight:700">$4,820.50</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px"><span style="padding:1px 8px;border-radius:8px;background:#FDE8E7;color:#C9302C;font-weight:600">−$312</span><span style="color:#625D69">this week</span></div>
+    </div>
+    <div style="width:544px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#DCF5EC;color:#14966C;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-wallet"></i></span><span style="font-size:16px;font-weight:600">Finances</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">Open<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="flex:1;display:flex;gap:28px;align-items:flex-end">
+        <div style="width:180px"><div style="font-size:12px;color:#625D69">Balance</div><div style="font-size:30px;line-height:36px;font-weight:700">$4,820.50</div><div style="font-size:13px;color:#625D69;margin-top:4px">Spent <b style="color:#1C1B22">$312</b> this week</div></div>
+        <div style="flex:1;height:130px;display:grid;grid-template-columns:repeat(7,1fr);gap:10px;align-items:end">
+          <sc-for list="{{ spend }}" as="b" hint-placeholder-count="7"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end"><div style="width:100%;height:{{ b.h }};border-radius:6px;background:{{ b.c }}"></div><span style="font-size:11px;color:#625D69">{{ b.d }}</span></div></sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="width:544px;height:544px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#DCF5EC;color:#14966C;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-wallet"></i></span><span style="font-size:16px;font-weight:600">Finances</span><span style="font-size:13px;color:#625D69">October</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">Open<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px">
+        <div style="padding:14px;border-radius:14px;background:#F7F4F1"><div style="font-size:12px;color:#625D69">Balance</div><div style="font-size:24px;line-height:30px;font-weight:700">$4,820.50</div></div>
+        <div style="padding:14px;border-radius:14px;background:#F7F4F1"><div style="font-size:12px;color:#625D69">Spent this month</div><div style="font-size:24px;line-height:30px;font-weight:700">$1,284.10</div></div>
+      </div>
+      <div style="font-size:13px;font-weight:600;margin:18px 0 8px">By category</div>
+      <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px"><span style="width:38%;background:#14966C"></span><span style="width:22%;background:#2F6FE4"></span><span style="width:18%;background:#6A4CF2"></span><span style="width:22%;background:#E0B25A"></span></div>
+      <div style="display:flex;flex-direction:column;margin-top:8px">
+        <sc-for list="{{ cats }}" as="c" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:10px;height:34px;font-size:13px"><span style="width:8px;height:8px;border-radius:50%;background:{{ c.c }}"></span><span style="flex:1">{{ c.n }}</span><span style="color:#625D69">{{ c.p }}</span><span style="width:80px;text-align:right;font-weight:600">{{ c.v }}</span></div></sc-for>
+      </div>
+      <div style="flex:1"></div>
+      <div style="padding:14px;border-radius:14px;border:1px solid #EDE8E3"><div style="display:flex;font-size:13px"><span style="flex:1;font-weight:600">Groceries budget</span><span style="color:#625D69">$420 of $500</span></div><div style="height:6px;border-radius:3px;background:#EFEAE6;margin-top:8px;overflow:hidden"><div style="width:84%;height:100%;background:#E0B25A"></div></div></div>
+    </div>
+  </div>
+
+  <!-- PROJECTS -->
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;align-items:start">
+    <div><div style="font-size:18px;font-weight:600">Projects</div><div style="font-size:13px;color:#625D69;margin-top:4px">S: one pinned project. M: three with progress. L: + the next task of each.</div></div>
+    <div style="width:264px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#EEE8FD;color:#6A4CF2;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-folder"></i></span><span style="font-size:16px;font-weight:600">Projects</span></div>
+      <div style="flex:1;display:flex;align-items:center;gap:14px">
+        <div style="width:84px;height:84px;flex:none;border-radius:50%;background:conic-gradient(#6A4CF2 0 68%,#EFE9E4 68% 100%);padding:7px"><div style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700">68%</div></div>
+        <div style="min-width:0"><div style="font-size:16px;font-weight:600">Aelys v1</div><div style="font-size:13px;color:#625D69">12 of 18 tasks</div></div>
+      </div>
+      <div style="font-size:13px;color:#625D69;padding-top:10px;border-top:1px solid #F1EDEA;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Next: Prepare release notes</div>
+    </div>
+    <div style="width:544px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:10px"><span style="width:28px;height:28px;border-radius:8px;background:#EEE8FD;color:#6A4CF2;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-folder"></i></span><span style="font-size:16px;font-weight:600">Projects</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">All<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <sc-for list="{{ projs3 }}" as="p" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:12px"><span style="width:36px;height:36px;border-radius:10px;background:{{ p.soft }};color:{{ p.c }};display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-folder-open"></i></span><div style="flex:1;min-width:0"><div style="display:flex;font-size:14px;font-weight:500"><span style="flex:1">{{ p.n }}</span><span style="font-size:13px;color:#625D69">{{ p.pct }}</span></div><div style="height:4px;border-radius:2px;background:#EFEAE6;margin-top:6px;overflow:hidden"><div style="width:{{ p.pct }};height:100%;background:{{ p.c }}"></div></div></div></div></sc-for>
+      </div>
+    </div>
+    <div style="width:544px;height:544px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:10px"><span style="width:28px;height:28px;border-radius:8px;background:#EEE8FD;color:#6A4CF2;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-folder"></i></span><span style="font-size:16px;font-weight:600">Projects</span><span style="font-size:13px;color:#625D69">4 active</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">All<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="display:flex;flex-direction:column">
+        <sc-for list="{{ projs }}" as="p" hint-placeholder-count="4"><div style="display:flex;gap:12px;padding:14px 0;border-bottom:1px solid #F1EDEA"><span style="width:40px;height:40px;flex:none;border-radius:12px;background:{{ p.soft }};color:{{ p.c }};display:flex;align-items:center;justify-content:center;font-size:18px"><i class="icon-folder-open"></i></span><div style="flex:1;min-width:0"><div style="display:flex;font-size:15px;font-weight:600"><span style="flex:1">{{ p.n }}</span><span style="font-size:13px;font-weight:500;color:#625D69">{{ p.done }}</span></div><div style="height:4px;border-radius:2px;background:#EFEAE6;margin:8px 0;overflow:hidden"><div style="width:{{ p.pct }};height:100%;background:{{ p.c }}"></div></div><div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#625D69"><span style="width:14px;height:14px;border-radius:50%;border:1.5px solid #BDB7C2"></span><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.next }}</span><span>{{ p.due }}</span></div></div></div></sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTES + MAIL condensed -->
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;align-items:start">
+    <div><div style="font-size:18px;font-weight:600">Notes</div><div style="font-size:13px;color:#625D69;margin-top:4px">S: last edited note, readable excerpt. M: two cards. L: pinned + recent list + New.</div></div>
+    <div style="width:264px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#FDF1D9;color:#B36B00;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-notebook-text"></i></span><span style="font-size:16px;font-weight:600">Notes</span></div>
+      <div style="font-size:16px;font-weight:600;margin-top:16px">Release checklist</div>
+      <div style="font-size:13px;line-height:20px;color:#3A3640;margin-top:4px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">Sign the macOS build, notarize, test Touch ID on a clean account, then check the Android APK on a real device before tagging.</div>
+      <div style="flex:1"></div>
+      <div style="font-size:12px;color:#625D69">Edited 2h ago</div>
+    </div>
+    <div style="width:544px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:12px"><span style="width:28px;height:28px;border-radius:8px;background:#FDF1D9;color:#B36B00;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-notebook-text"></i></span><span style="font-size:16px;font-weight:600">Notes</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">All<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="padding:14px;border-radius:14px;background:#FDFBFA;border:1px solid #EDE8E3;display:flex;flex-direction:column"><div style="font-weight:600">Release checklist</div><div style="font-size:13px;line-height:20px;color:#3A3640;margin-top:4px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">Sign the macOS build, notarize, test Touch ID on a clean account…</div><div style="flex:1"></div><div style="font-size:12px;color:#625D69">2h ago</div></div>
+        <div style="padding:14px;border-radius:14px;background:#FDFBFA;border:1px solid #EDE8E3;display:flex;flex-direction:column"><div style="font-weight:600">Widget ideas</div><div style="font-size:13px;line-height:20px;color:#3A3640;margin-top:4px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">Habit streak, reading list, a quote that rotates daily…</div><div style="flex:1"></div><div style="font-size:12px;color:#625D69">Yesterday</div></div>
+      </div>
+    </div>
+    <div style="width:544px;height:544px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:12px"><span style="width:28px;height:28px;border-radius:8px;background:#FDF1D9;color:#B36B00;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-notebook-text"></i></span><span style="font-size:16px;font-weight:600">Notes</span><span style="flex:1"></span><span style="height:32px;padding:0 12px;border-radius:10px;background:#F7F4F1;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px"><i class="icon-plus"></i>New</span></div>
+      <div style="padding:16px;border-radius:14px;background:#FDF1D9"><div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#8A5A00"><i class="icon-pin"></i>Pinned</div><div style="font-size:16px;font-weight:600;margin-top:6px">Release checklist</div><div style="font-size:13px;line-height:20px;color:#3A3640;margin-top:4px">Sign the macOS build, notarize, test Touch ID on a clean account, then check the Android APK on a real device.</div></div>
+      <div style="display:flex;flex-direction:column;margin-top:8px">
+        <sc-for list="{{ notes }}" as="n" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:12px;height:52px;border-bottom:1px solid #F1EDEA"><i class="icon-file-text" style="font-size:16px;color:#B36B00"></i><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500">{{ n.t }}</div><div style="font-size:12px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.s }}</div></div><span style="font-size:12px;color:#625D69">{{ n.d }}</span></div></sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:200px 264px 544px 544px;gap:16px;align-items:start">
+    <div><div style="font-size:18px;font-weight:600">Mail</div><div style="font-size:13px;color:#625D69;margin-top:4px">S: unread count + who. M: three unread. L: inbox with previews. Empty: "Inbox is clear" + Import.</div></div>
+    <div style="width:264px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px"><span style="width:28px;height:28px;border-radius:8px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-mail"></i></span><span style="font-size:16px;font-weight:600">Mail</span></div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:18px"><span style="font-size:44px;line-height:48px;font-weight:700">4</span><span style="color:#625D69">unread</span></div>
+      <div style="flex:1"></div>
+      <div style="display:flex">
+        <span style="width:32px;height:32px;border-radius:50%;background:#E4EEFD;color:#2F6FE4;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;border:2px solid #fff">A</span>
+        <span style="width:32px;height:32px;border-radius:50%;background:#EEE8FD;color:#5132D6;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;border:2px solid #fff;margin-left:-8px">G</span>
+        <span style="width:32px;height:32px;border-radius:50%;background:#DCF5EC;color:#0E7A57;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;border:2px solid #fff;margin-left:-8px">K</span>
+      </div>
+      <div style="font-size:13px;color:#625D69;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Aigerim, GitHub, Kaspi</div>
+    </div>
+    <div style="width:544px;height:264px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:8px"><span style="width:28px;height:28px;border-radius:8px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-mail"></i></span><span style="font-size:16px;font-weight:600">Mail</span><span style="min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:#F1EDEA;font-size:12px;font-weight:600;line-height:20px;text-align:center">4</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">Inbox<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <sc-for list="{{ mail3 }}" as="m" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:12px;height:56px;border-top:{{ m.bt }}"><span style="width:32px;height:32px;flex:none;border-radius:50%;background:{{ m.soft }};color:{{ m.c }};font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ m.a }}</span><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">{{ m.f }}</div><div style="font-size:13px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.s }}</div></div><span style="font-size:12px;color:#625D69">{{ m.t }}</span><span style="width:8px;height:8px;border-radius:50%;background:#2F6FE4"></span></div></sc-for>
+    </div>
+    <div style="width:544px;height:544px;padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;box-shadow:0 10px 30px rgba(20,10,30,.05);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;height:28px;margin-bottom:8px"><span style="width:28px;height:28px;border-radius:8px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center;font-size:16px"><i class="icon-mail"></i></span><span style="font-size:16px;font-weight:600">Inbox</span><span style="font-size:13px;color:#625D69">4 unread</span><span style="flex:1"></span><span style="font-size:13px;color:#625D69;display:flex;align-items:center">Open<i class="icon-chevron-right" style="font-size:16px"></i></span></div>
+      <sc-for list="{{ mail }}" as="m" hint-placeholder-count="6"><div style="display:flex;gap:12px;padding:12px 0;border-top:{{ m.bt }}"><span style="width:36px;height:36px;flex:none;border-radius:50%;background:{{ m.soft }};color:{{ m.c }};font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ m.a }}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:8px"><span style="flex:1;font-size:14px;font-weight:{{ m.fw }}">{{ m.f }}</span><span style="font-size:12px;color:#625D69">{{ m.t }}</span></div><div style="font-size:13px;font-weight:{{ m.fw }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.s }}</div><div style="font-size:12px;color:#625D69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.p }}</div></div></div></sc-for>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. CUSTOMIZE ============ -->
+<section id="cz" data-screen-label="02 Customize" style="display:flex;flex-direction:column;gap:24px;padding:40px;border-radius:28px;background:#F5F0EB">
+  <div>
+    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5132D6">2 · Customize</div>
+    <div style="font-size:30px;line-height:38px;font-weight:700;margin-top:4px">Edit in place. One gesture per action.</div>
+    <div style="font-size:14px;color:#625D69;margin-top:4px;max-width:820px">Drag the card body to move. Drag the corner to resize; it snaps to S / M / L with a live outline. Tap "−" to remove. No arrows, no size dropdown, no Auto. Keyboard: focus a card, arrows move, Shift + arrows resize, Delete removes.</div>
+  </div>
+  <div style="display:flex;gap:32px;align-items:flex-start">
+    <div style="width:1120px;padding:24px;border-radius:24px;background:#EFE9E3;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1;display:flex;align-items:baseline;gap:10px"><span style="font-size:22px;line-height:30px;font-weight:600">My day</span><span style="font-size:13px;color:#625D69">Editing</span></div>
+        <span role="button" style="height:40px;padding:0 14px;border-radius:12px;background:#fff;border:1px solid #EDE8E3;display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer" style-hover="background:#FAF7F4"><i class="icon-plus"></i>Add widget</span>
+        <span style="height:40px;padding:0 18px;border-radius:12px;background:#6A4CF2;color:#fff;display:flex;align-items:center;font-weight:600">Done</span>
+      </div>
+      <div style="position:relative;display:grid;grid-template-columns:repeat(4,256px);grid-auto-rows:200px;gap:16px">
+        <div style="position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,256px);grid-auto-rows:200px;gap:16px;pointer-events:none">
+          <sc-for list="{{ ghostCells }}" as="g" hint-placeholder-count="12"><div style="border-radius:20px;border:1.5px dashed #D6CEC6"></div></sc-for>
+        </div>
+        <div style="position:relative;grid-column:span 2;padding:16px;border-radius:20px;background:#fff;box-shadow:0 10px 30px rgba(20,10,30,.08);transform:rotate(-.4deg)">
+          <span style="position:absolute;top:-8px;left:-8px;width:26px;height:26px;border-radius:50%;background:#fff;color:#D93636;box-shadow:0 2px 8px rgba(20,10,30,.18);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">−</span>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:8px;background:#E4EEFD;color:#2F6FE4;display:flex;align-items:center;justify-content:center"><i class="icon-square-check"></i></span><b>Today</b><span style="flex:1"></span><span style="font-size:12px;color:#625D69">M</span></div>
+          <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px;opacity:.55"><div style="height:10px;width:70%;border-radius:5px;background:#E9E3DD"></div><div style="height:10px;width:55%;border-radius:5px;background:#E9E3DD"></div><div style="height:10px;width:62%;border-radius:5px;background:#E9E3DD"></div></div>
+          <span style="position:absolute;right:6px;bottom:6px;width:26px;height:26px;border-radius:8px;color:#6A4CF2;display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13 4 4 13M13 8.5 8.5 13"></path></svg></span>
+        </div>
+        <div style="position:relative;padding:16px;border-radius:20px;background:#fff;box-shadow:0 10px 30px rgba(20,10,30,.08);transform:rotate(.4deg)">
+          <span style="position:absolute;top:-8px;left:-8px;width:26px;height:26px;border-radius:50%;background:#fff;color:#D93636;box-shadow:0 2px 8px rgba(20,10,30,.18);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700">−</span>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:8px;background:#FDE6E1;color:#F06A58;display:flex;align-items:center;justify-content:center"><i class="icon-timer"></i></span><b>Focus</b><span style="flex:1"></span><span style="font-size:12px;color:#625D69">S</span></div>
+          <div style="margin:18px auto 0;width:96px;height:96px;border-radius:50%;border:8px solid #EFE9E4;opacity:.7"></div>
+          <span style="position:absolute;right:6px;bottom:6px;width:26px;height:26px;border-radius:8px;color:#6A4CF2;display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13 4 4 13M13 8.5 8.5 13"></path></svg></span>
+        </div>
+        <div style="position:relative;grid-row:span 2;padding:16px;border-radius:20px;border:2px solid #6A4CF2;background:rgba(106,76,242,.08)">
+          <div style="position:absolute;left:0;right:0;top:0;height:200px;padding:16px;border-radius:18px;background:linear-gradient(180deg,rgba(30,34,60,.25),rgba(20,22,40,.72)),url('assets/wallpaper.png') 82% 40%/auto 420px;color:#fff;box-shadow:0 18px 40px rgba(20,10,30,.25)">
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600"><i class="icon-map-pin"></i>Almaty</div>
+            <div style="font-size:44px;line-height:48px;font-weight:700;margin-top:60px">12°</div>
+            <span style="position:absolute;right:6px;bottom:6px;width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13 4 4 13M13 8.5 8.5 13"></path></svg></span>
+          </div>
+          <span style="position:absolute;left:50%;bottom:110px;transform:translateX(-50%);padding:6px 12px;border-radius:12px;background:#6A4CF2;color:#fff;font-size:13px;font-weight:700;white-space:nowrap;box-shadow:0 6px 18px rgba(106,76,242,.4)">Tall · 1×2</span>
+        </div>
+        <div style="position:relative;grid-column:span 3;border-radius:20px;border:2px dashed #6A4CF2;background:rgba(106,76,242,.05);display:flex;align-items:center;justify-content:center;color:#5132D6;font-weight:600;gap:8px"><i class="icon-move"></i>Drop here · Finances (M)</div>
+      </div>
+    </div>
+    <div style="width:340px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:16px;font-weight:600">Rules</div>
+      <sc-for list="{{ czRules }}" as="r" hint-placeholder-count="6"><div style="display:flex;gap:10px;padding:12px 14px;border-radius:14px;background:#fff;font-size:13px;line-height:20px"><span style="flex:none;width:22px;height:22px;border-radius:7px;background:#EEE8FD;color:#5132D6;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ r.n }}</span><span>{{ r.t }}</span></div></sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:32px;align-items:flex-start">
+    <div style="width:1120px;height:600px;border-radius:24px;background:linear-gradient(rgba(28,27,34,.35),rgba(28,27,34,.35)),#EFE9E3;display:flex;align-items:center;justify-content:center">
+      <div role="dialog" aria-label="Add widget" style="width:920px;height:520px;border-radius:24px;background:#fff;box-shadow:0 30px 80px rgba(20,10,30,.3);display:grid;grid-template-columns:280px 1fr;overflow:hidden">
+        <div style="background:#FAF7F4;border-right:1px solid #EDE8E3;padding:16px;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:12px;background:#fff;border:1px solid #EDE8E3;color:#625D69;margin-bottom:8px"><i class="icon-search"></i><span>Search widgets</span></div>
+          <sc-for list="{{ galList }}" as="g" hint-placeholder-count="8"><div onClick="{{ g.pick }}" role="option" aria-selected="{{ g.on }}" style="display:flex;align-items:center;gap:10px;height:44px;padding:0 10px;border-radius:12px;background:{{ g.bg }};cursor:pointer" style-hover="background:rgba(106,76,242,.08)"><span style="width:28px;height:28px;border-radius:8px;background:{{ g.soft }};color:{{ g.c }};display:flex;align-items:center;justify-content:center"><i class="icon-{{ g.icon }}"></i></span><span style="flex:1;font-weight:500">{{ g.t }}</span><sc-if value="{{ g.added }}"><span style="font-size:12px;color:#625D69">On Home</span></sc-if></div></sc-for>
+        </div>
+        <div style="padding:24px 28px;display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;gap:12px"><div style="flex:1"><div style="font-size:22px;line-height:30px;font-weight:600">{{ gal.t }}</div><div style="font-size:13px;color:#625D69">{{ gal.d }}</div></div><span role="button" aria-label="Close" style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:#F7F4F1"><i class="icon-x"></i></span></div>
+          <div style="display:flex;gap:16px;margin-top:24px;align-items:flex-end">
+            <sc-for list="{{ galSizes }}" as="s" hint-placeholder-count="3"><div onClick="{{ s.pick }}" role="radio" aria-checked="{{ s.on }}" style="display:flex;flex-direction:column;gap:10px;cursor:pointer"><div style="width:{{ s.w }};height:{{ s.h }};border-radius:14px;border:2px solid {{ s.bd }};background:{{ s.bg }};padding:10px;display:flex;flex-direction:column;gap:6px"><span style="width:18px;height:18px;border-radius:5px;background:{{ gal.soft }}"></span><span style="height:6px;width:60%;border-radius:3px;background:#E9E3DD"></span><span style="height:6px;width:40%;border-radius:3px;background:#E9E3DD"></span></div><div style="font-size:13px;font-weight:600;color:{{ s.fg }}">{{ s.label }}</div></div></sc-for>
+          </div>
+          <div style="margin-top:20px;padding:16px;border-radius:14px;background:#F7F4F1;font-size:14px;line-height:22px"><span style="font-weight:600">{{ galSizeName }} shows:</span> {{ galSizeDesc }}</div>
+          <div style="flex:1"></div>
+          <div style="display:flex;gap:10px;justify-content:flex-end"><span role="button" style="height:44px;padding:0 18px;border-radius:12px;background:#F7F4F1;display:flex;align-items:center;font-weight:500;cursor:pointer">Cancel</span><span role="button" style="height:44px;padding:0 20px;border-radius:12px;background:#6A4CF2;color:#fff;display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer" style-hover="background:#5132D6"><i class="icon-plus"></i>Add {{ galSizeName }}</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="width:340px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:16px;font-weight:600">Add widget sheet</div>
+      <div style="font-size:13px;line-height:20px;color:#625D69">Opened from "Add widget" in Customize and from the Widgets entry in the sidebar. Pick a widget, pick a size (default M), Add. The new card goes to the first free slot and scrolls into view with a short highlight. Widgets already on Home stay in the list — one widget can be added twice at different sizes (e.g. Calendar S + Calendar L).</div>
+      <div style="font-size:13px;line-height:20px;color:#625D69">Mobile: same sheet full-screen. Grid is 2 columns; S = half width, M and L = full width.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. TIMER ============ -->
+<section id="tm" data-screen-label="03 Timer" style="display:flex;flex-direction:column;gap:24px;padding:40px;border-radius:28px;background:#F5F0EB;width:1400px">
+  <div>
+    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5132D6">3 · Timer</div>
+    <div style="font-size:30px;line-height:38px;font-weight:700;margin-top:4px">A timer, not a form</div>
+    <div style="font-size:14px;color:#625D69;margin-top:4px">Content area at 1040 wide (sidebar not shown). Mode is a segmented control, duration is chips, task link is one pill. Start is the only primary button. Try it — the timer runs.</div>
+  </div>
+  <div style="width:1100px;padding:32px;border-radius:24px;background:#F5F0EB;border:1px solid #E6DFD8;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:center;gap:16px"><div style="flex:1;font-size:30px;line-height:38px;font-weight:700">Focus</div>
+      <div role="tablist" style="display:flex;padding:4px;border-radius:14px;background:#EFE9E3">
+        <sc-for list="{{ tModes }}" as="m" hint-placeholder-count="3"><span onClick="{{ m.pick }}" role="tab" aria-selected="{{ m.on }}" style="height:36px;padding:0 16px;border-radius:10px;background:{{ m.bg }};box-shadow:{{ m.sh }};font-weight:500;display:flex;align-items:center;cursor:pointer">{{ m.t }}</span></sc-for>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start">
+      <div style="padding:36px;border-radius:24px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;display:flex;flex-direction:column;align-items:center;gap:24px">
+        <div style="width:320px;height:320px;border-radius:50%;background:{{ tRing }};padding:14px;transition:background .3s"><div style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px"><span style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#625D69">{{ tPhase }}</span><span style="font-size:72px;line-height:80px;font-weight:700;letter-spacing:-.02em">{{ tTime }}</span><span style="font-size:13px;color:#625D69">{{ tSub }}</span></div></div>
+        <sc-if value="{{ tShowPresets }}"><div style="display:flex;gap:8px"><sc-for list="{{ tPresets }}" as="p" hint-placeholder-count="4"><span onClick="{{ p.pick }}" role="radio" aria-checked="{{ p.on }}" style="height:36px;padding:0 14px;border-radius:12px;background:{{ p.bg }};color:{{ p.fg }};font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer">{{ p.t }}</span></sc-for></div></sc-if>
+        <div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 14px;border-radius:14px;border:1px solid #EDE8E3;background:#fff;min-width:340px"><i class="icon-square-check" style="color:#2F6FE4"></i><span style="flex:1">Prepare release notes</span><span style="font-size:12px;padding:1px 8px;border-radius:8px;background:#EEE8FD;color:#5132D6">Aelys v1</span><i class="icon-chevron-down" style="color:#625D69"></i></div>
+        <div style="display:flex;gap:10px">
+          <span onClick="{{ tToggle }}" role="button" style="height:52px;min-width:180px;padding:0 24px;border-radius:16px;background:#F06A58;color:#fff;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 8px 20px rgba(240,106,88,.3)" style-hover="background:#E2574A"><i class="icon-{{ tBtnIcon }}"></i>{{ tBtn }}</span>
+          <span onClick="{{ tReset }}" role="button" aria-label="Reset" style="width:52px;height:52px;border-radius:16px;background:#fff;border:1px solid #EDE8E3;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:#FAF7F4"><i class="icon-rotate-ccw"></i></span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="padding:20px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+          <div style="display:flex;align-items:baseline"><span style="flex:1;font-size:16px;font-weight:600">Today</span><span style="font-size:24px;font-weight:700">1h 15m</span></div>
+          <div style="display:flex;gap:6px;margin-top:12px"><span style="flex:1;height:8px;border-radius:4px;background:#F06A58"></span><span style="flex:1;height:8px;border-radius:4px;background:#F06A58"></span><span style="flex:1;height:8px;border-radius:4px;background:#F06A58"></span><span style="flex:1;height:8px;border-radius:4px;background:#EFE9E4"></span></div>
+          <div style="font-size:13px;color:#625D69;margin-top:8px">3 of 4 sessions · long break next</div>
+        </div>
+        <div style="padding:20px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+          <div style="font-size:16px;font-weight:600;margin-bottom:6px">Sessions</div>
+          <sc-for list="{{ tHist }}" as="h" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:12px;height:52px;border-top:{{ h.bt }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ h.c }}"></span><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.t }}</div><div style="font-size:12px;color:#625D69">{{ h.w }}</div></div><span style="font-size:13px;font-weight:600">{{ h.d }}</span></div></sc-for>
+        </div>
+        <div style="padding:20px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+          <div style="display:flex;align-items:baseline;margin-bottom:12px"><span style="flex:1;font-size:16px;font-weight:600">This week</span><span style="font-size:13px;color:#625D69">8h 40m</span></div>
+          <div style="height:96px;display:grid;grid-template-columns:repeat(7,1fr);gap:10px;align-items:end"><sc-for list="{{ week }}" as="b" hint-placeholder-count="7"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end"><div style="width:100%;height:{{ b.h }};border-radius:6px;background:{{ b.c }}"></div><span style="font-size:11px;color:#625D69">{{ b.d }}</span></div></sc-for></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. AUTOMATION ============ -->
+<section id="au" data-screen-label="04 Automation" style="display:flex;flex-direction:column;gap:24px;padding:40px;border-radius:28px;background:#F5F0EB;width:1400px">
+  <div>
+    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5132D6">4 · Automation</div>
+    <div style="font-size:30px;line-height:38px;font-weight:700;margin-top:4px">Rules read as sentences</div>
+    <div style="font-size:14px;color:#625D69;margin-top:4px">Each rule = When → Then, with its policy and last run visible. The toggle is on the row. Runs log on the right. Creating a rule goes through AI ("Describe a rule…") and always ends in a review step before saving.</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:14px"><span style="font-size:13px;font-weight:600;color:#625D69">Preview state</span><div style="display:flex;padding:3px;border-radius:12px;background:#EFE9E3"><sc-for list="{{ auStates }}" as="s" hint-placeholder-count="2"><span onClick="{{ s.pick }}" role="tab" aria-selected="{{ s.on }}" style="height:32px;padding:0 14px;border-radius:9px;background:{{ s.bg }};box-shadow:{{ s.sh }};font-weight:500;font-size:13px;display:flex;align-items:center;cursor:pointer">{{ s.t }}</span></sc-for></div><span style="font-size:13px;color:#625D69">The first visit shows a guide with templates. Later, "How it works" brings it back.</span></div>
+  </div>
+  <div style="width:1100px;padding:32px;border-radius:24px;background:#F5F0EB;border:1px solid #E6DFD8;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:center;gap:12px"><div style="flex:1;font-size:30px;line-height:38px;font-weight:700">Automation</div><sc-if value="{{ auUse }}"><span onClick="{{ auShowGuide }}" role="button" style="height:40px;padding:0 14px;border-radius:12px;background:#fff;border:1px solid #EDE8E3;font-weight:500;display:flex;align-items:center;gap:8px;cursor:pointer" style-hover="background:#FAF7F4"><i class="icon-circle-help"></i>How it works</span></sc-if><span style="height:40px;padding:0 16px;border-radius:12px;background:#6A4CF2;color:#fff;font-weight:600;display:flex;align-items:center;gap:8px"><i class="icon-plus"></i>New rule</span></div>
+    <div style="display:flex;align-items:center;gap:10px;height:52px;padding:0 8px 0 16px;border-radius:16px;background:#fff;border:1px solid #EDE8E3"><i class="icon-sparkles" style="color:#6A4CF2;font-size:18px"></i><span style="flex:1;color:#625D69">Describe a rule — "When a bill arrives by email, add a task due in 3 days"</span><span style="width:36px;height:36px;border-radius:50%;background:#6A4CF2;color:#fff;display:flex;align-items:center;justify-content:center"><i class="icon-arrow-right"></i></span></div>
+    <sc-if value="{{ auGuide }}">
+      <div style="padding:28px;border-radius:24px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;display:flex;flex-direction:column;gap:24px">
+        <div style="display:flex;gap:16px;align-items:flex-start"><span style="width:52px;height:52px;flex:none;border-radius:14px;background:#DCF5EC;color:#14966C;display:flex;align-items:center;justify-content:center;font-size:24px"><i class="icon-workflow"></i></span><div style="flex:1"><div style="font-size:22px;line-height:30px;font-weight:600">Let Aelys handle the routine</div><div style="color:#625D69;margin-top:2px">A rule watches for something to happen and then does one thing for you. Nothing runs until you've reviewed the rule.</div></div><sc-if value="{{ auUse }}"><span onClick="{{ auHideGuide }}" role="button" aria-label="Close guide" style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer" style-hover="background:#F7F4F1"><i class="icon-x"></i></span></sc-if></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          <sc-for list="{{ auSteps }}" as="s" hint-placeholder-count="3"><div style="padding:16px;border-radius:16px;background:#F7F4F1;display:flex;flex-direction:column;gap:8px"><div style="display:flex;align-items:center;gap:8px"><span style="width:24px;height:24px;border-radius:8px;background:#1C1B22;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ s.n }}</span><span style="font-weight:600">{{ s.t }}</span></div><div style="font-size:13px;line-height:20px;color:#3A3640">{{ s.d }}</div><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ s.ex }}" as="e" hint-placeholder-count="2"><span style="height:26px;padding:0 9px;border-radius:8px;background:#fff;font-size:12px;font-weight:500;display:flex;align-items:center">{{ e }}</span></sc-for></div></div></sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:16px;font-weight:600">Start from a template</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+            <sc-for list="{{ auTpl }}" as="t" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;border:1px solid #EDE8E3;background:#fff"><div style="flex:1;min-width:0"><div style="font-weight:600">{{ t.name }}</div><div style="font-size:13px;color:#625D69">{{ t.s }}</div></div><span onClick="{{ t.use }}" role="button" style="height:36px;padding:0 14px;border-radius:10px;background:#F7F4F1;font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer" style-hover="background:#EEE8FD;color:#5132D6">Use</span></div></sc-for>
+          </div>
+          <div style="font-size:13px;color:#625D69">Or describe your own rule in the field above. Aelys will turn it into When → Then and show it to you before saving.</div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ auUse }}">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{ rules }}" as="r" hint-placeholder-count="4">
+          <div style="padding:18px 20px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;display:flex;flex-direction:column;gap:12px;opacity:{{ r.op }}">
+            <div style="display:flex;align-items:center;gap:12px"><span style="flex:1;font-size:16px;font-weight:600">{{ r.name }}</span><span style="font-size:12px;color:#625D69">{{ r.last }}</span><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" style="width:44px;height:26px;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
+              <span style="font-weight:600;color:#625D69">When</span>
+              <span style="height:30px;padding:0 10px;border-radius:10px;background:{{ r.wSoft }};color:{{ r.wC }};display:flex;align-items:center;gap:6px;font-weight:500"><i class="icon-{{ r.wIcon }}"></i>{{ r.when }}</span>
+              <i class="icon-arrow-right" style="color:#8C869A"></i>
+              <span style="font-weight:600;color:#625D69">Then</span>
+              <span style="height:30px;padding:0 10px;border-radius:10px;background:{{ r.tSoft }};color:{{ r.tC }};display:flex;align-items:center;gap:6px;font-weight:500"><i class="icon-{{ r.tIcon }}"></i>{{ r.then }}</span>
+              <span style="flex:1"></span>
+              <span style="height:26px;padding:0 8px;border-radius:8px;background:#F7F4F1;color:#625D69;display:flex;align-items:center;gap:4px;font-size:12px"><i class="icon-shield"></i>{{ r.policy }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:20px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Recent runs</div>
+        <sc-for list="{{ runs }}" as="r" hint-placeholder-count="5"><div style="display:flex;gap:10px;padding:10px 0;border-top:{{ r.bt }}"><span style="flex:none;width:22px;height:22px;border-radius:50%;background:{{ r.soft }};color:{{ r.c }};display:flex;align-items:center;justify-content:center;font-size:12px"><i class="icon-{{ r.i }}"></i></span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">{{ r.t }}</div><div style="font-size:12px;color:#625D69">{{ r.s }}</div></div></div></sc-for>
+      </div>
+    </div>
+    </sc-if>
+  </div>
+</section>
+
+<!-- ============ 5. DEVELOPER HUB ============ -->
+<section id="dv" data-screen-label="05 Developer Hub" style="display:flex;flex-direction:column;gap:24px;padding:40px;border-radius:28px;background:#F5F0EB;width:1400px">
+  <div>
+    <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5132D6">5 · Developer Hub</div>
+    <div style="font-size:30px;line-height:38px;font-weight:700;margin-top:4px">Agent sessions, at a glance</div>
+    <div style="font-size:14px;color:#625D69;margin-top:4px">List on the left (state, project, last activity), detail on the right: sandbox scope, permissions, live event log in mono. Transcripts stay on the Mac — say it once, in the detail footer, not as a banner.</div>
+  </div>
+  <div style="width:1100px;padding:32px;border-radius:24px;background:#F5F0EB;border:1px solid #E6DFD8;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:center;gap:12px"><div style="flex:1;font-size:30px;line-height:38px;font-weight:700">Developer Hub</div>
+      <div style="display:flex;padding:4px;border-radius:14px;background:#EFE9E3"><span style="height:32px;padding:0 14px;border-radius:10px;background:#fff;box-shadow:0 1px 3px rgba(20,10,30,.08);font-weight:500;display:flex;align-items:center;font-size:13px">Active · 2</span><span style="height:32px;padding:0 14px;border-radius:10px;font-weight:500;display:flex;align-items:center;font-size:13px">All</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:360px minmax(0,1fr);gap:20px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ devs }}" as="d" hint-placeholder-count="4"><div onClick="{{ d.pick }}" role="option" aria-selected="{{ d.on }}" style="padding:14px 16px;border-radius:16px;background:{{ d.bg }};border:1px solid {{ d.bd }};display:flex;gap:12px;cursor:pointer" style-hover="border-color:#D6CCF8"><span style="width:36px;height:36px;flex:none;border-radius:10px;background:#1C1B22;color:#fff;display:flex;align-items:center;justify-content:center"><i class="icon-terminal"></i></span><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px"><span style="flex:1;font-weight:600">{{ d.a }}</span><span style="height:22px;padding:0 8px;border-radius:8px;background:{{ d.sSoft }};color:{{ d.sC }};font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px"><span style="width:6px;height:6px;border-radius:50%;background:{{ d.sC }}"></span>{{ d.s }}</span></div><div style="font-size:13px;color:#3A3640;font-family:'JetBrains Mono',monospace;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.p }}</div><div style="font-size:12px;color:#625D69;margin-top:2px">{{ d.t }}</div></div></div></sc-for>
+      </div>
+      <div style="border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;overflow:hidden">
+        <div style="padding:20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EDE8E3"><div style="flex:1"><div style="font-size:20px;font-weight:600">{{ dev.a }}</div><div style="font-size:13px;color:#625D69;font-family:'JetBrains Mono',monospace">{{ dev.p }}</div></div><span style="height:36px;padding:0 14px;border-radius:12px;background:#F7F4F1;font-weight:500;display:flex;align-items:center;gap:6px;font-size:13px"><i class="icon-external-link"></i>Open folder</span><span style="height:36px;padding:0 14px;border-radius:12px;background:#FDE8E7;color:#C9302C;font-weight:600;display:flex;align-items:center;gap:6px;font-size:13px"><i class="icon-square"></i>Stop</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #EDE8E3">
+          <div style="padding:16px 20px;border-right:1px solid #EDE8E3"><div style="font-size:12px;color:#625D69">Sandbox</div><div style="font-weight:600;margin-top:2px">Project folder only</div></div>
+          <div style="padding:16px 20px;border-right:1px solid #EDE8E3"><div style="font-size:12px;color:#625D69">Network</div><div style="font-weight:600;margin-top:2px">Ask each time</div></div>
+          <div style="padding:16px 20px"><div style="font-size:12px;color:#625D69">Running for</div><div style="font-weight:600;margin-top:2px">{{ dev.dur }}</div></div>
+        </div>
+        <div style="padding:16px 20px;background:#1C1B22;color:#E8E4EE;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:22px;min-height:260px">
+          <sc-for list="{{ dev.log }}" as="l" hint-placeholder-count="8"><div style="display:flex;gap:14px"><span style="color:#8C869A">{{ l.t }}</span><span style="color:{{ l.c }};width:56px">{{ l.k }}</span><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.m }}</span></div></sc-for>
+        </div>
+        <div style="padding:12px 20px;display:flex;align-items:center;gap:8px;font-size:12px;color:#625D69"><i class="icon-lock"></i>Full transcript is stored on this Mac only.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;}}">
+class Component extends DCLogic {
+  state = { mode: 'focus', preset: 25, left: 25 * 60, running: false, sw: 0, gal: 'focus', galSize: 'M', rules: [true, true, false, true], dev: 0 };
+  componentDidMount() { this.applyTheme(); this.iv = setInterval(() => this.tick(), 1000); }
+  componentDidUpdate() { this.applyTheme(); }
+  componentWillUnmount() { clearInterval(this.iv); }
+  applyTheme() { document.documentElement.setAttribute('data-aelys-theme', this.props.theme === 'dark' ? 'dark' : 'light'); }
+  tick() {
+    const S = this.state; if (!S.running) return;
+    if (S.mode === 'stopwatch') this.setState({ sw: S.sw + 1 });
+    else if (S.left <= 1) this.setState({ left: 0, running: false });
+    else this.setState({ left: S.left - 1 });
+  }
+  utilVals() {
+    const S = this.state;
+    const pinned = S.pins || ['focus', 'habits', 'countdowns', 'calc'];
+    const A = { blue: ['#2F6FE4', '#E4EEFD', '#1F55B8'], coral: ['#F06A58', '#FDE6E1', '#B8402F'], violet: ['#6A4CF2', '#EEE8FD', '#5132D6'], orange: ['#B36B00', '#FDF1D9', '#8A5A00'], green: ['#14966C', '#DCF5EC', '#0E7A57'] };
+    const U = [
+      ['plan', 'review', 'Review', 'clipboard-check', 'Weekly look back and plan ahead', 'Week 44 · not started'],
+      ['plan', 'weeks', 'Weeks', 'calendar-range', 'Your year as a grid of weeks', 'Week 44 of 52'],
+      ['plan', 'habits', 'Habits', 'flame', 'Daily streaks and check-ins', '3 of 5 today'],
+      ['plan', 'countdowns', 'Countdowns', 'hourglass', 'Days left to what matters', 'Exam · in 12 days'],
+      ['mind', 'focus', 'Focus', 'timer', 'Pomodoro, breaks and stopwatch', '1h 15m today', '#tm'],
+      ['mind', 'breathe', 'Breathe', 'wind', 'Guided breathing patterns', 'Box · 4 min'],
+      ['quick', 'calc', 'Calculator', 'calculator', 'Math, units, percent and tips', 'Last: 24 × 12 = 288'],
+      ['quick', 'zones', 'Zones', 'globe', 'Time across cities', 'London 09:14 · NYC 04:14'],
+      ['quick', 'decide', 'Decide', 'dices', 'Coin, dice and a choice wheel', 'Coin · dice · wheel'],
+      ['quick', 'toolbox', 'Toolbox', 'wrench', 'JSON, Base64, UUID, color', '7 tools'],
+      ['learn', 'cards', 'Cards', 'layers', 'Flashcards with spaced repetition', '18 due today'],
+      ['learn', 'reader', 'Reader', 'book-open', 'Saved articles, distraction-free', '2 unread'],
+      ['learn', 'type', 'Type', 'keyboard', 'Typing practice', 'Best 72 wpm'],
+      ['learn', 'sketch', 'Sketch', 'brush', 'Quick drawings and diagrams', 'Last: Widget grid'],
+      ['talk', 'messages', 'Messages', 'message-square', 'Telegram chats with AI reply drafts', '3 drafts waiting', '#ms'],
+      ['power', 'auto', 'Automation', 'workflow', 'When this happens, do that', '3 rules on', '#au'],
+      ['power', 'dev', 'Developer Hub', 'terminal', 'Local coding agent sessions', '2 running', '#dv'],
+    ];
+    const GR = [['plan', 'Plan & reflect', '', 'blue'], ['mind', 'Focus & calm', '', 'coral'], ['quick', 'Quick tools', '', 'violet'], ['learn', 'Learn & create', '', 'orange'], ['talk', 'Communicate', '', 'blue'], ['power', 'Power tools', 'macOS', 'green']];
+    const q = (S.q || '').trim().toLowerCase();
+    const grpOf = id => GR.find(g => g[0] === id);
+    const mk = r => { const [gid, id, t, i, d, g, href] = r; const k = A[grpOf(gid)[3]]; const on = pinned.includes(id); return { t, i, d, g, href: href || '#ut', c: k[0], soft: k[1], deep: k[2], pinned: on, pinLabel: on ? 'Unpin' : 'Pin', pinC: on ? '#5132D6' : '#BDB7C2', pin: e => { e.preventDefault(); e.stopPropagation(); this.setState({ pins: on ? pinned.filter(x => x !== id) : [...pinned, id] }); } }; };
+    const hit = U.filter(r => !q || (r[2] + ' ' + r[4]).toLowerCase().includes(q));
+    let groups;
+    if (q) groups = hit.length ? [{ t: 'Results', d: hit.length + '', items: hit.map(mk) }] : [];
+    else groups = [{ t: 'Pinned', d: 'Also in ⌘K', items: pinned.map(id => U.find(r => r[1] === id)).filter(Boolean).map(mk) }].filter(g => g.items.length).concat(GR.map(([gid, t, d]) => ({ t, d, items: U.filter(r => r[0] === gid && !pinned.includes(r[1])).map(mk) })).filter(g => g.items.length));
+    const navL = [['Home', 'house'], ['AI Chat', 'message-square'], ['Tasks', 'square-check'], ['Calendar', 'calendar'], ['Projects', 'folder'], ['Notes', 'notebook-text'], ['Mail', 'mail'], ['Finances', 'wallet'], ['Knowledge base', 'book-open'], ['Apps', 'layout-grid']];
+    return {
+      q: S.q || '', onQ: e => this.setState({ q: e.target.value }), groups, empty: !!q && !hit.length, showExt: !q,
+      nav: navL.map(([t, i]) => { const on = t === 'Apps'; return { t, i, bg: on ? '#EEE8FD' : 'transparent', fg: on ? '#5132D6' : '#1C1B22', fw: on ? 600 : 400 }; }),
+      ext: [['SDU Shooter', 'game.javazhan.tech', 'crosshair'], ['MDE 162 Law', 'law.javazhan.tech', 'graduation-cap'], ['INF 376 NLP', 'nlp.javazhan.tech', 'brain'], ['INF 345 DevOps', 'devops.javazhan.tech', 'square-terminal']].map(([t, u, i]) => ({ t, u, i })),
+    };
+  }
+  settingsVals() {
+    const S = this.state, st = S.st || 'profile', sw = Object.assign({ nTask: true, nCal: true, nMsg: true, nAuto: false, glass: true, reduce: false, party: true, geo: false, tgAuto: true, touch: true, sleep: true }, S.sw2 || {});
+    const flip = k => () => this.setState(s => ({ sw2: Object.assign({}, sw, s.sw2 || {}, { [k]: !sw[k] }) }));
+    const mkSw = (k, t, d, i) => ({ t, d, on: sw[k], trk: sw[k] ? '#6A4CF2' : '#CFC9D4', knob: sw[k] ? '21px' : '3px', toggle: flip(k), bt: i ? '1px solid #F1EDEA' : '0' });
+    const seg = (list, cur, key) => list.map(([v, t]) => { const on = cur === v; return { t, on, bg: on ? '#fff' : 'transparent', sh: on ? '0 1px 3px rgba(20,10,30,.1)' : 'none', pick: () => this.setState({ [key]: v }) }; });
+    const SEC = [['Account', [['profile', 'Profile', 'user', '#5132D6', '#EEE8FD', 'Name, photo and how Aelys addresses you'], ['notifications', 'Notifications', 'bell', '#D93636', '#FDE8E7', 'What can interrupt you, and when']]], ['General', [['appearance', 'Appearance', 'paintbrush', '#6A4CF2', '#EEE8FD', 'Theme, accent and motion. The photo follows the weather'], ['weather', 'Weather & location', 'cloud-sun', '#2F6FE4', '#E4EEFD', 'City and units for the Weather widget']]], ['Assistant', [['ai', 'AI & models', 'sparkles', '#6A4CF2', '#EEE8FD', 'Providers and the models Aelys uses'], ['telegram', 'Telegram', 'send', '#2F6FE4', '#E4EEFD', 'Read and reply to messages on your behalf']]], ['System', [['connection', 'Connection', 'wifi', '#14966C', '#DCF5EC', 'Backend address and your session'], ['security', 'Security', 'shield', '#F06A58', '#FDE6E1', 'Touch ID and auto-lock', 'macOS'], ['about', 'Data & about', 'info', '#625D69', '#EFE9E3', 'Export, version and updates']]]];
+    const q = (S.stQ || '').toLowerCase();
+    const stNav = SEC.map(([t, items]) => ({ t, items: items.filter(x => !q || (x[1] + ' ' + x[5]).toLowerCase().includes(q)).map(([id, n, i, c, soft, d, badge]) => { const on = st === id; return { t: n, i, c, soft, badge: badge || '', on, bg: on ? '#fff' : 'transparent', fw: on ? 600 : 500, fg: '#1C1B22', pick: () => this.setState({ st: id }) }; }) })).filter(g => g.items.length);
+    const cur = SEC.flatMap(g => g[1]).find(x => x[0] === st);
+    const theme = S.stTheme || 'light', acc = S.stAcc ?? 0, wall = S.stWall ?? 0, city = S.stCity || 'Almaty';
+    const T = { light: ['Light', '#F5F0EB', '#FAF7F4', '#fff'], dark: ['Dark', '#141219', '#1A1720', '#2A2733'], system: ['System', 'linear-gradient(90deg,#F5F0EB 50%,#141219 50%)', 'linear-gradient(90deg,#FAF7F4 50%,#1A1720 50%)', 'linear-gradient(90deg,#fff 50%,#2A2733 50%)'] };
+    const navL = [['Home', 'house'], ['AI Chat', 'message-square'], ['Tasks', 'square-check'], ['Calendar', 'calendar'], ['Projects', 'folder'], ['Notes', 'notebook-text'], ['Mail', 'mail'], ['Finances', 'wallet'], ['Knowledge base', 'book-open'], ['Apps', 'layout-grid']];
+    return {
+      navSt: navL.map(([t, i]) => ({ t, i })), stQ: S.stQ || '', onStQ: e => this.setState({ stQ: e.target.value }), stNav, stCur: { t: cur[1], d: cur[5] },
+      stSwN: [mkSw('nTask', 'Task reminders', 'At the time you set on a task', 0), mkSw('nCal', 'Calendar', '10 minutes before events', 1), mkSw('nMsg', 'Messages', 'New drafts waiting for approval', 2), mkSw('nAuto', 'Automation', 'Only when a rule fails or is blocked', 3)],
+      stQuiet: seg([['off', 'Off'], ['night', '22:00 – 08:00'], ['focus', 'During focus']], S.stQuiet || 'night', 'stQuiet'),
+      stIs: { profile: st === 'profile', notifications: st === 'notifications', about: st === 'about', appearance: st === 'appearance', weather: st === 'weather', ai: st === 'ai', telegram: st === 'telegram', connection: st === 'connection', security: st === 'security' },
+      stThemes: Object.entries(T).map(([id, [t, bg, side, card]]) => { const on = theme === id; return { t, bg, side, card, on, bd: on ? '#6A4CF2' : '#EDE8E3', radio: on ? '6px solid #6A4CF2' : '2px solid #CFC9D4', pick: () => this.setState({ stTheme: id }) }; }),
+      stAccents: [['Violet', '#6A4CF2'], ['Blue', '#2F6FE4'], ['Green', '#14966C'], ['Coral', '#F06A58'], ['Rose', '#D9468F'], ['Graphite', '#1C1B22']].map(([n, c], i) => ({ n, c, on: acc === i, ring: acc === i ? '0 0 0 2px #fff, 0 0 0 4px ' + c : 'none', pick: () => this.setState({ stAcc: i }) })),
+      stWalls: [['Mountains', "url('assets/wallpaper.png') 60% 40%/cover"], ['Peaks', "url('assets/wallpaper.png') 85% 30%/auto 220px"], ['Valley', "url('assets/wallpaper.png') 20% 90%/auto 260px"], ['None', '#EFE9E3']].map(([n, bg], i) => ({ n, bg, on: wall === i, ring: wall === i ? '0 0 0 3px #6A4CF2' : 'inset 0 0 0 1px rgba(0,0,0,.06)', pick: () => this.setState({ stWall: i }) })),
+      stSwA: [mkSw('glass', 'Glass cards', 'Blur the background photo behind widgets', 1), mkSw('reduce', 'Reduce motion', 'Replaces animations with fades. Also follows your system setting', 1), mkSw('party', 'Celebrations', 'Star bursts when you finish tasks', 2)],
+      stCity: city + ', Kazakhstan',
+      stCities: [['Almaty', 'Kazakhstan'], ['Astana', 'Kazakhstan'], ['Shymkent', 'Kazakhstan']].map(([n, r]) => ({ n, r, on: city === n, pick: () => this.setState({ stCity: n }) })),
+      stUnits: seg([['c', '°C · m/s'], ['f', '°F · mph']], S.stUnit || 'c', 'stUnit'),
+      stSwW: [mkSw('geo', 'Use current location', 'Update the city automatically on this device', 1)],
+      stProv: [['C', 'Claude', 'claude-sonnet-4-5', '•••• 3f2a', 1, '#B8402F', '#FDE6E1'], ['O', 'OpenRouter', 'meta-llama/llama-3.3-70b-instruct', '•••• 91cd', 0, '#5132D6', '#EEE8FD']].map(([l, n, m, k, def, c, soft]) => ({ l, n, m, k, def: !!def, c, soft })),
+      stDefaults: [['Chat and composer', 'Used for AI Chat and the Home composer', 'Claude · claude-sonnet-4-5'], ['Background tasks', 'Summaries, sorting the inbox, automations', 'OpenRouter · llama-3.3-70b']].map(([t, d, v], i) => ({ t, d, v, bt: i ? '1px solid #F1EDEA' : '0' })),
+      stSwT: [mkSw('tgAuto', 'Auto-reply', 'Read incoming messages and draft replies in allowed chats', 0)], stTgOp: sw.tgAuto ? 1 : .5,
+      stDrafts: [['A', 'Aidana', '12:40', '“Are you free tomorrow at 3?”', 'Hi! I\'ll check my schedule and get back to you today.'], ['M', 'Marat · Course chat', '11:05', '“Did anyone get the slides from Monday?”', 'Yes, I\'ll share them in the chat in a bit.']].map(([a, n, t, i, o], j) => ({ a, n, t, in: i, out: o, bt: j ? '1px solid #F1EDEA' : '0' })),
+      stSwS: [mkSw('touch', 'Unlock with Touch ID', 'Use your fingerprint instead of the password', 0), mkSw('sleep', 'Lock when Mac sleeps', 'Ask for Touch ID after the lid opens', 1)],
+      stLock: seg([['1', '1 min'], ['5', '5 min'], ['15', '15 min'], ['0', 'Never']], S.stLock || '5', 'stLock'),
+    };
+  }
+  msgInit() {
+    const C = [
+      ['aidana', 'A', 'Aidana', 'Personal · last seen just now', 'blue', true, '12:40', 1, [['in', 'Hey! Are you free tomorrow at 3?', '12:38'], ['in', 'Want to go over the NLP project together', '12:40']], 'Hi! I\'ll check my schedule and get back to you today.'],
+      ['course', 'M', 'Marat · INF 376 chat', '42 members', 'violet', true, '11:05', 3, [['in', 'Did anyone get the slides from Monday?', '11:01'], ['in', 'The link in the LMS is broken', '11:05']], 'Yes, I have them — sharing in a bit.'],
+      ['client', 'D', 'Dana Studio', 'Business · client', 'green', true, '09:20', 1, [['out', 'Sent you the first version of the landing page', 'Yesterday', 0], ['in', 'Looks great. Can we move the call to Friday?', '09:20']], 'Thanks! Friday works. What time suits you best?'],
+      ['mom', 'M', 'Mom', 'Personal', 'coral', false, 'Yesterday', 0, [['in', 'Call me when you\'re free', 'Yesterday'], ['out', 'Will do tonight!', 'Yesterday', 0]], ''],
+      ['bank', 'K', 'Kaspi Bank', 'Notifications', 'orange', false, 'Oct 29', 0, [['in', 'Payment of $24.00 to Internet received', 'Oct 29'], ['out', 'Thanks, received.', 'Oct 29', 1]], ''],
+    ];
+    return C.map(([id, a, n, sub, k, auto, t, unread, msgs, draft]) => ({ id, a, n, sub, k, auto, t, unread, msgs, draft }));
+  }
+  messagesVals() {
+    const S = this.state;
+    const chats = S.mChats || this.msgInit();
+    const A = { blue: ['#2F6FE4', '#E4EEFD'], violet: ['#5132D6', '#EEE8FD'], green: ['#0E7A57', '#DCF5EC'], coral: ['#B8402F', '#FDE6E1'], orange: ['#8A5A00', '#FDF1D9'] };
+    const tab = S.mTab || 'need';
+    const need = chats.filter(c => c.draft || c.unread);
+    const list = tab === 'need' ? need : chats;
+    const curId = S.mCurId && chats.some(c => c.id === S.mCurId) ? S.mCurId : (list[0] || chats[0]).id;
+    const cur = chats.find(c => c.id === curId);
+    const upd = (id, fn) => { const next = chats.map(c => c.id === id ? fn(Object.assign({}, c)) : c); return next; };
+    const nextId = (next) => { const q = next.filter(c => (c.draft || c.unread) && c.id !== curId); return q.length ? q[0].id : curId; };
+    const sendText = (txt, ai) => { if (!txt.trim()) return; const next = upd(curId, c => { c.msgs = c.msgs.concat([['out', txt.trim(), 'now', ai ? 1 : 0]]); c.draft = ''; c.unread = 0; c.t = 'now'; return c; }); this.setState({ mChats: next, mText: '', mCurId: nextId(next) }); };
+    const alt = ['Sure — let me confirm and I\'ll text you back within the hour.', 'Got it, thanks! I\'ll reply properly this evening.', 'Sounds good. I\'ll send details shortly.'];
+    const k = A[cur.k];
+    return {
+      mTabs: [['need', 'Needs reply · ' + need.length], ['all', 'All']].map(([v, t]) => { const on = tab === v; return { t, on, bg: on ? '#fff' : 'transparent', sh: on ? '0 1px 3px rgba(20,10,30,.1)' : 'none', pick: () => this.setState({ mTab: v }) }; }),
+      mList: list.map(c => { const on = c.id === curId; const last = c.msgs[c.msgs.length - 1]; return { a: c.a, n: c.n, t: c.t, last: (last[0] === 'out' ? 'You: ' : '') + last[1], draft: !!c.draft, unread: c.unread || 0, c: A[c.k][0], soft: A[c.k][1], on, bg: on ? '#fff' : 'transparent', pick: () => { const next = upd(c.id, x => { x.unread = 0; return x; }); this.setState({ mCurId: c.id, mChats: next }); } }; }),
+      mEmpty: list.length === 0,
+      mCur: { a: cur.a, n: cur.n, sub: cur.sub, c: k[0], soft: k[1], auto: cur.auto, trk: cur.auto ? '#6A4CF2' : '#CFC9D4', knob: cur.auto ? '21px' : '3px', toggle: () => this.setState({ mChats: upd(curId, c => { c.auto = !c.auto; return c; }) }) },
+      mMsgs: cur.msgs.map(([d, x, t, ai]) => { const o = d === 'out'; return { x, t, ai: !!ai, al: o ? 'flex-end' : 'flex-start', bg: o ? '#6A4CF2' : '#fff', fg: o ? '#fff' : '#1C1B22', rl: o ? '18px' : '6px', rr: o ? '6px' : '18px' }; }),
+      mHasDraft: !!cur.draft, mDraft: cur.draft,
+      mSend: () => sendText(cur.draft, true),
+      mEdit: () => this.setState({ mText: cur.draft, mChats: upd(curId, c => { c.draft = ''; return c; }) }),
+      mRegen: () => this.setState({ mChats: upd(curId, c => { c.draft = alt[(alt.indexOf(c.draft) + 1) % alt.length]; return c; }) }),
+      mSkip: () => { const next = upd(curId, c => { c.draft = ''; c.unread = 0; return c; }); this.setState({ mChats: next, mCurId: nextId(next) }); },
+      mText: S.mText || '', mOnText: e => this.setState({ mText: e.target.value }),
+      mKey: e => { if (e.key === 'Enter') sendText(S.mText || '', false); },
+      mSendOwn: () => sendText(S.mText || '', false), mBtnBg: (S.mText || '').trim() ? '#6A4CF2' : '#CFC9D4',
+    };
+  }
+  autoGuideVals() {
+    const S = this.state, use = S.auUse ?? false, guide = !use || !!S.auGuide;
+    return {
+      auUse: use, auGuide: guide,
+      auStates: [[false, 'First visit'], [true, 'In use']].map(([v, t]) => { const on = use === v; return { t, on, bg: on ? '#fff' : 'transparent', sh: on ? '0 1px 3px rgba(20,10,30,.1)' : 'none', pick: () => this.setState({ auUse: v, auGuide: false }) }; }),
+      auShowGuide: () => this.setState({ auGuide: true }), auHideGuide: () => this.setState({ auGuide: false }),
+      auSteps: [['When', 'Pick what starts the rule: an email, a time of day, a calendar event or a new task.', ['Email arrives', 'Every day 08:00']], ['Then', 'Pick one action. Aelys only does what the policy allows, e.g. reading mail but never sending it.', ['Create task', 'Send to Telegram']], ['Review', 'Before saving, you see the rule as a sentence and a dry run on recent data. You can pause it any time.', ['Dry run', 'Pause']]].map(([t, d, ex], i) => ({ n: i + 1, t, d, ex })),
+      auTpl: [['Bills to tasks', 'Email from a bank → task due in 3 days'], ['Morning plan', 'Every day at 08:00 → day summary to Telegram'], ['Meeting notes', 'Event ends → note from a template'], ['Focus after lunch', 'Weekdays at 14:00 → start 50 min focus']].map(([name, s]) => ({ name, s, use: () => this.setState({ auUse: true, auGuide: false }) })),
+    };
+  }
+  renderVals() {
+    return Object.assign(this.baseVals(), this.utilVals(), this.settingsVals(), this.messagesVals(), this.autoGuideVals());
+  }
+  baseVals() {
+    const S = this.state;
+    const A = { blue: ['#2F6FE4', '#E4EEFD'], red: ['#D93636', '#FDE8E7'], coral: ['#F06A58', '#FDE6E1'], violet: ['#6A4CF2', '#EEE8FD'], green: ['#14966C', '#DCF5EC'], orange: ['#B36B00', '#FDF1D9'] };
+    const pad = n => String(n).padStart(2, '0');
+    const calHead = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    const ev = new Set([2, 6, 9, 13, 14, 20, 23, 27, 31]);
+    const calDays = Array.from({ length: 35 }, (_, i) => { const n = i - 2; const ok = n >= 1 && n <= 31; const today = n === 31; return { n: ok ? n : '', bg: today ? '#6A4CF2' : 'transparent', fg: today ? '#fff' : '#1C1B22', fw: today ? 700 : 400, dot: ok && ev.has(n) && !today ? '#D93636' : 'transparent' }; });
+    const week = [['M', 52], ['T', 78], ['W', 40], ['T', 92], ['F', 60], ['S', 18], ['S', 0]].map(([d, v], i) => ({ d, h: Math.max(v, 4) + '%', c: i === 4 ? '#F06A58' : '#F9C9BF' }));
+    const spend = [['M', 30], ['T', 64], ['W', 22], ['T', 48], ['F', 90], ['S', 70], ['S', 12]].map(([d, v], i) => ({ d, h: v + '%', c: i === 4 ? '#14966C' : '#BFE8D8' }));
+    const hours = [['Now', 'cloud-sun', '12°'], ['14', 'cloud-sun', '14°'], ['15', 'sun', '15°'], ['16', 'sun', '15°'], ['17', 'cloud', '13°'], ['18', 'cloud', '11°']].map(([t, i, v]) => ({ t, i, v }));
+    const days = [['Today', 'cloud-sun', 6, 15], ['Sat', 'sun', 5, 17], ['Sun', 'cloud-rain', 4, 11], ['Mon', 'cloud', 3, 10], ['Tue', 'cloud-snow', -1, 6]].map(([d, i, lo, hi]) => ({ d, i, lo: lo + '°', hi: hi + '°', l: ((lo + 2) / 22 * 100) + '%', w: ((hi - lo) / 22 * 100) + '%' }));
+    const cats = [['Food', '38%', '$488', '#14966C'], ['Transport', '22%', '$282', '#2F6FE4'], ['Subscriptions', '18%', '$231', '#6A4CF2'], ['Other', '22%', '$283', '#E0B25A']].map(([n, p, v, c]) => ({ n, p, v, c }));
+    const P = [['Aelys v1', 'violet', 68, '12/18', 'Prepare release notes', 'Tomorrow'], ['Thesis', 'blue', 41, '7/17', 'Draft chapter 3 outline', 'Mon'], ['Apartment move', 'green', 85, '11/13', 'Book movers', 'Nov 8'], ['Portfolio site', 'coral', 20, '2/10', 'Pick a typeface', '—']];
+    const projs = P.map(([n, k, p, done, next, due]) => ({ n, c: A[k][0], soft: A[k][1], pct: p + '%', done, next, due }));
+    const notes = [['Widget ideas', 'Habit streak, reading list, a quote that rotates daily', 'Yesterday'], ['Meeting · API review', 'Pagination on /tasks, version field on delete', 'Oct 30'], ['Reading list', 'Designing Data-Intensive Applications, ch. 5', 'Oct 28'], ['Trip to Shymkent', 'Train Fri 19:40, hotel near the center', 'Oct 26']].map(([t, s, d]) => ({ t, s, d }));
+    const M = [['A', 'Aigerim S.', 'Slides for Monday', 'Can you take a look at the last two before we send…', '11:20', 'blue', 1], ['G', 'GitHub', '[aelys] PR #214 approved', 'codex/actual-design-rebuild is ready to merge', '10:05', 'violet', 1], ['K', 'Kaspi Bank', 'Internet bill is ready', 'Amount due $24.00 by November 3', '09:12', 'green', 1], ['R', 'Railway', 'Deploy succeeded', 'aelys-backend · production · 2m 14s', 'Yesterday', 'orange', 1], ['N', 'Notion', 'Weekly digest', '3 pages were edited in your workspace', 'Yesterday', 'blue', 0], ['D', 'Dana', 'Re: Saturday', 'Sounds good, see you at 12!', 'Oct 29', 'coral', 0]];
+    const mail = M.map(([a, f, s, p, t, k, u], i) => ({ a, f, s, p, t, c: A[k][0], soft: A[k][1], fw: u ? 600 : 400, bt: i ? '1px solid #F1EDEA' : '0' }));
+    // gallery
+    const G = [['today', 'Today', 'square-check', 'blue', 'Your tasks for the day', 1, ['How many are left and the next one', 'The day\'s list with times', 'Overdue / Today / Tomorrow groups and quick add']], ['cal', 'Calendar', 'calendar', 'red', 'Events and free time', 1, ['The next event with a countdown', 'Today as a timeline', 'Month view and agenda']], ['focus', 'Focus', 'timer', 'coral', 'Pomodoro and stopwatch', 1, ['Ring and one start/pause button', 'Ring, duration presets and linked task', 'Adds today\'s sessions and the week chart']], ['weather', 'Weather', 'cloud-sun', 'blue', 'Conditions and forecast', 1, ['Current temperature and conditions', 'Adds the next 6 hours', 'Adds a 5-day forecast']], ['fin', 'Finances', 'wallet', 'green', 'Balance and spending', 0, ['Balance and the week\'s change', 'Adds daily spending bars', 'Adds categories and one budget']], ['proj', 'Projects', 'folder', 'violet', 'Progress across projects', 0, ['One pinned project with progress', 'Three projects with progress bars', 'Each project with its next task']], ['notes', 'Notes', 'notebook-text', 'orange', 'Recent and pinned notes', 0, ['The last edited note', 'Two recent notes as cards', 'Pinned note, recent list and New']], ['mail', 'Mail', 'mail', 'blue', 'Unread messages', 0, ['Unread count and senders', 'Three unread messages', 'Inbox with previews']]];
+    const g = G.find(x => x[0] === S.gal) || G[0];
+    const sizeMeta = [['S', 'Small', '64px', '64px', 0], ['M', 'Medium', '136px', '64px', 1], ['L', 'Large', '136px', '136px', 2]];
+    const si = sizeMeta.findIndex(x => x[0] === S.galSize);
+    // timer
+    const total = S.mode === 'break' ? 5 * 60 : S.preset * 60;
+    const shownLeft = S.mode === 'stopwatch' ? S.sw : S.left;
+    const pct = S.mode === 'stopwatch' ? (S.sw % 3600) / 36 : (1 - S.left / total) * 100;
+    const ringC = S.mode === 'break' ? '#14966C' : '#F06A58';
+    const fmt = s => s >= 3600 ? Math.floor(s / 3600) + ':' + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60) : pad(Math.floor(s / 60)) + ':' + pad(s % 60);
+    const setMode = mode => () => this.setState({ mode, running: false, sw: 0, left: (mode === 'break' ? 5 : S.preset) * 60 });
+    const R = [['Bills to tasks', 'Email from Kaspi Bank', 'mail', 'blue', 'Create task · due in 3 days', 'square-check', 'violet', 'Inbox read', 'Ran 09:12'], ['Morning plan', 'Every day at 08:00', 'clock', 'orange', 'Send day summary to Telegram', 'send', 'blue', 'Telegram send', 'Ran 08:00'], ['Meeting notes', 'Calendar event ends', 'calendar', 'red', 'Create note from template', 'notebook-text', 'orange', 'Notes write', 'Paused'], ['Focus after lunch', 'Weekdays at 14:00', 'clock', 'orange', 'Start 50 min focus', 'timer', 'coral', 'Local only', 'Ran yesterday']];
+    const rules = R.map(([name, when, wi, wk, then, ti, tk, policy, last], i) => { const on = S.rules[i]; return { name, when, wIcon: wi, wC: A[wk][0], wSoft: A[wk][1], then, tIcon: ti, tC: A[tk][0], tSoft: A[tk][1], policy, last: on ? last : 'Paused', on, op: on ? 1 : .6, trk: on ? '#6A4CF2' : '#CFC9D4', knob: on ? '21px' : '3px', toggle: () => this.setState(s => { const r = [...s.rules]; r[i] = !r[i]; return { rules: r }; }) }; });
+    const runs = [['Bills to tasks', 'Created "Pay internet bill" · 09:12', 'check', 'green'], ['Morning plan', 'Sent to Telegram · 08:00', 'check', 'green'], ['Bills to tasks', 'Skipped — task already exists · Yesterday', 'arrow-right', 'orange'], ['Morning plan', 'Blocked by policy: Telegram not connected · Oct 29', 'x', 'red'], ['Focus after lunch', 'Started 50 min · Oct 29', 'check', 'green']].map(([t, s, i, k], j) => ({ t, s, i, c: A[k][0], soft: A[k][1], bt: j ? '1px solid #F1EDEA' : '0' }));
+    const D = [['Claude Code', '~/dev/aelys', 'Running', 'green', 'Editing apps/web/src/views · now', '42 min', [['14:02:11', 'read', '#9CC3FF', 'apps/web/src/views/desktop/homeLayout.ts'], ['14:02:14', 'think', '#B9A8FF', 'Plan: replace Auto sizing with S/M/L presets'], ['14:02:31', 'edit', '#5FD7A8', 'homeLayout.ts  +18 −41'], ['14:02:40', 'edit', '#5FD7A8', 'WidgetFrame.tsx  +22 −67'], ['14:03:02', 'run', '#F4C46B', 'pnpm --filter @aelys/web test'], ['14:03:44', 'ok', '#5FD7A8', '248 passed · 40 files'], ['14:03:50', 'ask', '#FF8A84', 'Network access to registry.npmjs.org? — waiting'], ['14:04:12', 'edit', '#5FD7A8', 'home-widgets.css  +9 −3']]], ['Codex', '~/dev/aelys-backend', 'Waiting', 'orange', 'Needs approval · 3 min ago', '1h 08m', [['13:58:02', 'run', '#F4C46B', 'uv run pytest backend/tests -q'], ['13:59:10', 'ok', '#5FD7A8', '204 passed, 5 skipped'], ['14:01:00', 'ask', '#FF8A84', 'Write outside sandbox: ~/.config/aelys — waiting']]], ['Claude Code', '~/dev/portfolio', 'Finished', 'blue', 'Yesterday, 22:14', '18 min', [['22:13:40', 'ok', '#5FD7A8', 'Build succeeded'], ['22:14:02', 'done', '#9CC3FF', 'Session closed by user']]]];
+    const devs = D.map(([a, p, s, k, t], i) => ({ a, p, s, t, sC: A[k][0], sSoft: A[k][1], on: S.dev === i, bg: S.dev === i ? '#fff' : 'rgba(255,255,255,.55)', bd: S.dev === i ? '#6A4CF2' : '#EDE8E3', pick: () => this.setState({ dev: i }) }));
+    const d0 = D[S.dev];
+    return {
+      calHead, calDays, week, spend, hours, days, cats, projs, projs3: projs.slice(0, 3), notes, mail, mail3: mail.slice(0, 3),
+      ghostCells: Array.from({ length: 8 }, (_, i) => i),
+      czRules: ['Sizes: S 1×1, M 2×1, L 2×2, Tall 1×2. Nothing else.', 'Size never changes on its own. No "Auto".', 'Resize = drag the corner. Live outline + size badge while dragging.', 'Move = drag the card. Others reflow; drop target shows dashed.', 'Bodies are dimmed and non-interactive while editing.', 'Done or Esc exits. Changes save instantly; no save button.'].map((t, i) => ({ n: i + 1, t })),
+      galList: G.map(([id, t, icon, k, d, added]) => ({ t, icon, c: A[k][0], soft: A[k][1], added: !!added, on: S.gal === id, bg: S.gal === id ? '#fff' : 'transparent', pick: () => this.setState({ gal: id }) })),
+      gal: { t: g[1], d: g[4], soft: A[g[3]][1] },
+      galSizes: sizeMeta.map(([id, label, w, h]) => { const on = S.galSize === id; return { label, w, h, on, bd: on ? '#6A4CF2' : '#EDE8E3', bg: on ? '#F6F3FE' : '#fff', fg: on ? '#5132D6' : '#625D69', pick: () => this.setState({ galSize: id }) }; }),
+      galSizeName: sizeMeta[si][1], galSizeDesc: g[6][si],
+      tModes: [['focus', 'Focus'], ['break', 'Break'], ['stopwatch', 'Stopwatch']].map(([id, t]) => { const on = S.mode === id; return { t, on, bg: on ? '#fff' : 'transparent', sh: on ? '0 1px 3px rgba(20,10,30,.08)' : 'none', pick: setMode(id) }; }),
+      tShowPresets: S.mode === 'focus',
+      tPresets: [25, 50, 90].map(m => { const on = S.preset === m; return { t: m + ' min', on, bg: on ? '#1C1B22' : '#F7F4F1', fg: on ? '#fff' : '#1C1B22', pick: () => this.setState({ preset: m, left: m * 60, running: false }) }; }),
+      tRing: `conic-gradient(${ringC} 0 ${pct}%, #EFE9E4 ${pct}% 100%)`,
+      tTime: fmt(shownLeft), tPhase: S.mode === 'break' ? 'Break' : S.mode === 'stopwatch' ? 'Stopwatch' : 'Focus',
+      tSub: S.running ? 'Session 3 of 4' : (S.mode === 'stopwatch' ? 'Counts up' : 'Ready'),
+      tBtn: S.running ? 'Pause' : (shownLeft !== (S.mode === 'stopwatch' ? 0 : total) ? 'Resume' : 'Start'), tBtnIcon: S.running ? 'pause' : 'play',
+      tToggle: () => this.setState(s => ({ running: !s.running })),
+      tReset: () => this.setState({ running: false, sw: 0, left: total }),
+      tHist: [['Prepare release notes', '13:10 – 13:35 · Aelys v1', '25m', '#F06A58'], ['Review the new interface', '11:00 – 11:50 · Aelys v1', '50m', '#F06A58'], ['Break', '10:55 – 11:00', '5m', '#14966C'], ['Thesis outline', 'Yesterday · Thesis', '1h 30m', '#2F6FE4']].map(([t, w, d, c], i) => ({ t, w, d, c, bt: i ? '1px solid #F1EDEA' : '0' })),
+      rules, runs, devs,
+      dev: { a: d0[0], p: d0[1], dur: d0[5], log: d0[6].map(([t, k, c, m]) => ({ t, k, c, m })) },
+    };
+  }
+}
+</script>
+</body>
+</html>

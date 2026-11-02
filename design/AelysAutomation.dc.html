@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="display:flex;flex-direction:column;gap:16px;color:#1C1B22">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px;display:flex;align-items:center;gap:10px;height:52px;padding:0 6px 0 16px;border-radius:16px;background:#fff;border:1px solid #EDE8E3"><i class="icon-sparkles" style="color:#6A4CF2;font-size:18px"></i><input value="{{ ask }}" onChange="{{ onAsk }}" onKeyDown="{{ onAskKey }}" placeholder="{{ askPh }}" aria-label="Describe a rule" style="flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:#1C1B22"><span onClick="{{ submitAsk }}" role="button" aria-label="Create rule" style="width:40px;height:40px;border-radius:50%;background:#6A4CF2;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer"><i class="icon-arrow-right"></i></span></div>
+    <sc-if value="{{ inUse }}"><span onClick="{{ toggleGuide }}" role="button" tabindex="0" style="height:44px;padding:0 14px;border-radius:12px;background:#fff;border:1px solid #EDE8E3;font-weight:500;display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap" style-hover="background:#FAF7F4"><i class="icon-circle-help"></i>{{ guideBtn }}</span></sc-if>
+  </div>
+
+  <sc-if value="{{ review }}">
+    <div style="padding:18px;border-radius:20px;background:#fff;border:1.5px solid #D6CCF8;box-shadow:0 10px 30px rgba(106,76,242,.08);display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#5132D6"><i class="icon-sparkles"></i>Review before saving</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px"><span style="font-weight:600;color:#625D69">When</span><span style="height:32px;padding:0 10px;border-radius:10px;background:#E4EEFD;color:#1F55B8;display:flex;align-items:center;gap:6px;font-weight:500"><i class="icon-mail"></i>Email from a bank</span><i class="icon-arrow-right" style="color:#8C869A"></i><span style="font-weight:600;color:#625D69">Then</span><span style="height:32px;padding:0 10px;border-radius:10px;background:#EEE8FD;color:#5132D6;display:flex;align-items:center;gap:6px;font-weight:500"><i class="icon-square-check"></i>Create task · due in 3 days</span></div>
+      <div style="font-size:13px;color:#625D69">Dry run on the last 30 days: 2 tasks would be created. Policy: read inbox only.</div>
+      <div style="display:flex;gap:8px"><span onClick="{{ saveRule }}" role="button" style="height:40px;padding:0 16px;border-radius:12px;background:#6A4CF2;color:#fff;font-weight:600;display:flex;align-items:center;cursor:pointer">Save rule</span><span onClick="{{ cancelReview }}" role="button" style="height:40px;padding:0 14px;border-radius:12px;background:#F7F4F1;font-weight:500;display:flex;align-items:center;cursor:pointer">Cancel</span></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ guide }}">
+    <div style="padding:{{ gPad }};border-radius:24px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;gap:14px;align-items:flex-start"><span style="width:48px;height:48px;flex:none;border-radius:14px;background:#DCF5EC;color:#14966C;display:flex;align-items:center;justify-content:center;font-size:22px"><i class="icon-workflow"></i></span><div style="flex:1"><div style="font-size:20px;line-height:28px;font-weight:600">Let Aelys handle the routine</div><div style="color:#625D69;margin-top:2px">A rule watches for something and then does one thing for you. Nothing runs until you've reviewed it.</div></div></div>
+      <div style="display:grid;grid-template-columns:{{ stepCols }};gap:10px">
+        <sc-for list="{{ steps }}" as="s" hint-placeholder-count="3"><div style="padding:14px;border-radius:16px;background:#F7F4F1;display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:center;gap:8px"><span style="width:24px;height:24px;border-radius:8px;background:#1C1B22;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ s.n }}</span><span style="font-weight:600">{{ s.t }}</span></div><div style="font-size:13px;line-height:20px;color:#3A3640">{{ s.d }}</div></div></sc-for>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:16px;font-weight:600">Start from a template</div>
+        <div style="display:grid;grid-template-columns:{{ tplCols }};gap:10px">
+          <sc-for list="{{ tpl }}" as="t" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;border:1px solid #EDE8E3;background:#fff"><div style="flex:1;min-width:0"><div style="font-weight:600">{{ t.name }}</div><div style="font-size:13px;color:#625D69">{{ t.s }}</div></div><span onClick="{{ t.use }}" role="button" tabindex="0" style="height:36px;padding:0 14px;border-radius:10px;background:#EEE8FD;color:#5132D6;font-weight:600;font-size:13px;display:flex;align-items:center;cursor:pointer">{{ t.cta }}</span></div></sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ inUse }}">
+    <div style="display:grid;grid-template-columns:{{ mainCols }};gap:16px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <sc-for list="{{ rules }}" as="r" hint-placeholder-count="3">
+          <div style="padding:16px 18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3;display:flex;flex-direction:column;gap:10px;opacity:{{ r.op }}">
+            <div style="display:flex;align-items:center;gap:12px"><span style="flex:1;font-size:16px;font-weight:600">{{ r.name }}</span><span style="font-size:12px;color:#625D69;white-space:nowrap">{{ r.last }}</span><span onClick="{{ r.toggle }}" role="switch" aria-checked="{{ r.on }}" aria-label="{{ r.name }}" style="width:44px;height:26px;flex:none;border-radius:13px;background:{{ r.trk }};position:relative;cursor:pointer;transition:background .2s"><span style="position:absolute;top:3px;left:{{ r.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span></span></div>
+            <div style="display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap;font-size:13px">
+              <span style="font-weight:600;color:#625D69">When</span><span style="height:30px;padding:0 10px;border-radius:10px;background:{{ r.wSoft }};color:{{ r.wC }};display:flex;align-items:center;gap:6px;font-weight:500"><i class="icon-{{ r.wIcon }}"></i>{{ r.when }}</span>
+              <i class="icon-arrow-right" style="color:#8C869A"></i>
+              <span style="font-weight:600;color:#625D69">Then</span><span style="height:30px;padding:0 10px;border-radius:10px;background:{{ r.tSoft }};color:{{ r.tC }};display:flex;align-items:center;gap:6px;font-weight:500"><i class="icon-{{ r.tIcon }}"></i>{{ r.then }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:18px;border-radius:20px;background:rgba(255,255,255,.88);border:1px solid #EDE8E3">
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px">Recent runs</div>
+        <sc-for list="{{ runs }}" as="r" hint-placeholder-count="4"><div style="display:flex;gap:10px;padding:10px 0;border-top:{{ r.bt }}"><span style="flex:none;width:22px;height:22px;border-radius:50%;background:{{ r.soft }};color:{{ r.c }};display:flex;align-items:center;justify-content:center;font-size:12px"><i class="icon-{{ r.i }}"></i></span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">{{ r.t }}</div><div style="font-size:12px;color:#625D69">{{ r.s }}</div></div></div></sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1000,&quot;height&quot;:800},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { added: [], showGuide: false, review: false, ask: '', rulesOn: {} };
+  renderVals() {
+    const S = this.state, compact = !!this.props.compact;
+    const A = { blue: ['#1F55B8', '#E4EEFD'], red: ['#C9302C', '#FDE8E7'], coral: ['#B8402F', '#FDE6E1'], violet: ['#5132D6', '#EEE8FD'], green: ['#0E7A57', '#DCF5EC'], orange: ['#8A5A00', '#FDF1D9'] };
+    const T = { bills: ['Bills to tasks', 'Email from a bank', 'mail', 'blue', 'Create task · due in 3 days', 'square-check', 'violet', 'Email from a bank → task due in 3 days'], morning: ['Morning plan', 'Every day at 08:00', 'clock', 'orange', 'Day summary to Telegram', 'send', 'blue', 'Every day at 08:00 → summary to Telegram'], meeting: ['Meeting notes', 'Calendar event ends', 'calendar', 'red', 'Note from a template', 'notebook-text', 'orange', 'Event ends → note from a template'], focus: ['Focus after lunch', 'Weekdays at 14:00', 'clock', 'orange', 'Start 50 min focus', 'timer', 'coral', 'Weekdays at 14:00 → 50 min focus'] };
+    const inUse = S.added.length > 0, guide = !inUse || S.showGuide;
+    const add = id => this.setState(s => ({ added: s.added.includes(id) ? s.added : s.added.concat(id), showGuide: false }));
+    const rules = S.added.map(id => { const [name, when, wi, wk, then, ti, tk] = T[id]; const on = S.rulesOn[id] !== false; return { name, when, wIcon: wi, wC: A[wk][0], wSoft: A[wk][1], then, tIcon: ti, tC: A[tk][0], tSoft: A[tk][1], on, last: on ? 'Just added' : 'Paused', op: on ? 1 : .6, trk: on ? '#6A4CF2' : '#CFC9D4', knob: on ? '21px' : '3px', toggle: () => this.setState(s => ({ rulesOn: Object.assign({}, s.rulesOn, { [id]: !on }) })) }; });
+    return {
+      inUse, guide, review: S.review, gPad: compact ? '18px' : '24px',
+      stepCols: compact ? 'minmax(0,1fr)' : 'repeat(3,minmax(0,1fr))', tplCols: compact ? 'minmax(0,1fr)' : 'repeat(2,minmax(0,1fr))', mainCols: compact ? 'minmax(0,1fr)' : 'minmax(0,1fr) 300px',
+      ask: S.ask, onAsk: e => this.setState({ ask: e.target.value }), askPh: compact ? 'Describe a rule…' : 'Describe a rule: "When a bill arrives by email, add a task due in 3 days"',
+      submitAsk: () => this.setState({ review: true }), onAskKey: e => { if (e.key === 'Enter') this.setState({ review: true }); },
+      saveRule: () => { add('bills'); this.setState({ review: false, ask: '' }); }, cancelReview: () => this.setState({ review: false }),
+      toggleGuide: () => this.setState(s => ({ showGuide: !s.showGuide })), guideBtn: S.showGuide ? 'Hide guide' : 'How it works',
+      steps: [['When', 'Pick what starts it: an email, a time, a calendar event or a new task.'], ['Then', 'Pick one action. Aelys only does what the policy allows.'], ['Review', 'See the rule as a sentence and a dry run before it goes live. Pause it any time.']].map(([t, d], i) => ({ n: i + 1, t, d })),
+      tpl: Object.entries(T).map(([id, r]) => ({ name: r[0], s: r[7], cta: S.added.includes(id) ? 'Added' : 'Use', use: () => add(id) })),
+      rules,
+      runs: [['Bills to tasks', 'Created “Pay internet bill” · 09:12', 'check', 'green'], ['Morning plan', 'Sent to Telegram · 08:00', 'check', 'green'], ['Bills to tasks', 'Skipped: task already exists · Yesterday', 'arrow-right', 'orange'], ['Morning plan', 'Blocked by policy: Telegram not connected', 'x', 'red']].map(([t, s, i, k], j) => ({ t, s, i, c: A[k][0], soft: A[k][1], bt: j ? '1px solid #F1EDEA' : '0' })),
+    };
+  }
+}
+</script>
+</body>
+</html>
