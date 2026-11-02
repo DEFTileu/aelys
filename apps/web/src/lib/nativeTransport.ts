@@ -85,6 +85,8 @@ export type NativeAIStreamMessage =
   | { type: 'end' }
   | { type: 'error'; code: string }
 export type NativeChannelFactory = (receive: (message: NativeAIStreamMessage) => void) => unknown
+export type NativeDiagnostic = { http_status: number; cost_estimate?: string | number }
+type DiagnosticChannelFactory = (receive: (message: NativeDiagnostic) => void) => unknown
 
 /** Detection only: IPC must use the official Tauri invoke API, never this global. */
 export function isNativeHost(): boolean {
@@ -102,7 +104,7 @@ export function nativeBackendOrigin(baseUrl: string): string {
   return normalized.replace(/\/api\/v1$/, '')
 }
 
-export function createNativeTransport(invoke: NativeInvoke, makeChannel?: NativeChannelFactory) {
+export function createNativeTransport(invoke: NativeInvoke, makeChannel?: NativeChannelFactory, makeDiagnosticChannel?: DiagnosticChannelFactory) {
   return {
     status: (origin: string) => invoke<NativeStatus>('native_status', { origin }),
     authorizeKeychain: (origin: string, scope: KeychainScope) => invoke<boolean>('native_keychain_authorize', { origin, scope }),
@@ -115,7 +117,9 @@ export function createNativeTransport(invoke: NativeInvoke, makeChannel?: Native
       invoke<NativeStatus>('native_enroll', { origin, token, displayName }),
     resume: (origin: string) => invoke<NativeStatus>('native_resume', { origin }),
     logout: (origin: string) => invoke<NativeStatus>('native_logout', { origin }),
-    operation: <T>(origin: string, operation: NativeOperation) => invoke<T>('native_operation', { origin, operation }),
+    operation: <T>(origin: string, operation: NativeOperation, diagnostic?: (value: NativeDiagnostic) => void) => diagnostic && makeDiagnosticChannel
+      ? invoke<T>('native_operation_diagnostic', { origin, operation, diagnostic: makeDiagnosticChannel(diagnostic) })
+      : invoke<T>('native_operation', { origin, operation }),
     aiEvents: async (origin: string, id: string, requestId: string, receive: (message: NativeAIStreamMessage) => void) => {
       if (!makeChannel) throw new Error('NATIVE_STREAM_UNAVAILABLE')
       const onEvent = makeChannel(receive)
@@ -127,5 +131,5 @@ export function createNativeTransport(invoke: NativeInvoke, makeChannel?: Native
 
 export async function loadNativeTransport() {
   const { invoke, Channel } = await import('@tauri-apps/api/core')
-  return createNativeTransport(invoke as NativeInvoke, (receive) => new Channel<NativeAIStreamMessage>(receive))
+  return createNativeTransport(invoke as NativeInvoke, (receive) => new Channel<NativeAIStreamMessage>(receive), (receive) => new Channel<NativeDiagnostic>(receive))
 }

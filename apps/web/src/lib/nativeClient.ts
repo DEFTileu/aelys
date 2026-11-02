@@ -1,5 +1,6 @@
 import type { NativeOperation, NativeInvoke } from './nativeTransport'
 import { createNativeTransport, NATIVE_SESSION_EXPIRED_EVENT } from './nativeTransport'
+import { diagnostics } from './diagnostics'
 
 type NativeTransport = ReturnType<typeof createNativeTransport>
 
@@ -277,11 +278,18 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
     }
     const operation = operationFor(url, init)
     if (!operation) return jsonResponse({ detail: { code: 'NATIVE_OPERATION_UNSUPPORTED', message: 'This module is not available in the native pilot.' } }, 501)
+    const diagnosticId = diagnostics.begin(method, url.pathname, bodyValue(init?.body))
+    const started = performance.now()
     try {
       if (operation.type === 'ai_run_events') return await nativeAIEventResponse(transport, origin, operation.id, init?.signal)
-      const value = await transport.operation<unknown>(origin, operation)
+      const value = await transport.operation<unknown>(origin, operation, diagnosticId === undefined ? undefined : (native) => diagnostics.update(diagnosticId, { native }))
+      diagnostics.update(diagnosticId, { result: 'OK', duration: Math.round(performance.now() - started) })
       return jsonResponse(value)
-    } catch (error) { return nativeErrorResponse(error, origin, init) }
+    } catch (error) {
+      const code = typeof error === 'string' && /^[A-Z_]+$/.test(error) ? error : 'NATIVE_TRANSPORT_ERROR'
+      diagnostics.update(diagnosticId, { result: code, duration: Math.round(performance.now() - started) })
+      return nativeErrorResponse(error, origin, init)
+    }
   })
 }
 

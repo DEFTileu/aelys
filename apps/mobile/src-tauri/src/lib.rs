@@ -40,6 +40,7 @@ pub fn run() {
             native::native_resume,
             native::native_logout,
             native::native_operation,
+            native::native_operation_diagnostic,
             native::native_ai_events,
             native::native_ai_events_close
         ])

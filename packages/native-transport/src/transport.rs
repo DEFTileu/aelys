@@ -188,7 +188,7 @@ async fn request<T: DeserializeOwned>(
     body: Option<Value>,
     access: Option<&str>,
 ) -> Result<T, String> {
-    request_with_key(client, method, url, body, None, access).await
+    request_with_key(client, method, url, body, None, access, None).await
 }
 async fn request_with_key<T: DeserializeOwned>(
     client: &Client,
@@ -197,6 +197,7 @@ async fn request_with_key<T: DeserializeOwned>(
     body: Option<Value>,
     idempotency_key: Option<&str>,
     access: Option<&str>,
+    diagnostic: Option<&mut Value>,
 ) -> Result<T, String> {
     let mut builder = client.request(method, url);
     if let Some(body) = body {
@@ -209,6 +210,10 @@ async fn request_with_key<T: DeserializeOwned>(
         builder = builder.header("Idempotency-Key", key);
     }
     let mut response = builder.send().await.map_err(|_| err("NETWORK_ERROR"))?;
+    let mut diagnostic = diagnostic;
+    if let Some(data) = diagnostic.as_deref_mut() {
+        *data = json!({"http_status": response.status().as_u16()});
+    }
     if !response.status().is_success() {
         return Err(match response.status() {
             StatusCode::UNAUTHORIZED => err("UNAUTHORIZED"),
@@ -230,6 +235,20 @@ async fn request_with_key<T: DeserializeOwned>(
             return Err(err("RESPONSE_TOO_LARGE"));
         }
         bytes.extend_from_slice(&chunk);
+    }
+    if let Some(data) = diagnostic {
+        if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
+            // Only fixed, non-secret contract fields cross the native boundary.
+            // Never forward arbitrary response text, tokens, or agent content.
+            if let Some(cost) = value.get("cost_estimate").filter(|v| {
+                v.is_number()
+                    || v.as_str().is_some_and(|s| {
+                        s.len() <= 32 && s.chars().all(|c| c.is_ascii_digit() || c == '.')
+                    })
+            }) {
+                data["cost_estimate"] = cost.clone();
+            }
+        }
     }
     serde_json::from_slice(&bytes).map_err(|_| err("INVALID_RESPONSE"))
 }
@@ -2017,13 +2036,39 @@ pub async fn native_operation(
 ) -> Result<Value, String> {
     check_window(&window)?;
     let origin = origin_fn(&origin)?;
-    execute_operation(state.inner(), &origin, operation).await
+    execute_operation_inner(state.inner(), &origin, operation, None).await
 }
 
+#[tauri::command]
+pub async fn native_operation_diagnostic(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    origin: String,
+    operation: Operation,
+    diagnostic: Channel<Value>,
+) -> Result<Value, String> {
+    check_window(&window)?;
+    if !matches!(&operation, Operation::AIRunCreate { .. }) {
+        return Err(err("FORBIDDEN"));
+    }
+    let origin = origin_fn(&origin)?;
+    execute_operation_inner(state.inner(), &origin, operation, Some(diagnostic)).await
+}
+
+#[cfg(test)]
 async fn execute_operation(
     state: &NativeState,
     origin: &str,
     operation: Operation,
+) -> Result<Value, String> {
+    execute_operation_inner(state, origin, operation, None).await
+}
+
+async fn execute_operation_inner(
+    state: &NativeState,
+    origin: &str,
+    operation: Operation,
+    diagnostic: Option<Channel<Value>>,
 ) -> Result<Value, String> {
     if let Operation::ApiBinary { path } = &operation {
         return execute_binary(state, origin, path).await;
@@ -2188,6 +2233,8 @@ async fn execute_operation(
         "task"
     };
     let is_mutation = method != Method::GET;
+    let mut diagnostic_data = Value::Null;
+    let capture = diagnostic.is_some() && method == Method::POST && path == "/api/v1/ai/runs";
     let response: Result<Value, String> = if is_api {
         request_api(
             &client()?,
@@ -2206,9 +2253,20 @@ async fn execute_operation(
             body,
             idempotency_key.as_deref(),
             Some(&access),
+            capture.then_some(&mut diagnostic_data),
         )
         .await
     };
+    if capture
+        && ensure_operation_session(state, origin, &access, true)
+            .await
+            .is_ok()
+        && !diagnostic_data.is_null()
+    {
+        if let Some(channel) = diagnostic {
+            let _ = channel.send(diagnostic_data);
+        }
+    }
     let value = session_response(state, origin, &access, response)
         .await
         .map_err(|e| {
@@ -3013,6 +3071,46 @@ fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ai_diagnostics_show_server_cost_without_exposing_other_fields() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 4096];
+            let _ = stream.read(&mut request).unwrap();
+            let body = r#"{"cost_estimate":0.0,"api_key":"secret-value"}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+        tauri::async_runtime::block_on(async {
+            let mut diagnostic = Value::Null;
+            let response: Value = request_with_key(
+                &client().unwrap(),
+                Method::POST,
+                &url,
+                None,
+                None,
+                None,
+                Some(&mut diagnostic),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                diagnostic,
+                json!({"http_status": 200, "cost_estimate": 0.0})
+            );
+            assert!(sanitize_response("ai-run", response).is_err());
+        });
+        server.join().unwrap();
+    }
     use std::cell::RefCell;
     #[test]
     fn rejected_access_token_clears_only_its_own_session() {

@@ -15,7 +15,7 @@ import { formatDate, greetingForHour } from '../lib/format'
 import { CommandPalette, pages as PALETTE_PAGES } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
 import { WeatherSettingsDialog } from './Weather'
-import { AelysMark } from './AelysMark'
+import { DeveloperLogo } from './DeveloperLogo'
 import { MobileShell } from './MobileShell'
 import './actual-shell.css'
 
@@ -154,7 +154,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
         {mobile && <MobileShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={onToggleTheme} chromeOnly>{null}</MobileShell>}
         {!mobile && <aside className="shell-sidebar" aria-label="Main navigation">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px 24px' }}>
-            <AelysMark />
+            <DeveloperLogo />
             <div>
               <div style={{ fontSize: 16, fontWeight: 600, lineHeight: '24px' }}>Aelys</div>
               <div className="shell-brand-sub" style={{ fontSize: 12, lineHeight: '16px' }}>Personal space</div>
