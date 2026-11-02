@@ -26,3 +26,15 @@
 .actual-utility-module .mod-row + .mod-row { border-color: var(--line, #f0ebe7); }
 .actual-utility-module .mod-row:hover { background: var(--surface-hover, #f7f4f1); }
 .actual-utilities :focus-visible { outline: 2px solid var(--purple, #6a4cf2); outline-offset: 2px; }
+@media (max-width: 700px) {
+  .actual-utilities { padding: 0 16px 24px; }
+  .actual-utilities-bar { align-items: flex-start; flex-wrap: wrap; }
+  .actual-timer-layout { grid-template-columns: minmax(0, 1fr); }
+  .actual-timer .connected-card { padding: 18px 16px; border-radius: 22px; }
+  .actual-utility-filter { align-items: stretch; flex-direction: column; }
+  .actual-utility-filter .mod-field { flex: none; width: 100%; max-width: none; }
+  .actual-utility-filter .segmented-tabs { max-width: 100%; overflow-x: auto; }
+  .actual-utility-module .mod-row { align-items: flex-start; }
+  .actual-utility-module .mod-row__title, .actual-utility-module .mod-row__meta { white-space: normal; overflow-wrap: anywhere; }
+  .actual-utility-module .mod-row__badge { max-width: 35%; height: auto; white-space: normal; overflow-wrap: anywhere; }
+}

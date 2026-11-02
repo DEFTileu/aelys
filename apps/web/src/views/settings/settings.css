@@ -84,7 +84,7 @@
 .st-tile { display: flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--tile-bg); color: var(--tile-ink); }
 .st-nav-text { flex: 1; min-width: 0; }
 .st-nav-text > span { display: block; }
-.st:not(.st-m) .st-nav-desc, .st:not(.st-m) .st-nav-chevron, .st:not(.st-m) .st-back { display: none; }
+.st-nav-desc, .st-nav-chevron, .st-back { display: none !important; }
 .st-nav-empty { padding: 0 12px; color: var(--st-mute); font-size: 13px; }
 .st-tone-profile { --tile-ink: var(--st-acc); --tile-bg: var(--st-violet-bg); }
 .st-tone-alert { --tile-ink: var(--st-red-2); --tile-bg: var(--st-red-bg); }
@@ -267,3 +267,16 @@
 
 /* Compact (phone) layout: a grouped list that opens a panel, as in the design's compact mode. */
 @media (max-width: 900px) { .st { grid-template-columns: 220px minmax(0, 1fr); gap: 16px; padding-inline: 16px; } .st-wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .st { grid-template-columns: minmax(0, 1fr); }
+  .st[data-open='true'] .st-nav, .st[data-open='false'] .st-panel { display: none; }
+  .st-nav-list { border: 1px solid var(--st-line); border-radius: 16px; background: var(--st-card); }
+  .st-nav-item { min-height: 60px; }
+  .st-nav-item[aria-current='page'] { background: transparent; font-weight: 500; }
+  .st-nav-desc, .st-nav-chevron { display: block !important; }
+  .st-nav-desc { overflow: hidden; color: var(--st-mute); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+  .st-nav-chevron { color: var(--st-faint); }
+  .st-back { display: flex !important; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; margin-left: -6px; border-radius: 50%; background: var(--st-solid) !important; }
+  .st-themes .st-theme-art { height: 64px; }
+  .st-wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
