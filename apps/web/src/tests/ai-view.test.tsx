@@ -16,21 +16,22 @@ async function fill(label: string, value: string) {
 }
 beforeEach(async () => {
   vi.resetAllMocks()
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }))
   client.aiProviders.mockResolvedValue([{ id: 'p', kind: 'claude', enabled: true, has_secret: true, model_policy: {} }])
   client.aiConversations.mockResolvedValue([{ id: 'one', title: 'First chat' }, { id: 'two', title: 'Second chat' }])
   client.aiMessages.mockResolvedValue([{ id: 'm', role: 'assistant', content: '<script>hello</script>', created_at: '2026-10-29T12:00:00Z' }])
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
   await act(async () => root.render(<AiView apiStatus="ready" />))
 })
-afterEach(() => { act(() => root.unmount()); document.body.innerHTML = '' })
+afterEach(() => { act(() => root.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals() })
 describe('AI chat workspace', () => {
   it('searches real conversations, opens history on mobile and renders messages safely', async () => {
-    await click('Chats'); expect(host.querySelector('.actual-ai--history-open')).not.toBeNull()
+    await click('Chats'); expect(host.querySelector('.actual-ai__thread')).toBeNull()
     await fill('Search conversations', 'Second')
     expect(host.querySelector('.actual-ai__list')?.textContent).not.toContain('First chat')
     await click('Second chat')
     expect(client.aiMessages).toHaveBeenCalledWith('two')
-    expect(host.querySelector('.actual-ai--history-open')).toBeNull()
+    expect(host.querySelector('.actual-ai__thread')).not.toBeNull()
     expect(host.querySelector('.actual-ai__bubble script')).toBeNull()
     expect(host.querySelector('.actual-ai__bubble')?.textContent).toContain('<script>hello</script>')
     expect(host.querySelector('.actual-ai__bubble time')?.getAttribute('datetime')).toBe('2026-10-29T12:00:00Z')
@@ -38,7 +39,7 @@ describe('AI chat workspace', () => {
   it('uses a useful prompt as an editable draft and starts a new chat', async () => {
     await click('Plan my day')
     expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')?.value).toContain('realistic plan')
-    await click('First chat'); await click('New chat')
+    await click('Chats'); await click('First chat'); await click('Chats'); await click('New chat')
     expect(host.querySelector('.actual-ai__thread-head h2')?.textContent).toBe('New conversation')
     expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')?.value).toContain('realistic plan')
   })
