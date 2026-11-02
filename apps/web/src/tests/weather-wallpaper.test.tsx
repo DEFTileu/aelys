@@ -36,10 +36,10 @@ describe('automatic weather wallpapers', () => {
   it('updates on weather changes, clock transitions and returning from sleep', async () => {
     weather.forecast = forecast(61)
     await act(async () => root!.render(<Wallpaper />))
-    expect(host.textContent).toBe('/wallpapers/rain.jpg')
+    expect(host.textContent).toContain('rainy-boulevard-beneath-snowy-peaks.png')
     weather.forecast = forecast(73, false)
     await act(async () => root!.render(<Wallpaper />))
-    expect(host.textContent).toBe('/wallpapers/night.jpg')
+    expect(host.textContent).toContain('blizzard-over-the-alpine-gondola.png')
     weather.forecast = null
     vi.setSystemTime(new Date(2026, 10, 1, 16, 59, 30))
     await act(async () => window.dispatchEvent(new Event('focus')))
