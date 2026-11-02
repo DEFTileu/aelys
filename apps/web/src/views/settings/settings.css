@@ -205,6 +205,25 @@
 .st-prov-name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .st-prov-model { overflow: hidden; color: var(--st-ink-2); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .st-prov-key { color: var(--st-mute); font-size: 13px; white-space: nowrap; }
+.st-prov-key--ok { color: var(--st-green-ink); font-weight: 600; }
+.st-prov-key--missing { color: var(--st-coral); font-weight: 600; }
+/* Provider picker: one tile per provider, selected tile gets the accent ring. */
+.st-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.st-kind { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 12px; border: 1.5px solid var(--st-line); border-radius: 14px; background: var(--st-field); color: var(--st-ink); text-align: left; cursor: pointer; }
+.st-kind:disabled { opacity: .55; cursor: default; }
+.st-kind[aria-checked='true'] { border-color: var(--st-violet); background: var(--st-violet-bg); }
+.st-kind-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.st-kind-text b { font-size: 14px; font-weight: 600; line-height: 18px; }
+.st-kind-text > span { color: var(--st-mute); font-size: 12px; line-height: 16px; }
+.st-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
+.st-suggest-chip { height: 30px; padding: 0 12px; border-radius: 999px; background: var(--st-badge); color: var(--st-ink-2); font: 500 12px/30px 'JetBrains Mono', ui-monospace, monospace; cursor: pointer; }
+.st-suggest-chip.is-on { background: var(--st-violet); color: #fff; }
+.st-keyrow { display: flex; align-items: center; gap: 8px; }
+.st-keyrow .st-input { flex: 1; min-width: 0; margin-top: 8px; }
+.st-keyrow .st-btn { margin-top: 8px; }
+.st-input[aria-invalid='true'] { box-shadow: 0 0 0 1.5px var(--st-red-2); }
+.st-error { color: var(--st-red); font-size: 13px; line-height: 18px; margin-top: -4px; }
+@media (max-width: 700px) { .st-kinds { grid-template-columns: 1fr; } }
 .st-add { display: flex; align-items: center; gap: 10px; width: 100%; height: 52px; padding: 0 18px !important; color: var(--st-acc); font-weight: 600; }
 .st-form { display: flex; flex-direction: column; gap: 14px; padding: 14px 18px; }
 .st-field-label { display: block; font-weight: 500; }
