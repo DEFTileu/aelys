@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { AIProvider } from '@aelys/shared'
-import { COST_LABEL, EFFORTS, EFFORT_HINT, EFFORT_SHORT, SPEED_LABEL, choiceLabel, formatContext, isReady, modelsFor, providerLabel, supportsThinking, type Capability, type Effort, type ModelChoice } from '../data/aiModels'
-import { Check, ChevronDown, ChevronRight, Search, Sparkles, X } from '../icons'
+import { COST_LABEL, EFFORTS, EFFORT_HINT, EFFORT_SHORT, SPEED_LABEL, choiceLabel, formatContext, isReady, modelName, modelsFor, providerLabel, supportsThinking, type Capability, type Effort, type ModelChoice } from '../data/aiModels'
+import { Brain, Check, ChevronDown, ChevronRight, Search, Sparkles, X } from '../icons'
 import { navigate } from '../lib/router'
 import './model-picker.css'
 
@@ -22,9 +22,11 @@ export interface ModelPickerProps {
   readonly isDefault?: boolean
   readonly onToggleDefault?: (on: boolean) => void
   readonly label?: string
+  /** Model name only in the trigger (phone header). */
+  readonly short?: boolean
 }
 
-export function ModelPicker({ providers, value, onChange, compact = false, disabled, showAuto = !compact, showEffort = false, isDefault, onToggleDefault, label = 'Model' }: ModelPickerProps) {
+export function ModelPicker({ providers, value, onChange, compact = false, disabled, showAuto = !compact, showEffort = false, short = false, isDefault, onToggleDefault, label = 'Model' }: ModelPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const root = useRef<HTMLDivElement>(null)
@@ -45,13 +47,13 @@ export function ModelPicker({ providers, value, onChange, compact = false, disab
   const pick = (choice: ModelChoice) => { onChange(choice); if (compact) setOpen(false) }
   const triggerText = compact
     ? current ? `${providerLabel(current.kind)} · ${value.model || String(current.model_policy?.default_model ?? 'default')}` : 'Not selected'
-    : current ? choiceLabel(current, value) : 'Choose a model'
+    : current ? (short && value.model !== 'auto' ? modelName(current, value.model) : choiceLabel(current, value)) : 'Choose a model'
 
   return <div className={`model-picker${compact ? ' model-picker--compact' : ''}`} ref={root}>
     <button type="button" className="model-picker__trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={label} disabled={disabled} onClick={() => setOpen(!open)}>
       {!compact && <span className="model-picker__mark" aria-hidden="true">{value.model === 'auto' ? <Sparkles size={12} /> : providerLabel(current?.kind ?? '?').charAt(0)}</span>}
       <span className="model-picker__text">{triggerText}</span>
-      {thinking && effort !== 'off' && <span className="model-picker__effort" title="Reasoning effort">{EFFORT_SHORT[effort]}</span>}
+      {thinking && effort !== 'off' && <span className="model-picker__effort" title="Reasoning effort"><Brain size={12} aria-hidden="true" />{EFFORT_SHORT[effort]}</span>}
       <ChevronDown size={14} aria-hidden="true" />
     </button>
     {open && <div className="model-picker__popover" role="dialog" aria-label="Choose a model" id={id}>

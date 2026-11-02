@@ -63,7 +63,7 @@ describe('AI chat model picker and run states', () => {
     await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!)
     expect(client.createAIRun.mock.calls[0]![0].routing).toEqual({ provider_id: 'p1', provider: 'claude', model: 'claude-sonnet-4-5', effort: 'high' })
     expect(JSON.parse(localStorage.getItem('aelys.chat.c1.model')!).model).toBe('claude-sonnet-4-5')
-    expect(host.querySelector('.actual-ai__meta')!.textContent).toBe('Claude · claude-sonnet-4-5 · 0.0s · ≈$0.0042 · high effort')
+    expect(host.querySelector('.actual-ai__meta')!.textContent).toBe('Claude · Sonnet 4.5 · 0.0s · high effort')
   })
 
   it('does not offer reasoning effort for models without thinking', async () => {
