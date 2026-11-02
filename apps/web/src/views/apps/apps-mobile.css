@@ -1,0 +1,36 @@
+/* Apps on phones. Every rule is scoped under .apps-m; the desktop styles are in ../apps.css. */
+.apps.apps-m { padding: 0 16px 24px; gap: 20px; }
+.apps-m .apps-search { max-width: none; height: 48px; }
+.apps-m .apps-search input { font-size: 16px; }
+.apps-m .apps-group { gap: 12px; }
+.apps-m .apps-group__head h2 { font-size: 17px; }
+.apps-m .apps-group__head span { font-size: 14px; }
+
+.apps-m .apps-m__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.apps-m .apps-m__tile { position: relative; min-height: 132px; padding: 12px 12px 14px; border-radius: 20px; background: var(--surface); border: 1px solid var(--edge); display: flex; flex-direction: column; gap: 6px; }
+.apps-m .apps-m__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.apps-m .apps-m__top .apps-card__icon { width: 44px; height: 44px; }
+.apps-m .apps-m__top .apps-pin { width: 44px; height: 44px; margin: -6px -6px 0 0; }
+.apps-m .apps-m__open { all: unset; margin-top: 4px; font-size: 15px; line-height: 20px; font-weight: 600; cursor: pointer; color: var(--ink); }
+.apps-m .apps-m__open::after { content: ''; position: absolute; inset: 0; border-radius: 20px; }
+.apps-m .apps-m__open:disabled { cursor: default; }
+.apps-m .apps-m__desc { font-size: 12px; line-height: 17px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.apps-m .apps-card--soon .apps-m__top .apps-card__icon, .apps-m .apps-card--soon .apps-m__open { opacity: .6; }
+.apps-m .apps-soon { padding: 3px 9px; }
+
+.apps-m .apps-add { height: 44px; padding: 0 14px; }
+.apps-m .apps-group__head--sites { flex-wrap: wrap; }
+.apps-m .apps-site { min-height: 60px; }
+.apps-m .apps-site__edit { width: 44px; height: 44px; }
+
+.apps-m .apps-m__backdrop { position: fixed; inset: 0; z-index: 49; background: rgba(20, 10, 30, .35); }
+.apps-m .apps-m__sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--surface-solid); box-shadow: 0 -12px 40px rgba(20, 10, 30, .18); }
+.apps-m .apps-m__sheet .apps-form { border: 0; padding: 0; }
+.apps-m .apps-m__sheet .apps-form__fields { grid-template-columns: minmax(0, 1fr); }
+.apps-m .apps-m__sheet .apps-form__fields input { height: 48px; font-size: 16px; }
+.apps-m .apps-m__sheet .apps-form__actions button { height: 44px; }
+
+.apps-m .apps-back button { height: 44px; }
+.apps-m .app-panel { max-width: none; }
+.apps-m .app-field { height: 48px; font-size: 16px; }
+.apps-m .app-btn { height: 44px; }

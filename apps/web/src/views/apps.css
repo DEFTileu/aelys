@@ -105,8 +105,3 @@
 .app-orb[data-grown='true'] { transform: scale(1); }
 .app-orb small { font-size: 28px; }
 @media (prefers-reduced-motion: reduce) { .app-orb, .apps-card { transition: none; } }
-@media (max-width: 700px) {
-  .apps { padding: 0 16px 24px; }
-  .apps-search kbd { display: none; }
-  .apps-form__fields { grid-template-columns: minmax(0, 1fr); }
-}

@@ -1,0 +1,40 @@
+/* Messages on phones. Every rule is scoped under .msg-m; the desktop layout lives in ../messages.css. */
+.msg-page.msg-m { padding: 0 16px 24px; }
+.msg-m .msg__notice { margin: 0 0 12px; }
+.msg-m .msg__tabs span, .msg-m .msg__search { height: 44px; }
+.msg-m .msg__tabs span { font-size: 15px; }
+.msg-m .msg__search { font-size: 16px; }
+.msg-m .msg__search input { font-size: 16px; }
+
+.msg-m .msg-m__list { display: flex; flex-direction: column; gap: 12px; }
+.msg-m .msg-m__head { display: flex; flex-direction: column; gap: 10px; }
+.msg-m .msg-m__rows { display: flex; flex-direction: column; gap: 2px; }
+.msg-m .msg-m__row { all: unset; box-sizing: border-box; width: 100%; min-height: 68px; display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 16px; cursor: pointer; }
+.msg-m .msg-m__row:active, .msg-m .msg-m__row.is-on { background: #EEE8FD; }
+.msg-m .msg-m__row:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 2px; }
+.msg-m .msg-m__row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.msg-m .msg-m__row-top, .msg-m .msg-m__row-bottom { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.msg-m .msg-m__row-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; color: var(--pg-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg-m .msg-m__row-time { flex: none; font-size: 12px; color: var(--pg-mute); }
+.msg-m .msg-m__row-last { flex: 1; min-width: 0; font-size: 14px; color: var(--pg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.msg-m .msg__empty { padding: 40px 16px; }
+
+/* One conversation: a full-height layer over the shell; the dock stays above the keyboard as the last flex child. */
+.msg-m .msg-m__chat { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: #F7F3EF; color: var(--pg-ink); }
+:root[data-theme='dark'] .msg-m .msg-m__chat { background: #2A2733; }
+.msg-m .msg-m__bar { flex: none; display: flex; align-items: center; gap: 10px; min-height: 60px; padding: calc(env(safe-area-inset-top) + 6px) 12px 6px 6px; background: var(--pg-card); border-bottom: 1px solid var(--pg-line); box-sizing: border-box; }
+.msg-m .msg-m__back { width: 44px; height: 44px; flex: none; border: 0; border-radius: 50%; background: transparent; color: var(--pg-ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.msg-m .msg-m__bar-text { flex: 1; min-width: 0; }
+.msg-m .msg__lines { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 14px; justify-content: flex-start; }
+.msg-m .msg__bubble { max-width: 80%; font-size: 16px; line-height: 22px; }
+.msg-m .msg__empty--chat { margin: auto; }
+.msg-m .msg-m__dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+.msg-m .msg__draft { padding: 12px; border-radius: 16px; }
+.msg-m .msg__draft-text { font-size: 15px; }
+.msg-m .msg__draft-actions { gap: 6px; }
+.msg-m .msg__btn { height: 44px; padding: 0 14px; font-size: 14px; }
+.msg-m .msg__btn--primary { padding: 0 18px; }
+.msg-m .msg__btn--ghost { padding: 0 10px; }
+.msg-m .msg__composer { height: 52px; padding: 0 6px 0 14px; }
+.msg-m .msg__composer input { font-size: 16px; }
+.msg-m .msg__send { width: 44px; height: 44px; }
