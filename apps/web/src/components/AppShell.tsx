@@ -61,7 +61,7 @@ const NAV: NavItem[] = [
   { id: 'mail', label: 'Mail', icon: Mail, route: '/mail' },
   { id: 'finance', label: 'Finances', icon: Wallet, route: '/finance' },
   { id: 'kb', label: 'Knowledge base', icon: BookOpen, route: '/knowledge' },
-  { id: 'utilities', label: 'Apps', icon: LayoutGrid, route: '/utilities' },
+  { id: 'utilities', label: 'Apps', icon: LayoutGrid, route: '/apps' },
 ]
 
 // Hero copy from the reference; `dated` pages show today's date above the title.
@@ -75,7 +75,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
   '/finance': { title: 'Finances', sub: 'Record spending in seconds and see where it goes.', dated: true },
   '/knowledge': { title: 'Knowledge base', sub: 'Docs and references for everything you build.', dated: true },
   '/settings': { title: 'Settings', sub: 'Make Aelys your own' },
-  '/utilities': { title: 'Apps', sub: 'Small tools for everything else. Pin the ones you use.' },
+  '/apps': { title: 'Apps', sub: 'Small tools for everything else. Pin the ones you use.' },
   '/automation': { title: 'Automation', sub: 'When this happens, Aelys does that.' },
   '/messages': { title: 'Messages', sub: 'Telegram chats. Aelys drafts, you approve.' },
   '/widgets': { title: 'Customize home' },
