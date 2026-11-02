@@ -1,3 +1,4 @@
+import { useLayoutMode } from './lib/useLayoutMode'
 import { useTheme } from './lib/theme'
 import { Component, lazy, Suspense, useEffect, useState, type ReactElement, type ReactNode } from 'react'
 import { AppShell } from './components/AppShell'
@@ -62,6 +63,7 @@ function useApiStatus(): ApiStatus {
 }
 
 export default function App() {
+  useLayoutMode()
   const route = useRoute()
   const [theme, toggleTheme] = useTheme()
   // The gallery contains only isolated examples. It never mounts owner/session

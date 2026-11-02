@@ -50,23 +50,22 @@
 .utilities-code-grid textarea{min-height:160px}
 }
 
-@media(max-width:700px){.utilities-caption{padding-bottom:16px;flex-wrap:wrap;gap:8px}
-.utilities-layout{display:block;padding-inline:16px}
-.utilities-layout .actual-settings-nav{border:1px solid var(--glass-edge);border-radius:20px;padding:8px;background:var(--glass-bg);box-shadow:var(--shadow)}
-.utilities-layout .actual-settings-nav nav{display:flex;flex-wrap:wrap;gap:4px;padding:0;border:0;box-shadow:none;background:transparent}
-.utilities-layout .actual-settings-nav nav button{width:auto;min-height:44px;padding:8px 10px;gap:8px;flex:1 1 auto}
-.utilities-layout .actual-settings-nav nav button[aria-current=page]{background:var(--purple-soft);color:var(--purple-deep)}
-.utilities-layout .actual-settings-nav nav small{display:none}
-.utilities-layout .actual-settings-search{display:none}
-.utilities-panel{padding:18px 16px;border-radius:22px}
-.utilities-panel-heading{margin-bottom:20px}
-.utilities-password-result{padding:14px}
-.utilities-password-line input{font-size:18px;line-height:30px}
-.utilities-result-actions .button{flex:1;min-height:44px;padding-inline:10px}
-.utilities-code-grid textarea{font-size:16px}
-.utilities-local-note{align-items:flex-start}
-.utilities-local-note svg{flex:none;margin-top:2px}
-}
+[data-layout='mobile'] .utilities-caption { padding-bottom:16px;flex-wrap:wrap;gap:8px }
+[data-layout='mobile'] .utilities-layout { display:block;padding-inline:16px }
+[data-layout='mobile'] .utilities-layout .actual-settings-nav { border:1px solid var(--glass-edge);border-radius:20px;padding:8px;background:var(--glass-bg);box-shadow:var(--shadow) }
+[data-layout='mobile'] .utilities-layout .actual-settings-nav nav { display:flex;flex-wrap:wrap;gap:4px;padding:0;border:0;box-shadow:none;background:transparent }
+[data-layout='mobile'] .utilities-layout .actual-settings-nav nav button { width:auto;min-height:44px;padding:8px 10px;gap:8px;flex:1 1 auto }
+[data-layout='mobile'] .utilities-layout .actual-settings-nav nav button[aria-current=page] { background:var(--purple-soft);color:var(--purple-deep) }
+[data-layout='mobile'] .utilities-layout .actual-settings-nav nav small { display:none }
+[data-layout='mobile'] .utilities-layout .actual-settings-search { display:none }
+[data-layout='mobile'] .utilities-panel { padding:18px 16px;border-radius:22px }
+[data-layout='mobile'] .utilities-panel-heading { margin-bottom:20px }
+[data-layout='mobile'] .utilities-password-result { padding:14px }
+[data-layout='mobile'] .utilities-password-line input { font-size:18px;line-height:30px }
+[data-layout='mobile'] .utilities-result-actions .button { flex:1;min-height:44px;padding-inline:10px }
+[data-layout='mobile'] .utilities-code-grid textarea { font-size:16px }
+[data-layout='mobile'] .utilities-local-note { align-items:flex-start }
+[data-layout='mobile'] .utilities-local-note svg { flex:none;margin-top:2px }
 
 @media(min-width:701px){.utilities-option{min-height:54px}
 .utilities-length{padding:20px 0 14px}

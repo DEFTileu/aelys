@@ -63,4 +63,5 @@
 .styled-select .aelys-select-trigger { min-height:40px; height:40px; border-color:var(--line); background:var(--surface-soft); border-radius:12px; padding:0 12px; font-size:13px; }
 .aelys-select-list { z-index:1000; margin:0; bottom:auto; right:auto; font-family:var(--font-ui); color:var(--ink); }
 .aelys-select-list[data-placement='above'] { bottom:auto; }
-@media(max-width:700px) { .aelys-select-option { min-height:44px; } .styled-select .aelys-select-trigger { min-height:44px; height:44px; } }
+[data-layout='mobile'] .aelys-select-option { min-height:44px; }
+[data-layout='mobile'] .styled-select .aelys-select-trigger { min-height:44px; height:44px; }
