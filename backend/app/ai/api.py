@@ -89,6 +89,28 @@ class RunIn(BaseModel):
     idempotency_key: str
     knowledge: KnowledgeScope | None = None
     attachment_ids: list[str] = Field(default_factory=list, max_length=5)
+class RunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    owner_id: str
+    conversation_id: str
+    prompt_message_id: str | None
+    provider_id: str | None
+    provider: str
+    model: str
+    status: str
+    idempotency_key: str | None
+    request_fingerprint: str | None
+    tool_scope_json: dict
+    token_counts: dict
+    cost_estimate: Decimal
+    started_at: datetime | None
+    completed_at: datetime | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
 class ConversationPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: int | None = Field(default=None, ge=1)
@@ -433,7 +455,7 @@ async def update_message(message_id: str, body: MessagePatch, principal=Depends(
     message.feedback = body.feedback
     await db.commit()
     return _message_out(message)
-@router.post("/ai/runs")
+@router.post("/ai/runs", response_model=RunOut)
 async def create_run(body:RunIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; convo=await db.get(AIConversation,body.conversation_id)
     if not convo or convo.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Conversation not found"})
@@ -570,7 +592,7 @@ async def reject_action(action_id: str, principal=Depends(current_principal), db
         raise HTTPException(409, detail={"code": "ACTION_NOT_PENDING", "message": f"This action is already {action.status}"})
     return _action_out(action)
 
-@router.get("/ai/runs/{run_id}")
+@router.get("/ai/runs/{run_id}", response_model=RunOut)
 async def get_run(run_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await db.get(AIRun,run_id)
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Run not found"})
@@ -819,7 +841,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
         finally:
             _active_cancellations.pop(run_id,None)
     return StreamingResponse(stream(),media_type="text/event-stream")
-@router.post("/ai/runs/{run_id}/cancel")
+@router.post("/ai/runs/{run_id}/cancel", response_model=RunOut)
 async def cancel_run(run_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await db.get(AIRun,run_id)
     if not item or item.owner_id!=user.id: raise HTTPException(404,detail={"code":"NOT_FOUND","message":"Run not found"})

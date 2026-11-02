@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 
 import pytest
 from app.ai import api as ai_api
@@ -10,6 +11,36 @@ from app.core.models import AIRun
 from app.main import app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
+
+@pytest.mark.asyncio
+async def test_run_responses_preserve_decimal_cost_as_string(ai_test_engine, monkeypatch):
+    session_factory = async_sessionmaker(ai_test_engine, expire_on_commit=False)
+    monkeypatch.setattr(db, "SessionLocal", session_factory)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        bootstrap = await client.post(
+            "/api/v1/auth/bootstrap",
+            json={"email": "run-contract@example.com", "password": "correct horse battery staple"},
+        )
+        headers = {"Authorization": f"Bearer {bootstrap.json()['access_token']}"}
+        conversation = await client.post("/api/v1/ai/conversations", headers=headers, json={})
+        payload = {"conversation_id": conversation.json()["id"], "message": "hello", "idempotency_key": "contract-test"}
+        created = await client.post("/api/v1/ai/runs", headers=headers, json=payload)
+        assert created.status_code == 200
+        assert isinstance(created.json()["cost_estimate"], str)
+        run_id = created.json()["id"]
+        async with session_factory() as session:
+            run = await session.get(AIRun, run_id)
+            assert run is not None
+            run.cost_estimate = Decimal("123.12345678")
+            await session.commit()
+        replay = await client.post("/api/v1/ai/runs", headers=headers, json=payload)
+        fetched = await client.get(f"/api/v1/ai/runs/{run_id}", headers=headers)
+        cancelled = await client.post(f"/api/v1/ai/runs/{run_id}/cancel", headers=headers)
+        for response in (replay, fetched, cancelled):
+            assert response.status_code == 200
+            assert response.json()["id"] == run_id
+            assert response.json()["cost_estimate"] == "123.12345678"
 
 
 class BlockingTransport:
