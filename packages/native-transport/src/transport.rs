@@ -1042,6 +1042,13 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "ai/providers/*/probe"),
     ("PUT", "ai/providers/*/secret"),
     ("DELETE", "ai/providers/*/secret"),
+    ("PATCH", "ai/conversations/*"),
+    ("GET", "ai/conversations/*/actions"),
+    ("POST", "ai/actions/*/approve"),
+    ("POST", "ai/actions/*/reject"),
+    ("POST", "ai/attachments"),
+    ("DELETE", "ai/attachments/*"),
+    ("PATCH", "ai/messages/*"),
     ("GET", "calendar/google/status"),
     ("POST", "calendar/google/connect"),
     ("POST", "calendar/google/sync"),
@@ -2585,6 +2592,14 @@ struct AIConversation {
     project_id: Option<String>,
     title: String,
     version: u64,
+    #[serde(default)]
+    pinned: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    preview: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    usage: Option<Value>,
 }
 #[derive(Serialize, Deserialize)]
 struct AIMessage {
@@ -2595,6 +2610,10 @@ struct AIMessage {
     #[serde(default, alias = "source_refs")]
     source_refs_json: Vec<Value>,
     created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    feedback: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attachments: Option<Vec<Value>>,
 }
 #[derive(Serialize, Deserialize)]
 struct AIRun {
@@ -2658,6 +2677,8 @@ pub struct AIRunInput {
     #[serde(default)]
     tool_scope: HashMap<String, Value>,
     idempotency_key: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attachment_ids: Vec<String>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -2681,6 +2702,8 @@ fn valid_ai_run(value: &AIRunInput) -> bool {
         && value.idempotency_key.len() <= 150
         && value.routing.len() <= 20
         && value.tool_scope.len() <= 20
+        && value.attachment_ids.len() <= 5
+        && value.attachment_ids.iter().all(|id| valid_id(id))
 }
 fn valid_ai_conversation(value: &AIConversationInput) -> bool {
     value.knowledge.as_ref().is_none_or(valid_knowledge_scope)
@@ -3919,6 +3942,45 @@ mod tests {
         assert!(!binary_allowed("/api/v1/integrations/telegram/messages/abc/media/x"));
         assert!(!binary_allowed("/api/v1/me"));
         assert!(!binary_allowed("/api/v1/integrations/telegram/messages/../media"));
+    }
+
+    #[test]
+    fn ai_chat_routes_are_allowlisted_and_typed_fields_survive() {
+        assert!(api_allowed("PATCH", "/api/v1/ai/conversations/abc123"));
+        assert!(api_allowed("GET", "/api/v1/ai/conversations/abc123/actions"));
+        assert!(api_allowed("POST", "/api/v1/ai/actions/abc123/approve"));
+        assert!(api_allowed("POST", "/api/v1/ai/actions/abc123/reject"));
+        assert!(api_allowed("POST", "/api/v1/ai/attachments"));
+        assert!(api_allowed("DELETE", "/api/v1/ai/attachments/abc123"));
+        assert!(api_allowed("PATCH", "/api/v1/ai/messages/abc123"));
+        assert!(!api_allowed("DELETE", "/api/v1/ai/conversations/abc123"));
+        assert!(!api_allowed("POST", "/api/v1/ai/actions/abc123/execute"));
+        assert!(!api_allowed("GET", "/api/v1/ai/attachments/abc123"));
+        let conversation = sanitize_response("ai-conversations", json!([{
+            "id": "c1", "owner_id": "o", "project_id": null, "title": "T", "version": 2, "tool_scope_json": {"scopes": ["tasks.read"]},
+            "pinned": true, "updated_at": "2026-11-02T10:00:00Z", "preview": "Hi", "unknown": 1,
+            "usage": {"input_tokens": 3, "output_tokens": 4, "estimated_cost": "0.1"}
+        }])).unwrap();
+        assert_eq!(conversation[0]["pinned"], true);
+        assert_eq!(conversation[0]["usage"]["output_tokens"], 4);
+        assert!(conversation[0].get("unknown").is_none());
+        let messages = sanitize_response("ai-messages", json!([
+            {"id": "m1", "conversation_id": "c1", "role": "user", "content": "x", "created_at": "t", "feedback": null, "attachments": [{"name": "a.txt", "size": 3}]},
+            {"id": "m2", "conversation_id": "c1", "role": "assistant", "content": "y", "created_at": "t", "feedback": "up"}
+        ])).unwrap();
+        assert_eq!(messages[0]["attachments"][0]["name"], "a.txt");
+        assert_eq!(messages[1]["feedback"], "up");
+        let run: Operation = serde_json::from_value(json!({
+            "type": "ai_run_create",
+            "run": {"conversation_id": "c1", "message": "Hi", "idempotency_key": "k", "attachment_ids": ["a1", "a2"]}
+        })).unwrap();
+        let (_, _, body) = route(run).unwrap();
+        assert_eq!(body.unwrap()["attachment_ids"][1], "a2");
+        let too_many: Operation = serde_json::from_value(json!({
+            "type": "ai_run_create",
+            "run": {"conversation_id": "c1", "message": "Hi", "idempotency_key": "k", "attachment_ids": ["1", "2", "3", "4", "5", "6"]}
+        })).unwrap();
+        assert!(route(too_many).is_err());
     }
 
     #[test]
