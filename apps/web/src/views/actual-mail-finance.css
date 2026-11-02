@@ -300,3 +300,16 @@
   .mobile-shell:has(.actual-mail) .mobile-shell__fab { display: none; }
 }
 @media (max-width: 700px) { .actual-reader-open .actual-fab { display: none; } }
+/* Later desktop rules set the reader to display:flex; on phones only one pane shows at a time (list, or the reader once a message is open). */
+@media (max-width: 700px) {
+  .actual-mail-grid .actual-mail-reader { display: none; }
+  .actual-mail-grid.actual-reader-open .actual-mail-reader { display: flex; }
+  .actual-mail-grid.actual-reader-open .actual-mail-list { display: none; }
+}
+/* In the phone column layout the cards must span the width (align-items: start from the desktop grid shrank them). */
+@media (max-width: 700px) { .actual-finance-columns { align-items: stretch; } .actual-finance-columns > * { min-width: 0; } }
+/* The search label is already the pill: the input inside it must not draw a second box. */
+@media (max-width: 700px) {
+  .actual-mail-list .actual-search input { border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+  .actual-mail-list > .actual-mobile-mail-actions { justify-content: flex-end; margin-top: 8px; }
+}
