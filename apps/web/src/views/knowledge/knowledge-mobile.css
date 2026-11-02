@@ -1,0 +1,13 @@
+/* Mobile Knowledge: document list, then one document at a time with a Back button. */
+.knowledge-m { display: grid; gap: 12px; padding: 4px 16px 24px; min-width: 0; color: var(--ink); }
+.knowledge-m button { min-height: 44px; }
+.knowledge-m-head { display: flex; justify-content: flex-end; }
+.knowledge-m .knowledge-card { border-radius: 22px; }
+.knowledge-m .knowledge-list { min-height: 0; }
+.knowledge-m .knowledge-search input { font-size: 16px; }
+.knowledge-m .knowledge-item { min-height: 56px; padding: 12px 10px; }
+.knowledge-m .knowledge-reader { min-height: 70vh; }
+.knowledge-m .knowledge-reader-head { flex-wrap: wrap; }
+.knowledge-m .knowledge-back { display: inline-flex; }
+.knowledge-m .knowledge-content { padding: 22px 20px; }
+.knowledge-m .knowledge-content h1 { font-size: 24px; line-height: 32px; }

@@ -1,0 +1,32 @@
+/* Mobile Calendar: week strip, day agenda, and a bottom sheet for the event form. Desktop rules stay in actual-calendar.css. */
+.calendar-m { display: grid; gap: 12px; padding: 4px 16px 96px; min-width: 0; color: var(--ink); }
+.calendar-m button { min-height: 44px; font: inherit; cursor: pointer; }
+.calendar-m-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.calendar-m-head h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.6px; }
+.calendar-m-nav { display: flex; align-items: center; gap: 4px; color: var(--ink-soft); font-size: 14px; }
+.calendar-m-nav button { width: 44px; padding: 0; border: 0; border-radius: 12px; background: var(--surface-solid); color: var(--ink); }
+.calendar-m-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.calendar-m-strip button { position: relative; display: grid; justify-items: center; gap: 2px; min-height: 60px; padding: 6px 0; border: 0; border-radius: 14px; background: var(--surface-solid); color: var(--ink); font-size: 12px; }
+.calendar-m-strip button b { font-size: 16px; font-weight: 600; }
+.calendar-m-strip button[aria-pressed='true'] { background: var(--purple); color: #fff; }
+.calendar-m-strip button.calendar-m-today b { color: var(--purple-deep); }
+.calendar-m-strip button[aria-pressed='true'].calendar-m-today b { color: #fff; }
+.calendar-m-strip i { position: absolute; bottom: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--purple); }
+.calendar-m-strip button[aria-pressed='true'] i { background: #fff; }
+.calendar-m-agenda { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface-solid); box-shadow: var(--shadow); }
+.calendar-m-agenda h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.calendar-m-agenda ul { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.calendar-m-event { width: 100%; display: grid; gap: 2px; padding: 10px 12px; border: 0; border-left: 3px solid var(--purple); border-radius: 12px; background: var(--purple-soft); color: var(--ink); text-align: left; }
+.calendar-m-event time { color: var(--muted); font-size: 12px; }
+.calendar-m-event strong { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.calendar-m-empty { margin: 0; color: var(--muted); font-size: 14px; }
+.calendar-m-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 5; width: 56px; height: 56px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--purple); color: #fff; box-shadow: 0 10px 24px rgba(81, 50, 214, .35); }
+
+.calendar-m-sheet-layer { position: fixed; inset: 0; z-index: 40; }
+.calendar-m-scrim { position: absolute; inset: 0; background: rgba(20, 14, 30, .35); }
+.calendar-m-sheet { position: absolute; left: 0; right: 0; bottom: 0; display: grid; gap: 12px; max-height: 86vh; overflow-y: auto; padding: 10px 16px calc(24px + env(safe-area-inset-bottom)); border-radius: 28px 28px 0 0; background: var(--surface-solid); box-shadow: var(--shadow); }
+.calendar-m-sheet::before { content: ''; justify-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--line-strong); }
+.calendar-m .cl-form { display: grid; gap: 10px; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.calendar-m .cl-form input { width: 100%; height: 44px; font-size: 16px; }
+.calendar-m .cl-form .cl-btn { min-height: 44px; justify-content: center; }
+.calendar-m section[aria-label='Event reminders'] p { font-size: 14px; }

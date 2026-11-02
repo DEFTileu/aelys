@@ -107,50 +107,5 @@
 .cl-month-grid button small { margin-top: 4px; padding: 3px 5px; border-radius: 5px; background: #EFEBFD; color: var(--pg-ink); }
 :root[data-theme='dark'] .cl-month-grid button small { background: rgba(139, 108, 240, .22); }
 .cl-month-grid .cl-outside-month { color: #A29DA8; }
-.cl-mobile-agenda { display: none; }
 
 @media (max-width: 1000px) { .cl-layout { grid-template-columns: minmax(0, 1fr); } .cl-side { display: grid; grid-template-columns: 1fr 1fr; } }
-@media (max-width: 700px) {
-  .calendar-live { padding: 0 12px 24px; }
-  .cl-assistant, .cl-assistant-action { display: none; }
-  .cl-week-toolbar { padding: 12px; }
-  .cl-range { flex-basis: 100%; margin: 4px 0 0; order: 3; }
-  .cl-range strong { font-size: 20px; line-height: 28px; }
-  .cl-view-switch { margin-left: auto; }
-  .cl-week { overflow: visible; border: 0; background: transparent; box-shadow: none; }
-  .cl-week-head, .cl-view--week .cl-week-head, .cl-view--day .cl-week-head { grid-template-columns: repeat(7, minmax(0, 1fr)); margin: 0 0 12px; padding: 10px; gap: 3px; border: 1px solid var(--pg-line); border-radius: 22px; background: var(--pg-card); }
-  .cl-week-head > button { height: 64px; border: 0; border-radius: 14px; }
-  .cl-view--week .cl-week-head > button:nth-last-child(-n+2) { display: flex; }
-  .cl-week-head .cl-selected { background: var(--pg-violet); color: #fff; }
-  .cl-week-head .cl-selected .cl-date, .cl-week-head .cl-selected .cl-dn { color: #fff; }
-  .cl-zone, .cl-grid-scroll { display: none; }
-  .cl-layout { display: block; }
-  .cl-side { display: none; }
-  .cl-mobile-agenda { display: block; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--pg-line); border-radius: 22px; background: var(--pg-card); }
-  .cl-mobile-agenda h2 { margin: 0 0 12px; font-size: 16px; line-height: 24px; }
-  .cl-mobile-agenda p { color: var(--pg-mute); font-size: 13px; }
-  .cl-mobile-event { display: flex; gap: 12px; padding: 6px 0; cursor: pointer; }
-  .cl-mobile-event > span { width: 48px; padding-top: 10px; color: var(--pg-mute); font-size: 12px; white-space: nowrap; }
-  .cl-mobile-event > div { flex: 1; min-width: 0; padding: 8px 12px; border-left: 4px solid var(--pg-violet); border-radius: 14px; background: var(--purple-soft); }
-  .cl-mobile-event strong, .cl-mobile-event small { display: block; }
-  .cl-mobile-event strong { font-size: 15px; }
-  .cl-mobile-event small { margin-top: 4px; color: var(--pg-mute); }
-  .cl-month-grid button { min-height: 52px; padding: 4px; }
-  .cl-weekends-toggle { display: none; }
-}
-.mobile-shell .calendar-live { padding: 0 12px 24px; }
-.mobile-shell .cl-layout { display: block; }
-.mobile-shell .cl-side, .mobile-shell .cl-grid-scroll, .mobile-shell .cl-zone { display: none; }
-.mobile-shell .cl-week { overflow: visible; border: 0; background: transparent; box-shadow: none; }
-.mobile-shell .cl-week-head, .mobile-shell .cl-view--week .cl-week-head { grid-template-columns: repeat(7, minmax(0, 1fr)); margin: 0 0 12px; padding: 10px; gap: 3px; border: 1px solid var(--pg-line); border-radius: 22px; background: var(--pg-card); }
-.mobile-shell .cl-week-head > button { height: 64px; border: 0; border-radius: 14px; }
-.mobile-shell .cl-view--week .cl-week-head > button:nth-last-child(-n+2) { display: flex; }
-.mobile-shell .cl-week-head .cl-selected { background: var(--pg-violet); color: #fff; }
-.mobile-shell .cl-week-head .cl-selected .cl-date, .mobile-shell .cl-week-head .cl-selected .cl-dn { color: #fff; }
-.mobile-shell .cl-mobile-agenda { display: block; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--pg-line); border-radius: 22px; background: var(--pg-card); }
-.mobile-shell .cl-mobile-event { display: flex; gap: 12px; padding: 6px 0; }
-.mobile-shell .cl-mobile-event > span { width: 48px; color: var(--pg-mute); font-size: 12px; white-space: nowrap; }
-.mobile-shell .cl-mobile-event > div { flex: 1; min-width: 0; padding: 8px 12px; border-left: 4px solid var(--pg-violet); border-radius: 14px; background: var(--purple-soft); }
-.mobile-shell .cl-mobile-event strong, .mobile-shell .cl-mobile-event small { display: block; }
-.mobile-shell .cl-mobile-event small { color: var(--pg-mute); }
-.mobile-shell .cl-weekends-toggle, .mobile-shell .cl-assistant, .mobile-shell .cl-assistant-action { display: none; }
