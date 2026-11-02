@@ -4,16 +4,16 @@ import type { AIConversation, AIMessage, AIProvider, KnowledgeScope, KnowledgeSo
 import { ApiError } from '@aelys/shared'
 import { AelysMark } from '../components/AelysMark'
 import { ModelPicker } from '../components/ModelPicker'
-import { ArrowUp, Calendar, Lock, MessageSquareText, Plus, RotateCcw, Search, Sparkles, SquareCheck, Zap } from '../icons'
+import { ArrowUp, Lock, MessageSquareText, Plus, RotateCcw, Search, Sparkles, Zap } from '../icons'
 import { DEFAULT_CHOICE_KEY, EFFORT_SHORT, chatChoiceKey, choiceLabel, clearChoice, isReady, modelsFor, providerLabel, readChoice, resolveChoice, supportsThinking, writeChoice, type Effort, type ModelChoice } from '../data/aiModels'
 import { getSharedApiClient } from '../lib/api'
 import { takePendingAsk, useDesktopState } from '../lib/desktopStore'
-import { navigate } from '../lib/router'
 import { consumeSse } from '../lib/sse'
 import type { ApiStatus } from '../types'
 import './actual-ai.css'
 import './desktop/page-tokens.css'
 import './desktop/ai.css'
+import './desktop/ai-chat.css'
 import { MarkdownContent } from '../components/MarkdownContent'
 
 type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at' | 'source_refs_json'>>
@@ -147,7 +147,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
       </div>
     </aside>
     <section className="actual-ai__card actual-ai__thread" aria-label="AI conversation">
-      <div className="actual-ai__thread-head"><div><h2>{selectedTitle}</h2><p>Your conversation with Aelys</p></div>
+      <div className="actual-ai__thread-head"><div><h2>{selectedTitle}</h2></div>
         <ModelPicker providers={allProviders} value={active} onChange={applyChoice} disabled={running} showEffort isDefault={isDefault} onToggleDefault={toggleDefault} /></div>
       <div className="actual-ai__lines" aria-live="polite">
         {shown.map(line => <article key={line.id} className={`actual-ai__line${line.role === 'user' ? ' actual-ai__line--user' : ''}`}><span className="actual-ai__avatar" aria-hidden="true">{line.role === 'user' ? 'You' : <AelysMark size={32} />}</span><div className="actual-ai__bubble"><strong>{line.role === 'user' ? 'You' : line.role === 'assistant' ? 'Aelys' : line.role}</strong><MarkdownContent text={line.content} />{line.source_refs_json?.length ? <SourceList sources={line.source_refs_json} /> : null}{line.created_at && !Number.isNaN(Date.parse(line.created_at)) && <time dateTime={line.created_at}>{new Date(line.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</time>}
@@ -163,12 +163,12 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
           <div className="actual-ai__error-actions"><button type="button" disabled={running} onClick={() => void execute(outcome.prompt, { after: lastUser ? [lastUser.id] : [] })}><RotateCcw size={15} />Retry</button>
             {fastest && <button type="button" disabled={running} onClick={() => void execute(outcome.prompt, { after: lastUser ? [lastUser.id] : [] }, { providerId: fastest.provider.id, model: fastest.model.id })}><Zap size={15} />Try {fastest.model.name}</button>}</div></div>}
         {loading && !shown.length && !partial && <PageSkeleton kind="chat" compact label="conversation" />}
-        {!loading && !shown.length && !partial && !running && <div className="actual-ai__welcome"><span className="actual-ai__welcome-icon"><Sparkles size={25} /></span><h2>{loading ? 'Loading conversation…' : 'How can I help?'}</h2><p>{providers.length ? 'Ask a question or choose a prompt to get started.' : 'Configure a provider in AI settings to start a conversation.'}</p></div>}
+        {!loading && !shown.length && !partial && !running && <div className="actual-ai__welcome"><span className="actual-ai__welcome-icon"><Sparkles size={25} /></span><h2>{loading ? 'Loading conversation…' : 'How can I help?'}</h2><p>{providers.length ? 'Ask a question or choose a prompt to get started.' : 'Add a provider in Settings › AI & models to start a conversation.'}</p>{providers.length > 0 && <div className="actual-ai__chips">{prompts.map(prompt => <button type="button" key={prompt.label} onClick={() => setMessage(prompt.text)}>{prompt.label}</button>)}</div>}</div>}
       </div>
       {sources.length > 0 && running && <SourceList sources={sources} />}
       {knowledgeScope && <p className="actual-ai__notice">Knowledge question · {knowledgeScope.note_ids?.length ? 'selected document' : knowledgeScope.project_id ? 'selected project' : 'enabled library'} · excerpts go to the selected provider <button type="button" disabled={running} onClick={() => { setKnowledgeScope(undefined); setConversationId(''); setLines([]); setSources([]) }}>Clear sources</button></p>}
       {notice && <p className="actual-ai__notice" role="status">{notice}</p>}
-      <form className="actual-ai__compose" onSubmit={submit}><span className="actual-ai__compose-icon" aria-hidden="true"><AelysMark size={44} /></span><div className="actual-ai__compose-field"><textarea aria-label="Message Aelys" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask Aelys or take an action…" disabled={running || loading} rows={2} /><button className="actual-ai__send" type="submit" aria-label="Send message" disabled={running || loading || !message.trim() || !providerId || apiStatus !== 'ready'}><ArrowUp size={18} /><span>Send</span></button></div>{running && <button type="button" className="actual-ai__stop" onClick={() => void cancel()}>Stop</button>}</form>
+      <form className="actual-ai__compose" onSubmit={submit}><div className="actual-ai__compose-field"><textarea aria-label="Message Aelys" value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} placeholder="Message Aelys. Ask, plan or give a task" disabled={running || loading} rows={2} /><div className="actual-ai__compose-row">{knowledgeScope ? <span className="actual-ai__sources-chip">{sources.length ? `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}` : 'Knowledge'}</span> : <span />}{running ? <button type="button" className="actual-ai__stop" onClick={() => void cancel()}>Stop</button> : null}<button className="actual-ai__send" type="submit" aria-label="Send message" disabled={running || loading || !message.trim() || !providerId || apiStatus !== 'ready'}><ArrowUp size={18} /><span>Send</span></button></div></div></form>
     </section>
     <aside className="actual-ai__side" aria-label="Chat resources">
       <section className="actual-ai__card actual-ai__side-card actual-ai__context"><h2>What Aelys can see</h2><p className="actual-ai__side-copy">In this chat only. Aelys reads, it never changes data without asking.</p>
@@ -181,8 +181,6 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
         <dl><div><dt>Model</dt><dd>{providerId ? choiceLabel(providers.find(item => item.id === providerId), active) : 'None'}</dd></div>
           {supportsThinking(providers.find(item => item.id === providerId), active.model) && active.effort && active.effort !== 'off' && <div><dt>Reasoning</dt><dd>{EFFORT_SHORT[active.effort]}</dd></div>}
           <div><dt>Messages</dt><dd>{shown.length}</dd></div></dl></section>
-      <section className="actual-ai__card actual-ai__side-card actual-ai__quick"><h2>Quick actions</h2><div className="actual-ai__prompts"><button type="button" onClick={() => navigate('/tasks')}><SquareCheck size={16} />Open tasks</button><button type="button" onClick={() => navigate('/notes')}><MessageSquareText size={16} />Open notes</button><button type="button" onClick={() => navigate('/calendar')}><Calendar size={16} />Open calendar</button></div></section>
-      <section className="actual-ai__card actual-ai__side-card actual-ai__useful"><h2>Useful prompts</h2><p className="actual-ai__side-copy">Choose a prompt to edit before sending.</p><div className="actual-ai__prompts">{prompts.map(prompt => <button type="button" key={prompt.label} disabled={running || loading} onClick={() => setMessage(prompt.text)}><Sparkles size={16} />{prompt.label}</button>)}</div></section>
       <p className="actual-ai__privacy"><Lock size={14} aria-hidden="true" />Messages go to the provider you pick. Keys stay on your Aelys backend.</p>
     </aside>
   </div>
