@@ -4568,6 +4568,58 @@
         ]
       }
     },
+    "/api/v1/ai/conversations/{conversation_id}": {
+      "patch": {
+        "summary": "Update Conversation",
+        "operationId": "update_conversation_api_v1_ai_conversations__conversation_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/conversations/{conversation_id}/messages": {
       "get": {
         "summary": "Messages",
@@ -4660,6 +4712,58 @@
         }
       }
     },
+    "/api/v1/ai/messages/{message_id}": {
+      "patch": {
+        "summary": "Update Message",
+        "operationId": "update_message_api_v1_ai_messages__message_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessagePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/runs": {
       "post": {
         "summary": "Create Run",
@@ -4699,6 +4803,215 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/ai/attachments": {
+      "post": {
+        "summary": "Upload Attachment",
+        "operationId": "upload_attachment_api_v1_ai_attachments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/attachments/{attachment_id}": {
+      "delete": {
+        "summary": "Delete Attachment",
+        "operationId": "delete_attachment_api_v1_ai_attachments__attachment_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attachment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/conversations/{conversation_id}/actions": {
+      "get": {
+        "summary": "Conversation Actions",
+        "operationId": "conversation_actions_api_v1_ai_conversations__conversation_id__actions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/actions/{action_id}/approve": {
+      "post": {
+        "summary": "Approve Action",
+        "operationId": "approve_action_api_v1_ai_actions__action_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/actions/{action_id}/reject": {
+      "post": {
+        "summary": "Reject Action",
+        "operationId": "reject_action_api_v1_ai_actions__action_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/ai/runs/{run_id}": {
@@ -6832,6 +7145,29 @@
         ],
         "title": "Action"
       },
+      "AttachmentIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "content_base64": {
+            "type": "string",
+            "maxLength": 2900000,
+            "minLength": 1,
+            "title": "Content Base64"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "content_base64"
+        ],
+        "title": "AttachmentIn"
+      },
       "AutomationDraftIn": {
         "properties": {
           "description": {
@@ -7448,6 +7784,63 @@
         },
         "type": "object",
         "title": "ConversationIn"
+      },
+      "ConversationPatch": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConversationPatch"
       },
       "CreateNotificationAction": {
         "properties": {
@@ -9269,6 +9662,31 @@
           "deleted_at"
         ],
         "title": "MessageOut"
+      },
+      "MessagePatch": {
+        "properties": {
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "up",
+                  "down"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "feedback"
+        ],
+        "title": "MessagePatch"
       },
       "MessageReadIn": {
         "properties": {
@@ -11435,6 +11853,14 @@
                 "type": "null"
               }
             ]
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Attachment Ids"
           }
         },
         "type": "object",

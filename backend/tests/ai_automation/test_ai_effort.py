@@ -47,7 +47,7 @@ async def test_create_run_validates_effort(tmp_path, monkeypatch):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             boot = await client.post("/api/v1/auth/bootstrap", json={"email": "effort@example.com", "password": "correct horse battery staple"})
             headers = {"Authorization": f"Bearer {boot.json()['access_token']}"}
-            convo = (await client.post("/api/v1/ai/conversations", headers=headers, json={})).json()
+            convo = (await client.post("/api/v1/ai/conversations", headers=headers, json={"tool_scope": {"scopes": []}})).json()
 
             async def run(effort, key):
                 routing = {} if effort is None else {"effort": effort}

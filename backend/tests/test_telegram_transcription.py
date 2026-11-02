@@ -70,7 +70,7 @@ async def test_transcription_provider_is_separate_owner_api_and_cannot_be_chat(s
     assert stored.status_code==200
     listed=await client.get('/api/v1/ai/providers')
     assert 'synthetic-audio-api-key' not in listed.text and listed.json()[0]['has_secret']
-    conversation=(await client.post('/api/v1/ai/conversations',json={})).json()
+    conversation=(await client.post('/api/v1/ai/conversations',json={'tool_scope':{'scopes':[]}})).json()
     run=await client.post('/api/v1/ai/runs',json={'conversation_id':conversation['id'],'message':'chat',
         'routing':{'provider_id':provider_id},'idempotency_key':'no-audio-chat'})
     assert run.status_code==404

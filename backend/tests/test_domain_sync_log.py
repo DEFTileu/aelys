@@ -292,7 +292,11 @@ async def test_ai_task_creation_is_committed_and_visible_to_sync(sync_domain_set
     assert events.status_code == 200, events.text
     assert "event: ai.tool.result" in events.text and "event: ai.run.completed" in events.text
     assert "event: ai.run.failed" not in events.text
-    assert transport.calls == 1
+    assert "event: ai.action.proposed" in events.text
+    assert (await client.get("/api/v1/tasks")).json() == []
+    action = (await client.get("/api/v1/ai/conversations/" + conversation.json()["id"] + "/actions")).json()[0]
+    approved = await client.post("/api/v1/ai/actions/" + action["id"] + "/approve")
+    assert approved.status_code == 200 and approved.json()["status"] == "approved", approved.text
     response = await client.get("/api/v1/tasks")
     assert response.status_code == 200, response.text
     tasks = response.json()

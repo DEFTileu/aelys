@@ -3,7 +3,7 @@ name = "aelys-backend"
 version = "0.1.0"
 description = "Aelys modular backend"
 requires-python = ">=3.12"
-dependencies = ["fastapi", "uvicorn[standard]", "pydantic-settings", "sqlalchemy[asyncio]", "greenlet", "asyncpg", "psycopg[binary]", "aiosqlite", "alembic", "cryptography", "python-multipart", "httpx", "python-dateutil>=2.9,<3"]
+dependencies = ["fastapi", "uvicorn[standard]", "pydantic-settings", "sqlalchemy[asyncio]", "greenlet", "asyncpg", "psycopg[binary]", "aiosqlite", "alembic", "cryptography", "python-multipart", "httpx", "python-dateutil>=2.9,<3", "pypdf>=6.1,<7"]
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-asyncio", "httpx"]

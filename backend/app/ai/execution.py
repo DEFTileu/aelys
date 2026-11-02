@@ -110,7 +110,7 @@ class AIExecutionService:
             # Streaming providers may report usage only in a terminal frame. The
             # conservative zero-count record avoids inventing cost data.
             usage = self.usage.record(run_id, decision.provider, model, getattr(adapter, "last_usage", Usage()))
-            yield self._event("ai.run.completed", {"run_id": str(run_id), "text_length": len("".join(text)), "estimated_cost": str(usage.estimated_cost)})
+            yield self._event("ai.run.completed", {"run_id": str(run_id), "text_length": len("".join(text)), "input_tokens": usage.usage.input_tokens, "output_tokens": usage.usage.output_tokens, "estimated_cost": str(usage.estimated_cost)})
         except RunCancelled:
             yield self._event("ai.run.cancelled", {"run_id": str(run_id)})
         except (AIError, BudgetExceeded) as exc:
