@@ -1,0 +1,39 @@
+/* Mobile Focus screen: one column, the timer card above the session history. */
+.timer-m { min-width: 0; display: flex; flex-direction: column; gap: 16px; padding: 8px 16px 24px; color: var(--ink, #1c1b22); }
+.timer-m *, .timer-m *::before, .timer-m *::after { box-sizing: border-box; }
+.timer-m :focus-visible { outline: 2px solid var(--purple, #6a4cf2); outline-offset: 2px; }
+.timer-m-title { margin: 0; font-size: 28px; line-height: 34px; font-weight: 700; }
+.timer-m-note { margin: 0; color: var(--muted, #625d69); font-size: 14px; line-height: 20px; }
+.timer-m-card { display: flex; flex-direction: column; gap: 16px; padding: 18px 16px; border-radius: 22px; background: var(--glass-bg, #fff); border: 1px solid var(--glass-edge, #ede8e3); }
+.timer-m-modes { display: flex; padding: 4px; border-radius: 14px; background: #efe9e3; }
+.timer-m-modes button { flex: 1; min-height: 44px; padding: 0 6px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; }
+.timer-m-modes button[aria-selected='true'] { background: var(--surface-solid, #fff); box-shadow: 0 1px 3px rgba(20, 10, 30, .08); }
+.timer-m-modes button:disabled { opacity: .6; cursor: default; }
+.timer-m-time { text-align: center; font-size: 60px; line-height: 68px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.timer-m-status { margin: 0; text-align: center; color: var(--muted, #625d69); font-size: 14px; }
+.timer-m-chips { display: flex; gap: 8px; justify-content: center; }
+.timer-m-chips button { min-width: 64px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #efe9e4; color: inherit; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.timer-m-chips button[aria-checked='true'] { background: var(--ink, #1c1b22); color: #fff; }
+.timer-m-chips button:disabled { opacity: .6; cursor: default; }
+.timer-m-task { display: grid; gap: 6px; color: var(--muted, #625d69); font-size: 14px; }
+.timer-m-task select { min-height: 48px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--glass-edge, #ede8e3); background: var(--surface-solid, #fff); color: var(--ink, #1c1b22); font: inherit; font-size: 16px; }
+.timer-m-task select:disabled { opacity: .6; }
+.timer-m-task small { font-size: 13px; }
+.timer-m-actions { display: flex; gap: 10px; }
+.timer-m-primary { flex: 1; min-height: 52px; padding: 0 24px; border: 0; border-radius: 16px; background: #f06a58; color: #fff; font: inherit; font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; box-shadow: 0 8px 20px rgba(240, 106, 88, .3); }
+.timer-m-primary:disabled { opacity: .5; cursor: default; box-shadow: none; }
+.timer-m-reset { width: 52px; height: 52px; flex: none; border-radius: 16px; border: 1px solid var(--glass-edge, #ede8e3); background: var(--surface-solid, #fff); color: inherit; font: inherit; font-size: 20px; cursor: pointer; }
+.timer-m-reset:disabled { opacity: .5; cursor: default; }
+.timer-m-history { display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 22px; background: var(--glass-bg, #fff); border: 1px solid var(--glass-edge, #ede8e3); }
+.timer-m-history-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.timer-m-history-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.timer-m-history-head span { font-size: 22px; font-weight: 700; }
+.timer-m-session { display: flex; align-items: center; gap: 12px; min-height: 56px; border-top: 1px solid #f1edea; }
+.timer-m-session > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.timer-m-session strong { font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-m-session small { color: var(--muted, #625d69); font-size: 13px; }
+.timer-m-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; }
+.timer-m-dur { font-size: 14px; font-weight: 600; }
+:root[data-theme='dark'] .timer-m-modes, :root[data-theme='dark'] .timer-m-chips button { background: #2a2733; }
+:root[data-theme='dark'] .timer-m-modes button[aria-selected='true'] { background: #3a3546; box-shadow: none; }
+:root[data-theme='dark'] .timer-m-session { border-top-color: var(--line, #34303d); }

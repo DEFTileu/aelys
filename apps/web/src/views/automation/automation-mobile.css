@@ -1,0 +1,7 @@
+/* Mobile Automation page: single column, 16px gutter, 44px controls. Applied through the au-m root class. */
+.au-m { padding: 8px 16px 24px; }
+.au-m .au-ask input { font-size: 16px; }
+.au-m .au-steps, .au-m .au-templates__grid { grid-template-columns: minmax(0, 1fr); }
+.au-m .au-guide { padding: 18px; }
+.au-m .au-template button { min-height: 44px; height: auto; }
+.au-m .au-review__actions button { height: 44px; }

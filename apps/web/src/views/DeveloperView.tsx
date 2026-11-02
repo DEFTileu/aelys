@@ -4,9 +4,11 @@ import { ApiError } from '@aelys/shared'
 import { Lock, Square, Terminal } from '../icons'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
+import { useIsMobile } from '../lib/useIsMobile'
 import type { ApiStatus } from '../types'
 import './connected.css'
 import './tools.css'
+import './developer/developer-mobile.css'
 
 const stamp = (iso: string | null) => iso ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'No activity yet'
 const clockOf = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--'
@@ -57,7 +59,9 @@ export function DeveloperView({ apiStatus }: { apiStatus: ApiStatus }) {
     finally { setStopping(false) }
   }
 
-  return <div className="tl connected-workspace">
+  const mobile = useIsMobile()
+
+  return <div className={`tl connected-workspace${mobile ? ' dev-m' : ''}`}>
     <div className="tl-bar"><div className="tl-seg" role="tablist" aria-label="Session filter">
       <button type="button" role="tab" aria-selected={!showAll} onClick={() => setShowAll(false)}>Active · {activeCount}</button>
       <button type="button" role="tab" aria-selected={showAll} onClick={() => setShowAll(true)}>All</button></div></div>

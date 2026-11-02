@@ -1,0 +1,8 @@
+/* Mobile Developer Hub: session list above the detail, facts stacked in one column. Applied through the dev-m root class. */
+.dev-m { padding: 8px 16px 24px; }
+.dev-m .tl-session { min-height: 56px; }
+.dev-m .tl-facts { grid-template-columns: minmax(0, 1fr); }
+.dev-m .tl-facts > div { border-right: 0; border-bottom: 1px solid var(--glass-edge, #ede8e3); }
+.dev-m .tl-facts > div:last-child { border-bottom: 0; }
+.dev-m .tl-log { min-height: 200px; font-size: 12px; }
+.dev-m .tl-log > div { gap: 10px; }

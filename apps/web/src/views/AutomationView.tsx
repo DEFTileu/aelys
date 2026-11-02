@@ -5,10 +5,12 @@ import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
 import { ArrowRight, Bell, Check, NotebookText, Shield, Sparkles, SquareCheck, Workflow, X, Zap, type AelysIconComponent } from '../icons'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
+import { useIsMobile } from '../lib/useIsMobile'
 import type { ApiStatus } from '../types'
 import './connected.css'
 import './tools.css'
 import './automation.css'
+import './automation/automation-mobile.css'
 
 const OUTCOME: Record<AutomationRunStatus, { label: string; tone: 'ok' | 'warn' | 'bad' | 'info' }> = {
   success: { label: 'Succeeded', tone: 'ok' },
@@ -107,8 +109,9 @@ export function AutomationView({ apiStatus }: { apiStatus: ApiStatus }) {
   const ready = apiStatus === 'ready'
   const inUse = status === 'ready' && rules.length > 0
   const showGuide = status === 'ready' && (!inUse || guide)
+  const mobile = useIsMobile()
 
-  return <div className="au">
+  return <div className={`au${mobile ? ' au-m' : ''}`}>
     <div className="au-top">
       <form className="au-ask" onSubmit={submitDraft}><Sparkles size={18} aria-hidden="true" />
         <input aria-label="Describe a rule" placeholder={'Describe a rule: "When a task is completed, send me a notification"'} value={description} maxLength={500} disabled={!ready || drafting} onChange={(event) => setDescription(event.target.value)} />

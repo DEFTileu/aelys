@@ -77,12 +77,6 @@
 .tl-foot { padding: 12px 20px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted, #625d69); }
 
 @media (max-width: 1000px) { .tl-split, .tl-dev { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 700px) {
-  .tl { padding: 0 16px 24px; }
-  .tl-ring-card { padding: 20px; }
-  .tl-ring__time { font-size: 56px; }
-  .tl-task { min-width: 0; width: 100%; }
-}
 
 /* Dark theme: the design maps these light literals to its dark surfaces. */
 :root[data-theme='dark'] .tl-seg, :root[data-theme='dark'] .tl-pill { background: #2A2733; }
