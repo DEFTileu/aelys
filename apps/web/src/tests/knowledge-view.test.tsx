@@ -46,7 +46,7 @@ describe('knowledge view', () => {
   it('retries errors and handles empty records without inventing metadata', async () => {
     client.notes.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([])
     await mount(); expect(host.textContent).toContain('Can’t reach Aelys')
-    await click('Try again'); expect(host.textContent).toContain('No notes yet.')
+    await click('Retry'); expect(host.textContent).toContain('No notes yet.')
     expect(client.notes).toHaveBeenCalledTimes(2)
   })
   it('opens the selected note in the Notes editor using an encoded deep link', async () => {

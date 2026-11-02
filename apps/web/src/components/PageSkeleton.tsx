@@ -58,7 +58,7 @@ export function PageSkeleton({ kind = 'list', phase = 'loading', compact = false
       <span className="pskel__error-icon"><LucideGlyph name="wifi-off" size={26} /></span>
       <div className="pskel__error-title">Can’t reach Aelys</div>
       <div className="pskel__error-text">Check your connection. Anything you change is saved on this device and syncs when you’re back online.</div>
-      <div className="pskel__error-actions"><button type="button" onClick={onRetry}><RotateCcw size={14} />Try again</button></div>
+      <div className="pskel__error-actions"><button type="button" onClick={onRetry}><RotateCcw size={14} />Retry</button></div>
     </div>}
     {!error && <div className="pskel__grid" aria-hidden="true" style={{ gridTemplateColumns: cols, gap: compact ? 12 : 16 }}>
       {cards.map((c, i) => <div key={i} className="pskel__card" style={{ gridColumn: c.col, minHeight: c.h, padding: compact ? 14 : 18 }}>

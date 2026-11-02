@@ -88,7 +88,7 @@ describe('MessagesView', () => {
   it('shows the skeleton error with a retry when the API is unreachable', async () => {
     client.telegramStatus.mockRejectedValueOnce(new Error('offline'))
     await mount(); expect(host.textContent).toContain('Can’t reach Aelys')
-    await act(async () => button('Try again').click()); expect(host.textContent).toContain('Needs reply')
+    await act(async () => button('Retry').click()); expect(host.textContent).toContain('Needs reply')
   })
 })
 

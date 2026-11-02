@@ -10,6 +10,7 @@ import { usePrefs, type Prefs } from '../lib/prefs'
 import { navigate } from '../lib/router'
 import { dateKey, isCompleted } from '../views/tasks/taskModel'
 import type { ApiStatus, RoutePath } from '../types'
+import { OfflineGate } from './OfflineGate'
 import { formatDate, greetingForHour } from '../lib/format'
 import { CommandPalette, pages as PALETTE_PAGES } from './CommandPalette'
 import { NotificationCenter } from './NotificationCenter'
@@ -203,7 +204,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             {hero?.sub && <div style={{ fontSize: 14, lineHeight: '22px', marginTop: 2 }}>{hero.sub}</div>}
           </div>)}
 
-          {children}
+          <OfflineGate route={route} apiStatus={apiStatus} compact={mobile}>{children}</OfflineGate>
           </div>
         </main>
 

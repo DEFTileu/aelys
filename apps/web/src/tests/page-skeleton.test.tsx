@@ -26,9 +26,9 @@ describe('PageSkeleton', () => {
     expect(host.textContent).toContain('Taking longer than usual')
     act(() => host.querySelector<HTMLButtonElement>('.pskel__slow button')!.click()); expect(retry).toHaveBeenCalledTimes(1)
   })
-  it('shows the error card with Try again and no skeleton cards', () => {
+  it('shows the error card with Retry and no skeleton cards', () => {
     const retry = vi.fn(); const host = mount(<PageSkeleton kind="grid" phase="error" label="Projects" onRetry={retry} />)
     expect(host.textContent).toContain('Can’t reach Aelys'); expect(host.querySelector('.pskel__grid')).toBeNull()
-    act(() => [...host.querySelectorAll('button')].find((b) => b.textContent === 'Try again')!.click()); expect(retry).toHaveBeenCalled()
+    act(() => [...host.querySelectorAll('button')].find((b) => b.textContent === 'Retry')!.click()); expect(retry).toHaveBeenCalled()
   })
 })
