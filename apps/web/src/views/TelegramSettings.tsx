@@ -5,7 +5,8 @@ import { telegramErrorNotice as errorNotice } from '../lib/telegramMessages'
 import { Checkbox } from '../components/controls/SelectionControls'
 import { ChevronRight, MessageSquareText, Send } from '../icons'
 import { navigate } from '../lib/router'
-import { Card, Group, Row, SelectChip, SwitchRow } from './settings/ui'
+import { Card, Group, Row, SwitchRow } from './settings/ui'
+import { ModelPicker } from '../components/ModelPicker'
 import './connected.css'
 
 export function TelegramSettings() {
@@ -102,8 +103,7 @@ export function TelegramSettings() {
         <SwitchRow title="Auto-reply" hint="Read incoming messages and draft replies in allowed chats" checked={status.auto_reply} disabled={busy || status.version == null} onChange={(enabled) => { void action(() => update(enabled ? { auto_reply: true, provider_id: provider || null, model: model.trim() || null, instructions } : { auto_reply: false })) }} />
         <div className="st-row st-row--wrap" style={{ opacity: autoOff ? .5 : 1 }}>
           <div className="st-grow"><div className="st-label">Reply with</div><div className="st-hint">Provider and model for drafts</div></div>
-          <SelectChip label="AI provider" value={provider} onChange={setProvider} options={[['', 'Not selected'], ...providers.map((item) => [item.id, `${item.kind.charAt(0).toUpperCase()}${item.kind.slice(1)} · ${String(item.model_policy?.default_model ?? item.id)}`] as const)]} />
-          <input className="st-input st-input--mono st-inline" aria-label="Model" maxLength={200} placeholder="Model" value={model} onChange={(event) => setModel(event.target.value)} />
+          <ModelPicker compact label="Reply with" providers={providers} value={{ providerId: provider, model }} onChange={(choice) => { setProvider(choice.providerId); setModel(choice.model) }} />
         </div>
         <form className="st-pad" style={{ opacity: autoOff ? .5 : 1 }} onSubmit={(event) => { event.preventDefault(); void action(() => update({ instructions, provider_id: provider || null, model: model.trim() || null })) }}>
           <label className="st-field-label" htmlFor="telegram-instructions">Instructions</label>

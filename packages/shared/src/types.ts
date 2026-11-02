@@ -613,11 +613,13 @@ export interface KnowledgeSource {
   readonly end: number;
   readonly excerpt: string;
 }
+export type AIRoutingEffort = "low" | "medium" | "high";
+export type RoutingInput = JsonObject & { readonly provider_id?: string; readonly provider?: string; readonly model?: string; readonly effort?: AIRoutingEffort };
 export interface AIRunIn {
   readonly knowledge?: KnowledgeScope;
   readonly conversation_id: Id;
   readonly message: string;
-  readonly routing?: JsonObject;
+  readonly routing?: RoutingInput;
   readonly tool_scope?: JsonObject;
   readonly idempotency_key: string;
 }
