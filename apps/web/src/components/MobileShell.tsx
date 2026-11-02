@@ -24,10 +24,9 @@ const APPS: App[] = [
   { label: 'Search', route: '/search', icon: Search, color: 'blue' },
   { label: 'Knowledge base', route: '/knowledge', icon: BookOpen, color: 'orange' },
   { label: 'Timer', route: '/timer', icon: Timer, color: 'red' },
-  { label: 'Utilities', route: '/utilities', icon: Blocks, color: 'violet' },
+  { label: 'Apps', route: '/utilities', icon: Blocks, color: 'violet' },
   { label: 'Developer Hub', route: '/developer', icon: Terminal, color: 'gray' },
   { label: 'Automation', route: '/automation', icon: Workflow, color: 'blue' },
-  { label: 'Widgets', route: '/widgets', icon: LayoutGrid, color: 'violet' },
 ]
 
 
@@ -72,7 +71,7 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
     return () => { document.removeEventListener('keydown', onKey); if (previouslyFocused?.isConnected) previouslyFocused.focus() }
   }, [appsOpen])
 
-  const go = (path: RoutePath) => { setAppsOpen(false); if (path === '/widgets') { navigate('/widgets') } else navigate(path) }
+  const go = (path: RoutePath) => { setAppsOpen(false); navigate(path) }
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const text = draft.trim()
