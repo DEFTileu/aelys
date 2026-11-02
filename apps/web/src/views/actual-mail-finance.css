@@ -198,7 +198,7 @@
   :root[data-theme='dark'] .actual-workspace { --m-shadow: var(--shadow); }
   .actual-workspace .actual-panel, .actual-workspace .connected-card { border-radius: 22px; box-shadow: var(--m-shadow); }
   .actual-mail-list { padding: 0; gap: 12px; border: 0; background: transparent; box-shadow: none; }
-  .actual-mail-list > label.actual-search { height: 48px; margin: 0; padding: 0 14px; gap: 10px; border: 1px solid var(--amf-border); border-radius: 22px; background: var(--amf-surface); box-shadow: var(--m-shadow); }
+  .actual-mail-list > label.actual-search { display: flex; align-items: center; height: 48px; margin: 0; padding: 0 14px; gap: 10px; border: 1px solid var(--amf-border); border-radius: 22px; background: var(--amf-surface); box-shadow: var(--m-shadow); }
   .actual-mail-list .actual-search input { font-size: 15px; height: auto; }
   .actual-mail-list .actual-search svg { width: 18px; height: 18px; }
   .actual-mail-list .actual-compose-icon { display: none; }

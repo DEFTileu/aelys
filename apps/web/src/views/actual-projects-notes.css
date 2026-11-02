@@ -76,7 +76,8 @@
 /* Mobile parity with ACTUAL-Mobile: Notes list (search 48px, 36px pills, 22px cards) and editor card. */
 @media (max-width: 700px) {
   .notes-live { padding: 0 16px 24px; }
-  .notes-live:not(.notes-live--editing) .nl-grid { gap: 12px; }
+  .notes-live:not(.notes-live--editing) .nl-grid { gap: 12px; min-height: 0; align-content: start; }
+  .notes-live:not(.notes-live--editing) .nl-list-head { display: none; }
   .nl-list .nl-search { height: 48px; margin-bottom: 0; padding: 0 14px; gap: 10px; box-shadow: 0 6px 20px rgba(40,30,30,.06); }
   .nl-list .nl-search svg { width: 18px; height: 18px; }
   .nl-list .nl-search input { font-size: 15px; }
