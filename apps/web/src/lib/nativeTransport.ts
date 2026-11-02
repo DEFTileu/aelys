@@ -109,6 +109,8 @@ export function createNativeTransport(invoke: NativeInvoke, makeChannel?: Native
     health: (origin: string) => invoke<boolean>('native_health', { origin }),
     login: (origin: string, email: string, password: string, bootstrap = false) =>
       invoke<NativeStatus>('native_login', { origin, email, password, bootstrap }),
+    enroll: (origin: string, token: string, displayName: string) =>
+      invoke<NativeStatus>('native_enroll', { origin, token, displayName }),
     resume: (origin: string) => invoke<NativeStatus>('native_resume', { origin }),
     logout: (origin: string) => invoke<NativeStatus>('native_logout', { origin }),
     operation: <T>(origin: string, operation: NativeOperation) => invoke<T>('native_operation', { origin, operation }),

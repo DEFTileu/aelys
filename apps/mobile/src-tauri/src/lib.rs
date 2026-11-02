@@ -35,6 +35,7 @@ pub fn run() {
             native::native_biometric_status,
             native::native_biometric_set,
             native::native_login,
+            native::native_enroll,
             native::native_resume,
             native::native_logout,
             native::native_operation,

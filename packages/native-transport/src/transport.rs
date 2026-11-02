@@ -10,6 +10,8 @@ use tauri::Manager;
 use tauri::{State, WebviewWindow};
 use tokio::sync::{watch, Mutex};
 use url::{Host, Url};
+#[cfg(test)]
+mod passwordless_tests;
 
 #[cfg(target_os = "macos")]
 const SERVICE: &str = "com.aelys.desktop.native-session";
@@ -46,6 +48,8 @@ struct Record {
     owner_id: String,
     device_id: String,
     refresh_token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    device_key: Option<crate::device_key::DeviceKey>,
 }
 #[derive(Deserialize)]
 struct Tokens {
@@ -548,6 +552,7 @@ fn session_from(origin: &str, token: Tokens) -> Result<Session, String> {
             owner_id: token.owner_id,
             device_id: token.device_id,
             refresh_token: token.refresh_token,
+            device_key: None,
         },
     })
 }
@@ -559,8 +564,23 @@ async fn take_record(store: &impl Store, origin: &str) -> Result<Record, String>
         .read(origin)
         .await?
         .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
-    store.delete(origin).await?;
+    if record.device_key.is_some() {
+        // Keep the long-lived device identity through offline/expired refreshes.
+        // The consumed rotating bearer is never retained for an uncertain retry.
+        store.write(origin, &identity_record(&record)).await?;
+    } else {
+        store.delete(origin).await?;
+    }
     Ok(record)
+}
+fn identity_record(record: &Record) -> Record {
+    Record {
+        origin: record.origin.clone(),
+        owner_id: record.owner_id.clone(),
+        device_id: record.device_id.clone(),
+        refresh_token: String::new(),
+        device_key: record.device_key.clone(),
+    }
 }
 async fn prepare_resume(
     state: &mut Option<Session>,
@@ -1390,6 +1410,135 @@ async fn establish_login(
     let token: Tokens = request(client, Method::POST, &format!("{origin}/api/v1/auth/native/{action}"), Some(json!({"email":email,"password":password,"platform":native_platform(),"display_name":native_display_name()})), None).await?;
     persist_or_revoke(client, store, session_from(origin, token)?).await
 }
+#[derive(Deserialize)]
+struct DeviceTokens {
+    access_token: String,
+    refresh_token: String,
+    device_id: String,
+    token_type: String,
+}
+#[derive(Deserialize)]
+struct DeviceOwner {
+    id: String,
+    device_id: Option<String>,
+}
+async fn device_session(
+    client: &Client,
+    origin: &str,
+    tokens: DeviceTokens,
+    key: crate::device_key::DeviceKey,
+) -> Result<Session, String> {
+    if tokens.token_type != "bearer"
+        || tokens.access_token.is_empty()
+        || tokens.refresh_token.is_empty()
+        || !valid_id(&tokens.device_id)
+    {
+        return Err(err("INVALID_RESPONSE"));
+    }
+    // Obtain the owner from the authenticated server; never trust a decoded JWT
+    // or a frontend-selected namespace as device/owner authority.
+    let owner: DeviceOwner = request(
+        client,
+        Method::GET,
+        &format!("{origin}/api/v1/me"),
+        None,
+        Some(&tokens.access_token),
+    )
+    .await?;
+    if !valid_id(&owner.id) || owner.device_id.as_deref() != Some(&tokens.device_id) {
+        return Err(err("INVALID_RESPONSE"));
+    }
+    Ok(Session {
+        origin: origin.into(),
+        access: tokens.access_token,
+        record: Record {
+            origin: origin.into(),
+            owner_id: owner.id,
+            device_id: tokens.device_id,
+            refresh_token: tokens.refresh_token,
+            device_key: Some(key),
+        },
+    })
+}
+async fn establish_device(
+    client: &Client,
+    store: &impl Store,
+    origin: &str,
+    token: &str,
+    display_name: &str,
+) -> Result<Session, String> {
+    let key = crate::device_key::DeviceKey::generate()?;
+    let tokens: DeviceTokens = request(client, Method::POST, &format!("{origin}/api/v1/auth/setup/claim"),
+        Some(json!({"token":token,"public_key":key.public_key()?,"platform":native_platform(),"display_name":display_name})), None).await?;
+    persist_or_revoke(
+        client,
+        store,
+        device_session(client, origin, tokens, key).await?,
+    )
+    .await
+}
+async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Session, String> {
+    #[derive(Deserialize)]
+    struct Challenge {
+        challenge_id: String,
+        nonce: String,
+    }
+    let key = old
+        .device_key
+        .as_ref()
+        .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
+    let challenge: Challenge = request(
+        client,
+        Method::POST,
+        &format!("{origin}/api/v1/auth/device/challenge"),
+        Some(json!({"device_id":old.device_id})),
+        None,
+    )
+    .await?;
+    if !valid_id(&challenge.challenge_id)
+        || challenge.nonce.is_empty()
+        || challenge.nonce.len() > 128
+    {
+        return Err(err("INVALID_RESPONSE"));
+    }
+    let message = format!(
+        "aelys-device-login-v1\n{}\n{}",
+        old.device_id, challenge.nonce
+    );
+    let tokens: DeviceTokens = request(client, Method::POST, &format!("{origin}/api/v1/auth/device/login"),
+        Some(json!({"challenge_id":challenge.challenge_id,"signature":key.sign(message.as_bytes())?})), None).await?;
+    let session = device_session(client, origin, tokens, key.clone()).await?;
+    if session.record.owner_id != old.owner_id || session.record.device_id != old.device_id {
+        return Err(err("INVALID_RESPONSE"));
+    }
+    Ok(session)
+}
+#[tauri::command]
+pub async fn native_enroll(
+    window: WebviewWindow,
+    storage: State<'_, NativeStorage>,
+    state: State<'_, NativeState>,
+    streams: State<'_, NativeAIStreams>,
+    origin: String,
+    token: String,
+    display_name: String,
+) -> Result<SafeStatus, String> {
+    check_window(&window)?;
+    let origin = origin_fn(&origin)?;
+    if token.len() < 20
+        || token.len() > 128
+        || display_name.trim().is_empty()
+        || display_name.len() > 200
+    {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    let mut guard = state.0.lock().await;
+    let session =
+        establish_device(&client()?, storage.inner(), &origin, &token, &display_name).await?;
+    streams.close_for_origin(None).await;
+    *guard = Some(session);
+    Ok(status(guard.as_ref(), &origin, Some(true), None))
+}
 #[tauri::command]
 // The IPC contract keeps credentials as separate arguments; three state/window
 // parameters are injected by Tauri and cannot be selected by the frontend.
@@ -1459,6 +1608,19 @@ pub async fn native_resume(
     )
     .await?;
     let client = client()?;
+    if old.device_key.is_some() {
+        let session = match resume_device(&client, &origin, &old).await {
+            Ok(session) => session,
+            Err(error) => {
+                if error == "UNAUTHORIZED" || error == "FORBIDDEN" {
+                    storage.delete(&origin).await?;
+                }
+                return Err(error);
+            }
+        };
+        *guard = Some(persist_or_revoke(&client, storage.inner(), session).await?);
+        return Ok(status(guard.as_ref(), &origin, Some(true), None));
+    }
     let tokens: Tokens = request(
         &client,
         Method::POST,

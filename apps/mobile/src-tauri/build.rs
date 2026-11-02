@@ -6,6 +6,7 @@ fn main() {
         "native_biometric_status",
         "native_biometric_set",
         "native_login",
+        "native_enroll",
         "native_resume",
         "native_logout",
         "native_operation",

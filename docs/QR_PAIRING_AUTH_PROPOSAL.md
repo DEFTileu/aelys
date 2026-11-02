@@ -76,8 +76,8 @@ may invite, inspect, approve or reject.
 
 ## Not done yet
 
-- Native key storage (Secure Enclave, Android Keystore), camera scanning and QR display UI,
-  and the native-app setup-token screens.
+- Hardware-backed signing with Secure Enclave / Android Keystore, camera scanning and QR display UI.
+  Native one-time setup screens and OS-protected software device keys are implemented below.
 
 ## Web client (implemented 2026-10-31)
 
@@ -96,3 +96,29 @@ server allows it. Browser-held keys remain a lower-trust class; QR scanning is n
 - A shared rate-limit store for multi-instance deployments (limits are per process today;
   `AELYS_TRUSTED_PROXY_COUNT` must be set behind a reverse proxy) and an external security
   review before this is called production-grade.
+
+## Native client integration (2026-11-02)
+
+Mac and Android clients use the existing setup-claim and device challenge/login
+protocol through bounded Rust IPC. An unpaired native client offers a one-time
+connection code instead of account email/password. Native code generates ES256
+keys and verifies the authenticated /me owner/device before saving the session.
+PKCS8 key material is stored only inside the existing OS-protected native record:
+macOS Keychain, or Android encrypted session storage wrapped by Android Keystore.
+This is software signing with protected storage, not non-exportable hardware
+signing or attestation. Private keys/tokens are not returned to the WebView.
+
+Normal reopen/expired-access recovery signs a fresh server challenge; explicit
+sign-out and enabled biometric gates remain authoritative. Before network I/O,
+the rotating bearer is removed from the stored record while the device key stays
+available for a later retry. Server authentication denial removes the identity.
+No backend auth protocol, table, TLS exception or general filesystem permission
+is added. Password server flags remain operator-controlled; bootstrap=false only
+prevents password-based owner creation, not password sign-in.
+
+Mac enrollment against Railway reached Home on the installed app. Native tests
+cover signatures, protocol requests, protected record retention and owner/device
+mismatch; frontend tests cover automatic entry, expiry, code connection and
+biometric/sign-out gates. Both native release builds compiled. Android enrollment
+and physical-device restart acceptance remain unverified after a server-unavailable
+screen. The native module and cross-device automatic entry are not claimed complete.

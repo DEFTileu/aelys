@@ -24,11 +24,13 @@ dependencies = [
 name = "aelys-native-transport"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "block2",
  "core-foundation",
  "objc2",
  "objc2-foundation",
  "reqwest",
+ "ring",
  "rustls",
  "security-framework",
  "security-framework-sys",
