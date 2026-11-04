@@ -196,3 +196,14 @@ errors without echoing sensitive input. Basic HTML entities are deliberately
 limited to five named entities and numeric references. These tools do not
 provide encryption or a password vault. Native packaged acceptance is separate
 from shared web build and responsive browser verification.
+
+### Formatted email isolation (2026-11-04)
+
+Untrusted email HTML passes DOMPurify before entering a srcdoc iframe. The frame
+has no scripts, same-origin privilege, forms or top-navigation permission. Its
+CSP denies all network initially; message-local image consent allows HTTPS image
+sources only. Scriptable markup, stylesheets, CSS network values, srcset, tracking
+ping and non-HTTPS links are removed. The app UI is outside the mail document.
+Image consent is disclosed and reset between messages; no image host receives
+owner bearer credentials or a referrer. Remote fonts and embedded CID attachments
+are not supported in this slice. Plaintext remains available when offline.

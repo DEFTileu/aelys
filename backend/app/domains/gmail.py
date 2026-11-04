@@ -214,6 +214,25 @@ def plain_body(payload: dict) -> str:
     return "\n".join(text for part in payload.get("parts", []) if (text := plain_body(part)))
 
 
+def html_body(payload: dict, depth: int = 0) -> str:
+    """Bounded HTML alternative; attachments and nested forwarded mail are excluded."""
+    if depth > 20 or payload.get('filename') or payload.get('mimeType') == 'message/rfc822':
+        return ''
+    if payload.get('mimeType') == 'text/html':
+        data = payload.get('body', {}).get('data', '')
+        if not isinstance(data, str) or len(data) > 1_400_000:
+            return ''
+        try:
+            decoded = base64.urlsafe_b64decode(data + '=' * (-len(data) % 4))
+        except ValueError:
+            return ''
+        return decoded.decode('utf-8', errors='replace') if len(decoded) <= 1_000_000 else ''
+    for part in payload.get('parts', [])[:100]:
+        if isinstance(part, dict) and (html := html_body(part, depth + 1)):
+            return html
+    return ''
+
+
 @router.post("/{account_id}/drafts/import")
 async def import_drafts(account_id: str, page_token: str | None = Query(default=None, max_length=1000), principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
     from email.utils import getaddresses
@@ -253,11 +272,17 @@ async def sync_mail(account_id: str, page_token: str | None = Query(default=None
     for entry in page.get("messages", []):
         remote_id = str(entry["id"])
         local_id = str(uuid5(NAMESPACE_URL, f"aelys:gmail-message:{account_id}:{remote_id}"))
-        if await db.get(MailMessage, local_id): continue
+        existing = await db.get(MailMessage, local_id)
+        if existing and (existing.deleted_at is not None or existing.body_html is not None): continue
         message = await google("GET", API + "/messages/" + quote(remote_id, safe=""), headers=headers, params={"format": "full"})
         payload = message.get("payload", {})
         fields = {field["name"].lower(): field["value"] for field in payload.get("headers", [])}
-        db.add(MailMessage(id=local_id, owner_id=user.id, account_id=account_id, thread_id=str(message.get("threadId", "")), sender=fields.get("from", "")[:320], recipients=[fields.get("to", "")], subject=fields.get("subject", "(No subject)")[:500], body=plain_body(payload) or str(message.get("snippet", "")), received_at=datetime.fromtimestamp(int(message.get("internalDate", 0)) / 1000, UTC), sync_origin="gmail"))
+        html = html_body(payload)
+        if existing:
+            existing.body_html = html
+            existing.version += 1
+            continue
+        db.add(MailMessage(id=local_id, owner_id=user.id, account_id=account_id, thread_id=str(message.get("threadId", "")), sender=fields.get("from", "")[:320], recipients=[fields.get("to", "")], subject=fields.get("subject", "(No subject)")[:500], body=plain_body(payload) or str(message.get("snippet", "")), body_html=html, received_at=datetime.fromtimestamp(int(message.get("internalDate", 0)) / 1000, UTC), sync_origin="gmail"))
         imported += 1
     await db.commit()
     return {"imported": imported, "next_page_token": page.get("nextPageToken")}

@@ -6,7 +6,7 @@ use std::{
     net::TcpListener,
 };
 
-struct MemoryStore(RefCell<Option<String>>);
+pub(super) struct MemoryStore(pub(super) RefCell<Option<String>>);
 impl Store for MemoryStore {
     async fn read(&self, _: &str) -> Result<Option<Record>, String> {
         self.0
@@ -24,7 +24,7 @@ impl Store for MemoryStore {
         Ok(())
     }
 }
-fn server(responses: Vec<Value>) -> (String, std::thread::JoinHandle<Vec<String>>) {
+pub(super) fn server(responses: Vec<Value>) -> (String, std::thread::JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let handle = std::thread::spawn(move || {

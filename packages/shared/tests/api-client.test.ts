@@ -738,3 +738,25 @@ it("does not persist a late response after its owner partition was replaced", as
   await reading;
   expect(store.cache.size).toBe(0);
 });
+
+
+it("caches HTML details per message and invalidates them after Gmail sync", async () => {
+  const store = new MemoryStore();
+  const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+    if (url.endsWith('/sync')) return json({ imported: 0 });
+    return json({ id: url.split('/').pop(), body: 'Plain', body_html: '<b>Rich</b>' });
+  });
+  let online = true;
+  const client = new ApiClient({ baseUrl: 'https://api.example.test', token: 'owner', fetch: fetchImpl, offlineStore: store, readFreshnessMs: 60_000, isOnline: () => online });
+  await client.mailMessage('one'); await client.mailMessage('one');
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
+  await client.mailMessage('two');
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
+  online = false;
+  await expect(client.mailMessage('one')).resolves.toMatchObject({ id: 'one', body_html: '<b>Rich</b>' });
+  online = true;
+  await client.syncGmail('account');
+  expect(store.cache.has('mail-details?id=one')).toBe(false);
+  await client.mailMessage('one');
+  expect(fetchImpl).toHaveBeenCalledTimes(4);
+});

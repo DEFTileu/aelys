@@ -219,6 +219,7 @@ class MailMessage(Owned):
     __table_args__ = (Index("ix_mail_owner_received_live", "owner_id", "received_at", sqlite_where=text("deleted_at IS NULL"), postgresql_where=text("deleted_at IS NULL")),)
     account_id: Mapped[str | None] = mapped_column(String(36)); thread_id: Mapped[str | None] = mapped_column(String(100)); sender: Mapped[str] = mapped_column(String(320)); recipients: Mapped[list] = mapped_column(JSON, default=list); subject: Mapped[str] = mapped_column(String(500)); body: Mapped[str] = mapped_column(Text, default=""); received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); sync_origin: Mapped[str] = mapped_column(String(30), default="import")
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
+    body_html: Mapped[str | None] = mapped_column(Text, nullable=True)
 class MailDraft(Owned):
     __tablename__ = "mail_drafts"
     account_id: Mapped[str | None] = mapped_column(String(36)); thread_id: Mapped[str | None] = mapped_column(String(100)); recipients: Mapped[list] = mapped_column(JSON, default=list); subject: Mapped[str] = mapped_column(String(500), default=""); content: Mapped[str] = mapped_column(Text, default=""); status: Mapped[str] = mapped_column(String(20), default="draft")

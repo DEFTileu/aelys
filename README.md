@@ -60,3 +60,6 @@ evidence. Web и unsigned macOS/Android development builds собраны; ре�
 ## Что не является частью документации
 
 UI/UX, название домена, тарифы VPS, конкретный облачный вендор и бренд-айдентика.
+
+The signed macOS app also provides a [CLI for repeatable calendar imports and
+explicit Gmail sync](docs/CLI.md), using the existing device identity and Touch ID.

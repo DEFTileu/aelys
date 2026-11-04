@@ -88,3 +88,12 @@
   .actual-mail .actual-reader-none { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin: 0; color: var(--pg-mute); font-size: 14px; }
   .actual-mail .actual-reader-none svg { color: #A29DA8; }
 }
+
+/* HTML mail has an opaque iframe; message styles never escape into the app. */
+.mail-rich-body { display: flex; flex-direction: column; flex: 1; min-height: 160px; min-width: 0; overflow: hidden; }
+.mail-rich-tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px; flex: none; }
+.mail-rich-tools button { padding: 6px 10px; border: 1px solid var(--amf-border); border-radius: 8px; background: var(--amf-surface); color: var(--amf-text); cursor: pointer; }
+.mail-rich-tools button[aria-pressed='true'] { background: var(--amf-selected); }
+.mail-rich-body .mail-image-notice { margin: 0; padding: 0 16px 8px; font-size: 12px; }
+.mail-rich-body iframe { flex: 1; width: 100%; min-height: 180px; border: 0; background: white; color-scheme: light; }
+@media (max-width: 700px) { .mail-rich-body iframe { flex: none; height: 60dvh; } }
