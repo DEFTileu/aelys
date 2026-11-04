@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid5
 
-from .errors import BudgetExceeded, RunCancelled
+from .errors import BudgetExceeded, RunCancelled, ToolValidationError
 from .execution import AIExecutionService
 from .models import ChatMessage, PermissionContext, RoutingRequest, ToolCall
 from .tools import ToolRegistry
@@ -97,7 +97,11 @@ async def run_tool_turn(
             seen.add(call.call_id)
             await check()
             await emit('ai.tool.requested', tool=call.name, call_id=call.call_id)
-            output = await registry.invoke(call, context)
+            try:
+                output = await registry.invoke(call, context)
+            except (ToolValidationError, RuntimeError) as error:
+                # Bad arguments or a stale id are the model's to fix; policy denials still end the run.
+                output = {'error': str(error)[:300], 'untrusted': True}
             await emit('ai.tool.approved', tool=call.name, call_id=call.call_id)
             await emit('ai.tool.result', tool=call.name, call_id=call.call_id, result=output)
             outputs.append(ChatMessage('user', json.dumps({'tool': call.name, 'result': output},

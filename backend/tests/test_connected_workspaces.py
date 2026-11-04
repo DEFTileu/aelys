@@ -66,7 +66,8 @@ async def test_provider_key_probe_and_persistent_conversation(client, monkeypatc
         assert "Hello from provider" in events.text
         await client.get(f"/api/v1/ai/runs/{run['id']}/events")  # Replay must not repeat provider execution.
     assert len(observed) == 2
-    assert [message["role"] for message in observed[1]] == ["user", "assistant", "user"]
+    assert [message["role"] for message in observed[1]] == ["system", "user", "assistant", "user"]
+    assert "You are Aelys" in observed[1][0]["content"] and "Current owner time" in observed[1][0]["content"]
     messages = (await client.get(f"/api/v1/ai/conversations/{conversation['id']}/messages")).json()
     assert [item["role"] for item in messages] == ["user", "assistant", "user", "assistant"]
     assert (await client.get("/api/v1/ai/conversations")).json()[0]["id"] == conversation["id"]

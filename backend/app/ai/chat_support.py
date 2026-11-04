@@ -8,6 +8,7 @@ import re
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.models import AIAction, Task
 from fastapi import HTTPException
@@ -21,19 +22,51 @@ DEFAULT_SCOPES = ("calendar.read", "notes.read", "tasks.read")
 # model is safe; the owner's approval is what executes them.
 WRITE_SCOPES = frozenset({"tasks.write", "notes.write", "calendar.write", "reminders.write"})
 
-SYSTEM_POLICY = (
-    "You are Aelys. You may read the owner's data only through the provided read tools. "
-    "Aelys reads, never changes data without asking: to change anything call the matching tool, "
-    "which only proposes the change for the owner to approve; never claim a change was made before approval."
+_IDENTITY = (
+    "You are Aelys, the owner's personal assistant inside the Aelys app (tasks, calendar, notes, knowledge base, mail, finance). "
+    "Reply in the language of the owner's latest message, concisely and concretely. "
+    "Never invent facts, IDs, dates or the contents of the owner's data. "
 )
+SYSTEM_POLICY = (
+    "You may read the owner's data only through the provided read tools. "
+    "Aelys reads, never changes data without asking: to change anything call the matching tool, "
+    "which only proposes the change for the owner to approve; never claim a change was made before approval. "
+    "Look items up before acting: list_tasks gives a task's id and current version, search_notes gives note ids for read_note, "
+    "search_knowledge answers questions about the owner's documents (cite excerpts as [N1]). "
+    "Turn relative times such as 'tomorrow at 10' into exact times in the owner's timezone."
+)
+_NO_TOOLS = (
+    "No data sources are shared with you in this chat, so you cannot see or change the owner's tasks, calendar or notes. "
+    "If the owner asks for that, tell them to turn the source on in this chat's sources."
+)
+
+
+def owner_timezone(*candidates: object) -> str:
+    """First valid IANA timezone name among the candidates, else UTC."""
+    for value in candidates:
+        if isinstance(value, str) and 0 < len(value) <= 64:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, ValueError):
+                continue
+            return value
+    return "UTC"
+
+
+def system_prompt(timezone: str, *, tools: bool) -> str:
+    now = datetime.now(ZoneInfo(timezone))
+    return f"{_IDENTITY}{SYSTEM_POLICY if tools else _NO_TOOLS}\nCurrent owner time: {now:%Y-%m-%d %H:%M} ({now:%A}), timezone {timezone}."
+
 
 _SOURCE = {"list_tasks": "tasks", "create_task": "tasks", "update_task": "tasks", "complete_task": "tasks",
            "create_reminder": "tasks", "read_calendar": "calendar", "create_event": "calendar",
-           "read_note": "notes", "create_note": "notes"}
+           "read_note": "notes", "create_note": "notes", "search_notes": "notes",
+           "search_knowledge": "knowledge"}
 _LABEL = {"list_tasks": "Read your tasks", "read_calendar": "Read your calendar", "read_note": "Read a note",
           "create_task": "Propose a new task", "update_task": "Propose a task change",
           "complete_task": "Propose completing a task", "create_event": "Propose a calendar event",
-          "create_reminder": "Propose a reminder", "create_note": "Propose a new note"}
+          "create_reminder": "Propose a reminder", "create_note": "Propose a new note",
+          "search_notes": "Searched notes", "search_knowledge": "Searched knowledge base"}
 
 
 def tool_meta(tool: str, result: Mapping[str, Any] | None = None) -> dict[str, str]:
@@ -51,6 +84,8 @@ def tool_meta(tool: str, result: Mapping[str, Any] | None = None) -> dict[str, s
             meta["detail"] = (f"{len(items)} task{'s' * (len(items) != 1)}" if items else "No tasks") + (f", {due} due this week" if due else "")
         elif tool == "read_calendar" and items is not None:
             meta["detail"] = f"{len(items)} event{'s' * (len(items) != 1)}" if items else "No events"
+        elif tool in {"search_notes", "search_knowledge"} and items is not None:
+            meta["detail"] = f"{len(items)} match{'es' * (len(items) != 1)}" if items else "No matches"
         elif tool == "read_note" and result.get("title"):
             meta["detail"] = str(result["title"])[:80]
     return meta

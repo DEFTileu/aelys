@@ -50,7 +50,7 @@ describe('connected workspaces', () => {
     await fill('Message Aelys', 'Hello'); await submit()
     expect(host.textContent).toContain('Partial reply')
     expect(host.textContent).toContain('before the provider confirmed completion')
-    expect(client.createAIRun).toHaveBeenCalledWith(expect.objectContaining({ routing: { provider_id: 'p1', provider: 'claude', model: 'model' } }), { queueOnOffline: false })
+    expect(client.createAIRun).toHaveBeenCalledWith(expect.objectContaining({ routing: { provider_id: 'p1', provider: 'claude', model: 'model', timezone: expect.any(String) } }), { queueOnOffline: false })
   })
 
   it('renders imported mail as text and creates an editable reply draft', async () => {
