@@ -181,7 +181,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             <CrossfadePhoto url={wallpaper} height={isHome ? 420 : 230} />
             <div className="shell-photo" aria-hidden="true" style={{ height: isHome ? 420 : 230, background: BAND_GRADIENT[theme][isHome ? 'home' : 'page'] }} />
           </>}
-          <div style={{ position: 'relative' }}>
+          <div className="shell-page-frame" style={{ position: 'relative' }}>
           {!mobile && <div className="actual-desktop__tools" style={{ position: 'absolute', top: 20, right: 28, display: 'flex', gap: 8, alignItems: 'center', zIndex: 2 }}>
             <button type="button" className="shell-btn shell-pill shell-pill--button" data-glass="" onClick={() => setPaletteOpen(true)} aria-label="Search or run a command" style={{ width: 260, padding: '0 8px 0 14px', gap: 10, fontSize: 13 }}>
               <Search size={18} aria-hidden="true" />
@@ -204,7 +204,7 @@ function DesktopShell({ route, apiStatus, children, theme, onToggleTheme, mobile
             {hero?.sub && <div style={{ fontSize: 14, lineHeight: '22px', marginTop: 2 }}>{hero.sub}</div>}
           </div>)}
 
-          <OfflineGate route={route} apiStatus={apiStatus} compact={mobile}>{children}</OfflineGate>
+          <div className="shell-page-content"><OfflineGate route={route} apiStatus={apiStatus} compact={mobile}>{children}</OfflineGate></div>
           </div>
         </main>
 
