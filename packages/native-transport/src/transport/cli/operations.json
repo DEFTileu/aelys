@@ -1,0 +1,667 @@
+{
+  "version": 2,
+  "commands": [
+    "exec OPERATION.json",
+    "batch BATCH.json",
+    "api METHOD /api/v1/PATH",
+    "receipt FILE",
+    "devices list",
+    "devices revoke ID --receipt FILE --apply",
+    "connect gmail|calendar --receipt FILE --apply"
+  ],
+  "typed_operations": [
+    {
+      "type": "me"
+    },
+    {
+      "type": "api_binary",
+      "path": "/api/v1/integrations/telegram/messages/example-1/media"
+    },
+    {
+      "type": "api",
+      "method": "GET",
+      "path": "/api/v1/automations"
+    },
+    {
+      "type": "projects"
+    },
+    {
+      "type": "project_create",
+      "project": {
+        "name": "Example project"
+      }
+    },
+    {
+      "type": "project_patch",
+      "id": "example-1",
+      "version": 1,
+      "project": {
+        "name": "Updated example"
+      }
+    },
+    {
+      "type": "project_delete",
+      "id": "example-1"
+    },
+    {
+      "type": "tasks",
+      "project_id": null
+    },
+    {
+      "type": "notes"
+    },
+    {
+      "type": "read_page",
+      "resource": "notes",
+      "limit": 20
+    },
+    {
+      "type": "read_item",
+      "resource": "notes",
+      "id": "example-1"
+    },
+    {
+      "type": "note_create",
+      "note": {
+        "title": "Example note",
+        "markdown_body": "Example body"
+      }
+    },
+    {
+      "type": "note_patch",
+      "id": "example-1",
+      "version": 1,
+      "note": {
+        "title": "Updated example",
+        "markdown_body": "Updated body"
+      }
+    },
+    {
+      "type": "note_delete",
+      "id": "example-1"
+    },
+    {
+      "type": "calendar_occurrences",
+      "starts_at": "2026-11-05T05:30:00Z",
+      "ends_at": "2026-11-05T06:20:00Z"
+    },
+    {
+      "type": "calendar_events"
+    },
+    {
+      "type": "calendar_event_create",
+      "event": {
+        "title": "Example event",
+        "starts_at": "2026-11-05T05:30:00Z",
+        "ends_at": "2026-11-05T06:20:00Z",
+        "timezone": "Asia/Almaty"
+      }
+    },
+    {
+      "type": "calendar_event_patch",
+      "id": "example-1",
+      "version": 1,
+      "event": {
+        "title": "Updated example",
+        "starts_at": "2026-11-05T05:30:00Z",
+        "ends_at": "2026-11-05T06:20:00Z",
+        "timezone": "Asia/Almaty"
+      }
+    },
+    {
+      "type": "calendar_event_delete",
+      "id": "example-1",
+      "version": 1
+    },
+    {
+      "type": "calendar_reminders",
+      "event_id": "example-1"
+    },
+    {
+      "type": "calendar_reminder_create",
+      "event_id": "example-1",
+      "reminder": {
+        "event_id": "example-1",
+        "notify_at": "2026-11-05T05:00:00Z",
+        "idempotency_key": "example-reminder-1"
+      }
+    },
+    {
+      "type": "calendar_reminder_delete",
+      "event_id": "example-1",
+      "reminder_id": "reminder-1",
+      "version": 1
+    },
+    {
+      "type": "calendar_reminder_dispatch"
+    },
+    {
+      "type": "finance_transactions"
+    },
+    {
+      "type": "finance_accounts"
+    },
+    {
+      "type": "finance_categories"
+    },
+    {
+      "type": "finance_budgets"
+    },
+    {
+      "type": "finance_summary"
+    },
+    {
+      "type": "finance_account_create",
+      "account": {
+        "name": "Example cash",
+        "currency": "KZT"
+      }
+    },
+    {
+      "type": "finance_category_create",
+      "category": {
+        "name": "Example expense",
+        "kind": "expense"
+      }
+    },
+    {
+      "type": "finance_transaction_create",
+      "transaction": {
+        "account_id": "example-1",
+        "amount": "1250.50",
+        "currency": "KZT",
+        "type": "expense",
+        "occurred_at": "2026-11-05T05:30:00Z",
+        "idempotency_key": "example-transaction-1"
+      }
+    },
+    {
+      "type": "finance_budget_create",
+      "budget": {
+        "currency": "KZT",
+        "period_start": "2026-11-01",
+        "period_end": "2026-11-30",
+        "limit_amount": "50000.00"
+      }
+    },
+    {
+      "type": "finance_transfer_create",
+      "transfer": {
+        "from_account_id": "example-1",
+        "to_account_id": "example-2",
+        "amount": "1250.50",
+        "currency": "KZT",
+        "occurred_at": "2026-11-05T05:30:00Z",
+        "idempotency_key": "example-transfer-1"
+      }
+    },
+    {
+      "type": "focus_sessions"
+    },
+    {
+      "type": "focus_start",
+      "focus": {
+        "started_at": "2026-11-05T05:30:00Z",
+        "mode": "pomodoro"
+      },
+      "idempotency_key": "example-focus-1"
+    },
+    {
+      "type": "focus_stop",
+      "id": "example-1",
+      "version": 1
+    },
+    {
+      "type": "mail_messages"
+    },
+    {
+      "type": "mail_accounts"
+    },
+    {
+      "type": "gmail_status"
+    },
+    {
+      "type": "ai_providers"
+    },
+    {
+      "type": "ai_conversations"
+    },
+    {
+      "type": "ai_messages",
+      "conversation_id": "example-1"
+    },
+    {
+      "type": "ai_conversation_create",
+      "conversation": {
+        "title": "Example conversation"
+      }
+    },
+    {
+      "type": "ai_message_create",
+      "conversation_id": "example-1",
+      "message": {
+        "role": "user",
+        "content": "Example message"
+      }
+    },
+    {
+      "type": "ai_run_create",
+      "run": {
+        "conversation_id": "example-1",
+        "message": "Example prompt",
+        "idempotency_key": "example-ai-run-1"
+      }
+    },
+    {
+      "type": "ai_run_get",
+      "id": "example-1"
+    },
+    {
+      "type": "ai_run_cancel",
+      "id": "example-1"
+    },
+    {
+      "type": "ai_run_events",
+      "id": "example-1"
+    },
+    {
+      "type": "mail_drafts"
+    },
+    {
+      "type": "mail_draft_create",
+      "draft": {
+        "subject": "Example draft",
+        "content": "Draft only",
+        "recipients": []
+      }
+    },
+    {
+      "type": "mail_draft_patch",
+      "id": "example-1",
+      "version": 1,
+      "draft": {
+        "subject": "Updated draft",
+        "content": "Draft only",
+        "recipients": []
+      }
+    },
+    {
+      "type": "mail_draft_delete",
+      "id": "example-1",
+      "version": 1
+    },
+    {
+      "type": "activity"
+    },
+    {
+      "type": "notifications"
+    },
+    {
+      "type": "notification_read",
+      "id": "example-1"
+    },
+    {
+      "type": "task_create",
+      "task": {
+        "title": "Example task",
+        "description": "",
+        "project_id": null,
+        "parent_task_id": null,
+        "status": "todo",
+        "priority": 0,
+        "due_at": null,
+        "due_timezone": null,
+        "rrule": null
+      }
+    },
+    {
+      "type": "task_patch",
+      "id": "example-1",
+      "version": 1,
+      "task": {
+        "title": "Example task",
+        "description": "",
+        "project_id": null,
+        "parent_task_id": null,
+        "status": "todo",
+        "priority": 0,
+        "due_at": null,
+        "due_timezone": null,
+        "rrule": null
+      }
+    },
+    {
+      "type": "task_delete",
+      "id": "example-1"
+    }
+  ],
+  "api_routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/integrations/telegram/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/integrations/telegram/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/integrations/telegram/chats"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/telegram/connect"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/telegram/binding"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/telegram/disconnect"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/telegram/sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/telegram/chats/send"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/integrations/telegram/settings"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/telegram/messages/*/draft"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/telegram/messages/*/send"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mail/gmail/connect"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mail/gmail/*/sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mail/gmail/*/drafts/import"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mail/gmail/*/drafts/*"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mail/gmail/*/disconnect"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mail/accounts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/mail/messages"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/mail/messages/*"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/focus/sessions/*/pause"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/focus/sessions/*/resume"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/automations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/automations/runs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/automations/*/executions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automations/draft"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automations/dispatch"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automations/*/dry-run"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/automations/*"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/automations/*"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agents/devices"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agents/sessions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agents/sessions/search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agents/sessions/*/stop"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agents/runs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agents/runs/*"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agents/runs/*/cancel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/memory"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/memory"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/ai/memory/*"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/ai/memory/*"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/providers"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/ai/providers/*"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/providers/*/probe"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ai/providers/*/secret"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/ai/providers/*/secret"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/ai/conversations/*"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai/conversations/*/actions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/actions/*/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/actions/*/reject"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/attachments"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/ai/attachments/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/ai/messages/*"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendar/google/status"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/calendar/google/connect"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/calendar/google/sync"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/calendar/google/connection"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendar/events/*"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notes/*"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notes/*/revisions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notes/*/restore"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/*"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/*/reminders"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/*/reminders"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/knowledge/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/history"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/finance/budgets"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/*"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/*/resources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/*/grants"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/*/grants/*/revoke"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/resources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/resource-links"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/resource-links/*"
+    }
+  ],
+  "notes": [
+    "Mutation commands preview unless --apply is present.",
+    "All IDs/data here are synthetic examples.",
+    "Auth/device enrollment/sync credentials and arbitrary URLs are not generic operations.",
+    "Local appearance settings, offline-only tools and raw Mac agent histories are outside the owner API."
+  ],
+  "cli_operations": [
+    {
+      "type": "devices"
+    },
+    {
+      "type": "device_revoke",
+      "id": "example-1"
+    },
+    {
+      "type": "google_connect",
+      "provider": "gmail"
+    },
+    {
+      "type": "google_connect",
+      "provider": "calendar"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 //! Explicit owner CLI. No arbitrary HTTP, shell commands, or exported credentials.
 use super::*;
+mod commands;
 use chrono::DateTime;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -46,6 +47,7 @@ enum Command {
     Status,
     Unlock,
     Import(Import),
+    Operations(commands::Invocation),
 }
 struct Lock(PathBuf);
 impl Drop for Lock {
@@ -113,6 +115,9 @@ fn parse(args: &[String]) -> Result<(String, Command), String> {
         return Err(err("USAGE_ERROR"));
     }
     let origin = origin_fn(&args[1])?;
+    if let Some(command) = commands::parse(&args[2..])? {
+        return Ok((origin, Command::Operations(command)));
+    }
     match args[2].as_str() {
         "status" if args.len() == 3 => Ok((origin, Command::Status)),
         "unlock" if args.len() == 3 => Ok((origin, Command::Unlock)),
@@ -405,7 +410,8 @@ async fn authenticated(origin: String, command: Command) -> Result<Value, String
     })
     .await
     .map_err(|_| err("BIOMETRIC_UNAVAILABLE"))??;
-    if matches!(&command, Command::Unlock)
+    if matches!(&command, Command::Operations(invocation) if invocation.unlock_keychain)
+        || matches!(&command, Command::Unlock)
         || matches!(&command, Command::Import(import) if import.unlock_keychain)
     {
         let unlock_origin = origin.clone();
@@ -437,6 +443,7 @@ async fn authenticated(origin: String, command: Command) -> Result<Value, String
             Ok(json!({"authenticated":true,"calendar_series":events.as_array().ok_or_else(|| err("INVALID_RESPONSE"))?.len(),"mail_accounts":accounts}))
         }.await,
         Command::Import(import) => apply(&client, &session, import).await,
+        Command::Operations(invocation) => commands::execute(&session, invocation).await,
         Command::Unlock => unreachable!("unlock returns before session creation"),
     };
     if !ephemeral {
@@ -460,18 +467,33 @@ async fn authenticated(origin: String, command: Command) -> Result<Value, String
     result
 }
 pub fn run_cli(args: Vec<String>) -> i32 {
-    if args.is_empty() || args == ["--help"] || args == ["help"] {
-        println!("{HELP}");
+    if args == ["operations"] {
+        println!("{}", commands::catalogue());
         return 0;
     }
-    let result = parse(&args).and_then(|(origin, command)| {
+    if args.is_empty() || args == ["--help"] || args == ["help"] {
+        println!("{HELP}\n{}", commands::HELP);
+        return 0;
+    }
+    let result = (|| {
+        if args.len() >= 3 && args[0] == "--origin" {
+            origin_fn(&args[1])?;
+            if let Some(result) = commands::local(&args[2..]) {
+                return result;
+            }
+        }
+        parse(&args).and_then(|(origin, command)| {
         if let Command::Import(import) = &command {
             if !import.apply {
                 return Ok(json!({"valid":true,"apply":false,"events":import.batch.events.len(),"mail_sync":import.batch.mail_sync.len(),"digest":import.digest}));
             }
         }
+        if let Command::Operations(invocation) = &command {
+            if invocation.preview { return Ok(invocation.preview_value()); }
+        }
         tauri::async_runtime::block_on(authenticated(origin, command))
-    });
+        })
+    })();
     match result {
         Ok(value) => {
             println!("{value}");
