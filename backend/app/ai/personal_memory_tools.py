@@ -31,12 +31,12 @@ class ForgetArgs(BaseModel):
 
 
 def register_memory_tools(registry: ToolRegistry, db: AsyncSession, owner_id: str,
-                          event_id: str, source_message_id: str | None) -> None:
+                          event_id: str, source_message_id: str | None, *, source: str = 'telegram_ai') -> None:
     async def remember_fact(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         from .memory import remember
         args = RememberArgs.model_validate(arguments)
         item = await remember(db, owner_id, args.text, kind=args.kind, expires_at=args.expires_at,
-                              source='telegram_ai', source_message_id=source_message_id or event_id)
+                              source=source, source_message_id=source_message_id or event_id)
         return {'id':item.id,'version':item.version,'kind':item.kind,'remembered':True}
 
     async def forget_fact(arguments: Mapping[str, Any]) -> Mapping[str, Any]:

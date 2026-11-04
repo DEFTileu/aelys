@@ -241,3 +241,42 @@ async def test_plain_stream_completion_reports_tokens(tmp_path, monkeypatch):
         conversation = (await client.post("/api/v1/ai/conversations", json={"tool_scope": {"scopes": []}})).json()
         done = payloads(await run(client, conversation["id"], "hi", "p1"), "ai.run.completed")[0]
         assert (done["input_tokens"], done["output_tokens"]) == (7, 3)
+
+
+# Every app chat run tells the model who it is, the owner's time, and the relevant memory.
+async def _plain_run(client, message: str, key: str, **routing):
+    conversation = (await client.post("/api/v1/ai/conversations", json={"tool_scope": {"scopes": []}})).json()
+    created = await client.post("/api/v1/ai/runs", json={"conversation_id": conversation["id"], "message": message, "idempotency_key": key,
+                                                         "routing": {"provider": "claude", "model": "chat-model", **routing}})
+    assert created.status_code == 200, created.text
+    return parse((await client.get(f"/api/v1/ai/runs/{created.json()['id']}/events")).text)
+
+
+@pytest.mark.asyncio
+async def test_plain_chat_gets_identity_owner_time_and_relevant_memory(tmp_path, monkeypatch):
+    async with chat(tmp_path, monkeypatch, [[{"type": "text", "text": "unused"}]]) as (client, script, _):
+        assert (await client.post("/api/v1/ai/memory", json={"text": "Мой рабочий день начинается в 9 утра", "kind": "preference"})).status_code == 200
+        events = await _plain_run(client, "Когда начинается мой рабочий день?", "plain-1", timezone="Asia/Almaty")
+        assert events[-1][0] == "ai.run.completed"
+        request = script.requests[-1]
+        assert "You are Aelys" in request["system"] and "timezone Asia/Almaty" in request["system"]
+        assert "cannot see or change" in request["system"]
+        assert any("рабочий день начинается" in str(message["content"]) for message in request["messages"][:-1])
+
+
+@pytest.mark.asyncio
+async def test_invalid_timezone_falls_back_to_utc(tmp_path, monkeypatch):
+    async with chat(tmp_path, monkeypatch, [[{"type": "text", "text": "unused"}]]) as (client, script, _):
+        await _plain_run(client, "hi", "plain-tz", timezone="Mars/Olympus")
+        assert "timezone UTC" in script.requests[-1]["system"]
+
+
+@pytest.mark.asyncio
+async def test_tool_error_goes_back_to_the_model(tmp_path, monkeypatch):
+    replies = [[tool_use("read_note", "t1", note_id="missing-note")], [{"type": "text", "text": "Заметка не найдена"}]]
+    async with chat(tmp_path, monkeypatch, replies) as (client, script, _):
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        events = await run(client, conversation["id"], "Прочитай заметку", "tool-error")
+        assert events[-1][0] == "ai.run.completed"
+        assert "You are Aelys" in script.requests[0]["system"] and "search_notes" in script.requests[0]["system"]
+        assert '"error"' in str(script.requests[1]["messages"][-1]["content"])

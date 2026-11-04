@@ -66,7 +66,8 @@ async def test_registry_reuses_create_tools_and_has_minimal_scopes(setup):
         'list_tasks': 'tasks.read', 'update_task': 'tasks.write', 'complete_task': 'tasks.write',
         'read_note': 'notes.read', 'read_calendar': 'calendar.read',
         'create_event': 'calendar.write', 'create_reminder': 'reminders.write',
-        'remember': 'memory.remember', 'forget': 'memory.forget'}
+        'remember': 'memory.remember', 'forget': 'memory.forget',
+        'search_notes': 'notes.read', 'search_knowledge': 'knowledge.read'}
     assert {schema['name'] for schema in setup.registry.schemas()} == set(expected)
     for name, scope in expected.items():
         descriptor = setup.registry.descriptor(name)
@@ -310,3 +311,19 @@ async def test_nested_event_reminder_checks_policy_and_rolls_back_atomically(set
         assert not list((await check.execute(select(CalendarReminder))).scalars())
         assert not list((await check.execute(select(SyncRecord))).scalars())
         assert not list((await check.execute(select(SyncChange))).scalars())
+
+
+async def test_search_notes_finds_owned_notes_only(setup):
+    found = await invoke(setup, 'search_notes', {'query': 'note'})
+    assert [item['id'] for item in found['items']] == ['note'] and found['untrusted'] is True
+    assert len(found['items'][0]['snippet']) <= 200
+    assert (await invoke(setup, 'search_notes', {'query': 'SECRET'}))['items'] == []
+
+
+async def test_search_knowledge_reads_only_enabled_owner_notes(setup):
+    context = PermissionContext(actor='personal:test', scopes=frozenset({'knowledge.read'}))
+    assert (await invoke(setup, 'search_knowledge', {'query': 'telegram'}, context=context))['items'] == []
+    (await setup.db.get(Note, 'note')).knowledge_enabled = True
+    await setup.db.flush()
+    found = await invoke(setup, 'search_knowledge', {'query': 'telegram'}, context=context)
+    assert found['items'] and {item['note_id'] for item in found['items']} == {'note'} and found['items'][0]['label'] == 'N1'
