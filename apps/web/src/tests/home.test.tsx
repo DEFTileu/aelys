@@ -3,12 +3,14 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from '../views/HomeView'
 
-const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), financeBudgets: vi.fn(), focusSessions: vi.fn(), mailMessages: vi.fn(), activity: vi.fn(), updateTask: vi.fn() }))
+const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), notesPage: vi.fn(), financeTransactions: vi.fn(), financeBudgets: vi.fn(), focusSessions: vi.fn(), mailMessages: vi.fn(), mailPage: vi.fn(), mailMessage: vi.fn(), activity: vi.fn(), updateTask: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 
 describe('HomeView', () => {
   let root: ReturnType<typeof createRoot> | undefined
   beforeEach(() => { Object.values(client).forEach((method) => method.mockRejectedValue(new Error('offline'))) })
+beforeEach(() => { client.notesPage.mockImplementation(async () => ({ items: await client.notes(), next_cursor: null, etag: 'notes' })); client.mailPage.mockImplementation(async () => ({ items: await client.mailMessages(), next_cursor: null, etag: 'mail' })); })
+
   afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; window.localStorage.clear() })
 
   it('renders the design default My day widgets without fabricated offline data', async () => {

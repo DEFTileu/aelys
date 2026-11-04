@@ -3,6 +3,14 @@ import { createNativeFetchFromInvoke } from '../lib/nativeClient'
 import type { NativeInvoke } from '../lib/nativeTransport'
 
 describe('native shared-client bridge', () => {
+  it('reconstructs a conditional 304 from the bounded native page operation', async () => {
+    const invoke = vi.fn(async () => ({ items: [], next_cursor: null, etag: 'W/"v1"', not_modified: true })) as NativeInvoke
+    const response = await createNativeFetchFromInvoke(invoke, 'http://127.0.0.1:8000')('http://127.0.0.1:8000/api/v1/read/notes?limit=50&q=planning', { headers: { 'If-None-Match': 'W/"v1"' } })
+    expect(invoke).toHaveBeenCalledWith('native_operation', { origin: 'http://127.0.0.1:8000', operation: { type: 'read_page', resource: 'notes', limit: 50, q: 'planning', known_etag: 'W/"v1"' } })
+    expect(response.status).toBe(304)
+    expect(response.headers.get('ETag')).toBe('W/"v1"')
+    expect(await response.text()).toBe('')
+  })
   it('reports native expiry as 401 without retrying or claiming a backend outage', async () => {
     const invoke = vi.fn(async () => { throw 'SIGN_IN_REQUIRED' }) as NativeInvoke
     const listener = vi.fn()

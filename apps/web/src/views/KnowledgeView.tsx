@@ -28,15 +28,15 @@ export function KnowledgeView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [reading, setReading] = useState(false)
   const requestSequence = useRef(0)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = true) => {
     const request = ++requestSequence.current
     if (apiStatus !== 'ready') { setStatus(apiStatus); return }
     setStatus('loading')
     try {
-      const result = await getSharedApiClient().notes()
+      const result = await getSharedApiClient().notes({ forceRefresh })
       if (request !== requestSequence.current) return
       setNotes(result)
-      void Promise.resolve().then(() => getSharedApiClient().projects()).then((value) => { if (request === requestSequence.current) setProjects(value) }).catch(() => { if (request === requestSequence.current) setProjects([]) })
+      void Promise.resolve().then(() => getSharedApiClient().projects({ forceRefresh })).then((value) => { if (request === requestSequence.current) setProjects(value) }).catch(() => { if (request === requestSequence.current) setProjects([]) })
       setSelectedId((current) => result.some((note) => note.id === current) ? current : result[0]?.id ?? null)
       setStatus('ready')
     } catch {

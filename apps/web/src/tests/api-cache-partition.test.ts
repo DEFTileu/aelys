@@ -3,18 +3,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ store: vi.fn(), client: vi.fn() }))
 vi.mock('@aelys/shared', async importOriginal => {
   const original = await importOriginal<Record<string, unknown>>()
-  return { ...original, IndexedDbOfflineStore: class { constructor(name: string) { mocks.store(name) } }, ApiClient: class { constructor(options: unknown) { mocks.client(options) } } }
+  return { ...original, IndexedDbOfflineStore: class { constructor(name: string) { mocks.store(name) } }, ApiClient: class { constructor(options: unknown) { mocks.client(options) } clearReadCache() {} } }
 })
 
 const token = (owner: string) => `header.${btoa(JSON.stringify({ sub: owner }))}.signature`
 beforeEach(() => { vi.resetModules(); mocks.store.mockClear(); mocks.client.mockClear(); localStorage.clear(); sessionStorage.clear() })
-afterEach(() => { localStorage.clear(); sessionStorage.clear() })
+afterEach(() => { localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks() })
 
 describe('private offline cache namespaces', () => {
+  it('uses the offline hint for remote servers while allowing a reachable local backend', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    const api = await import('../lib/api')
+    api.getSharedApiClient()
+    expect(mocks.client.mock.calls[0][0].isOnline()).toBe(true)
+    api.saveApiBaseUrl('https://remote.example.test/api/v1')
+    api.getSharedApiClient()
+    expect(mocks.client.mock.calls[1][0].isOnline()).toBe(false)
+  })
+
   it('separates backends and owners without opening the legacy unscoped database', async () => {
     const api = await import('../lib/api')
     sessionStorage.setItem('aelys.accessToken', token('owner-one'))
     const first = api.getSharedApiClient()
+    expect(mocks.client.mock.calls[0][0]).toMatchObject({ readFreshnessMs: 60_000 })
     expect(api.getSharedApiClient()).toBe(first)
     sessionStorage.setItem('aelys.accessToken', token('owner-two'))
     expect(api.getSharedApiClient()).not.toBe(first)
@@ -46,6 +57,10 @@ describe('private offline cache namespaces', () => {
       expect(mocks.store).toHaveBeenCalledTimes(1)
       expect(mocks.store.mock.calls[0][0]).toBe(`aelys-shared-v3:${encodeURIComponent('http://127.0.0.1:8000')}:owner-one`)
       expect(mocks.client.mock.calls[1][0].offlineStore).toBeDefined()
+      const canUseCache = mocks.client.mock.calls[1][0].canUseCache as () => boolean
+      expect(canUseCache()).toBe(true)
+      api.setNativeCacheOwner('owner-two')
+      expect(canUseCache()).toBe(false)
     } finally { delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ }
   })
 
@@ -54,11 +69,15 @@ describe('private offline cache namespaces', () => {
     sessionStorage.setItem('aelys.accessToken', token('owner-one'))
     api.getSharedApiClient()
     const getToken = mocks.client.mock.calls[0][0].getToken as () => string | undefined
+    const canUseCache = mocks.client.mock.calls[0][0].canUseCache as () => boolean
     expect(getToken()).toBe(token('owner-one'))
+    expect(canUseCache()).toBe(true)
     sessionStorage.setItem('aelys.accessToken', token('owner-two'))
     expect(getToken()).toBeUndefined()
+    expect(canUseCache()).toBe(false)
     api.saveApiBaseUrl('https://another.example.test/api/v1')
     sessionStorage.setItem('aelys.accessToken', token('owner-one'))
     expect(getToken()).toBeUndefined()
+    expect(canUseCache()).toBe(false)
   })
 })

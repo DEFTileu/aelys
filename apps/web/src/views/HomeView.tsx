@@ -1,3 +1,4 @@
+import { ApiError } from '@aelys/shared'
 import { PageSkeleton } from '../components/PageSkeleton'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Check, LayoutGrid, Plus, RotateCcw } from '../icons'
@@ -66,20 +67,33 @@ export function HomeView({ apiStatus }: { apiStatus?: ApiStatus }) {
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
     setData((current) => ({ ...current, states: Object.fromEntries(['today', 'cal', 'proj', 'notes', 'fin', 'focus', 'mail', 'kb', 'activity'].map((id) => [id, 'loading'])) }))
-    void Promise.allSettled([client.tasks(), client.calendarOccurrences(today.toISOString(), tomorrow.toISOString()), client.projects(), client.notes(), client.financeTransactions(), client.focusSessions(), client.mailMessages(), client.activity(), client.financeBudgets()]).then(([tasks, events, projects, notes, finance, focusSessions, mail, activity, budgets]) => {
+    let rejected = false
+    const preview = (key: 'notes' | 'mail') => (value: unknown) => {
+      if (active && !rejected) setData(current => ({ ...current, [key]: (value as { items: readonly unknown[] }).items, states: { ...current.states, [key]: 'ready' } }))
+    }
+    const readOptions = { forceRefresh: reload > 0 }
+    const notesPage = client.notesPage({ limit: 10 }, { forceRefresh: reload > 0, onCached: preview('notes') }).then(page => { preview('notes')(page); return page.items })
+    const mailPage = client.mailPage({ limit: 10 }, { forceRefresh: reload > 0, onCached: preview('mail') }).then(page => { preview('mail')(page); return page.items })
+    const guard = <T,>(request: Promise<T>) => request.catch((error: unknown) => {
+      if (active && error instanceof ApiError && [401, 403].includes(error.status)) { rejected = true; setData(EMPTY_DATA); setFocusSession(null) }
+      throw error
+    })
+    void Promise.allSettled([guard(client.tasks(undefined, readOptions)), guard(client.calendarOccurrences(today.toISOString(), tomorrow.toISOString(), readOptions)), guard(client.projects(readOptions)), guard(notesPage), guard(client.financeTransactions(readOptions)), guard(client.focusSessions(readOptions)), guard(mailPage), guard(client.activity(readOptions)), guard(client.financeBudgets(readOptions))]).then(([tasks, events, projects, notes, finance, focusSessions, mail, activity, budgets]) => {
       if (!active) return
-      setData({
+      rejected = [tasks, events, projects, notes, finance, focusSessions, mail, activity, budgets].some(result => result.status === 'rejected' && result.reason instanceof ApiError && [401, 403].includes(result.reason.status))
+      if (rejected) { setData(EMPTY_DATA); setFocusSession(null); return }
+      setData(current => ({
         tasks: tasks.status === 'fulfilled' ? tasks.value : [],
         events: events.status === 'fulfilled' ? events.value : [],
         projects: projects.status === 'fulfilled' ? projects.value : [],
-        notes: notes.status === 'fulfilled' ? notes.value : [],
+        notes: notes.status === 'fulfilled' ? notes.value : current.notes,
         finance: finance.status === 'fulfilled' ? finance.value : [],
-        mail: mail.status === 'fulfilled' ? mail.value : [],
+        mail: mail.status === 'fulfilled' ? mail.value : current.mail,
         // Budgets only add a row to Finances; a failed load simply omits it.
         budgets: budgets.status === 'fulfilled' ? budgets.value : [],
         activity: activity.status === 'fulfilled' ? activity.value : [],
         states: { today: tasks.status === 'fulfilled' ? 'ready' : 'error', cal: events.status === 'fulfilled' ? 'ready' : 'error', proj: projects.status === 'fulfilled' ? 'ready' : 'error', notes: notes.status === 'fulfilled' ? 'ready' : 'error', fin: finance.status === 'fulfilled' ? 'ready' : 'error', focus: focusSessions.status === 'fulfilled' ? 'ready' : 'error', mail: mail.status === 'fulfilled' ? 'ready' : 'error', activity: activity.status === 'fulfilled' ? 'ready' : 'error', kb: notes.status === 'fulfilled' ? 'ready' : 'error' },
-      })
+      }))
       if (focusSessions.status === 'fulfilled') setData((current) => ({ ...current, focusSessions: focusSessions.value }))
       if (focusSessions.status === 'fulfilled') setFocusSession(focusSessions.value.find(isLive) ?? null)
     })

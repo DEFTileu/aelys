@@ -1,0 +1,36 @@
+{
+  "method": "Synthetic ASGI requests; no workers/network; body bytes exclude HTTP headers",
+  "dialect": "sqlite",
+  "records_per_collection": 2000,
+  "repeats": 5,
+  "endpoints": {
+    "notes_full": {
+      "warm_p50_ms": 53.358,
+      "body_bytes": 16492891,
+      "items": 2000
+    },
+    "notes_page": {
+      "warm_p50_ms": 27.7,
+      "body_bytes": 412748,
+      "items": 50
+    },
+    "notes_unchanged": {
+      "status": 304,
+      "body_bytes": 0
+    },
+    "mail_full": {
+      "warm_p50_ms": 63.498,
+      "body_bytes": 16626891,
+      "items": 2000
+    },
+    "mail_page": {
+      "warm_p50_ms": 5.693,
+      "body_bytes": 416159,
+      "items": 50
+    },
+    "mail_unchanged": {
+      "status": 304,
+      "body_bytes": 0
+    }
+  }
+}

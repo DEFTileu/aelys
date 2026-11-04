@@ -731,6 +731,8 @@ pub struct TaskInput {
 #[serde(deny_unknown_fields)]
 pub struct NoteInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pinned: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     knowledge_enabled: Option<bool>,
     #[serde(
         default,
@@ -792,8 +794,7 @@ where
     Option::<T>::deserialize(deserializer).map(Some)
 }
 fn valid_note(note: &NoteInput) -> bool {
-    !note.title.trim().is_empty()
-        && note.title.len() <= 300
+    note.title.len() <= 300
         && note.markdown_body.len() <= 500_000
         && note.folder.as_ref().is_none_or(|value| {
             value
@@ -884,6 +885,19 @@ pub enum Operation {
         project_id: Option<String>,
     },
     Notes {},
+    ReadPage {
+        resource: String,
+        limit: u16,
+        cursor: Option<String>,
+        q: Option<String>,
+        folder: Option<String>,
+        tag: Option<String>,
+        known_etag: Option<String>,
+    },
+    ReadItem {
+        resource: String,
+        id: String,
+    },
     NoteCreate {
         note: NoteInput,
     },
@@ -1333,6 +1347,54 @@ fn route(op: Operation) -> Result<(Method, String, Option<Value>), String> {
             Ok((Method::GET, path, None))
         }
         Operation::Notes {} => Ok((Method::GET, "/api/v1/notes".into(), None)),
+        Operation::ReadPage {
+            resource,
+            limit,
+            cursor,
+            q,
+            folder,
+            tag,
+            known_etag,
+        } if matches!(resource.as_str(), "notes" | "mail")
+            && (1..=100).contains(&limit)
+            && cursor.as_ref().is_none_or(|value| value.len() <= 2048)
+            && q.as_ref().is_none_or(|value| value.chars().count() <= 200)
+            && folder
+                .as_ref()
+                .is_none_or(|value| value.chars().count() <= 127)
+            && tag.as_ref().is_none_or(|value| value.chars().count() <= 80)
+            && known_etag.as_ref().is_none_or(|value| value.len() <= 128)
+            && (resource == "notes" || (folder.is_none() && tag.is_none())) =>
+        {
+            let mut query = url::form_urlencoded::Serializer::new(String::new());
+            query.append_pair("limit", &limit.to_string());
+            for (key, value) in [
+                ("cursor", cursor),
+                ("q", q),
+                ("folder", folder),
+                ("tag", tag),
+                ("known_etag", known_etag),
+            ] {
+                if let Some(value) = value {
+                    query.append_pair(key, &value);
+                }
+            }
+            Ok((
+                Method::GET,
+                format!("/api/v1/read/{resource}?{}", query.finish()),
+                None,
+            ))
+        }
+        Operation::ReadItem { resource, id }
+            if valid_id(&id) && matches!(resource.as_str(), "notes" | "mail") =>
+        {
+            let path = if resource == "notes" {
+                format!("/api/v1/notes/{id}")
+            } else {
+                format!("/api/v1/read/mail/{id}")
+            };
+            Ok((Method::GET, path, None))
+        }
         Operation::NoteCreate { note } if valid_note(&note) => {
             Ok((Method::POST, "/api/v1/notes".into(), Some(json!(note))))
         }
@@ -2113,6 +2175,12 @@ async fn execute_operation_inner(
     // No automatic retries: a rejected/ambiguous mutation is never replayed.
     let kind = if is_api {
         "api"
+    } else if path.starts_with("/api/v1/read/notes?") {
+        "notes-page"
+    } else if path.starts_with("/api/v1/read/mail?") {
+        "mail-page"
+    } else if path.starts_with("/api/v1/read/mail/") {
+        "mail-message"
     } else if path == "/api/v1/me" {
         "me"
     } else if path == "/api/v1/projects" {
@@ -2476,6 +2544,10 @@ struct Deleted {
 #[derive(Serialize, Deserialize)]
 struct Note {
     #[serde(default)]
+    pinned: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    updated_at: Option<String>,
+    #[serde(default)]
     knowledge_enabled: bool,
     #[serde(default)]
     folder: Option<String>,
@@ -2782,6 +2854,10 @@ fn valid_focus(focus: &FocusInput) -> bool {
 }
 #[derive(Serialize, Deserialize)]
 struct MailMessage {
+    #[serde(default)]
+    version: u64,
+    #[serde(default)]
+    is_read: bool,
     id: String,
     owner_id: String,
     account_id: Option<String>,
@@ -3016,6 +3092,19 @@ struct Notification {
 struct Delivered {
     delivered: u64,
 }
+#[derive(Serialize, Deserialize)]
+struct ReadFacets {
+    folders: Vec<String>,
+    tags: Vec<String>,
+}
+#[derive(Serialize, Deserialize)]
+struct ReadPageResult<T> {
+    items: Vec<T>,
+    next_cursor: Option<String>,
+    etag: String,
+    not_modified: bool,
+    facets: Option<ReadFacets>,
+}
 fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
     fn convert<T: DeserializeOwned + Serialize>(value: Value) -> Result<Value, String> {
         let parsed: T = serde_json::from_value(value).map_err(|_| err("INVALID_RESPONSE"))?;
@@ -3028,6 +3117,9 @@ fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
         "project" => convert::<Project>(value),
         "tasks" => convert::<Vec<Task>>(value),
         "notes" => convert::<Vec<Note>>(value),
+        "notes-page" => convert::<ReadPageResult<Note>>(value),
+        "mail-page" => convert::<ReadPageResult<MailMessage>>(value),
+        "mail-message" => convert::<MailMessage>(value),
         "note" => convert::<Note>(value),
         "calendar-occurrences" => convert::<Vec<EventOccurrence>>(value),
         "calendar-events" => convert::<Vec<Event>>(value),
@@ -3072,6 +3164,36 @@ fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
 mod tests {
     use super::*;
     #[test]
+    fn paged_reads_are_bounded_typed_owner_operations() {
+        let operation: Operation = serde_json::from_value(json!({"type":"read_page","resource":"notes","limit":50,"q":"x&other=value","known_etag":"W/\"v1\""})).unwrap();
+        let untitled: Operation = serde_json::from_value(
+            json!({"type":"note_create","note":{"title":"","markdown_body":""}}),
+        )
+        .unwrap();
+        assert!(route(untitled).is_ok());
+        let (method, path, body) = route(operation).unwrap();
+        assert_eq!(method, Method::GET);
+        assert!(body.is_none());
+        assert!(path.starts_with("/api/v1/read/notes?"));
+        let url = Url::parse(&format!("https://backend.example{path}")).unwrap();
+        assert_eq!(
+            url.query_pairs().find(|(key, _)| key == "q").unwrap().1,
+            "x&other=value"
+        );
+        for value in [
+            json!({"type":"read_page","resource":"../../auth","limit":50}),
+            json!({"type":"read_page","resource":"notes","limit":101}),
+            json!({"type":"read_page","resource":"mail","limit":50,"folder":"private"}),
+            json!({"type":"read_item","resource":"notes","id":"../secrets"}),
+        ] {
+            assert!(route(serde_json::from_value(value).unwrap()).is_err());
+        }
+        let page = sanitize_response("notes-page", json!({"items":[],"next_cursor":null,"etag":"W/\"v1\"","not_modified":true,"api_key":"secret"})).unwrap();
+        assert!(page.get("api_key").is_none());
+        assert_eq!(page["not_modified"], true);
+    }
+    use std::cell::RefCell;
+    #[test]
     fn ai_diagnostics_show_server_cost_without_exposing_other_fields() {
         use std::io::{Read, Write};
         use std::net::TcpListener;
@@ -3111,7 +3233,6 @@ mod tests {
         });
         server.join().unwrap();
     }
-    use std::cell::RefCell;
     #[test]
     fn rejected_access_token_clears_only_its_own_session() {
         tauri::async_runtime::block_on(async {
@@ -3468,7 +3589,7 @@ mod tests {
 
     #[test]
     fn note_mutation_http_responses_are_single_objects() {
-        let note = json!({"id":"note-1","title":"Note","markdown_body":"Body","parent_id":null,"project_id":null,"version":1,"knowledge_enabled":false,"folder":null,"tags":[]});
+        let note = json!({"id":"note-1","pinned":false,"title":"Note","markdown_body":"Body","parent_id":null,"project_id":null,"version":1,"knowledge_enabled":false,"folder":null,"tags":[]});
         let mut backend_response = note.clone();
         backend_response["server_only"] = json!("excluded");
         assert_domain_http_response(

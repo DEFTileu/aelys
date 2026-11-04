@@ -11,6 +11,8 @@ export type NativeOperation =
   | { type: 'project_delete'; id: string }
   | { type: 'tasks'; project_id?: string }
   | { type: 'notes' }
+  | { type: 'read_page'; resource: 'notes' | 'mail'; limit: number; cursor?: string; q?: string; folder?: string; tag?: string; known_etag?: string }
+  | { type: 'read_item'; resource: 'notes' | 'mail'; id: string }
   | { type: 'note_create'; note: Record<string, unknown> }
   | { type: 'note_patch'; id: string; version: number; note: Record<string, unknown> }
   | { type: 'note_delete'; id: string }

@@ -5,7 +5,7 @@ import { TasksView } from '../views/TasksView'
 import { CalendarView } from '../views/CalendarView'
 import { MailView } from '../views/MailView'
 
-const client = vi.hoisted(() => ({ tasks: vi.fn(), projects: vi.fn(), calendarOccurrences: vi.fn(), calendarReminders: vi.fn(), mailMessages: vi.fn(), mailDrafts: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn() }))
+const client = vi.hoisted(() => ({ tasks: vi.fn(), projects: vi.fn(), calendarOccurrences: vi.fn(), calendarReminders: vi.fn(), mailMessages: vi.fn(), mailPage: vi.fn(), mailMessage: vi.fn(), mailDrafts: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 let root: ReturnType<typeof createRoot> | undefined
 let host: HTMLDivElement
@@ -16,6 +16,8 @@ async function click(text: string) { await act(async () => [...host.querySelecto
 const task = (id: string) => ({ id, version: 1, title: id, description: '', project_id: null, parent_task_id: null, status: 'todo', priority: 0, due_at: null, due_timezone: null, rrule: null })
 const mail = (id: string) => ({ id, sender: 'sender@example.test', recipients: ['owner@example.test'], subject: id, body: 'body', received_at: '2026-10-29T12:00:00Z', thread_id: null })
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); client.tasks.mockResolvedValue([task('one'), task('two')]); client.projects.mockResolvedValue([]); client.calendarOccurrences.mockResolvedValue([]); client.calendarReminders.mockResolvedValue([]); client.mailMessages.mockResolvedValue([mail('one'), mail('two')]); client.mailDrafts.mockResolvedValue([]); client.mailAccounts.mockResolvedValue([]); client.gmailStatus.mockResolvedValue({ configured: false }) })
+beforeEach(() => { client.mailPage.mockImplementation(async () => ({ items: await client.mailMessages(), next_cursor: null, etag: 'mail' })); })
+
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; history.replaceState({}, '', '/'); vi.unstubAllGlobals() })
 
 describe('search destination intents', () => {

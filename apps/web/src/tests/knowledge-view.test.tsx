@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KnowledgeView } from '../views/KnowledgeView'
 import { NotesView } from '../views/NotesView'
 
-const client = vi.hoisted(() => ({ notes: vi.fn(), projects: vi.fn(), updateNote: vi.fn() }))
+const client = vi.hoisted(() => ({ notes: vi.fn(), notesPage: vi.fn(), projects: vi.fn(), updateNote: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 const ask = vi.hoisted(() => vi.fn())
 vi.mock('../lib/desktopStore', () => ({ askAelys: ask }))
@@ -21,7 +21,7 @@ async function input(label: string, value: string) {
   const element = host.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)!
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })) })
 }
-beforeEach(() => { vi.resetAllMocks(); client.notes.mockResolvedValue(records); client.projects.mockResolvedValue([]); window.history.replaceState({}, '', '/knowledge') })
+beforeEach(() => { vi.resetAllMocks(); client.notes.mockResolvedValue(records); client.notesPage.mockImplementation(async () => ({ items: await client.notes(), next_cursor: null, etag: 'notes' })); client.projects.mockResolvedValue([]); window.history.replaceState({}, '', '/knowledge') })
 afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; window.history.replaceState({}, '', '/') })
 
 describe('knowledge view', () => {

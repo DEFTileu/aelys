@@ -46,11 +46,11 @@ export function ProjectsView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [taskTitle, setTaskTitle] = useState('')
   const [taskUncertain, setTaskUncertain] = useState(false)
 
-  const load = async () => {
+  const load = async (forceRefresh = true) => {
     setStatus(apiStatus === 'ready' ? 'loading' : apiStatus)
     try {
       const client = getSharedApiClient()
-      const [projectResult, taskResult, noteResult] = await Promise.allSettled([client.projects(), client.tasks(), Promise.resolve().then(() => client.notes())])
+      const [projectResult, taskResult, noteResult] = await Promise.allSettled([client.projects({ forceRefresh }), client.tasks(undefined, { forceRefresh }), Promise.resolve().then(() => client.notes({ forceRefresh }))])
       setNotes(noteResult.status === 'fulfilled' ? noteResult.value : null)
       if (projectResult.status === 'rejected') throw projectResult.reason
       const tasks = taskResult.status === 'fulfilled' ? taskResult.value : []
@@ -70,7 +70,7 @@ export function ProjectsView({ apiStatus }: { apiStatus: ApiStatus }) {
     }
   }
 
-  useEffect(() => { void load() }, [apiStatus])
+  useEffect(() => { void load(false) }, [apiStatus])
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()

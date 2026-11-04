@@ -36,11 +36,14 @@ export interface OfflineStore {
   updateOutbox(id: string, patch: Pick<OutboxEntry, "attempts" | "nextAttemptAt">): Promise<void>;
   removeOutbox(id: string): Promise<void>;
   getCache<T>(key: string): Promise<T | undefined>;
-  setCache<T>(key: string, value: T, ttlMs?: number): Promise<void>;
+  setCache<T>(key: string, value: T, ttlMs?: number, etag?: string): Promise<void>;
+  getCacheSnapshot?<T>(key: string): Promise<CacheSnapshot<T> | undefined>;
   removeCache(key: string): Promise<void>;
   /** Remove the built-in collection key and its query variants, without touching entities or outbox. */
   invalidateCache?(root: string): Promise<void>;
 }
+
+export interface CacheSnapshot<T> { readonly value: T; readonly etag?: string; }
 
 /** Optional durable entity capability. Kept separate so existing adapters remain compatible. */
 export interface EntityStore {
@@ -53,7 +56,7 @@ export interface EntityStore {
 export type DurableOfflineStore = OfflineStore & EntityStore;
 
 interface OutboxRecord extends OutboxEntry { readonly kind: "outbox"; }
-interface CacheRecord { readonly key: string; readonly value: unknown; readonly expiresAt: number | null; }
+interface CacheRecord { readonly key: string; readonly value: unknown; readonly expiresAt: number | null; readonly etag?: string; }
 interface EntityRecord<T = unknown> extends LocalEntity<T> { readonly kind: "entity"; }
 
 const CURRENT_DATABASE_VERSION = 2;
@@ -200,6 +203,10 @@ export class IndexedDbOfflineStore implements OfflineStore, EntityStore {
   }
 
   public async getCache<T>(key: string): Promise<T | undefined> {
+    return (await this.getCacheSnapshot<T>(key))?.value;
+  }
+
+  public async getCacheSnapshot<T>(key: string): Promise<CacheSnapshot<T> | undefined> {
     const database = await this.database;
     const transaction = database.transaction("cache", "readonly");
     const request = transaction.objectStore("cache").get(key);
@@ -212,14 +219,14 @@ export class IndexedDbOfflineStore implements OfflineStore, EntityStore {
       if (value) await this.removeCache(key);
       return undefined;
     }
-    return value.value as T;
+    return { value: value.value as T, etag: value.etag };
   }
 
-  public async setCache<T>(key: string, value: T, ttlMs?: number): Promise<void> {
+  public async setCache<T>(key: string, value: T, ttlMs?: number, etag?: string): Promise<void> {
     assertPersistable(value, `cache.${key}`);
     const database = await this.database;
     const transaction = database.transaction("cache", "readwrite");
-    const record: CacheRecord = { key, value, expiresAt: ttlMs === undefined ? null : Date.now() + ttlMs };
+    const record: CacheRecord = { key, value, expiresAt: ttlMs === undefined ? null : Date.now() + ttlMs, ...(etag ? { etag } : {}) };
     transaction.objectStore("cache").put(record);
     await transactionDone(transaction);
   }

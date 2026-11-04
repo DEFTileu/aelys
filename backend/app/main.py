@@ -25,6 +25,7 @@ from .domains.api import router as domain_router
 from .domains.gmail import router as gmail_router
 from .domains.google_calendar_api import router as calendar_router
 from .domains.google_calendar_oauth import router as calendar_oauth_router
+from .domains.paged_reads import router as paged_reads_router
 from .sync.api import router as sync_router
 
 
@@ -90,6 +91,7 @@ app.include_router(device_auth_router, prefix="/api/v1")
 app.include_router(browser_auth_router, prefix="/api/v1")
 app.include_router(native_auth_router, prefix="/api/v1")
 app.include_router(domain_router, prefix="/api/v1")
+app.include_router(paged_reads_router, prefix="/api/v1")
 app.include_router(sync_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
 app.include_router(memory_router, prefix="/api/v1")

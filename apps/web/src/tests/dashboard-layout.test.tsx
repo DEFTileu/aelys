@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from '../views/HomeView'
 import { HOME_LAYOUT_KEY, WIDGET_SIZES, WIDGET_IDS, saveLayout, readLayout } from '../views/desktop/homeLayout'
 
-const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), financeTransactions: vi.fn(), financeBudgets: vi.fn(), focusSessions: vi.fn(), resumeFocusSession: vi.fn(), mailMessages: vi.fn(), activity: vi.fn(), createTask: vi.fn() }))
+const client = vi.hoisted(() => ({ tasks: vi.fn(), calendarOccurrences: vi.fn(), projects: vi.fn(), notes: vi.fn(), notesPage: vi.fn(), financeTransactions: vi.fn(), financeBudgets: vi.fn(), focusSessions: vi.fn(), resumeFocusSession: vi.fn(), mailMessages: vi.fn(), mailPage: vi.fn(), mailMessage: vi.fn(), activity: vi.fn(), createTask: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 let root: ReturnType<typeof createRoot> | undefined
 beforeEach(() => {
@@ -13,6 +13,8 @@ beforeEach(() => {
   if (!Element.prototype.setPointerCapture) Element.prototype.setPointerCapture = () => {}
   vi.spyOn(Element.prototype, 'setPointerCapture').mockImplementation(() => {})
 })
+beforeEach(() => { client.notesPage.mockImplementation(async () => ({ items: await client.notes(), next_cursor: null, etag: 'notes' })); client.mailPage.mockImplementation(async () => ({ items: await client.mailMessages(), next_cursor: null, etag: 'mail' })); })
+
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = ''; localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function pointer(node: Element, type: string, x: number, y: number) {
   node.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }), { pointerId: 1 }))
@@ -75,7 +77,7 @@ describe('dashboard widgets', () => {
   it.each(WIDGET_IDS.filter(id => id !== 'weather'))('renders %s at S, M and L, with L adding content', async (id) => {
     const at = (hours: number) => new Date(Date.now() + hours * 3600000).toISOString()
     const records = Array.from({ length: 12 }, (_, index) => ({ id: `record-${index}`, title: `Record ${index}`, name: `Project ${index}`, status: 'todo', due_at: at(index), starts_at: at(index + 1), ends_at: at(index + 1.5), markdown_body: 'Note preview', currency: 'KZT', amount: '1.5', type: index % 2 ? 'expense' : 'income', category_name: `Category ${index}`, is_read: false, pinned: index === 1, occurred_at: at(-index), notes: '', sender: 'Sender', subject: 'Subject', body: 'Body', received_at: at(-index), event_kind: 'task.created', actor_kind: 'owner', project_id: null, elapsed_seconds: 60 }))
-    Object.entries(client).forEach(([key, method]) => method.mockResolvedValue(key === 'focusSessions' ? [] : key === 'createTask' ? {} : records))
+    Object.entries(client).forEach(([key, method]) => method.mockResolvedValue(['notesPage', 'mailPage'].includes(key) ? { items: records, next_cursor: null, etag: 'fixture' } : key === 'focusSessions' ? [] : key === 'createTask' ? {} : records))
     const html: string[] = []
     for (const [span, height] of [[1, 264], [2, 264], [2, 544]]) {
       saveLayout([[id, span, height]])
