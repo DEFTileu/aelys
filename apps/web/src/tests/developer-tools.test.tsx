@@ -21,9 +21,10 @@ describe('local developer diagnostics', () => {
     const toggle = document.querySelector<HTMLButtonElement>('[role="switch"]')!
     await act(async () => toggle.click())
     expect(toggle.getAttribute('aria-checked')).toBe('true')
-    act(() => { diagnostics.begin('POST', '/api/v1/ai/runs', { message: 'private text', api_key: 'secret-value' }) })
-    expect(document.body.textContent).not.toContain('private text')
+    act(() => { diagnostics.begin('POST', '/api/v1/ai/runs', { message: 'visible text', api_key: 'secret-value', nested: { refresh_token: 'refresh-value' } }) })
+    expect(document.body.textContent).toContain('visible text')
     expect(document.body.textContent).not.toContain('secret-value')
+    expect(document.body.textContent).not.toContain('refresh-value')
     await act(async () => toggle.click())
     expect(diagnostics.getSnapshot().entries).toHaveLength(0)
     await act(async () => root.unmount())
@@ -39,6 +40,30 @@ describe('local developer diagnostics', () => {
     const entry = diagnostics.getSnapshot().entries[0]
     expect(entry.native).toEqual({ http_status: 200, cost_estimate: 0 })
     expect(entry.result).toBe('MUTATION_OUTCOME_UNKNOWN')
-    expect(JSON.stringify(entry)).not.toMatch(/private|secret/)
+    expect(entry.request).toEqual({ message: 'private', api_key: '[скрыто]' })
+  })
+  it('records response bodies without credentials and keeps usage fields', async () => {
+    diagnostics.setEnabled(true)
+    const invoke = vi.fn(async () => ({ id: 'run-1', access_token: 'access-value', token_counts: { input: 3 } })) as NativeInvoke
+    const fetcher = createNativeFetch(createNativeTransport(invoke), 'https://example.test')
+    await fetcher('https://example.test/api/v1/ai/conversations', { method: 'POST', body: JSON.stringify({ title: 'Hi' }) })
+    const entry = diagnostics.getSnapshot().entries[0]
+    expect(entry.request).toEqual({ title: 'Hi' })
+    expect(entry.response).toEqual({ id: 'run-1', access_token: '[скрыто]', token_counts: { input: 3 } })
+  })
+  it('records every AI stream event in order', async () => {
+    diagnostics.setEnabled(true)
+    let receive: ((message: unknown) => void) | undefined
+    const invoke = vi.fn(async () => {
+      receive?.({ type: 'opened' })
+      receive?.({ type: 'event', event: { id: '1', event: 'ai.run.failed', data: { code: 'AI_ERROR', message: 'Provider execution failed' } } })
+      receive?.({ type: 'end' })
+    }) as NativeInvoke
+    const transport = createNativeTransport(invoke, callback => { receive = callback as (message: unknown) => void; return {} })
+    const response = await createNativeFetch(transport, 'https://example.test')('https://example.test/api/v1/ai/runs/run-1/events')
+    await response.text()
+    const entry = diagnostics.getSnapshot().entries[0]
+    expect(entry.events).toEqual([{ event: 'ai.run.failed', data: { code: 'AI_ERROR', message: 'Provider execution failed' } }])
+    expect(entry.result).toBe('stream end')
   })
 })

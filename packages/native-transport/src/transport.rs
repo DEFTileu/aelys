@@ -428,6 +428,7 @@ fn parse_ai_events(source: &str) -> Result<Vec<AIEvent>, String> {
     let allowed = [
         "ai.run.started",
         "ai.run.in_progress",
+        "ai.knowledge.sources",
         "ai.run.completed",
         "ai.run.failed",
         "ai.run.cancelled",

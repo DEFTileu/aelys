@@ -7,13 +7,13 @@ instrumented operation. No OPEN architecture decision is changed.
 
 The panel is disabled by default. It records at most 50 entries in memory, clears
 on disabling or process exit, and never writes to disk or sends diagnostics to
-another service. The request view shows only an allowlist of fields; text, IDs,
-model and arbitrary content are redacted. Native code reports the actual HTTP
-status and the allowlisted cost value for POST /api/v1/ai/runs, before response
-sanitization, so an actual HTTP 200 can be distinguished from the frontend's
-synthetic 502. Other endpoints, authentication, headers, provider credentials,
-CLI sessions and event streams are not recorded. The panel does not provide
-arbitrary raw response access, modify policies, or grant additional capabilities.
+another service. At the owner's request it shows the request and response bodies
+of every native API call, including message text, and each event of an AI run
+stream. Fields named like passwords, secrets, API keys, tokens, cookies,
+authorization, encrypted values and setup codes are replaced with `[скрыто]`;
+strings longer than 4000 characters and arrays longer than 50 items are cut.
+Native code still reports the actual HTTP status and cost for POST
+/api/v1/ai/runs. Headers, provider credentials and CLI sessions are not recorded.
 
 The visible mark has a small click animation, respects reduced-motion and works
 on desktop and the mobile home screen. The design references available in this

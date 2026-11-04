@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -72,6 +73,7 @@ from .secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
 from .tools import ToolDescriptor, ToolRegistry
 from .turn import run_tool_turn
 
+logger = logging.getLogger(__name__)
 router=APIRouter()
 _active_cancellations: dict[str, asyncio.Event] = {}
 class ProviderIn(BaseModel): kind:str=Field(pattern="^(claude|openrouter|transcription)$"); base_url:str|None=None; enabled:bool=True; model_policy:dict={}; secret_ref:str|None=None
@@ -830,7 +832,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             await db.refresh(item)
             if item.status == "cancelled":
                 yield await emit("ai.run.cancelled", {"run_id": run_id})
-        except Exception:  # noqa: BLE001 - provider and storage failures return fixed redacted API errors
+        except Exception as error:  # noqa: BLE001 - provider and storage failures return fixed redacted API errors
+            logger.warning("AI run %s failed: %s: %s", run_id, type(error).__name__, redact_error(error))
+            await db.rollback()
             await db.refresh(item)
             if item.status == "cancelled":
                 return

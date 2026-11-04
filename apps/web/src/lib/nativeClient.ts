@@ -4,7 +4,7 @@ import { diagnostics } from './diagnostics'
 
 type NativeTransport = ReturnType<typeof createNativeTransport>
 
-function nativeAIEventResponse(transport: NativeTransport, origin: string, id: string, signal?: AbortSignal | null): Promise<Response> {
+function nativeAIEventResponse(transport: NativeTransport, origin: string, id: string, signal?: AbortSignal | null, diagnosticId?: number): Promise<Response> {
   if (signal?.aborted) return Promise.reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
   const requestId = crypto.randomUUID()
   const encoder = new TextEncoder()
@@ -47,9 +47,10 @@ function nativeAIEventResponse(transport: NativeTransport, origin: string, id: s
       return
     }
     if (finished) return
-    if (message.type === 'error') { fail(new Error(message.code)); return }
-    if (message.type === 'end') { finished = true; cleanup(); controller.close(); return }
+    if (message.type === 'error') { diagnostics.update(diagnosticId, { result: message.code }); fail(new Error(message.code)); return }
+    if (message.type === 'end') { diagnostics.update(diagnosticId, { result: 'stream end' }); finished = true; cleanup(); controller.close(); return }
     const event = message.event
+    diagnostics.event(diagnosticId, event.event, event.data)
     const eventId = event.id === null ? '' : `id: ${event.id}\n`
     controller.enqueue(encoder.encode(`${eventId}event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`))
   }).catch(fail)
@@ -289,9 +290,9 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
     const diagnosticId = diagnostics.begin(method, url.pathname, bodyValue(init?.body))
     const started = performance.now()
     try {
-      if (operation.type === 'ai_run_events') return await nativeAIEventResponse(transport, origin, operation.id, init?.signal)
+      if (operation.type === 'ai_run_events') return await nativeAIEventResponse(transport, origin, operation.id, init?.signal, diagnosticId)
       const value = await transport.operation<unknown>(origin, operation, diagnosticId === undefined ? undefined : (native) => diagnostics.update(diagnosticId, { native }))
-      diagnostics.update(diagnosticId, { result: 'OK', duration: Math.round(performance.now() - started) })
+      diagnostics.update(diagnosticId, { result: 'OK', duration: Math.round(performance.now() - started), response: value })
       if (operation.type === 'read_page' && value && typeof value === 'object' && 'etag' in value && typeof value.etag === 'string') {
         if ('not_modified' in value && value.not_modified === true) return new Response(null, { status: 304, headers: { ETag: value.etag } })
         return new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json', ETag: value.etag } })
