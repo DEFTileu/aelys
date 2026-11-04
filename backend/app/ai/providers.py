@@ -29,7 +29,6 @@ class ProviderAdapter(Protocol):
     def stream(self, request: ProviderRequest) -> AsyncIterator[str]: ...
 
 
-THINKING_BUDGETS = {"low": 2048, "medium": 8192, "high": 24576}
 
 
 def _usage(body: Mapping[str, Any]) -> Usage:
@@ -90,6 +89,9 @@ class _BaseAdapter:
             raise
 
 
+CLAUDE_MIN_MAX_TOKENS = 16000
+
+
 class ClaudeAdapter(_BaseAdapter):
     kind = ProviderKind.CLAUDE
 
@@ -99,13 +101,12 @@ class ClaudeAdapter(_BaseAdapter):
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
         system = [m.content for m in request.messages if m.role == "system"]
         messages = [{"role": m.role, "content": _content(m, claude=True)} for m in request.messages if m.role != "system"]
-        payload = {"model": request.model, "max_tokens": request.max_tokens, "temperature": float(request.temperature), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
+        # Current Claude models reject sampling params and thinking budgets with 400; effort is the only control.
+        # Thinking is on by default and counts against max_tokens, so leave it room.
+        payload = {"model": request.model, "max_tokens": max(request.max_tokens, CLAUDE_MIN_MAX_TOKENS), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
         if request.effort:
-            budget = THINKING_BUDGETS[request.effort]
-            # Extended thinking requires max_tokens > budget_tokens and temperature 1 (unset).
-            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
-            payload["max_tokens"] = budget + request.max_tokens
-            del payload["temperature"]
+            payload["thinking"] = {"type": "adaptive"}
+            payload["output_config"] = {"effort": request.effort}
         return payload
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
