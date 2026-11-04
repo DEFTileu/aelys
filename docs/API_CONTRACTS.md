@@ -575,6 +575,15 @@ returns `{authorization_url}`, sets a separate HttpOnly state cookie, and uses
 `…/callback` for one-use PKCE consent. Consent is only `calendar.readonly`, separate
 from Gmail. The callback returns to Settings → Google Calendar.
 
+Native hosts use `POST …/browser-connect` to obtain a one-use ten-minute
+`…/authorize?ticket=…` handoff. Rust validates the exact selected-backend path
+and opens the system browser, which establishes its own HttpOnly state cookie.
+The callback returns a static completion page for this flow. Session/device
+revocation, expiry and replay reject the handoff; native capabilities and
+provider tokens never enter renderer state or logs. Settings rechecks status
+on browser return and while this bounded attempt is pending. Import stays an
+explicit action; existing scheduled imports remain read-only.
+
 `POST …/sync` performs a bounded, leased, atomic import and returns
 `{imported, deleted, full_sync}`. Import counts mean changed local projections,
 so importing unchanged data returns zero. `DELETE …/connection` clears credentials

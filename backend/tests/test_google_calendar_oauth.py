@@ -53,7 +53,7 @@ async def calendar_client(tmp_path, monkeypatch):
             owner = await client.post('/api/v1/auth/bootstrap', json={'email': 'calendar@example.test', 'password': 'calendar-test-password'})
             assert owner.status_code == 200, owner.text
             client.headers['Authorization'] = 'Bearer ' + owner.json()['access_token']
-            yield SimpleNamespace(client=client, sessions=sessions)
+            yield SimpleNamespace(client=client, sessions=sessions, app=app)
     finally:
         await engine.dispose()
         get_settings.cache_clear()
@@ -321,3 +321,102 @@ async def test_callback_authorizes_each_token_and_profile_egress(calendar_client
     query, _ = await begin(calendar_client)
     checks.clear()
     assert (await finish(calendar_client, query)).status_code == 303
+
+
+async def browser_start(setup):
+    response = await setup.client.post('/api/v1/calendar/google/browser-connect')
+    assert response.status_code == 200, response.text
+    assert 'set-cookie' not in response.headers
+    url = urlparse(response.json()['authorization_url'])
+    assert url.netloc == 'test' and url.path == '/api/v1/calendar/google/authorize'
+    return response.json()['authorization_url']
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+async def test_native_calendar_cookie_is_created_in_separate_browser(calendar_client, monkeypatch, cancelled):
+    setup = calendar_client
+    calls = google_stub(monkeypatch)
+    handoff = await browser_start(setup)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=setup.app), base_url='https://test') as browser:
+        redirect = await browser.get(handoff)
+        assert redirect.status_code == 303
+        assert 'HttpOnly' in redirect.headers['set-cookie'] and 'Secure' in redirect.headers['set-cookie']
+        assert redirect.headers['referrer-policy'] == 'no-referrer'
+        query = parse_qs(urlparse(redirect.headers['location']).query)
+        assert query['scope'] == [SCOPE] and query['include_granted_scopes'] == ['false']
+        assert (await browser.get(handoff)).status_code == 400
+        params = {'state': query['state'][0], **({'error': 'access_denied'} if cancelled else {'code': 'private-code'})}
+        assert (await setup.client.get('/api/v1/calendar/google/callback', params=params)).status_code == 400
+        response = await browser.get('/api/v1/calendar/google/callback', params=params)
+        assert response.status_code == 200, response.text
+        assert ('cancelled' if cancelled else 'Google Calendar connected') in response.text
+        assert response.headers['cache-control'] == 'no-store'
+        assert "default-src 'none'" in response.headers['content-security-policy']
+        assert all(secret not in response.text for secret in [query['state'][0], 'private-code', 'private-access-token', 'private-refresh-token'])
+        assert (await browser.get('/api/v1/calendar/google/callback', params=params)).status_code == 400
+    assert len(calls) == (0 if cancelled else 2)
+    status = (await setup.client.get('/api/v1/calendar/google/status')).json()
+    assert bool(status['connection']) is not cancelled
+
+
+@pytest.mark.parametrize('failure', ['expired', 'revoked'])
+async def test_native_calendar_handoff_rechecks_session_and_expiry(calendar_client, monkeypatch, failure):
+    from datetime import timedelta
+
+    from app.core.models import now
+    calls = google_stub(monkeypatch)
+    handoff = await browser_start(calendar_client)
+    async with calendar_client.sessions() as db:
+        if failure == 'expired':
+            record = (await db.execute(select(GoogleCalendarOAuthState))).scalar_one()
+            record.expires_at = now() - timedelta(seconds=1)
+        else:
+            session = (await db.execute(select(AuthSession))).scalar_one()
+            session.revoked_at = now()
+        await db.commit()
+    response = await calendar_client.client.get(handoff)
+    assert response.status_code == (400 if failure == 'expired' else 401)
+    assert calls == [] and 'set-cookie' not in response.headers
+
+
+async def test_calendar_callback_cannot_skip_native_browser_start(calendar_client, monkeypatch):
+    calls = google_stub(monkeypatch)
+    handoff = await browser_start(calendar_client)
+    ticket = parse_qs(urlparse(handoff).query)['ticket'][0]
+    calendar_client.client.cookies.set(calendar.COOKIE, ticket, path=calendar.COOKIE_PATH)
+    response = await calendar_client.client.get(calendar.COOKIE_PATH + '/callback', params={'state': ticket, 'code': 'private-code'})
+    assert response.status_code == 400 and calls == []
+
+
+async def test_calendar_revocation_during_google_io_cannot_save_credentials(calendar_client, monkeypatch):
+    from app.core.models import now
+    original = google_stub(monkeypatch)
+    async def provider(method, url, **kwargs):
+        original.append((method, url, kwargs))
+        if method == 'POST':
+            async with calendar_client.sessions() as db:
+                session = (await db.execute(select(AuthSession))).scalar_one()
+                session.revoked_at = now()
+                await db.commit()
+            return {'access_token': 'private-access-token', 'refresh_token': 'private-refresh-token', 'scope': SCOPE}
+        return {'id': 'primary@example.test', 'timeZone': 'UTC'}
+    monkeypatch.setattr(calendar, 'google_calendar_request', provider)
+    query, _ = await begin(calendar_client)
+    assert (await finish(calendar_client, query)).status_code == 401
+    async with calendar_client.sessions() as db:
+        assert list((await db.execute(select(GoogleCalendarCredential))).scalars()) == []
+
+
+@pytest.mark.parametrize('uri', ['https://test/settings', 'https://test/api/v1/calendar/google/callback?token=private',
+    'https://user:secret@test/api/v1/calendar/google/callback', 'https://test/api/v1/calendar/google/callback#fragment'])
+async def test_calendar_requires_exact_callback(calendar_client, monkeypatch, uri):
+    monkeypatch.setenv('AELYS_CALENDAR_REDIRECT_URI', uri)
+    get_settings.cache_clear()
+    response = await calendar_client.client.post('/api/v1/calendar/google/browser-connect')
+    assert response.status_code == 503
+    assert response.json()['detail']['code'] == 'CALENDAR_NOT_CONFIGURED'
+
+
+async def test_native_calendar_start_requires_authenticated_owner(calendar_client):
+    calendar_client.client.headers.pop('Authorization')
+    assert (await calendar_client.client.post('/api/v1/calendar/google/browser-connect')).status_code == 401

@@ -33,3 +33,16 @@ configuration and is separate from this code fix.
 
 Official setup: [Gmail server-side authorization](https://developers.google.com/workspace/gmail/api/auth/web-server).
 Implementation and local/live acceptance: [Gmail connection repair](optimization/gmail-connection.md).
+
+
+## Google Calendar
+
+The same Web application client can support the separate read-only Calendar
+connection. Enable Google Calendar API and add the exact Calendar callback:
+`https://api-production-1cea.up.railway.app/api/v1/calendar/google/callback`.
+Set backend-only `AELYS_CALENDAR_REDIRECT_URI` to that value, retaining the existing
+Gmail client ID/secret and provider encryption key. Add `calendar.readonly` to
+the Google consent configuration; actual Calendar consent is separate from Gmail.
+After deploying migration 0041, open Settings → Google Calendar → Connect, finish
+Google consent in the system browser and choose Import now. The native callback
+shows a static completion page; no frontend route is required on the API host.

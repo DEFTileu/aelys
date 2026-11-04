@@ -34,3 +34,4 @@ class GoogleCalendarOAuthState(Base):
     session_id: Mapped[str] = mapped_column(String(36), ForeignKey('auth_sessions.id'))
     encrypted_verifier: Mapped[str] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    browser_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
