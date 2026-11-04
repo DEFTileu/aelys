@@ -32,7 +32,10 @@ To revoke, including already-running stdio processes:
 ```
 
 A subsequent enable rotates the local authorization key. macOS may ask the owner
-to approve access to the dedicated Keychain item. No credentials belong in MCP
+to approve access to the dedicated Keychain item. If an updated signed build reports `KEYCHAIN_ACCESS_REQUIRED`, run
+`~/Applications/Aelys.app/Contents/MacOS/aelys-desktop --mcp unlock` and approve
+the macOS prompt for the dedicated MCP item. This never unlocks an arbitrary
+Keychain item or returns its contents. No credentials belong in MCP
 configuration or tool arguments. Reopen/reconnect an MCP client to discover tools.
 The desktop application must remain open and signed in. Sign-out/revocation
 continues to be enforced by the native session and backend.
