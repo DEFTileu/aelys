@@ -14,7 +14,13 @@ scripts/aelys --origin https://your-backend.example import /absolute/path/batch.
 
 Sign in/enroll this Mac in Aelys first. Authenticated commands honor the existing
 Touch ID policy before reading Keychain. Device-key challenge/login creates an
-independent temporary session, revoked on exit; the GUI session is left intact.
+independent temporary session, revoked on exit. Legacy password sign-ins use the
+existing single-use refresh flow and durably replace the saved Keychain session;
+that replacement remains available for the next GUI/CLI launch. A native OS file
+lock excludes simultaneous GUI/CLI authentication (`CLOSE_AELYS_FIRST`). Close the
+GUI before authenticated CLI commands. Locks release on exit/crash automatically.
+An ambiguous legacy refresh failure follows the existing fail-closed policy and
+may require signing in again; pending import operations remain in the outbox.
 After a signed-app update, macOS may return `KEYCHAIN_ACCESS_REQUIRED`. Run
 `unlock` for the existing Aelys item, or append `--unlock-keychain` after `--apply`
 to unlock and import with one biometric check. Only these explicit recovery
@@ -77,9 +83,11 @@ Scope: IMPLEMENTATION_PLAN Phase 3 / task 1, owner-requested calendar population
 and repeatable import, with explicit existing Mail sync as a batch operation.
 The CLI outbox is a local import queue; it does not edit the web client's IndexedDB.
 
-Validation: native library tests 53 passed / 2 interactive Keychain checks ignored;
+Validation: native library tests 55 passed / 2 interactive Keychain checks ignored;
 strict Clippy passed; mobile host cargo check and signed Mac release build passed.
 Regression coverage includes non-mutating preview, input bounds, equivalent-offset
 duplicate detection, imported-series exclusion, durable checkpoints, ambiguous
 POST retry keys, owner/content conflicts, concurrent imports and symlink refusal.
 Live import and installed-app acceptance are recorded separately after execution.
+Additional regression checks cover cross-process session exclusion/release and
+legacy refresh replacement without revoking the saved sign-in.

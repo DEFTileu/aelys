@@ -146,6 +146,29 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
     name.push(suffix);
     PathBuf::from(name)
 }
+fn lock_at(path: &Path) -> Result<File, String> {
+    if path.is_symlink() {
+        return Err(err("STORAGE_ERROR"));
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(path)
+        .map_err(|_| err("STORAGE_ERROR"))?;
+    file.try_lock().map_err(|_| err("CLOSE_AELYS_FIRST"))?;
+    Ok(file)
+}
+/// Serialize GUI/CLI session ownership, including legacy rotating credentials.
+/// The OS releases the advisory lock on normal exit and crashes alike.
+pub fn lock_native_session() -> Result<File, String> {
+    let home = std::env::var_os("HOME").ok_or_else(|| err("STORAGE_ERROR"))?;
+    let directory = PathBuf::from(home).join("Library/Application Support/com.aelys.desktop");
+    fs::create_dir_all(&directory).map_err(|_| err("STORAGE_ERROR"))?;
+    lock_at(&directory.join("native-session.lock"))
+}
 fn acquire(path: &Path) -> Result<Lock, String> {
     let lock = sibling(path, ".aelys-lock");
     let mut file = OpenOptions::new()
@@ -345,7 +368,33 @@ async fn apply(client: &Client, session: &Session, import: Import) -> Result<Val
         json!({"events_created":created,"events_skipped":skipped,"series_total":outbox.event_ids.len(),"mail_synced":synced}),
     )
 }
+async fn resume_cli(
+    client: &Client,
+    store: &impl Store,
+    old: Record,
+) -> Result<(Session, bool), String> {
+    if old.device_key.is_some() {
+        return Ok((resume_device(client, &old.origin, &old).await?, true));
+    }
+    // Same fail-closed rotation as native_resume. The cross-process lock keeps
+    // the GUI from consuming this single-use refresh credential concurrently.
+    store.delete(&old.origin).await?;
+    let tokens: Tokens = request(
+        client,
+        Method::POST,
+        &format!("{}/api/v1/auth/native/refresh", old.origin),
+        Some(json!({"refresh_token":old.refresh_token})),
+        None,
+    )
+    .await?;
+    let session = session_from(&old.origin, tokens)?;
+    if session.record.owner_id != old.owner_id || session.record.device_id != old.device_id {
+        return Err(err("INVALID_RESPONSE"));
+    }
+    Ok((persist_or_revoke(client, store, session).await?, false))
+}
 async fn authenticated(origin: String, command: Command) -> Result<Value, String> {
+    let _session_lock = lock_native_session()?;
     let gate_origin = origin.clone();
     tauri::async_runtime::spawn_blocking(move || {
         if crate::biometric::enabled(&gate_origin)? {
@@ -378,8 +427,7 @@ async fn authenticated(origin: String, command: Command) -> Result<Value, String
         return Ok(json!({"unlocked":true}));
     }
     let client = client_with_timeout(Duration::from_secs(180))?;
-    // A new ephemeral device-key session leaves the GUI's rotating refresh token untouched.
-    let session = resume_device(&client, &origin, &old).await?;
+    let (session, ephemeral) = resume_cli(&client, &NativeStorage {}, old).await?;
     let result = match command {
         Command::Status => async {
             let events = api(&client, &session, Method::GET, "calendar/events", None, None).await?;
@@ -391,6 +439,11 @@ async fn authenticated(origin: String, command: Command) -> Result<Value, String
         Command::Import(import) => apply(&client, &session, import).await,
         Command::Unlock => unreachable!("unlock returns before session creation"),
     };
+    if !ephemeral {
+        // Legacy refresh was rotated and durably replaced for the next GUI/CLI
+        // launch. Revoking it here would also revoke the owner's saved sign-in.
+        return result;
+    }
     let cleanup: Result<Value, String> = request(
         &client,
         Method::POST,
@@ -641,5 +694,43 @@ mod tests {
             "owner-1"
         )
         .is_err());
+    }
+
+    #[test]
+    fn process_lock_prevents_gui_cli_refresh_races_and_releases_on_drop() {
+        let directory = Directory::new();
+        let path = directory.0.join("session.lock");
+        let held = lock_at(&path).unwrap();
+        assert_eq!(lock_at(&path).unwrap_err(), "CLOSE_AELYS_FIRST");
+        drop(held);
+        assert!(lock_at(&path).is_ok());
+    }
+    #[test]
+    fn legacy_refresh_is_replaced_durably_without_revoking_saved_sign_in() {
+        let (origin, server) = super::super::passwordless_tests::server(vec![json!({
+            "access_token":"new-access", "refresh_token":"new-refresh", "owner_id":"owner-1",
+            "device_id":"device-1", "token_type":"bearer", "expires_in":900
+        })]);
+        tauri::async_runtime::block_on(async {
+            let old = session(origin).record;
+            let store = super::super::passwordless_tests::MemoryStore(std::cell::RefCell::new(
+                Some(serde_json::to_string(&old).unwrap()),
+            ));
+            let (resumed, ephemeral) = resume_cli(&client().unwrap(), &store, old).await.unwrap();
+            assert!(!ephemeral);
+            assert_eq!(resumed.access, "new-access");
+            assert_eq!(
+                store
+                    .read(&resumed.origin)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .refresh_token,
+                "new-refresh"
+            );
+        });
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].starts_with("POST /api/v1/auth/native/refresh "));
     }
 }

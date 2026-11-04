@@ -6,7 +6,7 @@ use std::{
     net::TcpListener,
 };
 
-struct MemoryStore(RefCell<Option<String>>);
+pub(super) struct MemoryStore(pub(super) RefCell<Option<String>>);
 impl Store for MemoryStore {
     async fn read(&self, _: &str) -> Result<Option<Record>, String> {
         self.0

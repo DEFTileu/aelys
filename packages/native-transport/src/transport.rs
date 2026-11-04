@@ -14,7 +14,7 @@ mod cli;
 #[cfg(test)]
 mod passwordless_tests;
 #[cfg(target_os = "macos")]
-pub use cli::run_cli;
+pub use cli::{lock_native_session, run_cli};
 
 #[cfg(target_os = "macos")]
 const SERVICE: &str = "com.aelys.desktop.native-session";

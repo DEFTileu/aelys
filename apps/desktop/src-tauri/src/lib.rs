@@ -32,6 +32,14 @@ fn runtime_capabilities() -> Vec<aelys_runtime::adapter::AdapterCapabilities> {
 }
 
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    let _session_lock = match aelys_native_transport::lock_native_session() {
+        Ok(lock) => lock,
+        Err(code) => {
+            eprintln!("{code}");
+            return;
+        }
+    };
     tauri::Builder::default()
         .plugin(
             tauri_plugin_opener::Builder::new()
