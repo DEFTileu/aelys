@@ -74,3 +74,14 @@
 .mobile-shell--home .home-screen:not(.home-screen--editing) .home-layout-toolbar .home-tool { width:100%; display:flex; justify-content:center; border-radius:20px; border:1.5px dashed #cfc9d4; background:transparent; color:var(--ink-soft); font-size:14px; }
 /* the greeting carries its own top margin (mobile-home.css) */
 .mobile-shell--home .home-screen--editing .home-layout-toolbar { order:-1; flex-wrap:nowrap; justify-content:flex-end; }
+
+/* One page-level bottom gutter; module cards retain their internal padding. */
+.actual-desktop { --page-bottom-gap: 24px; --page-hero-height: 140px; }
+.actual-desktop .shell-page-frame { min-height: 100%; display: flex; flex-direction: column; }
+.actual-desktop .shell-hero { flex: none; }
+.actual-desktop .shell-page-content { box-sizing: border-box; display: flow-root; flex: 1; min-width: 0; padding-bottom: var(--page-bottom-gap); }
+.actual-desktop .shell-page-content > :is(.actual-mail, .notes-live, .knowledge-view, .projects-view, .tasks-screen, .calendar-live, .actual-finance, .actual-utilities, .actual-ai, .st, .home-screen, .msg-page) { padding-bottom: 0; margin-bottom: 0; }
+.actual-desktop .shell-page-content > :is(.actual-mail, .notes-live, .knowledge-view, .msg-page) { display: flex; flex-direction: column; height: calc(100dvh - var(--page-hero-height) - var(--page-bottom-gap)); min-height: min-content; }
+.actual-desktop .shell-page-content :is(.actual-mail-grid, .nl-grid, .knowledge-grid, .msg) { flex: 1 0 0; height: auto; }
+.actual-desktop .shell-page-content > :is(.actual-mail, .notes-live, .knowledge-view, .msg-page) > :not(.actual-mail-grid, .nl-grid, .knowledge-grid, .msg) { flex: none; }
+.actual-desktop .shell-page-content > .actual-ai { height: calc(100dvh - var(--page-hero-height) - var(--page-bottom-gap)); }
