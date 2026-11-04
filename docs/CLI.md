@@ -266,3 +266,10 @@ handling. Tests cover every catalogue example, aliases, allowlist/secret/decimal
 validation, checkpoint/resume, blocked uncertain replay, owner/input conflicts,
 receipt permissions and explicit recovery. Server native/device/browser auth
 suites independently exercise login, rotation, challenge replay and revocation.
+
+## MCP with the running desktop
+
+For agent read/write access while the GUI stays open, use the desktop MCP
+broker described in [MCP.md](MCP.md). It uses the open app session and does
+not consume or rotate CLI credentials. The legacy CLI lock still applies to
+ordinary authenticated CLI commands.
