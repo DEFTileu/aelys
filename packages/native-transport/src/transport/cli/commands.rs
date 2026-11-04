@@ -352,7 +352,7 @@ fn alias(
     }
     if domain == "knowledge" && action == "search" && rest.len() == 1 {
         return Ok(Some((
-            json!({"type":"api","method":"POST","path":"/api/v1/knowledge/search","body":{"query":rest[0],"limit":20}}),
+            json!({"type":"api","method":"POST","path":"/api/v1/knowledge/search","body":{"query":rest[0]}}),
             None,
         )));
     }

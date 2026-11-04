@@ -309,3 +309,14 @@ fn generic_finance_writes_also_reject_binary_float_amounts() {
     operation["body"]["limit_amount"] = json!("0.10");
     assert!(describe(&operation).is_ok());
 }
+
+#[test]
+fn knowledge_search_shortcut_does_not_send_an_unsupported_pagination_field() {
+    let invocation = parse(&["knowledge".into(), "search".into(), "Example query".into()])
+        .unwrap()
+        .unwrap();
+    let (_, path, body) = describe(&invocation.operations[0]).unwrap();
+    assert_eq!(path, "/api/v1/knowledge/search");
+    assert_eq!(body.unwrap(), json!({"query":"Example query"}));
+    assert!(!invocation.preview);
+}
