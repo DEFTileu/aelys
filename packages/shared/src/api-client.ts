@@ -10,9 +10,9 @@ import type {
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
   ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession, AgentSessionStopResponse,
   SyncAckRequest, SyncAckResponse, SyncBootstrapResponse, SyncPullResponse, SyncPushRequest, SyncPushResponse, SyncStatusResponse,
-  TaskIn, TaskOut, TaskReminder, CalendarReminder, CalendarReminderIn, TokenResponse, TransactionIn, Id,
+  TaskIn, TaskOut, TaskReminder, CalendarReminder, CalendarReminderIn, TokenResponse, TransactionIn, Id, ReadPage,
 } from "./types";
-import type { EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
+import type { CacheSnapshot, EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
 import type { GoogleCalendarStatus, GoogleCalendarSync, DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
 
 import type { TelegramChatAvailability, TelegramChatSendIn, TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
@@ -29,6 +29,12 @@ export interface RequestOptions {
   readonly idempotencyKey?: string;
   readonly cacheKey?: string;
   readonly cacheTtlMs?: number;
+  /** Revalidate even when a recent successful response is in memory. */
+  readonly forceRefresh?: boolean;
+  /** Read only the device cache, without starting a network request. */
+  readonly cacheOnly?: boolean;
+  /** A provisional device snapshot while the live request is pending. */
+  readonly onCached?: (value: unknown) => void;
   /** Disable cached GET fallback while still caching successful responses. */
   readonly allowCacheFallback?: boolean;
   readonly queueOnOffline?: boolean;
@@ -44,6 +50,11 @@ export interface ApiClientOptions {
   readonly fetch?: typeof fetch;
   readonly offlineStore?: OfflineStore;
   readonly timeoutMs?: number;
+  /** Freshness of navigation reads in memory; zero preserves network-first reads. */
+  readonly readFreshnessMs?: number;
+  readonly isOnline?: () => boolean;
+  /** The host must still be using this client's owner/backend partition. */
+  readonly canUseCache?: () => boolean;
 }
 
 export class ApiError extends Error {
@@ -66,6 +77,14 @@ export class NetworkError extends Error {
   public constructor(message: string, public override readonly cause?: unknown) {
     super(message);
     this.name = "NetworkError";
+  }
+}
+
+export class CacheMissError extends NetworkError {
+  public readonly code = "CACHE_MISS";
+  public constructor() {
+    super("No usable response is saved on this device");
+    this.name = "CacheMissError";
   }
 }
 
@@ -111,13 +130,13 @@ function queryCacheSuffix(query: Query | undefined): string {
 }
 
 const mutationFamilies: readonly [string, readonly string[]][] = [
-  ["/api/v1/projects", ["projects"]], ["/api/v1/notes", ["notes"]], ["/api/v1/tasks", ["tasks"]],
+  ["/api/v1/projects", ["projects"]], ["/api/v1/notes", ["notes", "notes-pages"]], ["/api/v1/tasks", ["tasks"]],
   ["/api/v1/calendar", ["calendar-events", "calendar-occurrences"]], ["/api/v1/focus", ["focus-sessions"]],
   ["/api/v1/finance", ["finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary"]],
-  ["/api/v1/mail", ["mail-accounts", "mail-messages", "mail-drafts"]],
+  ["/api/v1/mail", ["mail-accounts", "mail-messages", "mail-drafts", "mail-pages"]],
   ["/api/v1/notifications", ["notifications"]], ["/api/v1/ai/providers", ["ai-providers"]],
   ["/api/v1/agents", ["agent-devices", "agent-sessions"]], ["/api/v1/automations", ["automations"]],
-  ["/api/v1/sync/push", ["projects", "notes", "tasks", "calendar-events", "calendar-occurrences", "focus-sessions", "finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary", "mail-accounts", "mail-messages", "mail-drafts"]],
+  ["/api/v1/sync/push", ["projects", "notes", "notes-pages", "tasks", "calendar-events", "calendar-occurrences", "focus-sessions", "finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary", "mail-accounts", "mail-messages", "mail-drafts", "mail-pages"]],
 ];
 
 function affectedCacheFamilies(path: string): readonly string[] {
@@ -153,7 +172,15 @@ export class ApiClient {
   private readonly offlineStore: OfflineStore | undefined;
   private readonly getTokenValue: (() => string | undefined | Promise<string | undefined>) | undefined;
   private readonly timeoutMs: number;
+  private readonly readFreshnessMs: number;
+  private readonly isOnline: (() => boolean) | undefined;
+  private readonly canUseCache: (() => boolean) | undefined;
+  private cacheAccessDenied = false;
   private tokenValue: string | undefined;
+  private readCacheToken: string | undefined;
+  private readCacheEpoch = 0;
+  private readonly readCache = new Map<string, { value: unknown; expiresAt: number; family: string }>();
+  private readonly readFlights = new Map<string, Promise<unknown>>();
   private cacheWork: Promise<void> = Promise.resolve();
   private readonly cacheGenerations = new Map<string, number>();
   private readonly blockedCacheFamilies = new Set<string>();
@@ -168,19 +195,113 @@ export class ApiClient {
     this.getTokenValue = options.getToken;
     this.tokenValue = options.token;
     this.timeoutMs = options.timeoutMs ?? 30_000;
+    this.readFreshnessMs = Math.max(0, options.readFreshnessMs ?? 0);
+    this.isOnline = options.isOnline;
+    this.canUseCache = options.canUseCache;
   }
 
   public setToken(token: string | undefined): void { this.tokenValue = token; }
   public getToken(): string | undefined { return this.tokenValue; }
 
+  /** Session changes and reconnects must not reuse a previous navigation snapshot. */
+  public clearReadCache(): void {
+    this.readCacheEpoch += 1;
+    this.readCache.clear();
+    this.readFlights.clear();
+  }
+
   public async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     if (!path.startsWith("/")) throw new Error("API path must start with '/'");
     const method = options.method ?? "GET";
+    if (options.cacheOnly && method !== "GET") throw new Error("cacheOnly is available only for GET requests");
+    if (options.signal?.aborted) throw new NetworkError("Request aborted", options.signal.reason);
+    const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
+    if (token !== this.readCacheToken) { this.clearReadCache(); this.readCacheToken = token; }
+    if (options.signal?.aborted) throw new NetworkError("Request aborted", options.signal.reason);
+    if (method === "GET" && (options.cacheOnly || this.isOnline?.() === false)) {
+      if (options.allowCacheFallback !== false && options.cacheKey) {
+        const cached = await this.readDeviceCache<T>(options.cacheKey);
+        if (options.signal?.aborted) throw new NetworkError("Request aborted", options.signal.reason);
+        if (cached !== undefined) return cached;
+      }
+      throw new CacheMissError();
+    }
+    const family = options.cacheKey ? this.cacheFamily(options.cacheKey) : undefined;
+    // Live status, identity, integrations and streams deliberately remain network-first.
+    // Caller-owned cancellation/headers must not affect another caller's request.
+    const eligible = method === "GET" && family && !this.cacheAccessDenied && this.canUseCache?.() !== false && !["notifications", "sync-status", "agent-devices", "agent-sessions"].includes(family)
+      && this.readFreshnessMs > 0 && !options.signal && !options.headers && options.body === undefined && !options.idempotencyKey;
+    const key = eligible ? JSON.stringify([path, queryCacheSuffix(options.query), options.cacheKey, options.cacheTtlMs ?? null]) : undefined;
+    if (key && !options.forceRefresh) {
+      const cached = this.readCache.get(key);
+      if (cached && cached.expiresAt > Date.now()) {
+        this.readCache.delete(key); this.readCache.set(key, cached);
+        return structuredClone(cached.value) as T;
+      }
+      this.readCache.delete(key);
+    }
+    if (key && options.forceRefresh) this.readCache.delete(key);
+    const epoch = this.readCacheEpoch;
+    const generation = family ? this.cacheGenerations.get(family) ?? 0 : 0;
+    let settled = false;
+    const snapshot = method === "GET" && options.cacheKey && (options.onCached || this.offlineStore?.getCacheSnapshot)
+      ? this.readDeviceSnapshot<T>(options.cacheKey) : undefined;
+    if (options.onCached && snapshot) void snapshot.then(cached => {
+      if (cached && !settled && !options.signal?.aborted && epoch === this.readCacheEpoch && (!family || generation === (this.cacheGenerations.get(family) ?? 0))) {
+        try { options.onCached?.(cached.value); } catch { /* A view callback must not change request semantics. */ }
+      }
+    });
+    const flightKey = key ? JSON.stringify([key, epoch, generation, options.allowCacheFallback !== false]) : undefined;
+    const existing = flightKey ? this.readFlights.get(flightKey) : undefined;
+    if (existing) { try { return structuredClone(await existing) as T; } finally { settled = true; } }
+    const request = this.requestNetwork<T>(path, options, token, (value) => {
+      if (epoch === this.readCacheEpoch) this.cacheAccessDenied = false;
+      if (!key || !family || epoch !== this.readCacheEpoch || generation !== (this.cacheGenerations.get(family) ?? 0)) return;
+      const ttl = Math.min(this.readFreshnessMs, options.cacheTtlMs ?? this.readFreshnessMs);
+      this.readCache.delete(key);
+      this.readCache.set(key, { value: structuredClone(value), expiresAt: Date.now() + ttl, family });
+      // Bound filtered query snapshots as well as the normal module collections.
+      if (this.readCache.size > 100) this.readCache.delete(this.readCache.keys().next().value!);
+    }, snapshot);
+    if (flightKey) this.readFlights.set(flightKey, request);
+    try { return await request; }
+    catch (error) {
+      if (error instanceof ApiError && [401, 403].includes(error.status)) { this.cacheAccessDenied = true; this.clearReadCache(); }
+      throw error;
+    } finally {
+      settled = true;
+      if (flightKey && this.readFlights.get(flightKey) === request) this.readFlights.delete(flightKey);
+    }
+  }
+
+  private async readDeviceCache<T>(key: string): Promise<T | undefined> {
+    return (await this.readDeviceSnapshot<T>(key))?.value;
+  }
+
+  private async readDeviceSnapshot<T>(key: string): Promise<CacheSnapshot<T> | undefined> {
+    const epoch = this.readCacheEpoch;
+    const family = this.cacheFamily(key);
+    const generation = family ? this.cacheGenerations.get(family) ?? 0 : 0;
+    const allowed = () => this.canUseCache?.() !== false && !this.cacheAccessDenied && epoch === this.readCacheEpoch
+      && (!family || (!this.blockedCacheFamilies.has(family) && generation === (this.cacheGenerations.get(family) ?? 0)));
+    if (!this.offlineStore || !allowed()) return undefined;
+    try {
+      await this.cacheWork;
+      if (!allowed()) return undefined;
+      const snapshot = this.offlineStore.getCacheSnapshot
+        ? await this.offlineStore.getCacheSnapshot<T>(key)
+        : await this.offlineStore.getCache<T>(key).then(value => value === undefined ? undefined : { value });
+      return allowed() && snapshot !== undefined ? structuredClone(snapshot) : undefined;
+    } catch { return undefined; } // Cache/storage failure must not mask the network error.
+  }
+
+  private async requestNetwork<T>(path: string, options: RequestOptions, token: string | undefined, onSuccess: (value: T) => void, snapshot?: Promise<CacheSnapshot<T> | undefined>): Promise<T> {
+    const method = options.method ?? "GET";
     const cacheFamily = method === "GET" && options.cacheKey ? this.cacheFamily(options.cacheKey) : undefined;
     const generation = cacheFamily ? this.cacheGenerations.get(cacheFamily) ?? 0 : 0;
+    const epoch = this.readCacheEpoch;
     const queryString = encodeQuery(options.query);
     const url = `${this.baseUrl}${path}${queryString}`;
-    const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
     const safeHeaders: Record<string, string> = { ...options.headers };
     for (const key of Object.keys(safeHeaders)) if (key.toLowerCase() === "authorization") delete safeHeaders[key];
     const headers: Record<string, string> = { Accept: "application/json", ...safeHeaders };
@@ -195,31 +316,46 @@ export class ApiClient {
     const abort = () => controller.abort();
     signal?.addEventListener("abort", abort, { once: true });
     try {
-      const response = await this.fetchImpl(url, { method, headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal });
-      const value = await this.parseResponse<T>(response);
+      if (this.isOnline?.() === false) throw new NetworkError("Device is offline");
+      const cached = snapshot ? await snapshot : undefined;
+      if (cached?.etag) headers["If-None-Match"] = cached.etag;
+      const fetchResponse = () => this.fetchImpl(url, { method, headers: { ...headers }, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal });
+      let response = await fetchResponse();
+      let value: T;
+      if (response.status === 304) {
+        const usable = cached?.etag && headers["If-None-Match"] === cached.etag && options.cacheKey && epoch === this.readCacheEpoch && (!cacheFamily || generation === (this.cacheGenerations.get(cacheFamily) ?? 0))
+          ? await this.readDeviceCache<T>(options.cacheKey) : undefined;
+        if (usable !== undefined) value = usable;
+        else {
+          delete headers["If-None-Match"];
+          response = await fetchResponse();
+          value = await this.parseResponse<T>(response);
+        }
+      } else value = await this.parseResponse<T>(response);
       if (method === "GET" && options.cacheKey && this.offlineStore) {
         await this.withCacheWork(async () => {
-          if (!cacheFamily || (this.cacheGenerations.get(cacheFamily) ?? 0) === generation) {
-            await this.offlineStore?.setCache(options.cacheKey as string, value, options.cacheTtlMs);
+          if (epoch === this.readCacheEpoch && this.canUseCache?.() !== false && (!cacheFamily || (this.cacheGenerations.get(cacheFamily) ?? 0) === generation)) {
+            await this.offlineStore?.setCache(options.cacheKey as string, value, options.cacheTtlMs, response.headers.get("ETag") ?? undefined);
           }
-        });
+        }).catch(() => {}); // A confirmed GET must remain usable if device storage is full.
       } else if (method !== "GET") {
         await this.invalidateAfterWrite(path);
       }
+      onSuccess(value);
       return value;
     } catch (error) {
       if (error instanceof ApiError) {
         // An offline reverse proxy may return 502/503 rather than throw fetch.
         // Authorization/validation failures must never reveal cached data.
         if (method === "GET" && error.status >= 500 && options.allowCacheFallback !== false && options.cacheKey && this.offlineStore && (!cacheFamily || !this.blockedCacheFamilies.has(cacheFamily))) {
-          const cached = await this.offlineStore.getCache<T>(options.cacheKey);
+          const cached = await this.readDeviceCache<T>(options.cacheKey);
           if (cached !== undefined) return cached;
         }
         throw error;
       }
       const networkError = error instanceof NetworkError ? error : new NetworkError("Network request failed", error);
       if (method === "GET" && options.allowCacheFallback !== false && options.cacheKey && this.offlineStore && (!cacheFamily || !this.blockedCacheFamilies.has(cacheFamily))) {
-        const cached = await this.offlineStore.getCache<T>(options.cacheKey);
+        const cached = await this.readDeviceCache<T>(options.cacheKey);
         if (cached !== undefined) return cached;
       }
       if (method !== "GET" && options.queueOnOffline !== false && this.offlineStore) {
@@ -249,12 +385,13 @@ export class ApiClient {
   }
 
   private async invalidateAfterWrite(path: string): Promise<void> {
-    if (!this.offlineStore) return;
     const roots = affectedCacheFamilies(path);
     for (const root of roots) {
       this.cacheGenerations.set(root, (this.cacheGenerations.get(root) ?? 0) + 1);
       this.blockedCacheFamilies.add(root);
     }
+    for (const [key, entry] of this.readCache) if (roots.includes(entry.family)) this.readCache.delete(key);
+    if (!this.offlineStore) return;
     const generations = roots.map((root) => this.cacheGenerations.get(root));
     try {
       await this.withCacheWork(async () => {
@@ -289,6 +426,7 @@ export class ApiClient {
   public async replayOutbox(): Promise<{ readonly applied: number; readonly retained: number }> {
     if (!this.offlineStore) return { applied: 0, retained: 0 };
     const entries = await this.offlineStore.listOutbox();
+    if (this.isOnline?.() === false) return { applied: 0, retained: entries.length };
     let applied = 0;
     let retained = 0;
     for (const entry of entries) {
@@ -336,6 +474,7 @@ export class ApiClient {
     return this.request<readonly KnowledgeSource[]>("/api/v1/knowledge/search", { ...options, method: "POST", body: { query, ...scope }, queueOnOffline: false });
   }
   public notes(options?: RequestOptions) { return this.request<readonly NoteOut[]>("/api/v1/notes", this.read(options, "notes")); }
+  public notesPage(query?: Query, options?: RequestOptions) { return this.request<ReadPage<NoteOut>>("/api/v1/read/notes", this.read({ ...options, query }, "notes-pages")); }
   public createNote(body: NoteIn, options?: RequestOptions) { return this.request<NoteOut>("/api/v1/notes", this.write(body, options)); }
   public note(itemId: Id, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.read(options)); }
   public updateNote(itemId: Id, body: NoteIn, options?: RequestOptions) { return this.request<NoteOut>(`/api/v1/notes/${encodeURIComponent(itemId)}`, this.write(body, options, "PATCH")); }
@@ -397,6 +536,8 @@ export class ApiClient {
   public createMailAccount(body: MailAccountIn, options?: RequestOptions) { return this.request<MailAccount>("/api/v1/mail/accounts", this.write(body, options)); }
   public mailMessages(query?: Query, options?: RequestOptions) { return this.request<readonly MailMessage[]>("/api/v1/mail/messages", this.read({ ...options, query }, "mail-messages")); }
   public setMailMessageRead(messageId: Id, body: MailMessageReadIn, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/mail/messages/${encodeURIComponent(messageId)}`, this.write(body, { queueOnOffline: false, ...options }, "PATCH")); }
+  public mailPage(query?: Query, options?: RequestOptions) { return this.request<ReadPage<MailMessage>>("/api/v1/read/mail", this.read({ ...options, query }, "mail-pages")); }
+  public mailMessage(id: Id, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/read/mail/${encodeURIComponent(id)}`, this.read(options)); }
   public importMailMessage(body: MessageIn, options?: RequestOptions) { return this.request<MailMessage>("/api/v1/mail/messages", this.write(body, options)); }
   public mailDrafts(options?: RequestOptions) { return this.request<readonly MailDraft[]>("/api/v1/mail/drafts", this.read(options, "mail-drafts")); }
   public createMailDraft(body: DraftIn, options?: RequestOptions) { return this.request<MailDraft>("/api/v1/mail/drafts", this.write(body, options)); }

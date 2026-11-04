@@ -61,10 +61,10 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [historyAccount, setHistoryAccount] = useState('all')
   const operationKey = useRef(crypto.randomUUID())
   const occurredAt = useRef(new Date().toISOString())
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = true) => {
     try {
       const client = getSharedApiClient()
-      const [loadedAccounts, loadedCategories, loadedBudgets, loadedTransactions, loadedSummary] = await Promise.all([client.financeAccounts(), client.financeCategories(), client.financeBudgets(), client.financeTransactions(), client.financeSummary()])
+      const [loadedAccounts, loadedCategories, loadedBudgets, loadedTransactions, loadedSummary] = await Promise.all([client.financeAccounts({ forceRefresh }), client.financeCategories({ forceRefresh }), client.financeBudgets({ forceRefresh }), client.financeTransactions({ forceRefresh }), client.financeSummary({ forceRefresh })])
       setAccounts(loadedAccounts); setCategories(loadedCategories); setBudgets(loadedBudgets); setTransactions(loadedTransactions); setSummary(loadedSummary)
       setAccountId((id) => { const account = loadedAccounts.find((item) => item.id === id) ?? loadedAccounts[0]; if (account) setCurrency(account.currency); return account?.id ?? '' })
       setStatus('ready')
@@ -73,7 +73,7 @@ export function FinanceView({ apiStatus }: { apiStatus: ApiStatus }) {
       setNotice(error instanceof ApiError ? `${error.code}: ${error.message}` : 'Finance unavailable. Check your connection and owner session.')
     }
   }, [])
-  useEffect(() => { void load() }, [load, apiStatus])
+  useEffect(() => { void load(false) }, [load, apiStatus])
   const openForm = (value: FormKind) => {
     operationKey.current = crypto.randomUUID(); occurredAt.current = new Date().toISOString()
     setForm(value); setAmount(''); setName(''); setCategoryId(''); setNotes(''); setNotice('')

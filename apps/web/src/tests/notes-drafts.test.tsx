@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@aelys/shared'
 import { NotesView } from '../views/NotesView'
 
-const client = vi.hoisted(() => ({ notes: vi.fn(), note: vi.fn(), updateNote: vi.fn(), createNote: vi.fn(), deleteNote: vi.fn() }))
+const client = vi.hoisted(() => ({ notes: vi.fn(), notesPage: vi.fn(), note: vi.fn(), updateNote: vi.fn(), createNote: vi.fn(), deleteNote: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
 
 const first = { id: '1', title: 'Alpha', markdown_body: 'Original', version: 1, parent_id: 'parent', project_id: 'project' }
@@ -29,6 +29,8 @@ async function mount(status: 'ready' | 'offline' = 'ready') {
 }
 
 beforeEach(() => { vi.resetAllMocks(); client.notes.mockResolvedValue([first, second]); client.note.mockResolvedValue(first) })
+beforeEach(() => { client.notesPage.mockImplementation(async () => ({ items: await client.notes(), next_cursor: null, etag: 'notes' })); })
+
 afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = '' })
 
 describe('note drafts', () => {

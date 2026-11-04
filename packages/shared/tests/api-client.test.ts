@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClient, ApiError, NetworkError, OfflineQueuedError, OfflineWriteUnavailableError } from "../src/api-client";
+import { ApiClient, ApiError, CacheMissError, NetworkError, OfflineQueuedError, OfflineWriteUnavailableError } from "../src/api-client";
 import type { EntityStore, LocalEntity, OfflineStore, OutboxEntry, OutboxRequest } from "../src/offline";
+
+const json = (value: unknown) => new Response(JSON.stringify(value));
+function deferredResponse() {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 class MemoryStore implements OfflineStore {
   public readonly outbox: OutboxEntry[] = [];
@@ -39,6 +46,338 @@ class EntityMemoryStore extends MemoryStore implements EntityStore {
     return { entity, outbox };
   }
 }
+
+class TaggedMemoryStore extends MemoryStore {
+  readonly tags = new Map<string, string>();
+  public override async setCache<T>(key: string, value: T, _ttl?: number, etag?: string) {
+    await super.setCache(key, value);
+    if (etag) this.tags.set(key, etag); else this.tags.delete(key);
+  }
+  public async getCacheSnapshot<T>(key: string) {
+    const value = await this.getCache<T>(key);
+    return value === undefined ? undefined : { value, etag: this.tags.get(key) };
+  }
+}
+
+describe("conditional device revalidation", () => {
+  it("previews saved data before a slow response and reuses a 304 after recreating the client", async () => {
+    const store = new TaggedMemoryStore();
+    const value = { items: [], next_cursor: null, etag: 'W/"v1"', not_modified: false };
+    const first = new ApiClient({ baseUrl: "", offlineStore: store, fetch: vi.fn(async () => new Response(JSON.stringify(value), { headers: { ETag: 'W/"v1"' } })) });
+    await first.notesPage();
+    const pending = deferredResponse();
+    const fetchImpl = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => pending.promise);
+    const preview = vi.fn();
+    const next = new ApiClient({ baseUrl: "", offlineStore: store, fetch: fetchImpl });
+    const result = next.notesPage(undefined, { onCached: preview, allowCacheFallback: false });
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    expect(preview).toHaveBeenCalledWith(value);
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ headers: { "If-None-Match": 'W/"v1"' } });
+    pending.resolve(new Response(null, { status: 304, headers: { ETag: 'W/"v1"' } }));
+    await expect(result).resolves.toEqual(value);
+  });
+
+  it("retries once without the validator if a 304 arrives after the disk entry disappeared", async () => {
+    const store = new TaggedMemoryStore();
+    await store.setCache("notes-pages", { items: [], next_cursor: null }, undefined, 'W/"v1"');
+    const fetchImpl = vi.fn().mockImplementationOnce(async () => { store.cache.clear(); return new Response(null, { status: 304 }); }).mockResolvedValueOnce(json({ items: [{ id: "current" }], next_cursor: null }));
+    const client = new ApiClient({ baseUrl: "", offlineStore: store, fetch: fetchImpl });
+    await expect(client.notesPage()).resolves.toMatchObject({ items: [{ id: "current" }] });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[1]?.[1].headers["If-None-Match"]).toBeUndefined();
+  });
+
+  it("does not replace a successful server response with an IndexedDB quota failure", async () => {
+    const store = new MemoryStore();
+    vi.spyOn(store, "setCache").mockRejectedValue(new Error("Quota exceeded"));
+    const client = new ApiClient({ baseUrl: "", offlineStore: store, fetch: vi.fn(async () => json([{ id: "live" }])) });
+    await expect(client.notes()).resolves.toEqual([{ id: "live" }]);
+  });
+});
+
+describe("device cache reads", () => {
+  it("serves saved collections after recreating the client with zero offline fetches", async () => {
+    const store = new MemoryStore();
+    const fetchImpl = vi.fn(async () => json([{ id: "saved-task" }]));
+    await new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store }).tasks();
+    fetchImpl.mockClear();
+    const reopened = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store, isOnline: () => false });
+    await expect(reopened.tasks()).resolves.toEqual([{ id: "saved-task" }]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("provides explicit cache-only reads online with canonical filter keys", async () => {
+    const store = new MemoryStore();
+    store.cache.set("tasks?limit=10&project_id=a", [{ id: "a" }]);
+    const fetchImpl = vi.fn();
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store });
+    await expect(client.tasks({ project_id: "a", limit: 10 }, { cacheOnly: true })).resolves.toEqual([{ id: "a" }]);
+    await expect(client.tasks({ project_id: "b" }, { cacheOnly: true })).rejects.toBeInstanceOf(CacheMissError);
+    await expect(client.me({ cacheOnly: true })).rejects.toMatchObject({ code: "CACHE_MISS" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("fails immediately on a cold offline read, including when live validation is required", async () => {
+    const store = new MemoryStore();
+    store.cache.set("tasks", [{ id: "old" }]);
+    const fetchImpl = vi.fn();
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store, isOnline: () => false });
+    await expect(client.notes()).rejects.toBeInstanceOf(CacheMissError);
+    await expect(client.tasks(undefined, { allowCacheFallback: false })).rejects.toBeInstanceOf(CacheMissError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 403])("does not reveal durable snapshots after an observed HTTP %s", async (status) => {
+    const store = new MemoryStore();
+    store.cache.set("tasks", [{ id: "private" }]);
+    let online = true;
+    const fetchImpl = vi.fn(async () => new Response("Denied", { status }));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store, isOnline: () => online });
+    await expect(client.tasks()).rejects.toMatchObject({ status });
+    online = false;
+    await expect(client.tasks()).rejects.toBeInstanceOf(CacheMissError);
+    await expect(client.tasks(undefined, { cacheOnly: true })).rejects.toBeInstanceOf(CacheMissError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks memory, disk and network-error fallback when the owner/backend partition changes", async () => {
+    const store = new MemoryStore();
+    let allowed = true;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(json([{ id: "private" }])).mockRejectedValue(new Error("offline"));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store, canUseCache: () => allowed, readFreshnessMs: 60_000 });
+    await client.tasks();
+    allowed = false;
+    await expect(client.tasks(undefined, { cacheOnly: true })).rejects.toBeInstanceOf(CacheMissError);
+    await expect(client.tasks()).rejects.toBeInstanceOf(NetworkError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("discards a delayed disk snapshot invalidated by a confirmed mutation", async () => {
+    const store = new MemoryStore();
+    let resolve!: (value: unknown) => void;
+    const read = vi.spyOn(store, "getCache").mockImplementation(() => new Promise(done => { resolve = done; }));
+    const fetchImpl = vi.fn(async () => json({ id: "new" }));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store });
+    const pending = client.tasks(undefined, { cacheOnly: true });
+    await Promise.resolve();
+    expect(read).toHaveBeenCalledTimes(1);
+    await client.createTask({ title: "new" });
+    resolve([{ id: "stale" }]);
+    await expect(pending).rejects.toBeInstanceOf(CacheMissError);
+  });
+
+  it("discards a pending disk read when its owner/backend scope closes", async () => {
+    const store = new MemoryStore();
+    let allowed = true;
+    let resolve!: (value: unknown) => void;
+    vi.spyOn(store, "getCache").mockImplementation(() => new Promise(done => { resolve = done; }));
+    const client = new ApiClient({ baseUrl: "", fetch: vi.fn(), offlineStore: store, canUseCache: () => allowed });
+    const pending = client.tasks(undefined, { cacheOnly: true });
+    await Promise.resolve();
+    allowed = false;
+    resolve([{ id: "private" }]);
+    await expect(pending).rejects.toBeInstanceOf(CacheMissError);
+  });
+
+  it("allows device reads again after a new successful server validation", async () => {
+    const store = new MemoryStore();
+    let online = true;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(new Response("Denied", { status: 401 })).mockResolvedValueOnce(json([{ id: "confirmed" }]));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store, isOnline: () => online });
+    await expect(client.tasks()).rejects.toMatchObject({ status: 401 });
+    await client.tasks();
+    online = false;
+    await expect(client.tasks()).resolves.toEqual([{ id: "confirmed" }]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("queues offline-capable writes durably without attempting fetch", async () => {
+    const store = new MemoryStore();
+    const fetchImpl = vi.fn();
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store, isOnline: () => false });
+    await expect(client.createNote({ title: "Offline" })).rejects.toBeInstanceOf(OfflineQueuedError);
+    expect(store.outbox).toHaveLength(1);
+    await expect(client.createTask({ title: "Online only" }, { queueOnOffline: false })).rejects.toBeInstanceOf(OfflineWriteUnavailableError);
+    expect(store.outbox).toHaveLength(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("retains offline outbox entries without increasing retry attempts or backoff", async () => {
+    const store = new MemoryStore();
+    const entry = await store.enqueue({ method: "POST", path: "/api/v1/notes", body: { title: "Pending" }, idempotencyKey: "pending" });
+    const fetchImpl = vi.fn();
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store, isOnline: () => false });
+    await expect(client.replayOutbox()).resolves.toEqual({ applied: 0, retained: 1 });
+    expect(entry.attempts).toBe(0);
+    expect(entry.nextAttemptAt).toBe(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects cache-only mutations without fetching or creating an outbox entry", async () => {
+    const store = new MemoryStore();
+    const fetchImpl = vi.fn();
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store });
+    await expect(client.createNote({ title: "Invalid" }, { cacheOnly: true })).rejects.toThrow("only for GET");
+    expect(store.outbox).toHaveLength(0);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("keeps storage failures from replacing a real server error", async () => {
+    const store = new MemoryStore();
+    vi.spyOn(store, "getCache").mockRejectedValue(new Error("IndexedDB unavailable"));
+    const fetchImpl = vi.fn(async () => new Response("Unavailable", { status: 503 }));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store });
+    await expect(client.tasks()).rejects.toMatchObject({ status: 503 });
+    await expect(client.tasks(undefined, { cacheOnly: true })).rejects.toBeInstanceOf(CacheMissError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("navigation read freshness", () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+
+  it("reuses a recent response across visits, expires it and supports explicit refresh", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn(async () => json([{ id: "task", version: fetchImpl.mock.calls.length }]));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    await expect(client.tasks()).resolves.toEqual([{ id: "task", version: 1 }]);
+    await vi.advanceTimersByTimeAsync(59_999);
+    await expect(client.tasks()).resolves.toEqual([{ id: "task", version: 1 }]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(client.tasks()).resolves.toEqual([{ id: "task", version: 2 }]);
+    await expect(client.tasks(undefined, { forceRefresh: true })).resolves.toEqual([{ id: "task", version: 3 }]);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("coalesces concurrent reads with equivalent filters without sharing mutable results", async () => {
+    const response = deferredResponse();
+    const fetchImpl = vi.fn(() => response.promise);
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    const first = client.tasks({ project_id: "a", limit: 10 });
+    const second = client.tasks({ limit: 10, ignored: null, project_id: "a" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    response.resolve(json([{ id: "original" }]));
+    const [a, b] = await Promise.all([first, second]);
+    expect(a).toEqual(b);
+    expect(a).not.toBe(b);
+    Object.assign(a[0]!, { id: "edited" });
+    await expect(client.tasks({ project_id: "a", limit: 10 })).resolves.toEqual([{ id: "original" }]);
+  });
+
+  it("keeps filters, headers and cache policies separate", async () => {
+    const response = deferredResponse();
+    const fetchImpl = vi.fn(() => response.promise.then((value) => value.clone()));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    const requests = [client.tasks({ project_id: "a" }), client.tasks({ project_id: "b" }),
+      client.tasks({ project_id: "a" }, { allowCacheFallback: false }), client.tasks({ project_id: "a" }, { headers: { "X-Test": "different" } })];
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    response.resolve(json([]));
+    await Promise.all(requests);
+  });
+
+  it("invalidates affected snapshots after writes even without a durable store", async () => {
+    const fetchImpl = vi.fn(async () => json([]));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    await client.tasks({ project_id: "a" });
+    await client.tasks({ project_id: "b" });
+    await client.notes();
+    await client.createTask({ title: "new" });
+    await client.tasks({ project_id: "a" });
+    await client.tasks({ project_id: "b" });
+    await client.notes();
+    expect(fetchImpl).toHaveBeenCalledTimes(6);
+  });
+
+  it("does not join or cache a pre-write response after a confirmed mutation", async () => {
+    const old = deferredResponse();
+    const fetchImpl = vi.fn().mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(json({ id: "new" }))
+      .mockResolvedValueOnce(json([{ id: "new" }]));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    const oldRead = client.tasks();
+    await client.createTask({ title: "new" });
+    await expect(client.tasks()).resolves.toEqual([{ id: "new" }]);
+    old.resolve(json([{ id: "old" }]));
+    await oldRead;
+    await expect(client.tasks()).resolves.toEqual([{ id: "new" }]);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([401, 403])("clears fresh snapshots after HTTP %s, including on uncached identity reads", async (status) => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(json([{ id: "private" }]))
+      .mockResolvedValueOnce(new Response("Denied", { status }))
+      .mockResolvedValueOnce(new Response("Denied", { status }));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    await client.tasks();
+    await expect(client.me()).rejects.toMatchObject({ status });
+    await expect(client.tasks()).rejects.toMatchObject({ status });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not promote an offline fallback to a fresh server-confirmed snapshot", async () => {
+    const store = new MemoryStore();
+    store.cache.set("tasks", [{ id: "offline" }]);
+    const fetchImpl = vi.fn(async () => { throw new Error("offline"); });
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, offlineStore: store, readFreshnessMs: 60_000 });
+    await expect(client.tasks()).resolves.toEqual([{ id: "offline" }]);
+    await expect(client.tasks(undefined, { allowCacheFallback: false })).rejects.toBeInstanceOf(NetworkError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops a fresh snapshot when forced revalidation fails", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(json([{ id: "old" }])).mockRejectedValue(new Error("offline"));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    await client.tasks();
+    await expect(client.tasks(undefined, { forceRefresh: true })).rejects.toBeInstanceOf(NetworkError);
+    await expect(client.tasks()).rejects.toBeInstanceOf(NetworkError);
+  });
+
+  it("isolates credential changes and invalidates pending snapshots on session reset", async () => {
+    const old = deferredResponse();
+    let token: string | undefined = "owner-one";
+    const fetchImpl = vi.fn().mockReturnValueOnce(old.promise).mockResolvedValueOnce(json([{ id: "owner-two" }])).mockResolvedValueOnce(json([]));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, getToken: () => token, readFreshnessMs: 60_000 });
+    const oldRead = client.tasks();
+    await Promise.resolve();
+    token = "owner-two";
+    await expect(client.tasks()).resolves.toEqual([{ id: "owner-two" }]);
+    old.resolve(json([{ id: "owner-one" }]));
+    await oldRead;
+    await expect(client.tasks()).resolves.toEqual([{ id: "owner-two" }]);
+    client.clearReadCache();
+    token = undefined;
+    await expect(client.tasks()).resolves.toEqual([]);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects already aborted reads and keeps caller cancellation independent", async () => {
+    const fetchImpl = vi.fn(async () => json([]));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    await client.tasks();
+    const aborted = new AbortController(); aborted.abort();
+    await expect(client.tasks(undefined, { signal: aborted.signal })).rejects.toBeInstanceOf(NetworkError);
+    await client.tasks(undefined, { signal: new AbortController().signal });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves notification polling, identity, sync and Telegram status live", async () => {
+    const fetchImpl = vi.fn(async () => json([]));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    for (let i = 0; i < 2; i += 1) await Promise.all([client.me(), client.notifications(), client.syncStatus(), client.telegramStatus()]);
+    expect(fetchImpl).toHaveBeenCalledTimes(8);
+  });
+
+  it("bounds memory retained for filtered navigation queries", async () => {
+    const fetchImpl = vi.fn(async () => json([]));
+    const client = new ApiClient({ baseUrl: "", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    for (let i = 0; i <= 100; i += 1) await client.tasks({ project_id: String(i) });
+    await client.tasks({ project_id: "100" });
+    expect(fetchImpl).toHaveBeenCalledTimes(101);
+    await client.tasks({ project_id: "0" });
+    expect(fetchImpl).toHaveBeenCalledTimes(102);
+  });
+});
 
 describe("ApiClient", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
@@ -384,4 +723,18 @@ it("calls the AI chat endpoints: pin, scopes, actions, attachments, feedback and
     ["/api/v1/ai/messages/m1", "PATCH", { feedback: "up" }],
     ["/api/v1/ai/runs", "POST", { conversation_id: "c1", message: "hi", attachment_ids: ["f1"], idempotency_key: "k" }],
   ]);
+});
+
+
+it("does not persist a late response after its owner partition was replaced", async () => {
+  const store = new MemoryStore();
+  const response = deferredResponse();
+  let allowed = true;
+  const client = new ApiClient({ baseUrl: "", offlineStore: store, fetch: vi.fn(() => response.promise), canUseCache: () => allowed });
+  const reading = client.tasks();
+  allowed = false;
+  client.clearReadCache();
+  response.resolve(json([{ id: "previous-owner" }]));
+  await reading;
+  expect(store.cache.size).toBe(0);
 });

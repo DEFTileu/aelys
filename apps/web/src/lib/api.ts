@@ -10,6 +10,7 @@ const ACCESS_TOKEN_STORAGE_KEY = 'aelys.accessToken'
 const SIGNED_OUT_KEY = 'aelys.signedOut'
 const LOCAL_LAUNCH_STORAGE_KEY = 'aelys.localPasswordLaunch'
 const DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const NAVIGATION_FRESH_MS = 60_000
 export const SESSION_EVENT = 'aelys:session-changed'
 
 export function normalizeApiBaseUrl(value: string): string {
@@ -36,6 +37,13 @@ function sharedOrigin(baseUrl: string): string {
   return normalized.replace(/\/api\/v1$/, '') || window.location.origin
 }
 
+function backendIsOnline(origin: string): boolean {
+  if (navigator.onLine) return true
+  // A local Mac backend can remain reachable without an internet connection.
+  try { return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin, window.location.origin).hostname) }
+  catch { return false }
+}
+
 let sharedClient: ApiClient | undefined
 let sharedClientKey = ''
 // Native sessions live in Rust, so the JS side only learns the owner from native status.
@@ -45,6 +53,7 @@ let nativeOwner: string | null = null
 export function setNativeCacheOwner(owner: string | null | undefined): void {
   const next = owner && owner.length <= 200 ? owner : null
   if (next === nativeOwner) return
+  sharedClient?.clearReadCache()
   nativeOwner = next; sharedClient = undefined; sharedClientKey = ''
 }
 let refreshFlight: Promise<boolean> | undefined
@@ -66,6 +75,7 @@ export function getAccessToken(): string | undefined {
 export function clearAccessToken(notify = true): void {
   window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
   window.sessionStorage.removeItem(LOCAL_LAUNCH_STORAGE_KEY)
+  sharedClient?.clearReadCache()
   nativeOwner = null; sharedClient = undefined; sharedClientKey = ''
   if (notify) window.dispatchEvent(new Event(SESSION_EVENT))
 }
@@ -233,14 +243,16 @@ function openOfflineStore(origin: string, owner: string | null): IndexedDbOfflin
 export function startOutboxReplay(): () => void {
   let running = false
   const run = () => {
-    if (running) return
+    const origin = isNativeHost() ? nativeBackendOrigin(getApiConfig().baseUrl) : sharedOrigin(getApiConfig().baseUrl)
+    if (running || !backendIsOnline(origin)) return
     running = true
     void getSharedApiClient().replayOutbox().catch(() => {}).finally(() => { running = false })
   }
+  const reconnect = () => { getSharedApiClient().clearReadCache(); run() }
   run()
   const timer = window.setInterval(run, 30_000)
-  window.addEventListener('online', run); window.addEventListener('focus', run)
-  return () => { window.clearInterval(timer); window.removeEventListener('online', run); window.removeEventListener('focus', run) }
+  window.addEventListener('online', reconnect); window.addEventListener('focus', run)
+  return () => { window.clearInterval(timer); window.removeEventListener('online', reconnect); window.removeEventListener('focus', run) }
 }
 
 export function getSharedApiClient(): ApiClient {
@@ -249,6 +261,7 @@ export function getSharedApiClient(): ApiClient {
   const owner = native ? nativeOwner : cacheOwner()
   const partition = JSON.stringify([native ? 'native' : 'browser', origin, owner])
   if (!sharedClient || sharedClientKey !== partition) {
+    sharedClient?.clearReadCache()
     if (native) {
       let nativeFetchPromise: ReturnType<typeof loadNativeTransport> | undefined
       const nativeFetch: typeof fetch = async (input, init) => {
@@ -256,13 +269,14 @@ export function getSharedApiClient(): ApiClient {
         return createNativeFetch(await nativeFetchPromise, origin)(input, init)
       }
       // ApiClient methods carry the stable `/api/v1` prefix themselves.
-      sharedClient = new ApiClient({ baseUrl: origin, fetch: nativeFetch, offlineStore: openOfflineStore(origin, owner) })
+      const canUseCache = () => !!owner && nativeOwner === owner && !isSignedOut() && nativeBackendOrigin(getApiConfig().baseUrl) === origin
+      sharedClient = new ApiClient({ baseUrl: origin, fetch: nativeFetch, offlineStore: openOfflineStore(origin, owner), readFreshnessMs: NAVIGATION_FRESH_MS, isOnline: () => backendIsOnline(origin), canUseCache })
       sharedClientKey = partition
       return sharedClient
     }
     const offlineStore = openOfflineStore(origin, owner)
     const partitionToken = () => sharedOrigin(getApiConfig().baseUrl) === origin && cacheOwner() === owner ? getAccessToken() : undefined
-    sharedClient = new ApiClient({ baseUrl: origin, getToken: partitionToken, fetch: authenticatedFetch, offlineStore })
+    sharedClient = new ApiClient({ baseUrl: origin, getToken: partitionToken, fetch: authenticatedFetch, offlineStore, readFreshnessMs: NAVIGATION_FRESH_MS, isOnline: () => backendIsOnline(origin), canUseCache: () => !!owner && !!partitionToken() })
     sharedClientKey = partition
   }
   return sharedClient

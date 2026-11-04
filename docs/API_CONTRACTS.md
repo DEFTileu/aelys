@@ -699,3 +699,27 @@ there are no new endpoint permissions in the merge revision.
   and `GET .../messages` returns `attachments [{name, size}]` on user messages.
 - `PATCH /ai/messages/{id} {feedback: "up"|"down"|null}` (assistant messages only);
   `GET .../messages` returns `feedback`.
+
+
+### Bounded navigation reads (2026-11-04)
+
+- `GET /api/v1/read/notes` and `GET /api/v1/read/mail` return
+  `{items, next_cursor, etag, not_modified, facets}`. `limit` defaults to 50,
+  accepts 1–100; `cursor` is opaque and bound to owner, resource and filters.
+- `q` (up to 200 characters) searches server-side before pagination. Notes also
+  accept `folder=unfiled|folder:<name>` and `tag`; the first page includes all
+  owner-visible folder/tag labels without fetching full document bodies.
+- Notes use ascending IDs; mail uses descending `(received_at, id)`. A next-page
+  request must keep its original limit and filters. Existing full-list routes
+  remain compatible.
+- `If-None-Match` returns authenticated `304` with no body when unchanged.
+  Native JSON transport uses `known_etag` and `not_modified: true`; the native
+  adapter reconstructs HTTP 304. Responses use `private, no-store`; device
+  snapshots are managed explicitly in the owner/backend partition.
+- `GET /api/v1/read/mail/{id}` resolves an owned message outside the loaded page.
+- Clients reuse confirmed collection reads for 60 seconds, deduplicate concurrent
+  identical reads, invalidate affected families after writes, and bypass freshness
+  on explicit refresh. Saved previews do not authorize online writes. A denied
+  session removes previews and cannot read private fallback snapshots.
+
+Validation and measurement: [navigation read optimization](optimization/navigation-reads-main.md).

@@ -32,6 +32,7 @@ from app.core.models import (
 )
 from app.core.security import current_principal
 from app.domains import capture
+from app.domains.finance_summary import summarize_ledger
 from app.domains.recurrence import parse_rule, utc
 from app.domains.reminders import authorize_reminder_write
 from app.sync.change_log import lock_owner, record_domain_change
@@ -845,16 +846,7 @@ async def create_transfer(body: TransferIn, principal=Depends(current_principal)
 @router.get("/finance/summary")
 async def finance_summary(principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal
-    rows=list((await db.execute(select(FinanceTransaction).where(FinanceTransaction.owner_id==user.id,FinanceTransaction.deleted_at.is_(None)))).scalars())
-    groups: dict[str, dict[str, Decimal]] = {}
-    for row in rows:
-        group = groups.setdefault(row.currency, {"balance": Decimal(0), "income": Decimal(0), "expense": Decimal(0)})
-        signed = -abs(row.amount) if row.type == "expense" else abs(row.amount) if row.type == "income" else row.amount
-        group["balance"] += signed
-        if row.type in {"income", "expense"}:
-            group[row.type] += abs(row.amount)
-    currencies = [{"currency": currency, **{key: str(value) for key, value in group.items()}} for currency, group in sorted(groups.items())]
-    return {"total": currencies[0]["balance"] if len(currencies) == 1 else "0" if not currencies else None, "count": len(rows), "currencies": currencies}
+    return await summarize_ledger(db, user.id)
 
 @router.post("/focus/sessions", response_model=FocusOut)
 async def start_focus(body:FocusIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db), idempotency_key: str | None = Header(default=None, max_length=150)):

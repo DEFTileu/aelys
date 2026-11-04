@@ -387,7 +387,7 @@ describe('Tasks workspace', () => {
     })
     await mount()
     expect(client.tasks.mock.calls.some((args) => args[1]?.allowCacheFallback === false)).toBe(true)
-    expect(client.tasks.mock.calls.some((args) => args.length === 0)).toBe(true)
+    expect(client.tasks.mock.calls.some((args) => args[1]?.cacheOnly === true)).toBe(true)
     expect(row('Plan launch')).not.toBeNull()
     expect(host.textContent).toMatch(/cached|cache/i)
     expect(button('Complete Plan launch').disabled).toBe(true)
@@ -400,7 +400,7 @@ describe('Tasks workspace', () => {
     client.tasks.mockRejectedValue(new ApiError(403, 'FORBIDDEN', 'Access denied'))
     await mount()
     expect(client.tasks.mock.calls.some((args) => args[1]?.allowCacheFallback === false)).toBe(true)
-    expect(client.tasks.mock.calls.some((args) => args.length === 0)).toBe(false)
+    expect(client.tasks.mock.calls.some((args) => args[1]?.cacheOnly === true)).toBe(false)
     expect(row('Plan launch')).toBeNull()
   })
 

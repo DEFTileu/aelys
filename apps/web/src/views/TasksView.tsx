@@ -104,32 +104,44 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
 
   // Cached reads remain useful, but cannot prove a live source: explicitly bypass
   // fallback first. A 401/403 never falls back to private cached records.
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = true) => {
     const generation = ++loadGeneration.current
     setRefreshing(true)
+    const client = getSharedApiClient()
+    const rejectAccess = (error: unknown): never => {
+      if (isAuthError(error)) { authRejected.current = true; setTasks([]); setProjects([]); setSource('auth'); setRefreshing(false) }
+      throw error
+    }
+    const [taskResult, projectResult] = await Promise.allSettled([
+      client.tasks(undefined, { ...freshRead, forceRefresh, onCached: value => {
+        if (generation === loadGeneration.current && !authRejected.current) { setTasks(value as readonly TaskOut[]); setSource('cached') }
+      } }).catch(rejectAccess),
+      client.projects({ ...freshRead, forceRefresh, onCached: value => {
+        if (generation === loadGeneration.current && !authRejected.current) setProjects(value as readonly ProjectResponse[])
+      } }).catch(rejectAccess),
+    ])
     let nextTasks: readonly TaskOut[] | undefined
     let nextSource: typeof source = 'live'
-    try { nextTasks = await getSharedApiClient().tasks(undefined, freshRead) }
-    catch (error) {
+    if (taskResult.status === 'fulfilled') nextTasks = taskResult.value
+    else {
+      const error: unknown = taskResult.reason
       if (isAuthError(error)) nextSource = 'auth'
       else if (error instanceof ApiError && error.status < 500) nextSource = 'error'
       else {
         nextSource = 'cached'
-        try { nextTasks = await getSharedApiClient().tasks() }
+        try { nextTasks = await client.tasks(undefined, { cacheOnly: true }) }
         catch (cachedError) { nextSource = isAuthError(cachedError) ? 'auth' : 'error' }
       }
     }
     let nextProjects: readonly ProjectResponse[] = []
     let unavailable = false
+    if (projectResult.status === 'rejected' && isAuthError(projectResult.reason)) nextSource = 'auth'
     if (nextSource !== 'auth') {
-      try { nextProjects = await getSharedApiClient().projects(freshRead) }
-      catch (error) {
+      if (projectResult.status === 'fulfilled') nextProjects = projectResult.value
+      else {
         unavailable = true
-        if (isAuthError(error)) nextSource = 'auth'
-        else {
-          try { nextProjects = await getSharedApiClient().projects() }
-          catch (cachedError) { if (isAuthError(cachedError)) nextSource = 'auth' }
-        }
+        try { nextProjects = await client.projects({ cacheOnly: true }) }
+        catch (cachedError) { if (isAuthError(cachedError)) nextSource = 'auth' }
       }
     }
     if (nextSource === 'auth') { authRejected.current = true; setSource('auth'); setTasks([]); setProjects([]); setRefreshing(false); return false }
@@ -142,7 +154,7 @@ export function TasksView({ apiStatus }: { apiStatus: ApiStatus }) {
     setRefreshing(false)
     return nextSource === 'live'
   }, [])
-  useEffect(() => { void load(); return () => { loadGeneration.current++ } }, [load, apiStatus])
+  useEffect(() => { void load(false); return () => { loadGeneration.current++ } }, [load, apiStatus])
   useEffect(() => {
     const update = () => { setOnline(navigator.onLine); if (navigator.onLine) void load() }
     window.addEventListener('online', update); window.addEventListener('offline', update)

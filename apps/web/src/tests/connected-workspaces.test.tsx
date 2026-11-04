@@ -10,7 +10,7 @@ import { TimerView } from '../views/TimerView'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { consumeSse } from '../lib/sse'
 
-const client = vi.hoisted(() => ({ aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), createAIProvider: vi.fn(), setAIProviderSecret: vi.fn(), updateAIProvider: vi.fn(), mailMessages: vi.fn(), mailDrafts: vi.fn(), createMailDraft: vi.fn(), updateMailDraft: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn(), financeAccounts: vi.fn(), financeCategories: vi.fn(), financeBudgets: vi.fn(), financeTransactions: vi.fn(), financeSummary: vi.fn(), createFinanceAccount: vi.fn(), createFinanceCategory: vi.fn(), createFinanceBudget: vi.fn(), createFinanceTransaction: vi.fn(), createFinanceTransfer: vi.fn(), focusSessions: vi.fn(), tasks: vi.fn(), projects: vi.fn(), startFocusSession: vi.fn(), stopFocusSession: vi.fn(), pauseFocusSession: vi.fn(), resumeFocusSession: vi.fn(), notifications: vi.fn(), dispatchCalendarReminders: vi.fn(), markNotificationRead: vi.fn() }))
+const client = vi.hoisted(() => ({ aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), createAIProvider: vi.fn(), setAIProviderSecret: vi.fn(), updateAIProvider: vi.fn(), mailMessages: vi.fn(), mailPage: vi.fn(), mailMessage: vi.fn(), mailDrafts: vi.fn(), createMailDraft: vi.fn(), updateMailDraft: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn(), financeAccounts: vi.fn(), financeCategories: vi.fn(), financeBudgets: vi.fn(), financeTransactions: vi.fn(), financeSummary: vi.fn(), createFinanceAccount: vi.fn(), createFinanceCategory: vi.fn(), createFinanceBudget: vi.fn(), createFinanceTransaction: vi.fn(), createFinanceTransfer: vi.fn(), focusSessions: vi.fn(), tasks: vi.fn(), projects: vi.fn(), startFocusSession: vi.fn(), stopFocusSession: vi.fn(), pauseFocusSession: vi.fn(), resumeFocusSession: vi.fn(), notifications: vi.fn(), dispatchCalendarReminders: vi.fn(), markNotificationRead: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client, getAccessToken: () => 'test-session' }))
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
@@ -24,6 +24,8 @@ async function click(text: string) { await act(async () => [...host.querySelecto
 async function submit() { await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))) }
 
 beforeEach(() => { vi.resetAllMocks(); client.mailAccounts.mockResolvedValue([]); client.gmailStatus.mockResolvedValue({ configured: false }); client.financeCategories.mockResolvedValue([]); client.financeBudgets.mockResolvedValue([]) })
+beforeEach(() => { client.mailPage.mockImplementation(async () => ({ items: await client.mailMessages(), next_cursor: null, etag: 'mail' })); })
+
 afterEach(() => { if (root) act(() => root.unmount()); document.body.innerHTML = '' })
 
 describe('connected workspaces', () => {

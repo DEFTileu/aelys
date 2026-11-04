@@ -93,6 +93,13 @@ function operationFor(url: URL, init?: RequestInit): NativeOperation | undefined
 function typedOperationFor(url: URL, init?: RequestInit): NativeOperation | undefined {
   const method = (init?.method ?? 'GET').toUpperCase()
   const path = url.pathname
+  if (method === 'GET' && ['/api/v1/read/notes', '/api/v1/read/mail'].includes(path)) {
+    return { type: 'read_page', resource: path.endsWith('/notes') ? 'notes' : 'mail', limit: Number(url.searchParams.get('limit') || '50'),
+      ...Object.fromEntries(['cursor', 'q', 'folder', 'tag'].flatMap(key => url.searchParams.has(key) ? [[key, url.searchParams.get(key)!]] : [])),
+      ...(new Headers(init?.headers).get('If-None-Match') ? { known_etag: new Headers(init?.headers).get('If-None-Match')! } : {}) }
+  }
+  const mailItem = path.match(/^\/api\/v1\/read\/mail\/([A-Za-z0-9_-]+)$/)
+  if (method === 'GET' && mailItem) return { type: 'read_item', resource: 'mail', id: mailItem[1] }
   if (method === 'GET' && path === '/api/v1/me') return { type: 'me' }
   if (method === 'GET' && path === '/api/v1/projects') return { type: 'projects' }
   if (method === 'POST' && path === '/api/v1/projects') return { type: 'project_create', project: bodyValue(init?.body) }
@@ -113,6 +120,7 @@ function typedOperationFor(url: URL, init?: RequestInit): NativeOperation | unde
   const noteMatch = path.match(/^\/api\/v1\/notes\/([A-Za-z0-9_-]+)$/)
   if (noteMatch) {
     const id = decodeURIComponent(noteMatch[1])
+    if (method === 'GET') return { type: 'read_item', resource: 'notes', id }
     if (method === 'DELETE') return { type: 'note_delete', id }
     if (method === 'PATCH') {
       const version = Number(url.searchParams.get('version'))
@@ -284,6 +292,10 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
       if (operation.type === 'ai_run_events') return await nativeAIEventResponse(transport, origin, operation.id, init?.signal)
       const value = await transport.operation<unknown>(origin, operation, diagnosticId === undefined ? undefined : (native) => diagnostics.update(diagnosticId, { native }))
       diagnostics.update(diagnosticId, { result: 'OK', duration: Math.round(performance.now() - started) })
+      if (operation.type === 'read_page' && value && typeof value === 'object' && 'etag' in value && typeof value.etag === 'string') {
+        if ('not_modified' in value && value.not_modified === true) return new Response(null, { status: 304, headers: { ETag: value.etag } })
+        return new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json', ETag: value.etag } })
+      }
       return jsonResponse(value)
     } catch (error) {
       const code = typeof error === 'string' && /^[A-Z_]+$/.test(error) ? error : 'NATIVE_TRANSPORT_ERROR'

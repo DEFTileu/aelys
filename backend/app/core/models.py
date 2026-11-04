@@ -140,6 +140,8 @@ class Note(Owned):
     __tablename__ = "notes"
     knowledge_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
     __table_args__ = (Index(
+        # Match PostgreSQL's reflected expression so Alembic does not propose
+        # rebuilding this equivalent index on every schema comparison.
         "ix_notes_knowledge_fts", text("to_tsvector('simple'::regconfig, (title::text || ' '::text) || markdown_body)"),
         postgresql_using="gin", postgresql_where=text("knowledge_enabled AND deleted_at IS NULL"),
     ).ddl_if(dialect="postgresql"),)
@@ -163,6 +165,7 @@ class NoteRevision(Base):
 
 class Task(Owned):
     __tablename__ = "tasks"
+    __table_args__ = (Index("ix_tasks_owner_project_live", "owner_id", "project_id", sqlite_where=text("deleted_at IS NULL"), postgresql_where=text("deleted_at IS NULL")),)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
     project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"))
@@ -199,6 +202,7 @@ class FinanceCategory(Owned):
     name: Mapped[str] = mapped_column(String(200)); kind: Mapped[str] = mapped_column(String(30), default="expense")
 class FinanceTransaction(Owned):
     __tablename__ = "finance_transactions"
+    __table_args__ = (Index("ix_finance_owner_occurred_live", "owner_id", "occurred_at", sqlite_where=text("deleted_at IS NULL"), postgresql_where=text("deleted_at IS NULL")),)
     account_id: Mapped[str] = mapped_column(String(36), ForeignKey("finance_accounts.id")); category_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("finance_categories.id")); amount: Mapped[Decimal] = mapped_column(ExactMoney()); currency: Mapped[str] = mapped_column(String(3)); type: Mapped[str] = mapped_column(String(20)); occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); notes: Mapped[str] = mapped_column(Text, default=""); idempotency_key: Mapped[str | None] = mapped_column(String(100), unique=True); related_transfer_id: Mapped[str | None] = mapped_column(String(36), index=True)
 class FinanceBudget(Owned):
     __tablename__ = "finance_budgets"
@@ -212,6 +216,7 @@ class FocusSession(Owned):
 
 class MailMessage(Owned):
     __tablename__ = "mail_messages"
+    __table_args__ = (Index("ix_mail_owner_received_live", "owner_id", "received_at", sqlite_where=text("deleted_at IS NULL"), postgresql_where=text("deleted_at IS NULL")),)
     account_id: Mapped[str | None] = mapped_column(String(36)); thread_id: Mapped[str | None] = mapped_column(String(100)); sender: Mapped[str] = mapped_column(String(320)); recipients: Mapped[list] = mapped_column(JSON, default=list); subject: Mapped[str] = mapped_column(String(500)); body: Mapped[str] = mapped_column(Text, default=""); received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)); sync_origin: Mapped[str] = mapped_column(String(30), default="import")
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
 class MailDraft(Owned):
@@ -304,12 +309,15 @@ class AgentRun(Owned):
 
 class ActivityEvent(Owned):
     __tablename__ = "activity_events"
+    __table_args__ = (Index("ix_activity_owner_occurred", "owner_id", "occurred_at"),)
     resource_id: Mapped[str | None] = mapped_column(String(36)); event_kind: Mapped[str] = mapped_column(String(80)); actor_kind: Mapped[str] = mapped_column(String(30)); actor_id: Mapped[str | None] = mapped_column(String(36)); occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now); non_sensitive_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
 class Notification(Owned):
     __tablename__ = "notifications"
+    __table_args__ = (Index("ix_notifications_owner_created_live", "owner_id", "created_at", sqlite_where=text("deleted_at IS NULL"), postgresql_where=text("deleted_at IS NULL")),)
     kind: Mapped[str] = mapped_column(String(80)); title: Mapped[str] = mapped_column(String(300)); body: Mapped[str | None] = mapped_column(Text); read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); dedup_key: Mapped[str | None] = mapped_column(String(150), unique=True); data_json: Mapped[dict] = mapped_column(JSON, default=dict)
 class HistoryEntry(Owned):
     __tablename__ = "history_entries"
+    __table_args__ = (Index("ix_history_owner_created", "owner_id", "created_at"),)
     resource_id: Mapped[str | None] = mapped_column(String(36)); action: Mapped[str] = mapped_column(String(80)); actor: Mapped[str] = mapped_column(String(80)); metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
 class AutomationRule(Owned):
     __tablename__ = "automation_rules"

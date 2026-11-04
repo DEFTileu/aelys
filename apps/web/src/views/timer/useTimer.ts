@@ -34,18 +34,18 @@ export function useTimer(apiStatus: ApiStatus) {
   const pendingStart = useRef<{ key: string; body: FocusIn } | null>(null)
   const active = sessions.find((session) => session.status === 'active' || session.status === 'paused')
   const paused = active?.status === 'paused'
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceRefresh = true) => {
     try {
       const client = getSharedApiClient()
-      const values = await client.focusSessions()
+      const values = await client.focusSessions({ forceRefresh })
       setSessions(values); setStatus('ready'); setNow(Date.now())
-      const [loadedTasks, loadedProjects] = await Promise.allSettled([client.tasks(), client.projects()])
+      const [loadedTasks, loadedProjects] = await Promise.allSettled([client.tasks(undefined, { forceRefresh }), client.projects({ forceRefresh })])
       if (loadedTasks.status === 'fulfilled') setTasks(loadedTasks.value)
       if (loadedProjects.status === 'fulfilled') setProjects(loadedProjects.value)
       setLinksNotice(loadedTasks.status === 'rejected' || loadedProjects.status === 'rejected' ? 'Some task or project choices could not be loaded.' : '')
     } catch (error) { setNotice(errorText(error)); setStatus(navigator.onLine ? 'error' : 'offline') }
   }, [])
-  useEffect(() => { void load() }, [load, apiStatus])
+  useEffect(() => { void load(false) }, [load, apiStatus])
   const ticking = (!!active && !paused) || breakStart !== null
   useEffect(() => {
     if (!ticking) return

@@ -160,6 +160,14 @@ export interface NoteOut {
   // Absent when talking to a backend that predates the field.
   readonly updated_at?: IsoDateTime | null;
 }
+
+export interface ReadPage<T> {
+  readonly items: readonly T[];
+  readonly next_cursor: string | null;
+  readonly etag: string;
+  readonly not_modified: boolean;
+  readonly facets?: Readonly<Record<string, readonly string[]>> | null;
+}
 export interface NoteRevision {
   readonly id: Id;
   readonly note_id: Id;
