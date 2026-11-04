@@ -135,7 +135,7 @@ Run request (example):
 {"conversation_id":"<uuid>","message":"Summarize today's tasks","routing":{"mode":"auto"},"tool_scope":{"project_ids":["<uuid>"]},"idempotency_key":"<uuid>"}
 ```
 
-`routing.effort` (optional): `off` (or omitted) sends no reasoning field; `low|medium|high` maps to Claude `thinking: {type:"enabled", budget_tokens: 2048|8192|24576}` and OpenRouter `reasoning: {effort}`. Any other value returns HTTP 400 `INVALID_EFFORT`. A non-off effort is echoed in the `ai.run.started` payload.
+`routing.effort` (optional): `off` (or omitted) sends no reasoning field; `low|medium|high` maps to Claude `thinking: {type:"adaptive"}` + `output_config: {effort}` (Claude requests never send `temperature`) and OpenRouter `reasoning: {effort}`. Any other value returns HTTP 400 `INVALID_EFFORT`. A non-off effort is echoed in the `ai.run.started` payload.
 
 SSE event envelope:
 
