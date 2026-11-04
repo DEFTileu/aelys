@@ -363,6 +363,13 @@ fn rpc(request: Value) -> Option<Value> {
 pub fn run_mcp(mode: &str) -> i32 {
     let result = (|| -> Result<(), String> {
         match mode {
+            "unlock" => {
+                if !crate::keychain::authorize(SERVICE_MCP, ACCOUNT)? {
+                    return Err(err("MCP_DISABLED"));
+                }
+                eprintln!("MCP Keychain access authorized.");
+                Ok(())
+            }
             "enable" => {
                 let mut secret = [0u8; 32];
                 SystemRandom::new()
