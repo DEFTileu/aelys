@@ -11,6 +11,10 @@ use tokio::sync::{watch, Mutex};
 use url::{Host, Url};
 #[cfg(target_os = "macos")]
 mod cli;
+#[cfg(target_os = "macos")]
+mod mcp;
+#[cfg(target_os = "macos")]
+pub use mcp::{run_mcp, start_mcp_broker};
 #[cfg(test)]
 mod passwordless_tests;
 #[cfg(target_os = "macos")]

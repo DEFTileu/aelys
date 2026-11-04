@@ -50,6 +50,8 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
             app.manage(native::NativeStorage::new(app.handle()));
+            #[cfg(target_os = "macos")]
+            native::start_mcp_broker(app.handle().clone()).map_err(std::io::Error::other)?;
             Ok(())
         })
         .manage(native::NativeState::default())

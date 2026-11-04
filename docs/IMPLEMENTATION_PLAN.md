@@ -128,3 +128,10 @@ Exit: replay tests pass, out-of-policy actions rejected.
 ## Recommended FIRST coding goal
 
 Implement **Phase 1 / Foundation** only after reviewing docs and obtaining answers to blockers. Do not create simulated Gmail/Codex integrations and claim they are production-ready.
+
+### Owner-requested desktop MCP transport
+
+Phase 1 / task 3 extension: the open macOS application brokers explicitly
+enabled MCP data operations using its in-memory session. Grant, limits,
+durability, and operation coverage are documented in [MCP.md](MCP.md).
+This does not change Mac coding-agent sandbox grants or enable remote execution.
