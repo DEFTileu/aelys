@@ -1,0 +1,5 @@
+#!/bin/sh
+# Uses the signed application and its existing macOS Keychain identity.
+set -eu
+app_path=${AELYS_APP_PATH:-"$HOME/Applications/Aelys.app"}
+exec "$app_path/Contents/MacOS/aelys-desktop" --cli "$@"

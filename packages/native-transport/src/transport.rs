@@ -9,8 +9,12 @@ use tauri::{Manager, State, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{watch, Mutex};
 use url::{Host, Url};
+#[cfg(target_os = "macos")]
+mod cli;
 #[cfg(test)]
 mod passwordless_tests;
+#[cfg(target_os = "macos")]
+pub use cli::run_cli;
 
 #[cfg(target_os = "macos")]
 const SERVICE: &str = "com.aelys.desktop.native-session";
