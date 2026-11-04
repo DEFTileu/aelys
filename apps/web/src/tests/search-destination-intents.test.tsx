@@ -80,3 +80,5 @@ describe('search destination intents', () => {
     expect(host.querySelector<HTMLInputElement>('[aria-label="Draft subject"]')?.value).toBe('Compose draft')
   })
 })
+
+beforeEach(() => { client.mailMessage.mockImplementation(async (id: string) => (await client.mailMessages()).find((item: {id:string}) => item.id === id)) })

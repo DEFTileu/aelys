@@ -41,6 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 router = APIRouter()
 
@@ -280,6 +281,8 @@ class MailMessageOut(MessageIn):
     @classmethod
     def received_utc(cls, value: datetime) -> datetime:
         return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+class MailMessageDetailOut(MailMessageOut):
+    body_html: str | None = None
 def focus_elapsed(started_at: datetime, paused_seconds: int, until: datetime) -> int:
     """Focused seconds: wall time minus accumulated pauses."""
     return max(0, int((until - started_at).total_seconds()) - paused_seconds)
@@ -940,7 +943,7 @@ async def import_message(body:MessageIn, principal=Depends(current_principal), d
     item=MailMessage(owner_id=user.id,**body.model_dump()); db.add(item); await db.commit(); await db.refresh(item); return item
 @router.get("/mail/messages", response_model=list[MailMessageOut])
 async def mail_messages(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; return list((await db.execute(select(MailMessage).where(MailMessage.owner_id==user.id,MailMessage.deleted_at.is_(None)).order_by(MailMessage.received_at.desc()))).scalars())
+    user,_=principal; return list((await db.execute(select(MailMessage).options(defer(MailMessage.body_html)).where(MailMessage.owner_id==user.id,MailMessage.deleted_at.is_(None)).order_by(MailMessage.received_at.desc()))).scalars())
 @router.patch("/mail/messages/{item_id}", response_model=MailMessageOut)
 async def mark_message_read(item_id:str, body:MessageReadIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; item=await owner_obj(MailMessage,item_id,user.id,db)

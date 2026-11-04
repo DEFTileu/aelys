@@ -183,3 +183,5 @@ it('decodes SSE CRLF and Unicode split between network chunks', async () => {
   await consumeSse(new Response(stream), (name, data) => events.push([name, data]))
   expect(events).toEqual([['ai.text.delta', { text: 'Привет' }], ['ai.run.completed', {}]])
 })
+
+beforeEach(() => { client.mailMessage.mockImplementation(async (id: string) => (await client.mailMessages()).find((item: {id:string}) => item.id === id)) })

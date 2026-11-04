@@ -2983,6 +2983,8 @@ struct MailMessage {
     recipients: Vec<String>,
     subject: String,
     body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    body_html: Option<String>,
     received_at: String,
     sync_origin: String,
 }

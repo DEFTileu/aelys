@@ -4309,7 +4309,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MailMessageOut"
+                  "$ref": "#/components/schemas/MailMessageDetailOut"
                 }
               }
             }
@@ -9637,6 +9637,101 @@
         },
         "type": "object",
         "title": "MailAccountIn"
+      },
+      "MailMessageDetailOut": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recipients",
+            "default": []
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "default": ""
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Received At"
+          },
+          "sync_origin": {
+            "type": "string",
+            "title": "Sync Origin",
+            "default": "import"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "is_read": {
+            "type": "boolean",
+            "title": "Is Read",
+            "default": false
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "body_html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Html"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sender",
+          "subject",
+          "received_at",
+          "id",
+          "owner_id"
+        ],
+        "title": "MailMessageDetailOut"
       },
       "MailMessageOut": {
         "properties": {

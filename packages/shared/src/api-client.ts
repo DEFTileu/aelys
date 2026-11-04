@@ -133,10 +133,10 @@ const mutationFamilies: readonly [string, readonly string[]][] = [
   ["/api/v1/projects", ["projects"]], ["/api/v1/notes", ["notes", "notes-pages"]], ["/api/v1/tasks", ["tasks"]],
   ["/api/v1/calendar", ["calendar-events", "calendar-occurrences"]], ["/api/v1/focus", ["focus-sessions"]],
   ["/api/v1/finance", ["finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary"]],
-  ["/api/v1/mail", ["mail-accounts", "mail-messages", "mail-drafts", "mail-pages"]],
+  ["/api/v1/mail", ["mail-accounts", "mail-messages", "mail-drafts", "mail-pages", "mail-details"]],
   ["/api/v1/notifications", ["notifications"]], ["/api/v1/ai/providers", ["ai-providers"]],
   ["/api/v1/agents", ["agent-devices", "agent-sessions"]], ["/api/v1/automations", ["automations"]],
-  ["/api/v1/sync/push", ["projects", "notes", "notes-pages", "tasks", "calendar-events", "calendar-occurrences", "focus-sessions", "finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary", "mail-accounts", "mail-messages", "mail-drafts", "mail-pages"]],
+  ["/api/v1/sync/push", ["projects", "notes", "notes-pages", "tasks", "calendar-events", "calendar-occurrences", "focus-sessions", "finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary", "mail-accounts", "mail-messages", "mail-drafts", "mail-pages", "mail-details"]],
 ];
 
 function affectedCacheFamilies(path: string): readonly string[] {
@@ -537,7 +537,7 @@ export class ApiClient {
   public mailMessages(query?: Query, options?: RequestOptions) { return this.request<readonly MailMessage[]>("/api/v1/mail/messages", this.read({ ...options, query }, "mail-messages")); }
   public setMailMessageRead(messageId: Id, body: MailMessageReadIn, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/mail/messages/${encodeURIComponent(messageId)}`, this.write(body, { queueOnOffline: false, ...options }, "PATCH")); }
   public mailPage(query?: Query, options?: RequestOptions) { return this.request<ReadPage<MailMessage>>("/api/v1/read/mail", this.read({ ...options, query }, "mail-pages")); }
-  public mailMessage(id: Id, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/read/mail/${encodeURIComponent(id)}`, this.read(options)); }
+  public mailMessage(id: Id, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/read/mail/${encodeURIComponent(id)}`, this.read(options, `mail-details?id=${encodeURIComponent(id)}`)); }
   public importMailMessage(body: MessageIn, options?: RequestOptions) { return this.request<MailMessage>("/api/v1/mail/messages", this.write(body, options)); }
   public mailDrafts(options?: RequestOptions) { return this.request<readonly MailDraft[]>("/api/v1/mail/drafts", this.read(options, "mail-drafts")); }
   public createMailDraft(body: DraftIn, options?: RequestOptions) { return this.request<MailDraft>("/api/v1/mail/drafts", this.write(body, options)); }

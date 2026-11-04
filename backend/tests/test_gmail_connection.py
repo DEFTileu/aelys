@@ -256,3 +256,36 @@ async def test_gmail_reports_invalid_callback_as_unconfigured(gmail_client, monk
     assert (await client.get('/api/v1/mail/gmail/status')).json() == {'configured':False}
     rejected = await client.post('/api/v1/mail/gmail/browser-connect')
     assert rejected.status_code == 503 and rejected.json()['detail']['code'] == 'GMAIL_NOT_CONFIGURED'
+
+
+async def test_existing_gmail_message_backfills_html_once_preserving_read_state(gmail_client, monkeypatch):
+    from datetime import UTC, datetime
+    from uuid import NAMESPACE_URL, uuid5
+
+    from app.core.models import MailMessage
+
+    client, factory = gmail_client
+    account = (await client.post('/api/v1/mail/accounts', json={'provider': 'gmail', 'external_id': 'person@example.test'})).json()
+    local_id = str(uuid5(NAMESPACE_URL, f"aelys:gmail-message:{account['id']}:remote-html"))
+    async with factory() as session:
+        session.add(GmailCredential(account_id=account['id'], encrypted_tokens=encrypt_secret(json.dumps({'access_token': 'synthetic-access', 'refresh_token': 'synthetic-refresh', 'expires_at': time.time()+3600}))))
+        session.add(MailMessage(id=local_id, owner_id=account['owner_id'], account_id=account['id'], sender='person@example.test', recipients=[], subject='Existing', body='Preserved plain text', received_at=datetime.now(UTC), sync_origin='gmail', is_read=True, version=4))
+        await session.commit()
+    fetched = []
+    async def provider(method, url, **kwargs):
+        assert method == 'GET'
+        if url.endswith('/messages'):
+            return {'messages': [{'id':'remote-html'}]}
+        fetched.append(url)
+        return {'payload': {'mimeType':'multipart/alternative','parts':[
+            {'mimeType':'text/plain','body':{'data':base64.urlsafe_b64encode(b'Plain').decode()}},
+            {'mimeType':'text/html','body':{'data':base64.urlsafe_b64encode(b'<b>Rich</b>').decode()}}]}}
+    monkeypatch.setattr(gmail, 'google', provider)
+    path = f"/api/v1/mail/gmail/{account['id']}/sync"
+    assert (await client.post(path)).json()['imported'] == 0
+    detail = (await client.get('/api/v1/read/mail/' + local_id)).json()
+    assert detail['body_html'] == '<b>Rich</b>' and detail['body'] == 'Preserved plain text'
+    assert detail['is_read'] is True and detail['version'] == 5
+    assert (await client.post(path)).json()['imported'] == 0
+    assert len(fetched) == 1
+    assert 'body_html' not in (await client.get('/api/v1/read/mail')).text

@@ -206,3 +206,9 @@ AI run/conversation `tool_scope_json.knowledge` stores the explicit retrieval
 scope; assistant `source_refs_json` stores references and redacted excerpts of
 ordinary enabled notes. Mac-only session contents remain excluded. See
 [KNOWLEDGE_RAG.md](KNOWLEDGE_RAG.md) for implementation limits.
+
+Mail formatting (2026-11-04): migration `0042_mail_html_body` adds nullable
+`mail_messages.body_html` for a bounded untrusted HTML MIME alternative. `NULL`
+means legacy/not yet imported; empty string means imported with no usable HTML.
+The existing plaintext body, read flag, identity and versions remain. HTML is
+exposed only by owner-scoped detail reads, not list/page payloads.

@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.models import MailMessage, Note
 from app.core.security import current_principal
-from app.domains.api import MailMessageOut, NoteOut
+from app.domains.api import MailMessageDetailOut, MailMessageOut, NoteOut
 from app.domains.recurrence import utc
 from app.sync.cursor import CursorCodec
 from app.sync.errors import SyncException
@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 router = APIRouter(prefix="/read")
 
@@ -97,7 +98,10 @@ async def read_page(db: AsyncSession, owner: str, kind: str, model, dto, limit: 
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "private, no-store"})
         # Native IPC transports JSON only; its adapter reconstructs HTTP 304.
         return {"items": [], "next_cursor": None, "etag": etag, "not_modified": True}
-    rows = list((await db.execute(select(model).where(*filters).order_by(*order).limit(limit + 1))).scalars())
+    query = select(model).where(*filters).order_by(*order).limit(limit + 1)
+    if kind == 'mail':
+        query = query.options(defer(MailMessage.body_html))
+    rows = list((await db.execute(query)).scalars())
     # Recompute after the body SELECT in case a concurrent write committed.
     etag = page_tag(owner, etag_scope, rows)
     response.headers["ETag"] = etag
@@ -120,7 +124,7 @@ async def mail_page(response: Response, limit: int = Query(default=50, ge=1, le=
     return await read_page(db, principal[0].id, "mail", MailMessage, MailMessageOut, limit, cursor, q.strip(), None, None, if_none_match, known_etag, response)
 
 
-@router.get("/mail/{item_id}", response_model=MailMessageOut)
+@router.get("/mail/{item_id}", response_model=MailMessageDetailOut)
 async def mail_detail(item_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     row = await db.scalar(select(MailMessage).where(MailMessage.id == item_id, MailMessage.owner_id == principal[0].id, MailMessage.deleted_at.is_(None)))
     if row is None:

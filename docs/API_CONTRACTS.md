@@ -196,7 +196,7 @@ Generate OpenAPI 3.1 from FastAPI Pydantic models. Define explicit pagination, p
 - `GET /ai/conversations` lists owner chats. Runs accept
   `routing.provider_id`; completed assistant replies are persisted and included
   in subsequent turns. SSE reconnect replays stored events without another call.
-- `POST /mail/import/eml` accepts one plain-text EML file up to 2 MB; the
+- `POST /mail/import/eml` accepts one EML file with text/HTML alternatives up to 2 MB; the
   owner/content digest deduplicates imports. HTML is never executed.
 - Mail draft PATCH requires `version`; draft DELETE requires `?version=`.
   Calendar PATCH/DELETE likewise require versions and return VERSION_CONFLICT
@@ -748,3 +748,15 @@ page instead of redirecting to a frontend route on an API-only host. Legacy web
 excluded from frontend state, caches and diagnostic/access-log query strings.
 `MailAccount.version` increases on reconnect, allowing clients to detect completion
 without importing mail automatically. See [Gmail setup](GMAIL_SETUP.md).
+
+### Formatted mail alternative (2026-11-04)
+
+`GET /api/v1/read/mail/{id}` returns `MailMessageDetailOut`, adding optional
+`body_html`. Mail collections/pages retain `MailMessageOut` without HTML; their
+SQL also defers this large column. HTML is untrusted data, not executable UI.
+Gmail explicit sync retains bounded text/html MIME alternatives and backfills
+legacy null HTML once while preserving read state and message identity. EML
+imports retain text and/or HTML and preserve owner/content digest deduplication.
+Details use owner-partitioned device caching invalidated after mail writes.
+The renderer sanitizes and isolates formatted content, blocks remote images by
+default and offers a per-message image-load action and plaintext fallback.

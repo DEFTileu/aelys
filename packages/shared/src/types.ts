@@ -411,6 +411,8 @@ export interface MailMessage {
   readonly recipients: readonly string[];
   readonly subject: string;
   readonly body: string;
+  /** HTML alternative is returned only by the message detail endpoint. */
+  readonly body_html?: string | null;
   readonly received_at: IsoDateTime;
   readonly sync_origin: string;
   readonly id: Id;

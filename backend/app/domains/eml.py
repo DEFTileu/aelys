@@ -1,4 +1,4 @@
-"""Parse a bounded EML import into plain text without executing HTML or links."""
+"""Retain bounded MIME text/HTML alternatives without executing either."""
 from datetime import UTC, datetime
 from email import policy
 from email.parser import BytesParser
@@ -16,8 +16,11 @@ def parse_eml(raw: bytes) -> dict:
     body = body_part.get_content() if body_part is not None else ""
     if not isinstance(body, str):
         body = ""
-    if not body and message.get_body(preferencelist=("html",)) is not None:
-        raise HTTPException(422, detail={"code": "UNSUPPORTED_EML", "message": "Import a message with a plain text body"})
+    html_part = message.get_body(preferencelist=("html",))
+    html = html_part.get_content() if html_part is not None else ''
+    html = html if isinstance(html, str) and len(html.encode('utf-8')) <= 1_000_000 else ''
+    if not body and html:
+        body = 'HTML message. Open the formatted view to read it.'
     try:
         received = parsedate_to_datetime(str(message.get("Date", "")))
         if received.tzinfo is None:
@@ -29,6 +32,7 @@ def parse_eml(raw: bytes) -> dict:
         "recipients": [address for _, address in getaddresses([str(message.get("To", ""))])],
         "subject": str(message.get("Subject", "(No subject)"))[:500],
         "body": body,
+        "body_html": html,
         "received_at": received,
         "sync_origin": "eml_import",
     }
