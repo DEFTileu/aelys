@@ -46,7 +46,14 @@ class HttpxTransport:
         while True:
             delay = max(0, self._next_cancel_poll - asyncio.get_running_loop().time())
             await asyncio.sleep(delay)
-            await self._check_cancelled()
+            # Cancelling a DB query mid-flight invalidates the caller's session, so
+            # an in-flight check always finishes; only the sleep is interruptible.
+            check = asyncio.ensure_future(self._check_cancelled())
+            try:
+                await asyncio.shield(check)
+            except asyncio.CancelledError:
+                await asyncio.gather(check, return_exceptions=True)
+                raise
 
     async def _await_or_cancel(self, operation: Callable[[], Awaitable[T]]) -> T:
         # Pre-check before constructing the I/O coroutine: already cancelled
