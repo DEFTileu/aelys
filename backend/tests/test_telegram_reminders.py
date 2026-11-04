@@ -91,10 +91,10 @@ async def setup(tmp_path, monkeypatch):
 
 
 async def task_reminder(setup, *, name='task', owner='owner', status='todo', deleted=False,
-                        notify_at=AT, channel='telegram', due_at=None):
+                        notify_at=AT, channel='telegram', due_at=None, due_timezone=None):
     async with setup.sessions() as session:
         session.add(Task(id=name, owner_id=owner, title='Private ' + name, status=status,
-                         due_at=due_at, deleted_at=AT if deleted else None))
+                         due_at=due_at, due_timezone=due_timezone, deleted_at=AT if deleted else None))
         session.add(TaskReminder(id=name + '-reminder', owner_id=owner, task_id=name,
             notify_at=notify_at, channel=channel, idempotency_key=name))
         await session.commit()
@@ -119,6 +119,38 @@ async def test_due_owner_only_persisted_claim_and_no_replay(setup):
         assert (await session.get(TaskReminder, 'future-reminder')).reminder_status == 'pending'
         assert (await session.get(TaskReminder, 'in-app-reminder')).reminder_status == 'pending'
         assert len(list((await session.execute(select(Notification))).scalars())) == 1
+
+
+@pytest.mark.parametrize('due_timezone,expected', [
+    ('Asia/Almaty', '2026-11-04 23:59 Asia/Almaty'),
+    ('Asia/Tokyo', '2026-11-05 03:59 Asia/Tokyo'),
+    ('UTC', '2026-11-04 18:59 UTC'),
+    (None, '2026-11-04 18:59 UTC'),
+    ('Invalid/Legacy', '2026-11-04 18:59 UTC'),
+    ('/invalid/absolute', '2026-11-04 18:59 UTC'),
+])
+async def test_task_timezone_controls_text_without_changing_delivery(setup, due_timezone, expected):
+    due = datetime(2026, 11, 4, 18, 59, tzinfo=UTC)
+    notify = due - timedelta(minutes=10)
+    await task_reminder(setup, due_at=due, due_timezone=due_timezone, notify_at=notify)
+    await deliver_telegram_reminders('integration', at=notify - timedelta(seconds=1))
+    assert not setup.sent
+    await deliver_telegram_reminders('integration', at=notify)
+    await deliver_telegram_reminders('integration', at=notify + timedelta(seconds=1))
+    assert setup.sent == [(111, f'Напоминание: Private task\n{expected}')]
+    async with setup.sessions() as session:
+        assert utc((await session.get(Task, 'task')).due_at) == due
+        assert utc((await session.get(TaskReminder, 'task-reminder')).notify_at) == notify
+
+
+async def test_task_without_zone_uses_configured_bot_zone(setup):
+    await task_reminder(setup, due_at=AT)
+    async with setup.sessions() as session:
+        item = await session.get(TelegramIntegration, 'integration')
+        item.timezone = 'Asia/Almaty'
+        await session.commit()
+    await deliver_telegram_reminders('integration', at=AT)
+    assert setup.sent == [(111, 'Напоминание: Private task\n2026-11-05 17:00 Asia/Almaty')]
 
 
 @pytest.mark.parametrize('status,deleted', [('completed', False), ('DONE', False), ('todo', True)])

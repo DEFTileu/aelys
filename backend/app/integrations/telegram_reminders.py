@@ -93,6 +93,17 @@ def _deadline_key(owner_id: str, task_id: str, due: datetime, offset: int) -> st
     return DEADLINE_PREFIX + hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _task_display_zone(task: Task, fallback: ZoneInfo) -> ZoneInfo:
+    # The task editor persists its selected IANA zone separately from the UTC
+    # instant. Old or imported tasks may have missing/invalid zone metadata.
+    if task.due_timezone:
+        try:
+            return ZoneInfo(task.due_timezone)
+        except (ValueError, KeyError):
+            pass
+    return fallback
+
+
 def _insert(db: AsyncSession, model: Any):
     dialect = db.get_bind().dialect.name
     if dialect == 'postgresql':
@@ -173,8 +184,9 @@ async def _claim_due(db: AsyncSession, item: TelegramIntegration, at: datetime) 
         if not await _claim(db, reminder, at, reminder_status='delivered'):
             continue
         if await _notification(db, item, reminder, task.id, reminder.notify_at):
-            scheduled = utc(task.due_at or reminder.notify_at).astimezone(zone)
-            texts.append(f'Напоминание: {task.title[:1000]}\n{scheduled:%Y-%m-%d %H:%M %Z}')
+            display_zone = _task_display_zone(task, zone)
+            scheduled = utc(task.due_at or reminder.notify_at).astimezone(display_zone)
+            texts.append(f'Напоминание: {task.title[:1000]}\n{scheduled:%Y-%m-%d %H:%M} {display_zone.key}')
 
     events = (await db.execute(select(CalendarReminder, CalendarEvent).outerjoin(CalendarEvent,
         (CalendarReminder.event_id == CalendarEvent.id) & (CalendarEvent.owner_id == item.owner_id)).where(
