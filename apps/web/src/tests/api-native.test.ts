@@ -124,3 +124,14 @@ it('reports an expired native Gmail session without exposing or replaying creden
     expect((listener.mock.calls[0]![0] as CustomEvent).detail).toEqual({ origin: 'https://example.test' })
   } finally { window.removeEventListener('aelys:native-session-expired', listener) }
 })
+
+
+it('opens Calendar through the bounded native browser command without fetching OAuth in the renderer', async () => {
+ Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true })
+ localStorage.setItem('aelys.apiBaseUrl', 'https://example.test/api/v1')
+ const fetchSpy=vi.spyOn(globalThis,'fetch')
+ const {connectGoogleCalendarAccount}=await import('../lib/api')
+ await connectGoogleCalendarAccount()
+ expect(invoke).toHaveBeenCalledWith('native_calendar_connect',{origin:'https://example.test'})
+ expect(fetchSpy).not.toHaveBeenCalled()
+})

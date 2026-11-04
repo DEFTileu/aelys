@@ -37,7 +37,8 @@
   .actual-mail .actual-mail-policy svg { flex: none; margin-top: 1px; }
 
   /* List */
-  .actual-mail .actual-mail-list { gap: 0; padding: 12px; min-height: 0; }
+  .actual-mail .actual-mail-list { gap: 0; padding: 12px; min-height: 0; overflow: hidden; }
+  .actual-mail .actual-mail-rows { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .actual-mail .actual-mobile-mail-actions, .actual-mail .actual-mobile-folders, .actual-mail .actual-folder-select { display: none; }
   .actual-mail .actual-search { height: 40px; padding: 0 6px 0 12px; border-radius: 12px; background: var(--pg-field); display: flex; align-items: center; gap: 8px; flex: none; color: var(--pg-mute); margin-bottom: 8px; }
   .actual-mail .actual-search input { flex: 1; min-width: 0; height: auto; padding: 0; border: 0; outline: 0; background: transparent; color: var(--pg-ink); font-size: 13px; }

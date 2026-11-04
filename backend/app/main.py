@@ -49,7 +49,7 @@ class OAuthAccessLogFilter(logging.Filter):
         if isinstance(record.args, tuple) and len(record.args) >= 3:
             args = list(record.args)
             if isinstance(args[2], str):
-                for path in ("/api/v1/mail/gmail/callback", "/api/v1/mail/gmail/authorize", "/api/v1/calendar/google/callback"):
+                for path in ("/api/v1/mail/gmail/callback", "/api/v1/mail/gmail/authorize", "/api/v1/calendar/google/callback", "/api/v1/calendar/google/authorize"):
                     if args[2].startswith(path):
                         args[2] = path
                         break
@@ -75,6 +75,8 @@ async def request_id(request: Request, call_next):
 async def validation_error(request: Request, exc: RequestValidationError):
     if request.url.path in {"/api/v1/mail/gmail/authorize", "/api/v1/mail/gmail/callback"}:
         return JSONResponse(status_code=422, content={"detail": {"code": "INVALID_OAUTH_STATE", "message": "Restart the Gmail connection in Aelys."}})
+    if request.url.path in {"/api/v1/calendar/google/authorize", "/api/v1/calendar/google/callback"}:
+        return JSONResponse(status_code=422, content={"detail": {"code": "INVALID_OAUTH_STATE", "message": "Restart the Calendar connection in Aelys."}})
     if request.url.path.startswith("/api/v1/auth/native/"):
         return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Invalid native authentication request"}})
     if request.url.path == "/api/v1/integrations/telegram/connect":

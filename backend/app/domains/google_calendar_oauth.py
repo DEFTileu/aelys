@@ -1,6 +1,7 @@
 """Owner-only, read-only Google Calendar OAuth; no remote event writes."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -19,11 +20,11 @@ from app.ai.models import PermissionContext, ToolCall
 from app.ai.policy import ServerPolicyEngine
 from app.core.config import Settings, get_settings
 from app.core.db import get_db
-from app.core.models import now
+from app.core.models import Device, User, now
 from app.core.security import current_principal, decode_token
 from app.sync.change_log import lock_owner
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +34,7 @@ from .google_calendar_models import (
     GoogleCalendarCredential,
     GoogleCalendarOAuthState,
 )
-from .google_oauth import consume_oauth_state, create_pkce
+from .google_oauth import active_oauth_session, consume_oauth_state, create_pkce
 from .recurrence import utc
 
 router = APIRouter(prefix='/calendar/google', tags=['google-calendar'])
@@ -74,7 +75,7 @@ def _error(code: str, status: int = 409) -> HTTPException:
 def configured() -> Settings:
     settings = get_settings()
     parsed = urlparse(settings.calendar_redirect_uri or '')
-    valid_uri = bool(parsed.hostname) and not parsed.username and not parsed.password and not parsed.fragment and (
+    valid_uri = bool(parsed.hostname) and not parsed.username and not parsed.password and not parsed.query and not parsed.fragment and parsed.path == COOKIE_PATH + '/callback' and (
         parsed.scheme == 'https' or (parsed.scheme == 'http' and parsed.hostname in {'localhost', '127.0.0.1'}))
     if not settings.gmail_client_id or not settings.gmail_client_secret or not valid_uri:
         raise _error('CALENDAR_NOT_CONFIGURED', 503)
@@ -232,25 +233,80 @@ async def status(principal=Depends(current_principal), db: AsyncSession = Depend
     return JSONResponse(body.model_dump(mode='json'), headers={'Cache-Control': 'no-store'})
 
 
-@router.post('/connect', response_model=CalendarConnectOut)
-async def connect(authorization: str = Header(), principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+def consent_url(settings: Settings, state: str, challenge: str) -> str:
+    return 'https://accounts.google.com/o/oauth2/v2/auth?' + urlencode({
+        'client_id': settings.gmail_client_id, 'redirect_uri': settings.calendar_redirect_uri,
+        'response_type': 'code', 'scope': SCOPE, 'state': state, 'code_challenge': challenge,
+        'code_challenge_method': 'S256', 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'false',
+    })
+
+
+def state_cookie(response: Response, settings: Settings, state: str) -> None:
+    response.set_cookie(COOKIE, state, max_age=600, httponly=True,
+        secure=bool(settings.calendar_redirect_uri and settings.calendar_redirect_uri.startswith('https://')),
+        samesite='lax', path=COOKIE_PATH)
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+
+
+async def start_connection(authorization: str, principal: tuple[User, Device | None], db: AsyncSession, *, browser: bool) -> JSONResponse:
     settings = configured()
     owner, _ = principal
     authorize_calendar(owner.id, 'calendar.connect', external=True)
     claims = decode_token(authorization.split(' ', 1)[1])
     state, verifier, challenge = create_pkce()
     db.add(GoogleCalendarOAuthState(state_hash=hashlib.sha256(state.encode()).hexdigest(), owner_id=owner.id,
-        session_id=claims['sid'], encrypted_verifier=encrypt_secret(verifier), expires_at=now() + timedelta(minutes=10)))
+        session_id=claims['sid'], encrypted_verifier=encrypt_secret(verifier), expires_at=now() + timedelta(minutes=10),
+        browser_state='pending' if browser else None))
     await db.commit()
-    url = 'https://accounts.google.com/o/oauth2/v2/auth?' + urlencode({
-        'client_id': settings.gmail_client_id, 'redirect_uri': settings.calendar_redirect_uri,
-        'response_type': 'code', 'scope': SCOPE, 'state': state, 'code_challenge': challenge,
-        'code_challenge_method': 'S256', 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'false',
-    })
-    response = JSONResponse({'authorization_url': url}, headers={'Cache-Control': 'no-store'})
-    response.set_cookie(COOKIE, state, max_age=600, httponly=True,
-        secure=bool(settings.calendar_redirect_uri and settings.calendar_redirect_uri.startswith('https://')),
-        samesite='lax', path=COOKIE_PATH)
+    if browser:
+        callback = urlparse(settings.calendar_redirect_uri or '')
+        url = urlunsplit((callback.scheme, callback.netloc, COOKIE_PATH + '/authorize', urlencode({'ticket': state}), ''))
+        return JSONResponse({'authorization_url': url}, headers={'Cache-Control': 'no-store'})
+    response = JSONResponse({'authorization_url': consent_url(settings, state, challenge)})
+    state_cookie(response, settings, state)
+    return response
+
+
+@router.post('/connect', response_model=CalendarConnectOut)
+async def connect(authorization: str = Header(), principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    return await start_connection(authorization, principal, db, browser=False)
+
+
+@router.post('/browser-connect', response_model=CalendarConnectOut)
+async def browser_connect(authorization: str = Header(), principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    return await start_connection(authorization, principal, db, browser=True)
+
+
+@router.get('/authorize', include_in_schema=False)
+async def authorize(ticket: str = Query(min_length=32, max_length=200), db: AsyncSession = Depends(get_db)):
+    settings = configured()
+    hashed = hashlib.sha256(ticket.encode()).hexdigest()
+    record = await db.get(GoogleCalendarOAuthState, hashed)
+    at = now()
+    if not record or record.browser_state != 'pending' or utc(record.expires_at) <= utc(at):
+        raise HTTPException(400, detail={'code': 'INVALID_OAUTH_STATE', 'message': 'Restart the Calendar connection in Aelys.'})
+    authorize_calendar(record.owner_id, 'calendar.connect', external=True)
+    verifier = decrypt_secret(record.encrypted_verifier)
+    claimed = await db.execute(update(GoogleCalendarOAuthState).where(GoogleCalendarOAuthState.state_hash == hashed,
+        GoogleCalendarOAuthState.browser_state == 'pending', GoogleCalendarOAuthState.expires_at > at,
+        active_oauth_session(record, at).exists()).values(browser_state='started'))
+    await db.commit()
+    if int(getattr(claimed, 'rowcount', 0) or 0) != 1:
+        raise HTTPException(401, detail={'code': 'UNAUTHORIZED', 'message': 'Sign in to Aelys and reconnect Calendar.'})
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+    response = RedirectResponse(consent_url(settings, ticket, challenge), status_code=303)
+    state_cookie(response, settings, ticket)
+    return response
+
+
+def browser_complete(connected: bool) -> HTMLResponse:
+    title = 'Google Calendar connected' if connected else 'Google Calendar connection cancelled'
+    message = 'Return to Aelys. Your read-only Calendar connection is ready.' if connected else 'Return to Aelys to try connecting Calendar again.'
+    response = HTMLResponse(f'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><h1>{title}</h1><p>{message}</p></html>',
+        headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
+                 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"})
+    response.delete_cookie(COOKIE, path=COOKIE_PATH)
     return response
 
 
@@ -277,8 +333,11 @@ async def callback(request: Request, state: str = Query(max_length=200), code: s
         baseline = (row.id, row.version) if row else None
     record, verifier = await consume_oauth_state(db, GoogleCalendarOAuthState, state, request.cookies.get(COOKIE, ''),
         authorize=lambda owner_id: authorize_calendar(owner_id, 'calendar.connect'), before_consume=snapshot_connection)
+    assert isinstance(record, GoogleCalendarOAuthState)
+    if record.browser_state not in {None, 'started'}:
+        raise HTTPException(400, detail={'code': 'INVALID_OAUTH_STATE', 'message': 'Restart the Calendar connection in Aelys.'})
     if error or not code:
-        return _redirect(settings)
+        return browser_complete(False) if record.browser_state is not None else _redirect(settings)
     owner_id = record.owner_id
     authorize_calendar(owner_id, 'calendar.connect', external=True)
     raw_tokens = await google_calendar_request('POST', TOKEN_URL, data={
@@ -298,6 +357,8 @@ async def callback(request: Request, state: str = Query(max_length=200), code: s
         raise _error('CALENDAR_UNAVAILABLE', 502) from None
     authorize_calendar(owner_id, 'calendar.connect')
     await lock_owner(db, owner_id)
+    if not await db.scalar(select(active_oauth_session(record, now()).exists())):
+        raise HTTPException(401, detail={'code': 'UNAUTHORIZED', 'message': 'Sign in to Aelys and reconnect Calendar.'})
     connection = (await db.execute(select(GoogleCalendarConnection).where(GoogleCalendarConnection.owner_id == owner_id)
         .execution_options(populate_existing=True))).scalar_one_or_none()
     current = (connection.id, connection.version) if connection else None
@@ -322,4 +383,4 @@ async def callback(request: Request, state: str = Query(max_length=200), code: s
     else:
         credential.encrypted_tokens = encrypted
     await db.commit()
-    return _redirect(settings)
+    return browser_complete(True) if record.browser_state is not None else _redirect(settings)

@@ -59,6 +59,7 @@ pub fn run() {
             native::native_resume,
             native::native_logout,
             native::native_gmail_connect,
+            native::native_calendar_connect,
             native::native_operation,
             native::native_operation_diagnostic,
             native::native_ai_events,

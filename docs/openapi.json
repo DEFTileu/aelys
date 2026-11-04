@@ -6845,6 +6845,53 @@
         }
       }
     },
+    "/api/v1/calendar/google/browser-connect": {
+      "post": {
+        "tags": [
+          "google-calendar"
+        ],
+        "summary": "Browser Connect",
+        "operationId": "browser_connect_api_v1_calendar_google_browser_connect_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarConnectOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/calendar/google/sync": {
       "post": {
         "tags": [

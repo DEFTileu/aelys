@@ -282,21 +282,25 @@ export function getSharedApiClient(): ApiClient {
   return sharedClient
 }
 
-/** Start Gmail in the system browser on native hosts; OAuth cookies live there. */
-export async function connectGmailAccount(): Promise<void> {
+/** OAuth cookies and one-use handoffs stay in the system browser on native hosts. */
+async function connectGoogleAccount(provider: 'gmail' | 'calendar'): Promise<void> {
   getSharedApiClient().clearReadCache()
   if (isNativeHost()) {
     const transport = await loadNativeTransport()
     const origin = nativeBackendOrigin(getApiConfig().baseUrl)
-    try { await transport.connectGmail(origin) }
+    try { await (provider === 'gmail' ? transport.connectGmail(origin) : transport.connectCalendar(origin)) }
     catch (error) {
       if (error === 'SIGN_IN_REQUIRED' || error === 'UNAUTHORIZED') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))
       throw error
     }
     return
   }
-  window.location.assign((await getSharedApiClient().connectGmail()).authorization_url)
+  const client = getSharedApiClient()
+  window.location.assign((await (provider === 'gmail' ? client.connectGmail() : client.connectGoogleCalendar())).authorization_url)
 }
+
+export const connectGmailAccount = () => connectGoogleAccount('gmail')
+export const connectGoogleCalendarAccount = () => connectGoogleAccount('calendar')
 
 export async function logout(): Promise<void> {
   if (isNativeHost()) {

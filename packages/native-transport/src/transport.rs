@@ -2090,7 +2090,26 @@ pub async fn native_logout(
 }
 // The renderer never supplies a URL or receives the handoff capability. Only
 // an authenticated connection to the selected backend can open this browser path.
-fn gmail_browser_url(origin: &str, value: &Value) -> Result<String, String> {
+#[derive(Clone, Copy)]
+enum GoogleConnection {
+    Gmail,
+    Calendar,
+}
+
+impl GoogleConnection {
+    fn path(self) -> &'static str {
+        match self {
+            Self::Gmail => "/api/v1/mail/gmail",
+            Self::Calendar => "/api/v1/calendar/google",
+        }
+    }
+}
+
+fn google_browser_url(
+    origin: &str,
+    value: &Value,
+    provider: GoogleConnection,
+) -> Result<String, String> {
     let raw = value
         .get("authorization_url")
         .and_then(Value::as_str)
@@ -2102,7 +2121,7 @@ fn gmail_browser_url(origin: &str, value: &Value) -> Result<String, String> {
         || !url.username().is_empty()
         || url.password().is_some()
         || url.fragment().is_some()
-        || url.path() != "/api/v1/mail/gmail/authorize"
+        || url.path() != format!("{}/authorize", provider.path())
         || pairs.len() != 1
         || pairs[0].0 != "ticket"
         || !(32..=200).contains(&pairs[0].1.len())
@@ -2116,11 +2135,11 @@ fn gmail_browser_url(origin: &str, value: &Value) -> Result<String, String> {
     Ok(url.to_string())
 }
 
-#[tauri::command]
-pub async fn native_gmail_connect(
+async fn connect_google_browser(
     window: WebviewWindow,
     state: State<'_, NativeState>,
     origin: String,
+    provider: GoogleConnection,
 ) -> Result<bool, String> {
     check_window(&window)?;
     let origin = origin_fn(&origin)?;
@@ -2139,7 +2158,7 @@ pub async fn native_gmail_connect(
         request_api(
             &client()?,
             Method::POST,
-            &format!("{origin}/api/v1/mail/gmail/browser-connect"),
+            &format!("{origin}{}/browser-connect", provider.path()),
             None,
             None,
             &access,
@@ -2147,7 +2166,7 @@ pub async fn native_gmail_connect(
         .await,
     )
     .await?;
-    let url = gmail_browser_url(&origin, &response)?;
+    let url = google_browser_url(&origin, &response, provider)?;
     // Serialize the actual opening with logout/session replacement. Never open
     // a previous owner's pending URL after a logout while the network waited.
     let guard = state.0.lock().await;
@@ -2167,6 +2186,24 @@ pub async fn native_gmail_connect(
         .open_url(url, None::<&str>)
         .map_err(|_| err("BROWSER_OPEN_FAILED"))?;
     Ok(true)
+}
+
+#[tauri::command]
+pub async fn native_gmail_connect(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    origin: String,
+) -> Result<bool, String> {
+    connect_google_browser(window, state, origin, GoogleConnection::Gmail).await
+}
+
+#[tauri::command]
+pub async fn native_calendar_connect(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    origin: String,
+) -> Result<bool, String> {
+    connect_google_browser(window, state, origin, GoogleConnection::Calendar).await
 }
 
 #[tauri::command]
@@ -3249,7 +3286,12 @@ mod tests {
         let origin = "https://backend.example";
         let valid = format!("{origin}/api/v1/mail/gmail/authorize?ticket={ticket}");
         assert_eq!(
-            gmail_browser_url(origin, &json!({"authorization_url":valid})).unwrap(),
+            google_browser_url(
+                origin,
+                &json!({"authorization_url":valid}),
+                GoogleConnection::Gmail
+            )
+            .unwrap(),
             valid
         );
         for url in [
@@ -3264,8 +3306,47 @@ mod tests {
             "file:///etc/passwd".to_owned(),
             "javascript:alert(1)".to_owned(),
         ] {
-            assert!(gmail_browser_url(origin, &json!({"authorization_url":url})).is_err());
+            assert!(google_browser_url(
+                origin,
+                &json!({"authorization_url":url}),
+                GoogleConnection::Gmail
+            )
+            .is_err());
         }
+    }
+    #[test]
+    fn calendar_browser_handoff_is_bounded_and_separate_from_gmail() {
+        let ticket = "x".repeat(43);
+        let origin = "https://backend.example";
+        let valid = format!("{origin}/api/v1/calendar/google/authorize?ticket={ticket}");
+        assert_eq!(
+            google_browser_url(
+                origin,
+                &json!({"authorization_url": valid}),
+                GoogleConnection::Calendar
+            )
+            .unwrap(),
+            valid
+        );
+        for url in [
+            format!("https://attacker.example/api/v1/calendar/google/authorize?ticket={ticket}"),
+            format!("https://user:secret@backend.example/api/v1/calendar/google/authorize?ticket={ticket}"),
+            format!("{origin}/api/v1/mail/gmail/authorize?ticket={ticket}"),
+            format!("{origin}/api/v1/calendar/google/connect?ticket={ticket}"),
+            format!("{valid}&redirect=https://attacker.example"),
+            format!("{valid}#fragment"),
+            format!("{origin}/api/v1/calendar/google/authorize?ticket=short"),
+            "file:///etc/passwd".to_owned(),
+            "javascript:alert(1)".to_owned(),
+        ] {
+            assert!(google_browser_url(origin, &json!({"authorization_url": url}), GoogleConnection::Calendar).is_err());
+        }
+        assert!(google_browser_url(
+            origin,
+            &json!({"authorization_url": valid}),
+            GoogleConnection::Gmail
+        )
+        .is_err());
     }
     #[test]
     fn paged_reads_are_bounded_typed_owner_operations() {
