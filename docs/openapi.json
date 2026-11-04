@@ -6473,7 +6473,56 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GmailConnectionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/gmail/browser-connect": {
+      "post": {
+        "tags": [
+          "gmail"
+        ],
+        "summary": "Browser Connect",
+        "operationId": "browser_connect_api_v1_mail_gmail_browser_connect_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GmailConnectionOut"
+                }
               }
             }
           },
@@ -9329,6 +9378,20 @@
           "version"
         ],
         "title": "FocusOut"
+      },
+      "GmailConnectionOut": {
+        "properties": {
+          "authorization_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Authorization Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authorization_url"
+        ],
+        "title": "GmailConnectionOut"
       },
       "HTTPValidationError": {
         "properties": {

@@ -98,3 +98,29 @@ describe('native API integration', () => {
     fetchSpy.mockRestore()
   })
 })
+
+
+it('opens native Gmail through the bounded command without exposing browser credentials', async () => {
+  Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true })
+  localStorage.setItem('aelys.apiBaseUrl', 'https://example.test/api/v1')
+  const fetchSpy = vi.spyOn(globalThis, 'fetch')
+  const { connectGmailAccount } = await import('../lib/api')
+  await connectGmailAccount()
+  expect(invoke).toHaveBeenCalledWith('native_gmail_connect', { origin: 'https://example.test' })
+  expect(fetchSpy).not.toHaveBeenCalled()
+})
+
+
+it('reports an expired native Gmail session without exposing or replaying credentials', async () => {
+  Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true })
+  localStorage.setItem('aelys.apiBaseUrl', 'https://example.test/api/v1')
+  invoke.mockRejectedValueOnce('SIGN_IN_REQUIRED')
+  const { connectGmailAccount } = await import('../lib/api')
+  const listener = vi.fn()
+  window.addEventListener('aelys:native-session-expired', listener)
+  try {
+    await expect(connectGmailAccount()).rejects.toBe('SIGN_IN_REQUIRED')
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect((listener.mock.calls[0]![0] as CustomEvent).detail).toEqual({ origin: 'https://example.test' })
+  } finally { window.removeEventListener('aelys:native-session-expired', listener) }
+})

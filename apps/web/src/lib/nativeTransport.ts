@@ -118,6 +118,7 @@ export function createNativeTransport(invoke: NativeInvoke, makeChannel?: Native
     enroll: (origin: string, token: string, displayName: string) =>
       invoke<NativeStatus>('native_enroll', { origin, token, displayName }),
     resume: (origin: string) => invoke<NativeStatus>('native_resume', { origin }),
+    connectGmail: (origin: string) => invoke<boolean>('native_gmail_connect', { origin }),
     logout: (origin: string) => invoke<NativeStatus>('native_logout', { origin }),
     operation: <T>(origin: string, operation: NativeOperation, diagnostic?: (value: NativeDiagnostic) => void) => diagnostic && makeDiagnosticChannel
       ? invoke<T>('native_operation_diagnostic', { origin, operation, diagnostic: makeDiagnosticChannel(diagnostic) })
