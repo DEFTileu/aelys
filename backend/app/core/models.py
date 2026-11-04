@@ -233,6 +233,7 @@ class GmailCredential(Base):
 
 class GmailOAuthState(Base):
     __tablename__ = "gmail_oauth_states"
+    browser_state: Mapped[str | None] = mapped_column(String(16))
     state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     session_id: Mapped[str] = mapped_column(String(36), ForeignKey("auth_sessions.id"))

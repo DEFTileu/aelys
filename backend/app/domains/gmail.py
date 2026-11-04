@@ -7,29 +7,32 @@ import json
 import time
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse, urlunsplit
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 from app.ai.crypto import decrypt_secret, encrypt_secret
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.db import get_db
 from app.core.models import (
+    Device,
     GmailCredential,
     GmailDraftLink,
     GmailOAuthState,
     MailAccount,
     MailDraft,
     MailMessage,
+    User,
 )
 from app.core.security import current_principal, decode_token
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .google_oauth import consume_oauth_state, create_pkce
+from .google_oauth import active_oauth_session, consume_oauth_state, create_pkce
+from .recurrence import utc
 
 router = APIRouter(prefix="/mail/gmail", tags=["gmail"])
 SCOPES = {"https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.compose"}
@@ -40,7 +43,9 @@ API = "https://gmail.googleapis.com/gmail/v1/users/me"
 def configured():
     settings = get_settings()
     parsed = urlparse(settings.gmail_redirect_uri or "")
-    valid_uri = parsed.scheme == "https" or (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"})
+    valid_uri = bool(parsed.hostname and not parsed.username and not parsed.password and not parsed.query and not parsed.fragment
+        and parsed.path == "/api/v1/mail/gmail/callback"
+        and (parsed.scheme == "https" or (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"})))
     if not settings.gmail_client_id or not settings.gmail_client_secret or not valid_uri:
         raise HTTPException(503, detail={"code": "GMAIL_NOT_CONFIGURED", "message": "Set Gmail OAuth client ID, secret and callback URL on the Aelys backend."})
     return settings
@@ -90,18 +95,74 @@ async def status(principal=Depends(current_principal)):
         return {"configured": False}
 
 
-@router.post("/connect")
-async def connect(authorization: str = Header(), principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
+class GmailConnectionOut(BaseModel):
+    authorization_url: str = Field(max_length=2048)
+
+
+def consent_url(settings: Settings, state: str, verifier: str) -> str:
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({"client_id": settings.gmail_client_id, "redirect_uri": settings.gmail_redirect_uri, "response_type": "code", "scope": " ".join(sorted(SCOPES)), "state": state, "code_challenge": challenge, "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent"})
+
+
+def state_cookie(response: Response, settings: Settings, state: str) -> None:
+    response.set_cookie(COOKIE, state, max_age=600, httponly=True, secure=bool(settings.gmail_redirect_uri and settings.gmail_redirect_uri.startswith("https://")), samesite="lax", path="/api/v1/mail/gmail")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+
+
+async def start_connection(authorization: str, principal: tuple[User, Device | None], db: AsyncSession, *, browser: bool) -> JSONResponse:
     settings = configured()
     user, _ = principal
     claims = decode_token(authorization.split(" ", 1)[1])
-    state, verifier, challenge = create_pkce()
-    db.add(GmailOAuthState(state_hash=hashlib.sha256(state.encode()).hexdigest(), owner_id=user.id, session_id=claims["sid"], encrypted_verifier=encrypt_secret(verifier), expires_at=datetime.now(UTC) + timedelta(minutes=10)))
+    state, verifier, _ = create_pkce()
+    db.add(GmailOAuthState(state_hash=hashlib.sha256(state.encode()).hexdigest(), owner_id=user.id, session_id=claims["sid"], encrypted_verifier=encrypt_secret(verifier), expires_at=datetime.now(UTC) + timedelta(minutes=10), browser_state="pending" if browser else None))
     await db.commit()
-    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({"client_id": settings.gmail_client_id, "redirect_uri": settings.gmail_redirect_uri, "response_type": "code", "scope": " ".join(sorted(SCOPES)), "state": state, "code_challenge": challenge, "code_challenge_method": "S256", "access_type": "offline", "prompt": "consent"})
-    response = JSONResponse({"authorization_url": url})
-    response.set_cookie(COOKIE, state, max_age=600, httponly=True, secure=settings.gmail_redirect_uri.startswith("https://"), samesite="lax", path="/api/v1/mail/gmail")
-    response.headers["Cache-Control"] = "no-store"
+    if browser:
+        # Only a one-use capability crosses into the system browser, never the
+        # native bearer token or Google credentials. Set the cookie there.
+        callback = urlparse(settings.gmail_redirect_uri)
+        url = urlunsplit((callback.scheme, callback.netloc, "/api/v1/mail/gmail/authorize", urlencode({"ticket": state}), ""))
+        return JSONResponse({"authorization_url": url}, headers={"Cache-Control": "no-store"})
+    response = JSONResponse({"authorization_url": consent_url(settings, state, verifier)})
+    state_cookie(response, settings, state)
+    return response
+
+
+@router.post("/connect", response_model=GmailConnectionOut)
+async def connect(authorization: str = Header(), principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
+    return await start_connection(authorization, principal, db, browser=False)
+
+
+@router.post("/browser-connect", response_model=GmailConnectionOut)
+async def browser_connect(authorization: str = Header(), principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
+    return await start_connection(authorization, principal, db, browser=True)
+
+
+@router.get("/authorize", include_in_schema=False)
+async def authorize(ticket: str = Query(min_length=32, max_length=200), db: AsyncSession=Depends(get_db)):
+    settings = configured()
+    hashed = hashlib.sha256(ticket.encode()).hexdigest()
+    record = await db.get(GmailOAuthState, hashed)
+    at = datetime.now(UTC)
+    if not record or record.browser_state != "pending" or utc(record.expires_at) <= at:
+        raise HTTPException(400, detail={"code": "INVALID_OAUTH_STATE", "message": "Restart the Gmail connection in Aelys."})
+    session = active_oauth_session(record, at)
+    verifier = decrypt_secret(record.encrypted_verifier)
+    claimed = await db.execute(update(GmailOAuthState).where(GmailOAuthState.state_hash == hashed,
+        GmailOAuthState.browser_state == "pending", GmailOAuthState.expires_at > at, session.exists()).values(browser_state="started"))
+    await db.commit()
+    if int(getattr(claimed, "rowcount", 0) or 0) != 1:
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "Sign in to Aelys and reconnect Gmail."})
+    response = RedirectResponse(consent_url(settings, ticket, verifier), status_code=303)
+    state_cookie(response, settings, ticket)
+    return response
+
+
+def browser_complete(connected: bool) -> HTMLResponse:
+    title = "Gmail connected" if connected else "Gmail connection cancelled"
+    message = "Return to Aelys. Your Gmail account is ready." if connected else "Return to Aelys to try connecting Gmail again."
+    response = HTMLResponse(f"<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title><h1>{title}</h1><p>{message}</p></html>", headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"})
+    response.delete_cookie(COOKIE, path="/api/v1/mail/gmail")
     return response
 
 
@@ -109,8 +170,13 @@ async def connect(authorization: str = Header(), principal=Depends(current_princ
 async def callback(request: Request, state: str = Query(max_length=200), code: str | None = Query(default=None, max_length=4096), error: str | None = Query(default=None, max_length=100), db: AsyncSession=Depends(get_db)):
     settings = configured()
     record, verifier = await consume_oauth_state(db, GmailOAuthState, state, request.cookies.get(COOKIE, ""))
+    assert isinstance(record, GmailOAuthState)
+    if record.browser_state not in {None, "started"}:
+        raise HTTPException(400, detail={"code": "INVALID_OAUTH_STATE", "message": "Restart the Gmail connection in Aelys."})
     owner_id = record.owner_id
     if error or not code:
+        if record.browser_state is not None:
+            return browser_complete(False)
         return RedirectResponse("/mail?gmail=denied", status_code=303)
     tokens = await google("POST", "https://oauth2.googleapis.com/token", data={"client_id": settings.gmail_client_id, "client_secret": settings.gmail_client_secret, "redirect_uri": settings.gmail_redirect_uri, "code": code, "code_verifier": verifier, "grant_type": "authorization_code"})
     if not SCOPES.issubset(set(str(tokens.get("scope", "")).split())) or not tokens.get("refresh_token"):
@@ -118,7 +184,11 @@ async def callback(request: Request, state: str = Query(max_length=200), code: s
     profile = await google("GET", API + "/profile", headers={"Authorization": f"Bearer {tokens['access_token']}"})
     email = str(profile["emailAddress"])
     account_id = str(uuid5(NAMESPACE_URL, f"aelys:gmail:{owner_id}:{email}"))
+    if not await db.scalar(select(active_oauth_session(record, datetime.now(UTC)).exists())):
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "Sign in to Aelys and reconnect Gmail."})
     account = await db.get(MailAccount, account_id)
+    if account:
+        account.version += 1
     if not account:
         account = MailAccount(id=account_id, owner_id=owner_id, provider="gmail", external_id=email)
         db.add(account); await db.flush()
@@ -128,6 +198,8 @@ async def callback(request: Request, state: str = Query(max_length=200), code: s
     if credential: credential.encrypted_tokens = encrypt_secret(json.dumps(tokens))
     else: db.add(GmailCredential(account_id=account_id, encrypted_tokens=encrypt_secret(json.dumps(tokens))))
     await db.commit()
+    if record.browser_state is not None:
+        return browser_complete(True)
     response = RedirectResponse("/mail?gmail=connected", status_code=303)
     response.delete_cookie(COOKIE, path="/api/v1/mail/gmail")
     response.headers["Cache-Control"] = "no-store"

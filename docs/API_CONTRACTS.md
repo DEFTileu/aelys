@@ -723,3 +723,19 @@ there are no new endpoint permissions in the merge revision.
   session removes previews and cannot read private fallback snapshots.
 
 Validation and measurement: [navigation read optimization](optimization/navigation-reads-main.md).
+
+
+### Gmail native browser handoff (2026-11-04)
+
+`POST /api/v1/mail/gmail/browser-connect` requires the existing owner/device bearer
+session and returns `{authorization_url}` for a one-use, ten-minute handoff at
+`GET /api/v1/mail/gmail/authorize?ticket=...`. The browser sets the HttpOnly, Secure
+(on HTTPS), SameSite=Lax OAuth state cookie and redirects to Google with PKCE.
+The native renderer receives only the native-command completion boolean; native
+Rust validates the selected backend origin/path before opening the system browser.
+The callback rechecks owner/session/device authority and returns a static completion
+page instead of redirecting to a frontend route on an API-only host. Legacy web
+`POST /connect` stays compatible. Tokens, capabilities and callback codes are
+excluded from frontend state, caches and diagnostic/access-log query strings.
+`MailAccount.version` increases on reconnect, allowing clients to detect completion
+without importing mail automatically. See [Gmail setup](GMAIL_SETUP.md).

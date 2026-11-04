@@ -1,6 +1,6 @@
 import type { ApiConfig } from '../types'
 import { ApiClient, ApiError as SharedApiError, IndexedDbOfflineStore, type BrowserAuthStatus, type BrowserSession } from '@aelys/shared'
-import { isNativeHost, loadNativeTransport, nativeBackendOrigin } from './nativeTransport'
+import { isNativeHost, loadNativeTransport, nativeBackendOrigin, NATIVE_SESSION_EXPIRED_EVENT } from './nativeTransport'
 import { createNativeFetch } from './nativeClient'
 import { localBrowserLaunchId } from './localBrowserLogin'
 import { generateDeviceKey, indexedDbIdentityStore, signWithDeviceKey, webCryptoAvailable, type DeviceIdentity, type IdentityStore } from './deviceKey'
@@ -280,6 +280,22 @@ export function getSharedApiClient(): ApiClient {
     sharedClientKey = partition
   }
   return sharedClient
+}
+
+/** Start Gmail in the system browser on native hosts; OAuth cookies live there. */
+export async function connectGmailAccount(): Promise<void> {
+  getSharedApiClient().clearReadCache()
+  if (isNativeHost()) {
+    const transport = await loadNativeTransport()
+    const origin = nativeBackendOrigin(getApiConfig().baseUrl)
+    try { await transport.connectGmail(origin) }
+    catch (error) {
+      if (error === 'SIGN_IN_REQUIRED' || error === 'UNAUTHORIZED') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))
+      throw error
+    }
+    return
+  }
+  window.location.assign((await getSharedApiClient().connectGmail()).authorization_url)
 }
 
 export async function logout(): Promise<void> {

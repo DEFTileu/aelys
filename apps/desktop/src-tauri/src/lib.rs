@@ -33,6 +33,11 @@ fn runtime_capabilities() -> Vec<aelys_runtime::adapter::AdapterCapabilities> {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             use tauri::Manager;
@@ -53,6 +58,7 @@ pub fn run() {
             native::native_enroll,
             native::native_resume,
             native::native_logout,
+            native::native_gmail_connect,
             native::native_operation,
             native::native_operation_diagnostic,
             native::native_ai_events,

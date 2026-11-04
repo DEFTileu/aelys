@@ -146,3 +146,113 @@ async def test_importing_existing_gmail_draft_does_not_overwrite_local_edits(gma
     await client.patch(f"/api/v1/mail/drafts/{draft['id']}", json={'version':draft['version'],'content':'Local edit','subject':draft['subject']})
     assert (await client.post(path)).json()['imported'] == 0
     assert (await client.get('/api/v1/mail/drafts')).json()[0]['content'] == 'Local edit'
+
+
+@pytest.mark.asyncio
+async def test_native_handoff_sets_cookie_in_system_browser_and_finishes_without_frontend(gmail_client, monkeypatch):
+    client, factory = gmail_client
+    start = await client.post('/api/v1/mail/gmail/browser-connect')
+    assert start.status_code == 200 and 'set-cookie' not in start.headers
+    url = start.json()['authorization_url']
+    assert url.startswith('https://test/api/v1/mail/gmail/authorize?ticket=')
+    assert 'Bearer' not in url
+    state = parse_qs(urlparse(url).query)['ticket'][0]
+    calls = []
+    async def provider(method, url, **kwargs):
+        calls.append(url)
+        if url.endswith('/token'):
+            return {'access_token':'google-access-secret','refresh_token':'google-refresh-secret','expires_in':3600,'scope':' '.join(gmail.SCOPES)}
+        if url.endswith('/profile'): return {'emailAddress':'person@example.test'}
+        raise AssertionError(url)
+    monkeypatch.setattr(gmail, 'google', provider)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='https://test') as browser:
+        assert not browser.cookies and 'Authorization' not in browser.headers
+        launched = await browser.get(url)
+        assert launched.status_code == 303
+        query = parse_qs(urlparse(launched.headers['location']).query)
+        assert query['state'] == [state] and query['code_challenge_method'] == ['S256']
+        assert gmail.COOKIE in browser.cookies
+        assert 'httponly' in launched.headers['set-cookie'].lower()
+        assert 'secure' in launched.headers['set-cookie'].lower()
+        assert (await browser.get(url)).status_code == 400
+        callback = await browser.get('/api/v1/mail/gmail/callback', params={'state':state,'code':'private-code'})
+        assert callback.status_code == 200 and 'Gmail connected' in callback.text
+        assert 'location' not in callback.headers and "default-src 'none'" in callback.headers['content-security-policy']
+        assert all(secret not in callback.text for secret in ['private-code','google-access-secret','google-refresh-secret',state])
+        assert gmail.COOKIE not in browser.cookies
+        assert (await browser.get('/api/v1/mail/gmail/callback',params={'state':state,'code':'private-code'})).status_code == 400
+    accounts = (await client.get('/api/v1/mail/accounts')).json()
+    assert len(accounts) == 1 and accounts[0]['connection_status'] == 'connected'
+    async with factory() as db:
+        credential = await db.get(GmailCredential, accounts[0]['id'])
+        assert 'google-refresh-secret' not in credential.encrypted_tokens
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('reason', ['logout', 'device_revoked', 'expired', 'no_cookie'])
+async def test_browser_handoff_never_exchanges_codes_without_valid_owner_device_and_cookie(gmail_client, monkeypatch, reason):
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.models import Device
+    from app.core.security import decode_token
+    client, factory = gmail_client
+    start = await client.post('/api/v1/mail/gmail/browser-connect')
+    url = start.json()['authorization_url']
+    state = parse_qs(urlparse(url).query)['ticket'][0]
+    async def forbidden(*args, **kwargs): raise AssertionError('Invalid handoff must not call Google')
+    monkeypatch.setattr(gmail, 'google', forbidden)
+    if reason == 'logout': await client.post('/api/v1/auth/logout')
+    if reason == 'device_revoked':
+        # Bootstrap sessions are not device-bound; bind one to exercise revocation.
+        from app.core.models import AuthSession
+        from app.core.security import hash_password
+        claims = decode_token(client.headers['Authorization'].split(' ',1)[1])
+        async with factory() as db:
+            device = Device(owner_id=claims['sub'], platform='macos', display_name='test', credential_hash=hash_password('device-secret'), revoked_at=datetime.now(UTC))
+            db.add(device); await db.flush()
+            session = await db.get(AuthSession, claims['sid']); session.device_id = device.id
+            await db.commit()
+    if reason == 'expired':
+        import hashlib
+        async with factory() as db:
+            record = await db.get(GmailOAuthState, hashlib.sha256(state.encode()).hexdigest())
+            record.expires_at = datetime.now(UTC) - timedelta(seconds=1); await db.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='https://test') as browser:
+        begun = await browser.get(url)
+        if reason == 'no_cookie':
+            assert begun.status_code == 303
+            browser.cookies.clear()
+            denied = await browser.get('/api/v1/mail/gmail/callback', params={'state':state,'code':'private-code'})
+            assert denied.status_code == 400
+        else: assert begun.status_code in {400,401}
+
+
+@pytest.mark.asyncio
+async def test_cancelled_native_consent_returns_safe_completion_page(gmail_client):
+    client, _ = gmail_client
+    start = await client.post('/api/v1/mail/gmail/browser-connect')
+    url = start.json()['authorization_url']
+    state = parse_qs(urlparse(url).query)['ticket'][0]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='https://test') as browser:
+        await browser.get(url)
+        cancelled = await browser.get('/api/v1/mail/gmail/callback', params={'state':state,'error':'access_denied'})
+        assert cancelled.status_code == 200 and 'cancelled' in cancelled.text
+        assert gmail.COOKIE not in browser.cookies
+
+
+def test_handoff_capability_is_redacted_from_access_logs():
+    record = logging.LogRecord('uvicorn.access', logging.INFO, '', 0, '%s - %s %s %s %s', ('host','GET','/api/v1/mail/gmail/authorize?ticket=private-ticket','1.1',303), None)
+    OAuthAccessLogFilter().filter(record)
+    assert 'private-ticket' not in record.getMessage()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('callback', ['https:missing-host','https://test/wrong-callback','https://user:pass@test/api/v1/mail/gmail/callback','https://test/api/v1/mail/gmail/callback#fragment'])
+async def test_gmail_reports_invalid_callback_as_unconfigured(gmail_client, monkeypatch, callback):
+    client, _ = gmail_client
+    monkeypatch.setenv('AELYS_GMAIL_REDIRECT_URI', callback)
+    get_settings.cache_clear()
+    assert (await client.get('/api/v1/mail/gmail/status')).json() == {'configured':False}
+    rejected = await client.post('/api/v1/mail/gmail/browser-connect')
+    assert rejected.status_code == 503 and rejected.json()['detail']['code'] == 'GMAIL_NOT_CONFIGURED'

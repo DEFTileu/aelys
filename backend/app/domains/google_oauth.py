@@ -3,11 +3,12 @@ import base64
 import hashlib
 import secrets
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 
 from app.ai.crypto import decrypt_secret
 from app.core.models import AuthSession, Device, GmailOAuthState, now
 from fastapi import HTTPException
-from sqlalchemy import delete, or_, select
+from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .google_calendar_models import GoogleCalendarOAuthState
@@ -24,6 +25,15 @@ def create_pkce() -> tuple[str, str, str]:
 
 def _invalid() -> HTTPException:
     return HTTPException(400, detail={'code': 'INVALID_OAUTH_STATE', 'message': 'Restart the Google connection in the same browser.'})
+
+
+def active_oauth_session(record: OAuthState, at: datetime) -> Select[tuple[str]]:
+    valid_device = select(Device.id).where(Device.owner_id == record.owner_id,
+        Device.revoked_at.is_(None), Device.deleted_at.is_(None))
+    valid_session = select(AuthSession.id).where(AuthSession.id == record.session_id,
+        AuthSession.owner_id == record.owner_id, AuthSession.revoked_at.is_(None), AuthSession.expires_at > at,
+        or_(AuthSession.device_id.is_(None), AuthSession.device_id.in_(valid_device)))
+    return valid_session
 
 
 async def consume_oauth_state(db: AsyncSession, model: type[GmailOAuthState] | type[GoogleCalendarOAuthState],
@@ -48,11 +58,7 @@ async def consume_oauth_state(db: AsyncSession, model: type[GmailOAuthState] | t
         await before_consume(record.owner_id)
     # Repeat authority checks inside the delete as well, so a concurrent revoke
     # cannot pass a stale ORM identity-map check. Only one callback wins state.
-    valid_device = select(Device.id).where(Device.owner_id == record.owner_id,
-        Device.revoked_at.is_(None), Device.deleted_at.is_(None))
-    valid_session = select(AuthSession.id).where(AuthSession.id == record.session_id,
-        AuthSession.owner_id == record.owner_id, AuthSession.revoked_at.is_(None), AuthSession.expires_at > at,
-        or_(AuthSession.device_id.is_(None), AuthSession.device_id.in_(valid_device)))
+    valid_session = active_oauth_session(record, at)
     consumed = await db.execute(delete(model).where(model.state_hash == state_hash,
         model.owner_id == record.owner_id, model.session_id == record.session_id, model.expires_at > at,
         valid_session.exists()).execution_options(synchronize_session=False))

@@ -5,9 +5,8 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
 use tauri::ipc::Channel;
-#[cfg(target_os = "android")]
-use tauri::Manager;
-use tauri::{State, WebviewWindow};
+use tauri::{Manager, State, WebviewWindow};
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{watch, Mutex};
 use url::{Host, Url};
 #[cfg(test)]
@@ -2089,6 +2088,87 @@ pub async fn native_logout(
     }
     Ok(status(None, &origin, Some(false), None))
 }
+// The renderer never supplies a URL or receives the handoff capability. Only
+// an authenticated connection to the selected backend can open this browser path.
+fn gmail_browser_url(origin: &str, value: &Value) -> Result<String, String> {
+    let raw = value
+        .get("authorization_url")
+        .and_then(Value::as_str)
+        .filter(|v| v.len() <= 2048)
+        .ok_or_else(|| err("INVALID_RESPONSE"))?;
+    let url = Url::parse(raw).map_err(|_| err("INVALID_RESPONSE"))?;
+    let pairs: Vec<_> = url.query_pairs().collect();
+    if url.origin().ascii_serialization() != origin
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/api/v1/mail/gmail/authorize"
+        || pairs.len() != 1
+        || pairs[0].0 != "ticket"
+        || !(32..=200).contains(&pairs[0].1.len())
+        || !pairs[0]
+            .1
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err(err("INVALID_RESPONSE"));
+    }
+    Ok(url.to_string())
+}
+
+#[tauri::command]
+pub async fn native_gmail_connect(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    origin: String,
+) -> Result<bool, String> {
+    check_window(&window)?;
+    let origin = origin_fn(&origin)?;
+    let access = {
+        let guard = state.0.lock().await;
+        guard
+            .as_ref()
+            .filter(|s| s.origin == origin)
+            .map(|s| s.access.clone())
+            .ok_or_else(|| err("SIGN_IN_REQUIRED"))?
+    };
+    let response = session_response(
+        state.inner(),
+        &origin,
+        &access,
+        request_api(
+            &client()?,
+            Method::POST,
+            &format!("{origin}/api/v1/mail/gmail/browser-connect"),
+            None,
+            None,
+            &access,
+        )
+        .await,
+    )
+    .await?;
+    let url = gmail_browser_url(&origin, &response)?;
+    // Serialize the actual opening with logout/session replacement. Never open
+    // a previous owner's pending URL after a logout while the network waited.
+    let guard = state.0.lock().await;
+    if !guard
+        .as_ref()
+        .is_some_and(|s| s.origin == origin && s.access == access)
+    {
+        return Err(err(if guard.is_none() {
+            "SIGN_IN_REQUIRED"
+        } else {
+            "SESSION_CHANGED"
+        }));
+    }
+    window
+        .app_handle()
+        .opener()
+        .open_url(url, None::<&str>)
+        .map_err(|_| err("BROWSER_OPEN_FAILED"))?;
+    Ok(true)
+}
+
 #[tauri::command]
 pub async fn native_operation(
     window: WebviewWindow,
@@ -3163,6 +3243,30 @@ fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gmail_browser_handoff_rejects_arbitrary_urls_and_credentials() {
+        let ticket = "x".repeat(43);
+        let origin = "https://backend.example";
+        let valid = format!("{origin}/api/v1/mail/gmail/authorize?ticket={ticket}");
+        assert_eq!(
+            gmail_browser_url(origin, &json!({"authorization_url":valid})).unwrap(),
+            valid
+        );
+        for url in [
+            format!("https://attacker.example/api/v1/mail/gmail/authorize?ticket={ticket}"),
+            format!(
+                "https://user:secret@backend.example/api/v1/mail/gmail/authorize?ticket={ticket}"
+            ),
+            format!("{origin}/arbitrary?ticket={ticket}"),
+            format!("{valid}&redirect=https://attacker.example"),
+            format!("{valid}#fragment"),
+            format!("{origin}/api/v1/mail/gmail/authorize?ticket=short"),
+            "file:///etc/passwd".to_owned(),
+            "javascript:alert(1)".to_owned(),
+        ] {
+            assert!(gmail_browser_url(origin, &json!({"authorization_url":url})).is_err());
+        }
+    }
     #[test]
     fn paged_reads_are_bounded_typed_owner_operations() {
         let operation: Operation = serde_json::from_value(json!({"type":"read_page","resource":"notes","limit":50,"q":"x&other=value","known_etag":"W/\"v1\""})).unwrap();

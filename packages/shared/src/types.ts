@@ -387,6 +387,7 @@ export interface MailAccountIn {
   readonly external_id?: string | null;
 }
 export interface MailAccount {
+  readonly version?: number;
   readonly provider: string;
   readonly external_id: string | null;
   readonly id: Id;
