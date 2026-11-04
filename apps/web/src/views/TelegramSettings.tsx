@@ -70,7 +70,6 @@ export function TelegramSettings() {
   const connected = status?.connections.some((connection) => connection.enabled) ?? false
 
   const draftsReady = messages.filter((message) => !!message.draft_text).length
-  const autoOff = !status?.auto_reply
   const state = !status?.configured ? 'Bot not set up' : !status.enabled ? 'Paused' : connected ? 'Connected to your Business account' : 'Telegram Business connection pending'
   const connectForm = <form className="st-form" onSubmit={connect}>
     <label className="st-field-label">Bot token<input className="st-input st-input--mono" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} required /></label>
@@ -101,11 +100,12 @@ export function TelegramSettings() {
     {status?.configured && <>
       <Card>
         <SwitchRow title="Auto-reply" hint="Read incoming messages and draft replies in allowed chats" checked={status.auto_reply} disabled={busy || status.version == null} onChange={(enabled) => { void action(() => update(enabled ? { auto_reply: true, provider_id: provider || null, model: model.trim() || null, instructions } : { auto_reply: false })) }} />
-        <div className="st-row st-row--wrap" style={{ opacity: autoOff ? .5 : 1 }}>
+        {/* Manual "Draft a reply" uses these too, so they stay active while auto-reply is off. */}
+        <div className="st-row st-row--wrap">
           <div className="st-grow"><div className="st-label">Reply with</div><div className="st-hint">Provider and model for drafts</div></div>
-          <ModelPicker compact label="Reply with" providers={providers} value={{ providerId: provider, model }} onChange={(choice) => { setProvider(choice.providerId); setModel(choice.model) }} />
+          <ModelPicker compact label="Reply with" disabled={busy || status.version == null} providers={providers} value={{ providerId: provider, model }} onChange={(choice) => { setProvider(choice.providerId); setModel(choice.model); void action(() => update({ instructions, provider_id: choice.providerId || null, model: choice.model.trim() || null })) }} />
         </div>
-        <form className="st-pad" style={{ opacity: autoOff ? .5 : 1 }} onSubmit={(event) => { event.preventDefault(); void action(() => update({ instructions, provider_id: provider || null, model: model.trim() || null })) }}>
+        <form className="st-pad" onSubmit={(event) => { event.preventDefault(); void action(() => update({ instructions, provider_id: provider || null, model: model.trim() || null })) }}>
           <label className="st-field-label" htmlFor="telegram-instructions">Instructions</label>
           <div className="st-hint" style={{ marginBottom: 10 }}>How the assistant writes on your behalf</div>
           <textarea id="telegram-instructions" className="st-textarea" maxLength={10000} value={instructions} onChange={(event) => setInstructions(event.target.value)} />

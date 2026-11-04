@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import type { AIProvider } from '@aelys/shared'
 import { COST_LABEL, EFFORTS, EFFORT_HINT, EFFORT_SHORT, SPEED_LABEL, choiceLabel, formatContext, isReady, modelName, modelsFor, providerLabel, supportsThinking, type Capability, type Effort, type ModelChoice } from '../data/aiModels'
 import { Brain, Check, ChevronDown, ChevronRight, Search, Sparkles, X } from '../icons'
@@ -29,11 +30,30 @@ export interface ModelPickerProps {
 export function ModelPicker({ providers, value, onChange, compact = false, disabled, showAuto = !compact, showEffort = false, short = false, isDefault, onToggleDefault, label = 'Model' }: ModelPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [placement, setPlacement] = useState<CSSProperties>()
   const root = useRef<HTMLDivElement>(null)
+  const popover = useRef<HTMLDivElement>(null)
   const id = useId()
+  // The popover lives in document.body so a dimmed, clipped or transformed parent can't hide it.
+  useLayoutEffect(() => {
+    if (!open) return
+    const position = () => {
+      const rect = root.current?.getBoundingClientRect()
+      if (!rect || window.innerWidth <= 700) { setPlacement(undefined); return } // phones: CSS bottom sheet
+      const width = Math.min(420, window.innerWidth - 32)
+      const below = window.innerHeight - rect.bottom - 16
+      const above = rect.top - 16
+      const up = below < 320 && above > below
+      const left = Math.max(16, Math.min(compact ? rect.right - width : rect.left, window.innerWidth - width - 16))
+      setPlacement({ left, width, top: up ? rect.top - 6 : rect.bottom + 6, maxHeight: Math.min(560, window.innerHeight * 0.7, up ? above : below), transform: up ? 'translateY(-100%)' : undefined })
+    }
+    position()
+    window.addEventListener('resize', position); window.addEventListener('scroll', position, true)
+    return () => { window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true) }
+  }, [open, compact])
   useEffect(() => {
     if (!open) return
-    const outside = (event: MouseEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
+    const outside = (event: MouseEvent) => { const target = event.target as Node; if (!root.current?.contains(target) && !popover.current?.contains(target)) setOpen(false) }
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     document.addEventListener('mousedown', outside); document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', escape) }
@@ -56,7 +76,7 @@ export function ModelPicker({ providers, value, onChange, compact = false, disab
       {thinking && effort !== 'off' && <span className="model-picker__effort" title="Reasoning effort"><Brain size={12} aria-hidden="true" />{EFFORT_SHORT[effort]}</span>}
       <ChevronDown size={14} aria-hidden="true" />
     </button>
-    {open && <div className="model-picker__popover" role="dialog" aria-label="Choose a model" id={id}>
+    {open && createPortal(<div ref={popover} className="model-picker__popover" style={placement} role="dialog" aria-label="Choose a model" id={id}>
       <div className="model-picker__search"><label><Search size={16} aria-hidden="true" /><input aria-label="Search models" placeholder="Search models" autoFocus={!compact} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <button type="button" className="model-picker__close" aria-label="Close" onClick={() => setOpen(false)}><X size={16} /></button></div>
       <div className="model-picker__list" role="listbox" aria-label="Models">
@@ -94,6 +114,6 @@ export function ModelPicker({ providers, value, onChange, compact = false, disab
           <button type="button" className="model-picker__link model-picker__manage" onClick={() => navigate('/settings')}>Manage providers<ChevronRight size={14} aria-hidden="true" /></button>
         </div>
       </div>
-    </div>}
+    </div>, document.body)}
   </div>
 }
