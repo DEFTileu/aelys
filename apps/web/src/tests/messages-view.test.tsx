@@ -40,6 +40,22 @@ describe('groupChats', () => {
 })
 
 describe('MessagesView', () => {
+  it('refreshes every three seconds only while the document is visible', async () => {
+    const interval = vi.spyOn(window, 'setInterval')
+    await mount()
+    const poll = interval.mock.calls.find(([, delay]) => delay === 3_000)?.[0]
+    expect(poll).toBeTypeOf('function')
+    const hidden = Object.getOwnPropertyDescriptor(document, 'hidden')
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    const initialCalls = client.telegramStatus.mock.calls.length
+    await act(async () => { (poll as () => void)(); await Promise.resolve() })
+    expect(client.telegramStatus).toHaveBeenCalledTimes(initialCalls)
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    await act(async () => { (poll as () => void)(); await Promise.resolve() })
+    expect(client.telegramStatus).toHaveBeenCalledTimes(initialCalls + 1)
+    Object.defineProperty(document, 'hidden', hidden ?? { configurable: true, value: false })
+    interval.mockRestore()
+  })
   it('lists chats that need a reply with the draft chip and opens the draft card', async () => {
     await mount()
     expect(host.textContent).toContain('Needs reply · 2')

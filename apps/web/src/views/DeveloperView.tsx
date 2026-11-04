@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import type { AgentSession, ProjectResponse } from '@aelys/shared'
 import { ApiError } from '@aelys/shared'
 import { Lock, Square, Terminal } from '../icons'
@@ -6,9 +6,12 @@ import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
 import { useIsMobile } from '../lib/useIsMobile'
 import type { ApiStatus } from '../types'
+import { readerPlatform } from '../lib/localSessionReader'
 import './connected.css'
 import './tools.css'
 import './developer/developer-mobile.css'
+
+const LocalSessionReader = lazy(() => import('./module/DeveloperHub').then(module => ({ default: module.DeveloperHub })))
 
 const stamp = (iso: string | null) => iso ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'No activity yet'
 const clockOf = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--'
@@ -32,6 +35,7 @@ export function DeveloperView({ apiStatus }: { apiStatus: ApiStatus }) {
   const [showAll, setShowAll] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [stopNotice, setStopNotice] = useState('')
+  const [readerOpen, setReaderOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -87,5 +91,11 @@ export function DeveloperView({ apiStatus }: { apiStatus: ApiStatus }) {
             <button type="button" className="tl-icon-btn" style={{ width: 'auto', height: 36, borderRadius: 12, padding: '0 12px', gap: 6 }} disabled={current.state !== 'active' || stopping || apiStatus !== 'ready'} onClick={() => void stop(current)}><Square size={14} aria-hidden="true" />Stop</button></div>
         </section>}
       </div>}
+    {import.meta.env.DEV && readerPlatform() === 'macos' && <section className="tl-detail" aria-label="Local session reader">
+      <button type="button" aria-expanded={readerOpen} onClick={() => setReaderOpen(open => !open)}>
+        {readerOpen ? 'Hide debug local reader' : 'Open debug local reader'}
+      </button>
+      {readerOpen && <Suspense fallback={<p role="status">Loading local reader…</p>}><LocalSessionReader apiStatus={apiStatus} localOnly /></Suspense>}
+    </section>}
   </div>
 }
