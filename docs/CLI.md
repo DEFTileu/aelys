@@ -7,6 +7,7 @@ on your PATH, or invoke it from the checkout. It uses
 ```sh
 scripts/aelys --help
 scripts/aelys --origin https://your-backend.example status
+scripts/aelys --origin https://your-backend.example unlock
 scripts/aelys --origin https://your-backend.example import /absolute/path/batch.json
 scripts/aelys --origin https://your-backend.example import /absolute/path/batch.json --apply
 ```
@@ -14,6 +15,13 @@ scripts/aelys --origin https://your-backend.example import /absolute/path/batch.
 Sign in/enroll this Mac in Aelys first. Authenticated commands honor the existing
 Touch ID policy before reading Keychain. Device-key challenge/login creates an
 independent temporary session, revoked on exit; the GUI session is left intact.
+After a signed-app update, macOS may return `KEYCHAIN_ACCESS_REQUIRED`. Run
+`unlock` for the existing Aelys item, or append `--unlock-keychain` after `--apply`
+to unlock and import with one biometric check. Only these explicit recovery
+actions permit the standard OS Keychain dialog; normal commands fail closed.
+Enter any requested Mac password only into that system dialog. This uses the
+same scoped recovery as the GUI and restores background interaction suppression.
+
 No password, bearer token, provider key or raw request option is accepted or
 printed. JSON status includes counts and account IDs, without mail content.
 

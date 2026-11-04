@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 const MAX_INPUT: u64 = 2 * 1024 * 1024;
 const HELP: &str = "Aelys CLI (macOS)\n\
-Usage: aelys --origin https://HOST status\n\
-       aelys --origin https://HOST import FILE [--apply]\n\
+Usage: aelys --origin https://HOST status|unlock\n\
+       aelys --origin https://HOST import FILE [--apply [--unlock-keychain]]\n\
 Import JSON: {\"version\":1,\"events\":[...],\"mail_sync\":[\"ACCOUNT_ID\"]}\n\
 Without --apply: local validation only; no authentication or network.\n\
 With --apply: Touch ID policy, durable local outbox, duplicate checks, sequential sync.\n\
@@ -40,9 +40,11 @@ struct Import {
     batch: Batch,
     digest: String,
     apply: bool,
+    unlock_keychain: bool,
 }
 enum Command {
     Status,
+    Unlock,
     Import(Import),
 }
 struct Lock(PathBuf);
@@ -113,7 +115,12 @@ fn parse(args: &[String]) -> Result<(String, Command), String> {
     let origin = origin_fn(&args[1])?;
     match args[2].as_str() {
         "status" if args.len() == 3 => Ok((origin, Command::Status)),
-        "import" if args.len() == 4 || args.len() == 5 && args[4] == "--apply" => {
+        "unlock" if args.len() == 3 => Ok((origin, Command::Unlock)),
+        "import"
+            if args.len() == 4
+                || args.len() == 5 && args[4] == "--apply"
+                || args.len() == 6 && args[4] == "--apply" && args[5] == "--unlock-keychain" =>
+        {
             let path = PathBuf::from(&args[3]);
             let bytes = read_bounded(&path)?;
             let batch: Batch =
@@ -126,7 +133,8 @@ fn parse(args: &[String]) -> Result<(String, Command), String> {
                     path,
                     batch,
                     digest,
-                    apply: args.len() == 5,
+                    apply: args.len() >= 5,
+                    unlock_keychain: args.len() == 6,
                 }),
             ))
         }
@@ -348,10 +356,27 @@ async fn authenticated(origin: String, command: Command) -> Result<Value, String
     })
     .await
     .map_err(|_| err("BIOMETRIC_UNAVAILABLE"))??;
+    if matches!(&command, Command::Unlock)
+        || matches!(&command, Command::Import(import) if import.unlock_keychain)
+    {
+        let unlock_origin = origin.clone();
+        let found = tauri::async_runtime::spawn_blocking(move || {
+            eprintln!("Approve access to the existing Aelys item in the macOS Keychain prompt.");
+            crate::keychain::authorize(SERVICE, &unlock_origin)
+        })
+        .await
+        .map_err(|_| err("STORAGE_ERROR"))??;
+        if !found {
+            return Err(err("SIGN_IN_REQUIRED"));
+        }
+    }
     let old = NativeStorage {}
         .read(&origin)
         .await?
         .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
+    if matches!(&command, Command::Unlock) {
+        return Ok(json!({"unlocked":true}));
+    }
     let client = client_with_timeout(Duration::from_secs(180))?;
     // A new ephemeral device-key session leaves the GUI's rotating refresh token untouched.
     let session = resume_device(&client, &origin, &old).await?;
@@ -364,6 +389,7 @@ async fn authenticated(origin: String, command: Command) -> Result<Value, String
             Ok(json!({"authenticated":true,"calendar_series":events.as_array().ok_or_else(|| err("INVALID_RESPONSE"))?.len(),"mail_accounts":accounts}))
         }.await,
         Command::Import(import) => apply(&client, &session, import).await,
+        Command::Unlock => unreachable!("unlock returns before session creation"),
     };
     let cleanup: Result<Value, String> = request(
         &client,
@@ -438,6 +464,7 @@ mod tests {
                 batch,
                 digest,
                 apply: true,
+                unlock_keychain: false,
             }
         }
     }
@@ -503,6 +530,24 @@ mod tests {
             Command::Import(Import { apply: false, .. })
         ));
         assert!(!sibling(&path, ".aelys-outbox.json").exists());
+        let args = vec![
+            "--origin".into(),
+            "https://example.com".into(),
+            "import".into(),
+            path.to_string_lossy().into(),
+            "--unlock-keychain".into(),
+        ];
+        assert!(parse(&args).is_err());
+        let mut args = args;
+        args.insert(4, "--apply".into());
+        assert!(matches!(
+            parse(&args).unwrap().1,
+            Command::Import(Import {
+                apply: true,
+                unlock_keychain: true,
+                ..
+            })
+        ));
         let file = File::create(&path).unwrap();
         file.set_len(MAX_INPUT + 1).unwrap();
         assert_eq!(read_bounded(&path).unwrap_err(), "INPUT_TOO_LARGE");
