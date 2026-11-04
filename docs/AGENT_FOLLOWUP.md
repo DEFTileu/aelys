@@ -23,7 +23,7 @@ The backend already sends everything needed (`backend/app/ai/execution.py`):
 ### Reasoning effort
 - UI: a segmented control Off / Low / Medium / High in the picker footer, only for models with `thinking`. Chip on the model pill: "🧠 Med".
 - Backend (a small change): accept `routing.effort` in `createAIRun`.
-  - Claude: `thinking: { type: 'enabled', budget_tokens: { low: 2048, medium: 8192, high: 24576 } }`, off = no field.
+  - Claude: `thinking: { type: 'adaptive' }` + `output_config: { effort }`, off = no field.
   - OpenRouter: `reasoning: { effort: 'low'|'medium'|'high' }`.
   - Unknown value → 400 `INVALID_EFFORT`.
 - Meta line: "… · medium effort".

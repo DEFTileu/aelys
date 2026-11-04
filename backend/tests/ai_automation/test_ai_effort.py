@@ -22,11 +22,15 @@ def _router(effort=None):
     return OpenRouterAdapter._payload(object.__new__(OpenRouterAdapter), _request(effort))
 
 
-@pytest.mark.parametrize("effort,budget", [("low", 2048), ("medium", 8192), ("high", 24576)])
-def test_claude_payload_enables_thinking(effort, budget):
+@pytest.mark.parametrize("effort", ["low", "medium", "high"])
+def test_claude_payload_uses_adaptive_thinking_with_effort(effort):
     payload = _claude(effort)
-    assert payload["thinking"] == {"type": "enabled", "budget_tokens": budget}
-    assert payload["max_tokens"] > budget and "temperature" not in payload
+    assert payload["thinking"] == {"type": "adaptive"} and payload["output_config"] == {"effort": effort}
+    assert payload["max_tokens"] == 16000 and "budget_tokens" not in str(payload)
+
+
+def test_claude_payload_never_sends_sampling_params():
+    assert "temperature" not in _claude() and "temperature" not in _claude("high")
 
 
 def test_off_sends_no_reasoning_fields():

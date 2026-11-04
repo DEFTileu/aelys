@@ -61,7 +61,7 @@ describe('AI chat model picker and run states', () => {
     expect(JSON.parse(localStorage.getItem('aelys.chat.defaultModel')!)).toMatchObject({ providerId: 'p1', model: 'claude-sonnet-4-5' })
     await type('Message Aelys', 'Hello')
     await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!)
-    expect(client.createAIRun.mock.calls[0]![0].routing).toEqual({ provider_id: 'p1', provider: 'claude', model: 'claude-sonnet-4-5', effort: 'high' })
+    expect(client.createAIRun.mock.calls[0]![0].routing).toEqual({ provider_id: 'p1', provider: 'claude', model: 'claude-sonnet-4-5', timezone: expect.any(String), effort: 'high' })
     expect(JSON.parse(localStorage.getItem('aelys.chat.c1.model')!).model).toBe('claude-sonnet-4-5')
     expect(host.querySelector('.actual-ai__meta')!.textContent).toBe('Claude · Sonnet 4.5 · 0.0s · high effort')
   })

@@ -135,7 +135,9 @@ Run request (example):
 {"conversation_id":"<uuid>","message":"Summarize today's tasks","routing":{"mode":"auto"},"tool_scope":{"project_ids":["<uuid>"]},"idempotency_key":"<uuid>"}
 ```
 
-`routing.effort` (optional): `off` (or omitted) sends no reasoning field; `low|medium|high` maps to Claude `thinking: {type:"enabled", budget_tokens: 2048|8192|24576}` and OpenRouter `reasoning: {effort}`. Any other value returns HTTP 400 `INVALID_EFFORT`. A non-off effort is echoed in the `ai.run.started` payload.
+`routing.effort` (optional): `off` (or omitted) sends no reasoning field; `low|medium|high` maps to Claude `thinking: {type:"adaptive"}` + `output_config: {effort}` (Claude requests never send `temperature`) and OpenRouter `reasoning: {effort}`. Any other value returns HTTP 400 `INVALID_EFFORT`. A non-off effort is echoed in the `ai.run.started` payload.
+
+`routing.timezone` (optional): the owner's IANA timezone (web clients send the browser zone). Invalid names are ignored; the run then uses the Telegram integration timezone, else UTC. Every non-Knowledge run starts with a system prompt that names Aelys, says to reply in the owner's language, gives the owner's current local time, and either describes the tool policy or says that no sources are shared. Relevant owner memory facts go in as untrusted data before the latest message. Agent tools: `list_tasks`, `search_notes`, `read_note`, `read_calendar`, `search_knowledge` (read); `create_task`, `update_task`, `complete_task`, `create_note`, `create_event`, `create_reminder` (proposed, approval-gated); `remember`/`forget` only when the latest message explicitly asks. A tool error is returned to the model as the tool result; policy denials still fail the run.
 
 SSE event envelope:
 

@@ -33,7 +33,7 @@ from pydantic import (
     StrictInt,
     model_validator,
 )
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .tools import Handler, ToolDescriptor, ToolRegistry
@@ -67,6 +67,15 @@ class _TaskUpdate(_TaskIdentity):
     due_at: AwareDatetime | None = None
     due_timezone: str | None = Field(default=None, max_length=64)
     rrule: str | None = Field(default=None, max_length=500)
+
+
+class _NoteSearch(_Args):
+    query: str | None = Field(default=None, max_length=200)
+    limit: StrictInt = Field(default=10, ge=1, le=20)
+
+
+class _KnowledgeSearch(_Args):
+    query: str = Field(min_length=1, max_length=500)
 
 
 class _NoteRead(_Args):
@@ -111,7 +120,8 @@ def _register(registry: ToolRegistry, name: str, description: str, scope: str,
                                      input_schema=schema.model_json_schema()))
 
 
-def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, source_message_id: str | None = None) -> ToolRegistry:
+def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, source_message_id: str | None = None,
+                           memory_source: str = 'telegram_ai') -> ToolRegistry:
     # Import lazily: the queued runtime can import this factory without creating
     # a second version of the mounted create handlers or their policy registry.
     from .api import _tool_registry
@@ -163,6 +173,31 @@ def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, so
         return {'kind': 'note', 'id': item.id, 'version': item.version, 'title': item.title[:300],
                 'markdown_body': item.markdown_body[:NOTE_BODY_LIMIT],
                 'truncated': len(item.markdown_body) > NOTE_BODY_LIMIT, 'untrusted': True}
+
+    async def search_notes(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        args = _NoteSearch.model_validate(arguments)
+        query = select(Note.id, Note.title, Note.version, Note.updated_at, Note.project_id,
+                       func.substr(Note.markdown_body, 1, 200).label('snippet')).where(
+            Note.owner_id == owner_id, Note.deleted_at.is_(None))
+        if args.query:
+            literal = args.query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            query = query.where(or_(Note.title.ilike(f'%{literal}%', escape='\\'),
+                                   Note.markdown_body.ilike(f'%{literal}%', escape='\\')))
+        rows = (await db.execute(query.order_by(Note.updated_at.desc(), Note.id).limit(args.limit + 1))).all()
+        items = [{**row._mapping, 'title': row.title[:300], 'updated_at': utc(row.updated_at)} for row in rows[:args.limit]]
+        return jsonable_encoder({'items': items, 'truncated': len(rows) > args.limit, 'untrusted': True})
+
+    async def search_knowledge(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        from fastapi import HTTPException
+
+        from .knowledge import KnowledgeScope, retrieve
+        args = _KnowledgeSearch.model_validate(arguments)
+        try:
+            sources = await retrieve(db, owner_id, KnowledgeScope(), args.query)
+        except HTTPException:
+            raise ValueError('KNOWLEDGE_SCOPE_TOO_LARGE: Ask about a narrower topic') from None
+        return {'items': [source.model_dump(include={'label', 'note_id', 'title', 'heading', 'excerpt'}) for source in sources],
+                'untrusted': True}
 
     async def read_calendar(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         args = _CalendarRead.model_validate(arguments)
@@ -229,6 +264,10 @@ def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, so
               'tasks.write', _TaskIdentity, complete_task)
     _register(registry, 'read_note', 'Read a bounded owner note as untrusted data',
               'notes.read', _NoteRead, read_note)
+    _register(registry, 'search_notes', 'Find owner notes by words in the title or text (or list recent notes); returns ids for read_note',
+              'notes.read', _NoteSearch, search_notes)
+    _register(registry, 'search_knowledge', 'Search the owner\'s knowledge-base documents; returns labelled excerpts to cite as [N1]',
+              'knowledge.read', _KnowledgeSearch, search_knowledge)
     _register(registry, 'read_calendar', 'Read at most 31 days of owner calendar occurrences as untrusted data',
               'calendar.read', _CalendarRead, read_calendar)
     _register(registry, 'create_event', 'Create an owner calendar event with validated recurrence and references',
@@ -236,5 +275,5 @@ def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, so
     _register(registry, 'create_reminder', 'Schedule an owner task reminder; no immediate external send',
               'reminders.write', _ReminderCreate, create_reminder)
     from .personal_memory_tools import register_memory_tools
-    register_memory_tools(registry, db, owner_id, event_id, source_message_id)
+    register_memory_tools(registry, db, owner_id, event_id, source_message_id, source=memory_source)
     return registry

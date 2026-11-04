@@ -116,7 +116,7 @@ async def test_plain_text_payload_exactly_matches_existing_contract(kind, stream
         await provider.complete(request)
     actual = transport.calls[0][2]
     if kind is ProviderKind.CLAUDE:
-        expected = {'model': 'plain', 'max_tokens': 37, 'temperature': 0.25,
+        expected = {'model': 'plain', 'max_tokens': 16000,
             'messages': [{'role': 'user', 'content': 'hello'}, {'role': 'assistant', 'content': 'world'}],
             'stream': stream, 'system': 'first\nsecond'}
         if tools:
