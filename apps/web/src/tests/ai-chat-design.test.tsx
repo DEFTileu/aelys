@@ -14,7 +14,8 @@ const sse = (...events: readonly (readonly [string, object])[]) => new Response(
 const day = (offset: number) => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - offset, 12).toISOString()
 let host: HTMLDivElement
 let root: ReturnType<typeof createRoot>
-const find = (text: string, selector = 'button') => [...host.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.includes(text) || item.getAttribute('aria-label') === text)!
+// document, not host: the model picker popover is portaled to body.
+const find = (text: string, selector = 'button') => [...document.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.includes(text) || item.getAttribute('aria-label') === text)!
 const click = (element: HTMLElement) => act(async () => element.click())
 async function type(value: string) {
   const field = host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')!

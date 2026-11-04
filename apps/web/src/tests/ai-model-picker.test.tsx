@@ -15,7 +15,8 @@ const openrouter = { id: 'p2', kind: 'openrouter', enabled: true, has_secret: fa
 const sse = (...events: readonly (readonly [string, object])[]) => new Response(events.map(([name, data]) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`).join(''))
 let host: HTMLDivElement
 let root: ReturnType<typeof createRoot>
-const find = (text: string, selector = 'button') => [...host.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.includes(text))!
+// document, not host: the model picker popover is portaled to body.
+const find = (text: string, selector = 'button') => [...document.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.includes(text))!
 const click = (element: HTMLElement) => act(async () => element.click())
 async function type(label: string, value: string) {
   const field = host.querySelector<HTMLTextAreaElement>(`[aria-label="${label}"]`)!
@@ -52,7 +53,7 @@ describe('AI chat model picker and run states', () => {
   it('shows keyless providers disabled with Add key, remembers the choice per chat and sends effort', async () => {
     await mountChat()
     await click(find('Auto'))
-    const dialog = host.querySelector('[role=dialog]')!
+    const dialog = document.querySelector('[role=dialog]')!
     expect(dialog.textContent).toContain('Add key')
     expect(dialog.querySelector<HTMLButtonElement>('[role=option][aria-disabled=true]')!.disabled).toBe(true)
     await click(find('Sonnet 4.5', '[role=option]'))
@@ -126,9 +127,9 @@ describe('Telegram Reply with', () => {
     client.updateTelegramSettings.mockResolvedValue({ ...status, version: 4 })
     await act(async () => root.render(<TelegramSettings />))
     await click(host.querySelector<HTMLElement>('button[aria-label="Reply with"]')!)
-    expect(host.querySelector('[role=dialog]')!.textContent).not.toContain('Reasoning effort')
+    expect(document.querySelector('[role=dialog]')!.textContent).not.toContain('Reasoning effort')
     await click(find('Sonnet 4.5', '[role=option]'))
-    await click(find('Save settings'))
+    // Picking saves right away; manual drafts need the provider even with auto-reply off.
     expect(client.updateTelegramSettings).toHaveBeenCalledWith({ version: 3, instructions: '', provider_id: 'p1', model: 'claude-sonnet-4-5' })
   })
 })
