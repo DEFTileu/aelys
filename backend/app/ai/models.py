@@ -76,6 +76,9 @@ class ChatMessage:
     untrusted: bool = False
     media: tuple[MediaContent, ...] = field(default=(), repr=False)
     memory_refs: tuple[tuple[str, int], ...] = field(default=(), repr=False)
+    # Assistant turns carry the calls they made; role "tool" messages answer one call by id.
+    tool_calls: tuple[ToolCall, ...] = ()
+    tool_call_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.media, tuple) or any(not isinstance(value, MediaContent) for value in self.media):

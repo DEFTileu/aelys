@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from app.ai.models import ChatMessage, ProviderRequest
+from app.ai.models import ChatMessage, ProviderRequest, ToolCall
 from app.ai.providers import ClaudeAdapter, OpenRouterAdapter
 from app.core import db
 from app.core.models import Base
@@ -35,6 +35,27 @@ def test_claude_payload_never_sends_sampling_params():
 
 def test_off_sends_no_reasoning_fields():
     assert "thinking" not in _claude() and "reasoning" not in _router()
+
+
+def _history():
+    calls = (ToolCall("create_task", {"title": "Quiz"}, "c1"), ToolCall("list_tasks", {}, "c2"))
+    return (ChatMessage("system", "rules"), ChatMessage("user", "add a quiz"), ChatMessage("assistant", "", tool_calls=calls),
+            ChatMessage("tool", '{"proposed": true}', tool_call_id="c1"), ChatMessage("tool", '{"items": []}', tool_call_id="c2"))
+
+
+def test_claude_replays_tool_calls_and_groups_their_results():
+    payload = ClaudeAdapter._payload(object.__new__(ClaudeAdapter), ProviderRequest("m", _history(), max_tokens=10))
+    assert payload["system"] == "rules"
+    assert payload["messages"][1] == {"role": "assistant", "content": [{"type": "tool_use", "id": "c1", "name": "create_task", "input": {"title": "Quiz"}},
+                                                                       {"type": "tool_use", "id": "c2", "name": "list_tasks", "input": {}}]}
+    assert payload["messages"][2] == {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "c1", "content": '{"proposed": true}'},
+                                                                  {"type": "tool_result", "tool_use_id": "c2", "content": '{"items": []}'}]}
+
+
+def test_openrouter_replays_tool_calls_as_function_calls():
+    messages = OpenRouterAdapter._payload(object.__new__(OpenRouterAdapter), ProviderRequest("m", _history(), max_tokens=10))["messages"]
+    assert messages[2]["tool_calls"][0] == {"id": "c1", "type": "function", "function": {"name": "create_task", "arguments": '{"title": "Quiz"}'}}
+    assert messages[3:] == [{"role": "tool", "tool_call_id": "c1", "content": '{"proposed": true}'}, {"role": "tool", "tool_call_id": "c2", "content": '{"items": []}'}]
 
 
 def test_openrouter_payload_sets_reasoning_effort():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -55,6 +56,41 @@ def _content(message: ChatMessage, *, claude: bool) -> str | list[dict[str, Any]
     return parts
 
 
+def _claude_messages(messages: tuple[ChatMessage, ...]) -> list[dict[str, Any]]:
+    # Thinking blocks are not replayed: Claude accepts tool turns without them, and a replayed
+    # block breaks with 400 as soon as an earlier message changes (memory refresh can drop one).
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        if m.role == "system":
+            continue
+        if m.role == "tool":
+            block = {"type": "tool_result", "tool_use_id": m.tool_call_id, "content": m.content}
+            previous = out[-1]["content"] if out and out[-1]["role"] == "user" and isinstance(out[-1]["content"], list) else None
+            if previous and previous[-1].get("type") == "tool_result":
+                previous.append(block)  # all results of one assistant turn go back in one user message
+            else:
+                out.append({"role": "user", "content": [block]})
+        elif m.tool_calls:
+            out.append({"role": "assistant", "content": [*([{"type": "text", "text": m.content}] if m.content else []),
+                        *({"type": "tool_use", "id": c.call_id, "name": c.name, "input": dict(c.arguments)} for c in m.tool_calls)]})
+        else:
+            out.append({"role": m.role, "content": _content(m, claude=True)})
+    return out
+
+
+def _openai_messages(messages: tuple[ChatMessage, ...]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        if m.role == "tool":
+            out.append({"role": "tool", "tool_call_id": m.tool_call_id, "content": m.content})
+            continue
+        item: dict[str, Any] = {"role": m.role, "content": _content(m, claude=False)}
+        if m.tool_calls:
+            item["tool_calls"] = [{"id": c.call_id, "type": "function", "function": {"name": c.name, "arguments": json.dumps(dict(c.arguments), ensure_ascii=False, default=str)}} for c in m.tool_calls]
+        out.append(item)
+    return out
+
+
 class _BaseAdapter:
     def __init__(self, transport: HttpTransport, secrets: SecretStore, secret_ref: SecretRef, base_url: str):
         self._transport, self._secrets, self._ref, self._base_url = transport, secrets, secret_ref, base_url.rstrip("/")
@@ -100,7 +136,7 @@ class ClaudeAdapter(_BaseAdapter):
 
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
         system = [m.content for m in request.messages if m.role == "system"]
-        messages = [{"role": m.role, "content": _content(m, claude=True)} for m in request.messages if m.role != "system"]
+        messages = _claude_messages(request.messages)
         # Current Claude models reject sampling params and thinking budgets with 400; effort is the only control.
         # Thinking is on by default and counts against max_tokens, so leave it room.
         payload = {"model": request.model, "max_tokens": max(request.max_tokens, CLAUDE_MIN_MAX_TOKENS), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
@@ -135,7 +171,7 @@ class OpenRouterAdapter(_BaseAdapter):
 
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
         tools = [{"type": "function", "function": {"name": str(tool["name"]), "description": str(tool.get("description", "")), "parameters": tool.get("input_schema") or {"type": "object"}}} for tool in request.tools]
-        return {"model": request.model, "messages": [{"role": m.role, "content": _content(m, claude=False)} for m in request.messages], "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {}), **({"reasoning": {"effort": request.effort}} if request.effort else {})}
+        return {"model": request.model, "messages": _openai_messages(request.messages), "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {}), **({"reasoning": {"effort": request.effort}} if request.effort else {})}
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
         response = await self._post("/api/v1/chat/completions", self._payload(request), media=any(m.media for m in request.messages))

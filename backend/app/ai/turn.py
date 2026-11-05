@@ -90,6 +90,7 @@ async def run_tool_turn(
         if result.response.text:
             text.append(result.response.text)
         outputs: list[ChatMessage] = []
+        calls: list[ToolCall] = []
         for raw_call in result.response.tool_calls:
             call = parse_call(raw_call)
             if call.call_id in seen:
@@ -104,12 +105,14 @@ async def run_tool_turn(
                 output = {'error': str(error)[:300], 'untrusted': True}
             await emit('ai.tool.approved', tool=call.name, call_id=call.call_id)
             await emit('ai.tool.result', tool=call.name, call_id=call.call_id, result=output)
-            outputs.append(ChatMessage('user', json.dumps({'tool': call.name, 'result': output},
-                                                         ensure_ascii=False, default=str), untrusted=True))
+            calls.append(call)
+            outputs.append(ChatMessage('tool', json.dumps(output, ensure_ascii=False, default=str),
+                                       untrusted=True, tool_call_id=call.call_id))
         if not outputs or step == max_steps:
             break
-        messages = (*messages, *((ChatMessage('assistant', result.response.text, memory_refs=completion_refs),)
-                                  if result.response.text else ()), *outputs)
+        # The model must see its own calls next to their results, or it repeats them on the next step.
+        messages = (*messages, ChatMessage('assistant', result.response.text, memory_refs=completion_refs,
+                                           tool_calls=tuple(calls)), *outputs)
     await check()
     return ToolTurnResult('\n'.join(text), result.provider.value, result.model,
                           input_tokens, output_tokens, cost, step, bool(outputs and step == max_steps), tuple(sorted(used_memory_refs)))

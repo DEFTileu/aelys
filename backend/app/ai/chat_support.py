@@ -104,7 +104,8 @@ async def _describe(db: AsyncSession, owner_id: str, tool: str, args: Mapping[st
         return {"title": str(title)[:300], "detail": str(detail)[:300], "meta": str(meta)[:100]}
 
     if tool == "create_task":
-        return "Create task", str(args.get("title", "")), [item(args.get("title", ""), args.get("description", ""))]
+        due = f"Due {args['due_at']}" if args.get("due_at") else ""
+        return "Create task", str(args.get("title", "")), [item(args.get("title", ""), args.get("description", "") or due, args.get("due_timezone", "") if due else "")]
     if tool == "create_note":
         return "Create note", str(args.get("title", "")), [item(args.get("title", ""), str(args.get("markdown_body", ""))[:120])]
     if tool == "create_event":
@@ -136,7 +137,8 @@ def gate_writes(registry: ToolRegistry, db: AsyncSession, owner_id: str, *, conv
             await db.flush()
             await announce("ai.action.proposed", {"run_id": run_id, "action_id": action.id, "tool": tool,
                                                   "title": title, "summary": summary, "items": items})
-            return {"proposed": True, "action_id": action.id, "status": "pending_approval", "untrusted": True}
+            return {"proposed": True, "action_id": action.id, "status": "pending_approval", "untrusted": True,
+                    "note": "Shown to the owner as an approval card; do not propose it again."}
 
         descriptor.handler = propose
 
