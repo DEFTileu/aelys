@@ -80,8 +80,11 @@ export function MessagesView({ apiStatus }: { apiStatus: ApiStatus }) {
   useEffect(() => { void load() }, [load, apiStatus])
   useEffect(() => {
     if (!status?.configured) return
-    const timer = window.setInterval(() => { setNow(Date.now()); void load() }, 10_000)
-    return () => window.clearInterval(timer)
+    // The backend ingests Telegram updates within a second; poll often only while visible.
+    const refresh = () => { if (!document.hidden) { setNow(Date.now()); void load() } }
+    const timer = window.setInterval(refresh, 3_000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
   }, [status?.configured, load])
 
   const chats = useMemo(() => groupChats(messages), [messages])
