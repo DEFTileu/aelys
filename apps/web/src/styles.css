@@ -378,3 +378,7 @@ input:focus, input:focus-visible, textarea:focus, textarea:focus-visible, select
 [role='textbox']:focus, [role='textbox']:focus-visible, [role='combobox']:focus, [role='combobox']:focus-visible,
 [role='searchbox']:focus-visible, .apps-card:focus-within, .apps-card:focus-within :focus-visible { outline: none !important; }
 .home-composer:has(:focus-visible), .mod-create input:focus { box-shadow: none !important; }
+:root[data-theme='dark'] .weather-dialog { background: var(--surface-solid); color: var(--ink); }
+:root[data-theme='dark'] .weather-auto { border-color: var(--line); }
+:root[data-theme='dark'] .weather-auto p, :root[data-theme='dark'] .weather-privacy { color: var(--muted); }
+:root[data-theme='dark'] .weather-cities button:hover { background: var(--surface-hover); }

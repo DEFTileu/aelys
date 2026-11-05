@@ -143,3 +143,4 @@
  .pv-task small { color:var(--pg-mute); font-size:12px; }
  .pv-task-go { display:none; }
 }
+:root[data-theme='dark'] .pv-add-task { color: var(--purple-deep); }
