@@ -77,9 +77,10 @@ async def test_context_isolation_policy_and_usage(state, monkeypatch):
     assert kwargs == {"max_tokens": 800, "tools": ()}
     assert len(messages) == 13 and messages[-1].content == "customer question"
     system = messages[0].content
-    assert "Never invent business facts, prices, opening hours, schedules" in system
-    assert "ask the customer for clarification" in system
-    assert "owner will follow up" in system and "Identify yourself as an assistant" in system
+    assert "Never invent facts, plans, prices, schedules" in system
+    assert "short clarifying question" in system and "owner will follow up" in system
+    assert "in the first person" in system and "in the language the other person uses" in system
+    assert "Identify yourself as an assistant" not in system
     assert messages[-2].role == "assistant" and messages[-1].untrusted
     contents = repr(messages)
     for forbidden in ("private other chat", "private other owner", "deleted secret", "provider-key-secret", "bot-token-secret", "history-0"):

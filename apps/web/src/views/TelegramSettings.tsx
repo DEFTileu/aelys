@@ -107,8 +107,8 @@ export function TelegramSettings() {
         </div>
         <form className="st-pad" onSubmit={(event) => { event.preventDefault(); void action(() => update({ instructions, provider_id: provider || null, model: model.trim() || null })) }}>
           <label className="st-field-label" htmlFor="telegram-instructions">Instructions</label>
-          <div className="st-hint" style={{ marginBottom: 10 }}>How the assistant writes on your behalf</div>
-          <textarea id="telegram-instructions" className="st-textarea" maxLength={10000} value={instructions} onChange={(event) => setInstructions(event.target.value)} />
+          <div className="st-hint" style={{ marginBottom: 10 }}>Optional. Without them, replies are short, in your voice and in the sender's language</div>
+          <textarea id="telegram-instructions" className="st-textarea" maxLength={10000} placeholder="For example: I'm a student. Reply casually. Hand off anything about money or meetings." value={instructions} onChange={(event) => setInstructions(event.target.value)} />
           <div className="st-counter">{instructions.length.toLocaleString('en-US')} / 10,000</div>
           <div className="st-actions" style={{ marginTop: 10 }}><button className="st-btn st-btn--primary" disabled={busy || status.version == null} type="submit">Save settings</button></div>
         </form>
