@@ -135,7 +135,7 @@ async def test_conversation_patch_rules(tmp_path, monkeypatch):
 async def test_write_tools_only_propose_until_approved(tmp_path, monkeypatch):
     replies = [[tool_use("create_note", "n1", title="Plan", markdown_body="body"), tool_use("complete_task", "n2", task_id="missing", version=1)],
                [{"type": "text", "text": "Prepared."}]]
-    async with chat(tmp_path, monkeypatch, replies) as (client, _, factory):
+    async with chat(tmp_path, monkeypatch, replies) as (client, script, factory):
         conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
         events = await run(client, conversation["id"], "Plan my week", "w1")
         proposed = payloads(events, "ai.action.proposed")
@@ -148,6 +148,15 @@ async def test_write_tools_only_propose_until_approved(tmp_path, monkeypatch):
         assert [a["status"] for a in actions] == ["pending", "pending"]
         note_action, task_action = actions
 
+        # The next step sees its own calls with their results, so it does not propose them again.
+        follow_up = script.requests[1]["messages"]
+        assert [block["id"] for block in follow_up[-2]["content"] if block["type"] == "tool_use"] == ["n1", "n2"]
+        assert [block["tool_use_id"] for block in follow_up[-1]["content"]] == ["n1", "n2"]
+        assert "pending_approval" in follow_up[-1]["content"][0]["content"]
+        answer = (await client.get(f"/api/v1/ai/conversations/{conversation['id']}/messages")).json()[-1]
+        assert answer["content"] == "Prepared." and [step["label"] for step in answer["steps"]] == ["Propose a new note", "Propose completing a task"]
+        assert {a["message_id"] for a in actions} == {answer["id"]}
+
         approved = await client.post(f"/api/v1/ai/actions/{note_action['id']}/approve")
         assert approved.json()["status"] == "approved" and approved.json()["result"]["kind"] == "note"
         again = await client.post(f"/api/v1/ai/actions/{note_action['id']}/approve")
@@ -158,6 +167,20 @@ async def test_write_tools_only_propose_until_approved(tmp_path, monkeypatch):
         failed = await client.post(f"/api/v1/ai/actions/{task_action['id']}/approve")
         assert failed.status_code == 200 and failed.json()["status"] == "failed" and failed.json()["result"]["error"]["code"] == "TOOL_ERROR"
         assert (await client.post(f"/api/v1/ai/actions/{task_action['id']}/reject")).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_proposals_without_text_still_leave_an_answer(tmp_path, monkeypatch):
+    replies = [[tool_use("create_task", "t1", title="Quiz", due_at="2026-11-05T10:30:00+05:00", due_timezone="Asia/Almaty")], []]
+    async with chat(tmp_path, monkeypatch, replies) as (client, _, _factory):
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        await run(client, conversation["id"], "Quiz at 10:30", "silent")
+        answer = (await client.get(f"/api/v1/ai/conversations/{conversation['id']}/messages")).json()[-1]
+        assert answer["role"] == "assistant" and answer["content"] == "Prepared 1 change for your approval."
+        action = (await client.get(f"/api/v1/ai/conversations/{conversation['id']}/actions")).json()[0]
+        assert action["message_id"] == answer["id"] and action["items"][0]["detail"] == "Due 2026-11-05T10:30:00+05:00"
+        approved = (await client.post(f"/api/v1/ai/actions/{action['id']}/approve")).json()
+        assert approved["status"] == "approved"
 
 
 @pytest.mark.asyncio

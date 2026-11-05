@@ -1,4 +1,4 @@
-import type { AIConversation } from '@aelys/shared'
+import type { AIConversation, AIRunStep } from '@aelys/shared'
 import { BookOpen, Calendar, ChartColumn, MapPin, MessageCircle, Mail, NotebookText, Sparkles, SquareCheck, Wallet, type AelysIconComponent } from '../../icons'
 
 export type SourceId = 'tasks' | 'calendar' | 'notes' | 'knowledge'
@@ -84,4 +84,6 @@ export interface RunStep { readonly id: string; readonly label: string; readonly
 export const SOURCE_IDS = new Set<string>(SOURCES.map((item) => item.id))
 /** Label for a tool event that carried none: "list_tasks" -> "List tasks". */
 export const toolLabel = (tool: string) => { const words = tool.replace(/[._-]+/g, ' ').trim(); return words ? words[0]!.toLocaleUpperCase() + words.slice(1) : 'Used a tool' }
+/** Steps stored with an answer; unknown sources just lose their icon. */
+export const savedSteps = (steps: readonly AIRunStep[] | undefined): RunStep[] => (steps ?? []).map((step) => ({ id: step.id, label: step.label, detail: step.detail ?? '', state: 'done', ...(SOURCES.some((item) => item.id === step.source) ? { source: step.source as SourceId } : {}) }))
 export const stepsSummary = (steps: readonly RunStep[]) => steps.map((step) => step.label).join(' · ')

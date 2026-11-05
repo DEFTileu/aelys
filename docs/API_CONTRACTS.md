@@ -695,13 +695,19 @@ there are no new endpoint permissions in the merge revision.
   `ai_actions` row and emit SSE `ai.action.proposed`
   `{run_id, action_id, tool, title, summary, items[{title, detail, meta}]}`.
   `GET /ai/conversations/{id}/actions` lists them (`status`: `pending|approved|rejected|failed`,
-  `result`). `POST /ai/actions/{id}/approve` executes once through the tool registry
+  `result`, `message_id` of the answer they belong to; older runs point at the prompt). `POST /ai/actions/{id}/approve` executes once through the tool registry
   with the owner's write scope (a repeat returns the stored result; a failure stores
   `result.error {code, message}` and status `failed`; rejected actions return 409).
   `POST /ai/actions/{id}/reject` is idempotent for rejected actions.
 - `ai.tool.requested` / `ai.tool.result` carry `label` ("Read your tasks"),
   `source` (`tasks|calendar|notes`) and, on results, `detail` ("6 tasks, 2 due this
   week"). `ai.run.completed` carries `input_tokens`, `output_tokens`, `estimated_cost`.
+- Within a run every step replays the model's own tool calls with their results
+  (Claude `tool_use`/`tool_result`, OpenRouter `tool_calls`/`role: tool`; thinking
+  blocks are not replayed). A tool run always stores an answer: the model text, or
+  "Prepared N changes for your approval." when it proposed without text. The answer
+  message carries `steps[{id, label, detail?, source?}]` so the chat shows them after
+  a reload. `create_task` accepts `due_at` and `due_timezone`.
 - `POST /ai/attachments {name, content_base64}` accepts `.txt .md .csv .json .pdf`
   up to 2 MB (413 `ATTACHMENT_TOO_LARGE`, 422 for other types or unreadable files),
   extracts text, keeps it 24 h owner-scoped and returns `{id, name, size, chars}`.

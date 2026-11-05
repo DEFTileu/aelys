@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,6 +144,8 @@ class CreateTaskToolArgs(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str = Field(default="", max_length=10_000)
     project_id: str | None = Field(default=None, max_length=36)
+    due_at: AwareDatetime | None = None
+    due_timezone: str | None = Field(default=None, max_length=64)
 
 class CreateNoteToolArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -189,7 +191,9 @@ def _tool_registry(db: AsyncSession, owner_id: str, event_id: str) -> ToolRegist
         project_id = arguments.get("project_id")
         if project_id is not None and not await _owned_project(db, owner_id, str(project_id)):
             raise ValueError("project is outside the owner scope")
-        item = await capture.create_task(db, owner_id, title=str(arguments["title"]), description=str(arguments.get("description", "")), project_id=str(project_id) if project_id is not None else None)
+        due_at = datetime.fromisoformat(str(arguments["due_at"])) if arguments.get("due_at") else None
+        item = await capture.create_task(db, owner_id, title=str(arguments["title"]), description=str(arguments.get("description", "")), project_id=str(project_id) if project_id is not None else None,
+                                         due_at=due_at, due_timezone=owner_timezone(arguments.get("due_timezone")) if due_at else None)
         return {"kind":"task", "id":item.id, "event_id":event_id}
 
     async def create_note(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -433,7 +437,8 @@ async def update_conversation(conversation_id: str, body: ConversationPatch, pri
     return convo
 def _message_out(message: AIMessage) -> dict[str, Any]:
     out = {"id": message.id, "conversation_id": message.conversation_id, "role": message.role, "content": message.content,
-           "source_refs_json": message.source_refs_json, "created_at": message.created_at, "feedback": message.feedback}
+           "source_refs_json": message.source_refs_json, "created_at": message.created_at, "feedback": message.feedback,
+           "steps": message.steps_json or []}
     if message.role == "user":
         out["attachments"] = [{"name": a["name"], "size": a["size"]} for a in message.attachments_json or []]
     return out
@@ -543,7 +548,7 @@ async def delete_attachment(attachment_id: str, principal=Depends(current_princi
 def _action_out(action: AIAction) -> dict[str, Any]:
     return {"id": action.id, "conversation_id": action.conversation_id, "run_id": action.run_id, "tool": action.tool,
             "title": action.title, "summary": action.summary, "items": action.items_json, "status": action.status,
-            "result": action.result_json, "created_at": action.created_at, "updated_at": action.updated_at}
+            "result": action.result_json, "message_id": action.message_id, "created_at": action.created_at, "updated_at": action.updated_at}
 async def _owned_action(db: AsyncSession, owner_id: str, action_id: str) -> AIAction:
     action = await db.get(AIAction, action_id)
     if not action or action.owner_id != owner_id:
@@ -738,9 +743,17 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 from .personal_tools import personal_tool_registry
                 registry = personal_tool_registry(db, user.id, run_id, memory_source="app_ai")
                 pending_events: list[str] = []
+                steps: dict[str, dict[str, str]] = {}
+                proposals = 0
                 async def tool_event(kind: str, payload: Mapping[str, Any]) -> None:
+                    nonlocal proposals
                     if kind in {"ai.tool.requested", "ai.tool.result"}:
                         payload = {**payload, **tool_meta(str(payload.get("tool", "")), payload.get("result") if kind == "ai.tool.result" else None)}
+                        call_id = str(payload.get("call_id", len(steps)))
+                        # The answer keeps its steps so they still show after a reload.
+                        steps[call_id] = {**steps.get(call_id, {}), "id": call_id, "label": str(payload["label"]), "state": "done",
+                                          **{key: str(payload[key]) for key in ("detail", "source") if payload.get(key)}}
+                    proposals += kind == "ai.action.proposed"
                     pending_events.append(await emit(kind, payload))
                 gate_writes(registry, db, user.id, conversation_id=item.conversation_id, run_id=run_id, message_id=item.prompt_message_id, announce=tool_event)
                 if knowledge_scope is not None:
@@ -779,8 +792,12 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                     yield await emit("ai.run.cancelled", {"run_id": run_id})
                     return
                 item.token_counts={"input":result.input_tokens,"output":result.output_tokens}; item.cost_estimate=result.cost
-                if result.text:
-                    db.add(AIMessage(conversation_id=item.conversation_id, role="assistant", content=result.text))
+                reply = result.text or (f"Prepared {proposals} change{'s' * (proposals != 1)} for your approval." if proposals else "")
+                if reply or steps:
+                    answer = AIMessage(conversation_id=item.conversation_id, role="assistant", content=reply, steps_json=list(steps.values()))
+                    db.add(answer)
+                    await db.flush()
+                    await db.execute(update(AIAction).where(AIAction.run_id == run_id, AIAction.owner_id == user.id).values(message_id=answer.id))
                     await db.execute(update(AIConversation).where(AIConversation.id == item.conversation_id).values(updated_at=datetime.now(UTC)))
                 await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(UTC),token_counts=item.token_counts,cost_estimate=item.cost_estimate)); await db.commit()
                 yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.text), "input_tokens": result.input_tokens, "output_tokens": result.output_tokens, "estimated_cost": str(result.cost)})

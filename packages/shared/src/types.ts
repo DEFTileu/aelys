@@ -613,8 +613,11 @@ export interface AIMessageIn {
   readonly source_refs?: readonly JsonObject[];
 }
 export type AIFeedback = "up" | "down" | null;
+/** A tool step the agent took for an answer, kept so it still shows after a reload. */
+export interface AIRunStep { readonly id: string; readonly label: string; readonly detail?: string; readonly source?: string }
 export interface AIMessage extends AIMessageIn {
   readonly source_refs_json?: readonly KnowledgeSource[];
+  readonly steps?: readonly AIRunStep[];
   readonly attachments?: readonly { readonly name: string; readonly size: number }[];
   readonly feedback?: AIFeedback;
   readonly id: Id;
@@ -659,6 +662,8 @@ export interface AIAction {
   readonly items: readonly AIActionItem[];
   readonly status: AIActionStatus;
   readonly result?: unknown;
+  /** The answer the proposal belongs to (older runs point at the prompt instead). */
+  readonly message_id?: Id | null;
 }
 export interface AIRun {
   readonly id: Id;
