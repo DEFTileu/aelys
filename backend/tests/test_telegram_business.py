@@ -1011,3 +1011,27 @@ async def test_fast_poll_failure_does_not_abort_remaining_chats(setup, monkeypat
     assert len(fake.sent) == 1 and fake.sent[0][0] == 333
     async with sessions() as session:
         assert (await session.get(TelegramBusinessMessage, row['id'])).draft_status == 'ready'
+
+
+async def test_auto_reply_turns_on_without_instructions(setup):
+    from app.ai.crypto import encrypt_secret
+    from app.core.models import AIProvider, AIProviderSecret
+
+    client, sessions, fake = setup
+    item, _ = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        integration = await session.get(TelegramIntegration, item["id"])
+        provider = AIProvider(owner_id=integration.owner_id, kind="openrouter", enabled=True,
+                              model_policy_json={"default_model": "test-model"})
+        session.add(provider)
+        await session.flush()
+        session.add(AIProviderSecret(provider_id=provider.id, owner_id=integration.owner_id,
+                                     encrypted_value=encrypt_secret("synthetic-provider-secret")))
+        integration.provider_id = provider.id
+        await session.commit()
+        provider_id = provider.id
+    current = (await client.get(PREFIX + "/status")).json()
+    assert current["instructions"] == ""
+    response = await client.patch(PREFIX + "/settings", json={"version": current["version"], "auto_reply": True, "provider_id": provider_id, "instructions": ""})
+    assert response.status_code == 200, response.text
+    assert response.json()["auto_reply"] is True

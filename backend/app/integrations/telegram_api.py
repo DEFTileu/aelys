@@ -214,8 +214,6 @@ async def settings(body: SettingsIn, principal=Depends(current_principal), db: A
             raise service.error(409, "PROVIDER_REQUIRED", "Для автоответов выберите настроенного AI-провайдера.")
         if not item.owner_telegram_id or not item.business_capable:
             raise service.error(409, "TELEGRAM_BINDING_REQUIRED", "Привяжите владельца и включите Secretary Mode в BotFather.")
-        if not str(values.get("instructions", item.instructions)).strip():
-            raise service.error(409, "TELEGRAM_INSTRUCTIONS_REQUIRED", "Опишите бизнес и правила ответов ассистента.")
     if 'digest_time' in values or 'timezone' in values:
         values['pending_digest_on'] = None
         values['pending_digest_at'] = None
