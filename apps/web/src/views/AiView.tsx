@@ -12,13 +12,13 @@ import { useOwner } from '../lib/owner'
 import { consumeSse } from '../lib/sse'
 import type { ApiStatus } from '../types'
 import { ActionCard, AnswerActions, FileChip, RunSteps, SourceRows, SourcesPopover, Tile } from './ai/ChatParts'
-import { ACCEPTED_FILES, clock, DEFAULT_SOURCES, MAX_FILE_BYTES, SOURCES, SOURCE_IDS, chatTone, estimateTokens, formatCost, formatTokens, formatWindow, groupConversations, scopesFor, sourceChip, sourceSummary, sourcesOn, toolLabel, whenLabel, type RunStep, type SourceId } from './ai/chatModel'
+import { ACCEPTED_FILES, clock, DEFAULT_SOURCES, MAX_FILE_BYTES, SOURCES, SOURCE_IDS, chatTone, estimateTokens, formatCost, formatTokens, formatWindow, groupConversations, savedSteps, scopesFor, sourceChip, sourceSummary, sourcesOn, toolLabel, whenLabel, type RunStep, type SourceId } from './ai/chatModel'
 import './desktop/page-tokens.css'
 import './ai/ai-chat.css'
 import { navigate } from '../lib/router'
 import { MarkdownContent } from '../components/MarkdownContent'
 
-type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at' | 'source_refs_json' | 'attachments' | 'feedback'>>
+type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at' | 'source_refs_json' | 'attachments' | 'feedback' | 'steps'>>
 /** How the latest run ended in this session; drives the Stopped label and the error card. */
 interface Outcome { readonly status: 'done' | 'stopped' | 'error'; readonly prompt: string; readonly code?: string; readonly message?: string }
 /** What a finished run leaves next to its answer: the tool steps and the "Claude · Sonnet 4.5 · 3.2s" line. */
@@ -149,7 +149,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
     const client = getSharedApiClient()
     void client.aiMessages(conversationId).then((items) => { if (live) { setLines(items); setPartial('') } }).catch(() => { if (live) setNotice('Could not load this conversation.') }).finally(() => { if (live) setLoading(false) })
     // Proposals survive a reload: pending ones can still be approved. A failure here must not block the chat.
-    void Promise.resolve().then(() => client.aiConversationActions(conversationId)).then((items) => { if (live && Array.isArray(items)) setActions(items) }).catch(() => undefined)
+    void Promise.resolve().then(() => client.aiConversationActions(conversationId)).then((items) => { if (live && Array.isArray(items)) setActions(items.map((item) => item.message_id ? { ...item, anchor: item.message_id } : item)) }).catch(() => undefined)
     return () => { live = false }
   }, [conversationId])
   useEffect(() => { const el = scroller.current; if (el && pinned.current) el.scrollTop = el.scrollHeight }, [lines, partial, liveSteps, running, actions, extras])
@@ -301,8 +301,9 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
   const live = running
   const card = (item: ChatAction) => <ActionCard key={item.id} action={item} busy={actionBusy === item.id} onApprove={() => void decide(item.id, 'approve')} onReject={() => void decide(item.id, 'reject')} onAdjust={() => { setMessage((text) => text || `Change “${item.title}”: `); field.current?.focus() }} />
   const actionCards = (anchor: string) => actions.filter((item) => item.anchor === anchor).map(card)
-  // Proposals restored after a reload carry no message link; they sit under the latest answer.
-  const unanchored = actions.filter((item) => !item.anchor)
+  // Proposals without a shown answer (older runs linked them to the prompt) sit under the latest answer.
+  const answerIds = new Set(shown.flatMap((line) => line.role === 'assistant' ? [line.id] : []))
+  const unanchored = actions.filter((item) => item.anchor !== LIVE && !answerIds.has(item.anchor ?? ''))
   const ask = (prompt: string) => void execute(prompt)
 
   return <div ref={root} className={`actual-ai${compact ? ' actual-ai--compact' : ''}${historyOpen ? ' actual-ai--history-open' : ''}`}>
@@ -354,7 +355,7 @@ export function AiView({ apiStatus }: { apiStatus: ApiStatus }) {
               : <article className="actual-ai__line">
                 <AelysMark size={30} />
                 <div className="actual-ai__answer">
-                  {extra && <RunSteps steps={extra.steps} live={false} />}
+                  <RunSteps steps={extra?.steps ?? savedSteps(line.steps)} live={false} />
                   <div className="actual-ai__bubble"><MarkdownContent text={line.content} />{line.source_refs_json?.length ? <SourceList sources={line.source_refs_json} /> : null}</div>
                   {actionCards(line.id)}{line === lastAssistant && unanchored.map(card)}
                   {line.role === 'assistant' && <AnswerActions text={line.content} {...(extra?.meta ? { meta: extra.meta } : {})} feedback={feedback[line.id] ?? line.feedback ?? null} canRegenerate={line === lastAssistant} regenDisabled={running || loading || !providerId} canRate={!line.id.startsWith('stopped-')} onRegenerate={regenerate} onFeedback={(next) => void rate(line, next)} />}

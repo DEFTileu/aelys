@@ -156,6 +156,16 @@ describe('run steps, action card and answer actions', () => {
     expect(client.rejectAIAction).toHaveBeenCalledWith('act9')
     expect(host.querySelector('.actual-ai__action')!.textContent).toContain('Rejected')
   })
+  it('keeps the steps and the proposal on their own answer after reload', async () => {
+    client.aiMessages.mockResolvedValue([{ id: 'u1', role: 'user', content: 'Plan my day' }, { id: 'a1', role: 'assistant', content: 'Earlier answer' },
+      { id: 'u2', role: 'user', content: 'Add a quiz' }, { id: 'a2', role: 'assistant', content: 'Prepared 1 change for your approval.', steps: [{ id: 'c1', label: 'Propose a new task', detail: 'Waiting for your approval', source: 'tasks' }] }])
+    client.aiConversationActions.mockResolvedValue([{ id: 'act7', tool: 'create_task', title: 'Create task', summary: 'Quiz', items: [{ title: 'Quiz' }], status: 'pending', message_id: 'a2' }])
+    await click(find('Plan for today', '.actual-ai__conversation-main'))
+    const answers = [...host.querySelectorAll('.actual-ai__answer')]
+    expect(answers[0]!.textContent).not.toContain('Propose a new task')
+    expect(answers[1]!.textContent).toContain('Propose a new task')
+    expect(answers[1]!.querySelector('.actual-ai__action')!.textContent).toContain('Quiz')
+  })
   it('persists thumbs up and down, toggling off with a second click', async () => {
     await click(find('Plan for today', '.actual-ai__conversation-main'))
     client.setAIMessageFeedback.mockResolvedValue({})
