@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from app.ai.models import PermissionContext, ToolCall
+from app.automation import hooks
 from app.ai.policy import ServerPolicyEngine
 from app.core.models import (
     CalendarEvent,
@@ -146,13 +147,26 @@ async def record_domain_change(db: AsyncSession, item: Owned, *, track_task_cloc
     await db.flush()
     await db.refresh(item)
     prior = await db.get(SyncRecord, (item.owner_id, kind, item.id))
+    completed_now = False
     if track_task_clock and isinstance(item, Task):
-        await apply_task_transition(db, item, prior)
+        completed_now = await apply_task_transition(db, item, prior)
     operation = 'delete' if item.deleted_at else ('update' if prior else 'create')
     payload = domain_payload(item, kind)
-    return await record_change(db, owner_id=item.owner_id, kind=kind, resource_id=item.id,
-                               version=item.version, payload=payload, operation=operation,
-                               deleted_at=item.deleted_at)
+    change = await record_change(db, owner_id=item.owner_id, kind=kind, resource_id=item.id,
+                                 version=item.version, payload=payload, operation=operation,
+                                 deleted_at=item.deleted_at)
+    if operation == 'create' and isinstance(item, Task):
+        hooks.enqueue(db, item.owner_id, 'task.created', f'task.created:{item.id}', _task_event(item))
+    if completed_now and isinstance(item, Task):
+        hooks.enqueue(db, item.owner_id, 'task.completed', f'task.completed:{item.id}:{item.version}', _task_event(item))
+    if operation == 'create' and isinstance(item, Note):
+        hooks.enqueue(db, item.owner_id, 'note.created', f'note.created:{item.id}',
+                      {'note_id': item.id, 'project_id': item.project_id, 'title': item.title})
+    return change
+
+
+def _task_event(item: Task) -> dict[str, Any]:
+    return {'task_id': item.id, 'project_id': item.project_id, 'title': item.title, 'status': item.status}
 
 
 def domain_payload(item: Owned, kind: str) -> dict[str, Any]:

@@ -46,10 +46,13 @@ async def capture_task_statuses(db: AsyncSession, owner_id: str) -> None:
     state.owners[owner_id] = {task_id: (version, status) for task_id, version, status in rows}
 
 
-async def apply_task_transition(db: AsyncSession, task: Task, prior: SyncRecord | None) -> None:
-    """Set clocks and append history without changing the domain version."""
+async def apply_task_transition(db: AsyncSession, task: Task, prior: SyncRecord | None) -> bool:
+    """Set clocks and append history without changing the domain version.
+
+    Returns True only when this call recorded a transition into a completed status.
+    """
     if task.deleted_at is not None or (prior is not None and prior.version >= task.version):
-        return
+        return False
     state: _StatusSnapshot | None = db.info.get(_SNAPSHOT_KEY)
     snapshot = state.owners.get(task.owner_id, {}).get(task.id) if state is not None else None
     previous: str | None = None
@@ -61,14 +64,14 @@ async def apply_task_transition(db: AsyncSession, task: Task, prior: SyncRecord 
         previous_version, previous = snapshot
     elif prior is None and snapshot is not None:
         # Existing row, no accepted version increment: never invent history.
-        return
+        return False
     current_state = task.status.strip().casefold()
     previous_state = previous.strip().casefold() if previous is not None else None
     if previous == task.status or (previous is None and current_state == 'todo'):
-        return
+        return False
     history_id = str(uuid5(NAMESPACE_URL, f'aelys:task-status:{task.owner_id}:{task.id}:{task.version}'))
     if await db.get(HistoryEntry, history_id) is not None:
-        return
+        return False
     ServerPolicyEngine().authorize(_ClockPolicy(), ToolCall('task.status.changed', {}),
         PermissionContext(actor=f'owner:{task.owner_id}', scopes=frozenset({'tasks.write'}), policy_id='owner-domain-write'))
     occurred_at = utc(now())
@@ -87,3 +90,4 @@ async def apply_task_transition(db: AsyncSession, task: Task, prior: SyncRecord 
             'completed_at': utc(task.completed_at).isoformat() if task.completed_at else None,
         }))
     await db.flush()
+    return current_state in _COMPLETED and previous_state not in _COMPLETED

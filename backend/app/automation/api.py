@@ -23,6 +23,7 @@ from app.ai.models import (
 )
 from app.ai.policy import ServerPolicyEngine
 from app.ai.tools import ToolDescriptor, ToolRegistry
+from app.automation.hooks import _running_automation
 from app.core.db import get_db
 from app.core.models import (
     ActivityEvent,
@@ -797,21 +798,21 @@ async def dry_run(
     }
 
 
-@router.post("/automations/dispatch")
-async def dispatch(
-    body: EventIn,
-    principal=Depends(current_principal),
-    db: AsyncSession = Depends(get_db),
-):
-    user, _ = principal
+async def dispatch_event(
+    db: AsyncSession,
+    owner_id: str,
+    event_kind: str,
+    event_id: str,
+    payload: dict[str, Any],
+) -> list[dict[str, str]]:
     rules = list(
         (
             await db.execute(
                 select(AutomationRule).where(
-                    AutomationRule.owner_id == user.id,
+                    AutomationRule.owner_id == owner_id,
                     AutomationRule.enabled.is_(True),
                     AutomationRule.deleted_at.is_(None),
-                    AutomationRule.trigger_kind == body.event_kind,
+                    AutomationRule.trigger_kind == event_kind,
                 )
             )
         ).scalars()
@@ -820,19 +821,19 @@ async def dispatch(
 
     for rule in rules:
         if not isinstance(rule.conditions_json, dict) or not all(
-            body.payload.get(key) == value
+            payload.get(key) == value
             for key, value in rule.conditions_json.items()
         ):
             continue
 
         execution: AutomationExecution | None = None
         try:
-            actions = _parse_actions(rule.actions_json, body.payload)
+            actions = _parse_actions(rule.actions_json, payload)
             claim = await _claim_execution(
                 db,
-                owner_id=user.id,
+                owner_id=owner_id,
                 rule_id=rule.id,
-                event_id=body.event_id,
+                event_id=event_id,
                 rate_limit=_normalize_rate_limit(rule.rate_limit_json),
             )
             if claim is None:
@@ -843,13 +844,13 @@ async def dispatch(
                 results.append({"rule_id": rule.id, "status": "rate_limited"})
                 continue
 
-            registry = _build_action_registry(db, user.id, body.event_id)
+            registry = _build_action_registry(db, owner_id, event_id)
             # Domain action writes share a savepoint. A failure keeps the
             # execution receipt in the outer transaction while rolling back
             # every partial action from this event.
             async with db.begin_nested():
                 for action in actions:
-                    project_id = await _require_action_scope(db, user.id, action)
+                    project_id = await _require_action_scope(db, owner_id, action)
                     await _authorize_action(
                         registry=registry,
                         action=action,
@@ -933,4 +934,19 @@ async def dispatch(
             raise _http_error(422, "ACTION_FAILED", "Automation action failed") from None
 
     await db.commit()
+    return results
+
+
+@router.post("/automations/dispatch")
+async def dispatch(
+    body: EventIn,
+    principal=Depends(current_principal),
+    db: AsyncSession = Depends(get_db),
+):
+    user, _ = principal
+    token = _running_automation.set(True)  # actions here must not re-enter the event queue
+    try:
+        results = await dispatch_event(db, user.id, body.event_kind, body.event_id, body.payload)
+    finally:
+        _running_automation.reset(token)
     return {"event_id": body.event_id, "results": results}
