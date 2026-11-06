@@ -59,8 +59,8 @@ async function submit(name: string) {
   if (!form) throw new Error(`Form not found: ${name}`)
   await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
 }
-async function key(target: EventTarget, value: string) {
-  await act(async () => target.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true })))
+async function key(target: EventTarget, value: string, init: KeyboardEventInit = {}) {
+  await act(async () => target.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...init })))
 }
 function row(title: string) { return host.querySelector(`[aria-label="Open task: ${title}"]`) }
 function dialog() { return host.querySelector('[role="dialog"][aria-label="Task details"], [role="dialog"][aria-labelledby]') }
@@ -527,6 +527,29 @@ describe('Tasks workspace', () => {
     expect(field('Description').value).toBe('Keep this draft')
     expect(document.activeElement?.getAttribute('role')).toBe('alert')
     expect(dialog()?.contains(document.activeElement)).toBe(true)
+  })
+
+  it('marks the task editor modal and wraps Tab and Shift+Tab within it', async () => {
+    client.tasks.mockResolvedValue([task()])
+    vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue({ 0: {} as DOMRect, length: 1, item: () => ({} as DOMRect), [Symbol.iterator]: function* () { yield {} as DOMRect } } as DOMRectList)
+    await mount()
+    await click('Open task: Plan launch')
+
+    const editor = dialog() as HTMLElement
+    const close = button('Close task editor')
+    const save = button('Save')
+    expect(editor.getAttribute('aria-modal')).toBe('true')
+
+    act(() => save.focus())
+    await key(save, 'Tab')
+    expect(document.activeElement).toBe(close)
+    act(() => close.focus())
+    await key(close, 'Tab', { shiftKey: true })
+    expect(document.activeElement).toBe(save)
+
+    act(() => document.body.focus())
+    await key(document.body, 'Tab')
+    expect(document.activeElement).toBe(close)
   })
 
   it('reflects typed tokens in the date, priority and project selects and enables Add', async () => {

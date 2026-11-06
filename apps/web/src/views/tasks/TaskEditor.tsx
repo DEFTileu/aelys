@@ -51,6 +51,23 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
         if (!pendingRef.current) onCloseRef.current()
         return
       }
+      if (event.key !== 'Tab') return
+      const dialog = dialogRef.current
+      if (!dialog) return
+      const items = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((element) => element.getClientRects().length > 0)
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (!first || !last) {
+        event.preventDefault()
+        dialog.focus()
+      } else if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => {
@@ -87,7 +104,7 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
 
   return <>
     <div className="task-editor__backdrop" onClick={() => { if (!pending) onClose() }} />
-    <aside ref={dialogRef} className="task-editor__dialog" role="dialog" aria-labelledby={headingId} data-task-id={task.id} tabIndex={-1}>
+    <aside ref={dialogRef} className="task-editor__dialog" role="dialog" aria-modal="true" aria-labelledby={headingId} data-task-id={task.id} tabIndex={-1}>
       <form className="task-editor__form" onSubmit={submit}>
         <header className="task-editor__header">
           <h2 id={headingId}>Task details</h2>{dirty && <span className="task-editor__unsaved">Unsaved</span>}
