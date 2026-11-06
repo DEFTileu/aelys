@@ -121,7 +121,8 @@ export function createNativeTransport(invoke: NativeInvoke, makeChannel?: Native
     connectGmail: (origin: string) => invoke<boolean>('native_gmail_connect', { origin }),
     connectCalendar: (origin: string) => invoke<boolean>('native_calendar_connect', { origin }),
     logout: (origin: string) => invoke<NativeStatus>('native_logout', { origin }),
-    operation: <T>(origin: string, operation: NativeOperation, diagnostic?: (value: NativeDiagnostic) => void) => diagnostic && makeDiagnosticChannel
+    // Rust only accepts the diagnostic channel for ai_run_create; other operations go through the plain command.
+    operation: <T>(origin: string, operation: NativeOperation, diagnostic?: (value: NativeDiagnostic) => void) => diagnostic && makeDiagnosticChannel && operation.type === 'ai_run_create'
       ? invoke<T>('native_operation_diagnostic', { origin, operation, diagnostic: makeDiagnosticChannel(diagnostic) })
       : invoke<T>('native_operation', { origin, operation }),
     aiEvents: async (origin: string, id: string, requestId: string, receive: (message: NativeAIStreamMessage) => void) => {

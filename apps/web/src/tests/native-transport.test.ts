@@ -64,6 +64,17 @@ describe('native transport', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  it('uses the diagnostic channel only for AI run creation', async () => {
+    const invoke = vi.fn(async (_command: string, _args?: Record<string, unknown>) => ({ ok: true }))
+    const transport = createNativeTransport(invoke as NativeInvoke, undefined, (receive) => ({ receive }))
+    const origin = 'https://aelys.example'
+    const diagnostic = vi.fn()
+    await transport.operation(origin, { type: 'tasks' } as never, diagnostic)
+    await transport.operation(origin, { type: 'ai_run_create', run: { message: 'Hello' } }, diagnostic)
+    expect(invoke.mock.calls[0]).toEqual(['native_operation', { origin, operation: { type: 'tasks' } }])
+    expect(invoke.mock.calls[1]?.[0]).toBe('native_operation_diagnostic')
+    expect(invoke.mock.calls[1]?.[1]).toMatchObject({ origin, operation: { type: 'ai_run_create' } })
+  })
   it('forwards biometric status and changes to native commands', async () => {
     const status = { supported: true, available: true, enabled: false }
     const invoke = vi.fn(async () => status)
