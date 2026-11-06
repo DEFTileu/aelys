@@ -23,16 +23,17 @@ afterEach(() => { act(() => root.unmount()); document.body.innerHTML = '' })
 it('groups apps as designed and shows real statuses only', async () => {
   await mount()
   const text = host.textContent!
-  for (const title of ['Pinned', 'Plan & reflect', 'Focus & calm', 'Quick tools', 'Learn & create', 'Your sites']) expect(text).toContain(title)
+  for (const title of ['Pinned', 'Quick tools', 'Learn & create', 'Your sites']) expect(text).toContain(title)
+  for (const title of ['Plan & reflect', 'Review', 'Weeks', 'Habits', 'Countdowns', 'Breathe']) expect(text).not.toContain(title)
   expect(text).toContain('1h 15m today'); expect(text).toContain('1 rule on'); expect(text).not.toContain('3 of 5')
-  expect(host.querySelectorAll('.apps-soon').length).toBe(8)
+  expect(host.querySelectorAll('.apps-soon').length).toBe(4)
 })
 it('opens real routes, local apps and ignores Soon tiles', async () => {
   await mount()
   await act(async () => [...host.querySelectorAll<HTMLElement>('.apps-card__open')].find(b => b.textContent === 'Automation')!.click())
   expect(nav).toHaveBeenCalledWith('/automation')
-  const habits = [...host.querySelectorAll<HTMLButtonElement>('.apps-card__open')].find(b => b.textContent === 'Habits')!
-  expect(habits.disabled).toBe(true)
+  const cards = [...host.querySelectorAll<HTMLButtonElement>('.apps-card__open')].find(b => b.textContent === 'Cards')!
+  expect(cards.disabled).toBe(true)
   await act(async () => [...host.querySelectorAll<HTMLElement>('.apps-card__open')].find(b => b.textContent === 'Calculator')!.click())
   await type('Expression', '15% of 80')
   await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
@@ -44,7 +45,8 @@ it('pins persist and search filters', async () => {
   await mount()
   await press('Unpin Focus'); expect(JSON.parse(localStorage.getItem('aelys.apps.pins.v1')!)).not.toContain('focus')
   await type('Search apps', 'zzz'); expect(host.textContent).toContain('No apps match')
-  await type('Search apps', 'breath'); expect(host.textContent).toContain('Results'); expect(host.textContent).toContain('Breathe')
+  await type('Search apps', 'breath'); expect(host.textContent).toContain('No apps match')
+  await type('Search apps', 'calculator'); expect(host.textContent).toContain('Results'); expect(host.textContent).toContain('Calculator')
 })
 it('adds, edits, opens with noopener and removes a site', async () => {
   const open = vi.spyOn(window, 'open').mockReturnValue(null)

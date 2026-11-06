@@ -1,29 +1,24 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react'
-import { Brush, Calculator, CalendarRange, ChevronLeft, ClipboardCheck, Dices, Flame, Globe, GraduationCap, Hourglass, Keyboard, Layers, MessageSquare, Pencil, Pin, Plus, Search, Terminal, Timer, Workflow, Wrench, Wind, BookOpen, ArrowUpRight, type LucideIcon } from 'lucide-react'
+import { Brush, Calculator, ChevronLeft, Dices, Globe, GraduationCap, Keyboard, Layers, MessageSquare, Pencil, Pin, Plus, Search, Terminal, Timer, Workflow, Wrench, BookOpen, ArrowUpRight, type LucideIcon } from 'lucide-react'
 import { isMacPlatform } from '../data/navigation'
 import { getSharedApiClient } from '../lib/api'
 import { navigate } from '../lib/router'
 import type { ApiStatus, RoutePath } from '../types'
-import { BreatheApp, CalculatorApp, DecideApp, ZonesApp, cityOf, zoneTime } from './LocalApps'
+import { CalculatorApp, DecideApp, ZonesApp, cityOf, zoneTime } from './LocalApps'
 import { ToolboxApp } from './ToolboxApp'
 import './apps.css'
 
 type Tone = 'blue' | 'coral' | 'violet' | 'orange' | 'green'
-type LocalId = 'toolbox' | 'calc' | 'zones' | 'decide' | 'breathe'
+type LocalId = 'toolbox' | 'calc' | 'zones' | 'decide'
 type Entry = { group: string; id: string; title: string; icon: LucideIcon; desc: string; status?: string; route?: RoutePath; local?: LocalId; soon?: boolean }
 
 const GROUPS: readonly { id: string; title: string; tone: Tone }[] = [
-  { id: 'plan', title: 'Plan & reflect', tone: 'blue' }, { id: 'mind', title: 'Focus & calm', tone: 'coral' }, { id: 'quick', title: 'Quick tools', tone: 'violet' },
+  { id: 'mind', title: 'Focus & calm', tone: 'coral' }, { id: 'quick', title: 'Quick tools', tone: 'violet' },
   { id: 'learn', title: 'Learn & create', tone: 'orange' }, { id: 'talk', title: 'Communicate', tone: 'blue' }, { id: 'power', title: 'Power tools', tone: 'green' },
 ]
 // Tiles marked soon have no data source or screen in the product yet: they stay visible as designed but do nothing.
 const CATALOG: readonly Entry[] = [
-  { group: 'plan', id: 'review', title: 'Review', icon: ClipboardCheck, desc: 'Weekly look back and plan ahead', soon: true },
-  { group: 'plan', id: 'weeks', title: 'Weeks', icon: CalendarRange, desc: 'Your year as a grid of weeks', soon: true },
-  { group: 'plan', id: 'habits', title: 'Habits', icon: Flame, desc: 'Daily streaks and check-ins', soon: true },
-  { group: 'plan', id: 'countdowns', title: 'Countdowns', icon: Hourglass, desc: 'Days left to what matters', soon: true },
   { group: 'mind', id: 'focus', title: 'Focus', icon: Timer, desc: 'Pomodoro, breaks and stopwatch', route: '/timer' },
-  { group: 'mind', id: 'breathe', title: 'Breathe', icon: Wind, desc: 'Guided breathing patterns', local: 'breathe', status: 'Box · 4-7-8 · Calm' },
   { group: 'quick', id: 'calc', title: 'Calculator', icon: Calculator, desc: 'Math, units, percent and tips', local: 'calc', status: 'Units and percent' },
   { group: 'quick', id: 'zones', title: 'Zones', icon: Globe, desc: 'Time across cities', local: 'zones' },
   { group: 'quick', id: 'decide', title: 'Decide', icon: Dices, desc: 'Coin, dice and a choice wheel', local: 'decide', status: 'Coin · dice · wheel' },
@@ -36,7 +31,7 @@ const CATALOG: readonly Entry[] = [
   { group: 'power', id: 'automation', title: 'Automation', icon: Workflow, desc: 'When this happens, do that', route: '/automation' },
   { group: 'power', id: 'dev', title: 'Developer Hub', icon: Terminal, desc: 'Local coding agent sessions', route: '/developer' },
 ]
-const LOCAL_VIEWS: Record<LocalId, ComponentType> = { toolbox: ToolboxApp, calc: CalculatorApp, zones: ZonesApp, decide: DecideApp, breathe: BreatheApp }
+const LOCAL_VIEWS: Record<LocalId, ComponentType> = { toolbox: ToolboxApp, calc: CalculatorApp, zones: ZonesApp, decide: DecideApp }
 const DEFAULT_PINS = ['focus', 'messages', 'automation', 'toolbox']
 const PINS_KEY = 'aelys.apps.pins.v1'
 const SITES_KEY = 'aelys.apps.sites.v1'
