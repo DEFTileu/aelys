@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
@@ -124,6 +125,47 @@ async def _send_owner(integration_id: str, text: str) -> None:
         for start in range(0, len(text), 4096):
             authorize(item, 'telegram.notify_owner', external=True)
             await client.send_message(chat_id, text[start:start+4096])
+
+
+class _LiveDraft:
+    """Best-effort preview of the reply while the model writes it.
+
+    The final sendMessage stays the only delivered reply. Any draft failure (old Bot API,
+    rate limit, network) turns the preview off for this turn and never fails the turn.
+    """
+    INTERVAL_SECONDS = 1.0
+
+    def __init__(self, item: TelegramIntegration, draft_id: int) -> None:
+        from .telegram_service import TelegramClient
+        self._item, self._chat_id, self._draft_id = item, item.owner_telegram_id, draft_id or 1
+        self._client = TelegramClient(decrypt_secret(item.encrypted_token or ''))
+        self._sent_at = 0.0
+        self._enabled = True
+
+    async def _call(self, method: str, *args: Any) -> bool:
+        try:
+            authorize(self._item, 'telegram.notify_owner', external=True)
+            async with asyncio.timeout(5):
+                await getattr(self._client, method)(self._chat_id, *args)
+            return True
+        except Exception:  # noqa: BLE001 - a preview never affects the turn
+            return False
+
+    async def typing(self) -> None:
+        await self._call('send_chat_action', 'typing')
+
+    async def __call__(self, text: str) -> None:
+        text = text.strip()[:4096]
+        if not self._enabled or not text or time.monotonic() - self._sent_at < self.INTERVAL_SECONDS:
+            return
+        self._sent_at = time.monotonic()
+        self._enabled = await self._call('send_message_draft', self._draft_id, text)
+
+    async def close(self) -> None:
+        try:
+            await self._client.aclose()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def _failure(job_id: str, code: str, *, usage: tuple = (), notify: bool = True) -> None:
@@ -324,8 +366,14 @@ async def _process(job_id: str) -> None:
                 run.token_counts = {'input': input_tokens, 'output': output_tokens}
                 await db.commit()
 
-            result = await run_tool_turn(service, UUID(run_id), request, messages, registry, context,
-                                         parse_call=ai_api._tool_call, on_event=event, on_usage=account, refresh_messages=refresh_memory_messages, cancel_check=check)
+            live = _LiveDraft(item, job.telegram_update_id)
+            try:
+                await live.typing()
+                result = await run_tool_turn(service, UUID(run_id), request, messages, registry, context,
+                                             parse_call=ai_api._tool_call, on_event=event, on_usage=account,
+                                             refresh_messages=refresh_memory_messages, cancel_check=check, on_text=live)
+            finally:
+                await live.close()
             if await check():
                 raise RunCancelled('Owner connection changed')
             authorize(item, 'ai.personal.write')

@@ -38,6 +38,7 @@ async def run_tool_turn(
     refresh_messages: Callable[[tuple[ChatMessage, ...]], Awaitable[tuple[ChatMessage, ...]]] | None = None,
     cancel: asyncio.Event | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    on_text: Callable[[str], Awaitable[None]] | None = None,
     max_steps: int = 8,
 ) -> ToolTurnResult:
     """Only server scopes authorize tools; provider results always return as data.
@@ -75,8 +76,19 @@ async def run_tool_turn(
         if remaining <= 0:
             raise BudgetExceeded('Configured AI budget is exhausted')
         completion_id = run_id if step == 1 else uuid5(run_id, f'tool-step:{step}')
+        current: list[str] = []
+
+        async def stream_text(delta: str) -> None:
+            # The consumer sees the whole reply so far, joined across steps like the final text.
+            current.append(delta)
+            if on_text:
+                await on_text('\n'.join([*text, ''.join(current)]))
+
+        # Only streaming callers pass on_text, so existing services and fakes keep their signature.
+        streaming: dict[str, Any] = {'on_text': stream_text} if on_text else {}
         result = await service.complete(completion_id, replace(request, request_budget=remaining),
-                                        messages, tools=schemas, cancel=cancel)
+                                        messages, tools=schemas, cancel=cancel,
+                                        **streaming)
         await check()
         cost += result.usage.estimated_cost
         input_tokens += result.usage.usage.input_tokens

@@ -266,3 +266,66 @@ async def test_terminal_storage_failure_recovers_without_model_replay(setup,monk
         gate.set();await dialogue.wait_for_personal_turns()
     finally:
         await dialogue.stop_personal_turns()
+
+
+class StreamingService(Service):
+    async def complete(self, run_id, request, messages, **kwargs):
+        for part in ('Сейчас', ' посмотрю'):  # deltas, like a provider stream
+            await kwargs['on_text'](part)
+        return await super().complete(run_id, request, messages, **kwargs)
+
+
+async def test_reply_streams_as_draft_and_is_delivered_once(setup, monkeypatch):
+    from app.integrations import telegram_personal_dialogue as dialogue
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+    model = StreamingService(); model.requests = []
+    model.response = SimpleNamespace(text='Сейчас посмотрю', tool_calls=())
+    monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: model)
+    monkeypatch.setattr(dialogue._LiveDraft, 'INTERVAL_SECONDS', 0)
+    calls = []
+
+    async def draft(self, chat_id, draft_id, text):
+        calls.append(('draft', chat_id, draft_id, text))
+
+    async def action(self, chat_id, kind):
+        calls.append(('action', chat_id, kind))
+
+    monkeypatch.setattr(fake, 'send_message_draft', draft, raising=False)
+    monkeypatch.setattr(fake, 'send_chat_action', action, raising=False)
+    fake.updates = [ordinary(1, 'Что у меня завтра?')]
+    await service.poll_once(integration_id, timeout=0)
+    sent_before = len(fake.sent)
+    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
+    async with sessions() as db:
+        owner_chat = (await db.get(TelegramIntegration, integration_id)).owner_telegram_id
+    assert calls[0] == ('action', owner_chat, 'typing')
+    assert [c[3] for c in calls[1:]] == ['Сейчас', 'Сейчас посмотрю']
+    assert {c[1] for c in calls} == {owner_chat} and all(c[2] != 0 for c in calls[1:])
+    replies = fake.sent[sent_before:]
+    assert [r[1] for r in replies] == ['Сейчас посмотрю']
+
+
+async def test_draft_failure_turns_preview_off_but_still_replies(setup, monkeypatch):
+    from app.integrations import telegram_personal_dialogue as dialogue
+    from app.integrations.telegram_transport import TelegramError
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+    model = StreamingService(); model.requests = []
+    model.response = SimpleNamespace(text='Сейчас посмотрю', tool_calls=())
+    monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: model)
+    monkeypatch.setattr(dialogue._LiveDraft, 'INTERVAL_SECONDS', 0)
+    attempts = []
+
+    async def draft(self, chat_id, draft_id, text):
+        attempts.append(text)
+        raise TelegramError(400)
+
+    monkeypatch.setattr(fake, 'send_message_draft', draft, raising=False)
+    fake.updates = [ordinary(1, 'Привет')]
+    await service.poll_once(integration_id, timeout=0)
+    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
+    assert attempts == ['Сейчас']
+    assert fake.sent[-1][1] == 'Сейчас посмотрю'
+    async with sessions() as db:
+        assert (await db.execute(select(TelegramPersonalJob))).scalar_one().state == 'done'

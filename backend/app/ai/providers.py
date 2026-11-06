@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
-from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from .errors import ProviderError, RunCancelled, redact_error
@@ -35,6 +35,24 @@ class ProviderAdapter(Protocol):
 def _usage(body: Mapping[str, Any]) -> Usage:
     u = body.get("usage") or {}
     return Usage(int(u.get("input_tokens", u.get("prompt_tokens", 0)) or 0), int(u.get("output_tokens", u.get("completion_tokens", 0)) or 0))
+
+
+def _streamed_usage(request: ProviderRequest, usage: Usage, output: str) -> Usage:
+    # shortcut: chars/4 when a stream omits usage, so the budget never sees zero; drop once both providers always report it.
+    if usage.input_tokens and usage.output_tokens:
+        return usage
+    return Usage(usage.input_tokens or sum(len(m.content) for m in request.messages) // 4,
+                 usage.output_tokens or len(output) // 4)
+
+
+def _arguments(raw: str) -> Mapping[str, Any]:
+    try:
+        value = json.loads(raw or "{}")
+    except ValueError:
+        raise ProviderError("provider stream returned invalid tool arguments") from None
+    if not isinstance(value, dict):
+        raise ProviderError("provider stream returned invalid tool arguments")
+    return value
 
 
 def _content(message: ChatMessage, *, claude: bool) -> str | list[dict[str, Any]]:
@@ -165,6 +183,41 @@ class ClaudeAdapter(_BaseAdapter):
                 if delta.get("type") == "text_delta":
                     yield str(delta.get("text", ""))
 
+    async def complete_streaming(self, request: ProviderRequest, on_text: Callable[[str], Awaitable[None]]) -> ProviderResponse:
+        """Same result as complete(), with text deltas reported while the model writes."""
+        text: list[str] = []
+        tools: dict[int, dict[str, Any]] = {}
+        usage, request_id, finished = Usage(), None, False
+        async for item in self._stream("/v1/messages", self._payload(replace(request, stream=True)), media=any(m.media for m in request.messages)):
+            kind = item.get("type")
+            if kind == "error" or item.get("error"):
+                raise ProviderError("provider stream failed")
+            if kind == "message_start":
+                message = item.get("message") or {}
+                request_id, usage = message.get("id"), _usage(message)
+            elif kind == "message_delta" and item.get("usage"):
+                delta_usage = _usage(item)
+                usage = Usage(max(usage.input_tokens, delta_usage.input_tokens), max(usage.output_tokens, delta_usage.output_tokens))
+            elif kind == "content_block_start":
+                block = item.get("content_block") or {}
+                if block.get("type") == "tool_use":
+                    tools[int(item.get("index", len(tools)))] = {"id": block.get("id"), "name": block.get("name"), "json": []}
+            elif kind == "content_block_delta":
+                delta = item.get("delta") or {}
+                if delta.get("type") == "text_delta" and delta.get("text"):
+                    text.append(str(delta["text"]))
+                    await on_text(text[-1])
+                elif delta.get("type") == "input_json_delta" and int(item.get("index", -1)) in tools:
+                    tools[int(item["index"])]["json"].append(str(delta.get("partial_json", "")))
+            elif kind == "message_stop":
+                finished = True
+        if not finished:
+            raise ProviderError("provider stream ended early")
+        calls = tuple({"type": "tool_use", "id": tool["id"], "name": tool["name"], "input": _arguments("".join(tool["json"]))}
+                      for _, tool in sorted(tools.items()))
+        self.last_usage = _streamed_usage(request, usage, "".join(text) + json.dumps(calls, default=str))
+        return ProviderResponse("".join(text), self.last_usage, request_id, calls)
+
 
 class OpenRouterAdapter(_BaseAdapter):
     kind = ProviderKind.OPENROUTER
@@ -191,3 +244,36 @@ class OpenRouterAdapter(_BaseAdapter):
             delta = choices[0].get("delta", {}) if choices else {}
             if delta.get("content"):
                 yield str(delta["content"])
+
+    async def complete_streaming(self, request: ProviderRequest, on_text: Callable[[str], Awaitable[None]]) -> ProviderResponse:
+        """Same result as complete(), with text deltas reported while the model writes."""
+        text: list[str] = []
+        tools: dict[int, dict[str, Any]] = {}
+        usage, request_id, finished = Usage(), None, False
+        payload = {**self._payload(replace(request, stream=True)), "stream_options": {"include_usage": True}}
+        async for item in self._stream("/api/v1/chat/completions", payload, media=any(m.media for m in request.messages)):
+            if item.get("error"):
+                raise ProviderError("provider stream failed")
+            request_id = request_id or item.get("id")
+            if item.get("usage"):
+                usage = _usage(item)
+            choices = item.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            if delta.get("content"):
+                text.append(str(delta["content"]))
+                await on_text(text[-1])
+            for part in delta.get("tool_calls") or ():
+                tool = tools.setdefault(int(part.get("index", len(tools))), {"id": None, "name": "", "arguments": []})
+                function = part.get("function") or {}
+                tool["id"] = part.get("id") or tool["id"]
+                tool["name"] = function.get("name") or tool["name"]
+                tool["arguments"].append(str(function.get("arguments") or ""))
+            finished = finished or bool(choices[0].get("finish_reason"))
+        if not finished:
+            raise ProviderError("provider stream ended early")
+        calls = tuple({"id": tool["id"], "type": "function", "function": {"name": tool["name"], "arguments": json.dumps(_arguments("".join(tool["arguments"])), ensure_ascii=False)}}
+                      for _, tool in sorted(tools.items()))
+        self.last_usage = _streamed_usage(request, usage, "".join(text) + json.dumps(calls, default=str))
+        return ProviderResponse("".join(text), self.last_usage, request_id, calls)

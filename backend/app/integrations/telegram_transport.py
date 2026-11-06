@@ -213,3 +213,12 @@ class TelegramClient:
         if reply_to_message_id is not None:
             payload["reply_parameters"] = {"message_id": reply_to_message_id}
         return await self._object("sendMessage", payload)
+
+    async def send_message_draft(self, chat_id: int, draft_id: int, text: str) -> None:
+        """Stream a partial reply into a private chat; it is only a preview until sendMessage."""
+        if draft_id == 0 or not 1 <= len(text) <= 4096:
+            raise ValueError("draft needs a non-zero id and 1 to 4096 characters")
+        await self._request("sendMessageDraft", {"chat_id": chat_id, "draft_id": draft_id, "text": text}, read_timeout=5.0)
+
+    async def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+        await self._request("sendChatAction", {"chat_id": chat_id, "action": action}, read_timeout=5.0)
