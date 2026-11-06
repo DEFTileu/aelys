@@ -10,6 +10,9 @@ fn main() {
                 &args.next().unwrap_or_else(|| "stdio".into()),
             ));
         }
+        if mode.as_deref() == Some("--action") {
+            std::process::exit(aelys_native_transport::run_action(args.collect()));
+        }
         if mode.as_deref() == Some("--cli") {
             std::process::exit(aelys_native_transport::run_cli(args.collect()));
         }

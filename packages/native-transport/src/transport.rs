@@ -10,9 +10,13 @@ use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{watch, Mutex};
 use url::{Host, Url};
 #[cfg(target_os = "macos")]
+mod actions;
+#[cfg(target_os = "macos")]
 mod cli;
 #[cfg(target_os = "macos")]
 mod mcp;
+#[cfg(target_os = "macos")]
+pub use actions::run_action;
 #[cfg(target_os = "macos")]
 pub use mcp::{run_mcp, start_mcp_broker};
 #[cfg(test)]

@@ -275,7 +275,7 @@ pub fn start_mcp_broker(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 use std::os::unix::fs::FileTypeExt;
-fn forward(args: &Value, write: bool) -> Result<Value, String> {
+pub(super) fn forward(args: &Value, write: bool) -> Result<Value, String> {
     let secret = key()?;
     let mut stream = UnixStream::connect(directory()?.join("broker.sock"))
         .map_err(|_| err("AELYS_NOT_RUNNING"))?;

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Shortcuts bridge (task, note, today); requests are brokered by the open desktop app.
+set -eu
+app_path=${AELYS_APP_PATH:-"$HOME/Applications/Aelys.app"}
+exec "$app_path/Contents/MacOS/aelys-desktop" --action "$@"

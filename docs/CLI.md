@@ -273,3 +273,6 @@ For agent read/write access while the GUI stays open, use the desktop MCP
 broker described in [MCP.md](MCP.md). It uses the open app session and does
 not consume or rotate CLI credentials. The legacy CLI lock still applies to
 ordinary authenticated CLI commands.
+
+macOS Shortcuts can create tasks and notes and read today's agenda through the
+same broker: see [SHORTCUTS.md](SHORTCUTS.md).
