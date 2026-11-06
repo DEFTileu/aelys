@@ -9,6 +9,7 @@ pub mod credentials;
 pub mod db;
 pub mod discovery;
 pub mod error;
+pub mod indexing;
 pub mod isolation;
 pub mod metadata;
 pub mod paths;

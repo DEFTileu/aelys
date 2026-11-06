@@ -24,6 +24,8 @@ pub enum RuntimeError {
     Offline,
     #[error("adapter capability is unavailable: {0}")]
     AdapterUnavailable(String),
+    #[error("session event limit exceeded")]
+    SessionEventLimitExceeded,
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
     #[error("serialization error: {0}")]

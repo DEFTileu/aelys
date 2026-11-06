@@ -12,6 +12,7 @@ rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+quick-xml = { version = "=0.42.0", features = ["serialize"] }
 sha2 = "0.10"
 thiserror = "1"
 uuid = { version = "1", features = ["serde", "v4"] }
@@ -21,6 +22,8 @@ hex = "0.4"
 futures-util = "0.3"
 tokio = { version = "1", features = ["macros", "net", "rt", "time"] }
 tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
+# In-process bounded Codex rollout decoding; no CLI, dictionary or worker features.
+zstd = { version = "0.13.3", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

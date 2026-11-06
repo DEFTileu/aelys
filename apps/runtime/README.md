@@ -9,12 +9,12 @@ The local SQLite schema stores complete session messages and FTS data. The
 backend and contains no transcript, path, prompt, command, summary, or
 embedding fields.
 
-Claude Code and Codex CLI native history formats and safe invocation flags are
-not established by the repository specifications. Their adapters probe the
-executable's version and bounded help output for the required non-interactive
-flag shape, but still report discovery/resume/run as unavailable until
-authenticated compatibility and isolation validation pass. Parsing and process
-startup remain explicit compatibility-spike seams.
+Claude Code and Codex CLI text parsers remain compatibility prototypes. The
+bounded discovery and snapshot indexing APIs accept only explicitly supplied
+roots and project bindings; they do not install a watcher, infer vendor paths,
+or activate the desktop reader. Their adapters still report discovery/resume/run
+as unavailable until authenticated compatibility and isolation validation pass.
+No installed-version or production-readiness claim follows from synthetic tests.
 
 Unattended execution is blocked until a real macOS OS-level isolation
 validation suite produces all required evidence. A current-directory check or
@@ -25,8 +25,10 @@ symlink-aware path check alone cannot authorize a run.
 From this directory:
 
 ```sh
-cargo test
+cargo build --locked --bin aelys-isolation-probe
+cargo test --locked -- --test-threads=1
 cargo fmt -- --check
+cargo clippy --locked --all-targets -- -D warnings
 ```
 
 The `heartbeat` example exercises the authenticated outbound channel against a
