@@ -173,7 +173,7 @@ async def generate_business_draft(
         service = ai_api._service(provider, decrypt_secret(secret.encrypted_value))
         result = await asyncio.wait_for(service.complete(run_id, request, messages, max_tokens=800, tools=()), timeout=60)
         # Record even an unusable response: it still incurred provider charges.
-        conversation = AIConversation(owner_id=integration.owner_id, title="TelegramBusiness", tool_scope_json={})
+        conversation = AIConversation(owner_id=integration.owner_id, title="TelegramBusiness", tool_scope_json={}, deleted_at=datetime.now(UTC))
         db.add(conversation)
         await db.flush()
         provider_name = getattr(result.provider, "value", result.provider)

@@ -92,7 +92,8 @@ async def test_context_isolation_policy_and_usage(state, monkeypatch):
     run = (await db.execute(select(AIRun))).scalar_one()
     assert run.prompt_message_id is None and run.token_counts == {"input": 10, "output": 4}
     assert run.cost_estimate == Decimal("0.012") and run.tool_scope_json == {}
-    assert (await db.execute(select(AIConversation))).scalar_one().title == "TelegramBusiness"
+    service_chat = (await db.execute(select(AIConversation))).scalar_one()
+    assert service_chat.title == "TelegramBusiness" and service_chat.deleted_at is not None
     await db.rollback()
     assert (await db.execute(select(AIRun))).scalars().all() == []
 
