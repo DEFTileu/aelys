@@ -44,7 +44,11 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
     const load = async () => {
       try {
         const client = getSharedApiClient()
-        if (apiStatus === 'ready') await client.dispatchCalendarReminders()
+        let deliveryFailed = false
+        if (apiStatus === 'ready') {
+          try { await client.dispatchCalendarReminders() }
+          catch { deliveryFailed = true }
+        }
         const records = await client.notifications()
         if (active) {
           // The first load only learns what already exists; anything unread that shows up later raises an OS banner.
@@ -56,7 +60,7 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
             const previous = current.find((item) => item.id === record.id)
             return !record.read_at && previous?.read_at ? { ...record, read_at: previous.read_at } : record
           }))
-          setNotice(apiStatus === 'ready' ? '' : 'Showing cached notifications. Reminder delivery resumes when connected.')
+          setNotice(apiStatus !== 'ready' ? 'Showing cached notifications. Reminder delivery resumes when connected.' : deliveryFailed ? 'Notifications are available, but calendar reminders could not be delivered. Check your session and permissions.' : '')
         }
       } catch { if (active) setNotice('Notifications unavailable. Check your session and connection.') }
     }

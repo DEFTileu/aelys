@@ -54,4 +54,12 @@ describe('notification center', () => {
     expect([...host.querySelectorAll('button')].find((node) => node.textContent === 'Mark all as read')?.disabled).toBe(true)
     expect(client.markNotificationRead).not.toHaveBeenCalled()
   })
+  it('loads existing notifications even when reminder delivery is denied', async () => {
+    client.dispatchCalendarReminders.mockRejectedValue(new Error('FORBIDDEN'))
+    await render(); await click('Notifications (2 unread)')
+    expect(client.notifications).toHaveBeenCalled()
+    expect(host.textContent).toContain('Today reminder')
+    expect(host.textContent).toContain('calendar reminders could not be delivered')
+    expect(host.textContent).not.toContain('Notifications unavailable')
+  })
 })
