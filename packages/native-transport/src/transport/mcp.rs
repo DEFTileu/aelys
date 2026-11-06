@@ -481,6 +481,12 @@ mod receipt_tests {
         fs::create_dir(&dir).unwrap();
         tauri::async_runtime::block_on(async {
             let state = NativeState(Mutex::new(Some(Session {
+                binding: NativeSessionBinding::new(
+                    &origin,
+                    "owner-1",
+                    "device-1",
+                    Instant::now() + Duration::from_secs(60),
+                ),
                 origin,
                 access: "test-access".into(),
                 record: Record {

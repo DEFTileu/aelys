@@ -550,6 +550,12 @@ mod tests {
     }
     fn session(origin: String) -> Session {
         Session {
+            binding: NativeSessionBinding::new(
+                &origin,
+                "owner-1",
+                "device-1",
+                Instant::now() + Duration::from_secs(60),
+            ),
             origin: origin.clone(),
             access: "private-access".into(),
             record: Record {
@@ -734,10 +740,11 @@ mod tests {
             "device_id":"device-1", "token_type":"bearer", "expires_in":900
         })]);
         tauri::async_runtime::block_on(async {
-            let old = session(origin).record;
+            let fixture = session(origin);
             let store = super::super::passwordless_tests::MemoryStore(std::cell::RefCell::new(
-                Some(serde_json::to_string(&old).unwrap()),
+                Some(serde_json::to_string(&fixture.record).unwrap()),
             ));
+            let old = store.read(&fixture.origin).await.unwrap().unwrap();
             let (resumed, ephemeral) = resume_cli(&client().unwrap(), &store, old).await.unwrap();
             assert!(!ephemeral);
             assert_eq!(resumed.access, "new-access");

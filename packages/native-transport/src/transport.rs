@@ -3,7 +3,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::future::Future;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{Manager, State, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
@@ -21,8 +21,10 @@ pub use actions::run_action;
 pub use mcp::{run_mcp, start_mcp_broker};
 #[cfg(test)]
 mod passwordless_tests;
+mod reader_binding;
 #[cfg(target_os = "macos")]
 pub use cli::{lock_native_session, run_cli};
+pub use reader_binding::NativeSessionBinding;
 
 #[cfg(target_os = "macos")]
 const SERVICE: &str = "com.aelys.desktop.native-session";
@@ -51,6 +53,7 @@ struct Session {
     origin: String,
     access: String,
     record: Record,
+    binding: NativeSessionBinding,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -626,6 +629,14 @@ fn session_from(origin: &str, token: Tokens) -> Result<Session, String> {
         return Err(err("INVALID_RESPONSE"));
     }
     Ok(Session {
+        binding: NativeSessionBinding::new(
+            origin,
+            &token.owner_id,
+            &token.device_id,
+            Instant::now()
+                .checked_add(Duration::from_secs(token.expires_in))
+                .ok_or_else(|| err("INVALID_RESPONSE"))?,
+        ),
         origin: origin.into(),
         access: token.access_token,
         record: Record {
@@ -1866,6 +1877,9 @@ async fn device_session(
     {
         return Err(err("INVALID_RESPONSE"));
     }
+    // Device login has no expires_in field. The JWT expiry only restricts
+    // reader lifetime; authenticated /me below remains the identity authority.
+    let reader_deadline = reader_binding::device_deadline(&tokens.access_token);
     // Obtain the owner from the authenticated server; never trust a decoded JWT
     // or a frontend-selected namespace as device/owner authority.
     let owner: DeviceOwner = request(
@@ -1880,6 +1894,7 @@ async fn device_session(
         return Err(err("INVALID_RESPONSE"));
     }
     Ok(Session {
+        binding: NativeSessionBinding::new(origin, &owner.id, &tokens.device_id, reader_deadline),
         origin: origin.into(),
         access: tokens.access_token,
         record: Record {
@@ -2078,13 +2093,23 @@ pub async fn native_logout(
 ) -> Result<SafeStatus, String> {
     check_window(&window)?;
     let origin = origin_fn(&origin)?;
+    logout_session(storage.inner(), state.inner(), streams.inner(), &origin).await
+}
+
+async fn logout_session(
+    storage: &impl Store,
+    state: &NativeState,
+    streams: &NativeAIStreams,
+    origin: &str,
+) -> Result<SafeStatus, String> {
     let mut guard = state.0.lock().await;
-    streams.close_for_origin(Some(&origin)).await;
-    let record = storage.read(&origin).await?;
-    storage.delete(&origin).await?;
+    // Invalidate reader grants before fallible Keychain work or network waits.
     if guard.as_ref().is_some_and(|s| s.origin == origin) {
         *guard = None;
     }
+    streams.close_for_origin(Some(origin)).await;
+    let record = storage.read(origin).await?;
+    storage.delete(origin).await?;
     if let Some(record) = record {
         let value: Value = request(
             &client()?,
@@ -2099,7 +2124,7 @@ pub async fn native_logout(
             return Err(err("LOCAL_LOGOUT_ONLY"));
         }
     }
-    Ok(status(None, &origin, Some(false), None))
+    Ok(status(None, origin, Some(false), None))
 }
 // The renderer never supplies a URL or receives the handoff capability. Only
 // an authenticated connection to the selected backend can open this browser path.

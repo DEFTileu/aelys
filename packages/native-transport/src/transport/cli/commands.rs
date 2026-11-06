@@ -648,6 +648,7 @@ pub(super) async fn execute(session: &Session, invocation: Invocation) -> Result
         None
     };
     let state = NativeState(Mutex::new(Some(Session {
+        binding: session.binding.detached(),
         origin: session.origin.clone(),
         access: session.access.clone(),
         record: identity_record(&session.record),

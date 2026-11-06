@@ -28,6 +28,12 @@ impl Drop for Directory {
 }
 fn session(origin: String) -> Session {
     Session {
+        binding: NativeSessionBinding::new(
+            &origin,
+            "owner-1",
+            "device-1",
+            Instant::now() + Duration::from_secs(60),
+        ),
         origin: origin.clone(),
         access: "cli-private-access".into(),
         record: Record {
@@ -87,6 +93,18 @@ fn typed_reads_and_each_domain_alias_use_the_existing_contract() {
         let invocation = parse(&args).unwrap().unwrap();
         assert!(!invocation.preview, "{args:?}");
     }
+}
+
+#[test]
+fn temporary_command_state_does_not_invalidate_the_owning_session_binding() {
+    let (origin, peer) = server(vec![json!([])]);
+    tauri::async_runtime::block_on(async {
+        let owner = session(origin);
+        let invocation = parse(&["projects".into(), "list".into()]).unwrap().unwrap();
+        execute(&owner, invocation).await.unwrap();
+        owner.binding.ensure_active().unwrap();
+    });
+    assert_eq!(peer.join().unwrap().len(), 1);
 }
 #[test]
 fn rejects_foreign_urls_auth_device_credentials_traversal_and_unknown_fields() {
