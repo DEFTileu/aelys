@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '@aelys/shared'
 import { bootstrapOwner, browserAuthStatus, claimSetupToken, clearNativeSignedOut, getAccessToken, getApiConfig, getSharedApiClient, hasDeviceIdentity, isSignedOut, login, resumeBrowserSession, saveApiBaseUrl, SESSION_EVENT, setNativeCacheOwner, signInWithThisDevice, startOutboxReplay } from '../lib/api'
 import type { ApiStatus } from '../types'
@@ -9,6 +9,7 @@ import { KeychainAccessRecovery } from './KeychainAccessRecovery'
 import { LaunchIntro } from './LaunchIntro'
 import { TouchIdIcon } from './TouchIdIcon'
 import { localBrowserLaunchId } from '../lib/localBrowserLogin'
+import { SessionReaderAuthContext } from '../lib/sessionReaderAuth'
 
 type AuthState = 'checking' | 'ready' | 'login' | 'setup' | 'connection' | 'biometric'
 
@@ -44,15 +45,37 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
   const [passwordSetup, setPasswordSetup] = useState(true)
   const [deviceKnown, setDeviceKnown] = useState(false)
   const generation = useRef(0)
+  const explicitReauthentication = useRef(false)
   const nativeHost = isNativeHost()
   const localLogin = !!localBrowserLaunchId()
   const androidHost = nativeHost && /Android/i.test(navigator.userAgent)
+  const origin = nativeBackendOrigin(getApiConfig().baseUrl)
+  const readerScope = useMemo(() => ({}), [state, origin, retry])
+  const currentReaderScope = useRef<object | null>(readerScope)
+  currentReaderScope.current = readerScope
+  function requireReauthentication() {
+    currentReaderScope.current = null
+    explicitReauthentication.current = true
+    generation.current += 1
+    setPassword(''); setNotice('Your native session ended. Sign in and select the folder again.'); setState('login'); setRetry(value => value + 1)
+  }
+  const readerSignInRequired = () => {
+    if (!nativeHost || state !== 'ready' || currentReaderScope.current !== readerScope
+      || origin !== nativeBackendOrigin(getApiConfig().baseUrl)) return
+    requireReauthentication()
+  }
+  function recheckExpiredSession() {
+    currentReaderScope.current = null
+    generation.current += 1
+    setPassword(''); setNotice('Your session ended. Confirm sign-in again.'); setState('checking'); setRetry(value => value + 1)
+  }
+  useEffect(() => () => { currentReaderScope.current = null }, [])
   useEffect(() => {
-    const update = () => { generation.current += 1; setPassword(''); setNotice(''); if (isNativeHost()) { setState('checking'); setRetry((value) => value + 1) } else setState(getAccessToken() ? 'ready' : 'login') }
+    const update = () => { currentReaderScope.current = null; generation.current += 1; setPassword(''); setNotice(''); if (isNativeHost()) { setState('checking'); setRetry((value) => value + 1) } else setState(getAccessToken() ? 'ready' : 'login') }
     const storage = (event: StorageEvent) => { if (event.key === 'aelys.signedOut') update() }
     const expired = (event: Event) => {
       if ((event as CustomEvent<{ origin: string }>).detail?.origin !== nativeBackendOrigin(getApiConfig().baseUrl)) return
-      generation.current += 1; setPassword(''); setNotice('Your session ended. Confirm sign-in again.'); setState('login'); setRetry((value) => value + 1)
+      recheckExpiredSession()
     }
     window.addEventListener(SESSION_EVENT, update)
     window.addEventListener('storage', storage)
@@ -75,11 +98,15 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
           if (native.signed_in) setNativeCacheOwner(native.owner_id)
           if (isSignedOut()) { setCanUnlock(false); publish('login'); return }
           if (alive && generation.current === run) setCanUnlock(!androidHost && !!native.biometric_locked && !!native.can_resume)
+          if (explicitReauthentication.current) {
+            publish(androidHost ? 'login' : native.biometric_locked && native.can_resume ? 'biometric' : 'login', 'Your native session ended. Sign in again.')
+            return
+          }
           if (native.signed_in) { publish('ready'); return }
           if (native.biometric_locked && native.can_resume) { publish(androidHost ? 'login' : 'biometric'); return }
           if (!native.initialized) { publish('setup'); return }
           if (native.can_resume) {
-            try { setNativeCacheOwner((await transport.resume(origin)).owner_id); publish('ready'); return }
+            try { setNativeCacheOwner((await transport.resume(origin)).owner_id); explicitReauthentication.current = false; publish('ready'); return }
             catch (error) {
               if (isKeychainAccessRequired(error)) { publish('login', KEYCHAIN_ACCESS_NOTICE); return }
               /* Request sign-in after an unsuccessful resume. */
@@ -117,7 +144,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
       if (!result.signed_in) throw new Error('Resume failed')
       setNativeCacheOwner(result.owner_id)
       clearNativeSignedOut()
-      if (run === generation.current && origin === nativeBackendOrigin(getApiConfig().baseUrl)) { setState('ready') }
+      if (run === generation.current && origin === nativeBackendOrigin(getApiConfig().baseUrl)) { explicitReauthentication.current = false; setState('ready') }
     } catch (error) {
       if (run === generation.current) setNotice(isKeychainAccessRequired(error) ? KEYCHAIN_ACCESS_NOTICE : 'Could not unlock with Touch ID. Try again or reconnect this device.')
     } finally { setBusy(false) }
@@ -161,7 +188,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
         clearNativeSignedOut()
       } else if (state === 'setup') await bootstrapOwner(email.trim(), password)
       else await login(email.trim(), password)
-      if (run === generation.current && base === getApiConfig().baseUrl) { setPassword(''); setState('ready') }
+      if (run === generation.current && base === getApiConfig().baseUrl) { explicitReauthentication.current = false; setPassword(''); setState('ready') }
     } catch (error) {
       if (run === generation.current) {
         if (error instanceof ApiError && error.code === 'ALREADY_INITIALIZED') setState('login')
@@ -184,7 +211,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
         setNativeCacheOwner(result.owner_id)
         clearNativeSignedOut()
       } else await claimSetupToken(token, deviceName)
-      if (run === generation.current && base === getApiConfig().baseUrl) { setToken(''); setTokenMode(false); setState('ready') }
+      if (run === generation.current && base === getApiConfig().baseUrl) { explicitReauthentication.current = false; setToken(''); setTokenMode(false); setState('ready') }
     } catch (error) {
       if (run === generation.current) setNotice(isKeychainAccessRequired(error) ? KEYCHAIN_ACCESS_NOTICE : claimMessage(error))
     } finally { setBusy(false) }
@@ -193,7 +220,7 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
     if (busy) return
     setBusy(true); setNotice('')
     try {
-      if (await signInWithThisDevice()) setState('ready')
+      if (await signInWithThisDevice()) { explicitReauthentication.current = false; setState('ready') }
       else setNotice('Could not sign in with this device. It may have been removed from the account: sign in with a password or token.')
     } catch { setNotice('Could not reach the server. Check your connection and try again.') }
     finally { setBusy(false); setDeviceKnown(await hasDeviceIdentity()) }
@@ -257,5 +284,5 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
     </footer>
   </div>
   // One persistent scene: it plays the introduction, then either docks into the entry card or fades out when signed in.
-  return <>{state === 'ready' && children}<LaunchIntro resolved={state !== 'checking'} locked={state !== 'ready'} footer={footer}>{panel}</LaunchIntro></>
+  return <>{state === 'ready' && <SessionReaderAuthContext.Provider value={readerSignInRequired}>{children}</SessionReaderAuthContext.Provider>}<LaunchIntro resolved={state !== 'checking'} locked={state !== 'ready'} footer={footer}>{panel}</LaunchIntro></>
 }

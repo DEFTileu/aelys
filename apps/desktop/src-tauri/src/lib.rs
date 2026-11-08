@@ -1,6 +1,7 @@
 use aelys_runtime::adapter::{AdapterKind, AgentAdapter, ProcessCommandProbe, VendorAdapter};
 use serde::Serialize;
 mod native;
+mod session_reader;
 
 #[derive(Debug, Serialize)]
 struct RuntimeStatus {
@@ -56,9 +57,17 @@ pub fn run() {
         })
         .manage(native::NativeState::default())
         .manage(native::NativeAIStreams::default())
+        .manage(session_reader::SessionReader::new())
         .invoke_handler(tauri::generate_handler![
             runtime_status,
             runtime_capabilities,
+            session_reader::session_reader_status,
+            session_reader::session_reader_choose_root,
+            session_reader::session_reader_index_next,
+            session_reader::session_reader_list,
+            session_reader::session_reader_open,
+            session_reader::session_reader_search,
+            session_reader::session_reader_revoke,
             native::native_status,
             native::native_health,
             native::native_biometric_status,
