@@ -18,7 +18,7 @@
 .feedback-dialog :focus-visible, .feedback-examples :focus-visible, .motion-examples :focus-visible { outline: 2px solid var(--purple); outline-offset: 3px; }
 .motion-card { display: grid; gap: 4px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--ink); }
 .motion-card span { color: var(--muted); font-size: 13px; }
-.motion-card--enter { animation: motion-enter 500ms ease-out both; }
+.motion-card--enter { animation: motion-enter 250ms ease-out both; }
 .motion-preview { transition: transform 150ms ease; }
 .motion-preview:hover:not(:disabled) { transform: translateY(-2px); }
 .motion-preview:active:not(:disabled) { transform: translateY(1px) scale(.98); }

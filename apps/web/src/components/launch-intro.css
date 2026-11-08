@@ -1,4 +1,5 @@
 /* Continuous launch scene: intro hero -> lock screen (ACTUAL launch, variant C). */
+/* audit-motion:disable-file -- one-shot ~4s launch scene shown once, not repeated UI motion */
 .launch-intro { position:fixed; inset:0; z-index:100; overflow:hidden; pointer-events:none; background:radial-gradient(ellipse 70% 55% at 50% 60%,#2D1E66 0,#160E38 55%,#0B0720 100%); }
 .launch-intro--lock { pointer-events:auto; }
 .launch-intro--out { animation:launch-leave .6s cubic-bezier(.4,0,.2,1) both; }
