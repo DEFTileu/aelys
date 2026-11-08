@@ -82,13 +82,14 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
   '/messages': { title: 'Messages', sub: 'Telegram chats. Aelys drafts, you approve.' },
   '/widgets': { title: 'Customize home' },
   '/timer': { title: 'Focus' },
+  '/english': { title: 'English', sub: 'Words, review and a daily report.' },
   '/developer': { title: 'Developer Hub' },
   '/search': { title: 'Search' },
 }
 
 function screenFor(route: RoutePath): string | null {
   if (route === '/settings') return 'settings'
-  if (route === '/timer' || route === '/automation' || route === '/messages' || route === '/developer') return 'utilities'
+  if (route === '/timer' || route === '/english' || route === '/automation' || route === '/messages' || route === '/developer') return 'utilities'
   return NAV.find((item) => item.route === route)?.id ?? null
 }
 

@@ -9,6 +9,7 @@ export type RoutePath =
   | '/knowledge'
   | '/widgets'
   | '/timer'
+  | '/english'
   | '/ai'
   | '/apps'
   | '/developer'
