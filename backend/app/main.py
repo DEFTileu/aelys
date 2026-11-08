@@ -35,14 +35,17 @@ async def lifespan(app: FastAPI):
     from .integrations.telegram_service import connector_loop
     with suppress(Exception):  # a missing schema must not stop startup; the console token is a convenience
         await announce_first_run_token()
+    from .english.reminders import reminder_loop
     worker = asyncio.create_task(connector_loop(), name="telegram-business")
+    reminders = asyncio.create_task(reminder_loop(), name="english-reminders")
     try:
         yield
     finally:
         await wait_for_automations()
-        worker.cancel()
-        with suppress(asyncio.CancelledError):
-            await worker
+        for task in (worker, reminders):
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
 app = FastAPI(title="Aelys API", version="0.1.0", openapi_url="/api/v1/openapi.json", lifespan=lifespan)
 
@@ -116,3 +119,7 @@ async def init_db():
 from .ai.knowledge import router as knowledge_router
 
 app.include_router(knowledge_router, prefix="/api/v1")
+
+from .english.api import router as english_router
+
+app.include_router(english_router, prefix="/api/v1")

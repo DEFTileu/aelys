@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -360,6 +361,24 @@ class DeviceSyncCursor(Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid); owner_id: Mapped[str] = mapped_column(String(36)); action: Mapped[str] = mapped_column(String(100)); actor: Mapped[str] = mapped_column(String(100)); scope: Mapped[str] = mapped_column(String(200)); decision: Mapped[str] = mapped_column(String(30)); outcome: Mapped[str] = mapped_column(String(30)); correlation_id: Mapped[str] = mapped_column(String(36)); redacted_metadata: Mapped[dict] = mapped_column(JSON, default=dict); created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+class EnglishWord(Owned):
+    __tablename__ = "english_words"
+    __table_args__ = (UniqueConstraint("owner_id", "lemma", name="uq_english_word_owner_lemma"),)
+    lemma: Mapped[str] = mapped_column(String(80)); part_of_speech: Mapped[str] = mapped_column(String(24), default=""); ipa: Mapped[str] = mapped_column(String(80), default="")
+    definition_en: Mapped[str] = mapped_column(Text); translation_ru: Mapped[str] = mapped_column(Text); example: Mapped[str] = mapped_column(Text, default="")
+    collocations_json: Mapped[list] = mapped_column(JSON, default=list); false_friend_ru: Mapped[str] = mapped_column(Text, default="")
+    box: Mapped[int] = mapped_column(Integer, default=1); due_on: Mapped[date] = mapped_column(Date); introduced_on: Mapped[date] = mapped_column(Date, index=True); lapses: Mapped[int] = mapped_column(Integer, default=0)
+
+class EnglishReport(Owned):
+    __tablename__ = "english_reports"
+    __table_args__ = (UniqueConstraint("owner_id", "day", name="uq_english_report_owner_day"),)
+    day: Mapped[date] = mapped_column(Date); text: Mapped[str] = mapped_column(Text); result_json: Mapped[dict] = mapped_column(JSON, default=dict); cefr: Mapped[str] = mapped_column(String(2), default="")
+
+class EnglishProfile(Owned):
+    __tablename__ = "english_profiles"
+    __table_args__ = (UniqueConstraint("owner_id", name="uq_english_profile_owner"),)
+    reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False); reminder_time: Mapped[str] = mapped_column(String(5), default="21:00"); timezone: Mapped[str] = mapped_column(String(64), default="UTC"); last_reminded_on: Mapped[date | None] = mapped_column(Date)
 
 # Register integration tables in the shared metadata for migrations and tests.
 import app.ai.memory_models

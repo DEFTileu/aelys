@@ -4810,10 +4810,10 @@
         }
       }
     },
-    "/api/v1/ai/conversations": {
+    "/api/v1/ai/capabilities": {
       "get": {
-        "summary": "Conversations",
-        "operationId": "conversations_api_v1_ai_conversations_get",
+        "summary": "Ai Capabilities",
+        "operationId": "ai_capabilities_api_v1_ai_capabilities_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4829,19 +4829,48 @@
             "HTTPBearer": []
           }
         ]
-      },
+      }
+    },
+    "/api/v1/ai/conversations": {
       "post": {
         "summary": "Create Conversation",
+        "description": "Replay an owner-scoped key for the same validated original body (HTTP 200).\n\nOmitted keys preserve independent creates. Keys remain reserved for deleted\nconversations; changed bodies return 409 IDEMPOTENCY_CONFLICT. No expiry.",
         "operationId": "create_conversation_api_v1_ai_conversations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 150,
+                  "pattern": "\\S"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ConversationIn"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -4851,6 +4880,9 @@
                 "schema": {}
               }
             }
+          },
+          "409": {
+            "description": "Idempotency key is bound to a different original request or a deleted conversation"
           },
           "422": {
             "description": "Validation Error",
@@ -4862,12 +4894,26 @@
               }
             }
           }
-        },
+        }
+      },
+      "get": {
+        "summary": "Conversations",
+        "operationId": "conversations_api_v1_ai_conversations_get",
         "security": [
           {
             "HTTPBearer": []
           }
-        ]
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/ai/conversations/{conversation_id}": {
@@ -7516,6 +7562,304 @@
           }
         ]
       }
+    },
+    "/api/v1/english/today": {
+      "get": {
+        "summary": "English Today",
+        "operationId": "english_today_api_v1_english_today_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishToday"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/today/words": {
+      "post": {
+        "summary": "English Generate",
+        "operationId": "english_generate_api_v1_english_today_words_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishToday"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/english/words/{word_id}/review": {
+      "post": {
+        "summary": "English Review",
+        "operationId": "english_review_api_v1_english_words__word_id__review_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "word_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Word Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishWordOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/reports": {
+      "post": {
+        "summary": "English Submit Report",
+        "operationId": "english_submit_report_api_v1_english_reports_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishReportOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "English Reports",
+        "operationId": "english_reports_api_v1_english_reports_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EnglishReportOut"
+                  },
+                  "title": "Response English Reports Api V1 English Reports Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/settings": {
+      "get": {
+        "summary": "English Settings",
+        "operationId": "english_settings_api_v1_english_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "English Save Settings",
+        "operationId": "english_save_settings_api_v1_english_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnglishSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -7977,6 +8321,32 @@
         ],
         "title": "CalendarSyncOut"
       },
+      "CefrEstimate": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "A1",
+              "A2",
+              "B1",
+              "B2",
+              "C1",
+              "C2"
+            ],
+            "title": "Level"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "level",
+          "rationale"
+        ],
+        "title": "CefrEstimate"
+      },
       "ChallengeRequest": {
         "properties": {
           "device_id": {
@@ -8245,6 +8615,112 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ConversationPatch"
+      },
+      "Correction": {
+        "properties": {
+          "corrected_text": {
+            "type": "string",
+            "title": "Corrected Text"
+          },
+          "cefr_estimate": {
+            "$ref": "#/components/schemas/CefrEstimate"
+          },
+          "target_words": {
+            "items": {
+              "$ref": "#/components/schemas/TargetWord"
+            },
+            "type": "array",
+            "title": "Target Words"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/CorrectionError"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Strengths"
+          },
+          "summary_ru": {
+            "type": "string",
+            "title": "Summary Ru"
+          },
+          "tomorrow_tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TomorrowTask"
+            },
+            "type": "array",
+            "title": "Tomorrow Tasks"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "corrected_text",
+          "cefr_estimate",
+          "summary_ru"
+        ],
+        "title": "Correction"
+      },
+      "CorrectionError": {
+        "properties": {
+          "original": {
+            "type": "string",
+            "title": "Original"
+          },
+          "correction": {
+            "type": "string",
+            "title": "Correction"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "tense",
+              "article",
+              "preposition",
+              "collocation",
+              "word_choice",
+              "word_order",
+              "spelling",
+              "grammar",
+              "punctuation",
+              "other"
+            ],
+            "title": "Type"
+          },
+          "explanation_ru": {
+            "type": "string",
+            "title": "Explanation Ru"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "minor",
+              "major"
+            ],
+            "title": "Severity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "original",
+          "correction",
+          "type",
+          "explanation_ru",
+          "severity"
+        ],
+        "title": "CorrectionError"
       },
       "CreateNotificationAction": {
         "properties": {
@@ -8595,6 +9071,222 @@
           "version"
         ],
         "title": "DraftPatch"
+      },
+      "EnglishReportOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "cefr": {
+            "type": "string",
+            "title": "Cefr"
+          },
+          "result": {
+            "$ref": "#/components/schemas/Correction"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "day",
+          "text",
+          "cefr",
+          "result",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EnglishReportOut"
+      },
+      "EnglishSettings": {
+        "properties": {
+          "reminder_enabled": {
+            "type": "boolean",
+            "title": "Reminder Enabled",
+            "default": false
+          },
+          "reminder_time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "Reminder Time",
+            "default": "21:00"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone",
+            "default": "UTC"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EnglishSettings"
+      },
+      "EnglishStats": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "mastered": {
+            "type": "integer",
+            "title": "Mastered"
+          },
+          "streak": {
+            "type": "integer",
+            "title": "Streak"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "mastered",
+          "streak"
+        ],
+        "title": "EnglishStats"
+      },
+      "EnglishToday": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "new_words": {
+            "items": {
+              "$ref": "#/components/schemas/EnglishWordOut"
+            },
+            "type": "array",
+            "title": "New Words"
+          },
+          "due_words": {
+            "items": {
+              "$ref": "#/components/schemas/EnglishWordOut"
+            },
+            "type": "array",
+            "title": "Due Words"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnglishReportOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stats": {
+            "$ref": "#/components/schemas/EnglishStats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "new_words",
+          "due_words",
+          "report",
+          "stats"
+        ],
+        "title": "EnglishToday"
+      },
+      "EnglishWordOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "lemma": {
+            "type": "string",
+            "title": "Lemma"
+          },
+          "part_of_speech": {
+            "type": "string",
+            "title": "Part Of Speech"
+          },
+          "ipa": {
+            "type": "string",
+            "title": "Ipa"
+          },
+          "definition_en": {
+            "type": "string",
+            "title": "Definition En"
+          },
+          "translation_ru": {
+            "type": "string",
+            "title": "Translation Ru"
+          },
+          "example": {
+            "type": "string",
+            "title": "Example"
+          },
+          "collocations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Collocations"
+          },
+          "false_friend_ru": {
+            "type": "string",
+            "title": "False Friend Ru"
+          },
+          "box": {
+            "type": "integer",
+            "title": "Box"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "introduced_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Introduced On"
+          },
+          "lapses": {
+            "type": "integer",
+            "title": "Lapses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "lemma",
+          "part_of_speech",
+          "ipa",
+          "definition_en",
+          "translation_ru",
+          "example",
+          "collocations",
+          "false_friend_ru",
+          "box",
+          "due_on",
+          "introduced_on",
+          "lapses"
+        ],
+        "title": "EnglishWordOut"
       },
       "EventOccurrence": {
         "properties": {
@@ -9425,6 +10117,30 @@
           "version"
         ],
         "title": "FocusOut"
+      },
+      "GenerateIn": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "count": {
+            "type": "integer",
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "count"
+        ],
+        "title": "GenerateIn"
       },
       "GmailConnectionOut": {
         "properties": {
@@ -11131,6 +11847,28 @@
         ],
         "title": "ReminderIn"
       },
+      "ReportIn": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "text"
+        ],
+        "title": "ReportIn"
+      },
       "ResourceIn": {
         "properties": {
           "kind": {
@@ -11195,6 +11933,26 @@
           "relation_type"
         ],
         "title": "ResourceLinkIn"
+      },
+      "ReviewIn": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "correct": {
+            "type": "boolean",
+            "title": "Correct"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "correct"
+        ],
+        "title": "ReviewIn"
       },
       "RuleIn": {
         "properties": {
@@ -12013,6 +12771,29 @@
         ],
         "title": "StatusOut"
       },
+      "TargetWord": {
+        "properties": {
+          "word": {
+            "type": "string",
+            "title": "Word"
+          },
+          "used_correctly": {
+            "type": "boolean",
+            "title": "Used Correctly"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "word",
+          "used_correctly"
+        ],
+        "title": "TargetWord"
+      },
       "TaskIn": {
         "properties": {
           "title": {
@@ -12335,6 +13116,32 @@
           "refresh_token"
         ],
         "title": "TokenResponse"
+      },
+      "TomorrowTask": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Title"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "TomorrowTask"
       },
       "TransactionIn": {
         "properties": {
