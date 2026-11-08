@@ -848,3 +848,55 @@ export interface GoogleCalendarStatus {
     readonly last_error_code: string | null } | null;
 }
 export interface GoogleCalendarSync { readonly imported: number; readonly deleted: number; readonly full_sync: boolean; }
+
+/** English daily module. Dates are YYYY-MM-DD in the client's local calendar. */
+export interface EnglishWord {
+  readonly id: Id;
+  readonly lemma: string;
+  readonly part_of_speech: string;
+  readonly ipa: string;
+  readonly definition_en: string;
+  readonly translation_ru: string;
+  readonly example: string;
+  readonly collocations: readonly string[];
+  readonly false_friend_ru: string;
+  /** Leitner box 1..6. */
+  readonly box: number;
+  readonly due_on: string;
+  readonly introduced_on: string;
+  readonly lapses: number;
+}
+export type EnglishErrorType = 'tense' | 'article' | 'preposition' | 'collocation' | 'word_choice' | 'word_order' | 'spelling' | 'grammar' | 'punctuation' | 'other';
+export interface EnglishCorrection {
+  readonly corrected_text: string;
+  readonly cefr_estimate: { readonly level: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'; readonly rationale: string };
+  readonly target_words: readonly { readonly word: string; readonly used_correctly: boolean; readonly note: string }[];
+  readonly errors: readonly { readonly original: string; readonly correction: string; readonly type: EnglishErrorType; readonly explanation_ru: string; readonly severity: 'minor' | 'major' }[];
+  readonly strengths: readonly string[];
+  readonly summary_ru: string;
+  readonly tomorrow_tasks: readonly { readonly title: string; readonly time: string | null }[];
+  readonly topics: readonly string[];
+}
+export interface EnglishSettings {
+  readonly reminder_enabled: boolean;
+  /** Local HH:MM. */
+  readonly reminder_time: string;
+  /** IANA timezone, e.g. Asia/Almaty. */
+  readonly timezone: string;
+}
+export interface EnglishReport {
+  readonly id: Id;
+  readonly day: string;
+  readonly text: string;
+  readonly cefr: string;
+  readonly result: EnglishCorrection;
+  readonly created_at: IsoDateTime;
+  readonly updated_at: IsoDateTime;
+}
+export interface EnglishToday {
+  readonly day: string;
+  readonly new_words: readonly EnglishWord[];
+  readonly due_words: readonly EnglishWord[];
+  readonly report: EnglishReport | null;
+  readonly stats: { readonly total: number; readonly mastered: number; readonly streak: number };
+}
