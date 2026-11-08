@@ -72,8 +72,8 @@ ul.au-note { padding-left: 18px; margin: 0; }
 .au-rule__last { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .au-switch { position: relative; width: 44px; height: 26px; flex: none; padding: 0; border: 0; border-radius: 13px; background: #CFC9D4; cursor: pointer; transition: background .2s; }
 .au-switch[aria-checked='true'] { background: var(--purple); }
-.au-switch span { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: left .2s; }
-.au-switch[aria-checked='true'] span { left: 21px; }
+.au-switch span { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: transform .2s cubic-bezier(.23, 1, .32, 1); }
+.au-switch[aria-checked='true'] span { transform: translateX(18px); }
 .au-switch:disabled { cursor: default; opacity: .7; }
 .au-runs { padding: 18px; border-radius: 20px; background: var(--surface); border: 1px solid var(--edge); }
 .au-runs h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
