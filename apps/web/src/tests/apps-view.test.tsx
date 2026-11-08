@@ -23,7 +23,7 @@ afterEach(() => { act(() => root.unmount()); document.body.innerHTML = '' })
 it('groups apps as designed and shows real statuses only', async () => {
   await mount()
   const text = host.textContent!
-  for (const title of ['Pinned', 'Quick tools', 'Learn & create', 'Your sites']) expect(text).toContain(title)
+  for (const title of ['Pinned', 'Quick tools', 'Games', 'Learn & create', 'Your sites']) expect(text).toContain(title)
   for (const title of ['Plan & reflect', 'Review', 'Weeks', 'Habits', 'Countdowns', 'Breathe']) expect(text).not.toContain(title)
   expect(text).toContain('1h 15m today'); expect(text).toContain('1 rule on'); expect(text).not.toContain('3 of 5')
   expect(host.querySelectorAll('.apps-soon').length).toBe(4)
@@ -60,4 +60,17 @@ it('adds, edits, opens with noopener and removes a site', async () => {
 })
 it('only accepts plain https web addresses', () => {
   expect(siteUrl('mysite.com/app')).toBe('https://mysite.com/app'); expect(siteUrl('user:pw@evil.com')).toBeNull(); expect(siteUrl('localhost')).toBeNull()
+})
+
+it('lists every game as its own module in a Games category and opens one', async () => {
+  await mount()
+  const games = host.querySelector('section[aria-label="Games"]')!
+  expect([...games.querySelectorAll('.apps-card__open')].map(b => b.textContent)).toEqual(['Air hockey', 'Reaction duel', 'Connect four', 'Tic-tac-toe', 'Snake', '2048', 'Memory'])
+  await press('Tic-tac-toe')
+  // The game chunk is lazy-loaded, so poll instead of guessing a delay.
+  for (let i = 0; i < 100 && !host.querySelector('.game-status'); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+  expect(host.querySelector('.apps-back strong')!.textContent).toBe('Tic-tac-toe')
+  expect(host.querySelector('.game-status')!.textContent).toBe('X to move')
+  await press('Apps')
+  expect(host.querySelector('section[aria-label="Games"]')).not.toBeNull()
 })

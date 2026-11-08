@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react'
-import { Brush, Calculator, Dices, Globe, GraduationCap, Keyboard, Layers, MessageSquare, Terminal, Timer, Workflow, Wrench, BookOpen, type LucideIcon } from 'lucide-react'
+import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react'
+import { Brush, Calculator, Brain, CircleDot, Dices, Disc3, Grid2x2, Hash, Worm, Zap, Globe, Keyboard, Layers, MessageSquare, Terminal, Timer, Workflow, Wrench, BookOpen, type LucideIcon } from 'lucide-react'
 import { isMacPlatform } from '../../data/navigation'
 import { getSharedApiClient } from '../../lib/api'
 import { navigate } from '../../lib/router'
+import type { GameId } from '../../lib/games'
 import type { ApiStatus, RoutePath } from '../../types'
 import { CalculatorApp, DecideApp, ZonesApp, cityOf, zoneTime } from '../LocalApps'
 import { ToolboxApp } from '../ToolboxApp'
 
 type Tone = 'blue' | 'coral' | 'violet' | 'orange' | 'green'
-type LocalId = 'toolbox' | 'calc' | 'zones' | 'decide'
+type LocalId = 'toolbox' | 'calc' | 'zones' | 'decide' | GameId
 type Entry = { group: string; id: string; title: string; icon: LucideIcon; desc: string; status?: string; route?: RoutePath; local?: LocalId; soon?: boolean }
 
 const GROUPS: readonly { id: string; title: string; tone: Tone }[] = [
-  { id: 'mind', title: 'Focus & calm', tone: 'coral' }, { id: 'quick', title: 'Quick tools', tone: 'violet' },
+  { id: 'mind', title: 'Focus & calm', tone: 'coral' }, { id: 'quick', title: 'Quick tools', tone: 'violet' }, { id: 'games', title: 'Games', tone: 'orange' },
   { id: 'learn', title: 'Learn & create', tone: 'orange' }, { id: 'talk', title: 'Communicate', tone: 'blue' }, { id: 'power', title: 'Power tools', tone: 'green' },
 ]
 // Tiles marked soon have no data source or screen in the product yet: they stay visible as designed but do nothing.
@@ -22,6 +23,13 @@ const CATALOG: readonly Entry[] = [
   { group: 'quick', id: 'zones', title: 'Zones', icon: Globe, desc: 'Time across cities', local: 'zones' },
   { group: 'quick', id: 'decide', title: 'Decide', icon: Dices, desc: 'Coin, dice and a choice wheel', local: 'decide', status: 'Coin · dice · wheel' },
   { group: 'quick', id: 'toolbox', title: 'Toolbox', icon: Wrench, desc: 'Password, Base64, URL, HTML, Unicode', local: 'toolbox', status: '5 tools' },
+  { group: 'games', id: 'hockey', title: 'Air hockey', icon: Disc3, desc: 'Two thumbs, one screen, first to 7', local: 'hockey', status: '2 players' },
+  { group: 'games', id: 'duel', title: 'Reaction duel', icon: Zap, desc: 'Who taps first after the signal', local: 'duel', status: '2 players' },
+  { group: 'games', id: 'c4', title: 'Connect four', icon: CircleDot, desc: 'Drop discs and line up four', local: 'c4', status: '2 players' },
+  { group: 'games', id: 'ttt', title: 'Tic-tac-toe', icon: Hash, desc: 'The classic, with a running score', local: 'ttt', status: '2 players' },
+  { group: 'games', id: 'snake', title: 'Snake', icon: Worm, desc: 'Eat, grow and do not crash', local: 'snake', status: 'Solo' },
+  { group: 'games', id: '2048', title: '2048', icon: Grid2x2, desc: 'Slide and merge tiles', local: '2048', status: 'Solo' },
+  { group: 'games', id: 'memory', title: 'Memory', icon: Brain, desc: 'Find all the pairs', local: 'memory', status: 'Solo' },
   { group: 'learn', id: 'cards', title: 'Cards', icon: Layers, desc: 'Flashcards with spaced repetition', soon: true },
   { group: 'learn', id: 'reader', title: 'Reader', icon: BookOpen, desc: 'Saved articles, distraction-free', soon: true },
   { group: 'learn', id: 'type', title: 'Type', icon: Keyboard, desc: 'Typing practice', soon: true },
@@ -30,7 +38,10 @@ const CATALOG: readonly Entry[] = [
   { group: 'power', id: 'automation', title: 'Automation', icon: Workflow, desc: 'When this happens, do that', route: '/automation' },
   { group: 'power', id: 'dev', title: 'Developer Hub', icon: Terminal, desc: 'Local coding agent sessions', route: '/developer' },
 ]
-export const LOCAL_VIEWS: Record<LocalId, ComponentType> = { toolbox: ToolboxApp, calc: CalculatorApp, zones: ZonesApp, decide: DecideApp }
+// Games ship real-time canvas code, so load it only when a game tile is opened.
+const LazyGames = lazy(() => import('../GamesApp'))
+const game = (id: GameId): ComponentType => () => <Suspense fallback={null}><LazyGames id={id} /></Suspense>
+export const LOCAL_VIEWS: Record<LocalId, ComponentType> = { toolbox: ToolboxApp, calc: CalculatorApp, zones: ZonesApp, decide: DecideApp, hockey: game('hockey'), duel: game('duel'), c4: game('c4'), ttt: game('ttt'), snake: game('snake'), '2048': game('2048'), memory: game('memory') }
 const DEFAULT_PINS = ['focus', 'messages', 'automation', 'toolbox']
 const PINS_KEY = 'aelys.apps.pins.v1'
 const SITES_KEY = 'aelys.apps.sites.v1'
