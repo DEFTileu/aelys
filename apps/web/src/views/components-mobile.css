@@ -5,7 +5,7 @@
 .component-gallery--m .component-gallery__sidebar nav { position: static; max-height: none; overflow: visible; }
 .component-gallery--m .component-gallery__nav-title { margin-top: 0; }
 .component-gallery--m .component-gallery__nav-links { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 32px; }
-.component-gallery--m .component-gallery__nav-links a { padding: 7px 10px; border: 1px solid var(--line); background: var(--surface-solid); font-size: 13px; }
+.component-gallery--m .component-gallery__nav-links a { padding: 8px 10px; border: 1px solid var(--line); background: var(--surface-solid); font-size: 13px; }
 .component-gallery--m .component-gallery__specimen { padding: 18px; }
 .component-gallery--m .component-gallery__switches { grid-template-columns: 1fr; }
 .component-gallery--m .component-gallery__icons { grid-template-columns: repeat(2, minmax(0, 1fr)); }

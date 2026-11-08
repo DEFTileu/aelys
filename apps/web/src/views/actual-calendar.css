@@ -18,12 +18,12 @@
 .cl-btn:disabled { opacity: .5; cursor: not-allowed; }
 .cl-assistant-action svg:first-child { color: #6A4CF2; }
 .cl-assistant-action:nth-of-type(2) svg:first-child { color: #2F6FE4; }
-.cl-btn--primary { padding: 0 16px; border: 0; background: var(--pg-violet); color: #fff; font-size: 14px; box-shadow: 0 4px 12px rgba(106, 76, 242, .3); }
+.cl-btn--primary { padding: 0 16px; border: 0; background: var(--pg-violet); color: #fff; font-size: 14px; }
 .cl-btn--primary:hover { background: var(--pg-violet-hover); }
 
 /* Forms (create / edit / imported event) */
 .cl-form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--pg-line); border-radius: 16px; background: var(--pg-card); box-shadow: var(--pg-shadow); }
-.cl-form label { display: grid; gap: 5px; color: var(--pg-mute); font-size: 12px; }
+.cl-form label { display: grid; gap: 4px; color: var(--pg-mute); font-size: 12px; }
 .cl-form input { min-width: 0; height: 40px; padding: 0 10px; border: 1px solid var(--pg-line); border-radius: 10px; background: var(--pg-field); color: var(--pg-ink); }
 .cl-form > input { flex: 1 1 180px; }
 
@@ -58,13 +58,13 @@
 .cl-week-head > button.cl-today { background: rgba(106, 76, 242, .06); }
 .cl-dn { font-size: 13px; font-weight: 500; line-height: 22px; }
 .cl-today .cl-dn { color: var(--pg-acc); }
-.cl-date { font-size: 13px; line-height: 22px; padding: 0 10px; border-radius: 11px; color: var(--pg-ink-3); }
+.cl-date { font-size: 13px; line-height: 22px; padding: 0 10px; border-radius: 12px; color: var(--pg-ink-3); }
 .cl-today .cl-date { background: var(--pg-violet); color: #fff; }
 .cl-grid-scroll { flex: 1 1 auto; min-height: 260px; height: 624px; overflow-y: auto; scrollbar-width: thin; overscroll-behavior: contain; border-top: 1px solid #EEE8E4; }
 .cl-grid { position: relative; height: calc(24 * var(--cl-hour-height) + 2 * var(--cl-grid-pad)); }
 .cl-hours { position: relative; }
 .cl-hour { position: absolute; left: 14px; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
-.cl-now-label { position: absolute; left: 6px; z-index: 3; height: 20px; padding: 0 7px; border-radius: 10px; background: #E5484D; color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; box-shadow: 0 2px 6px rgba(229, 72, 77, .35); }
+.cl-now-label { position: absolute; left: 6px; z-index: 3; height: 20px; padding: 0 8px; border-radius: 10px; background: #E5484D; color: #fff; font-size: 11px; font-weight: 600; line-height: 20px; box-shadow: 0 2px 6px rgba(229, 72, 77, .35); }
 .cl-day { position: relative; border-left: 1px solid #EEE8E4; }
 .cl-day::before { content: ''; position: absolute; inset: var(--cl-grid-pad) 0; pointer-events: none; background: repeating-linear-gradient(to bottom, var(--pg-line) 0 1px, transparent 1px calc(var(--cl-hour-height) / 2), color-mix(in srgb, var(--pg-line) 50%, transparent) calc(var(--cl-hour-height) / 2) calc(var(--cl-hour-height) / 2 + 1px), transparent calc(var(--cl-hour-height) / 2 + 1px) var(--cl-hour-height)); }
 .cl-day.cl-today { background: rgba(106, 76, 242, .06); }
@@ -110,7 +110,7 @@
 .cl-month-grid button { min-height: 90px; min-width: 0; padding: 8px; text-align: left; align-self: stretch; border: 1px solid #EEE8E4; background: transparent; color: var(--pg-ink); }
 :root[data-theme='dark'] .cl-month-grid, :root[data-theme='dark'] .cl-month-grid button { border-color: #34303D; }
 .cl-month-grid button span, .cl-month-grid button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cl-month-grid button small { margin-top: 4px; padding: 3px 5px; border-radius: 5px; background: #EFEBFD; color: var(--pg-ink); }
+.cl-month-grid button small { margin-top: 4px; padding: 3px 4px; border-radius: 5px; background: #EFEBFD; color: var(--pg-ink); }
 :root[data-theme='dark'] .cl-month-grid button small { background: rgba(139, 108, 240, .22); }
 .cl-month-grid .cl-outside-month { color: #A29DA8; }
 .cl-mobile-agenda { display: none; }
@@ -172,7 +172,7 @@
   .cl-week-head > button { gap: 2px; }
   .cl-week-head > button.cl-today { background: transparent; color: var(--pg-acc); }
   .cl-week-head > button .cl-dn, .cl-week-head > button.cl-today .cl-dn { font-size: 11px; font-weight: 600; line-height: normal; opacity: .8; color: inherit; }
-  .cl-week-head > button .cl-date, .cl-week-head > button.cl-today .cl-date { padding: 0; border-radius: 0; background: none; color: inherit; font-size: 17px; font-weight: 700; line-height: normal; }
+  .cl-week-head > button .cl-date, .cl-week-head > button.cl-today .cl-date { padding: 0; border-radius: 0; background: none; color: inherit; font-size: 17px; font-weight: 600; line-height: normal; }
   .cl-week-head > button.cl-selected { background: var(--pg-violet); color: #fff; }
   .cl-week-head > button.cl-selected .cl-dn, .cl-week-head > button.cl-selected .cl-date { color: #fff; }
   .cl-week-head .cl-dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: transparent; }
@@ -200,7 +200,7 @@
 .mobile-shell .cl-week-head > button { gap: 2px; }
 .mobile-shell .cl-week-head > button.cl-today { background: transparent; color: var(--pg-acc); }
 .mobile-shell .cl-week-head > button .cl-dn, .mobile-shell .cl-week-head > button.cl-today .cl-dn { font-size: 11px; font-weight: 600; line-height: normal; opacity: .8; color: inherit; }
-.mobile-shell .cl-week-head > button .cl-date, .mobile-shell .cl-week-head > button.cl-today .cl-date { padding: 0; border-radius: 0; background: none; color: inherit; font-size: 17px; font-weight: 700; line-height: normal; }
+.mobile-shell .cl-week-head > button .cl-date, .mobile-shell .cl-week-head > button.cl-today .cl-date { padding: 0; border-radius: 0; background: none; color: inherit; font-size: 17px; font-weight: 600; line-height: normal; }
 .mobile-shell .cl-week-head > button.cl-selected { background: var(--pg-violet); color: #fff; }
 .mobile-shell .cl-week-head > button.cl-selected .cl-dn, .mobile-shell .cl-week-head > button.cl-selected .cl-date { color: #fff; }
 .mobile-shell .cl-week-head .cl-dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: transparent; }

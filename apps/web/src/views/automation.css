@@ -18,7 +18,7 @@
 ul.au-note { padding-left: 18px; margin: 0; }
 .au-policy { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: var(--ink-soft); }
 
-.au-review { padding: 18px; border-radius: 20px; background: var(--surface-solid); border: 1.5px solid #D6CCF8; box-shadow: 0 10px 30px rgba(106, 76, 242, .08); display: flex; flex-direction: column; gap: 12px; }
+.au-review { padding: 18px; border-radius: 20px; background: var(--surface-solid); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(28, 27, 34, .06); display: flex; flex-direction: column; gap: 12px; }
 :root[data-theme='dark'] .au-review { border-color: rgba(185, 168, 255, .35); box-shadow: 0 10px 30px rgba(0, 0, 0, .3); }
 .au-review__tag { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--purple-deep); }
 .au-review__name { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
@@ -50,7 +50,7 @@ ul.au-note { padding-left: 18px; margin: 0; }
 .au-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .au-step { padding: 14px; border-radius: 16px; background: var(--surface-soft); display: flex; flex-direction: column; gap: 6px; }
 .au-step > div { display: flex; align-items: center; gap: 8px; }
-.au-step span { width: 24px; height: 24px; border-radius: 8px; background: var(--ink); color: var(--surface-solid); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.au-step span { width: 24px; height: 24px; border-radius: 8px; background: var(--ink); color: var(--surface-solid); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
 .au-step strong { font-weight: 600; }
 .au-step p { font-size: 13px; line-height: 20px; color: var(--ink-soft); }
 .au-templates { display: flex; flex-direction: column; gap: 10px; }
@@ -70,7 +70,7 @@ ul.au-note { padding-left: 18px; margin: 0; }
 .au-rule__head { display: flex; align-items: center; gap: 12px; }
 .au-rule__name { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 .au-rule__last { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.au-switch { position: relative; width: 44px; height: 26px; flex: none; padding: 0; border: 0; border-radius: 13px; background: #CFC9D4; cursor: pointer; transition: background .2s; }
+.au-switch { position: relative; width: 44px; height: 26px; flex: none; padding: 0; border: 0; border-radius: 12px; background: #CFC9D4; cursor: pointer; transition: background .2s; }
 .au-switch[aria-checked='true'] { background: var(--purple); }
 .au-switch span { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: left .2s; }
 .au-switch[aria-checked='true'] span { left: 21px; }

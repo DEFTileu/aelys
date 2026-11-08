@@ -50,7 +50,7 @@
 
 .apps-add { height: 34px; padding: 0 12px; border-radius: 10px; background: var(--surface-solid); border: 1px solid var(--edge); color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
 .apps-add:hover { background: var(--surface-hover); }
-.apps-form { padding: 14px; border-radius: 16px; background: var(--surface-solid); border: 1.5px solid #D6CCF8; display: flex; flex-direction: column; gap: 10px; }
+.apps-form { padding: 14px; border-radius: 16px; background: var(--surface-solid); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
 :root[data-theme='dark'] .apps-form { border-color: rgba(185, 168, 255, .35); }
 .apps-form__fields { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 10px; }
 .apps-form__fields input { height: 44px; padding: 0 14px; border-radius: 12px; background: var(--surface-soft); border: 0; outline: 0; font: inherit; color: var(--ink); min-width: 0; }
@@ -66,7 +66,7 @@
 .apps-site:hover { background: var(--surface); }
 .apps-site__open { all: unset; flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; cursor: pointer; color: var(--ink); }
 .apps-site__open:focus-visible { outline: 2px solid var(--purple); outline-offset: 4px; border-radius: 8px; }
-.apps-site__letter { width: 36px; height: 36px; flex: none; border-radius: 10px; background: var(--soft); color: var(--deep); font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.apps-site__letter { width: 36px; height: 36px; flex: none; border-radius: 10px; background: var(--soft); color: var(--deep); font-weight: 600; display: flex; align-items: center; justify-content: center; }
 .apps-site__text { flex: 1; min-width: 0; display: block; }
 .apps-site__text strong { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .apps-site__text small { display: block; font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

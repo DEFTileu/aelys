@@ -1,5 +1,5 @@
 /* Bell: the design's 26px circle in a 36px target with an 8px unread dot; the count stays in the aria-label. */
-.mobile-shell__header .notification-center__trigger { width: 36px; height: 36px; padding: 5px; justify-content: center; border: 0; border-radius: 50%; background: rgba(255,255,255,.88); background-clip: content-box; color: #1c1b22; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.mobile-shell__header .notification-center__trigger { width: 36px; height: 36px; padding: 4px; justify-content: center; border: 0; border-radius: 50%; background: rgba(255,255,255,.88); background-clip: content-box; color: #1c1b22; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .mobile-shell__header .notification-center__badge { top: 13px; right: 14px; min-width: 0; width: 8px; height: 8px; padding: 0; border: 1.5px solid #fff; border-radius: 50%; font-size: 0; }
 
 /* ACTUAL mobile Home. Card bodies come from desktopBodies.tsx; these tokens and metrics are the design's. */
@@ -21,7 +21,7 @@
 .mobile-shell--home .home-screen { padding: 0 16px !important; gap: 12px !important; }
 .home-greeting { margin-top: 24px; color: #fff; text-shadow: 0 1px 12px rgba(20,20,45,.45); }
 .home-greeting__date { font-size: 14px; line-height: 20px; }
-.home-greeting h1 { margin: 4px 0 0; font-size: 26px; line-height: 32px; font-weight: 700; letter-spacing: -.02em; }
+.home-greeting h1 { margin: 4px 0 0; font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.02em; }
 .home-greeting__row { display: flex; align-items: flex-end; gap: 12px; margin-top: 6px; font-size: 14px; line-height: 20px; }
 .home-greeting__row > div:first-child { flex: 1; min-width: 0; }
 .home-greeting__weather { flex: none; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 18px; font-weight: 600; text-shadow: none; background: rgba(255,255,255,.22); backdrop-filter: blur(16px) saturate(1.6); -webkit-backdrop-filter: blur(16px) saturate(1.6); border: 1px solid rgba(255,255,255,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 14px rgba(20,20,45,.18); }
@@ -40,7 +40,7 @@
 .mobile-shell .dw-head { gap: 8px; height: 28px; margin-bottom: 8px; }
 .mobile-shell .dw-head-icon { display: none; }
 .mobile-shell .dw-head-title { flex: 1; font-size: 14px; line-height: 20px; }
-.mobile-shell .dw-head-badge { min-width: 0; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 13px; line-height: 22px; }
+.mobile-shell .dw-head-badge { min-width: 0; height: 22px; padding: 0 8px; border-radius: 12px; font-size: 13px; line-height: 22px; }
 .mobile-shell .home-mobile-open { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin: -6px -8px -6px 0; opacity: .8; }
 .mobile-shell .dw-grid { grid-template-columns: minmax(0,1fr) !important; }
 
@@ -56,7 +56,7 @@
 .mobile-shell .dw-focus { gap: 16px; }
 .mobile-shell .dw-focus--row { justify-content: flex-start; }
 .mobile-shell .dw-focus--row .dw-ctrls { margin-left: auto; }
-.mobile-shell .dw-ring { width: 108px; height: 108px; padding: 7px; }
+.mobile-shell .dw-ring { width: 108px; height: 108px; padding: 8px; }
 .mobile-shell .dw-ring-time { font-size: 20px; line-height: 28px; letter-spacing: 0; }
 .mobile-shell .dw-round { width: 36px; height: 36px; }
 .mobile-shell .dw-select { display: none; }
@@ -75,7 +75,7 @@
 /* Mail / Projects / Notes */
 .mobile-shell .dw-list { gap: 0; }
 .mobile-shell .dw-row { min-height: 48px; }
-.mobile-shell .dw-row .dw-tile { width: 36px; height: 36px; border-radius: 10px; font-size: 15px; font-weight: 700; }
+.mobile-shell .dw-row .dw-tile { width: 36px; height: 36px; border-radius: 10px; font-size: 15px; font-weight: 600; }
 .mobile-shell .dw-row-title--head { font-weight: 600; }
 .mobile-shell .dw-row-title--head > span:last-child { font-size: 13px; }
 .dw-unread { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #2f6fe4; }

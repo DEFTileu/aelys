@@ -18,7 +18,7 @@
   .knowledge-view .knowledge-item-text small { margin: 0; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
   .knowledge-view .knowledge-empty { padding: 32px 12px; text-align: center; font-size: 13px; color: var(--pg-mute); }
   .knowledge-view .knowledge-reader-head { height: 56px; min-height: 0; padding: 0 16px; gap: 8px; border-bottom: 1px solid var(--pg-rule); }
-  .knowledge-view .knowledge-kind { height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; line-height: 24px; font-weight: 500; }
+  .knowledge-view .knowledge-kind { height: 24px; padding: 0 8px; border-radius: 12px; font-size: 12px; line-height: 24px; font-weight: 500; }
   .knowledge-view .knowledge-updated { font-size: 12px; color: var(--pg-mute); }
   .knowledge-view .knowledge-grow { flex: 1; }
   .knowledge-view .knowledge-button { height: 36px; min-height: 0; padding: 0 12px; border: 1px solid var(--pg-line-btn); border-radius: 10px; background: var(--pg-card); color: var(--pg-ink); font-size: 13px; font-weight: 500; white-space: nowrap; }
@@ -26,7 +26,7 @@
   .knowledge-view .knowledge-button svg { color: var(--pg-violet); }
   .knowledge-view .knowledge-edit { margin-left: 0; }
   .knowledge-view .knowledge-content { padding: 28px 40px 40px; }
-  .knowledge-view .knowledge-content > h1 { max-width: 720px; margin: 0 0 20px; font-size: 30px; line-height: 38px; font-weight: 700; letter-spacing: -.02em; }
+  .knowledge-view .knowledge-content > h1 { max-width: 720px; margin: 0 0 20px; font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -.02em; }
   .knowledge-view .knowledge-markdown { max-width: 720px; }
   .knowledge-view .knowledge-markdown h2, .knowledge-view .knowledge-markdown h3, .knowledge-view .knowledge-markdown h4 { margin: 20px 0 6px; font-size: 18px; line-height: 26px; font-weight: 600; }
   .knowledge-view .knowledge-markdown > div { font-size: 15px; line-height: 26px; color: var(--pg-ink-2); }

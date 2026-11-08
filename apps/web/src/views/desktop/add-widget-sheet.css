@@ -7,7 +7,7 @@
 .add-widget__search { display: flex; align-items: center; gap: 8px; height: 40px; flex: none; padding: 0 12px; margin-bottom: 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-solid, #fff); color: var(--muted); }
 .add-widget__search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; }
 .add-widget__item { display: flex; align-items: center; gap: 10px; height: 44px; flex: none; padding: 0 10px; border-radius: 12px; text-align: left; }
-.add-widget__item:hover { background: rgba(106,76,242,.08); }
+.add-widget__item:hover { background: rgba(28, 27, 34, .06); }
 .add-widget__item[aria-selected='true'] { background: rgba(106,76,242,.14); }
 .add-widget__icon { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 8px; }
 .add-widget__name { flex: 1; font-weight: 500; }
@@ -22,7 +22,7 @@
 .add-widget__sizes { display: flex; gap: 16px; align-items: flex-end; margin-top: 24px; flex-wrap: wrap; }
 .add-widget__size { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 0; font-weight: 600; font-size: 13px; }
 .add-widget__preview { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 14px; border: 2px solid var(--line); background: var(--surface-soft); }
-.add-widget__size[aria-checked='true'] .add-widget__preview { border-color: #6A4CF2; background: rgba(106,76,242,.08); }
+.add-widget__size[aria-checked='true'] .add-widget__preview { border-color: #6A4CF2; background: rgba(28, 27, 34, .06); }
 .add-widget__size[aria-checked='true'] { color: #5132D6; }
 .add-widget__preview i { width: 18px; height: 18px; border-radius: 5px; }
 .add-widget__preview b { height: 6px; width: 60%; border-radius: 3px; background: var(--line); }
@@ -51,7 +51,7 @@
   .add-widget__item[aria-selected='true'] { background: var(--pg-tint, #f3f0fe); box-shadow: inset 0 0 0 1.5px #6a4cf2; }
   .add-widget__icon { width: 36px; height: 36px; border-radius: 12px; }
   .add-widget__name { font-size: 14px; line-height: 20px; font-weight: 600; }
-  .add-widget__detail h2 { font-size: 18px; line-height: 24px; font-weight: 700; }
+  .add-widget__detail h2 { font-size: 18px; line-height: 24px; font-weight: 600; }
   .add-widget__cancel, .add-widget__add { height: 44px; border-radius: 14px; font-size: 15px; }
   .add-widget__add { flex: 2; justify-content: center; }
   .add-widget__cancel { flex: 1; justify-content: center; }

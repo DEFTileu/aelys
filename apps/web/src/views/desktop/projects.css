@@ -10,7 +10,7 @@
   :root[data-theme='dark'] .projects-view .pv-filters span { background: rgba(255, 255, 255, .1); }
   .projects-view .pv-search { width: 240px; height: 40px; padding: 0 12px; border: 1px solid var(--pg-line); border-radius: 12px; background: var(--pg-card); color: var(--pg-mute); backdrop-filter: none; }
   .projects-view .pv-search input { font-size: 13px; color: var(--pg-ink); }
-  .projects-view .pv-new { height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--pg-violet); color: #fff; font-size: 14px; font-weight: 500; gap: 8px; box-shadow: 0 4px 12px rgba(106, 76, 242, .25); }
+  .projects-view .pv-new { height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--pg-violet); color: #fff; font-size: 14px; font-weight: 500; gap: 8px; }
   .projects-view .pv-new:hover { background: var(--pg-violet-hover); }
   .projects-view .pn-button { height: 36px; min-height: 0; padding: 0 12px; border: 1px solid var(--pg-line-btn); border-radius: 10px; background: var(--pg-card); color: var(--pg-ink); font-size: 13px; font-weight: 500; gap: 6px; white-space: nowrap; }
   .projects-view .pn-button:hover { background: var(--pg-hover); }
@@ -66,10 +66,10 @@
   .projects-view .pv-ring { background-clip: padding-box; }
   .projects-view .pv-ring strong { background: var(--pg-card); color: var(--pg-ink); }
   .projects-view .pv-counts { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; color: var(--pg-mute); }
-  .projects-view .pv-counts b { display: block; font-size: 18px; line-height: 22px; font-weight: 700; color: var(--pg-ink); }
+  .projects-view .pv-counts b { display: block; font-size: 18px; line-height: 22px; font-weight: 600; color: var(--pg-ink); }
 
   .projects-view .pv-detail-head > .pv-icon { width: 56px; height: 56px; border-radius: 16px; font-size: 26px; }
-  .projects-view .pv-detail-head .pv-status { height: 22px; line-height: 22px; font-size: 12px; padding: 0 8px; border-radius: 11px; vertical-align: 3px; }
+  .projects-view .pv-detail-head .pv-status { height: 22px; line-height: 22px; font-size: 12px; padding: 0 8px; border-radius: 12px; vertical-align: 3px; }
   .projects-view .pv-detail-actions { display: flex; gap: 8px; align-items: flex-start; }
   .projects-view .pv-detail-actions .pn-button:last-child { color: var(--pg-red); }
   .projects-view .pv-task-list { padding: 6px; }
@@ -87,7 +87,7 @@
   .projects-view .pv-task > small { font-size: 12px; line-height: 22px; color: var(--pg-ink-3); }
   .projects-view .pv-task-go { flex: none; color: #A29DA8; }
   .projects-view .pv-ring { width: 88px; height: 88px; padding: 8px; border-radius: 50%; }
-  .projects-view .pv-ring strong { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; }
+  .projects-view .pv-ring strong { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; }
   .projects-view .pv-linked button { gap: 10px; padding: 10px 12px; border-radius: 12px; background: transparent; color: var(--pg-ink); text-align: left; }
   .projects-view .pv-linked button:hover { background: var(--pg-hover); }
   .projects-view .pv-note-icon { flex: none; margin-top: 2px; color: #D97706; }

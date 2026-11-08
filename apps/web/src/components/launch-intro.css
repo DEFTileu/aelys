@@ -19,7 +19,7 @@
 .launch-intro__mark { width:188px; height:154px; transition:width 900ms cubic-bezier(.65,0,.2,1),height 900ms cubic-bezier(.65,0,.2,1); animation:launch-float 1.4s ease-in-out 2s infinite alternate; }
 .launch-intro--lock .launch-intro__mark { width:76px; height:62px; }
 .launch-intro__mark img { display:block; width:100%; height:100%; overflow:visible; }
-.launch-intro__name { display:flex; font-size:46px; font-weight:700; line-height:1; transition:font-size 900ms cubic-bezier(.65,0,.2,1); }
+.launch-intro__name { display:flex; font-size:46px; font-weight: 600; line-height:1; transition:font-size 900ms cubic-bezier(.65,0,.2,1); }
 .launch-intro--lock .launch-intro__name { font-size:28px; }
 .launch-intro__name > span { display:inline-block; animation:launch-letter .6s cubic-bezier(.2,.9,.3,1.2) both; }
 .launch-intro__welcome { font-size:14px; line-height:20px; margin-top:-6px; font-weight:500; color:rgba(255,255,255,.92); text-shadow:0 1px 10px rgba(30,15,70,.5); animation:launch-reveal .6s ease-out 2.25s both; transition:font-size 900ms cubic-bezier(.65,0,.2,1),margin 900ms cubic-bezier(.65,0,.2,1); }

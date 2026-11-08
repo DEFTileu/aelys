@@ -71,7 +71,7 @@
   .actual-mail .actual-sender p { flex: 1; min-width: 0; margin: 0; }
   .actual-mail .actual-sender strong { display: block; font-size: 14px; font-weight: 600; line-height: 22px; color: var(--pg-ink); }
   .actual-mail .actual-sender p span { display: block; font-size: 12px; line-height: 16px; color: var(--pg-mute); }
-  .actual-mail .actual-acc-chip { height: 24px; padding: 0 9px; border-radius: 12px; background: var(--pg-chip); font-size: 12px; line-height: 24px; color: var(--pg-ink-3); }
+  .actual-mail .actual-acc-chip { height: 24px; padding: 0 8px; border-radius: 12px; background: var(--pg-chip); font-size: 12px; line-height: 24px; color: var(--pg-ink-3); }
   .actual-mail .actual-sender time { padding: 0; border: 0; font-size: 12px; color: var(--pg-mute); }
   .actual-mail .actual-mail-reader .mail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px; font-size: 15px; line-height: 24px; white-space: pre-wrap; color: #2A2732; }
   :root[data-theme='dark'] .actual-mail .actual-mail-reader .mail-body { color: var(--pg-ink); }
@@ -80,7 +80,7 @@
   .actual-mail .actual-reply-heading strong { font-weight: 600; }
   .actual-mail .actual-reply-heading svg { color: var(--pg-ink-3); }
   .actual-mail .actual-reply-heading em[data-state='none'] { background: var(--pg-chip); color: var(--pg-ink-3); }
-  .actual-mail .actual-reply-heading em { height: 22px; padding: 0 8px; border-radius: 11px; background: var(--pg-tint); color: var(--pg-acc); font-size: 11px; line-height: 22px; font-weight: 600; font-style: normal; }
+  .actual-mail .actual-reply-heading em { height: 22px; padding: 0 8px; border-radius: 12px; background: var(--pg-tint); color: var(--pg-acc); font-size: 11px; line-height: 22px; font-weight: 600; font-style: normal; }
   .actual-mail .actual-reply textarea { width: 100%; min-height: 108px; padding: 10px 12px; border: 1px solid var(--pg-line); border-radius: 12px; background: var(--pg-card); color: var(--pg-ink); font-size: 14px; line-height: 22px; resize: vertical; outline: 0; }
   .actual-mail .actual-reply-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
   .actual-mail .actual-reply-actions > span { flex: 1; min-width: 120px; font-size: 12px; color: var(--pg-mute); }

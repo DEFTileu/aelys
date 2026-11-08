@@ -82,7 +82,7 @@
 .actual-ai__divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
 .actual-ai__divider span { flex: 1; height: 1px; background: var(--pg-line); }
 .actual-ai__stopped { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 13px; }
-.actual-ai__dots { display: inline-flex; gap: 5px; align-items: center; padding: 8px 0; }
+.actual-ai__dots { display: inline-flex; gap: 4px; align-items: center; padding: 8px 0; }
 .actual-ai__dots i { width: 7px; height: 7px; border-radius: 50%; background: #6A4CF2; animation: actual-ai-pulse 1s ease-in-out infinite; }
 .actual-ai__dots i:nth-child(2) { animation-delay: .15s; }
 .actual-ai__dots i:nth-child(3) { animation-delay: .3s; }
@@ -125,7 +125,7 @@
 
 /* Answer actions */
 .actual-ai__tools { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; margin-left: -6px; }
-.actual-ai__tool { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 30px; height: 30px; padding: 0 7px; border: 0; border-radius: 9px; background: none; color: var(--muted); font-size: 12px; }
+.actual-ai__tool { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 30px; height: 30px; padding: 0 8px; border: 0; border-radius: 9px; background: none; color: var(--muted); font-size: 12px; }
 .actual-ai__tool:hover:not(:disabled) { background: var(--pg-chip); }
 .actual-ai__tool[data-on] { color: var(--pg-acc); }
 .actual-ai__tool--down[data-on] { color: var(--pg-red); }
@@ -209,12 +209,12 @@
 .actual-ai__source div span { display: block; color: var(--muted); font-size: 12px; line-height: 16px; }
 .actual-ai__sources--large .actual-ai__source { min-height: 48px; }
 .actual-ai__sources--large .actual-ai__source b { font-size: 14px; }
-.actual-ai__switch { position: relative; flex: none; width: 38px; height: 22px; padding: 0; border: 0; border-radius: 11px; background: var(--pg-disabled); transition: background .2s; }
+.actual-ai__switch { position: relative; flex: none; width: 38px; height: 22px; padding: 0; border: 0; border-radius: 12px; background: var(--pg-disabled); transition: background .2s; }
 .actual-ai__switch::before { content: ''; position: absolute; inset: -11px -4px; }
 .actual-ai__switch i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: left .2s; }
 .actual-ai__switch[aria-checked='true'] { background: #6A4CF2; }
 .actual-ai__switch[aria-checked='true'] i { left: 19px; }
-.actual-ai__sources--large .actual-ai__switch { width: 44px; height: 26px; border-radius: 13px; }
+.actual-ai__sources--large .actual-ai__switch { width: 44px; height: 26px; border-radius: 12px; }
 .actual-ai__sources--large .actual-ai__switch i { width: 20px; height: 20px; }
 .actual-ai__sources--large .actual-ai__switch[aria-checked='true'] i { left: 21px; }
 
@@ -226,7 +226,7 @@
 .actual-ai__chatinfo h2 > span:first-child { flex: 1; min-width: 0; }
 .actual-ai__cost { color: var(--muted); font-size: 12px; font-weight: 400; white-space: nowrap; }
 .actual-ai__used { display: flex; align-items: baseline; gap: 6px; margin: 10px 0 0; }
-.actual-ai__used b { font-size: 20px; line-height: 28px; font-weight: 700; white-space: nowrap; }
+.actual-ai__used b { font-size: 20px; line-height: 28px; font-weight: 600; white-space: nowrap; }
 .actual-ai__used span { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .actual-ai__bar { height: 6px; margin-top: 8px; overflow: hidden; border-radius: 3px; background: var(--pg-track); }
 .actual-ai__bar i { display: block; height: 100%; border-radius: 3px; background: #6A4CF2; transition: width .3s; }

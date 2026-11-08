@@ -16,7 +16,7 @@
 .feedback-dialog input { min-width: 0; min-height: 42px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 12px; color: var(--ink); background: var(--surface-soft); font: inherit; }
 .feedback-dialog-actions { justify-content: flex-end; margin-top: 8px; }
 .feedback-dialog :focus-visible, .feedback-examples :focus-visible, .motion-examples :focus-visible { outline: 2px solid var(--purple); outline-offset: 3px; }
-.motion-card { display: grid; gap: 5px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--ink); }
+.motion-card { display: grid; gap: 4px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--ink); }
 .motion-card span { color: var(--muted); font-size: 13px; }
 .motion-card--enter { animation: motion-enter 500ms ease-out both; }
 .motion-preview { transition: transform 150ms ease; }

@@ -8,5 +8,5 @@
 .screen-toolbar__send { width: 28px; height: 28px; border: 0; border-radius: 50%; background: var(--accent, #6A4CF2); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .screen-toolbar__secondary { flex: none; white-space: nowrap; height: 40px; padding: 0 14px; border-radius: 12px; background: #fff; border: 1px solid #E7E2DE; display: flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; font-weight: 500; color: inherit; cursor: pointer; }
 .screen-toolbar__secondary:hover { background: #F6F3F0; }
-.screen-toolbar__primary { flex: none; white-space: nowrap; height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--accent, #6A4CF2); color: #fff; display: flex; align-items: center; gap: 8px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; box-shadow: 0 4px 12px rgba(106,76,242,.3); }
+.screen-toolbar__primary { flex: none; white-space: nowrap; height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--accent, #6A4CF2); color: #fff; display: flex; align-items: center; gap: 8px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
 .screen-toolbar__primary:hover { background: #5B3DE6; }

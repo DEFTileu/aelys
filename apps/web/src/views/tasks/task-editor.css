@@ -10,7 +10,7 @@
 .task-editor__dialog :focus-visible { outline: 2px solid rgba(106, 76, 242, .55); outline-offset: 2px; }
 .task-editor__header { display: flex; align-items: center; gap: 8px; }
 .task-editor__header h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 24px; }
-.task-editor__unsaved { height: 22px; padding: 0 8px; border-radius: 11px; background: var(--pg-warn-bg); color: var(--pg-warn); font-size: 12px; line-height: 22px; font-weight: 500; }
+.task-editor__unsaved { height: 22px; padding: 0 8px; border-radius: 12px; background: var(--pg-warn-bg); color: var(--pg-warn); font-size: 12px; line-height: 22px; font-weight: 500; }
 .task-editor__close { margin-left: auto; width: 36px; height: 36px; flex: none; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--pg-ink-2); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .task-editor__close:hover:not(:disabled) { background: var(--pg-hover); }
 .task-editor__complete { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border: 0; border-radius: 12px; background: var(--pg-field); font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; }
@@ -46,7 +46,7 @@
   .task-editor__dialog { z-index: 61; top: auto; left: 0; right: 0; bottom: 0; width: auto; max-width: none; max-height: 86vh; padding: 10px 18px 28px; border: 0; border-radius: 28px 28px 0 0; background: #FBF9F7; box-shadow: 0 -12px 40px rgba(20, 10, 30, .25); }
   :root[data-theme='dark'] .task-editor__dialog { background: var(--pg-card); }
   .task-editor__dialog::before { content: ''; display: block; width: 40px; height: 5px; margin: 0 auto 14px; border-radius: 3px; background: #D6D0DA; }
-  .task-editor__header h2 { font-size: 18px; font-weight: 700; line-height: normal; }
+  .task-editor__header h2 { font-size: 18px; font-weight: 600; line-height: normal; }
   .task-editor__close { width: 36px; height: 36px; border-radius: 50%; background: #ECE7E3; }
   :root[data-theme='dark'] .task-editor__close { background: var(--pg-field); }
   .task-editor__complete { height: 44px; border-radius: 14px; font-size: 15px; }

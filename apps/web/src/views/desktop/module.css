@@ -21,7 +21,7 @@
 .mod-row__title, .mod-row__meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mod-row__title { font-size: 14px; line-height: 20px; font-weight: 500; color: #1C1B22; }
 .mod-row__meta { font-size: 13px; line-height: 18px; color: #625D69; }
-.mod-row__badge { flex: none; height: 22px; padding: 0 8px; border-radius: 11px; background: #F1EDEA; color: #625D69; font-size: 12px; line-height: 22px; font-weight: 500; }
+.mod-row__badge { flex: none; height: 22px; padding: 0 8px; border-radius: 12px; background: #F1EDEA; color: #625D69; font-size: 12px; line-height: 22px; font-weight: 500; }
 
 .mod-create { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 16px; background: rgba(255,255,255,.88); border: 1px solid #E7E2DE; }
 .mod-create input { flex: 1; min-width: 0; height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid #E7E2DE; background: #fff; color: #1C1B22; font: inherit; font-size: 14px; outline: 0; }
@@ -30,13 +30,13 @@
 
 .mod-btn { height: 40px; padding: 0 16px; display: inline-flex; align-items: center; gap: 6px; border-radius: 12px; border: 1px solid #E7E2DE; background: #fff; color: #1C1B22; font: inherit; font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .mod-btn:hover { background: #F6F3F0; }
-.mod-btn--primary { border-color: transparent; background: #6A4CF2; color: #fff; box-shadow: 0 4px 12px rgba(106,76,242,.3); }
+.mod-btn--primary { border-color: transparent; background: #6A4CF2; color: #fff; }
 .mod-btn--primary:hover { background: #5B3DE6; }
 .mod-link { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: #5132D6; font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .mod-link:hover { text-decoration: underline; }
 .mod-btn:focus-visible, .mod-link:focus-visible { outline: 2px solid #6A4CF2; outline-offset: 2px; }
 
-.mod-pill { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; background: #F1EDEA; color: #625D69; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.mod-pill { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 12px; background: #F1EDEA; color: #625D69; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .mod-pill--ready { background: #E6F5EC; color: #1F7A4D; }
 .mod-pill--loading, .mod-pill--offline { background: #FBF1DC; color: #8A5E0E; }
 .mod-pill--error { background: #FBE6EA; color: #A93E57; }

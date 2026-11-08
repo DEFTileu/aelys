@@ -9,7 +9,7 @@
 
   /* Folders */
   .notes-live .nl-folders { display: flex; flex-direction: column; gap: 2px; padding: 12px; overflow-y: auto; }
-  .notes-live .nl-new { height: 40px; margin-bottom: 12px; padding: 0 16px; border-radius: 12px; font-size: 14px; box-shadow: 0 4px 12px rgba(106, 76, 242, .25); justify-content: center; flex: none; }
+  .notes-live .nl-new { height: 40px; margin-bottom: 12px; padding: 0 16px; border-radius: 12px; font-size: 14px; justify-content: center; flex: none; }
   .notes-live .nl-new:hover { background: var(--pg-violet-hover); }
   .notes-live .nl-folders h2 { margin: 0; padding: 4px 10px 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--pg-ink-3); }
   .notes-live .nl-folders h2.nl-tags-title { padding: 16px 10px 8px; }
@@ -44,7 +44,7 @@
   .notes-live .nl-note-title small { font-size: 12px; font-weight: 400; color: var(--pg-mute); white-space: nowrap; }
   .notes-live .nl-note-body p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 0; font-size: 13px; line-height: 18px; color: var(--pg-mute); }
   .notes-live .nl-note-tags { display: flex; gap: 4px; margin-top: 6px; }
-  .notes-live .nl-note-tags span { height: 20px; padding: 0 7px; border-radius: 6px; background: #EEEAFD; color: var(--pg-acc); font-size: 11px; font-weight: 400; line-height: 20px; }
+  .notes-live .nl-note-tags span { height: 20px; padding: 0 8px; border-radius: 6px; background: #EEEAFD; color: var(--pg-acc); font-size: 11px; font-weight: 400; line-height: 20px; }
   :root[data-theme='dark'] .notes-live .nl-note-tags span { background: #2F2752; }
   .notes-live .nl-muted { padding: 32px 12px; text-align: center; font-size: 13px; color: var(--pg-mute); }
 
@@ -63,11 +63,11 @@
   .notes-live .nl-delete { width: 36px; height: 36px; flex: none; margin: 0; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--pg-ink-2); display: flex; align-items: center; justify-content: center; }
   .notes-live .nl-delete:hover:not(:disabled) { background: rgba(229, 72, 77, .14); color: #D93636; }
   .notes-live .nl-editor-body { flex: 1; overflow-y: auto; padding: 24px 32px; display: flex; flex-direction: column; gap: 12px; }
-  .notes-live .nl-title-input { width: 100%; height: 38px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--pg-ink); font-size: 28px; line-height: 36px; font-weight: 700; letter-spacing: -.02em; }
+  .notes-live .nl-title-input { width: 100%; height: 38px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--pg-ink); font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -.02em; }
   .notes-live .nl-tags--edit:empty { display: none; }
   .notes-live .nl-tag-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .notes-live .nl-tags--edit { display: flex; flex-wrap: wrap; gap: 6px; }
-  .notes-live .nl-tags--edit button { display: flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px 0 10px; border: 0; border-radius: 13px; background: #EEEAFD; color: var(--pg-acc); font-size: 12px; font-weight: 400; line-height: 26px; }
+  .notes-live .nl-tags--edit button { display: flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px 0 10px; border: 0; border-radius: 12px; background: #EEEAFD; color: var(--pg-acc); font-size: 12px; font-weight: 400; line-height: 26px; }
   :root[data-theme='dark'] .notes-live .nl-tags--edit button { background: #2F2752; }
   .notes-live .nl-tag-add input { width: 110px; height: 26px; padding: 0 6px; border: 0; outline: 0; background: transparent; color: var(--pg-ink); font-size: 12px; font-weight: 400; line-height: 22px; }
   .notes-live .nl-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); border: 0; padding: 0; }
