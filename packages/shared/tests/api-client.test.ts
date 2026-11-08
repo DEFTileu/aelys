@@ -636,6 +636,29 @@ describe("ApiClient", () => {
     expect(store.outbox).toHaveLength(0);
   });
 
+  it("sends English requests and refreshes the cached day after a write", async () => {
+    const fetchImpl = vi.fn(async () => json({ day: "2026-11-09" }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    await client.englishToday("2026-11-09");
+    await client.englishToday("2026-11-09");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await client.englishGenerate("2026-11-09", 5);
+    await client.englishToday("2026-11-09");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    const calls = fetchImpl.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0]![0]).toBe("https://api.example.test/api/v1/english/today?day=2026-11-09");
+    expect(calls[1]![0]).toBe("https://api.example.test/api/v1/english/today/words");
+    expect(JSON.parse(calls[1]![1].body as string)).toEqual({ day: "2026-11-09", count: 5 });
+    await client.englishReview("w 1", "2026-11-09", false);
+    expect(calls[3]![0]).toBe("https://api.example.test/api/v1/english/words/w%201/review");
+    await client.englishSettings();
+    await client.englishSaveSettings({ reminder_enabled: true, reminder_time: "21:00", timezone: "Asia/Almaty" });
+    expect(calls[4]![0]).toBe("https://api.example.test/api/v1/english/settings");
+    expect(calls[5]![0]).toBe("https://api.example.test/api/v1/english/settings");
+    expect(calls[5]![1].method).toBe("PUT");
+    expect(JSON.parse(calls[5]![1].body as string)).toEqual({ reminder_enabled: true, reminder_time: "21:00", timezone: "Asia/Almaty" });
+  });
+
   it("reads the ledger cache through an unavailable reverse proxy but rejects revoked access", async () => {
     const store = new MemoryStore();
     store.cache.set("finance-transactions", [{ id: "cached-posting", amount: "1250.5001" }]);

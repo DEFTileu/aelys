@@ -5,7 +5,7 @@ import type {
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
-  FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
+  FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, EnglishReport, EnglishSettings, EnglishToday, EnglishWord, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
   MailAccountIn, MailDraft, MailMessage, MailMessageReadIn, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
   ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession, AgentSessionStopResponse,
@@ -42,6 +42,8 @@ export interface RequestOptions {
   readonly offlineEntityKey?: EntityKey;
   readonly offlineEntityValue?: unknown;
   readonly signal?: AbortSignal;
+  /** Override the client-wide timeout, e.g. for slow AI-backed calls. */
+  readonly timeoutMs?: number;
 }
 export interface ApiClientOptions {
   readonly baseUrl: string;
@@ -135,7 +137,7 @@ const mutationFamilies: readonly [string, readonly string[]][] = [
   ["/api/v1/finance", ["finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary"]],
   ["/api/v1/mail", ["mail-accounts", "mail-messages", "mail-drafts", "mail-pages", "mail-details"]],
   ["/api/v1/notifications", ["notifications"]], ["/api/v1/ai/providers", ["ai-providers"]],
-  ["/api/v1/agents", ["agent-devices", "agent-sessions"]], ["/api/v1/automations", ["automations"]],
+  ["/api/v1/english", ["english-today", "english-reports", "english-settings"]], ["/api/v1/agents", ["agent-devices", "agent-sessions"]], ["/api/v1/automations", ["automations"]],
   ["/api/v1/sync/push", ["projects", "notes", "notes-pages", "tasks", "calendar-events", "calendar-occurrences", "focus-sessions", "finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary", "mail-accounts", "mail-messages", "mail-drafts", "mail-pages", "mail-details"]],
 ];
 
@@ -311,7 +313,7 @@ export class ApiClient {
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
     const controller = new AbortController();
-    const timer = globalThis.setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = globalThis.setTimeout(() => controller.abort(), options.timeoutMs ?? this.timeoutMs);
     const signal = options.signal;
     const abort = () => controller.abort();
     signal?.addEventListener("abort", abort, { once: true });
@@ -512,6 +514,15 @@ export class ApiClient {
   public stopFocusSession(itemId: Id, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/stop`, this.write(undefined, { queueOnOffline: false, ...options })); }
   public pauseFocusSession(itemId: Id, version?: number, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/pause`, this.write(undefined, { queueOnOffline: false, ...options, query: version === undefined ? undefined : { version } })); }
   public resumeFocusSession(itemId: Id, version?: number, options?: RequestOptions) { return this.request<FocusOut>(`/api/v1/focus/sessions/${encodeURIComponent(itemId)}/resume`, this.write(undefined, { queueOnOffline: false, ...options, query: version === undefined ? undefined : { version } })); }
+
+  // AI-backed writes can take up to the server's 60s provider timeout, so they get a longer client timeout.
+  public englishToday(day: string, options?: RequestOptions) { return this.request<EnglishToday>("/api/v1/english/today", this.read({ ...options, query: { day } }, "english-today")); }
+  public englishGenerate(day: string, count: 5 | 10, options?: RequestOptions) { return this.request<EnglishToday>("/api/v1/english/today/words", this.write({ day, count }, { queueOnOffline: false, timeoutMs: 90_000, ...options })); }
+  public englishReview(itemId: Id, day: string, correct: boolean, options?: RequestOptions) { return this.request<EnglishWord>(`/api/v1/english/words/${encodeURIComponent(itemId)}/review`, this.write({ day, correct }, { queueOnOffline: false, ...options })); }
+  public englishSubmitReport(day: string, text: string, options?: RequestOptions) { return this.request<EnglishReport>("/api/v1/english/reports", this.write({ day, text }, { queueOnOffline: false, timeoutMs: 90_000, ...options })); }
+  public englishReports(limit = 30, options?: RequestOptions) { return this.request<readonly EnglishReport[]>("/api/v1/english/reports", this.read({ ...options, query: { limit } }, "english-reports")); }
+  public englishSettings(options?: RequestOptions) { return this.request<EnglishSettings>("/api/v1/english/settings", this.read(options, "english-settings")); }
+  public englishSaveSettings(body: EnglishSettings, options?: RequestOptions) { return this.request<EnglishSettings>("/api/v1/english/settings", this.write(body, { queueOnOffline: false, ...options }, "PUT")); }
 
   public financeAccounts(options?: RequestOptions) { return this.request<readonly FinanceAccount[]>("/api/v1/finance/accounts", this.read(options, "finance-accounts")); }
   public createFinanceAccount(body: FinanceAccountIn, options?: RequestOptions) { return this.request<FinanceAccount>("/api/v1/finance/accounts", this.write(body, { queueOnOffline: false, ...options })); }
