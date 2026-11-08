@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,8 +11,9 @@ import { TimerView } from '../views/TimerView'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { consumeSse } from '../lib/sse'
 
-const client = vi.hoisted(() => ({ aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), createAIProvider: vi.fn(), setAIProviderSecret: vi.fn(), updateAIProvider: vi.fn(), mailMessages: vi.fn(), mailPage: vi.fn(), mailMessage: vi.fn(), mailDrafts: vi.fn(), createMailDraft: vi.fn(), updateMailDraft: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn(), financeAccounts: vi.fn(), financeCategories: vi.fn(), financeBudgets: vi.fn(), financeTransactions: vi.fn(), financeSummary: vi.fn(), createFinanceAccount: vi.fn(), createFinanceCategory: vi.fn(), createFinanceBudget: vi.fn(), createFinanceTransaction: vi.fn(), createFinanceTransfer: vi.fn(), focusSessions: vi.fn(), tasks: vi.fn(), projects: vi.fn(), startFocusSession: vi.fn(), stopFocusSession: vi.fn(), pauseFocusSession: vi.fn(), resumeFocusSession: vi.fn(), notifications: vi.fn(), dispatchCalendarReminders: vi.fn(), markNotificationRead: vi.fn() }))
-vi.mock('../lib/api', () => ({ getSharedApiClient: () => client, getAccessToken: () => 'test-session' }))
+const client = vi.hoisted(() => ({ aiCapabilities: vi.fn(), aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), createAIProvider: vi.fn(), setAIProviderSecret: vi.fn(), updateAIProvider: vi.fn(), mailMessages: vi.fn(), mailPage: vi.fn(), mailMessage: vi.fn(), mailDrafts: vi.fn(), createMailDraft: vi.fn(), updateMailDraft: vi.fn(), mailAccounts: vi.fn(), gmailStatus: vi.fn(), financeAccounts: vi.fn(), financeCategories: vi.fn(), financeBudgets: vi.fn(), financeTransactions: vi.fn(), financeSummary: vi.fn(), createFinanceAccount: vi.fn(), createFinanceCategory: vi.fn(), createFinanceBudget: vi.fn(), createFinanceTransaction: vi.fn(), createFinanceTransfer: vi.fn(), focusSessions: vi.fn(), tasks: vi.fn(), projects: vi.fn(), startFocusSession: vi.fn(), stopFocusSession: vi.fn(), pauseFocusSession: vi.fn(), resumeFocusSession: vi.fn(), notifications: vi.fn(), dispatchCalendarReminders: vi.fn(), markNotificationRead: vi.fn() }))
+const identity = vi.hoisted(() => ({ partition: '' }))
+vi.mock('../lib/api', () => ({ getSharedApiClient: () => client, getAccessToken: () => 'test-session', getDraftPartition: async (kind: string) => JSON.stringify(['web', 'backend', identity.partition, kind]) }))
 let root: ReturnType<typeof createRoot>
 let host: HTMLDivElement
 async function render(element: React.ReactNode) { host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host); await act(async () => root.render(element)) }
@@ -23,7 +25,7 @@ async function fill(label: string, value: string) {
 async function click(text: string) { await act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent === text)!.click()) }
 async function submit() { await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))) }
 
-beforeEach(() => { vi.resetAllMocks(); client.mailAccounts.mockResolvedValue([]); client.gmailStatus.mockResolvedValue({ configured: false }); client.financeCategories.mockResolvedValue([]); client.financeBudgets.mockResolvedValue([]) })
+beforeEach(() => { vi.resetAllMocks(); identity.partition = crypto.randomUUID(); client.aiCapabilities.mockResolvedValue({ conversation_create_idempotency: true }); client.mailAccounts.mockResolvedValue([]); client.gmailStatus.mockResolvedValue({ configured: false }); client.financeCategories.mockResolvedValue([]); client.financeBudgets.mockResolvedValue([]) })
 beforeEach(() => { client.mailPage.mockImplementation(async () => ({ items: await client.mailMessages(), next_cursor: null, etag: 'mail' })); })
 
 afterEach(() => { if (root) act(() => root.unmount()); document.body.innerHTML = '' })
@@ -47,10 +49,14 @@ describe('connected workspaces', () => {
     client.createAIRun.mockResolvedValue({ id: 'r1' }); client.aiMessages.mockResolvedValue([])
     client.aiRunEvents.mockResolvedValue(new Response('event: ai.text.delta\ndata: {"text":"Partial reply"}\n\n'))
     await render(<AiView apiStatus="ready" />)
+    await vi.waitFor(() => expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')?.disabled).toBe(false))
     await fill('Message Aelys', 'Hello'); await submit()
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalled())
     expect(host.textContent).toContain('Partial reply')
     expect(host.textContent).toContain('before the provider confirmed completion')
-    expect(client.createAIRun).toHaveBeenCalledWith(expect.objectContaining({ routing: { provider_id: 'p1', provider: 'claude', model: 'model', timezone: expect.any(String) } }), { queueOnOffline: false })
+    expect(client.createAIConversation).toHaveBeenCalledWith(expect.any(Object), { queueOnOffline: false, idempotencyKey: expect.any(String) })
+    expect(client.createAIRun).toHaveBeenCalledWith(expect.objectContaining({ routing: { provider_id: 'p1', provider: 'claude', model: 'model', timezone: expect.any(String) }, idempotency_key: expect.any(String) }), { queueOnOffline: false, idempotencyKey: expect.any(String) })
+    expect(client.createAIRun.mock.calls[0]![1].idempotencyKey).toBe(client.createAIRun.mock.calls[0]![0].idempotency_key)
   })
 
   it('renders imported mail as text and creates an editable reply draft', async () => {

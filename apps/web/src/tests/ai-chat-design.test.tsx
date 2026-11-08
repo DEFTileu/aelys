@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -5,10 +6,11 @@ import { AiView } from '../views/AiView'
 import { formatCost, groupConversations, scopesFor, sourcesOn, whenLabel } from '../views/ai/chatModel'
 
 const client = vi.hoisted(() => ({
-  aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), cancelAIRun: vi.fn(),
+  aiCapabilities: vi.fn(), aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), cancelAIRun: vi.fn(),
   updateAIConversation: vi.fn(), aiConversationActions: vi.fn(), approveAIAction: vi.fn(), rejectAIAction: vi.fn(), uploadAIAttachment: vi.fn(), deleteAIAttachment: vi.fn(), setAIMessageFeedback: vi.fn(),
 }))
-vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
+const identity = vi.hoisted(() => ({ partition: '' }))
+vi.mock('../lib/api', () => ({ getSharedApiClient: () => client, getDraftPartition: async (kind: string) => JSON.stringify(['web', 'backend', identity.partition, kind]) }))
 const claude = { id: 'p1', kind: 'claude', enabled: true, has_secret: true, model_policy: {} }
 const sse = (...events: readonly (readonly [string, object])[]) => new Response(events.map(([name, data]) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`).join(''))
 const day = (offset: number) => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - offset, 12).toISOString()
@@ -21,7 +23,13 @@ async function type(value: string) {
   const field = host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')!
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, value); field.dispatchEvent(new Event('input', { bubbles: true })) })
 }
-const send = async (value: string) => { await type(value); await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!) }
+const send = async (value: string) => {
+  await type(value); await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!)
+  await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalled())
+  const [body, options] = client.createAIRun.mock.calls.at(-1)!
+  expect(options).toMatchObject({ queueOnOffline: false, idempotencyKey: expect.any(String) })
+  expect(options.idempotencyKey).toBe(body.idempotency_key)
+}
 const labels = () => [...host.querySelectorAll('.actual-ai__list-label')].map((item) => item.textContent)
 const side = () => host.querySelector<HTMLElement>('[aria-label="Chat resources"]')!
 const switches = (scope: ParentNode = side()) => Object.fromEntries([...scope.querySelectorAll('[role=switch]')].map((item) => [item.getAttribute('aria-label'), item.getAttribute('aria-checked')]))
@@ -36,6 +44,8 @@ const chats = [
 
 beforeEach(async () => {
   localStorage.clear(); vi.resetAllMocks()
+  identity.partition = crypto.randomUUID()
+  client.aiCapabilities.mockResolvedValue({ conversation_create_idempotency: true })
   localStorage.setItem('aelys.chat.defaultModel', JSON.stringify({ providerId: 'p1', model: 'claude-sonnet-4-5' }))
   client.aiProviders.mockResolvedValue([claude])
   client.aiConversations.mockResolvedValue(chats)
@@ -45,6 +55,7 @@ beforeEach(async () => {
   client.createAIRun.mockResolvedValue({ id: 'run1' })
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
   await act(async () => root.render(<AiView apiStatus="ready" />))
+  await vi.waitFor(() => expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')?.disabled).toBe(false))
 })
 afterEach(() => { act(() => root.unmount()); document.body.innerHTML = '' })
 
@@ -215,7 +226,7 @@ describe('composer', () => {
     await click(find('Stop generating'))
     expect(client.cancelAIRun).toHaveBeenCalledWith('run1')
     await act(async () => release())
-    expect(find('Send message')).toBeTruthy()
+    await vi.waitFor(() => expect(host.querySelector('[aria-label="Send message"]')).not.toBeNull())
   })
   it('shows the keyboard hint only while the field is focused', async () => {
     expect(host.textContent).not.toContain('↵ send')
@@ -231,6 +242,8 @@ describe('empty state and model switch', () => {
     expect(host.querySelectorAll('.actual-ai__suggestions button')).toHaveLength(4)
     client.aiRunEvents.mockImplementation(async () => sse(['ai.run.completed', { run_id: 'run1' }]))
     await click(find('Review my week'))
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalled())
+    expect(client.createAIRun.mock.calls[0]![1].idempotencyKey).toBe(client.createAIRun.mock.calls[0]![0].idempotency_key)
     expect(client.createAIRun.mock.calls[0]![0].message).toBe('Review my week')
   })
   it('inserts a "Switched to" divider when the model changes mid-chat', async () => {

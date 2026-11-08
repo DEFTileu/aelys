@@ -42,9 +42,10 @@ export type NativeOperation =
   | { type: 'mail_accounts' }
   | { type: 'gmail_status' }
   | { type: 'ai_providers' }
+  | { type: 'ai_capabilities' }
   | { type: 'ai_conversations' }
   | { type: 'ai_messages'; conversation_id: string }
-  | { type: 'ai_conversation_create'; conversation: Record<string, unknown> }
+  | { type: 'ai_conversation_create'; conversation: Record<string, unknown>; idempotency_key?: string }
   | { type: 'ai_message_create'; conversation_id: string; message: Record<string, unknown> }
   | { type: 'ai_run_create'; run: Record<string, unknown> }
   | { type: 'ai_run_get'; id: string }

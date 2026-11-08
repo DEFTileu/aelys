@@ -187,8 +187,12 @@ function typedOperationFor(url: URL, init?: RequestInit): NativeOperation | unde
   if (method === 'GET' && path === '/api/v1/mail/accounts') return { type: 'mail_accounts' }
   if (method === 'GET' && path === '/api/v1/mail/gmail/status') return { type: 'gmail_status' }
   if (method === 'GET' && path === '/api/v1/ai/providers') return { type: 'ai_providers' }
+  if (method === 'GET' && path === '/api/v1/ai/capabilities') return { type: 'ai_capabilities' }
   if (method === 'GET' && path === '/api/v1/ai/conversations') return { type: 'ai_conversations' }
-  if (method === 'POST' && path === '/api/v1/ai/conversations') return { type: 'ai_conversation_create', conversation: bodyValue(init?.body) }
+  if (method === 'POST' && path === '/api/v1/ai/conversations') {
+    const key = new Headers(init?.headers).get('Idempotency-Key') ?? undefined
+    return { type: 'ai_conversation_create', conversation: bodyValue(init?.body), ...(key ? { idempotency_key: key } : {}) }
+  }
   const aiMessagesMatch = path.match(/^\/api\/v1\/ai\/conversations\/([A-Za-z0-9_-]+)\/messages$/)
   if (method === 'GET' && aiMessagesMatch) return { type: 'ai_messages', conversation_id: decodeURIComponent(aiMessagesMatch[1]) }
   if (method === 'POST' && aiMessagesMatch) return { type: 'ai_message_create', conversation_id: decodeURIComponent(aiMessagesMatch[1]), message: bodyValue(init?.body) }

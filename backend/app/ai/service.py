@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Protocol
 
+from .egress import ensure_safe_payload
 from .secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
 
 
@@ -58,7 +59,9 @@ class ClaudeProvider:
         self.transport, self.secrets, self.secret_ref = transport, secret_store, secret_ref
 
     async def stream(self, model: Model, messages: list[dict[str, str]]) -> AsyncIterator[str]:
-        response = await self.transport(model.name, messages, self.secrets.get(self.secret_ref))
+        credential = self.secrets.get(self.secret_ref)
+        ensure_safe_payload({"model": model.name, "messages": messages}, known_secrets=(credential,))
+        response = await self.transport(model.name, messages, credential)
         for chunk in response:
             yield chunk
 

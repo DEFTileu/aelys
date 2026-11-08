@@ -84,36 +84,31 @@ async def test_rag_uses_existing_harness_with_sources_and_no_write_tools(ai_test
         conflict = await client.post('/api/v1/ai/runs', json={**body, 'knowledge': {}})
         assert conflict.status_code == 409
         response = await client.get(f"/api/v1/ai/runs/{run['id']}/events")
-        assert 'ai.knowledge.sources' in response.text and 'ai.run.completed' in response.text
-        assert len(transport.payloads) == 1
-        payload = transport.payloads[0]
-        assert not payload.get('tools')
-        assert 'untrusted' in str(payload).lower()
-        assert 'super-secret-test' not in str(payload)
+        assert 'ai.knowledge.sources' in response.text and 'SENSITIVE_DATA_BLOCKED' in response.text
+        assert 'ai.run.completed' not in response.text
+        assert transport.payloads == []
         messages = (await client.get(f"/api/v1/ai/conversations/{conversation['id']}/messages")).json()
-        assert messages[-1]['source_refs_json'][0]['note_id'] == note['id']
-        assert messages[-1]['source_refs_json'][0]['version'] == 1
+        assert len(messages) == 1
         assert 'api_key=super-secret-test' not in str(messages)
         assert (await client.get('/api/v1/tasks')).json() == []
         await client.get(f"/api/v1/ai/runs/{run['id']}/events")
-        assert len(transport.payloads) == 1  # replay never calls the model again
+        assert transport.payloads == []  # replay never calls the model
         follow_up = {key: value for key, value in body.items() if key != 'knowledge'}
         follow_up['idempotency_key'] = 'follow-up'
         continued = (await client.post('/api/v1/ai/runs', json=follow_up)).json()
         await client.get(f"/api/v1/ai/runs/{continued['id']}/events")
-        assert len(transport.payloads) == 2
-        assert 'Durable local outbox' in str(transport.payloads[-1])
+        assert transport.payloads == []
         writable = (await client.post('/api/v1/ai/conversations', json={'tool_scope': {'scopes': ['tasks.write']}})).json()
         denied = await client.post('/api/v1/ai/runs', json={**body, 'conversation_id': writable['id'], 'idempotency_key': 'denied'})
         assert denied.status_code == 403
         revoked = (await client.post('/api/v1/ai/runs', json={**body, 'idempotency_key': 'revoked'})).json()
         await client.patch(f"/api/v1/notes/{note['id']}", params={'version': 1}, json={'title': 'Sync', 'markdown_body': 'outbox', 'knowledge_enabled': False})
         failed = await client.get(f"/api/v1/ai/runs/{revoked['id']}/events")
-        assert 'KNOWLEDGE_SOURCE_UNAVAILABLE' in failed.text and len(transport.payloads) == 2
+        assert 'KNOWLEDGE_SOURCE_UNAVAILABLE' in failed.text and transport.payloads == []
         # No matching library evidence returns a deterministic answer without another provider call.
         empty = (await client.post('/api/v1/ai/runs', json={**body, 'knowledge': {}, 'message': 'zzzznomatch', 'idempotency_key': 'empty'})).json()
         answer = await client.get(f"/api/v1/ai/runs/{empty['id']}/events")
-        assert 'ai.run.completed' in answer.text and len(transport.payloads) == 2
+        assert 'ai.run.completed' in answer.text and transport.payloads == []
 
 
 def test_chunk_offsets_cover_long_text_and_respect_budget():

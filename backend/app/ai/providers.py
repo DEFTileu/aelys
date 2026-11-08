@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
+from .egress import ensure_safe_payload
 from .errors import ProviderError, RunCancelled, redact_error
 from .models import ChatMessage, ProviderKind, ProviderRequest, ProviderResponse, Usage
 from .secrets import SecretRef, SecretStore
@@ -117,7 +118,14 @@ class _BaseAdapter:
     def _headers(self) -> dict[str, str]:
         return {"content-type": "application/json", "authorization": f"Bearer {self._secrets._resolve_for_provider_call(self._ref)}"}
 
+    def _check_payload(self, payload: Mapping[str, Any]) -> None:
+        ensure_safe_payload(
+            payload,
+            known_secrets=(self._secrets._resolve_for_provider_call(self._ref),),
+        )
+
     async def _post(self, path: str, payload: Mapping[str, Any], *, media: bool = False) -> HttpResponse:
+        self._check_payload(payload)
         try:
             response = await self._transport.post(self._base_url + path, headers=self._headers(), json=payload)
         except RunCancelled:
@@ -132,6 +140,7 @@ class _BaseAdapter:
         return response
 
     async def _stream(self, path: str, payload: Mapping[str, Any], *, media: bool = False) -> AsyncIterator[Mapping[str, Any]]:
+        self._check_payload(payload)
         try:
             async for item in self._transport.stream(self._base_url + path, headers=self._headers(), json=payload):
                 yield item

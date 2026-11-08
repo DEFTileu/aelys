@@ -269,6 +269,9 @@ class AIProviderSecret(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 class AIConversation(Owned):
     __tablename__ = "ai_conversations"
+    idempotency_key: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    __table_args__ = (Index("ix_ai_conversation_owner_idempotency", "owner_id", "idempotency_key", unique=True),)
     project_id: Mapped[str | None] = mapped_column(String(36)); title: Mapped[str] = mapped_column(String(300), default="Conversation"); tool_scope_json: Mapped[dict] = mapped_column(JSON, default=dict); pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 class AIMessage(Base):
     __tablename__ = "ai_messages"

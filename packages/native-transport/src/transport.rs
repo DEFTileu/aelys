@@ -996,6 +996,8 @@ pub enum Operation {
     GmailStatus {},
     #[serde(rename = "ai_providers")]
     AIProviders {},
+    #[serde(rename = "ai_capabilities")]
+    AICapabilities {},
     #[serde(rename = "ai_conversations")]
     AIConversations {},
     #[serde(rename = "ai_messages")]
@@ -1005,6 +1007,8 @@ pub enum Operation {
     #[serde(rename = "ai_conversation_create")]
     AIConversationCreate {
         conversation: AIConversationInput,
+        #[serde(default)]
+        idempotency_key: Option<String>,
     },
     #[serde(rename = "ai_message_create")]
     AIMessageCreate {
@@ -1567,14 +1571,18 @@ fn route(op: Operation) -> Result<(Method, String, Option<Value>), String> {
         Operation::MailAccounts {} => Ok((Method::GET, "/api/v1/mail/accounts".into(), None)),
         Operation::GmailStatus {} => Ok((Method::GET, "/api/v1/mail/gmail/status".into(), None)),
         Operation::AIProviders {} => Ok((Method::GET, "/api/v1/ai/providers".into(), None)),
+        Operation::AICapabilities {} => Ok((Method::GET, "/api/v1/ai/capabilities".into(), None)),
         Operation::AIConversations {} => Ok((Method::GET, "/api/v1/ai/conversations".into(), None)),
         Operation::AIMessages { conversation_id } if valid_id(&conversation_id) => Ok((
             Method::GET,
             format!("/api/v1/ai/conversations/{conversation_id}/messages"),
             None,
         )),
-        Operation::AIConversationCreate { conversation }
-            if valid_ai_conversation(&conversation) =>
+        Operation::AIConversationCreate {
+            conversation,
+            idempotency_key,
+        } if valid_ai_conversation(&conversation)
+            && idempotency_key.as_deref().is_none_or(valid_id) =>
         {
             Ok((
                 Method::POST,
@@ -2294,6 +2302,9 @@ async fn execute_operation_inner(
     let idempotency_key = match &operation {
         Operation::FocusStart {
             idempotency_key, ..
+        }
+        | Operation::AIConversationCreate {
+            idempotency_key, ..
         } => idempotency_key.clone(),
         Operation::Api {
             idempotency_key, ..
@@ -2416,6 +2427,8 @@ async fn execute_operation_inner(
         "gmail-status"
     } else if path == "/api/v1/ai/providers" {
         "ai-providers"
+    } else if path == "/api/v1/ai/capabilities" {
+        "ai-capabilities"
     } else if path == "/api/v1/ai/conversations" {
         if method == Method::GET {
             "ai-conversations"
@@ -3049,6 +3062,10 @@ struct AIProvider {
     has_secret: bool,
 }
 #[derive(Serialize, Deserialize)]
+struct AICapabilities {
+    conversation_create_idempotency: bool,
+}
+#[derive(Serialize, Deserialize)]
 struct AIConversation {
     #[serde(default)]
     tool_scope_json: HashMap<String, Value>,
@@ -3299,6 +3316,7 @@ fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
         "mail-accounts" => convert::<Vec<MailAccount>>(value),
         "gmail-status" => convert::<GmailStatus>(value),
         "ai-providers" => convert::<Vec<AIProvider>>(value),
+        "ai-capabilities" => convert::<AICapabilities>(value),
         "ai-conversations" => convert::<Vec<AIConversation>>(value),
         "ai-messages" => convert::<Vec<AIMessage>>(value),
         "ai-conversation" => convert::<AIConversation>(value),

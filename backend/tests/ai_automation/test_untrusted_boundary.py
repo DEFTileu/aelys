@@ -2,6 +2,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from app.ai.egress import SensitiveDataBlocked
 from app.ai.execution import AIExecutionService, apply_untrusted_boundary
 from app.ai.models import (
     Capability,
@@ -60,9 +61,9 @@ async def test_the_boundary_is_applied_before_any_provider_sees_the_messages():
     service = AIExecutionService([model], {ProviderKind.CLAUDE: adapter})
     request = RoutingRequest(TaskKind.SUMMARY, privacy=PrivacyClass.PERSONAL, request_budget=Decimal(1))
     messages = (ChatMessage("user", ATTACK, untrusted=True),)
-    await service.complete(uuid4(), request, messages)
-    [event async for event in service.stream_sse(uuid4(), request, messages)]
-    assert len(adapter.requests) == 2
-    for sent in adapter.requests:
-        assert all("sk-live-123456789" not in message.content for message in sent.messages)
-        assert any(message.content.startswith("<untrusted_data") for message in sent.messages)
+    with pytest.raises(SensitiveDataBlocked):
+        await service.complete(uuid4(), request, messages)
+    events = "".join([event async for event in service.stream_sse(uuid4(), request, messages)])
+    assert '"code":"SENSITIVE_DATA_BLOCKED"' in events
+    assert "sk-live-123456789" not in events
+    assert adapter.requests == []

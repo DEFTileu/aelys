@@ -595,6 +595,7 @@ export interface ConversationIn {
 /** Read scopes a chat can grant to Aelys (stored in tool_scope_json.scopes). */
 export type AIReadScope = "tasks.read" | "calendar.read" | "notes.read" | "knowledge.read";
 export interface AIUsage { readonly input_tokens: number; readonly output_tokens: number; readonly estimated_cost: number | string }
+export interface AICapabilities { readonly conversation_create_idempotency: boolean }
 export interface AIConversation extends ConversationIn {
   readonly tool_scope_json?: { readonly scopes?: readonly string[]; readonly knowledge?: KnowledgeScope };
   readonly id: Id;

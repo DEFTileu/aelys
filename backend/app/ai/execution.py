@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
+from .egress import ensure_safe_request
 from .errors import AIError, BudgetExceeded, ProviderError, RunCancelled, redact_error
 from .models import (
     ChatMessage,
@@ -80,6 +81,8 @@ class AIExecutionService:
             raise ProviderError("configured provider adapter is unavailable")
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
+        # Inspect original messages before UntrustedData can redact token-like text.
+        ensure_safe_request(ProviderRequest(decision.model, messages, max_tokens=max_tokens, tools=tools, effort=request.effort))
         provider_request = ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, tools=tools, effort=request.effort)
         streaming = getattr(adapter, "complete_streaming", None) if on_text else None
         if streaming:
@@ -104,6 +107,7 @@ class AIExecutionService:
                 raise ProviderError("configured provider adapter is unavailable")
             if await cancelled():
                 raise RunCancelled("run cancelled")
+            ensure_safe_request(ProviderRequest(decision.model, messages, max_tokens=max_tokens, stream=True, effort=request.effort))
             yield self._event("ai.run.started", {"run_id": str(run_id), "provider": decision.provider.value, "model": decision.model, **({"effort": request.effort} if request.effort else {})})
             text = []
             async for chunk in adapter.stream(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, stream=True, effort=request.effort)):

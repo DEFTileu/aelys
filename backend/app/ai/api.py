@@ -54,6 +54,7 @@ from .chat_support import (
     tool_meta,
 )
 from .crypto import decrypt_secret, encrypt_secret
+from .egress import SensitiveDataBlocked
 from .errors import PolicyDenied, RunCancelled, ToolValidationError, redact_error
 from .execution import Adapter, AIExecutionService
 from .http_transport import HttpxTransport
@@ -368,9 +369,52 @@ async def delete_provider_secret(provider_id:str,principal=Depends(current_princ
     provider.secret_ref=None
     await db.commit()
     return {"deleted":True,"provider_id":provider_id}
-@router.post("/ai/conversations")
-async def create_conversation(body:ConversationIn,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
+def _conversation_out(item: AIConversation) -> dict[str, Any]:
+    return {column.name: getattr(item, column.name) for column in AIConversation.__table__.columns
+            if column.name not in {"idempotency_key", "request_fingerprint"}}
+
+@router.get("/ai/capabilities")
+async def ai_capabilities(principal=Depends(current_principal)):
+    return {"conversation_create_idempotency": True}
+
+@router.post(
+    "/ai/conversations",
+    responses={409: {"description": "Idempotency key is bound to a different original request or a deleted conversation"}},
+)
+async def create_conversation(
+    body: ConversationIn,
+    principal=Depends(current_principal),
+    db: AsyncSession=Depends(get_db),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", min_length=1, max_length=150, pattern=r"\S",
+    ),
+):
+    """Replay an owner-scoped key for the same validated original body (HTTP 200).
+
+    Omitted keys preserve independent creates. Keys remain reserved for deleted
+    conversations; changed bodies return 409 IDEMPOTENCY_CONFLICT. No expiry.
+    """
     user,_=principal
+    # Rollback expires ORM principals, even with expire_on_commit=False.
+    owner_id = user.id
+    fingerprint = None
+    if idempotency_key is not None:
+        canonical = json.dumps(body.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        fingerprint = hashlib.sha256(canonical.encode()).hexdigest()
+
+    async def existing_conversation() -> AIConversation | None:
+        existing = (await db.execute(select(AIConversation).where(
+            AIConversation.owner_id == owner_id,
+            AIConversation.idempotency_key == idempotency_key,
+        ))).scalar_one_or_none()
+        if existing is not None and (existing.request_fingerprint != fingerprint or existing.deleted_at is not None):
+            raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Idempotency key is bound to a different original conversation request or a deleted conversation"})
+        return existing
+
+    if idempotency_key is not None:
+        existing = await existing_conversation()
+        if existing is not None:
+            return _conversation_out(existing)
     if body.project_id:
         project = await db.get(Project, body.project_id)
         if not project or project.owner_id != user.id or project.deleted_at is not None:
@@ -382,7 +426,24 @@ async def create_conversation(body:ConversationIn,principal=Depends(current_prin
         await validate_scope(db, user.id, body.knowledge)
         if body.project_id and body.knowledge.project_id != body.project_id:
             raise HTTPException(403, detail={"code": "POLICY_DENIED", "message": "Knowledge scope must match the conversation project"})
-    item=AIConversation(owner_id=user.id,project_id=body.project_id,title=body.title,tool_scope_json={"scopes":sorted(scopes), **({"knowledge":body.knowledge.model_dump()} if body.knowledge else {})}); db.add(item); await db.commit(); await db.refresh(item); return item
+    item = AIConversation(
+        owner_id=owner_id, project_id=body.project_id, title=body.title,
+        tool_scope_json={"scopes": sorted(scopes), **({"knowledge": body.knowledge.model_dump()} if body.knowledge else {})},
+        idempotency_key=idempotency_key, request_fingerprint=fingerprint,
+    )
+    db.add(item)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        if idempotency_key is not None:
+            existing = await existing_conversation()
+            if existing is not None:
+                return _conversation_out(existing)
+        # Do not disguise unrelated constraint failures as key conflicts.
+        raise
+    await db.refresh(item)
+    return _conversation_out(item)
 @router.get("/ai/conversations")
 async def conversations(principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
     user, _ = principal
@@ -399,7 +460,7 @@ async def conversations(principal=Depends(current_principal), db: AsyncSession=D
             total["input_tokens"] += int((counts or {}).get("input", 0) or 0)
             total["output_tokens"] += int((counts or {}).get("output", 0) or 0)
             total["cost"] += Decimal(str(cost or 0))
-    columns = [column.name for column in AIConversation.__table__.columns]
+    columns = [column.name for column in AIConversation.__table__.columns if column.name not in {"idempotency_key", "request_fingerprint"}]
     empty = {"input_tokens": 0, "output_tokens": 0, "cost": Decimal(0)}
     return [{**{name: getattr(row, name) for name in columns}, "preview": preview(latest.get(row.id, "")),
              "usage": {"input_tokens": (u := usage.get(row.id, empty))["input_tokens"], "output_tokens": u["output_tokens"],
@@ -434,7 +495,7 @@ async def update_conversation(conversation_id: str, body: ConversationPatch, pri
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Conversation changed. Reload before saving.", "details": {"server_version": server_version}})
     await db.commit()
     await db.refresh(convo)
-    return convo
+    return _conversation_out(convo)
 def _message_out(message: AIMessage) -> dict[str, Any]:
     out = {"id": message.id, "conversation_id": message.conversation_id, "role": message.role, "content": message.content,
            "source_refs_json": message.source_refs_json, "created_at": message.created_at, "feedback": message.feedback,
@@ -774,14 +835,14 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                         registry, context, parse_call=_tool_call, on_event=tool_event, on_usage=account_tool_usage,
                         cancel=cancel_event, cancel_check=durable_cancel_check, max_steps=4,
                     )
-                except (PolicyDenied, ToolValidationError, RuntimeError) as error:
+                except (PolicyDenied, ToolValidationError, RuntimeError, SensitiveDataBlocked) as error:
                     await db.rollback()
                     await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==owner_id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(UTC)))
                     await db.commit()
                     for event in pending_events:
                         yield event
-                    code = "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
-                    message = "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
+                    code = "SENSITIVE_DATA_BLOCKED" if isinstance(error, SensitiveDataBlocked) else "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
+                    message = str(error) if isinstance(error, SensitiveDataBlocked) else "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
                     yield await emit("ai.run.failed", {"run_id": run_id, "code": code, "message": message})
                     return
                 for event in pending_events:

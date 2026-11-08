@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,10 +7,11 @@ import { TelegramSettings } from '../views/TelegramSettings'
 import { modelsFor, resolveChoice } from '../data/aiModels'
 
 const client = vi.hoisted(() => ({
-  aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), cancelAIRun: vi.fn(),
+  aiCapabilities: vi.fn(), aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), cancelAIRun: vi.fn(),
   telegramStatus: vi.fn(), telegramMessages: vi.fn(), updateTelegramSettings: vi.fn(),
 }))
-vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
+const identity = vi.hoisted(() => ({ partition: '' }))
+vi.mock('../lib/api', () => ({ getSharedApiClient: () => client, getDraftPartition: async (kind: string) => JSON.stringify(['web', 'backend', identity.partition, kind]) }))
 const claude = { id: 'p1', kind: 'claude', enabled: true, has_secret: true, model_policy: {} } as const
 const openrouter = { id: 'p2', kind: 'openrouter', enabled: true, has_secret: false, model_policy: {} } as const
 const sse = (...events: readonly (readonly [string, object])[]) => new Response(events.map(([name, data]) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`).join(''))
@@ -26,6 +28,8 @@ const completed = (text = 'Hi', cost = '0.0042') => sse(['ai.run.started', { run
 
 beforeEach(() => {
   localStorage.clear(); vi.resetAllMocks()
+  identity.partition = crypto.randomUUID()
+  client.aiCapabilities.mockResolvedValue({ conversation_create_idempotency: true })
   client.aiProviders.mockResolvedValue([claude, openrouter])
   client.aiConversations.mockResolvedValue([])
   client.createAIConversation.mockResolvedValue({ id: 'c1', title: 'Hello' })
@@ -35,7 +39,10 @@ beforeEach(() => {
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
 })
 afterEach(() => { act(() => root.unmount()); document.body.innerHTML = '' })
-const mountChat = async () => act(async () => root.render(<AiView apiStatus="ready" />))
+const mountChat = async () => {
+  await act(async () => root.render(<AiView apiStatus="ready" />))
+  await vi.waitFor(() => expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')?.disabled).toBe(false))
+}
 
 describe('model catalog', () => {
   it('uses the catalog per provider kind and lets model_policy.models override it', () => {
@@ -62,7 +69,10 @@ describe('AI chat model picker and run states', () => {
     expect(JSON.parse(localStorage.getItem('aelys.chat.defaultModel')!)).toMatchObject({ providerId: 'p1', model: 'claude-sonnet-4-5' })
     await type('Message Aelys', 'Hello')
     await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!)
-    expect(client.createAIRun.mock.calls[0]![0].routing).toEqual({ provider_id: 'p1', provider: 'claude', model: 'claude-sonnet-4-5', timezone: expect.any(String), effort: 'high' })
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalledTimes(1))
+    expect(client.createAIRun.mock.calls[0]![1]).toEqual({ queueOnOffline: false, idempotencyKey: client.createAIRun.mock.calls[0]![0].idempotency_key })
+    expect(client.createAIConversation).toHaveBeenCalledWith(expect.any(Object), { queueOnOffline: false, idempotencyKey: expect.any(String) })
+    expect(client.createAIRun.mock.calls[0]).toEqual([expect.objectContaining({ routing: { provider_id: 'p1', provider: 'claude', model: 'claude-sonnet-4-5', timezone: expect.any(String), effort: 'high' }, idempotency_key: expect.any(String) }), { queueOnOffline: false, idempotencyKey: expect.any(String) }])
     expect(JSON.parse(localStorage.getItem('aelys.chat.c1.model')!).model).toBe('claude-sonnet-4-5')
     expect(host.querySelector('.actual-ai__meta')!.textContent).toBe('Claude · Sonnet 4.5 · 0.0s · high effort')
   })
@@ -76,11 +86,14 @@ describe('AI chat model picker and run states', () => {
   it('regenerates with the same message and replaces the old answer in the view', async () => {
     await mountChat()
     await type('Message Aelys', 'Hello'); await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!)
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(host.querySelector('.actual-ai__meta')).not.toBeNull())
     client.aiMessages.mockResolvedValue([{ id: 'u1', role: 'user', content: 'Hello' }, { id: 'a1', role: 'assistant', content: 'Hi' }, { id: 'u2', role: 'user', content: 'Hello' }, { id: 'a2', role: 'assistant', content: 'Second' }])
     client.aiRunEvents.mockImplementation(async () => completed('Second'))
     await click(host.querySelector<HTMLElement>('[aria-label="Regenerate"]')!)
-    expect(client.createAIRun).toHaveBeenCalledTimes(2)
-    expect(client.createAIRun.mock.calls[1]![0]).toMatchObject({ message: 'Hello', conversation_id: 'c1', routing: { provider_id: 'p1' } })
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalledTimes(2))
+    expect(client.createAIRun.mock.calls[1]![0]).toMatchObject({ message: 'Hello', conversation_id: 'c1', routing: { provider_id: 'p1' }, idempotency_key: expect.any(String) })
+    expect(client.createAIRun.mock.calls[1]![1]).toEqual({ queueOnOffline: false, idempotencyKey: client.createAIRun.mock.calls[1]![0].idempotency_key })
     const text = host.querySelector('.actual-ai__lines')!.textContent!
     expect(text).toContain('Second'); expect(text).not.toContain('Hi')
     expect(host.querySelectorAll('.actual-ai__line--user')).toHaveLength(1)
@@ -91,6 +104,8 @@ describe('AI chat model picker and run states', () => {
     client.aiMessages.mockResolvedValue([{ id: 'u1', role: 'user', content: 'Hello' }])
     await mountChat()
     await type('Message Aelys', 'Hello'); await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!)
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalledTimes(1))
+    expect(client.createAIRun.mock.calls[0]![1]).toEqual({ queueOnOffline: false, idempotencyKey: client.createAIRun.mock.calls[0]![0].idempotency_key })
     expect(host.querySelector('.actual-ai__lines')!.textContent).toContain('Partial answer')
     expect(host.querySelector('.actual-ai__stopped')!.textContent).toBe('Stopped')
   })
@@ -100,11 +115,14 @@ describe('AI chat model picker and run states', () => {
     client.aiMessages.mockResolvedValue([{ id: 'u1', role: 'user', content: 'Hello' }])
     await mountChat()
     await type('Message Aelys', 'Hello'); await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!)
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalledTimes(1))
+    expect(client.createAIRun.mock.calls[0]![1]).toEqual({ queueOnOffline: false, idempotencyKey: client.createAIRun.mock.calls[0]![0].idempotency_key })
     const card = host.querySelector('.actual-ai__error')!
     expect(card.textContent).toContain('Provider is down'); expect(card.textContent).toContain('PROVIDER_DOWN')
     expect(card.textContent).toContain('Try Haiku 4.5')
+    await vi.waitFor(() => expect(find('Retry').hasAttribute('disabled')).toBe(false))
     await click(find('Retry'))
-    expect(client.createAIRun).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalledTimes(2))
     expect(client.createAIRun.mock.calls[1]![0].message).toBe('Hello')
     expect(host.querySelector('.actual-ai__error')).toBeNull()
   })
@@ -114,6 +132,8 @@ describe('AI chat model picker and run states', () => {
     client.aiRunEvents.mockImplementation(() => new Promise((resolve) => { release = () => resolve(completed()) }))
     await mountChat()
     await type('Message Aelys', 'Hello'); await click(host.querySelector<HTMLElement>('[aria-label="Send message"]')!)
+    await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalledTimes(1))
+    expect(client.createAIRun.mock.calls[0]![1]).toEqual({ queueOnOffline: false, idempotencyKey: client.createAIRun.mock.calls[0]![0].idempotency_key })
     expect(host.querySelector('[aria-label="Aelys is thinking"]')).not.toBeNull()
     await act(async () => release())
     expect(host.querySelector('[aria-label="Aelys is thinking"]')).toBeNull()
