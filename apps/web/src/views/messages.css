@@ -87,3 +87,18 @@
 .msg__media audio { display: block; width: 280px; max-width: 100%; }
 .msg__media p { margin: 8px 0; font-size: 13px; }
 .msg__sticker { display: inline-block; font-size: 32px; line-height: 1; }
+.msg__media-open { display: block; max-width: 100%; padding: 0; border: 0; background: none; border-radius: 10px; cursor: zoom-in; }
+.msg__media-open:focus-visible { outline: 2px solid var(--pg-violet); outline-offset: 3px; }
+.msg__save { margin-top: 6px; }
+/* Lightbox is portaled to body and always uses a dark backdrop, so it is the same in light and dark themes. */
+.msg-lightbox { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; background: rgba(8, 6, 12, .92); color: #fff; font-family: inherit; }
+.msg-lightbox:focus { outline: none; }
+.msg-lightbox button { font-family: inherit; }
+.msg-lightbox__bar { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; }
+.msg-lightbox__bar .msg__btn { background: rgba(255, 255, 255, .14); color: #fff; }
+.msg-lightbox__bar .msg__btn:focus-visible, .msg-lightbox__zoom:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.msg-lightbox__stage { flex: 1; min-height: 0; display: flex; overflow: auto; padding: 0 16px 16px; box-sizing: border-box; }
+.msg-lightbox__zoom { display: block; flex: none; max-width: 100%; margin: auto; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.msg-lightbox__zoom.is-zoomed { max-width: none; cursor: zoom-out; }
+.msg-lightbox__zoom img { display: block; max-width: 100%; max-height: calc(100vh - 120px); object-fit: contain; }
+.msg-lightbox__zoom.is-zoomed img { max-width: none; max-height: none; }

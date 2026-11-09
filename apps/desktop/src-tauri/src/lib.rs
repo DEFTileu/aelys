@@ -50,6 +50,14 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             use tauri::Manager;
+            // Built here, not from config, so a download handler can be attached. Only blob: URLs
+            // (the in-app saved photo/sticker) may download; everything else is refused.
+            tauri::WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?
+                .on_download(|_, event| match event {
+                    tauri::webview::DownloadEvent::Requested { url, .. } => url.scheme() == "blob",
+                    _ => true,
+                })
+                .build()?;
             app.manage(native::NativeStorage::new(app.handle()));
             #[cfg(target_os = "macos")]
             native::start_mcp_broker(app.handle().clone()).map_err(std::io::Error::other)?;

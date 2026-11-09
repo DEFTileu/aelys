@@ -35,6 +35,22 @@ it('shows a fixed failure and never leaks backend text or file IDs',async()=>{
  await mount('photo');await act(async()=>host.querySelector('button')!.click())
  expect(host.textContent).toContain('too large');expect(host.textContent).not.toContain('private file token');expect(host.querySelector('img')).toBeNull()
 })
+it('opens a loaded photo in a dialog, saves it with a typed filename, and closes on Escape',async()=>{
+ client.telegramMessageMedia.mockResolvedValue(new Blob(['photo'],{type:'image/jpeg'}));await mount('photo')
+ await act(async()=>host.querySelector('button')!.click())
+ const saved:HTMLAnchorElement[]=[];const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(function(this:HTMLAnchorElement){saved.push(this)})
+ try {
+  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Open photo"]')!.click())
+  const dialog=document.querySelector<HTMLElement>('[role="dialog"]')!
+  expect(dialog.getAttribute('aria-modal')).toBe('true');expect(document.activeElement?.textContent).toBe('Close')
+  await act(async()=>[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Zoom in'||b.getAttribute('aria-label')==='Zoom in')!.click())
+  expect(dialog.querySelector('button[aria-label="Zoom out"]')).not.toBeNull()
+  await act(async()=>[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Save')!.click())
+  expect(saved).toHaveLength(1);expect(saved[0].download).toBe('telegram-photo-media.jpg');expect(saved[0].href).toBe('blob:private-preview')
+  act(()=>{dialog.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))})
+  expect(document.querySelector('[role="dialog"]')).toBeNull();expect(document.activeElement?.getAttribute('aria-label')).toBe('Open photo')
+ } finally {click.mockRestore()}
+})
 it('aborts an in-flight download when the message is unmounted',async()=>{
  client.telegramMessageMedia.mockReturnValue(new Promise(()=>{}));await mount('voice');await act(async()=>host.querySelector('button')!.click())
  const signal=client.telegramMessageMedia.mock.calls[0][1].signal
