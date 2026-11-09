@@ -248,9 +248,10 @@ function nativeErrorResponse(error: unknown, origin: string, init?: RequestInit)
   if (init?.signal?.aborted) throw init.signal.reason ?? new DOMException('Aborted', 'AbortError')
   // Like a failed fetch, so ApiClient can fall back to cache or queue the write.
   if (error === 'NETWORK_ERROR') throw new TypeError('Network request failed')
-  // Generic API calls report the server's own error as "<status>:<CODE>".
-  const passthrough = typeof error === 'string' ? /^(4\d\d):([A-Z0-9_]{3,64})$/.exec(error) : null
-  if (passthrough) return jsonResponse({ detail: { code: passthrough[2], message: 'The server rejected the request.' } }, Number(passthrough[1]))
+  // Generic API calls report the server's own error as "<status>:<CODE>[:<message>]"
+  // (4xx, plus the typed AI 5xx codes; Rust sanitizes and caps the message).
+  const passthrough = typeof error === 'string' ? /^([45]\d\d):([A-Z0-9_]{3,64})(?::([^]{1,300}))?$/.exec(error) : null
+  if (passthrough) return jsonResponse({ detail: { code: passthrough[2], message: passthrough[3] ?? 'The server rejected the request.' } }, Number(passthrough[1]))
   const code = typeof error === 'string' ? error : 'NATIVE_TRANSPORT_ERROR'
   const expired = code === 'UNAUTHORIZED' || code === 'SIGN_IN_REQUIRED'
   if (expired && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(NATIVE_SESSION_EXPIRED_EVENT, { detail: { origin } }))

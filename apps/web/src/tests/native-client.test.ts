@@ -230,6 +230,15 @@ describe('native shared-client bridge', () => {
     const conflict = await rejected('http://127.0.0.1:8000/api/v1/integrations/telegram/status')
     expect(conflict.status).toBe(409)
     expect(await conflict.json()).toMatchObject({ detail: { code: 'TELEGRAM_WEBHOOK_CONFLICT' } })
+    const ai = createNativeFetchFromInvoke((async () => { throw '503:AI_UNAVAILABLE:ИИ недоступен: попробуйте позже' }) as NativeInvoke, 'http://127.0.0.1:8000')
+    const aiResponse = await ai('http://127.0.0.1:8000/api/v1/english/today/words', { method: 'POST', body: JSON.stringify({ day: '2026-11-09', count: 5 }) })
+    expect(aiResponse.status).toBe(503)
+    expect(await aiResponse.json()).toEqual({ detail: { code: 'AI_UNAVAILABLE', message: 'ИИ недоступен: попробуйте позже' } })
+    const blocked = createNativeFetchFromInvoke((async () => { throw '422:SENSITIVE_DATA_BLOCKED' }) as NativeInvoke, 'http://127.0.0.1:8000')
+    expect((await blocked('http://127.0.0.1:8000/api/v1/english/reports', { method: 'POST', body: '{}' })).status).toBe(422)
+    const english = vi.fn(async () => ({})) as NativeInvoke
+    await createNativeFetchFromInvoke(english, 'http://127.0.0.1:8000')('http://127.0.0.1:8000/api/v1/english/settings', { method: 'PUT', body: JSON.stringify({ level: 'B1' }) })
+    expect(english).toHaveBeenCalledWith('native_operation', { origin: 'http://127.0.0.1:8000', operation: { type: 'api', method: 'PUT', path: '/api/v1/english/settings', body: { level: 'B1' } } })
   })
 
   it('returns Telegram media and avatars as real binary responses', async () => {
