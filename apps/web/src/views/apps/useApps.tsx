@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react'
-import { Brush, Calculator, Brain, CircleDot, Dices, Disc3, Grid2x2, Hash, Worm, Zap, Globe, Keyboard, Layers, MessageSquare, Terminal, Timer, Workflow, Wrench, BookOpen, type LucideIcon } from 'lucide-react'
+import { Brush, GraduationCap, Calculator, Brain, CircleDot, Dices, Disc3, Grid2x2, Hash, Worm, Zap, Globe, Keyboard, Layers, MessageSquare, Terminal, Timer, Workflow, Wrench, BookOpen, type LucideIcon } from 'lucide-react'
 import { isMacPlatform } from '../../data/navigation'
 import { getSharedApiClient } from '../../lib/api'
 import { navigate } from '../../lib/router'
@@ -30,6 +30,7 @@ const CATALOG: readonly Entry[] = [
   { group: 'games', id: 'snake', title: 'Snake', icon: Worm, desc: 'Eat, grow and do not crash', local: 'snake', status: 'Solo' },
   { group: 'games', id: '2048', title: '2048', icon: Grid2x2, desc: 'Slide and merge tiles', local: '2048', status: 'Solo' },
   { group: 'games', id: 'memory', title: 'Memory', icon: Brain, desc: 'Find all the pairs', local: 'memory', status: 'Solo' },
+  { group: 'learn', id: 'english', title: 'English', icon: GraduationCap, desc: 'Daily words, review and a report', route: '/english' },
   { group: 'learn', id: 'cards', title: 'Cards', icon: Layers, desc: 'Flashcards with spaced repetition', soon: true },
   { group: 'learn', id: 'reader', title: 'Reader', icon: BookOpen, desc: 'Saved articles, distraction-free', soon: true },
   { group: 'learn', id: 'type', title: 'Type', icon: Keyboard, desc: 'Typing practice', soon: true },
