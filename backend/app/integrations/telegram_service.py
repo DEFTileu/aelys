@@ -98,7 +98,7 @@ async def clear_messages(db: AsyncSession, integration_id: str, connection_id: s
     filters = [TelegramBusinessMessage.integration_id == integration_id]
     if connection_id is not None:
         filters.append(TelegramBusinessMessage.business_connection_id == connection_id)
-    await db.execute(update(TelegramBusinessMessage).where(*filters).values(text="", chat_title="", draft_text=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, draft_status="none", draft_error_code=None, deleted_at=now(), version=TelegramBusinessMessage.version + 1))
+    await db.execute(update(TelegramBusinessMessage).where(*filters).values(text="", chat_title="", draft_text=None, draft_sticker=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, draft_status="none", draft_error_code=None, deleted_at=now(), version=TelegramBusinessMessage.version + 1))
 
 
 async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None:
@@ -190,7 +190,7 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
     if payload.get("deleted_business_messages"):
         ids = raw.get("message_ids")
         if isinstance(ids, list):
-            await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.business_connection_id == connection_id, TelegramBusinessMessage.chat_id == chat["id"], TelegramBusinessMessage.telegram_message_id.in_([value for value in ids[:1000] if integer(value)])).values(text="", chat_title="", draft_text=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, deleted_at=now(), draft_status="none", version=TelegramBusinessMessage.version + 1))
+            await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.business_connection_id == connection_id, TelegramBusinessMessage.chat_id == chat["id"], TelegramBusinessMessage.telegram_message_id.in_([value for value in ids[:1000] if integer(value)])).values(text="", chat_title="", draft_text=None, draft_sticker=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, deleted_at=now(), draft_status="none", version=TelegramBusinessMessage.version + 1))
         return None
     sender = mapping(raw.get("from"))
     if not integer(raw.get("message_id")) or not integer(raw.get("date")) or not integer(sender.get("id")):
@@ -232,7 +232,7 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
         stored.media_metadata = media_metadata; stored.reply_to_telegram_message_id = reply_id
         stored.text = text; stored.edited_at = now(); stored.version += 1
         if stored.draft_status not in {"sent", "sending", "unknown"}:
-            stored.draft_text = None; stored.draft_status = "none"; stored.draft_error_code = None
+            stored.draft_text = None; stored.draft_sticker = None; stored.draft_status = "none"; stored.draft_error_code = None
     else:
         db.add(TelegramBusinessMessage(owner_id=item.owner_id, integration_id=item.id, business_connection_id=connection_id, chat_id=chat["id"], telegram_message_id=raw["message_id"], sender_id=sender["id"], chat_title=str(chat.get("first_name") or chat.get("title") or chat.get("username") or chat["id"])[:200], text=text, sent_at=sent_at, direction=direction, media_metadata=media_metadata, reply_to_telegram_message_id=reply_id))
     await db.flush()
@@ -342,7 +342,7 @@ async def check_automatic_reply_current(db: AsyncSession, item: TelegramIntegrat
 
 
 async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: TelegramBusinessMessage, version: int, *, automatic: bool = False) -> TelegramBusinessMessage:
-    if message.media_metadata:
+    if message.media_metadata and (message.media or {}).get("kind") != "sticker":
         raise error(409, "TELEGRAM_MEDIA_PREVIEW_ONLY", "Медиа доступно для просмотра владельцу; ответьте вручную.")
     from .telegram_ai import TelegramAIError, generate_business_draft
     if not item.enabled or not item.encrypted_token or message.deleted_at or message.direction != "inbound":
@@ -369,7 +369,7 @@ async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: T
         if automatic:
             await check_automatic_reply_current(db, item, message)
         terminal = draft.action != "reply"
-        changed = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version, TelegramBusinessMessage.draft_status == "generating", TelegramBusinessMessage.deleted_at.is_(None)).values(draft_text=draft.text, owner_note=draft.owner_note, draft_status=draft.action if terminal else "ready", draft_error_code=None, updated_at=now(), version=TelegramBusinessMessage.version + 1))
+        changed = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version, TelegramBusinessMessage.draft_status == "generating", TelegramBusinessMessage.deleted_at.is_(None)).values(draft_text=draft.text, draft_sticker=json.dumps(draft.sticker, separators=(',', ':')) if draft.sticker else None, owner_note=draft.owner_note, draft_status=draft.action if terminal else "ready", draft_error_code=None, updated_at=now(), version=TelegramBusinessMessage.version + 1))
         notify_owner = False
         if int(getattr(changed, "rowcount", 0) or 0) == 1 and draft.action == "handoff":
             existing_notice = (await db.execute(select(Notification.id).where(
@@ -422,7 +422,9 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
         raise error(409, "ALREADY_SENT", "На это сообщение уже отправлен ответ.")
     if message.version != version or message.draft_status in {"generating", "sending", "unknown"}:
         raise error(409, "VERSION_CONFLICT", "Обновите состояние сообщения перед отправкой.")
-    if not text.strip() or len(text) > 4096:
+    # The AI sticker belongs to its draft: an owner-edited text goes out without it.
+    sticker = json.loads(message.draft_sticker) if message.draft_sticker and text.strip() in {"", (message.draft_text or "").strip()} else {}
+    if (not text.strip() and not sticker) or len(text) > 4096:
         raise error(422, "VALIDATION_ERROR", "Ответ должен содержать от 1 до 4096 символов.")
     if item.last_error_code == "TELEGRAM_RATE_LIMITED" and item.lease_expires_at and utc(item.lease_expires_at) > now():
         raise error(429, "TELEGRAM_RATE_LIMITED", "Telegram просит подождать перед повторной отправкой.")
@@ -456,7 +458,10 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
             await db.commit()
             raise error(409, "TELEGRAM_PAUSED", "Telegram-ассистент приостановлен.")
         try:
-            sent = await client.send_message(message.chat_id, text, business_connection_id=connection.id)
+            if text.strip():
+                sent = await client.send_message(message.chat_id, text, business_connection_id=connection.id)
+            else:
+                sent = await client.send_sticker(message.chat_id, sticker["file_id"], business_connection_id=connection.id)
         except TelegramError as exc:
             ambiguous = exc.code in {"timeout", "network_error", "invalid_response"} or (isinstance(exc.code, int) and exc.code >= 500)
             if exc.code == 429:
@@ -470,6 +475,11 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
             message.draft_status = "unknown"; message.draft_error_code = "TELEGRAM_DELIVERY_UNKNOWN"; message.version += 1
             await db.commit()
             raise error(503, "TELEGRAM_DELIVERY_UNKNOWN", "Проверьте переписку Telegram.")
+        if text.strip() and sticker:
+            try:
+                await client.send_sticker(message.chat_id, sticker["file_id"], business_connection_id=connection.id)
+            except Exception:  # noqa: BLE001 - the text reply is already sent; a sticker is never retried
+                logger.info("Telegram sticker delivery unavailable")
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version).values(draft_status="sent", reply_message_id=sent["message_id"], draft_error_code=None, version=TelegramBusinessMessage.version + 1))
         # Reuse the inbound record as reply history without persisting an entire
         # raw Telegram response. The draft contains the actual sent text.
@@ -607,7 +617,7 @@ async def connector_iteration() -> None:
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.draft_status == "sending", TelegramBusinessMessage.updated_at < now() - timedelta(minutes=3)).values(draft_status="unknown", draft_error_code="TELEGRAM_DELIVERY_UNKNOWN", version=TelegramBusinessMessage.version + 1))
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.draft_status == "generating", TelegramBusinessMessage.updated_at < now() - timedelta(minutes=3)).values(draft_status="failed", draft_error_code="AI_INTERRUPTED", version=TelegramBusinessMessage.version + 1))
         # Minimal retention: expired business message contents are erased.
-        await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.deleted_at.is_(None), TelegramBusinessMessage.sent_at < now() - timedelta(days=7)).values(text="", draft_text=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, chat_title="", deleted_at=now(), version=TelegramBusinessMessage.version + 1))
+        await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.deleted_at.is_(None), TelegramBusinessMessage.sent_at < now() - timedelta(days=7)).values(text="", draft_text=None, draft_sticker=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, chat_title="", deleted_at=now(), version=TelegramBusinessMessage.version + 1))
         await db.commit()
     for integration_id in ids:
         await poll_integration_safely(integration_id)

@@ -2,7 +2,7 @@ import { useEffect,useRef,useState } from 'react'
 import { ApiError } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
 
-export function TelegramMediaPreview({messageId,version,kind}:{messageId:string;version:number;kind:'photo'|'voice'|'audio'}) {
+export function TelegramMediaPreview({messageId,version,kind,emoji,animated}:{messageId:string;version:number;kind:'photo'|'voice'|'audio'|'sticker';emoji?:string|null;animated?:boolean}) {
   const [url,setUrl]=useState<string>()
   const [loading,setLoading]=useState(false)
   const [error,setError]=useState('')
@@ -22,7 +22,7 @@ export function TelegramMediaPreview({messageId,version,kind}:{messageId:string;
     try {
       const blob=await getSharedApiClient().telegramMessageMedia(messageId,{signal:controller.current.signal})
       if(request!==generation.current)return
-      const expected=kind==='photo'?'image/':'audio/'
+      const expected=kind==='voice'||kind==='audio'?'audio/':'image/'
       if(!blob.type.startsWith(expected))throw new Error('Unexpected media type')
       if(currentUrl.current)URL.revokeObjectURL(currentUrl.current)
       currentUrl.current=URL.createObjectURL(blob);setUrl(currentUrl.current)
@@ -32,8 +32,10 @@ export function TelegramMediaPreview({messageId,version,kind}:{messageId:string;
     } finally {if(request===generation.current){working.current=false;setLoading(false)}}
   }
   const failed=()=>setError('This media format could not be played or displayed. Open it in Telegram.')
+  // Animated and video stickers are not previewed; their emoji stands in for them.
+  if(kind==='sticker'&&animated)return <div className="msg__media"><span className="msg__sticker" role="img" aria-label="Sticker">{emoji||'Sticker'}</span></div>
   return <div className="msg__media">
-    {url ? kind==='photo' ? <img src={url} alt="Telegram photo" loading="lazy" onError={failed}/> : <audio src={url} controls preload="metadata" aria-label={kind==='voice'?'Voice message':'Audio message'} onError={failed}/> : <button type="button" className="msg__btn" disabled={loading} onClick={()=>void load()}>{loading?'Loading media…':kind==='photo'?'View photo':kind==='voice'?'Load voice message':'Load audio'}</button>}
+    {url ? kind==='photo'||kind==='sticker' ? <img src={url} alt={kind==='sticker'?'Sticker':'Telegram photo'} loading="lazy" onError={failed}/> : <audio src={url} controls preload="metadata" aria-label={kind==='voice'?'Voice message':'Audio message'} onError={failed}/> : <button type="button" className="msg__btn" disabled={loading} onClick={()=>void load()}>{loading?'Loading media…':kind==='photo'?'View photo':kind==='sticker'?'View sticker':kind==='voice'?'Load voice message':'Load audio'}</button>}
     {error && <p role="status">{error}</p>}
   </div>
 }

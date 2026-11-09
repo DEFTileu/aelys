@@ -73,7 +73,7 @@ export function groupChats(messages: readonly TelegramBusinessMessage[]): Chat[]
     const lines: ChatLine[] = []
     for (const m of sorted) {
       if (m.deleted_at) { lines.push({ id: m.id, mine: m.direction !== 'inbound', text: 'Message deleted', at: m.sent_at, byAelys: false, deleted: true }); continue }
-      lines.push({ id: m.id, remoteId: m.telegram_message_id, replyToId: m.reply_to_telegram_message_id, media: m.media, mine: m.direction !== 'inbound', text: m.text || (m.media?.kind === 'photo' ? 'Photo' : m.media ? 'Audio message' : 'Message without text'), at: m.sent_at, byAelys: false, deleted: false })
+      lines.push({ id: m.id, remoteId: m.telegram_message_id, replyToId: m.reply_to_telegram_message_id, media: m.media, mine: m.direction !== 'inbound', text: m.text || (m.media?.kind === 'photo' ? 'Photo' : m.media?.kind === 'sticker' ? 'Sticker' : m.media ? 'Audio message' : 'Message without text'), at: m.sent_at, byAelys: false, deleted: false })
       // A sent draft is the reply Aelys wrote; show it unless the owner's echo of the same text is already in the chat.
       if (m.direction === 'inbound' && m.draft_status === 'sent' && m.draft_text && !sorted.some((o) => o.direction !== 'inbound' && o.text === m.draft_text && timeOf(o) >= timeOf(m))) lines.push({ id: `${m.id}:reply`, remoteId: m.reply_message_id, mine: true, text: m.draft_text, at: m.sent_at, byAelys: true, deleted: false })
     }
@@ -96,7 +96,16 @@ export function groupChats(messages: readonly TelegramBusinessMessage[]): Chat[]
 /** The ready draft on the chat's newest incoming message, if there is one to review. */
 export function draftOf(chat: Chat): TelegramBusinessMessage | null {
   const t = chat.target
-  return t && !t.media && chat.needsReply && t.draft_status === 'ready' && t.draft_text?.trim() ? t : null
+  return t && draftable(t) && chat.needsReply && t.draft_status === 'ready' && (t.draft_text?.trim() || typeof t.draft_sticker_emoji === 'string') ? t : null
+}
+
+/** Media messages are only previewed, except stickers, which Aelys may answer with a sticker. */
+export const draftable = (m: TelegramBusinessMessage) => !m.media || m.media.kind === 'sticker'
+
+/** Text shown after a draft's reply text, e.g. "+ sticker 😂". */
+export function draftStickerNote(m: TelegramBusinessMessage): string {
+  if (typeof m.draft_sticker_emoji !== 'string') return ''
+  return m.draft_sticker_emoji ? `+ sticker ${m.draft_sticker_emoji}` : '+ sticker'
 }
 
 /** A successful send clears its entry; intentional identical messages then get new keys. */

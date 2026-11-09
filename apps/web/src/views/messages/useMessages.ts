@@ -126,7 +126,7 @@ export function useMessages(apiStatus: ApiStatus) {
   const afterReply = (from: Chat) => { if (compact) setView('list'); else { const next = nextNeeding(from); if (next) setCurrent(next) } }
 
   const sendTo = (target: TelegramBusinessMessage, body: string, from: Chat, advance: boolean) => {
-    if (!body.trim() || target.deleted_at || !available() || working.current) return
+    if ((!body.trim() && typeof target.draft_sticker_emoji !== 'string') || target.deleted_at || !available() || working.current) return
     if (!advance) setCurrent(from.id)
     void run(async () => {
       const key = sendIdempotencyKey(sendKeys.current, target, body)

@@ -22,6 +22,12 @@ beforeEach(() => { vi.resetAllMocks(); client.telegramStatus.mockResolvedValue(s
 afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.innerHTML = '' })
 
 describe('groupChats', () => {
+  it('answers a sticker message with a sticker-only draft and labels it', () => {
+    const sticker = msg({ id: 's1', text: '', media: { kind: 'sticker', file_size: null, emoji: '😂', animated: true }, draft_status: 'ready', draft_text: null, draft_sticker_emoji: '😂' })
+    const [chat] = groupChats([sticker])
+    expect(chat.lines[0].text).toBe('Sticker')
+    expect(draftOf(chat)?.id).toBe('s1')
+  })
   it('groups per chat, finds the newest incoming message and who still needs a reply', () => {
     const chats = groupChats([aidana, dana, ...mom])
     expect(chats.map((c) => c.title)).toEqual(['Aidana', 'Dana Studio', 'Mom'])

@@ -11635,7 +11635,8 @@
             "enum": [
               "photo",
               "voice",
-              "audio"
+              "audio",
+              "sticker"
             ],
             "title": "Kind"
           },
@@ -11649,6 +11650,22 @@
               }
             ],
             "title": "File Size"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
+          "animated": {
+            "type": "boolean",
+            "title": "Animated",
+            "default": false
           }
         },
         "type": "object",
@@ -11729,6 +11746,17 @@
               }
             ],
             "title": "Draft Text"
+          },
+          "draft_sticker_emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Sticker Emoji"
           },
           "draft_status": {
             "type": "string",
@@ -13583,7 +13611,6 @@
           "text": {
             "type": "string",
             "maxLength": 4096,
-            "minLength": 1,
             "title": "Text"
           }
         },

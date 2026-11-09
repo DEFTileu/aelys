@@ -21,6 +21,15 @@ it.each(['voice','audio'] as const)('renders native controls for %s without auto
  await act(async()=>host.querySelector('button')!.click());const audio=host.querySelector('audio')!
  expect(audio.controls).toBe(true);expect(audio.autoplay).toBe(false);expect(audio.src).toBe('blob:private-preview')
 })
+it('shows an animated sticker as its emoji and a static sticker as an explicit image preview',async()=>{
+ host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
+ await act(async()=>root!.render(<TelegramMediaPreview messageId="sticker" version={1} kind="sticker" emoji="😂" animated/>))
+ expect(host.querySelector('button')).toBeNull();expect(host.querySelector('[aria-label="Sticker"]')?.textContent).toBe('😂');expect(client.telegramMessageMedia).not.toHaveBeenCalled()
+ act(()=>root!.unmount());root=undefined
+ client.telegramMessageMedia.mockResolvedValue(new Blob(['webp'],{type:'image/webp'}));host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
+ await act(async()=>root!.render(<TelegramMediaPreview messageId="sticker" version={1} kind="sticker" emoji="😂"/>))
+ await act(async()=>host.querySelector('button')!.click());expect(host.querySelector('img')?.alt).toBe('Sticker')
+})
 it('shows a fixed failure and never leaks backend text or file IDs',async()=>{
  client.telegramMessageMedia.mockRejectedValue(new ApiError(413,'TELEGRAM_MEDIA_TOO_LARGE','private file token'))
  await mount('photo');await act(async()=>host.querySelector('button')!.click())

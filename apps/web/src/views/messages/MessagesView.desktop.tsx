@@ -3,6 +3,7 @@ import { ArrowUp, Check, ChevronLeft, RotateCcw, Search, Send, Sparkles } from '
 import { TelegramMediaPreview } from '../../components/TelegramMediaPreview'
 import { PageSkeleton } from '../../components/PageSkeleton'
 import { navigate } from '../../lib/router'
+import { draftable, draftStickerNote } from '../../lib/telegramMessages'
 import type { ApiStatus } from '../../types'
 import '../desktop/page-tokens.css'
 import '../messages.css'
@@ -49,16 +50,16 @@ export function MessagesDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
             {cur.lines.map((line) => <div key={line.id} className={`msg__line${line.mine ? ' is-out' : ''}`}>
               <div className={`msg__bubble${line.deleted ? ' is-deleted' : ''}`}>
                 {line.replyToId && <div className="msg__quote">{cur.lines.find(source => source.remoteId === line.replyToId && !source.deleted)?.text ?? 'Earlier message'}</div>}
-                {line.media && <TelegramMediaPreview messageId={line.id} version={cur.messages.find(message => message.id === line.id)?.version ?? 1} kind={line.media.kind}/>}
+                {line.media && <TelegramMediaPreview messageId={line.id} version={cur.messages.find(message => message.id === line.id)?.version ?? 1} kind={line.media.kind} emoji={line.media.emoji} animated={line.media.animated}/>}
                 {(!line.media || cur.messages.find(message => message.id === line.id)?.text) && line.text}
               </div>
               <div className="msg__meta">{line.byAelys ? <><Sparkles size={11} />Sent by Aelys ·<span>{whenLabel(line.at)}</span></> : whenLabel(line.at)}{!line.deleted && !!line.remoteId && <button type="button" className="msg__reply" disabled={busy || !available() || deliveryUncertain} aria-label="Reply to message" onClick={() => setReplies(all => ({ ...all, [cur.id]: { remoteId: line.remoteId!, text: line.text } }))}>Reply</button>}</div>
             </div>)}
           </div>
           <div className="msg__bottom">
-            {cur.target && !cur.target.media && !cur.target.deleted_at && (draft || generating || failed || (cur.needsReply && cur.target.draft_status !== 'ready')) && <div className="msg__draft">
+            {cur.target && draftable(cur.target) && !cur.target.deleted_at && (draft || generating || failed || (cur.needsReply && cur.target.draft_status !== 'ready')) && <div className="msg__draft">
               <div className="msg__draft-title"><Sparkles size={12} />Aelys draft</div>
-              <div className="msg__draft-text">{draft ? draft.draft_text : generating ? 'Aelys is writing a reply…' : failed ? 'Aelys could not write a draft. Try again.' : cur.target.draft_status === 'handoff' ? (cur.target.owner_note || 'Aelys left this one for you.') : 'No draft yet.'}</div>
+              <div className="msg__draft-text">{draft ? [draft.draft_text, draftStickerNote(draft)].filter(Boolean).join(' ') : generating ? 'Aelys is writing a reply…' : failed ? 'Aelys could not write a draft. Try again.' : cur.target.draft_status === 'handoff' ? (cur.target.owner_note || 'Aelys left this one for you.') : 'No draft yet.'}</div>
               {!draft && cur.target.owner_note && cur.target.draft_status !== 'handoff' && <div className="msg__draft-note">{cur.target.owner_note}</div>}
               <div className="msg__draft-actions">
                 {draft && <button type="button" className="msg__btn msg__btn--primary" disabled={!canSend} onClick={sendDraft}><Send size={13} />Send</button>}

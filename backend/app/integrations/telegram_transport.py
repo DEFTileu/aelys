@@ -214,6 +214,9 @@ class TelegramClient:
             payload["reply_parameters"] = {"message_id": reply_to_message_id}
         return await self._object("sendMessage", payload)
 
+    async def send_sticker(self, chat_id: int, file_id: str, *, business_connection_id: str) -> dict[str, Any]:
+        return await self._object("sendSticker", {"chat_id": chat_id, "sticker": file_id, "business_connection_id": business_connection_id})
+
     async def send_message_draft(self, chat_id: int, draft_id: int, text: str) -> None:
         """Stream a partial reply into a private chat; it is only a preview until sendMessage."""
         if draft_id == 0 or not 1 <= len(text) <= 4096:

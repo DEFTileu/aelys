@@ -86,3 +86,4 @@
 .msg__media img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 10px; }
 .msg__media audio { display: block; width: 280px; max-width: 100%; }
 .msg__media p { margin: 8px 0; font-size: 13px; }
+.msg__sticker { display: inline-block; font-size: 32px; line-height: 1; }

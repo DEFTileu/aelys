@@ -109,6 +109,7 @@ class TelegramBusinessMessage(Owned):
     reply_message_id: Mapped[int | None] = mapped_column(BigInteger)
     reply_to_telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     media_metadata: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    draft_sticker: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
 
     @property
     def media(self) -> dict | None:
@@ -116,12 +117,21 @@ class TelegramBusinessMessage(Owned):
             return None
         try:
             value=json.loads(self.media_metadata)
-            if value.get('kind') not in {'photo','voice','audio'}:
+            if value.get('kind') not in {'photo','voice','audio','sticker'}:
                 return None
             size=value.get('file_size')
-            return {'kind':value['kind'],'file_size':size if type(size) is int and 0<=size<=2**52 else None}
+            media={'kind':value['kind'],'file_size':size if type(size) is int and 0<=size<=2**52 else None}
+            if value['kind']=='sticker':
+                emoji=value.get('emoji')
+                media|={'emoji':emoji if isinstance(emoji,str) else None,'animated':value.get('mime_type')!='image/webp'}
+            return media
         except (ValueError,TypeError,AttributeError):
             return None
+
+    @property
+    def draft_sticker_emoji(self) -> str | None:
+        """None without a draft sticker, "" for one without emoji; the file_id never leaves the server."""
+        return (json.loads(self.draft_sticker).get('emoji') or '') if self.draft_sticker else None
 
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import timedelta
 
 from app.ai.errors import PolicyDenied
@@ -14,6 +15,7 @@ from . import telegram_service as service
 from .telegram_media import (
     TelegramMedia,
     TelegramMediaError,
+    _metadata,
     download_media,
     parse_owner_media,
 )
@@ -35,6 +37,15 @@ def parse_business_media(raw: dict) -> TelegramMedia | None:
         )
     ):
         return None
+    if isinstance(raw.get("sticker"), dict):
+        sticker = raw["sticker"]
+        base = _metadata("sticker", sticker)
+        if base.kind != "sticker":
+            return None
+        mime = ("video/webm" if sticker.get("is_video") is True
+                else "application/x-tgsticker" if sticker.get("is_animated") is True else "image/webp")
+        emoji = sticker.get("emoji")
+        return replace(base, mime_type=mime, emoji=emoji[:16] if isinstance(emoji, str) else None)
     media = parse_owner_media(
         {key: raw[key] for key in ("voice", "audio", "photo") if key in raw}
     )
@@ -55,6 +66,8 @@ def content_type(kind: str, data: bytes) -> str:
             return "image/gif"
         if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
             return "image/webp"
+    elif kind == "sticker" and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
     elif kind in {"voice", "audio"}:
         if data.startswith(b"OggS"):
             return "audio/ogg"
@@ -103,7 +116,8 @@ async def preview_media(
     try:
         metadata = json.loads(original)
         media = TelegramMedia(**metadata)
-        if media.kind not in {"photo", "voice", "audio"}:
+        static_sticker = media.kind == "sticker" and media.mime_type == "image/webp"
+        if media.kind not in {"photo", "voice", "audio"} and not static_sticker:
             raise ValueError("unsupported")
     except (ValueError, TypeError):
         raise service.error(

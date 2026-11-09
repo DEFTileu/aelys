@@ -15,7 +15,7 @@ from .telegram_personal import authorize
 from .telegram_transport import TelegramError
 
 LIMITS = {'voice': 20 * 1024 * 1024, 'audio': 20 * 1024 * 1024,
-          'photo': 10 * 1024 * 1024, 'pdf': 20 * 1024 * 1024, 'text': 80_000}
+          'photo': 10 * 1024 * 1024, 'pdf': 20 * 1024 * 1024, 'text': 80_000, 'sticker': 512 * 1024}
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,7 @@ class TelegramMedia:
     file_size: int | None = None
     mime_type: str | None = None
     filename: str | None = None
+    emoji: str | None = None
 
 
 class TelegramMediaError(Exception):

@@ -56,6 +56,8 @@ async def setup(tmp_path, monkeypatch):
         sent: ClassVar[list] = []
         calls: ClassVar[list] = []
         send_error = None
+        sticker_error = None
+        stickers: ClassVar[list] = []
         gate = None
 
         def __init__(self, token):
@@ -89,6 +91,12 @@ async def setup(tmp_path, monkeypatch):
             if self.send_error:
                 raise self.send_error
             return {"message_id": 500}
+
+        async def send_sticker(self, chat_id, file_id, **kwargs):
+            self.stickers.append((chat_id, file_id, kwargs))
+            if self.sticker_error:
+                raise self.sticker_error
+            return {"message_id": 501}
 
     monkeypatch.setattr(service, "TelegramClient", FakeTelegramClient)
     monkeypatch.setattr(telegram_api, "TelegramClient", FakeTelegramClient)
@@ -811,7 +819,8 @@ async def test_owner_nontext_or_forward_on_fast_poll_suppresses_reply(setup, mon
         raw['forward_origin'] = {'type': 'hidden_user', 'sender_user_name': 'Private'}
     else:
         raw[kind] = {'file_id': 'do-not-store-media-secret'}
-        raw['caption'] = 'do not store caption'
+        if kind != 'sticker':  # Telegram stickers carry no caption
+            raw['caption'] = 'do not store caption'
     fake.updates = [update]
     async def generate(*args):
         return BusinessDecision('reply', 'must not send', None)
@@ -1069,3 +1078,88 @@ async def test_auto_reply_turns_on_without_instructions(setup):
     response = await client.patch(PREFIX + "/settings", json={"version": current["version"], "auto_reply": True, "provider_id": provider_id, "instructions": ""})
     assert response.status_code == 200, response.text
     assert response.json()["auto_reply"] is True
+
+
+@pytest.mark.asyncio
+async def test_sticker_is_shown_drafted_and_sent_without_leaking_file_id(setup, monkeypatch):
+    client, sessions, fake = setup
+    item, _ = await seed_message(client, sessions, fake)
+    update = message(3, message_id=8)
+    update["business_message"].pop("text")
+    update["business_message"]["sticker"] = {"file_id": "sticker-file-secret", "file_unique_id": "u", "emoji": "😂", "is_animated": False, "is_video": False}
+    fake.updates = [update]
+    assert (await client.post(PREFIX + "/sync")).status_code == 200
+    rows = (await client.get(PREFIX + "/messages")).json()
+    row = next(item for item in rows if item["telegram_message_id"] == 8)
+    assert row["media"] == {"kind": "sticker", "file_size": None, "emoji": "😂", "animated": False}
+    assert "sticker-file-secret" not in (await client.get(PREFIX + "/messages")).text
+
+    async def generate(session, integration, target):
+        return BusinessDecision("reply", None, None, {"file_id": "sticker-file-secret", "emoji": "😂"})
+    monkeypatch.setattr(telegram_ai, "generate_business_draft", generate)
+    drafted = await client.post(f"{PREFIX}/messages/{row['id']}/draft", json={"version": row["version"]})
+    assert drafted.status_code == 200, drafted.text
+    assert drafted.json()["draft_status"] == "ready" and drafted.json()["draft_sticker_emoji"] == "😂"
+    assert "sticker-file-secret" not in drafted.text
+    sent = await client.post(f"{PREFIX}/messages/{row['id']}/send", json={"version": drafted.json()["version"], "text": ""})
+    assert sent.status_code == 200, sent.text
+    assert fake.stickers == [(CUSTOMER, "sticker-file-secret", {"business_connection_id": "business-1"})] and not fake.sent
+    again = await client.post(f"{PREFIX}/messages/{row['id']}/send", json={"version": sent.json()["version"], "text": ""})
+    assert again.status_code == 200 and len(fake.stickers) == 1  # a repeat of the same sent draft never resends
+
+
+@pytest.mark.asyncio
+async def test_text_then_sticker_reply_stays_sent_when_sticker_fails(setup, monkeypatch):
+    client, sessions, fake = setup
+    item, row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        obj = await session.get(TelegramBusinessMessage, row["id"])
+        obj.draft_sticker = '{"file_id":"sticker-file","emoji":null}'; obj.draft_text = "hi there"
+        await session.commit()
+    fake.sticker_error = TelegramError(500)
+    result = await client.post(f"{PREFIX}/messages/{row['id']}/send", json={"version": row["version"], "text": "hi there"})
+    assert result.status_code == 200, result.text
+    assert result.json()["draft_status"] == "sent"
+    assert fake.sent == [(CUSTOMER, "hi there", {"business_connection_id": "business-1"})]
+    assert fake.stickers == [(CUSTOMER, "sticker-file", {"business_connection_id": "business-1"})]
+
+
+@pytest.mark.asyncio
+async def test_owner_edited_reply_drops_ai_sticker(setup):
+    client, sessions, fake = setup
+    item, row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        obj = await session.get(TelegramBusinessMessage, row["id"])
+        obj.draft_sticker = '{"file_id":"sticker-file","emoji":null}'; obj.draft_text = "ai draft"
+        await session.commit()
+    result = await client.post(f"{PREFIX}/messages/{row['id']}/send", json={"version": row["version"], "text": "my own words"})
+    assert result.status_code == 200, result.text
+    assert fake.stickers == []
+
+
+@pytest.mark.asyncio
+async def test_clearing_messages_erases_draft_sticker(setup):
+    client, sessions, fake = setup
+    item, row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        obj = await session.get(TelegramBusinessMessage, row["id"])
+        obj.draft_sticker = '{"file_id":"sticker-file","emoji":"😂"}'; obj.draft_status = "ready"
+        await session.commit()
+        await service.clear_messages(session, item["id"])
+        await session.commit()
+        obj = await session.get(TelegramBusinessMessage, row["id"])
+        assert obj.draft_sticker is None and obj.draft_text is None
+
+
+@pytest.mark.asyncio
+async def test_seven_day_retention_erases_draft_sticker(setup):
+    client, sessions, fake = setup
+    _, row = await seed_message(client, sessions, fake)
+    async with sessions() as session:
+        obj = await session.get(TelegramBusinessMessage, row["id"])
+        obj.draft_sticker = '{"file_id":"sticker-file","emoji":"😂"}'; obj.sent_at = now() - timedelta(days=8)
+        await session.commit()
+    await service.connector_iteration()
+    async with sessions() as session:
+        obj = await session.get(TelegramBusinessMessage, row["id"])
+        assert obj.deleted_at is not None and obj.draft_sticker is None

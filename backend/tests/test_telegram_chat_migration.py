@@ -34,7 +34,7 @@ def test_existing_0034_database_adds_chat_receipts_and_keeps_owner(tmp_path):
             )
             assert (
                 db.scalar(sa.text("SELECT version_num FROM alembic_version"))
-                == "0047_english_course"
+                == "0048_telegram_draft_sticker"
             )
         run_alembic(url, "downgrade", "0034_google_calendar")
         assert not sa.inspect(engine).has_table("telegram_chat_sends")

@@ -6,6 +6,7 @@ transaction, concurrency control, and any eventual Telegram send.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -45,6 +46,7 @@ class BusinessDecision:
     action: Literal["reply", "no_reply", "handoff"]
     text: str | None
     owner_note: str | None
+    sticker: dict[str, str | None] | None = None
 
 
 class _DecisionPayload(BaseModel):
@@ -52,13 +54,16 @@ class _DecisionPayload(BaseModel):
     action: Literal["reply", "no_reply", "handoff"]
     text: str | None = Field(max_length=4096)
     owner_note: str | None = Field(max_length=2000)
+    sticker: int | None = Field(default=None, ge=1, le=20)
 
     @model_validator(mode="after")
     def valid_audience(self):
-        if self.action == "reply" and (not self.text or not self.text.strip()):
-            raise ValueError("reply requires text")
+        if self.action == "reply" and (not self.text or not self.text.strip()) and self.sticker is None:
+            raise ValueError("reply requires text or sticker")
         if self.action != "reply" and self.text is not None:
             raise ValueError("terminal decisions must not contain customer text")
+        if self.action != "reply" and self.sticker is not None:
+            raise ValueError("terminal decisions must not contain a sticker")
         if self.action == "handoff" and (not self.owner_note or not self.owner_note.strip()):
             raise ValueError("handoff requires owner note")
         if self.action != "handoff" and self.owner_note is not None:
@@ -86,12 +91,39 @@ _SYSTEM = (
     "or promises. When information is missing, ask a short clarifying question or "
     "say the owner will follow up, without promising an unconfirmed outcome or time. "
     "Return strict JSON with exactly action (reply, no_reply or handoff), text "
-    "(string or null), owner_note (string or null). For reply put only the message "
-    "text in text. For no_reply set both text and owner_note to null. For handoff set "
-    "text to null and owner_note to a concise message for the owner, never for the "
-    "other person. Choose no_reply when no answer is needed, handoff when the owner "
-    "must act. Optional owner instructions about tone and facts follow:\n"
+    "(string or null), owner_note (string or null) and optional sticker (integer or "
+    "null). For reply put only the message text in text, or null when sending only a "
+    "sticker. For no_reply set text, owner_note and sticker to null. For handoff set "
+    "text and sticker to null and owner_note to a concise message for the owner, never "
+    "for the other person. Choose no_reply when no answer is needed, handoff when the "
+    "owner must act. Optional owner instructions about tone and facts follow:\n"
 )
+
+
+def _emoji(value: object) -> str | None:
+    # Sticker emoji are untrusted provider text: only short non-ASCII symbols reach the model.
+    return value if isinstance(value, str) and re.fullmatch(r"[^\x00-\x7f]{1,16}", value) else None
+
+
+async def _stickers(db: AsyncSession, integration: TelegramIntegration) -> list[dict[str, str | None]]:
+    """Up to 20 distinct stickers from recent chats; the model only ever sees their numbers."""
+    rows = (await db.execute(select(TelegramBusinessMessage.media_metadata).where(
+        TelegramBusinessMessage.owner_id == integration.owner_id,
+        TelegramBusinessMessage.integration_id == integration.id,
+        TelegramBusinessMessage.deleted_at.is_(None),
+        TelegramBusinessMessage.media_metadata.is_not(None),
+    ).order_by(TelegramBusinessMessage.sent_at.desc(), TelegramBusinessMessage.telegram_message_id.desc()).limit(500))).scalars()
+    found: dict[str, dict[str, str | None]] = {}
+    for raw in rows:
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and value.get("kind") == "sticker" and isinstance(value.get("file_id"), str):
+            found.setdefault(value["file_id"], {"file_id": value["file_id"], "emoji": _emoji(value.get("emoji"))})
+        if len(found) == 20:
+            break
+    return list(found.values())
 
 
 def _utc(value: datetime) -> datetime:
@@ -143,14 +175,21 @@ async def generate_business_draft(
             raise TelegramAIError("AI_UNAVAILABLE")
         turns: list[ChatMessage] = []
         for item in reversed(history):
-            turns.append(ChatMessage("user" if item.direction == "inbound" else "assistant", item.text or "", untrusted=True))
+            content = item.text
+            if not content and (item.media or {}).get("kind") == "sticker":
+                emoji = _emoji((item.media or {}).get("emoji"))
+                content = f"[sticker {emoji}]" if emoji else "[sticker]"
+            turns.append(ChatMessage("user" if item.direction == "inbound" else "assistant", content or "", untrusted=True))
             # updated_at is a conservative upper bound on when a reply was saved;
             # without this check a reply sent after the target could leak backwards.
             if (item.id != message.id and item.direction == "inbound" and item.draft_status == "sent"
                     and item.draft_text and item.updated_at is not None
                     and _utc(item.updated_at) <= _utc(message.sent_at)):
                 turns.append(ChatMessage("assistant", item.draft_text, untrusted=True))
+        stickers = await _stickers(db, integration)
         system = _SYSTEM + instructions
+        if stickers:
+            system += "\nStickers you may attach (optional): " + ", ".join(f"{number} {sticker['emoji'] or ''}".rstrip() for number, sticker in enumerate(stickers, 1)) + ". Set sticker to the number or null. Use a sticker only when it fits the tone, never instead of needed information."
         if integration.status_text and integration.status_until and _utc(integration.status_until) > datetime.now(UTC):
             system += "\nOwner status (approved for sharing with this customer): " + integration.status_text
             system += "\nValid until: " + _utc(integration.status_until).isoformat()
@@ -195,7 +234,10 @@ async def generate_business_draft(
         if fenced:
             text = fenced.group(1)
         parsed = _DecisionPayload.model_validate_json(text)
-        return BusinessDecision(parsed.action, parsed.text, parsed.owner_note)
+        if parsed.sticker is not None and parsed.sticker > len(stickers):
+            raise TelegramAIError("AI_UNAVAILABLE")
+        chosen = stickers[parsed.sticker - 1] if parsed.sticker is not None else None
+        return BusinessDecision(parsed.action, parsed.text, parsed.owner_note, chosen)
     except TelegramAIError:
         raise
     except Exception:  # noqa: BLE001 - provider failures never reveal owner or credential details

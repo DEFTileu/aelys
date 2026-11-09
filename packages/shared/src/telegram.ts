@@ -22,7 +22,9 @@ export interface TelegramBusinessMessage {
   readonly id: string; readonly version: number; readonly business_connection_id: string; readonly chat_id: number;
   readonly telegram_message_id: number; readonly sender_id: number | null; readonly chat_title: string;
   readonly text: string; readonly sent_at: string; readonly direction: string; readonly draft_text: string | null;
-  readonly media?: { readonly kind: 'photo' | 'voice' | 'audio'; readonly file_size: number | null } | null;
+  readonly media?: { readonly kind: 'photo' | 'voice' | 'audio' | 'sticker'; readonly file_size: number | null; readonly emoji?: string | null; readonly animated?: boolean } | null;
+  /** Emoji of the draft's sticker; null without one, "" when the sticker has no emoji. The file reference never reaches the client. */
+  readonly draft_sticker_emoji?: string | null;
   readonly reply_message_id?: number | null;
   readonly reply_to_telegram_message_id?: number | null;
   readonly owner_note: string | null; readonly draft_status: string; readonly draft_error_code: string | null; readonly deleted_at: string | null;

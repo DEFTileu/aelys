@@ -60,7 +60,7 @@ class MessageVersion(BaseModel):
 
 
 class SendIn(MessageVersion):
-    text: str = Field(min_length=1, max_length=4096)
+    text: str = Field(max_length=4096)  # empty only for a sticker-only draft; service validates
 
 
 class ConnectionOut(BaseModel):
@@ -102,8 +102,10 @@ class BindingOut(BaseModel):
 
 
 class MessageMediaOut(BaseModel):
-    kind: Literal['photo','voice','audio']
+    kind: Literal['photo','voice','audio','sticker']
     file_size: int | None
+    emoji: str | None = None
+    animated: bool = False
 
 
 class MessageOut(BaseModel):
@@ -120,6 +122,7 @@ class MessageOut(BaseModel):
     direction: str
     owner_note: str | None
     draft_text: str | None
+    draft_sticker_emoji: str | None = None
     draft_status: str
     draft_error_code: str | None
     deleted_at: datetime | None

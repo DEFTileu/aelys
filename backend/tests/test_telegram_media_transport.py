@@ -20,6 +20,7 @@ from app.integrations.telegram_media import (
     download_media,
     parse_owner_media,
 )
+from app.integrations.telegram_business_media import content_type, parse_business_media
 from app.integrations.telegram_models import TelegramIntegration
 from app.integrations.telegram_transport import TelegramClient, TelegramError
 
@@ -212,7 +213,7 @@ def test_parse_audio_metadata_and_priority(field, kind, mime):
     message = {field: {'file_id': 'id', 'file_size': 20, 'mime_type': mime, 'file_name': 'clip.oga'},
                'document': {'file_id': 'doc', 'mime_type': 'application/pdf'}}
     media = parse_owner_media(message)
-    assert asdict(media) == {'kind': kind, 'file_id': 'id', 'file_size': 20, 'mime_type': mime, 'filename': 'clip.oga'}
+    assert asdict(media) == {'kind': kind, 'file_id': 'id', 'file_size': 20, 'mime_type': mime, 'filename': 'clip.oga', 'emoji': None}
     if kind == 'audio':
         message['voice'] = {'file_id': 'voice'}
         assert parse_owner_media(message).kind == 'voice'
@@ -426,3 +427,20 @@ async def test_telegram_failures_map_to_honest_media_errors(download_setup, monk
     formatted = ''.join(traceback.format_exception(exc.value))
     assert TOKEN not in formatted and FILE_PATH not in formatted
     assert 'api.telegram.org' not in formatted
+
+
+@pytest.mark.parametrize('sticker,mime,emoji', [
+    ({'file_id': 'static', 'emoji': '😂'}, 'image/webp', '😂'),
+    ({'file_id': 'animated', 'is_animated': True, 'emoji': 'x' * 40}, 'application/x-tgsticker', 'x' * 16),
+    ({'file_id': 'video', 'is_video': True}, 'video/webm', None),
+])
+def test_business_sticker_metadata_is_bounded(sticker, mime, emoji):
+    assert asdict(parse_business_media({'sticker': sticker})) == {'kind': 'sticker', 'file_id': sticker['file_id'], 'file_size': None, 'mime_type': mime, 'filename': None, 'emoji': emoji}
+    assert parse_business_media({'sticker': {'file_id': 'bad id'}}) is None
+
+
+def test_only_static_webp_sticker_previews_and_animated_formats_stay_refused():
+    assert content_type('sticker', b'RIFF\x00\x00\x00\x00WEBPVP8 ') == 'image/webp'
+    for data in (b'\x1f\x8b\x08 gzip-tgs', b'\x89PNG\r\n\x1a\n'):
+        with pytest.raises(Exception, match='TELEGRAM_MEDIA_UNSUPPORTED'):
+            content_type('sticker', data)
