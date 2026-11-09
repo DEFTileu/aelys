@@ -659,6 +659,51 @@ describe("ApiClient", () => {
     expect(JSON.parse(calls[5]![1].body as string)).toEqual({ reminder_enabled: true, reminder_time: "21:00", timezone: "Asia/Almaty" });
   });
 
+  it("sends English course requests, raw audio bodies, and refreshes the cached course after a write", async () => {
+    const fetchImpl = vi.fn(async () => json({ id: "l1", content_json: { theme: "Work" }, progress_json: { warmup: { done: true } } }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, readFreshnessMs: 60_000 });
+    await client.englishCourse("2026-11-09");
+    await client.englishCourse("2026-11-09");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const profile = { goal: "ielts_academic", target_band: "6.5", level: "b1b2", weak_skills: ["speaking"], minutes_per_day: 120, exam_date: null } as const;
+    await client.englishSaveProfile(profile);
+    const lesson = await client.englishLessonToday("2026-11-09");
+    expect(lesson.content.theme).toBe("Work");
+    expect(lesson.progress.warmup?.done).toBe(true);
+    await client.englishBlockDone("l 1", "vocab", 15);
+    await client.englishSentences("l1", [{ word_id: "w1", sentence: "I like it." }]);
+    await client.englishListening("l1", { "1": "work experience" });
+    await client.englishSpeaking("l1", { round: 4, transcript: "hello there", duration_sec: 61 });
+    await client.englishSubmitReport("2026-11-09", "text", "task2");
+    await client.englishCreateMock({ day: "2026-11-09", listening: "6.0" });
+    await client.englishMocks();
+    await client.englishCourse("2026-11-09");
+    const calls = fetchImpl.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0]![0]).toBe("https://api.example.test/api/v1/english/course?day=2026-11-09");
+    expect(calls[1]![0]).toBe("https://api.example.test/api/v1/english/course/profile");
+    expect(calls[1]![1].method).toBe("PUT");
+    expect(calls[2]![0]).toBe("https://api.example.test/api/v1/english/lessons/today");
+    expect(calls[3]![0]).toBe("https://api.example.test/api/v1/english/lessons/l%201/blocks/vocab/done");
+    expect(JSON.parse(calls[3]![1].body as string)).toEqual({ minutes: 15 });
+    expect(calls[4]![0]).toBe("https://api.example.test/api/v1/english/lessons/l1/sentences");
+    expect(calls[5]![0]).toBe("https://api.example.test/api/v1/english/lessons/l1/listening");
+    expect(JSON.parse(calls[6]![1].body as string)).toEqual({ round: 4, transcript: "hello there", duration_sec: 61 });
+    expect(JSON.parse(calls[7]![1].body as string)).toEqual({ day: "2026-11-09", text: "text", kind: "task2" });
+    expect(calls[8]![0]).toBe("https://api.example.test/api/v1/english/mocks");
+    expect(calls).toHaveLength(11); // the course read after the writes was refetched
+  });
+
+  it("sends a Blob body raw with its audio media type", async () => {
+    const fetchImpl = vi.fn(async () => json({ text: "hi", duration_sec: 2 }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, token: "tok" });
+    const audio = new Blob(["abc"], { type: "audio/webm" });
+    await expect(client.englishTranscribe(audio)).resolves.toEqual({ text: "hi", duration_sec: 2 });
+    const [url, init] = (fetchImpl.mock.calls as unknown as [string, RequestInit][])[0]!;
+    expect(url).toBe("https://api.example.test/api/v1/english/speech/transcribe");
+    expect(init.headers).toMatchObject({ "Content-Type": "audio/webm", Authorization: "Bearer tok" });
+    expect(init.body).toBe(audio);
+  });
+
   it("reads the ledger cache through an unavailable reverse proxy but rejects revoked access", async () => {
     const store = new MemoryStore();
     store.cache.set("finance-transactions", [{ id: "cached-posting", amount: "1250.5001" }]);

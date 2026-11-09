@@ -876,6 +876,10 @@ export interface EnglishCorrection {
   readonly summary_ru: string;
   readonly tomorrow_tasks: readonly { readonly title: string; readonly time: string | null }[];
   readonly topics: readonly string[];
+  /** Course writing: "journal" evening report (default) or IELTS "task2" essay. */
+  readonly kind?: 'journal' | 'task2';
+  /** Task 2 only. Approximate bands such as "≈6.0". */
+  readonly criteria?: { readonly task_response: string; readonly coherence: string; readonly lexical: string; readonly grammar: string };
 }
 export interface EnglishSettings {
   readonly reminder_enabled: boolean;
@@ -900,3 +904,101 @@ export interface EnglishToday {
   readonly report: EnglishReport | null;
   readonly stats: { readonly total: number; readonly mastered: number; readonly streak: number };
 }
+
+/** English IELTS course. Bands are strings such as "6.5"; AI estimates are prefixed "≈". */
+export type EnglishSkill = 'listening' | 'reading' | 'writing' | 'speaking';
+export type EnglishGoal = 'ielts_academic' | 'ielts_general' | 'conversation';
+export type EnglishLevel = 'b1' | 'b1b2' | 'b2' | 'test';
+export type EnglishBlockKey = 'warmup' | 'vocab' | 'listening' | 'speaking' | 'writing';
+export interface EnglishProfile {
+  readonly goal: EnglishGoal;
+  readonly target_band: string;
+  readonly level: EnglishLevel;
+  readonly weak_skills: readonly EnglishSkill[];
+  readonly minutes_per_day: 60 | 120 | 180;
+  readonly exam_date: string | null;
+  readonly course_started_on?: string | null;
+}
+export interface EnglishCourse {
+  readonly profile: EnglishProfile;
+  readonly week: number;
+  readonly lesson_no: number;
+  readonly days_to_exam: number | null;
+  readonly hours_done: number;
+  readonly hours_target: number;
+  readonly plan: readonly { readonly week: number; readonly theme: string; readonly grammar: string; readonly status: 'done' | 'now' | 'next' }[];
+  readonly skills: readonly { readonly skill: EnglishSkill; readonly band: string | null; readonly trend: string | null }[];
+  readonly adaptations: readonly { readonly skill: string; readonly icon: string; readonly title: string; readonly detail: string }[];
+  readonly week_stats: { readonly speaking_rounds: number; readonly new_words: number; readonly listening_pct: number | null; readonly streak: number };
+  readonly mock_due: boolean;
+  readonly today: { readonly id: Id | null; readonly blocks: readonly { readonly key: EnglishBlockKey; readonly title: string; readonly minutes: number; readonly done: boolean }[] };
+}
+export interface EnglishLessonContent {
+  readonly theme: string;
+  readonly grammar_focus: string;
+  readonly blocks: readonly { readonly key: EnglishBlockKey; readonly title: string; readonly minutes: number }[];
+  /** Mini gap-fill practice for the learner's recurring writing mistake type; null when there is none. */
+  readonly drill: { readonly type: EnglishErrorType; readonly items: readonly { readonly before: string; readonly after: string; readonly answer: string }[] } | null;
+  readonly warmup: readonly { readonly word_id: Id; readonly before: string; readonly answer: string; readonly after: string; readonly hint_ru: string }[];
+  readonly vocab: readonly { readonly word_id: Id; readonly lemma: string; readonly ipa: string; readonly part_of_speech: string; readonly translation_ru: string; readonly definition_en: string; readonly example: string; readonly collocations: readonly string[] }[];
+  readonly listening: {
+    readonly title: string;
+    /** Whether the learner was already graded; the script is only meaningful then. */
+    readonly script_visible: boolean;
+    /** Speech synthesis rate chosen server-side (0.9 for learners who miss many answers). */
+    readonly tts_rate: number;
+    readonly live: { readonly source: string; readonly url: string; readonly hint_ru: string };
+    readonly script: readonly { readonly speaker: 'A' | 'B'; readonly text: string }[];
+    /** `answer` is absent until the block is checked. */
+    readonly questions: readonly { readonly n: number; readonly before: string; readonly after: string; readonly answer?: string }[];
+    readonly connected_speech: readonly { readonly phrase: string; readonly sounds_like: string; readonly note_ru: string }[];
+  };
+  readonly speaking: { readonly part2: { readonly topic: string; readonly bullets: readonly string[] }; readonly part3: readonly string[]; readonly phrases: readonly string[] };
+  readonly writing: { readonly kind: 'journal' | 'task2'; readonly prompt: string | null };
+}
+export interface EnglishSpeakingRound {
+  readonly round: 4 | 3 | 2;
+  readonly criteria: { readonly fluency: string; readonly lexical: string; readonly grammar: string };
+  readonly corrected_html_safe: readonly { readonly type: 'same' | 'del' | 'ins'; readonly text: string }[];
+  readonly tips: readonly { readonly kind: 'timing' | 'vocab' | 'good'; readonly title_ru: string; readonly detail_ru: string }[];
+  readonly pauses: number;
+  readonly linkers_used: number;
+}
+/** A round as stored in progress: older rows lack the corrected text, tips and duration. */
+export type EnglishStoredSpeakingRound = Pick<EnglishSpeakingRound, 'round' | 'criteria' | 'pauses' | 'linkers_used'>
+  & Partial<Pick<EnglishSpeakingRound, 'corrected_html_safe' | 'tips'>> & { readonly duration_sec?: number };
+export interface EnglishBlockProgress {
+  readonly done?: boolean;
+  readonly minutes?: number;
+  readonly score?: number;
+  readonly total?: number;
+  /** Speaking: stored round results, keyed by round length in minutes. */
+  readonly rounds?: Readonly<Record<string, EnglishStoredSpeakingRound>>;
+  /** Listening: graded answers, kept so a reloaded lesson shows what was typed. */
+  readonly results?: EnglishListeningResult['results'];
+  readonly feedback_ru?: string;
+}
+export interface EnglishLesson {
+  readonly id: Id;
+  readonly day: string;
+  readonly lesson_no: number;
+  readonly week: number;
+  readonly theme: string;
+  readonly content: EnglishLessonContent;
+  readonly progress: Partial<Record<EnglishBlockKey, EnglishBlockProgress>>;
+}
+export interface EnglishSentenceResult { readonly word_id: Id; readonly ok: boolean; readonly title_ru: string; readonly detail_ru: string; readonly corrected: string | null }
+export interface EnglishListeningResult {
+  readonly score: number;
+  readonly total: number;
+  readonly results: readonly { readonly n: number; readonly given: string; readonly answer: string; readonly ok: boolean }[];
+  readonly feedback_ru: string;
+}
+export interface EnglishSpeakingIn { readonly round: 4 | 3 | 2; readonly transcript: string; readonly duration_sec: number; readonly pause_count?: number }
+export interface EnglishTranscription { readonly text: string; readonly duration_sec: number | null }
+export interface EnglishMockIn {
+  readonly day: string;
+  readonly listening?: string | null; readonly reading?: string | null; readonly writing?: string | null; readonly speaking?: string | null;
+  readonly note?: string;
+}
+export interface EnglishMock { readonly id: Id; readonly day: string; readonly listening: string | null; readonly reading: string | null; readonly writing: string | null; readonly speaking: string | null; readonly note: string }
