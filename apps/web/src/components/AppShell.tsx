@@ -82,7 +82,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
   '/messages': { title: 'Messages', sub: 'Telegram chats. Aelys drafts, you approve.' },
   '/widgets': { title: 'Customize home' },
   '/timer': { title: 'Focus' },
-  '/english': { title: 'English', sub: 'Words, review and a daily report.' },
+  '/english': { title: 'English', sub: 'Your IELTS course. It adapts after every lesson.' },
   '/developer': { title: 'Developer Hub' },
   '/search': { title: 'Search' },
 }

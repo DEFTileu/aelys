@@ -266,6 +266,45 @@ async fn request_with_key<T: DeserializeOwned>(
     }
     serde_json::from_slice(&bytes).map_err(|_| err("INVALID_RESPONSE"))
 }
+/// Server 5xx codes that are the app's own typed AI failures (not a crash), so a
+/// mutation that returns one has a known outcome and passes through as "<status>:<CODE>".
+const AI_5XX_CODES: &[&str] = &["AI_UNAVAILABLE", "AI_FAILED", "AI_BAD_OUTPUT"];
+/// "<status>:<CODE>[:<message>]" for every 4xx and the typed AI 5xx codes; None for any
+/// other 5xx (stays BACKEND_ERROR). Only the AI codes and SENSITIVE_DATA_BLOCKED carry the
+/// server's own detail.message (control chars stripped, 300 chars max); headers and other
+/// bodies never leave Rust.
+fn api_error(status: StatusCode, bytes: &[u8]) -> Option<String> {
+    let detail = serde_json::from_slice::<Value>(bytes)
+        .ok()
+        .map(|v| v["detail"].clone());
+    let code = detail
+        .as_ref()
+        .and_then(|d| d["code"].as_str())
+        .filter(|c| {
+            (3..=64).contains(&c.len())
+                && c.bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+        });
+    if !status.is_client_error() && !code.is_some_and(|c| AI_5XX_CODES.contains(&c)) {
+        return None;
+    }
+    let code = code.unwrap_or("BAD_REQUEST");
+    let message = detail
+        .as_ref()
+        .and_then(|d| d["message"].as_str())
+        .filter(|_| AI_5XX_CODES.contains(&code) || code == "SENSITIVE_DATA_BLOCKED")
+        .map(|m| {
+            m.chars()
+                .filter(|c| !c.is_control())
+                .take(300)
+                .collect::<String>()
+        })
+        .filter(|m| !m.trim().is_empty());
+    Some(match message {
+        Some(m) => format!("{}:{code}:{m}", status.as_u16()),
+        None => format!("{}:{code}", status.as_u16()),
+    })
+}
 /// Generic owner-API request. Unlike the typed operations it keeps the server's
 /// machine-readable `detail.code` (as "<status>:<CODE>") so screens can show
 /// specific messages; 401 stays "UNAUTHORIZED" for session handling.
@@ -275,11 +314,15 @@ async fn request_api(
     url: &str,
     body: Option<Value>,
     idempotency_key: Option<&str>,
+    upload: Option<(String, Vec<u8>)>,
     access: &str,
 ) -> Result<Value, String> {
     let mut builder = client.request(method, url).bearer_auth(access);
     if let Some(body) = body {
         builder = builder.json(&body);
+    }
+    if let Some((content_type, bytes)) = upload {
+        builder = builder.header("Content-Type", content_type).body(bytes);
     }
     if let Some(key) = idempotency_key {
         builder = builder.header("Idempotency-Key", key);
@@ -297,17 +340,8 @@ async fn request_api(
         return Err(err("UNAUTHORIZED"));
     }
     if !status.is_success() {
-        if status.is_client_error() {
-            let code = serde_json::from_slice::<Value>(&bytes)
-                .ok()
-                .and_then(|v| v["detail"]["code"].as_str().map(str::to_owned))
-                .filter(|c| {
-                    (3..=64).contains(&c.len())
-                        && c.bytes()
-                            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
-                })
-                .unwrap_or_else(|| "BAD_REQUEST".into());
-            return Err(format!("{}:{code}", status.as_u16()));
+        if let Some(error) = api_error(status, &bytes) {
+            return Err(error);
         }
         return Err(err("BACKEND_ERROR"));
     }
@@ -873,6 +907,12 @@ impl From<TaskUpdate> for TaskInput {
     }
 }
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApiUpload {
+    content_type: String,
+    data: String,
+}
+#[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
     Me {},
@@ -891,6 +931,9 @@ pub enum Operation {
         body: Option<Value>,
         #[serde(default)]
         idempotency_key: Option<String>,
+        /// Raw audio body (base64) for `UPLOAD_PATH` only; sent instead of a JSON body.
+        #[serde(default)]
+        upload: Option<ApiUpload>,
     },
     Projects {},
     ProjectCreate {
@@ -1100,6 +1143,23 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("GET", "automations"),
     ("GET", "automations/runs"),
     ("GET", "automations/*/executions"),
+    ("GET", "english/course"),
+    ("PUT", "english/course/profile"),
+    ("POST", "english/lessons/today"),
+    ("POST", "english/lessons/*/blocks/*/done"),
+    ("POST", "english/lessons/*/sentences"),
+    ("POST", "english/lessons/*/listening"),
+    ("POST", "english/lessons/*/speaking"),
+    ("POST", "english/mocks"),
+    ("GET", "english/mocks"),
+    ("POST", "english/speech/transcribe"),
+    ("GET", "english/today"),
+    ("POST", "english/today/words"),
+    ("POST", "english/words/*/review"),
+    ("GET", "english/reports"),
+    ("POST", "english/reports"),
+    ("GET", "english/settings"),
+    ("PUT", "english/settings"),
     ("POST", "automations"),
     ("POST", "automations/draft"),
     ("POST", "automations/dispatch"),
@@ -1153,12 +1213,33 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "resource-links"),
     ("DELETE", "resource-links/*"),
 ];
+/// English AI routes that run a model server-side for up to ~60-90 s; every
+/// other API route keeps the 15 s `client()` timeout.
+const SLOW_API: &[(&str, &str)] = &[
+    ("POST", "english/lessons/today"),
+    ("POST", "english/lessons/*/sentences"),
+    ("POST", "english/lessons/*/speaking"),
+    ("POST", "english/speech/transcribe"),
+    ("POST", "english/reports"),
+];
 fn api_allowed(method: &str, path: &str) -> bool {
+    route_listed(API_ALLOWLIST, method, path)
+}
+/// `path` may carry a query string (it is the already-built request path).
+fn api_client(method: &Method, path: &str) -> Result<Client, String> {
+    let path = path.split('?').next().unwrap_or(path);
+    if route_listed(SLOW_API, method.as_str(), path) {
+        client_with_timeout(Duration::from_secs(120))
+    } else {
+        client()
+    }
+}
+fn route_listed(list: &[(&str, &str)], method: &str, path: &str) -> bool {
     let Some(rest) = path.strip_prefix("/api/v1/") else {
         return false;
     };
     let segments: Vec<&str> = rest.split('/').collect();
-    API_ALLOWLIST.iter().any(|(m, pattern)| {
+    list.iter().any(|(m, pattern)| {
         let want: Vec<&str> = pattern.split('/').collect();
         *m == method
             && want.len() == segments.len()
@@ -1185,6 +1266,53 @@ const BINARY_TYPES: &[&str] = &[
     "audio/webm",
 ];
 const MAX_BINARY: usize = 20 * 1024 * 1024;
+/// The one route that takes a raw audio body (speech practice) and its caps.
+const UPLOAD_PATH: &str = "/api/v1/english/speech/transcribe";
+const UPLOAD_TYPES: &[&str] = &[
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg",
+    "audio/wav",
+    "audio/mpeg",
+];
+const MAX_UPLOAD: usize = 10 * 1024 * 1024;
+/// Validates and decodes an `Api` upload: POST to `UPLOAD_PATH` only, no JSON body, an
+/// allowed audio type (codec parameters dropped) and at most `MAX_UPLOAD` decoded bytes.
+fn decode_upload(operation: &Operation) -> Result<Option<(String, Vec<u8>)>, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let Operation::Api {
+        method,
+        path,
+        body,
+        upload: Some(upload),
+        ..
+    } = operation
+    else {
+        return Ok(None);
+    };
+    let content_type = upload
+        .content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if method != "POST"
+        || path != UPLOAD_PATH
+        || body.is_some()
+        || !UPLOAD_TYPES.contains(&content_type.as_str())
+        || upload.data.len() > MAX_UPLOAD.div_ceil(3) * 4
+    {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    let bytes = STANDARD
+        .decode(&upload.data)
+        .map_err(|_| err("VALIDATION_ERROR"))?;
+    if bytes.is_empty() || bytes.len() > MAX_UPLOAD {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    Ok(Some((content_type, bytes)))
+}
 fn binary_allowed(path: &str) -> bool {
     let Some(rest) = path.strip_prefix("/api/v1/") else {
         return false;
@@ -2207,6 +2335,7 @@ async fn connect_google_browser(
             &format!("{origin}{}/browser-connect", provider.path()),
             None,
             None,
+            None,
             &access,
         )
         .await,
@@ -2316,6 +2445,7 @@ async fn execute_operation_inner(
         _ => None,
     };
     let is_api = matches!(&operation, Operation::Api { .. });
+    let upload = decode_upload(&operation)?;
     let (method, path, body) = route(operation)?;
     // Copy only the in-memory access credential. Network waits must not hold the
     // session lock: cancellation and logout need to proceed during an AI run.
@@ -2473,11 +2603,12 @@ async fn execute_operation_inner(
     let capture = diagnostic.is_some() && method == Method::POST && path == "/api/v1/ai/runs";
     let response: Result<Value, String> = if is_api {
         request_api(
-            &client()?,
+            &api_client(&method, &path)?,
             method,
             &format!("{origin}{path}"),
             body,
             idempotency_key.as_deref(),
+            upload,
             &access,
         )
         .await
@@ -4674,5 +4805,190 @@ mod tests {
                 .1,
             "/api/v1/search?q=a+b"
         );
+    }
+
+    #[test]
+    fn english_routes_are_allowlisted_and_ai_errors_pass_through() {
+        let ok = |m: &str, p: &str| api_allowed(m, p);
+        assert!(ok("GET", "/api/v1/english/today"));
+        assert!(ok("POST", "/api/v1/english/today/words"));
+        assert!(ok("POST", "/api/v1/english/words/abc123/review"));
+        assert!(ok("POST", "/api/v1/english/reports"));
+        assert!(ok("GET", "/api/v1/english/reports"));
+        assert!(ok("GET", "/api/v1/english/settings"));
+        assert!(ok("PUT", "/api/v1/english/settings"));
+        assert!(!ok("DELETE", "/api/v1/english/settings"));
+        assert!(!ok("POST", "/api/v1/english/words/a/b/review"));
+        let slow = |m: &str, p: &str| route_listed(SLOW_API, m, p);
+        for (m, p) in [
+            ("POST", "/api/v1/english/lessons/today"),
+            ("POST", "/api/v1/english/lessons/abc123/sentences"),
+            ("POST", "/api/v1/english/lessons/abc123/speaking"),
+            ("POST", "/api/v1/english/speech/transcribe"),
+            ("POST", "/api/v1/english/reports"),
+        ] {
+            assert!(slow(m, p) && api_allowed(m, p), "{m} {p}");
+        }
+        for (m, p) in [
+            ("GET", "/api/v1/english/reports"),
+            ("GET", "/api/v1/english/today"),
+            ("POST", "/api/v1/english/lessons/abc123/listening"),
+            ("POST", "/api/v1/english/lessons/abc123/blocks/b1/done"),
+            ("POST", "/api/v1/english/today/words"),
+            ("POST", "/api/v1/integrations/telegram/sync"),
+        ] {
+            assert!(!slow(m, p), "{m} {p}");
+        }
+        let mut q = std::collections::BTreeMap::new();
+        q.insert("day".to_string(), "2026-11-09".to_string());
+        assert_eq!(
+            api_route("GET".into(), "/api/v1/english/today".into(), Some(q), None)
+                .unwrap()
+                .1,
+            "/api/v1/english/today?day=2026-11-09"
+        );
+        let put = api_route(
+            "PUT".into(),
+            "/api/v1/english/settings".into(),
+            None,
+            Some(json!({"level": "B1"})),
+        )
+        .unwrap();
+        assert_eq!(put.0, Method::PUT);
+        let body = |code: &str, msg: &str| {
+            json!({"detail": {"code": code, "message": msg}})
+                .to_string()
+                .into_bytes()
+        };
+        assert_eq!(
+            api_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &body("AI_UNAVAILABLE", "ИИ недоступен")
+            )
+            .unwrap(),
+            "503:AI_UNAVAILABLE:ИИ недоступен"
+        );
+        assert_eq!(
+            api_error(StatusCode::BAD_GATEWAY, &body("AI_BAD_OUTPUT", "x\ny")).unwrap(),
+            "502:AI_BAD_OUTPUT:xy"
+        );
+        assert_eq!(
+            api_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                &body("SENSITIVE_DATA_BLOCKED", "Нельзя")
+            )
+            .unwrap(),
+            "422:SENSITIVE_DATA_BLOCKED:Нельзя"
+        );
+        // other 4xx keep only the code; unknown 5xx and non-JSON 5xx stay BACKEND_ERROR
+        assert_eq!(
+            api_error(StatusCode::CONFLICT, &body("VERSION_CONFLICT", "secret")).unwrap(),
+            "409:VERSION_CONFLICT"
+        );
+        assert_eq!(
+            api_error(StatusCode::NOT_FOUND, b"<html>").unwrap(),
+            "404:BAD_REQUEST"
+        );
+        assert!(api_error(StatusCode::INTERNAL_SERVER_ERROR, &body("INTERNAL", "boom")).is_none());
+        assert!(api_error(StatusCode::BAD_GATEWAY, b"<html>").is_none());
+        let long = "я".repeat(1000);
+        let msg = api_error(StatusCode::BAD_GATEWAY, &body("AI_FAILED", &long)).unwrap();
+        assert_eq!(msg.chars().count(), "502:AI_FAILED:".len() + 300);
+    }
+
+    #[test]
+    fn english_course_routes_and_audio_upload_are_bounded() {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        let ok = |m: &str, p: &str| api_allowed(m, p);
+        assert!(ok("GET", "/api/v1/english/course"));
+        assert!(ok("PUT", "/api/v1/english/course/profile"));
+        assert!(ok("POST", "/api/v1/english/lessons/today"));
+        assert!(ok("POST", "/api/v1/english/lessons/l-1/blocks/b_2/done"));
+        assert!(ok("POST", "/api/v1/english/lessons/l-1/sentences"));
+        assert!(ok("POST", "/api/v1/english/lessons/l-1/listening"));
+        assert!(ok("POST", "/api/v1/english/lessons/l-1/speaking"));
+        assert!(ok("POST", "/api/v1/english/mocks"));
+        assert!(ok("GET", "/api/v1/english/mocks"));
+        assert!(ok("POST", "/api/v1/english/speech/transcribe"));
+        assert!(!ok("GET", "/api/v1/english/speech/transcribe"));
+        assert!(!ok("POST", "/api/v1/english/lessons/a/blocks/done"));
+        assert!(!ok("POST", "/api/v1/english/lessons/a/b/blocks/c/done"));
+        assert!(!ok("POST", "/api/v1/english/lessons/a/blocks/../done"));
+        let op = |method: &str, path: &str, content_type: &str, data: String, body: Value| {
+            serde_json::from_value::<Operation>(json!({
+                "type": "api", "method": method, "path": path,
+                "upload": {"content_type": content_type, "data": data},
+                "body": body,
+            }))
+            .unwrap()
+        };
+        let data = STANDARD.encode(b"RIFFaudio");
+        let (ct, bytes) = decode_upload(&op(
+            "POST",
+            UPLOAD_PATH,
+            "Audio/WebM;codecs=opus",
+            data.clone(),
+            Value::Null,
+        ))
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (ct.as_str(), bytes.as_slice()),
+            ("audio/webm", &b"RIFFaudio"[..])
+        );
+        let bad = |o: Operation| assert_eq!(decode_upload(&o).unwrap_err(), "VALIDATION_ERROR");
+        bad(op(
+            "POST",
+            UPLOAD_PATH,
+            "image/png",
+            data.clone(),
+            Value::Null,
+        ));
+        bad(op(
+            "POST",
+            UPLOAD_PATH,
+            "audio/flac",
+            data.clone(),
+            Value::Null,
+        ));
+        bad(op(
+            "PUT",
+            UPLOAD_PATH,
+            "audio/wav",
+            data.clone(),
+            Value::Null,
+        ));
+        bad(op(
+            "POST",
+            "/api/v1/english/mocks",
+            "audio/wav",
+            data.clone(),
+            Value::Null,
+        ));
+        bad(op(
+            "POST",
+            UPLOAD_PATH,
+            "audio/wav",
+            data.clone(),
+            json!({}),
+        ));
+        bad(op(
+            "POST",
+            UPLOAD_PATH,
+            "audio/wav",
+            "%%%".into(),
+            Value::Null,
+        ));
+        bad(op(
+            "POST",
+            UPLOAD_PATH,
+            "audio/wav",
+            String::new(),
+            Value::Null,
+        ));
+        let max = STANDARD.encode(vec![0u8; MAX_UPLOAD]);
+        assert!(decode_upload(&op("POST", UPLOAD_PATH, "audio/wav", max, Value::Null)).is_ok());
+        let over = STANDARD.encode(vec![0u8; MAX_UPLOAD + 1]);
+        bad(op("POST", UPLOAD_PATH, "audio/wav", over, Value::Null));
     }
 }

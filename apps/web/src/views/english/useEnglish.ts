@@ -23,9 +23,9 @@ export const tomorrowDraft = (day: string, title: string, time: string | null): 
 }
 
 export type Notice = { code: string; text: string }
-const toNotice = (error: unknown): Notice => error instanceof ApiError || error instanceof OfflineWriteUnavailableError
+export const toNotice = (error: unknown): Notice => error instanceof ApiError || error instanceof OfflineWriteUnavailableError
   ? { code: error.code, text: error.message } : { code: '', text: 'Не удалось выполнить запрос. Проверьте соединение.' }
-const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+export const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const readCount = (): 5 | 10 => { try { return localStorage.getItem(COUNT_KEY) === '10' ? 10 : 5 } catch { return 5 } }
 export const wordCount = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
 
@@ -69,8 +69,8 @@ export function useEnglish(apiStatus: ApiStatus) {
     await getSharedApiClient().englishReview(word.id, day, correct)
     setReviewed((prev) => new Set(prev).add(word.id)); setRevealed(false)
   })
-  const submit = () => run(async () => {
-    const report = await getSharedApiClient().englishSubmitReport(day, draft.trim())
+  const submit = (kind?: 'journal' | 'task2') => run(async () => {
+    const report = await getSharedApiClient().englishSubmitReport(day, draft.trim(), kind)
     setToday((prev) => prev && { ...prev, report }); setRewriting(false); setDraft('')
     setReports((prev) => [report, ...prev.filter((item) => item.day !== report.day)])
     await getSharedApiClient().englishToday(day, { forceRefresh: true }).then(setToday, () => undefined) // refresh the streak

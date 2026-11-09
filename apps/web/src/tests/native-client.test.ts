@@ -230,6 +230,34 @@ describe('native shared-client bridge', () => {
     const conflict = await rejected('http://127.0.0.1:8000/api/v1/integrations/telegram/status')
     expect(conflict.status).toBe(409)
     expect(await conflict.json()).toMatchObject({ detail: { code: 'TELEGRAM_WEBHOOK_CONFLICT' } })
+    const ai = createNativeFetchFromInvoke((async () => { throw '503:AI_UNAVAILABLE:ИИ недоступен: попробуйте позже' }) as NativeInvoke, 'http://127.0.0.1:8000')
+    const aiResponse = await ai('http://127.0.0.1:8000/api/v1/english/today/words', { method: 'POST', body: JSON.stringify({ day: '2026-11-09', count: 5 }) })
+    expect(aiResponse.status).toBe(503)
+    expect(await aiResponse.json()).toEqual({ detail: { code: 'AI_UNAVAILABLE', message: 'ИИ недоступен: попробуйте позже' } })
+    const blocked = createNativeFetchFromInvoke((async () => { throw '422:SENSITIVE_DATA_BLOCKED' }) as NativeInvoke, 'http://127.0.0.1:8000')
+    expect((await blocked('http://127.0.0.1:8000/api/v1/english/reports', { method: 'POST', body: '{}' })).status).toBe(422)
+    const english = vi.fn(async () => ({})) as NativeInvoke
+    await createNativeFetchFromInvoke(english, 'http://127.0.0.1:8000')('http://127.0.0.1:8000/api/v1/english/settings', { method: 'PUT', body: JSON.stringify({ level: 'B1' }) })
+    expect(english).toHaveBeenCalledWith('native_operation', { origin: 'http://127.0.0.1:8000', operation: { type: 'api', method: 'PUT', path: '/api/v1/english/settings', body: { level: 'B1' } } })
+  })
+
+  it('sends recorded audio as a base64 upload and refuses oversized or non-audio bodies', async () => {
+    const invoke = vi.fn(async () => ({ text: 'hi' })) as NativeInvoke
+    const fetchNative = createNativeFetchFromInvoke(invoke, 'http://127.0.0.1:8000')
+    const url = 'http://127.0.0.1:8000/api/v1/english/speech/transcribe'
+    const op = (data: string, content_type = 'audio/webm;codecs=opus') => ({ type: 'api', method: 'POST', path: '/api/v1/english/speech/transcribe', upload: { content_type, data } })
+    const blob = new Blob([new Uint8Array([1, 2, 3, 250])], { type: 'audio/webm;codecs=opus' })
+    expect(await (await fetchNative(url, { method: 'POST', body: blob })).json()).toEqual({ text: 'hi' })
+    expect(invoke).toHaveBeenLastCalledWith('native_operation', { origin: 'http://127.0.0.1:8000', operation: op(btoa('\x01\x02\x03\xfa')) })
+    const form = new FormData()
+    form.append('audio', new File([new Uint8Array([1, 2, 3, 250])], 'a.webm', { type: 'audio/webm' }))
+    await fetchNative(url, { method: 'POST', body: form })
+    expect(invoke).toHaveBeenLastCalledWith('native_operation', { origin: 'http://127.0.0.1:8000', operation: op(btoa('\x01\x02\x03\xfa'), 'audio/webm') })
+    const calls = vi.mocked(invoke).mock.calls.length
+    const big = await fetchNative(url, { method: 'POST', body: new Blob([new Uint8Array(10 * 1024 * 1024 + 1)], { type: 'audio/wav' }) })
+    expect(big.status).toBe(413)
+    expect((await fetchNative('http://127.0.0.1:8000/api/v1/english/mocks', { method: 'POST', body: blob })).status).toBe(501)
+    expect(invoke).toHaveBeenCalledTimes(calls)
   })
 
   it('returns Telegram media and avatars as real binary responses', async () => {

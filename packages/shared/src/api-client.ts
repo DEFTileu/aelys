@@ -5,7 +5,7 @@ import type {
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
-  FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, EnglishReport, EnglishSettings, EnglishToday, EnglishWord, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
+  FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, EnglishCourse, EnglishLesson, EnglishListeningResult, EnglishMock, EnglishMockIn, EnglishBlockKey, EnglishProfile, EnglishReport, EnglishSentenceResult, EnglishSettings, EnglishSpeakingIn, EnglishSpeakingRound, EnglishToday, EnglishTranscription, EnglishWord, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
   MailAccountIn, MailDraft, MailMessage, MailMessageReadIn, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
   ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession, AgentSessionStopResponse,
@@ -137,7 +137,7 @@ const mutationFamilies: readonly [string, readonly string[]][] = [
   ["/api/v1/finance", ["finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary"]],
   ["/api/v1/mail", ["mail-accounts", "mail-messages", "mail-drafts", "mail-pages", "mail-details"]],
   ["/api/v1/notifications", ["notifications"]], ["/api/v1/ai/providers", ["ai-providers"]],
-  ["/api/v1/english", ["english-today", "english-reports", "english-settings"]], ["/api/v1/agents", ["agent-devices", "agent-sessions"]], ["/api/v1/automations", ["automations"]],
+  ["/api/v1/english", ["english-today", "english-reports", "english-settings", "english-course", "english-mocks"]], ["/api/v1/agents", ["agent-devices", "agent-sessions"]], ["/api/v1/automations", ["automations"]],
   ["/api/v1/sync/push", ["projects", "notes", "notes-pages", "tasks", "calendar-events", "calendar-occurrences", "focus-sessions", "finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary", "mail-accounts", "mail-messages", "mail-drafts", "mail-pages", "mail-details"]],
 ];
 
@@ -166,6 +166,12 @@ function responseBody(value: unknown): { code: string; message: string; details:
     }
   }
   return { code: "HTTP_ERROR", message: "Request failed", details: {} };
+}
+
+/** Accepts the spec's `content_json`/`progress_json` spelling as well as `content`/`progress`. */
+function normalizeEnglishLesson(raw: EnglishLesson): EnglishLesson {
+  const record = raw as unknown as Record<string, unknown>;
+  return { ...raw, content: (record.content ?? record.content_json) as EnglishLesson["content"], progress: (record.progress ?? record.progress_json ?? {}) as EnglishLesson["progress"] };
 }
 
 export class ApiClient {
@@ -519,9 +525,29 @@ export class ApiClient {
   public englishToday(day: string, options?: RequestOptions) { return this.request<EnglishToday>("/api/v1/english/today", this.read({ ...options, query: { day } }, "english-today")); }
   public englishGenerate(day: string, count: 5 | 10, options?: RequestOptions) { return this.request<EnglishToday>("/api/v1/english/today/words", this.write({ day, count }, { queueOnOffline: false, timeoutMs: 90_000, ...options })); }
   public englishReview(itemId: Id, day: string, correct: boolean, options?: RequestOptions) { return this.request<EnglishWord>(`/api/v1/english/words/${encodeURIComponent(itemId)}/review`, this.write({ day, correct }, { queueOnOffline: false, ...options })); }
-  public englishSubmitReport(day: string, text: string, options?: RequestOptions) { return this.request<EnglishReport>("/api/v1/english/reports", this.write({ day, text }, { queueOnOffline: false, timeoutMs: 90_000, ...options })); }
+  public englishSubmitReport(day: string, text: string, kind?: "journal" | "task2", options?: RequestOptions) { return this.request<EnglishReport>("/api/v1/english/reports", this.write(kind ? { day, text, kind } : { day, text }, { queueOnOffline: false, timeoutMs: 90_000, ...options })); }
   public englishReports(limit = 30, options?: RequestOptions) { return this.request<readonly EnglishReport[]>("/api/v1/english/reports", this.read({ ...options, query: { limit } }, "english-reports")); }
   public englishSettings(options?: RequestOptions) { return this.request<EnglishSettings>("/api/v1/english/settings", this.read(options, "english-settings")); }
+  public englishCourse(day: string, options?: RequestOptions) { return this.request<EnglishCourse>("/api/v1/english/course", this.read({ ...options, query: { day } }, "english-course")); }
+  public englishSaveProfile(body: Omit<EnglishProfile, "course_started_on">, options?: RequestOptions) { return this.request<EnglishProfile>("/api/v1/english/course/profile", this.write(body, { queueOnOffline: false, ...options }, "PUT")); }
+  /** Idempotent per day: creates the lesson once (one AI call), then returns it. */
+  public async englishLessonToday(day: string, options?: RequestOptions) { return normalizeEnglishLesson(await this.request<EnglishLesson>("/api/v1/english/lessons/today", this.write({ day }, { queueOnOffline: false, timeoutMs: 120_000, ...options }))); }
+  public async englishBlockDone(lessonId: Id, key: EnglishBlockKey, minutes?: number, options?: RequestOptions) { return normalizeEnglishLesson(await this.request<EnglishLesson>(`/api/v1/english/lessons/${encodeURIComponent(lessonId)}/blocks/${key}/done`, this.write(minutes === undefined ? {} : { minutes }, { queueOnOffline: false, ...options }))); }
+  public englishSentences(lessonId: Id, items: readonly { word_id: Id; sentence: string }[], options?: RequestOptions) { return this.request<{ items: readonly EnglishSentenceResult[] }>(`/api/v1/english/lessons/${encodeURIComponent(lessonId)}/sentences`, this.write({ items }, { queueOnOffline: false, timeoutMs: 90_000, ...options })); }
+  public englishListening(lessonId: Id, answers: Readonly<Record<string, string>>, options?: RequestOptions) { return this.request<EnglishListeningResult>(`/api/v1/english/lessons/${encodeURIComponent(lessonId)}/listening`, this.write({ answers }, { queueOnOffline: false, ...options })); }
+  public englishSpeaking(lessonId: Id, body: EnglishSpeakingIn, options?: RequestOptions) { return this.request<EnglishSpeakingRound>(`/api/v1/english/lessons/${encodeURIComponent(lessonId)}/speaking`, this.write(body, { queueOnOffline: false, timeoutMs: 90_000, ...options })); }
+  /** Raw audio body (not JSON); Content-Type is the blob's own audio media type. */
+  public async englishTranscribe(audio: Blob): Promise<EnglishTranscription> {
+    const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
+    const headers: Record<string, string> = { "Content-Type": audio.type, Accept: "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await this.fetchImpl(`${this.baseUrl}/api/v1/english/speech/transcribe`, { method: "POST", headers, body: audio });
+    const value = await this.parseResponse<EnglishTranscription>(response);
+    await this.invalidateAfterWrite("/api/v1/english/speech/transcribe");
+    return value;
+  }
+  public englishMocks(options?: RequestOptions) { return this.request<readonly EnglishMock[]>("/api/v1/english/mocks", this.read(options, "english-mocks")); }
+  public englishCreateMock(body: EnglishMockIn, options?: RequestOptions) { return this.request<EnglishMock>("/api/v1/english/mocks", this.write(body, { queueOnOffline: false, ...options })); }
   public englishSaveSettings(body: EnglishSettings, options?: RequestOptions) { return this.request<EnglishSettings>("/api/v1/english/settings", this.write(body, { queueOnOffline: false, ...options }, "PUT")); }
 
   public financeAccounts(options?: RequestOptions) { return this.request<readonly FinanceAccount[]>("/api/v1/finance/accounts", this.read(options, "finance-accounts")); }

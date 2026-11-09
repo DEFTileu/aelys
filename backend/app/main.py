@@ -121,5 +121,7 @@ from .ai.knowledge import router as knowledge_router
 app.include_router(knowledge_router, prefix="/api/v1")
 
 from .english.api import router as english_router
+from .english.lessons import router as english_course_router
 
 app.include_router(english_router, prefix="/api/v1")
+app.include_router(english_course_router, prefix="/api/v1")

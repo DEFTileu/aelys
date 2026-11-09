@@ -182,6 +182,15 @@ fn describe(value: &Value) -> Result<(Method, String, Option<Value>), String> {
         }
         return Ok((Method::GET, path.clone(), None));
     }
+    if matches!(
+        &operation,
+        Operation::Api {
+            upload: Some(_),
+            ..
+        }
+    ) {
+        return Err(err("VALIDATION_ERROR")); // raw uploads are app-only, not CLI
+    }
     if let Operation::Api {
         query: Some(query), ..
     } = &operation
@@ -610,6 +619,7 @@ async fn connect_google(session: &Session, provider: &str, path: &str) -> Result
         &format!("{}{path}", session.origin),
         None,
         None,
+        None,
         &session.access,
     )
     .await?;
@@ -686,6 +696,7 @@ pub(super) async fn execute(session: &Session, invocation: Invocation) -> Result
                     &client()?,
                     method,
                     &format!("{}{path}", session.origin),
+                    None,
                     None,
                     None,
                     &session.access,

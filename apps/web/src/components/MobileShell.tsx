@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowLeft, ArrowUp, Blocks, BookOpen, Calendar, Folder, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, Sparkles, SquareCheck, Terminal, Timer, Wallet, Workflow, X, Plus, type AelysIconComponent } from '../icons'
+import { ArrowLeft, ArrowUp, Blocks, BookOpen, Calendar, Folder, GraduationCap, LayoutGrid, Mail, MessageSquareText, NotebookText, Search, Settings, Sparkles, SquareCheck, Terminal, Timer, Wallet, Workflow, X, Plus, type AelysIconComponent } from '../icons'
 import { MOBILE_ACTIONS, useMobileActions } from '../lib/mobilePreferences'
 import { useWallpaper } from '../lib/wallpaper'
 import { askAelys, useDesktopState } from '../lib/desktopStore'
@@ -25,7 +25,7 @@ const APPS: App[] = [
   { label: 'Search', route: '/search', icon: Search, color: 'blue' },
   { label: 'Knowledge base', route: '/knowledge', icon: BookOpen, color: 'orange' },
   { label: 'Timer', route: '/timer', icon: Timer, color: 'red' },
-  { label: 'English', route: '/english', icon: BookOpen, color: 'green' },
+  { label: 'English', route: '/english', icon: GraduationCap, color: 'green' },
   { label: 'Apps', route: '/apps', icon: Blocks, color: 'violet' },
   { label: 'Developer Hub', route: '/developer', icon: Terminal, color: 'gray' },
   { label: 'Automation', route: '/automation', icon: Workflow, color: 'blue' },

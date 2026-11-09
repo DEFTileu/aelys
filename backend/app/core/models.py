@@ -379,6 +379,21 @@ class EnglishProfile(Owned):
     __tablename__ = "english_profiles"
     __table_args__ = (UniqueConstraint("owner_id", name="uq_english_profile_owner"),)
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False); reminder_time: Mapped[str] = mapped_column(String(5), default="21:00"); timezone: Mapped[str] = mapped_column(String(64), default="UTC"); last_reminded_on: Mapped[date | None] = mapped_column(Date)
+    goal: Mapped[str] = mapped_column(String(24), default="ielts_academic"); target_band: Mapped[str] = mapped_column(String(4), default="6.5"); level: Mapped[str] = mapped_column(String(8), default="b1b2")
+    weak_skills: Mapped[list] = mapped_column(JSON, default=lambda: ["speaking", "listening"]); minutes_per_day: Mapped[int] = mapped_column(Integer, default=120)
+    exam_date: Mapped[date | None] = mapped_column(Date); course_started_on: Mapped[date | None] = mapped_column(Date)
+
+class EnglishLesson(Owned):
+    __tablename__ = "english_lessons"
+    __table_args__ = (UniqueConstraint("owner_id", "day", name="uq_english_lesson_owner_day"),)
+    day: Mapped[date] = mapped_column(Date); lesson_no: Mapped[int] = mapped_column(Integer); week: Mapped[int] = mapped_column(Integer); theme: Mapped[str] = mapped_column(String(80))
+    content_json: Mapped[dict] = mapped_column(JSON, default=dict); progress_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+class EnglishMock(Owned):
+    __tablename__ = "english_mocks"
+    day: Mapped[date] = mapped_column(Date)
+    listening: Mapped[str | None] = mapped_column(String(4)); reading: Mapped[str | None] = mapped_column(String(4)); writing: Mapped[str | None] = mapped_column(String(4)); speaking: Mapped[str | None] = mapped_column(String(4))
+    note: Mapped[str] = mapped_column(Text, default="")
 
 # Register integration tables in the shared metadata for migrations and tests.
 import app.ai.memory_models
