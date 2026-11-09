@@ -4805,6 +4805,15 @@ mod tests {
                 .1,
             "/api/v1/search?q=a+b"
         );
+        let mut chat = std::collections::BTreeMap::new();
+        chat.insert("business_connection_id".to_string(), "business-1".to_string());
+        chat.insert("chat_id".to_string(), "222".to_string());
+        assert_eq!(
+            api_route("GET".into(), "/api/v1/integrations/telegram/messages".into(), Some(chat), None)
+                .unwrap()
+                .1,
+            "/api/v1/integrations/telegram/messages?business_connection_id=business-1&chat_id=222"
+        );
     }
 
     #[test]

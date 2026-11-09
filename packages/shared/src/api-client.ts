@@ -607,7 +607,10 @@ export class ApiClient {
   public updateTelegramSettings(body: TelegramSettingsPatch, options?: RequestOptions): Promise<TelegramStatus> { return this.request<TelegramStatus>("/api/v1/integrations/telegram/settings", this.write(body, { ...options, queueOnOffline: false }, "PATCH")); }
   public disconnectTelegram(options?: RequestOptions) { return this.request<{ readonly disconnected: true }>("/api/v1/integrations/telegram/disconnect", this.write({}, { ...options, queueOnOffline: false })); }
   public syncTelegram(options?: RequestOptions) { return this.request<{ readonly processed: number }>("/api/v1/integrations/telegram/sync", this.write({}, { ...options, queueOnOffline: false })); }
-  public telegramMessages(options?: RequestOptions) { return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read(options)); }
+  public telegramMessages(options?: RequestOptions, chat?: { readonly business_connection_id: string; readonly chat_id: number }) {
+    const query = chat ? { ...options?.query, business_connection_id: chat.business_connection_id, chat_id: chat.chat_id } : options?.query;
+    return this.request<readonly TelegramBusinessMessage[]>("/api/v1/integrations/telegram/messages", this.read({ ...options, query }));
+  }
   public draftTelegramMessage(id: string, body: { readonly version: number }, options?: RequestOptions) { return this.request<TelegramBusinessMessage>(`/api/v1/integrations/telegram/messages/${encodeURIComponent(id)}/draft`, this.write(body, { ...options, queueOnOffline: false })); }
   /** Private media is downloaded only to memory, with no cache/outbox/token in its URL. */
   public telegramMessageMedia(id: string, options?: Pick<RequestOptions, "signal">): Promise<Blob> {

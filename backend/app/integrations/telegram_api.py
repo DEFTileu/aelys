@@ -12,7 +12,7 @@ from app.core.models import AIProvider, AIProviderSecret, now
 from app.core.security import current_principal, token_hash
 from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import telegram_chat
@@ -249,9 +249,25 @@ async def sync(principal=Depends(current_principal), db: AsyncSession = Depends(
 
 
 @router.get("/messages", response_model=list[MessageOut])
-async def messages(response: Response, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+async def messages(response: Response, business_connection_id: str | None = None, chat_id: int | None = None,
+                   principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
-    return list((await db.execute(select(TelegramBusinessMessage).where(TelegramBusinessMessage.owner_id == principal[0].id, TelegramBusinessMessage.deleted_at.is_(None)).order_by(TelegramBusinessMessage.sent_at.desc()).limit(100))).scalars())
+    if (business_connection_id is None) != (chat_id is None):
+        raise service.error(422, "INVALID_CHAT_FILTER", "Укажите business_connection_id и chat_id вместе.")
+    live = [TelegramBusinessMessage.owner_id == principal[0].id, TelegramBusinessMessage.deleted_at.is_(None)]
+    if business_connection_id is not None:
+        rows = await db.execute(select(TelegramBusinessMessage).where(*live, TelegramBusinessMessage.business_connection_id == business_connection_id,
+            TelegramBusinessMessage.chat_id == chat_id).order_by(TelegramBusinessMessage.sent_at.desc(), TelegramBusinessMessage.telegram_message_id.desc()).limit(500))
+        return list(rows.scalars())
+    recent = (await db.execute(select(TelegramBusinessMessage).where(*live).order_by(TelegramBusinessMessage.sent_at.desc()).limit(100))).scalars().all()
+    # Newest message per chat, so every chat shows in the list even when older than the 100 newest overall.
+    ranked = select(TelegramBusinessMessage.id.label("id"), TelegramBusinessMessage.sent_at.label("sent_at"), func.row_number().over(
+        partition_by=(TelegramBusinessMessage.business_connection_id, TelegramBusinessMessage.chat_id),
+        order_by=(TelegramBusinessMessage.sent_at.desc(), TelegramBusinessMessage.telegram_message_id.desc())).label("rn")).where(*live).subquery()
+    latest_ids = select(ranked.c.id).where(ranked.c.rn == 1).order_by(ranked.c.sent_at.desc()).limit(100)
+    latest = (await db.execute(select(TelegramBusinessMessage).where(TelegramBusinessMessage.id.in_(latest_ids)))).scalars().all()
+    merged = {message.id: message for message in [*recent, *latest]}
+    return sorted(merged.values(), key=lambda message: message.sent_at, reverse=True)
 
 
 async def owned_message(db: AsyncSession, owner_id: str, message_id: str) -> tuple[TelegramIntegration, TelegramBusinessMessage]:

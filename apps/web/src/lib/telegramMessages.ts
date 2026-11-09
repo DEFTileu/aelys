@@ -53,6 +53,13 @@ export type Chat = {
 const timeOf = (m: TelegramBusinessMessage) => Date.parse(m.sent_at) || 0
 const DONE = new Set(['sent', 'sending', 'unknown', 'no_reply'])
 
+/** Dedupes by id; on a tie the later source wins, a newer version always wins. */
+export function mergeMessages(...sources: readonly (readonly TelegramBusinessMessage[])[]): TelegramBusinessMessage[] {
+  const byId = new Map<string, TelegramBusinessMessage>()
+  for (const m of sources.flat()) { const old = byId.get(m.id); if (!old || m.version >= old.version) byId.set(m.id, m) }
+  return [...byId.values()]
+}
+
 /** Groups Telegram Business messages per chat (connection + chat id) with the conversation lines the Messages app shows. */
 export function groupChats(messages: readonly TelegramBusinessMessage[]): Chat[] {
   const byChat = new Map<string, TelegramBusinessMessage[]>()

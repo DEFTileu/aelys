@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '@aelys/shared'
 import type { TelegramChatAvailability, TelegramBusinessMessage, TelegramStatus } from '@aelys/shared'
 import { getSharedApiClient } from '../../lib/api'
-import { chatSendIdempotencyKey, draftOf, groupChats, sendIdempotencyKey, telegramErrorNotice, REPLY_WINDOW_MS, type Chat } from '../../lib/telegramMessages'
+import { chatSendIdempotencyKey, draftOf, groupChats, mergeMessages, sendIdempotencyKey, telegramErrorNotice, REPLY_WINDOW_MS, type Chat } from '../../lib/telegramMessages'
 import type { ApiStatus } from '../../types'
 
 // Avatar palette from the design: [ink, soft background]. A chat keeps the same colour (picked from its title).
@@ -46,6 +46,8 @@ export function useMessages(apiStatus: ApiStatus) {
   const [uncertain, setUncertain] = useState<Record<string, string>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [messages, setMessages] = useState<readonly TelegramBusinessMessage[]>([])
+  // Full history of the focused chat; the list endpoint only carries the newest messages.
+  const [history, setHistory] = useState<readonly TelegramBusinessMessage[]>([])
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [tab, setTab] = useState<'need' | 'all'>('need')
   const [query, setQuery] = useState('')
@@ -60,17 +62,18 @@ export function useMessages(apiStatus: ApiStatus) {
   const compact = useCompact()
   const working = useRef(false)
   const loadGeneration = useRef(0)
+  const focus = useRef<{ business_connection_id: string; chat_id: number } | null>(null)
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current
+    const focused = focus.current
     try {
       const client = getSharedApiClient()
-      const [next, items, chats] = await Promise.all([client.telegramStatus(), client.telegramMessages(), client.telegramChats()])
+      const [next, items, chats, detail] = await Promise.all([client.telegramStatus(), client.telegramMessages(), client.telegramChats(), focused ? client.telegramMessages(undefined, focused) : Promise.resolve<readonly TelegramBusinessMessage[]>([])])
       if (generation !== loadGeneration.current) return
-      setStatus(next); setMessages(items); setAvailability(chats); setPhase('ready')
+      setStatus(next); setMessages(items); setHistory(detail); setAvailability(chats); setPhase('ready')
     } catch (error) { if (generation !== loadGeneration.current) return; setAvailability([]); setPhase((p) => p === 'ready' ? p : 'error'); setNotice(telegramErrorNotice(error)) }
   }, [])
-  useEffect(() => { void load() }, [load, apiStatus])
   useEffect(() => {
     if (!status?.configured) return
     const refresh = () => { if (!document.hidden) { setNow(Date.now()); void load() } }
@@ -79,7 +82,7 @@ export function useMessages(apiStatus: ApiStatus) {
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
   }, [status?.configured, load])
 
-  const chats = useMemo(() => groupChats(messages), [messages])
+  const chats = useMemo(() => groupChats(mergeMessages(messages, history)), [messages, history])
   // A skipped draft is hidden locally for that message version; there is no server-side "reject".
   const skipKey = (m: TelegramBusinessMessage) => `${m.id}:${m.version}`
   const needs = (chat: Chat) => chat.needsReply && !(chat.target && skipped.has(skipKey(chat.target)))
@@ -88,6 +91,10 @@ export function useMessages(apiStatus: ApiStatus) {
   const needle = query.trim().toLowerCase()
   const list = chats.filter((chat) => (tab === 'all' || needs(chat)) && (!needle || chat.title.toLowerCase().includes(needle)))
   const cur = chats.find((chat) => chat.id === current) ?? list[0] ?? chats[0] ?? null
+  // Switching chats reloads the list and the focused chat's full history.
+  focus.current = cur ? { business_connection_id: cur.businessConnectionId, chat_id: cur.chatId } : null
+  const focusId = cur?.id ?? null
+  useEffect(() => { void load() }, [load, apiStatus, focusId])
   const draft = cur ? draftOfLive(cur) : null
   const text = cur ? drafts[cur.id] ?? '' : ''
   const reply = cur ? replies[cur.id] : undefined

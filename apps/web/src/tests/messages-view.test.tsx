@@ -64,6 +64,13 @@ describe('MessagesView', () => {
     expect(host.querySelector('.msg__draft-text')?.textContent).toBe('Hi! I will check.')
     expect(host.textContent).toContain('⌘↵ send · J / K next chat'); expect(host.textContent).not.toContain('Auto-reply')
   })
+  it('loads the focused chat history so its older messages render', async () => {
+    const older = msg({ id: 'a0', telegram_message_id: 0, text: 'Earlier question?', sent_at: iso(10) })
+    client.telegramMessages.mockImplementation(async (_options?: unknown, chat?: { business_connection_id: string; chat_id: number }) => chat ? [older, aidana] : [aidana, dana, ...mom])
+    await mount()
+    expect(client.telegramMessages).toHaveBeenCalledWith(undefined, { business_connection_id: 'c', chat_id: 1 })
+    expect(host.textContent).toContain('Earlier question?')
+  })
   it('sends the draft with the message version and an idempotency key, then moves to the next chat', async () => {
     client.sendTelegramMessage.mockResolvedValue({ ...aidana, draft_status: 'sent', version: 2 })
     await mount(); await act(async () => button('Send').click())

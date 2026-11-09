@@ -233,6 +233,40 @@ async def test_owner_message_cannot_be_drafted_or_sent(setup):
 
 
 @pytest.mark.asyncio
+async def test_messages_list_shows_every_chat_and_chat_filter_returns_full_history(setup):
+    client, sessions, _fake = setup
+    item = await connect(client)
+    await set_bound(sessions, item["id"])
+    base = now() - timedelta(days=1)
+
+    def make(chat_id, number, minutes, *, owner_id, deleted_at=None):
+        return TelegramBusinessMessage(owner_id=owner_id, integration_id=item["id"], business_connection_id="business-1", chat_id=chat_id,
+            telegram_message_id=number, sender_id=CUSTOMER, chat_title=f"Chat {chat_id}", text=f"{chat_id}-{number}",
+            sent_at=base + timedelta(minutes=minutes), direction="inbound", deleted_at=deleted_at)
+
+    async with sessions() as session:
+        owner = (await session.get(TelegramIntegration, item["id"])).owner_id
+        session.add(make(1, 1, 0, owner_id=owner))  # oldest chat: older than the 100 newest messages of chat 2
+        session.add_all(make(2, number, number, owner_id=owner) for number in range(2, 152))
+        session.add(make(2, 999, 500, owner_id="other-owner"))
+        session.add(make(2, 1000, 600, owner_id=owner, deleted_at=now()))
+        await session.commit()
+
+    listed = (await client.get(PREFIX + "/messages")).json()
+    assert {row["chat_id"] for row in listed} == {1, 2}
+    assert len(listed) == 101 and [row["text"] for row in listed if row["chat_id"] == 1] == ["1-1"]
+    assert listed[-1]["text"] == "1-1"
+
+    chat = await client.get(PREFIX + "/messages", params={"business_connection_id": "business-1", "chat_id": 2})
+    assert chat.status_code == 200 and chat.headers["cache-control"] == "no-store"
+    texts = [row["text"] for row in chat.json()]
+    assert len(texts) == 150 and texts[0] == "2-151" and {row["chat_id"] for row in chat.json()} == {2}
+    assert "2-999" not in texts and "2-1000" not in texts
+    for params in [{"chat_id": 2}, {"business_connection_id": "business-1"}]:
+        assert (await client.get(PREFIX + "/messages", params=params)).status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_reply_rights_and_window_are_enforced(setup):
     client, sessions, fake = setup
     _item, row = await seed_message(client, sessions, fake)
