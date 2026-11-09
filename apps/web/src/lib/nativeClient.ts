@@ -87,6 +87,23 @@ function genericOperation(url: URL, init?: RequestInit): NativeOperation | undef
   }
 }
 
+// Speech practice sends raw audio. Rust enforces the route, audio type and 10 MB cap; this only
+// turns a Blob (or FormData field `audio`) into the base64 `upload` the bridge carries.
+const UPLOAD_PATH = '/api/v1/english/speech/transcribe'
+const MAX_UPLOAD = 10 * 1024 * 1024
+
+async function uploadOperation(url: URL, init?: RequestInit): Promise<NativeOperation | Response | undefined> {
+  if ((init?.method ?? 'GET').toUpperCase() !== 'POST' || url.pathname !== UPLOAD_PATH) return undefined
+  const raw = init?.body instanceof FormData ? init.body.get('audio') : init?.body
+  if (!(raw instanceof Blob)) return undefined
+  if (raw.size > MAX_UPLOAD) return jsonResponse({ detail: { code: 'AUDIO_TOO_LARGE', message: 'The recording is too large.' } }, 413)
+  const bytes = new Uint8Array(await raw.arrayBuffer())
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  const key = new Headers(init?.headers).get('Idempotency-Key') ?? undefined
+  return { type: 'api', method: 'POST', path: url.pathname, upload: { content_type: raw.type || new Headers(init?.headers).get('Content-Type') || '', data: btoa(binary) }, ...(key ? { idempotency_key: key } : {}) }
+}
+
 function operationFor(url: URL, init?: RequestInit): NativeOperation | undefined {
   return typedOperationFor(url, init) ?? genericOperation(url, init)
 }
@@ -290,7 +307,10 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
         return new Response(bytes, { status: 200, headers: { 'Content-Type': binary.content_type, 'Content-Length': String(bytes.byteLength) } })
       } catch (error) { return nativeErrorResponse(error, origin, init) }
     }
-    const operation = operationFor(url, init)
+    // Only the audio upload awaits; any extra tick here would let an early abort beat the native invoke.
+    const upload = url.pathname === UPLOAD_PATH ? await uploadOperation(url, init) : undefined
+    if (upload instanceof Response) return upload
+    const operation = upload ?? operationFor(url, init)
     if (!operation) return jsonResponse({ detail: { code: 'NATIVE_OPERATION_UNSUPPORTED', message: 'This module is not available in the native pilot.' } }, 501)
     const diagnosticId = diagnostics.begin(method, url.pathname, bodyValue(init?.body))
     const started = performance.now()

@@ -284,6 +284,7 @@ async fn api(
         &format!("{}/api/v1/{path}", session.origin),
         body,
         key,
+        None,
         &session.access,
     )
     .await
