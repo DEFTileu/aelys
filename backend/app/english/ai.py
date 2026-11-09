@@ -42,7 +42,9 @@ def validated[M: BaseModel](model: type[M], data: dict[str, Any]) -> M:
 
 
 async def complete_json(db: AsyncSession, owner_id: str, system: str, user_text: str, max_tokens: int) -> dict[str, Any]:
-    """Ask the owner's provider for one JSON object. Adds the AIRun to the caller's transaction; the caller commits."""
+    """Ask the owner's provider for one JSON object. Commits the AIRun at once, so spend on rejected output still counts against the budget.
+
+    That commit ends the caller's transaction and releases lock_owner: call this before locking."""
     unavailable = fail(503, "AI_UNAVAILABLE", "Подключите AI-провайдера в настройках")
     provider = (await db.execute(select(AIProvider).where(AIProvider.owner_id == owner_id, AIProvider.enabled.is_(True), AIProvider.deleted_at.is_(None)).order_by(AIProvider.created_at))).scalars().first()
     secret = await db.get(AIProviderSecret, provider.id) if provider else None
@@ -64,6 +66,7 @@ async def complete_json(db: AsyncSession, owner_id: str, system: str, user_text:
     db.add(conversation)
     await db.flush()
     db.add(AIRun(id=str(run_id), owner_id=owner_id, conversation_id=conversation.id, prompt_message_id=None, provider_id=provider.id, provider=getattr(result.provider, "value", result.provider), model=result.model, status="completed", tool_scope_json={}, token_counts={"input": result.usage.usage.input_tokens, "output": result.usage.usage.output_tokens}, cost_estimate=result.usage.estimated_cost, started_at=started, completed_at=datetime.now(UTC)))
+    await db.commit()
     text = result.response.text
     if result.response.tool_calls or not isinstance(text, str):
         raise fail(502, "AI_BAD_OUTPUT", "AI вернул некорректный ответ")

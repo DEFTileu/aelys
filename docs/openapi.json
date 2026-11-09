@@ -7860,6 +7860,512 @@
           }
         ]
       }
+    },
+    "/api/v1/english/speech/transcribe": {
+      "post": {
+        "summary": "English Transcribe",
+        "description": "Accepts multipart (field `audio`) or a raw audio/* body; the web app and the native bridge send raw bytes.",
+        "operationId": "english_transcribe_api_v1_english_speech_transcribe_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/english/course": {
+      "get": {
+        "summary": "English Course",
+        "operationId": "english_course_api_v1_english_course_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishCourse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/course/profile": {
+      "put": {
+        "summary": "English Save Profile",
+        "operationId": "english_save_profile_api_v1_english_course_profile_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Profile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/english/lessons/today": {
+      "post": {
+        "summary": "English Lesson Today",
+        "operationId": "english_lesson_today_api_v1_english_lessons_today_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LessonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishLessonOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/english/lessons/{lesson_id}": {
+      "get": {
+        "summary": "English Lesson",
+        "operationId": "english_lesson_api_v1_english_lessons__lesson_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishLessonOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/lessons/{lesson_id}/blocks/{key}/done": {
+      "post": {
+        "summary": "English Block Done",
+        "operationId": "english_block_done_api_v1_english_lessons__lesson_id__blocks__key__done_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "warmup",
+                "vocab",
+                "listening",
+                "speaking",
+                "writing"
+              ],
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockDoneIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnglishLessonOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/lessons/{lesson_id}/sentences": {
+      "post": {
+        "summary": "English Sentences",
+        "operationId": "english_sentences_api_v1_english_lessons__lesson_id__sentences_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentencesIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentencesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/lessons/{lesson_id}/listening": {
+      "post": {
+        "summary": "English Listening",
+        "operationId": "english_listening_api_v1_english_lessons__lesson_id__listening_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListeningIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListeningOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/lessons/{lesson_id}/speaking": {
+      "post": {
+        "summary": "English Speaking",
+        "operationId": "english_speaking_api_v1_english_lessons__lesson_id__speaking_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeakingIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeakingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/mocks": {
+      "get": {
+        "summary": "English Mocks",
+        "operationId": "english_mocks_api_v1_english_mocks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MockOut"
+                  },
+                  "type": "array",
+                  "title": "Response English Mocks Api V1 English Mocks Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "English Add Mock",
+        "operationId": "english_add_mock_api_v1_english_mocks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MockOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -7892,6 +8398,40 @@
           "delete"
         ],
         "title": "Action"
+      },
+      "AdaptationOut": {
+        "properties": {
+          "skill": {
+            "type": "string",
+            "enum": [
+              "listening",
+              "reading",
+              "writing",
+              "speaking"
+            ],
+            "title": "Skill"
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill",
+          "icon",
+          "title",
+          "detail"
+        ],
+        "title": "AdaptationOut"
       },
       "AttachmentIn": {
         "properties": {
@@ -7965,6 +8505,61 @@
           "expires_at"
         ],
         "title": "BindingOut"
+      },
+      "BlockDoneIn": {
+        "properties": {
+          "minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 240.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BlockDoneIn"
+      },
+      "BlockOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "warmup",
+              "vocab",
+              "listening",
+              "speaking",
+              "writing"
+            ],
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "minutes": {
+            "type": "integer",
+            "title": "Minutes"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "minutes",
+          "done"
+        ],
+        "title": "BlockOut"
       },
       "Body_import_eml_api_v1_mail_import_eml_post": {
         "properties": {
@@ -8618,6 +9213,31 @@
       },
       "Correction": {
         "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "journal",
+                  "task2"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "criteria": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Criteria"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "corrected_text": {
             "type": "string",
             "title": "Corrected Text"
@@ -8855,6 +9475,38 @@
         ],
         "title": "CredentialLeaseIn"
       },
+      "Criteria": {
+        "properties": {
+          "task_response": {
+            "type": "string",
+            "pattern": "^\u2248?[0-9](\\.[05])?$",
+            "title": "Task Response"
+          },
+          "coherence": {
+            "type": "string",
+            "pattern": "^\u2248?[0-9](\\.[05])?$",
+            "title": "Coherence"
+          },
+          "lexical": {
+            "type": "string",
+            "pattern": "^\u2248?[0-9](\\.[05])?$",
+            "title": "Lexical"
+          },
+          "grammar": {
+            "type": "string",
+            "pattern": "^\u2248?[0-9](\\.[05])?$",
+            "title": "Grammar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_response",
+          "coherence",
+          "lexical",
+          "grammar"
+        ],
+        "title": "Criteria"
+      },
       "DeviceEnroll": {
         "properties": {
           "platform": {
@@ -9071,6 +9723,133 @@
           "version"
         ],
         "title": "DraftPatch"
+      },
+      "EnglishCourse": {
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/ProfileOut"
+          },
+          "week": {
+            "type": "integer",
+            "title": "Week"
+          },
+          "lesson_no": {
+            "type": "integer",
+            "title": "Lesson No"
+          },
+          "days_to_exam": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Exam"
+          },
+          "hours_done": {
+            "type": "number",
+            "title": "Hours Done"
+          },
+          "hours_target": {
+            "type": "integer",
+            "title": "Hours Target"
+          },
+          "plan": {
+            "items": {
+              "$ref": "#/components/schemas/PlanItem"
+            },
+            "type": "array",
+            "title": "Plan"
+          },
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/SkillOut"
+            },
+            "type": "array",
+            "title": "Skills"
+          },
+          "adaptations": {
+            "items": {
+              "$ref": "#/components/schemas/AdaptationOut"
+            },
+            "type": "array",
+            "title": "Adaptations"
+          },
+          "week_stats": {
+            "$ref": "#/components/schemas/WeekStats"
+          },
+          "mock_due": {
+            "type": "boolean",
+            "title": "Mock Due"
+          },
+          "today": {
+            "$ref": "#/components/schemas/TodayOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile",
+          "week",
+          "lesson_no",
+          "days_to_exam",
+          "hours_done",
+          "hours_target",
+          "plan",
+          "skills",
+          "adaptations",
+          "week_stats",
+          "mock_due",
+          "today"
+        ],
+        "title": "EnglishCourse"
+      },
+      "EnglishLessonOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "lesson_no": {
+            "type": "integer",
+            "title": "Lesson No"
+          },
+          "week": {
+            "type": "integer",
+            "title": "Week"
+          },
+          "theme": {
+            "type": "string",
+            "title": "Theme"
+          },
+          "content": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Content"
+          },
+          "progress": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Progress"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "day",
+          "lesson_no",
+          "week",
+          "theme",
+          "content",
+          "progress"
+        ],
+        "title": "EnglishLessonOut"
       },
       "EnglishReportOut": {
         "properties": {
@@ -10313,6 +11092,101 @@
         ],
         "title": "KnowledgeSource"
       },
+      "LessonIn": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day"
+        ],
+        "title": "LessonIn"
+      },
+      "ListeningIn": {
+        "properties": {
+          "answers": {
+            "patternProperties": {
+              "^\\d{1,2}$": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "type": "object",
+            "maxProperties": 12,
+            "title": "Answers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "title": "ListeningIn"
+      },
+      "ListeningOut": {
+        "properties": {
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ListeningResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "feedback_ru": {
+            "type": "string",
+            "title": "Feedback Ru"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "total",
+          "results",
+          "feedback_ru"
+        ],
+        "title": "ListeningOut"
+      },
+      "ListeningResult": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "given": {
+            "type": "string",
+            "title": "Given"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "given",
+          "answer",
+          "ok"
+        ],
+        "title": "ListeningResult"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -10958,6 +11832,147 @@
         ],
         "title": "MessageVersion"
       },
+      "MockIn": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "listening": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([0-8]\\.[05]|9\\.0)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listening"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([0-8]\\.[05]|9\\.0)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading"
+          },
+          "writing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([0-8]\\.[05]|9\\.0)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writing"
+          },
+          "speaking": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([0-8]\\.[05]|9\\.0)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaking"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day"
+        ],
+        "title": "MockIn"
+      },
+      "MockOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "listening": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listening"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading"
+          },
+          "writing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writing"
+          },
+          "speaking": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaking"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "day",
+          "listening",
+          "reading",
+          "writing",
+          "speaking",
+          "note"
+        ],
+        "title": "MockOut"
+      },
       "NativeLogin": {
         "properties": {
           "email": {
@@ -11467,6 +12482,198 @@
         ],
         "title": "PairingSecret"
       },
+      "PlanItem": {
+        "properties": {
+          "week": {
+            "type": "integer",
+            "title": "Week"
+          },
+          "theme": {
+            "type": "string",
+            "title": "Theme"
+          },
+          "grammar": {
+            "type": "string",
+            "title": "Grammar"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "now",
+              "next"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "week",
+          "theme",
+          "grammar",
+          "status"
+        ],
+        "title": "PlanItem"
+      },
+      "Profile": {
+        "properties": {
+          "goal": {
+            "type": "string",
+            "enum": [
+              "ielts_academic",
+              "ielts_general",
+              "conversation"
+            ],
+            "title": "Goal"
+          },
+          "target_band": {
+            "type": "string",
+            "pattern": "^([4-8]\\.[05]|9\\.0)$",
+            "title": "Target Band"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "b1",
+              "b1b2",
+              "b2",
+              "test"
+            ],
+            "title": "Level"
+          },
+          "weak_skills": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "listening",
+                "reading",
+                "writing",
+                "speaking"
+              ]
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Weak Skills"
+          },
+          "minutes_per_day": {
+            "type": "integer",
+            "enum": [
+              60,
+              120,
+              180
+            ],
+            "title": "Minutes Per Day"
+          },
+          "exam_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Date"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "goal",
+          "target_band",
+          "level",
+          "weak_skills",
+          "minutes_per_day"
+        ],
+        "title": "Profile"
+      },
+      "ProfileOut": {
+        "properties": {
+          "goal": {
+            "type": "string",
+            "enum": [
+              "ielts_academic",
+              "ielts_general",
+              "conversation"
+            ],
+            "title": "Goal"
+          },
+          "target_band": {
+            "type": "string",
+            "pattern": "^([4-8]\\.[05]|9\\.0)$",
+            "title": "Target Band"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "b1",
+              "b1b2",
+              "b2",
+              "test"
+            ],
+            "title": "Level"
+          },
+          "weak_skills": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "listening",
+                "reading",
+                "writing",
+                "speaking"
+              ]
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Weak Skills"
+          },
+          "minutes_per_day": {
+            "type": "integer",
+            "enum": [
+              60,
+              120,
+              180
+            ],
+            "title": "Minutes Per Day"
+          },
+          "exam_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Date"
+          },
+          "course_started_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Started On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "goal",
+          "target_band",
+          "level",
+          "weak_skills",
+          "minutes_per_day",
+          "course_started_on"
+        ],
+        "title": "ProfileOut"
+      },
       "ProjectCreate": {
         "properties": {
           "name": {
@@ -11859,6 +13066,15 @@
             "maxLength": 4000,
             "minLength": 20,
             "title": "Text"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "journal",
+              "task2"
+            ],
+            "title": "Kind",
+            "default": "journal"
           }
         },
         "additionalProperties": false,
@@ -12335,6 +13551,102 @@
         ],
         "title": "SendIn"
       },
+      "SentenceIn": {
+        "properties": {
+          "word_id": {
+            "type": "string",
+            "title": "Word Id"
+          },
+          "sentence": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Sentence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "word_id",
+          "sentence"
+        ],
+        "title": "SentenceIn"
+      },
+      "SentenceOut": {
+        "properties": {
+          "word_id": {
+            "type": "string",
+            "title": "Word Id"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "title_ru": {
+            "type": "string",
+            "title": "Title Ru"
+          },
+          "detail_ru": {
+            "type": "string",
+            "title": "Detail Ru"
+          },
+          "corrected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "word_id",
+          "ok",
+          "title_ru",
+          "detail_ru",
+          "corrected"
+        ],
+        "title": "SentenceOut"
+      },
+      "SentencesIn": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SentenceIn"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SentencesIn"
+      },
+      "SentencesOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SentenceOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SentencesOut"
+      },
       "SessionSearch": {
         "properties": {
           "query": {
@@ -12544,6 +13856,148 @@
           "display_name"
         ],
         "title": "SetupClaim"
+      },
+      "SkillOut": {
+        "properties": {
+          "skill": {
+            "type": "string",
+            "enum": [
+              "listening",
+              "reading",
+              "writing",
+              "speaking"
+            ],
+            "title": "Skill"
+          },
+          "band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend"
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill",
+          "band",
+          "trend"
+        ],
+        "title": "SkillOut"
+      },
+      "SpeakingIn": {
+        "properties": {
+          "round": {
+            "type": "integer",
+            "enum": [
+              4,
+              3,
+              2
+            ],
+            "title": "Round"
+          },
+          "transcript": {
+            "type": "string",
+            "maxLength": 6000,
+            "minLength": 5,
+            "title": "Transcript"
+          },
+          "duration_sec": {
+            "type": "integer",
+            "maximum": 1800.0,
+            "minimum": 1.0,
+            "title": "Duration Sec"
+          },
+          "pause_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "round",
+          "transcript",
+          "duration_sec"
+        ],
+        "title": "SpeakingIn"
+      },
+      "SpeakingOut": {
+        "properties": {
+          "round": {
+            "type": "integer",
+            "title": "Round"
+          },
+          "criteria": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Criteria"
+          },
+          "corrected_html_safe": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Corrected Html Safe"
+          },
+          "tips": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Tips"
+          },
+          "pauses": {
+            "type": "integer",
+            "title": "Pauses"
+          },
+          "linkers_used": {
+            "type": "integer",
+            "title": "Linkers Used"
+          }
+        },
+        "type": "object",
+        "required": [
+          "round",
+          "criteria",
+          "corrected_html_safe",
+          "tips",
+          "pauses",
+          "linkers_used"
+        ],
+        "title": "SpeakingOut"
       },
       "StatusOut": {
         "properties": {
@@ -13094,6 +14548,34 @@
         ],
         "title": "TaskPatchIn"
       },
+      "TodayOut": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/BlockOut"
+            },
+            "type": "array",
+            "title": "Blocks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "blocks"
+        ],
+        "title": "TodayOut"
+      },
       "TokenResponse": {
         "properties": {
           "access_token": {
@@ -13218,6 +14700,31 @@
         ],
         "title": "TransactionIn"
       },
+      "TranscriptOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "duration_sec": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Sec"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "duration_sec"
+        ],
+        "title": "TranscriptOut"
+      },
       "TransferIn": {
         "properties": {
           "from_account_id": {
@@ -13337,6 +14844,41 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WeekStats": {
+        "properties": {
+          "speaking_rounds": {
+            "type": "integer",
+            "title": "Speaking Rounds"
+          },
+          "new_words": {
+            "type": "integer",
+            "title": "New Words"
+          },
+          "listening_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listening Pct"
+          },
+          "streak": {
+            "type": "integer",
+            "title": "Streak"
+          }
+        },
+        "type": "object",
+        "required": [
+          "speaking_rounds",
+          "new_words",
+          "listening_pct",
+          "streak"
+        ],
+        "title": "WeekStats"
       },
       "app__agents__api__RunIn": {
         "properties": {
