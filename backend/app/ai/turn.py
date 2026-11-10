@@ -78,7 +78,8 @@ async def run_tool_turn(
         completion_id = run_id if step == 1 else uuid5(run_id, f'tool-step:{step}')
         current: list[str] = []
 
-        async def stream_text(delta: str) -> None:
+        # Bind this step's buffer explicitly; the callback only runs while this step's completion is awaited.
+        async def stream_text(delta: str, current: list[str] = current) -> None:
             # The consumer sees the whole reply so far, joined across steps like the final text.
             current.append(delta)
             if on_text:

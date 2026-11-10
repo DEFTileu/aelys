@@ -19,8 +19,8 @@ from app.ai.models import (
 )
 from app.ai.providers import ClaudeAdapter, OpenRouterAdapter
 from app.ai.secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
-from app.ai.turn import run_tool_turn
 from app.ai.tools import ToolRegistry
+from app.ai.turn import run_tool_turn
 
 
 class Transport:

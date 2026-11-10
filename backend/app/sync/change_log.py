@@ -11,8 +11,8 @@ from datetime import datetime
 from typing import Any
 
 from app.ai.models import PermissionContext, ToolCall
-from app.automation import hooks
 from app.ai.policy import ServerPolicyEngine
+from app.automation import hooks
 from app.core.models import (
     CalendarEvent,
     Note,
