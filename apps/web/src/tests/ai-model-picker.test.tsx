@@ -4,11 +4,12 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AiView } from '../views/AiView'
 import { TelegramSettings } from '../views/TelegramSettings'
+import { AiFeatureDefaults } from '../views/AiFeatureDefaults'
 import { modelsFor, resolveChoice } from '../data/aiModels'
 
 const client = vi.hoisted(() => ({
   aiCapabilities: vi.fn(), aiProviders: vi.fn(), aiConversations: vi.fn(), aiMessages: vi.fn(), createAIConversation: vi.fn(), createAIRun: vi.fn(), aiRunEvents: vi.fn(), cancelAIRun: vi.fn(),
-  telegramStatus: vi.fn(), telegramMessages: vi.fn(), updateTelegramSettings: vi.fn(),
+  telegramStatus: vi.fn(), telegramMessages: vi.fn(), updateTelegramSettings: vi.fn(), aiDefaults: vi.fn(), setAIDefaults: vi.fn(),
 }))
 const identity = vi.hoisted(() => ({ partition: '' }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client, getDraftPartition: async (kind: string) => JSON.stringify(['web', 'backend', identity.partition, kind]) }))
@@ -74,7 +75,7 @@ describe('AI chat model picker and run states', () => {
     expect(client.createAIConversation).toHaveBeenCalledWith(expect.any(Object), { queueOnOffline: false, idempotencyKey: expect.any(String) })
     expect(client.createAIRun.mock.calls[0]).toEqual([expect.objectContaining({ routing: { provider_id: 'p1', provider: 'claude', model: 'claude-sonnet-4-5', timezone: expect.any(String), effort: 'high' }, idempotency_key: expect.any(String) }), { queueOnOffline: false, idempotencyKey: expect.any(String) }])
     expect(JSON.parse(localStorage.getItem('aelys.chat.c1.model')!).model).toBe('claude-sonnet-4-5')
-    expect(host.querySelector('.actual-ai__meta')!.textContent).toBe('Claude · Sonnet 4.5 · 0.0s · high effort')
+    await vi.waitFor(() => expect(host.querySelector('.actual-ai__meta')?.textContent).toMatch(/^Claude · Sonnet 4\.5 · \d+\.\ds · high effort$/))
   })
 
   it('does not offer reasoning effort for models without thinking', async () => {
@@ -151,5 +152,23 @@ describe('Telegram Reply with', () => {
     await click(find('Sonnet 4.5', '[role=option]'))
     // Picking saves right away; manual drafts need the provider even with auto-reply off.
     expect(client.updateTelegramSettings).toHaveBeenCalledWith({ version: 3, instructions: '', provider_id: 'p1', model: 'claude-sonnet-4-5' })
+  })
+})
+
+describe('Use for', () => {
+  it('saves a per-feature choice and the Telegram choice from one place', async () => {
+    const status = { configured: true, id: 'bot', version: 3, enabled: true, auto_reply: false, provider_id: null, model: null, instructions: '', connections: [], timezone: 'UTC', reply_delay_seconds: 90, business_capable: true, owner_telegram_id: null, last_polled_at: null, last_error_code: null }
+    client.aiDefaults.mockResolvedValue({ chat: { provider_id: 'p1', model: 'claude-haiku-5-5' } })
+    client.setAIDefaults.mockImplementation(async (body: object) => body)
+    client.telegramStatus.mockResolvedValue(status)
+    client.updateTelegramSettings.mockResolvedValue({ ...status, version: 4, provider_id: 'p1', model: 'claude-sonnet-4-5' })
+    await act(async () => root.render(<AiFeatureDefaults providers={[claude, openrouter]} />))
+    expect(host.textContent).toContain('AI Chat')
+    await click(host.querySelector<HTMLElement>('button[aria-label="English"]')!)
+    await click(find('Sonnet 4.5', '[role=option]'))
+    expect(client.setAIDefaults).toHaveBeenCalledWith({ chat: { provider_id: 'p1', model: 'claude-haiku-5-5' }, english: { provider_id: 'p1', model: 'claude-sonnet-4-5' } })
+    await click(host.querySelector<HTMLElement>('button[aria-label="Telegram"]')!)
+    await click(find('Sonnet 4.5', '[role=option]'))
+    expect(client.updateTelegramSettings).toHaveBeenCalledWith({ version: 3, provider_id: 'p1', model: 'claude-sonnet-4-5' })
   })
 })

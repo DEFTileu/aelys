@@ -121,6 +121,7 @@ async def test_plain_text_payload_exactly_matches_existing_contract(kind, stream
             'stream': stream, 'system': 'first\nsecond'}
         if tools:
             expected['tools'] = list(tools)
+        expected['cache_control'] = {'type': 'ephemeral'}
     else:
         expected = {'model': 'plain', 'messages': [{'role': m.role, 'content': m.content} for m in messages],
                     'max_tokens': 37, 'temperature': 0.25, 'stream': stream}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager, suppress
 
@@ -9,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 
 from .agents.api import router as agents_router
 from .ai.api import router as ai_router
@@ -48,6 +50,8 @@ async def lifespan(app: FastAPI):
                 await task
 
 app = FastAPI(title="Aelys API", version="0.1.0", openapi_url="/api/v1/openapi.json", lifespan=lifespan)
+# Lists (mail, notes, tasks) shrink several-fold; Starlette never buffers text/event-stream, so AI streaming is untouched.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 class OAuthAccessLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -66,7 +70,10 @@ logging.getLogger("uvicorn.access").addFilter(OAuthAccessLogFilter())
 @app.middleware("http")
 async def request_id(request: Request, call_next):
     request_id = str(uuid.uuid4())
+    started = time.perf_counter()
     response = await call_next(request)
+    # Server time only (headers ready), so client timing shows how much is network.
+    response.headers["Server-Timing"] = f"app;dur={(time.perf_counter() - started) * 1000:.1f}"
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"

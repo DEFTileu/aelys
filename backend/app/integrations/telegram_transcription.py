@@ -8,6 +8,7 @@ from uuid import uuid4
 import httpx
 from app.ai import api as ai_api
 from app.ai.crypto import decrypt_secret
+from app.ai.defaults import feature_provider
 from app.core.models import AIConversation, AIProvider, AIProviderSecret, AIRun, now
 from app.sync.change_log import lock_owner
 from sqlalchemy import select
@@ -28,14 +29,10 @@ def transcription_transport() -> httpx.AsyncBaseTransport:
 
 
 async def transcription_provider(db: AsyncSession, owner_id: str) -> tuple[AIProvider, AIProviderSecret]:
-    row = (await db.execute(select(AIProvider, AIProviderSecret).join(
-        AIProviderSecret, AIProviderSecret.provider_id == AIProvider.id,
-    ).where(AIProvider.owner_id == owner_id, AIProviderSecret.owner_id == owner_id,
-            AIProvider.kind == 'transcription', AIProvider.enabled.is_(True), AIProvider.deleted_at.is_(None),
-    ).order_by(AIProvider.created_at).limit(1))).one_or_none()
-    if row is None or not str((row[0].model_policy_json or {}).get('default_model', '')).strip():
+    chosen = await feature_provider(db, owner_id, 'transcription')
+    if chosen is None or not str((chosen[0].model_policy_json or {}).get('default_model', '')).strip():
         raise TranscriptionError('TRANSCRIPTION_NOT_CONFIGURED')
-    return row[0], row[1]
+    return chosen[0], chosen[1]
 
 
 async def transcribe_audio(db: AsyncSession, item: TelegramIntegration, data: bytes,

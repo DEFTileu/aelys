@@ -167,6 +167,8 @@ class ClaudeAdapter(_BaseAdapter):
         # Current Claude models reject sampling params and thinking budgets with 400; effort is the only control.
         # Thinking is on by default and counts against max_tokens, so leave it room.
         payload = {"model": request.model, "max_tokens": max(request.max_tokens, CLAUDE_MIN_MAX_TOKENS), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
+        # Caches the prompt up to the last block, so the next tool step or chat turn skips re-reading it (from 512 tokens).
+        payload["cache_control"] = {"type": "ephemeral"}
         if request.effort:
             payload["thinking"] = {"type": "adaptive"}
             payload["output_config"] = {"effort": request.effort}

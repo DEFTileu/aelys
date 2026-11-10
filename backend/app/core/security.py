@@ -9,6 +9,7 @@ import time
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
@@ -70,17 +71,21 @@ async def current_principal(credentials: HTTPAuthorizationCredentials | None = D
     claims = decode_token(credentials.credentials)
     if claims.get("typ") != "access":
         raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Access token required"})
-    user = await db.get(User, claims["sub"])
-    if not user: raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Unknown owner"})
     session_id = claims.get("sid")
+    device_id = claims.get("device_id")
+    # One round trip for owner, session and device: the database is in another region, so each query costs a network hop.
+    row = (await db.execute(select(User, AuthSession, Device).select_from(User).where(User.id == claims["sub"])
+        .outerjoin(AuthSession, AuthSession.id == (session_id or ""))
+        .outerjoin(Device, Device.id == (device_id or "")))).first()
+    if not row: raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Unknown owner"})
+    user, session, found = row
     if not session_id:
         raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Session-bound access token required"})
-    session = await db.get(AuthSession, session_id)
     if not session or session.owner_id != user.id or session.revoked_at:
         raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Session revoked"})
-    device = None
-    if claims.get("device_id"):
-        device = await db.get(Device, claims["device_id"])
-        if not device or device.owner_id != user.id or device.revoked_at:
+    device: Device | None = None
+    if device_id:
+        if not found or found.owner_id != user.id or found.revoked_at:
             raise HTTPException(status_code=401, detail={"code":"DEVICE_REVOKED","message":"Device credential revoked"})
+        device = found
     return user, device

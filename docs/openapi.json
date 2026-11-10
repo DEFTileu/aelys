@@ -4622,6 +4622,71 @@
         ]
       }
     },
+    "/api/v1/ai/defaults": {
+      "get": {
+        "summary": "Feature Defaults",
+        "operationId": "feature_defaults_api_v1_ai_defaults_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureDefaults"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "Set Feature Defaults",
+        "description": "Replace every feature's choice; a null feature falls back to the oldest ready provider.",
+        "operationId": "set_feature_defaults_api_v1_ai_defaults_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeatureDefaults"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureDefaults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/ai/providers/{provider_id}": {
       "patch": {
         "summary": "Update Provider",
@@ -10452,6 +10517,81 @@
           "version"
         ],
         "title": "EventPatchIn"
+      },
+      "FeatureChoice": {
+        "properties": {
+          "provider_id": {
+            "type": "string",
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Provider Id"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider_id"
+        ],
+        "title": "FeatureChoice"
+      },
+      "FeatureDefaults": {
+        "properties": {
+          "chat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeatureChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "english": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeatureChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "automation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeatureChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transcription": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeatureChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FeatureDefaults"
       },
       "FinanceAccountIn": {
         "properties": {
