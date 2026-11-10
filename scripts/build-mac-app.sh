@@ -7,11 +7,14 @@
 # --devtools builds with the web inspector (right-click > Inspect Element, or Cmd+Option+I) for
 # looking at requests and logs. Leave it off for builds you hand to anyone else.
 #
-# First run: creates a self-signed "Aelys Local Signing" code-signing identity in the
+# Uses your Apple Development identity when one exists. Otherwise the first run creates a self-signed "Aelys Local Signing" code-signing identity in the
 # login keychain. Override with AELYS_SIGNING_IDENTITY, or the API with VITE_API_BASE_URL.
 set -euo pipefail
 
-IDENTITY="${AELYS_SIGNING_IDENTITY:-Aelys Local Signing}"
+# An Apple Development identity carries a Team ID, so the Keychain recognises every rebuild
+# without asking for the login password; a self-signed one is pinned to each build's hash.
+APPLE_DEV="$(security find-identity -p codesigning -v | sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1)"
+IDENTITY="${AELYS_SIGNING_IDENTITY:-${APPLE_DEV:-Aelys Local Signing}}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export APPLE_SIGNING_IDENTITY="$IDENTITY"
 export VITE_API_BASE_URL="${VITE_API_BASE_URL:-https://api-production-1cea.up.railway.app/api/v1}"
