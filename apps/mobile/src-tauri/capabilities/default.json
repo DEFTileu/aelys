@@ -12,6 +12,7 @@
   "permissions": [
     "core:default",
     "notification:default",
+    "aelys-notification-log:default",
     "allow-runtime-policy",
     "allow-native-status",
     "allow-native-health",

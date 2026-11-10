@@ -62,7 +62,7 @@
 .mobile-shell__logo .mobile-shell__brand { flex: 0 1 auto; margin-left: 0; }
 
 /* The design starts the content of every inner screen 70px below the header block (title and subtitle), so the photo shows in the gap. Timer and Developer Hub are not in the design and keep their own spacing. */
-.mobile-shell:is([data-route='/tasks'], [data-route='/calendar'], [data-route='/projects'], [data-route='/notes'], [data-route='/mail'], [data-route='/finance'], [data-route='/knowledge'], [data-route='/settings'], [data-route='/apps'], [data-route='/messages'], [data-route='/automation'], [data-route='/search']) .mobile-shell__content { padding-top: 70px; }
+.mobile-shell:is([data-route='/tasks'], [data-route='/calendar'], [data-route='/projects'], [data-route='/notes'], [data-route='/mail'], [data-route='/finance'], [data-route='/knowledge'], [data-route='/settings'], [data-route='/apps'], [data-route='/messages'], [data-route='/notification-log'], [data-route='/automation'], [data-route='/search']) .mobile-shell__content { padding-top: 70px; }
 
 /* Header slots for the design's subtitle and action pill (see MobileHeader). */
 .mobile-shell__action:empty { display: none; }
@@ -79,3 +79,11 @@
 .mobile-shell__action > details > summary::-webkit-details-marker { display: none; }
 /* A tint of each icon's own colour instead of a pastel tile on the dark sheet. */
 :root[data-theme='dark'] .mobile-shell__app-icon { background: color-mix(in srgb, currentColor 18%, transparent); }
+/* Inner screens: Back and the title stay pinned; only the wallpaper scrolls away. */
+.mobile-shell:not(.mobile-shell--home) .mobile-shell__header { position: sticky; top: 0; margin: calc(-1 * env(safe-area-inset-top)) 0 -8px; padding-top: calc(8px + env(safe-area-inset-top)); padding-bottom: 8px; transition: background-color .18s, color .18s; }
+.mobile-shell__header.is-stuck { background: var(--canvas, #f5f0eb); color: var(--ink, #1c1b22); box-shadow: 0 1px 0 color-mix(in srgb, var(--ink, #1c1b22) 8%, transparent); }
+.mobile-shell__header.is-stuck .mobile-shell__title { text-shadow: none; }
+/* The notification log has no Ask button, so it reserves no room for one and short screens do not scroll. */
+.mobile-shell[data-route='/notification-log'] { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+.mobile-shell[data-route='/notification-log'] .mobile-shell__bottom--fab { display: none; }
+@media (prefers-reduced-motion: reduce) { .mobile-shell__header { transition: none; } }

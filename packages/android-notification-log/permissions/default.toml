@@ -1,0 +1,11 @@
+[default]
+description = "Lets the Aelys web UI read and manage the on-device notification log."
+permissions = [
+  "allow-status",
+  "allow-open-access-settings",
+  "allow-list",
+  "allow-remove",
+  "allow-clear",
+  "allow-set-settings",
+  "allow-set-finance",
+]

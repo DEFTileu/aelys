@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react'
-import { Brush, GraduationCap, Calculator, Brain, CircleDot, Dices, Disc3, Grid2x2, Hash, Worm, Zap, Globe, Keyboard, Layers, MessageSquare, Terminal, Timer, Workflow, Wrench, BookOpen, type LucideIcon } from 'lucide-react'
+import { Bell, Brush, GraduationCap, Calculator, Brain, CircleDot, Dices, Disc3, Grid2x2, Hash, Worm, Zap, Globe, Keyboard, Layers, MessageSquare, Terminal, Timer, Workflow, Wrench, BookOpen, type LucideIcon } from 'lucide-react'
 import { isMacPlatform } from '../../data/navigation'
 import { getSharedApiClient } from '../../lib/api'
 import { navigate } from '../../lib/router'
+import { isAndroidHost } from '../../lib/notificationLog'
 import type { GameId } from '../../lib/games'
 import type { ApiStatus, RoutePath } from '../../types'
 import { CalculatorApp, DecideApp, ZonesApp, cityOf, zoneTime } from '../LocalApps'
@@ -36,6 +37,7 @@ const CATALOG: readonly Entry[] = [
   { group: 'learn', id: 'type', title: 'Type', icon: Keyboard, desc: 'Typing practice', soon: true },
   { group: 'learn', id: 'sketch', title: 'Sketch', icon: Brush, desc: 'Quick drawings and diagrams', soon: true },
   { group: 'talk', id: 'messages', title: 'Messages', icon: MessageSquare, desc: 'Telegram chats with AI reply drafts', route: '/messages' as RoutePath },
+  { group: 'talk', id: 'notifylog', title: 'Notification log', icon: Bell, desc: 'Every notification, kept on this phone', route: '/notification-log' as RoutePath },
   { group: 'power', id: 'automation', title: 'Automation', icon: Workflow, desc: 'When this happens, do that', route: '/automation' },
   { group: 'power', id: 'dev', title: 'Developer Hub', icon: Terminal, desc: 'Local coding agent sessions', route: '/developer' },
 ]
@@ -87,7 +89,8 @@ export function useApps(apiStatus: ApiStatus) {
   }, [apiStatus, mac])
   useEffect(() => { const id = window.setInterval(() => setNow(new Date()), 30_000); return () => window.clearInterval(id) }, [])
 
-  const entries = useMemo(() => CATALOG.filter(entry => entry.id !== 'dev' || mac), [mac])
+  // The notification log reads Android notifications, so it exists only in the Android app.
+  const entries = useMemo(() => CATALOG.filter(entry => (entry.id !== 'dev' || mac) && (entry.id !== 'notifylog' || isAndroidHost())), [mac])
   const zonesStatus = useMemo(() => {
     const zones = read('aelys.apps.zones.v1', isIds, ['Europe/London', 'America/New_York'])
     return zones.slice(0, 2).map(zone => `${cityOf(zone)} ${zoneTime(zone, now)}`).join(' · ') || 'Time across cities'

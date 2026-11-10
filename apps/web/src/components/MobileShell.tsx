@@ -39,6 +39,7 @@ const STATIC_SUBS: Partial<Record<RoutePath, string>> = {
   '/settings': 'Make Aelys your own',
   '/apps': 'Small tools for everything else',
   '/messages': 'Telegram · Aelys drafts, you approve',
+  '/notification-log': 'Every notification, kept on this phone',
   '/automation': 'When this happens, Aelys does that',
   '/search': 'Tasks, notes, mail and more',
   '/finance': new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
@@ -59,9 +60,18 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
   useEffect(() => { const sync = () => setSearch(window.location.search); window.addEventListener('popstate', sync); return () => window.removeEventListener('popstate', sync) }, [])
   const settingsSection = route === '/settings' ? new URLSearchParams(search).get('section') : null
   const wallpaper = useWallpaper()
-  const title = route === '/widgets' ? 'Customize home' : settingsSection ? SETTINGS_TITLES[settingsSection] ?? 'Settings' : APPS.find((app) => app.route === route)?.label ?? 'Aelys'
+  const title = route === '/widgets' ? 'Customize home' : route === '/notification-log' ? 'Notification log' : settingsSection ? SETTINGS_TITLES[settingsSection] ?? 'Settings' : APPS.find((app) => app.route === route)?.label ?? 'Aelys'
 
   useEffect(() => { setAppsOpen(false) }, [route])
+  // Inner screens keep Back and the title pinned; once the wallpaper has scrolled away the bar turns solid.
+  const [stuck, setStuck] = useState(false)
+  useEffect(() => {
+    if (isHome) { setStuck(false); return }
+    const onScroll = () => setStuck(window.scrollY > 150)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [isHome, route])
   // The pinned AI bar overlays the page, so content reserves exactly its height.
   useEffect(() => {
     const node = bar.current; const root = shell.current
@@ -100,7 +110,7 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
 
   return <div ref={shell} style={chromeOnly ? { display: 'contents' } : undefined} className={chromeOnly ? undefined : `mobile-shell${isHome ? ' mobile-shell--home' : ''}`}>
     <div className={`mobile-shell__wallpaper${isHome ? '' : ' mobile-shell__wallpaper--inner'}`} aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(wallpaper)})` }} />
-    <header className="mobile-shell__header">
+    <header className={`mobile-shell__header${stuck ? ' is-stuck' : ''}`}>
       {isHome ? <div className="mobile-shell__logo"><DeveloperLogo size={36} /><strong className="mobile-shell__brand">Aelys</strong></div> : <><button className="mobile-shell__circle mobile-shell__back" type="button" aria-label="Back" onClick={backFromPage}><ArrowLeft size={20} /></button><strong className="mobile-shell__title">{title}</strong><span id="mobile-header-action" className="mobile-shell__action" /></>}
       {/* The design shows the apps grid on Home only; inner screens go back to Home first. */}
       {isHome && <button ref={trigger} className="mobile-shell__circle" type="button" aria-label="All apps" aria-expanded={appsOpen} onClick={() => setAppsOpen(true)}><LayoutGrid size={18} /></button>}
