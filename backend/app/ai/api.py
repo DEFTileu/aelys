@@ -6,7 +6,7 @@ import ipaddress
 import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
@@ -48,6 +48,7 @@ from .chat_support import (
     SYSTEM_POLICY,
     WRITE_SCOPES,
     extract_attachment,
+    extract_image,
     gate_writes,
     owner_timezone,
     preview,
@@ -64,6 +65,7 @@ from .knowledge import KnowledgeScope, context_messages, retrieve, validate_scop
 from .models import (
     Capability,
     ChatMessage,
+    MediaContent,
     ModelSpec,
     PermissionContext,
     PrivacyClass,
@@ -624,10 +626,12 @@ async def _load_attachments(db: AsyncSession, owner_id: str, ids: list[str]) -> 
 @router.post("/ai/attachments")
 async def upload_attachment(body: AttachmentIn, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     user, _ = principal
-    name, size, text = extract_attachment(body.name, body.content_base64)
+    image = extract_image(body.name, body.content_base64)
+    name, size, text = (image[0], image[1], "") if image else extract_attachment(body.name, body.content_base64)
     now_utc = datetime.now(UTC)
     await db.execute(delete(AIAttachment).where(AIAttachment.owner_id == user.id, AIAttachment.expires_at <= now_utc))
-    item = AIAttachment(owner_id=user.id, name=name, size=size, text=text, expires_at=now_utc + timedelta(hours=24))
+    item = AIAttachment(owner_id=user.id, name=name, size=size, text=text, expires_at=now_utc + timedelta(hours=24),
+                        mime_type=image[2] if image else None, data=image[3] if image else None)
     db.add(item)
     await db.commit()
     return {"id": item.id, "name": item.name, "size": item.size, "chars": len(item.text)}
@@ -813,12 +817,18 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             if attachment_ids:
                 budget = ATTACHMENT_INJECT_TOTAL
                 injected = []
+                images: list[MediaContent] = []
                 for attachment in await _load_attachments(db, user.id, attachment_ids):
+                    if attachment.data and attachment.mime_type:
+                        images.append(MediaContent(attachment.mime_type, attachment.data, attachment.name))
+                        continue
                     text = attachment.text[:min(ATTACHMENT_INJECT_CHARS, budget)]
                     budget -= len(text)
                     if text:
                         injected.append(ChatMessage("user", f"Attached file {attachment.name!r}:\n{text}", untrusted=True))
-                chat_messages = (*chat_messages[:-1], *injected, *chat_messages[-1:])
+                # Images ride on the owner's message itself, so the model sees them as what was asked about.
+                last = replace(chat_messages[-1], media=tuple(images)) if images else chat_messages[-1]
+                chat_messages = (*chat_messages[:-1], *injected, last)
             requested_scopes = frozenset((item.tool_scope_json or {}).get("scopes", []))
             # Without a tool-calling model the chat keeps answering as plain text.
             use_tools = bool(requested_scopes) and any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)

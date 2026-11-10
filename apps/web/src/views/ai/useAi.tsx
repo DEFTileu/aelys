@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent } from 'react'
 import type { AIAction, AIConversation, AIFeedback, AIMessage, AIProvider, AIRunIn, KnowledgeScope, KnowledgeSource } from '@aelys/shared'
 import { ApiError } from '@aelys/shared'
 import { ChartColumn, ListChecks, NotebookText, Sparkles, type AelysIconComponent } from '../../icons'
@@ -11,7 +11,7 @@ import { useOwner } from '../../lib/owner'
 import { consumeSse } from '../../lib/sse'
 import type { ApiStatus } from '../../types'
 import { ActionCard } from './ChatParts'
-import { ACCEPTED_FILES, DEFAULT_SOURCES, MAX_FILE_BYTES, SOURCES, SOURCE_IDS, estimateTokens, formatCost, groupConversations, scopesFor, sourcesOn, toolLabel, type RunStep, type SourceId } from './chatModel'
+import { ACCEPTED_FILES, DEFAULT_SOURCES, IMAGE_FILES, MAX_FILE_BYTES, SOURCES, SOURCE_IDS, estimateTokens, formatCost, groupConversations, scopesFor, sourcesOn, toolLabel, type RunStep, type SourceId } from './chatModel'
 
 type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at' | 'source_refs_json' | 'attachments' | 'feedback' | 'steps'>>
 /** How the latest run ended in this session; drives the Stopped label and the error card. */
@@ -24,6 +24,18 @@ interface Divider { readonly chat: string; readonly after: string; readonly text
 export const LIVE = 'live'
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`
 const describe = (error: unknown, fallback: string) => error instanceof ApiError ? `${error.code}: ${error.message}` : error instanceof Error ? error.message : fallback
+/** Photos and screenshots go to the model at most 1568px on the long side (its own limit), as JPEG; falls back to the original. */
+const shrinkImage = async (file: File): Promise<File> => {
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, 1568 / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas'); canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale)
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85))
+    return blob ? new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'image'}.jpg`, { type: 'image/jpeg' }) : file
+  } catch { return file }
+}
 const readBase64 = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] ?? ''); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file) })
 export const SUGGESTIONS: readonly { title: string; hint: string; prompt: string; Icon: AelysIconComponent; color: string; soft: string }[] = [
   { title: 'Plan my day', hint: 'From tasks and calendar', prompt: 'Plan my day around my tasks and calendar', Icon: Sparkles, color: '#6A4CF2', soft: '#EEE8FD' },
@@ -429,11 +441,12 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
     setFeedback((all) => ({ ...all, [line.id]: next }))
     try { await getSharedApiClient().setAIMessageFeedback(line.id, next) } catch (error) { setFeedback((all) => ({ ...all, [line.id]: previous })); setNotice(describe(error, 'Could not save your feedback.')) }
   }
-  const attach = async (list: FileList | null) => {
+  const attach = async (list: FileList | readonly File[] | null) => {
     const client = getSharedApiClient()
-    for (const file of Array.from(list ?? [])) {
-      const extension = file.name.split('.').pop()?.toLocaleLowerCase() ?? ''
-      if (!ACCEPTED_FILES.includes(extension)) { setNotice(`${file.name}: attach a txt, md, csv, json or pdf file.`); continue }
+    for (const original of Array.from(list ?? [])) {
+      const extension = original.name.split('.').pop()?.toLocaleLowerCase() ?? ''
+      if (!ACCEPTED_FILES.includes(extension)) { setNotice(`${original.name}: attach an image or a txt, md, csv, json or pdf file.`); continue }
+      const file = IMAGE_FILES.includes(extension) ? await shrinkImage(original) : original
       if (file.size > MAX_FILE_BYTES) { setNotice(`${file.name} is larger than 2 MB.`); continue }
       const key = crypto.randomUUID()
       setFiles((items) => [...items, { key, name: file.name, size: file.size }])
@@ -441,6 +454,12 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
       catch (error) { setFiles((items) => items.filter((item) => item.key !== key)); setNotice(describe(error, `Could not attach ${file.name}.`)) }
     }
     if (picker.current) picker.current.value = ''
+  }
+  /** Cmd+V of a screenshot, photo or copied file attaches it; plain text pastes as usual. */
+  const pasteFiles = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = Array.from(event.clipboardData.files)
+    if (!pasted.length) return
+    event.preventDefault(); void attach(pasted)
   }
   const removeFile = (item: Attached) => {
     setFiles((items) => items.filter((entry) => entry.key !== item.key))
@@ -465,7 +484,7 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
   const answerIds = new Set(shown.flatMap((line) => line.role === 'assistant' ? [line.id] : []))
   const unanchored = actions.filter((item) => item.anchor !== LIVE && !answerIds.has(item.anchor ?? ''))
   const ask = (prompt: string) => void execute(prompt)
-  return { root, historyOpen, setHistoryOpen, search, setSearch, running, recovering, checkRun, creationUncertain, retryCreation, forgetRecovery, storageReady, newChat, groups, conversationId, loading, openChat, togglePin, selectedTitle, allProviders, active, applyChoice, isDefault, toggleDefault, scroller, pinned, shown, extras, feedback, lastAssistant, actionCards, unanchored, card, providerId, regenerate, rate, dividers, partial, live, liveSteps, actions, outcome, lastUser, execute, fastest, owner, providers, sharing, ask, sources, knowledgeScope, setKnowledgeScope, setConversationId, setLines, setSources, notice, submit, files, removeFile, focused, setFocused, field, message, setMessage, draftRows, canSend, cancel, picker, attach, sourcesOpen, setSourcesOpen, toggleSource, costLabel, usedTokens, windowTokens, percent, activeProvider }
+  return { root, historyOpen, setHistoryOpen, search, setSearch, running, recovering, checkRun, creationUncertain, retryCreation, forgetRecovery, storageReady, newChat, groups, conversationId, loading, openChat, togglePin, selectedTitle, allProviders, active, applyChoice, isDefault, toggleDefault, scroller, pinned, shown, extras, feedback, lastAssistant, actionCards, unanchored, card, providerId, regenerate, rate, dividers, partial, live, liveSteps, actions, outcome, lastUser, execute, fastest, owner, providers, sharing, ask, sources, knowledgeScope, setKnowledgeScope, setConversationId, setLines, setSources, notice, submit, files, removeFile, pasteFiles, focused, setFocused, field, message, setMessage, draftRows, canSend, cancel, picker, attach, sourcesOpen, setSourcesOpen, toggleSource, costLabel, usedTokens, windowTokens, percent, activeProvider }
 }
 
 export function SourceList({ sources }: { sources: readonly KnowledgeSource[] }) {

@@ -722,6 +722,10 @@ there are no new endpoint permissions in the merge revision.
   `DELETE /ai/attachments/{id}` removes it. `POST /ai/runs` accepts `attachment_ids`
   (max 5); text is injected as `<untrusted_data>` (20 000 chars per file, 40 000 total)
   and `GET .../messages` returns `attachments [{name, size}]` on user messages.
+  Images (`.png .jpg .jpeg .webp .gif`, migration `0049_ai_image_attachments`, bytes must
+  match the type) keep their bytes instead (`chars` 0) and reach the model as vision input
+  on the owner's message for that run only. The web composer attaches pasted files and
+  sends photos as JPEG at most 1568 px on the long side.
 - `PATCH /ai/messages/{id} {feedback: "up"|"down"|null}` (assistant messages only);
   `GET .../messages` returns `feedback`.
 

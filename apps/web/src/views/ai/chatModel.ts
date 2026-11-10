@@ -77,7 +77,8 @@ export function formatCost(value: number | string | undefined) {
   return !Number.isFinite(cost) || cost <= 0 ? '' : cost < 0.01 ? '< $0.01' : `≈ $${cost.toFixed(2)}`
 }
 
-export const ACCEPTED_FILES = ['txt', 'md', 'csv', 'json', 'pdf']
+export const IMAGE_FILES = ['png', 'jpg', 'jpeg', 'webp', 'gif']
+export const ACCEPTED_FILES = ['txt', 'md', 'csv', 'json', 'pdf', ...IMAGE_FILES]
 export const MAX_FILE_BYTES = 2 * 1024 * 1024
 
 export interface RunStep { readonly id: string; readonly label: string; readonly detail: string; readonly source?: SourceId; readonly state: 'run' | 'done' }

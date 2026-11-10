@@ -213,10 +213,26 @@ describe('composer', () => {
   })
   it('rejects unsupported and oversized files before uploading', async () => {
     const input = host.querySelector<HTMLInputElement>('input[type=file]')!
-    Object.defineProperty(input, 'files', { value: [new File(['x'], 'photo.png')], configurable: true })
+    Object.defineProperty(input, 'files', { value: [new File(['x'], 'run.exe')], configurable: true })
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })) })
     expect(client.uploadAIAttachment).not.toHaveBeenCalled()
-    expect(host.querySelector('[role=status]')!.textContent).toContain('txt, md, csv, json or pdf')
+    expect(host.querySelector('[role=status]')!.textContent).toContain('an image or a txt, md, csv, json or pdf')
+  })
+  it('attaches a pasted screenshot and leaves plain text pastes alone', async () => {
+    client.uploadAIAttachment.mockResolvedValue({ id: 'img1', name: 'image.png', size: 3, chars: 0 })
+    const field = host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')!
+    const paste = async (files: File[]) => {
+      const event = new Event('paste', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'clipboardData', { value: { files, getData: () => 'text' } })
+      await act(async () => { field.dispatchEvent(event); await new Promise((resolve) => setTimeout(resolve, 20)) })
+      return event
+    }
+    expect((await paste([])).defaultPrevented).toBe(false)
+    expect(client.uploadAIAttachment).not.toHaveBeenCalled()
+    const pasted = await paste([new File(['png'], 'image.png', { type: 'image/png' })])
+    expect(pasted.defaultPrevented).toBe(true)
+    expect(client.uploadAIAttachment).toHaveBeenCalledWith({ name: 'image.png', content_base64: 'cG5n' })
+    expect(host.querySelector('.actual-ai__files')!.textContent).toContain('image.png')
   })
   it('swaps Send for a round Stop button while a run streams', async () => {
     let release!: () => void

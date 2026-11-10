@@ -277,6 +277,24 @@ async def test_attachments_are_validated_injected_as_untrusted_and_recorded(tmp_
 
 
 @pytest.mark.asyncio
+async def test_pasted_image_reaches_the_model_as_an_image(tmp_path, monkeypatch):
+    png = b"\x89PNG\r\n\x1a\n" + b"pixels"
+    async with chat(tmp_path, monkeypatch, [[{"type": "text", "text": "A cat."}]]) as (client, script, _):
+        upload = await client.post("/api/v1/ai/attachments", json={"name": "image.png", "content_base64": base64.b64encode(png).decode()})
+        assert upload.status_code == 200 and upload.json()["name"] == "image.png" and upload.json()["size"] == len(png)
+        # The extension alone is not trusted: the bytes must be that image type.
+        assert (await client.post("/api/v1/ai/attachments", json={"name": "fake.jpg", "content_base64": encode("not an image")})).status_code == 422
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        events = await run(client, conversation["id"], "What is this?", "i1", attachment_ids=[upload.json()["id"]])
+        assert payloads(events, "ai.run.completed")
+        last = script.requests[-1]["messages"][-1]
+        assert last["role"] == "user"
+        image = next(part for part in last["content"] if part.get("type") == "image")
+        assert image["source"] == {"type": "base64", "media_type": "image/png", "data": base64.b64encode(png).decode()}
+        assert any("What is this?" in part.get("text", "") for part in last["content"])
+
+
+@pytest.mark.asyncio
 async def test_message_feedback(tmp_path, monkeypatch):
     async with chat(tmp_path, monkeypatch, [[{"type": "text", "text": "x"}]]) as (client, _, _):
         conversation = (await client.post("/api/v1/ai/conversations", json={"tool_scope": {"scopes": []}})).json()
