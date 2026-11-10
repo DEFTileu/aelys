@@ -139,6 +139,7 @@ describe('run steps, action card and answer actions', () => {
   it('builds the steps, the action card, the meta line and token usage from SSE events', async () => {
     client.aiRunEvents.mockImplementation(async () => run())
     await send('Plan my day')
+    await vi.waitFor(() => expect(find('Read your tasks · Read calendar')).toBeDefined())
     const chip = find('Read your tasks · Read calendar')
     expect(chip.getAttribute('aria-expanded')).toBe('false')
     await click(chip)

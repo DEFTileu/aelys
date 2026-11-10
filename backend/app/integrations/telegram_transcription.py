@@ -6,9 +6,9 @@ from decimal import ROUND_CEILING, Decimal
 from uuid import uuid4
 
 import httpx
-from app.ai.defaults import feature_provider
 from app.ai import api as ai_api
 from app.ai.crypto import decrypt_secret
+from app.ai.defaults import feature_provider
 from app.core.models import AIConversation, AIProvider, AIProviderSecret, AIRun, now
 from app.sync.change_log import lock_owner
 from sqlalchemy import select
