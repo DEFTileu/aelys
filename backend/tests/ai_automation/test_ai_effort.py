@@ -29,6 +29,10 @@ def test_claude_payload_uses_adaptive_thinking_with_effort(effort):
     assert payload["max_tokens"] == 16000 and "budget_tokens" not in str(payload)
 
 
+def test_claude_payload_caches_the_prompt_prefix():
+    assert _claude()["cache_control"] == {"type": "ephemeral"} and _claude("low")["cache_control"] == {"type": "ephemeral"}
+
+
 def test_claude_payload_never_sends_sampling_params():
     assert "temperature" not in _claude() and "temperature" not in _claude("high")
 
