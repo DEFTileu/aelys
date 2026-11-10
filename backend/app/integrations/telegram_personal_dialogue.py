@@ -6,6 +6,7 @@ long provider waits do not hold the polling loop or a database writer lock.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -157,10 +158,9 @@ class _LiveDraft:
         self._enabled = await self._call('send_message_draft', self._draft_id, text)
 
     async def close(self) -> None:
-        try:
+        # Closing a dead connection must not mask the error that ended the dialogue.
+        with contextlib.suppress(Exception):
             await self._client.aclose()
-        except Exception:  # noqa: BLE001
-            pass
 
 
 async def _failure(job_id: str, code: str, *, usage: tuple = (), notify: bool = True) -> None:

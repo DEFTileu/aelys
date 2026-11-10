@@ -1083,7 +1083,7 @@ async def test_auto_reply_turns_on_without_instructions(setup):
 @pytest.mark.asyncio
 async def test_sticker_is_shown_drafted_and_sent_without_leaking_file_id(setup, monkeypatch):
     client, sessions, fake = setup
-    item, _ = await seed_message(client, sessions, fake)
+    _ = await seed_message(client, sessions, fake)
     update = message(3, message_id=8)
     update["business_message"].pop("text")
     update["business_message"]["sticker"] = {"file_id": "sticker-file-secret", "file_unique_id": "u", "emoji": "😂", "is_animated": False, "is_video": False}
@@ -1111,7 +1111,7 @@ async def test_sticker_is_shown_drafted_and_sent_without_leaking_file_id(setup, 
 @pytest.mark.asyncio
 async def test_text_then_sticker_reply_stays_sent_when_sticker_fails(setup, monkeypatch):
     client, sessions, fake = setup
-    item, row = await seed_message(client, sessions, fake)
+    _, row = await seed_message(client, sessions, fake)
     async with sessions() as session:
         obj = await session.get(TelegramBusinessMessage, row["id"])
         obj.draft_sticker = '{"file_id":"sticker-file","emoji":null}'; obj.draft_text = "hi there"
@@ -1127,7 +1127,7 @@ async def test_text_then_sticker_reply_stays_sent_when_sticker_fails(setup, monk
 @pytest.mark.asyncio
 async def test_owner_edited_reply_drops_ai_sticker(setup):
     client, sessions, fake = setup
-    item, row = await seed_message(client, sessions, fake)
+    _, row = await seed_message(client, sessions, fake)
     async with sessions() as session:
         obj = await session.get(TelegramBusinessMessage, row["id"])
         obj.draft_sticker = '{"file_id":"sticker-file","emoji":null}'; obj.draft_text = "ai draft"
