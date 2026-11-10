@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { AIAction, AIFeedback } from '@aelys/shared'
-import { Calendar, Check, ChevronDown, ChevronRight, Copy, FileText, RotateCcw, ThumbsDown, ThumbsUp, X } from '../../icons'
+import { Calendar, Check, ChevronDown, ChevronRight, Copy, FileText, RotateCcw, Sparkles, ThumbsDown, ThumbsUp, X } from '../../icons'
 import { SOURCES, formatBytes, stepsSummary, type RunStep, type SourceId, type Tone } from './chatModel'
 
 const tile = (tone: Pick<Tone, 'color' | 'soft'>) => ({ '--tc': tone.color, '--ts': tone.soft }) as CSSProperties
@@ -46,10 +46,11 @@ export function RunSteps({ steps, live }: { steps: readonly RunStep[]; live: boo
   return <div className="actual-ai__steps" aria-live="polite">
     {!live && <button type="button" className="actual-ai__steps-head" aria-expanded="true" onClick={() => setOpen(false)}>{summary}<ChevronDown size={13} /></button>}
     {steps.map((step) => {
-      const source = SOURCES.find((item) => item.id === step.source)
+      // Every row keeps an icon slot, so steps without a source (create task, memory…) stay aligned.
+      const StepIcon = SOURCES.find((item) => item.id === step.source)?.Icon ?? Sparkles
       return <div key={step.id} className="actual-ai__step">
         {step.state === 'run' ? <span className="actual-ai__spinner" role="status" aria-label="Running" /> : <Check size={14} className="actual-ai__step-done" />}
-        {source ? <source.Icon size={14} className="actual-ai__step-icon" /> : null}
+        <StepIcon size={14} className="actual-ai__step-icon" />
         <b>{step.label}</b>{step.detail && <span>{step.detail}</span>}
       </div>
     })}
