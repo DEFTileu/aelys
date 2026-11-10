@@ -103,7 +103,24 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
     }
     setPick(choice); if (conversationId) writeChoice(chatChoiceKey(conversationId), choice)
   }
-  const toggleDefault = (on: boolean) => { if (on) writeChoice(DEFAULT_CHOICE_KEY, active); else clearChoice(DEFAULT_CHOICE_KEY); setPick({ ...active }) }
+  const toggleDefault = (on: boolean) => {
+    if (on) writeChoice(DEFAULT_CHOICE_KEY, active); else clearChoice(DEFAULT_CHOICE_KEY); setPick({ ...active })
+    // The server copy is what Settings › Use for and other devices read; the local copy is only a cache.
+    const client = getSharedApiClient()
+    void Promise.resolve().then(() => client.aiDefaults()).then((all) => client.setAIDefaults({ ...all, chat: on ? { provider_id: active.providerId, model: active.model } : null })).catch(() => undefined)
+  }
+  useEffect(() => {
+    if (apiStatus !== 'ready') return
+    const cached = readChoice(DEFAULT_CHOICE_KEY)
+    void Promise.resolve().then(() => getSharedApiClient().aiDefaults()).then((all) => {
+      const chat = all?.chat
+      if (!chat) return
+      const choice: ModelChoice = { providerId: chat.provider_id, model: chat.model ?? 'auto', ...(cached?.providerId === chat.provider_id && cached.model === (chat.model ?? 'auto') && cached.effort ? { effort: cached.effort } : {}) }
+      writeChoice(DEFAULT_CHOICE_KEY, choice)
+      // Only follow the server while the chat still shows the old default, never over an explicit pick.
+      setPick((current) => !current || (current.providerId === cached?.providerId && current.model === cached?.model) ? choice : current)
+    }).catch(() => undefined)
+  }, [apiStatus])
   const mergeConversations = useCallback((incoming: readonly AIConversation[]) => setConversations((items) => {
     const known = new Set(incoming.map((item) => item.id))
     return [...items.filter((item) => !known.has(item.id)), ...incoming]

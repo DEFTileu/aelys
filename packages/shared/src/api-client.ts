@@ -13,7 +13,7 @@ import type {
   TaskIn, TaskOut, TaskReminder, CalendarReminder, CalendarReminderIn, TokenResponse, TransactionIn, Id, ReadPage,
 } from "./types";
 import type { CacheSnapshot, EntityKey, EntityStore, OfflineStore, OutboxRequest } from "./offline";
-import type { GoogleCalendarStatus, GoogleCalendarSync, DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe } from "./types";
+import type { GoogleCalendarStatus, GoogleCalendarSync, DraftPatch, EventPatch, EventOccurrence, TaskPatch, ProviderPatch, ProviderProbe, AIFeatureDefaults } from "./types";
 
 import type { TelegramChatAvailability, TelegramChatSendIn, TelegramBusinessMessage, TelegramSettingsPatch, TelegramStatus } from "./telegram";
 
@@ -672,6 +672,8 @@ export class ApiClient {
   public aiProviders(options?: RequestOptions) { return this.request<readonly AIProvider[]>("/api/v1/ai/providers", this.read(options, "ai-providers")); }
   public createAIProvider(body: ProviderIn, options?: RequestOptions) { return this.request<AIProvider>("/api/v1/ai/providers", this.write(body, options)); }
   public updateAIProvider(id: Id, body: ProviderPatch) { return this.request<AIProvider>(`/api/v1/ai/providers/${encodeURIComponent(id)}`, this.write(body, { queueOnOffline: false }, "PATCH")); }
+  public aiDefaults(options?: RequestOptions) { return this.request<AIFeatureDefaults>("/api/v1/ai/defaults", this.read(options)); }
+  public setAIDefaults(body: AIFeatureDefaults) { return this.request<AIFeatureDefaults>("/api/v1/ai/defaults", this.write(body, { queueOnOffline: false }, "PUT")); }
   public probeAIProvider(id: Id) { return this.request<ProviderProbe>(`/api/v1/ai/providers/${encodeURIComponent(id)}/probe`, this.write(undefined, { queueOnOffline: false })); }
   public aiCapabilities(options?: RequestOptions) { return this.request<{ readonly conversation_create_idempotency: boolean }>("/api/v1/ai/capabilities", this.read(options)); }
   public aiConversations(options?: RequestOptions) { return this.request<readonly AIConversation[]>("/api/v1/ai/conversations", this.read(options)); }

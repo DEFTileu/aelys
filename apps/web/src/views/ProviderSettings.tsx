@@ -4,6 +4,7 @@ import { getSharedApiClient } from '../lib/api'
 import { Checkbox } from '../components/controls/SelectionControls'
 import { Lock, Plus } from '../icons'
 import { Card, Group } from './settings/ui'
+import { AiFeatureDefaults } from './AiFeatureDefaults'
 
 const configuredModels = (provider?: AIProvider): JsonObject[] => Array.isArray(provider?.model_policy?.models) ? provider.model_policy.models.filter((item): item is JsonObject => !!item && typeof item === 'object' && !Array.isArray(item)) : []
 
@@ -115,6 +116,7 @@ export function ProviderSettings() {
       </Card>
     </Group>
     {notice && <div className="st-note" role="status">{notice}</div>}
+    <AiFeatureDefaults providers={providers} />
     {showForm && <Group title={editing ? 'Edit provider' : 'Add provider'}>
       <Card>
         <form className="st-form" onSubmit={save} noValidate>
