@@ -838,7 +838,16 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             if use_tools:
                 from .personal_tools import personal_tool_registry
                 registry = personal_tool_registry(db, user.id, run_id, memory_source="app_ai")
-                pending_events: list[str] = []
+                # The turn runs as a task feeding this queue, so steps and text reach the client as they happen.
+                live: asyncio.Queue[str | None] = asyncio.Queue()
+                sent = ""
+                def text_wire(text: str) -> str:
+                    return f"event: ai.text.delta\ndata: {json.dumps({'run_id': run_id, 'text': text}, separators=(',', ':'), ensure_ascii=False)}\n\n"
+                async def live_text(full: str) -> None:
+                    # Deltas are not stored one by one; the whole answer is stored once at the end for replay.
+                    nonlocal sent
+                    if len(full) > len(sent) and full.startswith(sent):
+                        live.put_nowait(text_wire(full[len(sent):])); sent = full
                 steps: dict[str, dict[str, str]] = {}
                 proposals = 0
                 async def tool_event(kind: str, payload: Mapping[str, Any]) -> None:
@@ -850,7 +859,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                         steps[call_id] = {**steps.get(call_id, {}), "id": call_id, "label": str(payload["label"]), "state": "done",
                                           **{key: str(payload[key]) for key in ("detail", "source") if payload.get(key)}}
                     proposals += kind == "ai.action.proposed"
-                    pending_events.append(await emit(kind, payload))
+                    live.put_nowait(await emit(kind, payload))
                 gate_writes(registry, db, user.id, conversation_id=item.conversation_id, run_id=run_id, message_id=item.prompt_message_id, announce=tool_event)
                 if knowledge_scope is not None:
                     chat_messages = (ChatMessage("system", SYSTEM_POLICY), *chat_messages)
@@ -864,26 +873,31 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                     item.token_counts = {'input': input_tokens, 'output': output_tokens}
                     await db.commit()
                 owner_id = user.id
+                turn = asyncio.create_task(run_tool_turn(
+                    service, __import__('uuid').UUID(run_id), tool_request, chat_messages,
+                    registry, context, parse_call=_tool_call, on_event=tool_event, on_usage=account_tool_usage,
+                    cancel=cancel_event, cancel_check=durable_cancel_check, on_text=live_text, max_steps=4,
+                ))
+                turn.add_done_callback(lambda _: live.put_nowait(None))
                 try:
-                    result = await run_tool_turn(
-                        service, __import__('uuid').UUID(run_id), tool_request, chat_messages,
-                        registry, context, parse_call=_tool_call, on_event=tool_event, on_usage=account_tool_usage,
-                        cancel=cancel_event, cancel_check=durable_cancel_check, max_steps=4,
-                    )
+                    while (wire := await live.get()) is not None:
+                        yield wire
+                    result = await turn
                 except (PolicyDenied, ToolValidationError, RuntimeError, SensitiveDataBlocked) as error:
                     await db.rollback()
                     await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==owner_id,AIRun.status=="running").values(status="failed",completed_at=datetime.now(UTC)))
                     await db.commit()
-                    for event in pending_events:
-                        yield event
                     code = "SENSITIVE_DATA_BLOCKED" if isinstance(error, SensitiveDataBlocked) else "POLICY_DENIED" if isinstance(error, (PolicyDenied, ToolValidationError)) else "TOOL_ERROR"
                     message = str(error) if isinstance(error, SensitiveDataBlocked) else "AI tool call was not authorized" if code == "POLICY_DENIED" else "AI tool execution failed"
                     yield await emit("ai.run.failed", {"run_id": run_id, "code": code, "message": message})
                     return
-                for event in pending_events:
-                    yield event
+                finally:
+                    if not turn.done():
+                        turn.cancel()
+                if result.text[len(sent):] and result.text.startswith(sent):
+                    yield text_wire(result.text[len(sent):])
                 if result.text:
-                    yield await emit("ai.text.delta", {"run_id": run_id, "text": result.text})
+                    await _persist_event(db, run_id, text_wire(result.text))
                 if cancel_event.is_set() or await durable_cancel_check():
                     yield await emit("ai.run.cancelled", {"run_id": run_id})
                     return

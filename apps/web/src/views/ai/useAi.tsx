@@ -199,6 +199,9 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
     const abort = new AbortController(); controller.current = abort
     const known = new Set(lines.map((line) => line.id))
     const attachments = replace ? [] : files
+    // Show the owner's message the moment they press Enter, not after the run is created.
+    const localId = `local-${crypto.randomUUID()}`
+    if (!replace) { setMessage(''); setFiles([]); setLines((items) => [...items, { id: localId, role: 'user', content: prompt, created_at: new Date().toISOString(), ...(attachments.length ? { attachments: attachments.map((item) => ({ name: item.name, size: item.size })) } : {}) }]) }
     try {
       const client = getSharedApiClient()
       let current = conversationOverride ?? (conversationId ? conversations.find((item) => item.id === conversationId) : undefined)
@@ -255,7 +258,7 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
       if (getSharedApiClient() !== client || await getDraftPartition('pending-ai-run') !== durableRun.current?.partition) throw new Error('Session changed while creating the AI run.')
       pendingCreation.current = null; setCreationUncertain(false)
       runId.current = run.id
-      if (!replace) { setMessage(''); setFiles([]); setLines((items) => [...items, { id: run.id, role: 'user', content: prompt, created_at: new Date().toISOString(), ...(attachments.length ? { attachments: attachments.map((item) => ({ name: item.name, size: item.size })) } : {}) }]) }
+      if (!replace) setLines((items) => items.map((line) => line.id === localId ? { ...line, id: run.id } : line))
       let terminal: Outcome | undefined; let streamed = ''; let startedAt = Date.now(); let used: { provider: string; model: string } = { provider: provider.kind, model: choice.model }
       let tokens: { input: number; output: number } | undefined
       let steps: RunStep[] = []; const proposed: string[] = []
@@ -306,6 +309,8 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
       // Pull preview, order and usage the server updated; not essential, so failures stay silent.
       void Promise.resolve().then(() => client.aiConversations()).then((list) => { if (Array.isArray(list)) mergeConversations(list) }).catch(() => undefined)
     } catch (error) {
+      // Nothing reached the server: give the message back to the composer, unless the session was reset.
+      if (!runId.current && !replace && !abort.signal.aborted) { setLines((items) => items.filter((line) => line.id !== localId)); setMessage((text) => text || prompt); setFiles((items) => items.length ? items : attachments) }
       if (durableConversation.current) {
         setCreationUncertain(true); setNotice('The conversation could not be confirmed. Retry the same request; its key and content are saved on this device.')
       } else if (pendingCreation.current && !runId.current) {

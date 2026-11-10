@@ -271,6 +271,14 @@ async def test_ai_task_creation_is_committed_and_visible_to_sync(sync_domain_set
                 "usage": {"input_tokens": 4, "output_tokens": 2},
             })
 
+        async def stream(self, url, *, headers, json):
+            self.calls += 1
+            yield {"type": "message_start", "message": {"id": "sync-tool-response", "usage": {"input_tokens": 4, "output_tokens": 0}}}
+            yield {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "sync-task-call", "name": "create_task"}}
+            yield {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": '{"title": "AI sync task"}'}}
+            yield {"type": "message_delta", "usage": {"output_tokens": 2}}
+            yield {"type": "message_stop"}
+
     transport = ProviderTransport()
     monkeypatch.setattr(ai_api, "HttpxTransport", lambda **_kwargs: transport)
     provider = await client.post("/api/v1/ai/providers", json={

@@ -122,6 +122,18 @@ it('unblocks the composer when starting a new chat while history is loading', as
   expect(host.textContent).not.toContain('Old response')
 })
 
+it('shows the sent message at once and gives it back if the run is never created', async () => {
+  let fail!: (error: Error) => void
+  client.createAIRun.mockReturnValue(new Promise((_, reject) => { fail = reject }))
+  await mount(); await vi.waitFor(() => expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')?.disabled).toBe(false))
+  await fill('Hello right away'); await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  await vi.waitFor(() => expect(client.createAIRun).toHaveBeenCalledTimes(1))
+  expect(host.textContent).toContain('Hello right away')
+  expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')!.value).toBe('')
+  await act(async () => fail(new TypeError('offline')))
+  await vi.waitFor(() => expect(host.querySelector<HTMLTextAreaElement>('[aria-label="Message Aelys"]')!.value).toBe('Hello right away'))
+})
+
 it('does not stream a late run response after a session change', async () => {
   let finish!: (value: { id: string; conversation_id: string }) => void
   client.createAIRun.mockReturnValue(new Promise(resolve => { finish = resolve }))
