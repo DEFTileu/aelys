@@ -4422,7 +4422,8 @@ mod tests {
         assert_eq!(events[0].data["text"], "Hello");
         assert!(events[0].data["nested"].get("token").is_none());
         assert!(parse_ai_events("event: provider.secret\ndata: {}\n\n").is_err());
-        let proposed = parse_ai_events("event: ai.action.proposed\ndata: {\"action_id\":\"a1\"}\n\n").unwrap();
+        let proposed =
+            parse_ai_events("event: ai.action.proposed\ndata: {\"action_id\":\"a1\"}\n\n").unwrap();
         assert_eq!(proposed[0].data["action_id"], "a1");
     }
     #[test]
