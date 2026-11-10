@@ -136,7 +136,7 @@ const mutationFamilies: readonly [string, readonly string[]][] = [
   ["/api/v1/calendar", ["calendar-events", "calendar-occurrences"]], ["/api/v1/focus", ["focus-sessions"]],
   ["/api/v1/finance", ["finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary"]],
   ["/api/v1/mail", ["mail-accounts", "mail-messages", "mail-drafts", "mail-pages", "mail-details"]],
-  ["/api/v1/notifications", ["notifications"]], ["/api/v1/ai/providers", ["ai-providers"]],
+  ["/api/v1/notifications", ["notifications"]], ["/api/v1/ai/providers", ["ai-providers"]], ["/api/v1/ai/defaults", ["ai-defaults"]],
   ["/api/v1/english", ["english-today", "english-reports", "english-settings", "english-course", "english-mocks"]], ["/api/v1/agents", ["agent-devices", "agent-sessions"]], ["/api/v1/automations", ["automations"]],
   ["/api/v1/sync/push", ["projects", "notes", "notes-pages", "tasks", "calendar-events", "calendar-occurrences", "focus-sessions", "finance-accounts", "finance-categories", "finance-budgets", "finance-transactions", "finance-summary", "mail-accounts", "mail-messages", "mail-drafts", "mail-pages", "mail-details"]],
 ];
@@ -672,7 +672,7 @@ export class ApiClient {
   public aiProviders(options?: RequestOptions) { return this.request<readonly AIProvider[]>("/api/v1/ai/providers", this.read(options, "ai-providers")); }
   public createAIProvider(body: ProviderIn, options?: RequestOptions) { return this.request<AIProvider>("/api/v1/ai/providers", this.write(body, options)); }
   public updateAIProvider(id: Id, body: ProviderPatch) { return this.request<AIProvider>(`/api/v1/ai/providers/${encodeURIComponent(id)}`, this.write(body, { queueOnOffline: false }, "PATCH")); }
-  public aiDefaults(options?: RequestOptions) { return this.request<AIFeatureDefaults>("/api/v1/ai/defaults", this.read(options)); }
+  public aiDefaults(options?: RequestOptions) { return this.request<AIFeatureDefaults>("/api/v1/ai/defaults", this.read(options, "ai-defaults")); }
   public setAIDefaults(body: AIFeatureDefaults) { return this.request<AIFeatureDefaults>("/api/v1/ai/defaults", this.write(body, { queueOnOffline: false }, "PUT")); }
   public probeAIProvider(id: Id) { return this.request<ProviderProbe>(`/api/v1/ai/providers/${encodeURIComponent(id)}/probe`, this.write(undefined, { queueOnOffline: false })); }
   public aiCapabilities(options?: RequestOptions) { return this.request<{ readonly conversation_create_idempotency: boolean }>("/api/v1/ai/capabilities", this.read(options)); }
