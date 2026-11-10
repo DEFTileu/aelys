@@ -15,6 +15,7 @@ export type RoutePath =
   | '/developer'
   | '/automation'
   | '/messages'
+  | '/notification-log'
   | '/search'
   | '/settings'
   | '/components'
