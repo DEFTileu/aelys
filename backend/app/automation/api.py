@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from app.ai import api as ai_api
 from app.ai.crypto import decrypt_secret
+from app.ai.defaults import feature_provider
 from app.ai.errors import PolicyDenied, ToolValidationError, redact_error
 from app.ai.models import (
     ChatMessage,
@@ -28,8 +29,6 @@ from app.core.db import get_db
 from app.core.models import (
     ActivityEvent,
     AIConversation,
-    AIProvider,
-    AIProviderSecret,
     AIRun,
     AutomationExecution,
     AutomationRule,
@@ -527,17 +526,17 @@ async def _parse_description(db: AsyncSession, owner_id: str, text: str) -> Rule
 
 async def _ai_draft(db: AsyncSession, owner_id: str, description: str) -> RuleIn | None:
     """Ask the owner's configured provider; None means unavailable or unusable output."""
-    provider = (await db.execute(select(AIProvider).where(AIProvider.owner_id == owner_id, AIProvider.enabled.is_(True), AIProvider.deleted_at.is_(None)).order_by(AIProvider.created_at))).scalars().first()
-    secret = await db.get(AIProviderSecret, provider.id) if provider else None
-    if provider is None or secret is None or secret.owner_id != owner_id or not secret.encrypted_value:
+    chosen = await feature_provider(db, owner_id, "automation")
+    if chosen is None:
         return None
+    provider, secret, model = chosen
     try:
         remaining = await ai_api._remaining_monthly_budget(db, owner_id, provider)
         if remaining <= 0:
             return None
         run_id, started = uuid4(), datetime.now(UTC)
         service = ai_api._service(provider, decrypt_secret(secret.encrypted_value))
-        request = RoutingRequest(TaskKind.UNKNOWN, privacy=PrivacyClass.PERSONAL, request_budget=min(Decimal(100), remaining))
+        request = RoutingRequest(TaskKind.UNKNOWN, privacy=PrivacyClass.PERSONAL, manual_model=model, request_budget=min(Decimal(100), remaining))
         # The description is fenced as untrusted data; the reply is only ever
         # parsed into the strict rule schema and re-checked against server policy.
         result = await asyncio.wait_for(service.complete(run_id, request, (ChatMessage("system", _DRAFT_SYSTEM), ChatMessage("user", description, untrusted=True)), max_tokens=600, tools=()), timeout=45)

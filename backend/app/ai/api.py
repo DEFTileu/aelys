@@ -26,6 +26,7 @@ from app.core.models import (
     AIRunEvent,
     AuthSession,
     Project,
+    User,
     uid,
 )
 from app.core.security import bearer_scheme, current_principal, decode_token
@@ -54,6 +55,7 @@ from .chat_support import (
     tool_meta,
 )
 from .crypto import decrypt_secret, encrypt_secret
+from .defaults import FEATURES, stored_defaults
 from .egress import SensitiveDataBlocked
 from .errors import PolicyDenied, RunCancelled, ToolValidationError, redact_error
 from .execution import Adapter, AIExecutionService
@@ -308,6 +310,39 @@ async def providers(principal=Depends(current_principal),db:AsyncSession=Depends
     user,_=principal; rows=(await db.execute(select(AIProvider).where(AIProvider.owner_id==user.id,AIProvider.deleted_at.is_(None)))).scalars()
     secret_ids = set((await db.execute(select(AIProviderSecret.provider_id).where(AIProviderSecret.owner_id == user.id))).scalars())
     return [{"id":x.id,"kind":x.kind,"base_url":x.base_url,"enabled":x.enabled,"model_policy":x.model_policy_json,"secret_ref":x.secret_ref,"has_secret":x.id in secret_ids} for x in rows]
+
+class FeatureChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider_id: str = Field(min_length=1, max_length=36)
+    model: str | None = Field(default=None, max_length=150)
+
+class FeatureDefaults(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    chat: FeatureChoice | None = None
+    english: FeatureChoice | None = None
+    automation: FeatureChoice | None = None
+    transcription: FeatureChoice | None = None
+
+@router.get("/ai/defaults", response_model=FeatureDefaults)
+async def feature_defaults(principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
+    user, _ = principal
+    return stored_defaults(await db.get(User, user.id))
+
+@router.put("/ai/defaults", response_model=FeatureDefaults)
+async def set_feature_defaults(body: FeatureDefaults, principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
+    """Replace every feature's choice; a null feature falls back to the oldest ready provider."""
+    user, _ = principal
+    _authorize_provider(user.id, 'ai.providers.write')
+    values = body.model_dump(exclude_none=True)
+    for feature, choice in values.items():
+        provider = await db.get(AIProvider, choice["provider_id"])
+        if not provider or provider.owner_id != user.id or provider.deleted_at is not None or provider.kind not in FEATURES[feature]:
+            raise HTTPException(422, detail={"code": "PROVIDER_MISMATCH", "message": f"Pick a {' or '.join(FEATURES[feature])} provider for {feature}"})
+    owner = await db.get(User, user.id)
+    assert owner is not None
+    owner.settings_json = {**(owner.settings_json or {}), "ai_defaults": values}
+    await db.commit()
+    return values
 
 @router.patch("/ai/providers/{provider_id}")
 async def update_provider(provider_id: str, body: ProviderPatch, principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):

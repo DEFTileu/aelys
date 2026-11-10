@@ -122,6 +122,8 @@ Cursor represents stable ordered server commits (see SYNC_PROTOCOL). Never expos
 ```http
 GET  /api/v1/ai/providers
 POST /api/v1/ai/providers
+GET  /api/v1/ai/defaults
+PUT  /api/v1/ai/defaults
 POST /api/v1/ai/conversations
 GET  /api/v1/ai/conversations/{id}/messages
 POST /api/v1/ai/runs
@@ -192,6 +194,12 @@ Generate OpenAPI 3.1 from FastAPI Pydantic models. Define explicit pagination, p
 
 ## Connected web workspaces (2026-10-29)
 
+- `GET|PUT /ai/defaults` holds `{chat, english, automation, transcription}`, each
+  `{provider_id, model?}` or null. PUT replaces the whole object and rejects a provider
+  of the wrong kind (`PROVIDER_MISMATCH`, transcription only for `transcription`). A null
+  or unusable choice falls back to the oldest enabled provider of the right kind with a
+  key. Telegram keeps `provider_id`/`model` on its own settings; Settings › Use for edits
+  both in one place.
 - AI provider `PATCH /ai/providers/{id}` updates model policy/enabled status.
   `POST /ai/providers/{id}/probe` verifies stored credentials without generating
   text. `GET /ai/providers` includes `has_secret`, never secret bytes.
