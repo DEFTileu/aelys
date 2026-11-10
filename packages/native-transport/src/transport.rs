@@ -481,6 +481,8 @@ fn parse_ai_events(source: &str) -> Result<Vec<AIEvent>, String> {
         "ai.tool.requested",
         "ai.tool.approved",
         "ai.tool.result",
+        // Approval cards for proposed writes; without it a proposal aborts the whole stream.
+        "ai.action.proposed",
     ];
     let mut events = Vec::new();
     let normalized = source.replace("\r\n", "\n");
@@ -4420,6 +4422,9 @@ mod tests {
         assert_eq!(events[0].data["text"], "Hello");
         assert!(events[0].data["nested"].get("token").is_none());
         assert!(parse_ai_events("event: provider.secret\ndata: {}\n\n").is_err());
+        let proposed =
+            parse_ai_events("event: ai.action.proposed\ndata: {\"action_id\":\"a1\"}\n\n").unwrap();
+        assert_eq!(proposed[0].data["action_id"], "a1");
     }
     #[test]
     fn ai_stream_decoder_handles_split_utf8_crlf_and_keepalives() {
