@@ -35,7 +35,7 @@ def test_upgrade_from_either_branch_keeps_consent_and_telegram_data(
         run_alembic(url, "upgrade", "head")
         run_alembic(url, "check")
         with engine.connect() as db:
-            assert db.execute(sa.text("SELECT version_num FROM alembic_version")).scalars().all() == ["0048_telegram_draft_sticker"]
+            assert db.execute(sa.text("SELECT version_num FROM alembic_version")).scalars().all() == ["0049_ai_image_attachments"]
             note = db.execute(sa.text("SELECT title, markdown_body, version, knowledge_enabled FROM notes WHERE id='note'")).one()
             assert tuple(note) == ("Existing", "private body", 7, int(starting_revision == "0035_knowledge_consent"))
         inspector = sa.inspect(engine)

@@ -164,6 +164,26 @@ ATTACHMENT_STORE_CHARS = 200_000
 ATTACHMENT_INJECT_CHARS = 20_000  # per file
 ATTACHMENT_INJECT_TOTAL = 40_000
 ATTACHMENT_SUFFIXES = {".txt", ".md", ".csv", ".json", ".pdf"}
+IMAGE_SUFFIXES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+_IMAGE_MAGIC = {"image/png": (b"\x89PNG\r\n\x1a\n",), "image/jpeg": (b"\xff\xd8\xff",), "image/gif": (b"GIF87a", b"GIF89a")}
+
+
+def extract_image(name: str, content_base64: str) -> tuple[str, int, str, bytes] | None:
+    """(safe name, size, MIME type, bytes) for an image file, None for other files; the bytes must really be that image."""
+    safe = re.sub(r"[\x00-\x1f\x7f]", "", name.replace("\\", "/").rsplit("/", 1)[-1]).strip()[:200]
+    mime = IMAGE_SUFFIXES.get("." + safe.rsplit(".", 1)[-1].lower() if "." in safe else "")
+    if not mime:
+        return None
+    try:
+        data = base64.b64decode(content_base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise _bad("VALIDATION_ERROR", "content_base64 is not valid base64") from None
+    if len(data) > ATTACHMENT_MAX_BYTES:
+        raise _bad("ATTACHMENT_TOO_LARGE", "Attachments are limited to 2 MB", 413)
+    real = data[:4] == b"RIFF" and data[8:12] == b"WEBP" if mime == "image/webp" else data.startswith(_IMAGE_MAGIC[mime])
+    if not real:
+        raise _bad("ATTACHMENT_UNREADABLE", "The file is not a valid image")
+    return safe, len(data), mime, data
 
 
 def _bad(code: str, message: str, status: int = 422) -> HTTPException:
@@ -175,7 +195,7 @@ def extract_attachment(name: str, content_base64: str) -> tuple[str, int, str]:
     safe = re.sub(r"[\x00-\x1f\x7f]", "", name.replace("\\", "/").rsplit("/", 1)[-1]).strip()[:200]
     suffix = "." + safe.rsplit(".", 1)[-1].lower() if "." in safe else ""
     if suffix not in ATTACHMENT_SUFFIXES:
-        raise _bad("ATTACHMENT_TYPE_UNSUPPORTED", "Only .txt, .md, .csv, .json and .pdf files are supported")
+        raise _bad("ATTACHMENT_TYPE_UNSUPPORTED", "Only images and .txt, .md, .csv, .json and .pdf files are supported")
     try:
         data = base64.b64decode(content_base64, validate=True)
     except (binascii.Error, ValueError):

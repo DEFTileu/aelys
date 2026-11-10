@@ -14,7 +14,7 @@ import '../desktop/page-tokens.css'
 import './ai-chat.css'
 
 export function AiMobile({ apiStatus }: { apiStatus: ApiStatus }) {
-  const { root, historyOpen, setHistoryOpen, search, setSearch, running, recovering, checkRun, creationUncertain, retryCreation, forgetRecovery, storageReady, newChat, groups, conversationId, loading, openChat, togglePin, selectedTitle, allProviders, active, applyChoice, isDefault, toggleDefault, scroller, pinned, shown, extras, feedback, lastAssistant, actionCards, unanchored, card, providerId, regenerate, rate, dividers, partial, live, liveSteps, actions, outcome, lastUser, execute, fastest, owner, providers, sharing, ask, sources, knowledgeScope, setKnowledgeScope, setConversationId, setLines, setSources, notice, submit, files, removeFile, focused, setFocused, field, message, setMessage, draftRows, canSend, cancel, picker, attach, sourcesOpen, setSourcesOpen, toggleSource, costLabel, usedTokens, windowTokens, percent, activeProvider } = useAi(apiStatus, true)
+  const { root, historyOpen, setHistoryOpen, search, setSearch, running, recovering, checkRun, creationUncertain, retryCreation, forgetRecovery, storageReady, newChat, groups, conversationId, loading, openChat, togglePin, selectedTitle, allProviders, active, applyChoice, isDefault, toggleDefault, scroller, pinned, shown, extras, feedback, lastAssistant, actionCards, unanchored, card, providerId, regenerate, rate, dividers, partial, live, liveSteps, actions, outcome, lastUser, execute, fastest, owner, providers, sharing, ask, sources, knowledgeScope, setKnowledgeScope, setConversationId, setLines, setSources, notice, submit, files, removeFile, pasteFiles, focused, setFocused, field, message, setMessage, draftRows, canSend, cancel, picker, attach, sourcesOpen, setSourcesOpen, toggleSource, costLabel, usedTokens, windowTokens, percent, activeProvider } = useAi(apiStatus, true)
   return <div ref={root} className={`actual-ai actual-ai--compact${historyOpen ? ' actual-ai--history-open' : ''}`}>
     <aside className="actual-ai__history" aria-label="Conversations">
       <div className="actual-ai__history-search">
@@ -101,7 +101,7 @@ export function AiMobile({ apiStatus }: { apiStatus: ApiStatus }) {
         {files.length > 0 && <div className="actual-ai__files">{files.map((item) => <FileChip key={item.key} name={item.name} size={item.size} pending={!item.id} onRemove={() => removeFile(item)} />)}</div>}
         <div className={`actual-ai__compose-field${focused ? ' actual-ai__compose-field--focus' : ''}`}>
           <textarea ref={field} aria-label="Message Aelys" value={message} rows={draftRows} disabled={loading || !storageReady || creationUncertain || recovering}
-            onChange={(event) => setMessage(event.target.value)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+            onChange={(event) => setMessage(event.target.value)} onPaste={pasteFiles} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
             onKeyDown={(event) => {
               if (event.key === 'Escape' && running) { event.preventDefault(); void cancel() }
             }}
