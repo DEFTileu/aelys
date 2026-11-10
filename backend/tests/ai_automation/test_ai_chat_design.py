@@ -24,6 +24,19 @@ def tool_use(name: str, call_id: str, **arguments):
     return {"type": "tool_use", "id": call_id, "name": name, "input": arguments}
 
 
+def claude_events(content, usage=None):
+    """The streamed form of a Claude reply, as the tool turn now reads it."""
+    yield {"type": "message_start", "message": {"id": "r", "usage": {"input_tokens": (usage or {}).get("input_tokens", 10), "output_tokens": 0}}}
+    for index, block in enumerate(content):
+        if block["type"] == "text":
+            yield {"type": "content_block_delta", "index": index, "delta": {"type": "text_delta", "text": block["text"]}}
+        else:
+            yield {"type": "content_block_start", "index": index, "content_block": {"type": "tool_use", "id": block["id"], "name": block["name"]}}
+            yield {"type": "content_block_delta", "index": index, "delta": {"type": "input_json_delta", "partial_json": json.dumps(block["input"])}}
+    yield {"type": "message_delta", "usage": {"output_tokens": (usage or {}).get("output_tokens", 5)}}
+    yield {"type": "message_stop"}
+
+
 class Script:
     """Replays provider replies in order (last one repeats) and records every request body."""
 
@@ -40,6 +53,11 @@ class Script:
 
     async def stream(self, url, *, headers, json):
         self.requests.append(json)
+        if "tools" in json:
+            reply = self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
+            for event in claude_events(reply):
+                yield event
+            return
         yield {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "plain answer"}}
         yield {"usage": {"input_tokens": 7, "output_tokens": 3}}
 
@@ -114,6 +132,21 @@ async def test_read_tools_follow_source_scopes_and_report_usage(tmp_path, monkey
         denied = await run(client, conversation["id"], "Open my note", "k2")
         assert payloads(denied, "ai.run.failed")[0]["code"] == "POLICY_DENIED"
         assert "read_note" not in [tool["name"] for tool in script.requests[-1]["tools"]]
+
+
+@pytest.mark.asyncio
+async def test_tool_chat_streams_text_live_and_replays_it_once(tmp_path, monkeypatch):
+    replies = [[{"type": "text", "text": "Let me check."}, tool_use("list_tasks", "c1")], [{"type": "text", "text": "You have one task."}]]
+    async with chat(tmp_path, monkeypatch, replies) as (client, _, _):
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        events = await run(client, conversation["id"], "What is on my plate?", "k1")
+        names = [name for name, _ in events]
+        # The first step's words reach the client before its tool runs, not after the whole turn.
+        assert names.index("ai.text.delta") < names.index("ai.tool.requested")
+        assert "".join(data["text"] for data in payloads(events, "ai.text.delta")) == "Let me check.\nYou have one task."
+        run_id = payloads(events, "ai.run.completed")[0]["run_id"]
+        replay = parse((await client.get(f"/api/v1/ai/runs/{run_id}/events")).text)
+        assert [data["text"] for data in payloads(replay, "ai.text.delta")] == ["Let me check.\nYou have one task."]
 
 
 @pytest.mark.asyncio

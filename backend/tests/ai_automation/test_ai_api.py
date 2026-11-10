@@ -70,6 +70,8 @@ class BlockingTransport:
         assert self.cancel_event is not None
         await self.wait_for_cancellation()
         self.cancel_seen.set()
+        if self.tool_mode:
+            raise RunCancelled("run cancelled")
         if False:
             yield {}
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from app.ai import api as ai_api
 from app.ai.providers import HttpResponse
@@ -10,6 +12,19 @@ from app.main import app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+
+def claude_events(content, usage=None):
+    """The streamed form of a Claude reply, as the tool turn now reads it."""
+    yield {"type": "message_start", "message": {"id": "r", "usage": {"input_tokens": (usage or {}).get("input_tokens", 10), "output_tokens": 0}}}
+    for index, block in enumerate(content):
+        if block["type"] == "text":
+            yield {"type": "content_block_delta", "index": index, "delta": {"type": "text_delta", "text": block["text"]}}
+        else:
+            yield {"type": "content_block_start", "index": index, "content_block": {"type": "tool_use", "id": block["id"], "name": block["name"]}}
+            yield {"type": "content_block_delta", "index": index, "delta": {"type": "input_json_delta", "partial_json": json.dumps(block["input"])}}
+    yield {"type": "message_delta", "usage": {"output_tokens": (usage or {}).get("output_tokens", 5)}}
+    yield {"type": "message_stop"}
 
 
 class CountingTransport:
@@ -29,6 +44,12 @@ class ToolTransport(CountingTransport):
         self.calls += 1
         tool_call = {"type": "tool_use", "id": "call-1", "name": "create_task", "input": {"title": "Created by AI"}}
         return HttpResponse(200, {"id": "tool-response", "content": [tool_call, tool_call], "usage": {"input_tokens": 4, "output_tokens": 2}})
+
+    async def stream(self, url, *, headers, json):
+        self.calls += 1
+        tool_call = {"type": "tool_use", "id": "call-1", "name": "create_task", "input": {"title": "Created by AI"}}
+        for event in claude_events([tool_call, tool_call], {"input_tokens": 4, "output_tokens": 2}):
+            yield event
 
 
 class FailingStreamTransport(CountingTransport):
