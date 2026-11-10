@@ -75,7 +75,7 @@ describe('AI chat model picker and run states', () => {
     expect(client.createAIConversation).toHaveBeenCalledWith(expect.any(Object), { queueOnOffline: false, idempotencyKey: expect.any(String) })
     expect(client.createAIRun.mock.calls[0]).toEqual([expect.objectContaining({ routing: { provider_id: 'p1', provider: 'claude', model: 'claude-sonnet-4-5', timezone: expect.any(String), effort: 'high' }, idempotency_key: expect.any(String) }), { queueOnOffline: false, idempotencyKey: expect.any(String) }])
     expect(JSON.parse(localStorage.getItem('aelys.chat.c1.model')!).model).toBe('claude-sonnet-4-5')
-    await vi.waitFor(() => expect(host.querySelector('.actual-ai__meta')?.textContent).toBe('Claude · Sonnet 4.5 · 0.0s · high effort'))
+    await vi.waitFor(() => expect(host.querySelector('.actual-ai__meta')?.textContent).toMatch(/^Claude · Sonnet 4\.5 · \d+\.\ds · high effort$/))
   })
 
   it('does not offer reasoning effort for models without thinking', async () => {

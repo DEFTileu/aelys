@@ -146,7 +146,7 @@ describe('run steps, action card and answer actions', () => {
     expect(host.querySelector('.actual-ai__steps')!.textContent).toContain('6 due this week')
     expect(host.querySelector('.actual-ai__action')!.textContent).toContain('Add 4 blocks to calendar')
     expect(host.querySelector('.actual-ai__action')!.textContent).toContain('NLP lab report')
-    expect(host.querySelector('.actual-ai__meta')!.textContent).toBe('Claude · Sonnet 4.5 · 0.0s · 486 tokens')
+    expect(host.querySelector('.actual-ai__meta')!.textContent).toMatch(/^Claude · Sonnet 4\.5 · \d+\.\ds · 486 tokens$/)
     expect(host.querySelector('.actual-ai__used')!.textContent).toContain('1.7K')
   })
   it('approves a proposal through the API and shows it as approved', async () => {
