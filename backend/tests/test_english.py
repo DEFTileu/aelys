@@ -344,3 +344,30 @@ async def test_reminder_duplicate_dedup_key_is_skipped_and_claimed(client):
     assert await english_reminders_once(at(21, 5, "UTC")) == 0
     assert len(await reminders(sessions)) == 1
     assert await english_reminders_once(at(21, 6, "UTC")) == 0  # day stays claimed
+
+
+@pytest.mark.asyncio
+async def test_reminder_is_mirrored_to_owner_telegram_once_and_not_in_quiet_hours(client, monkeypatch):
+    from app.ai.crypto import encrypt_secret
+    from app.integrations import telegram_service
+    from app.integrations.telegram_models import TelegramIntegration
+
+    api, sessions = client
+    sent = []
+
+    class Transport:
+        def __init__(self, token): self.token = token
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): return None
+        async def send_message(self, chat_id, text): sent.append((self.token, chat_id, text))
+
+    monkeypatch.setattr(telegram_service, "TelegramClient", Transport)
+    async with sessions() as session:
+        session.add(TelegramIntegration(id="tg", owner_id=await owner_id(sessions), bot_id=1, bot_username="bot", bot_name="Bot", business_capable=True, encrypted_token=encrypt_secret("bot-token-secret"), owner_telegram_id=111, timezone="Asia/Almaty", quiet_start="21:30", quiet_end="08:00"))
+        await session.commit()
+    await api.put("/api/v1/english/settings", json={"reminder_enabled": True, "reminder_time": "21:00", "timezone": "Asia/Almaty"})
+    assert await english_reminders_once(at(21, 5, "Asia/Almaty")) == 1
+    assert await english_reminders_once(at(21, 6, "Asia/Almaty")) == 0
+    assert len(sent) == 1 and sent[0][:2] == ("bot-token-secret", 111) and "отчёт" in sent[0][2]
+    assert await english_reminders_once(at(21, 45, "Asia/Almaty", date(2030, 1, 16))) == 1  # quiet hours: bell only
+    assert len(sent) == 1
