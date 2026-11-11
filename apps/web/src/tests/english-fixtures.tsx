@@ -8,7 +8,7 @@ import { EnglishView } from '../views/EnglishView'
 
 export const makeClient = () => ({
   englishCourse: vi.fn(), englishLessonToday: vi.fn(), englishBlockDone: vi.fn(), englishSaveProfile: vi.fn(), englishReview: vi.fn(), englishSentences: vi.fn(),
-  englishListening: vi.fn(), englishSpeaking: vi.fn(), englishTranscribe: vi.fn(), englishCreateMock: vi.fn(), englishToday: vi.fn(), englishReports: vi.fn(),
+  englishListening: vi.fn(), englishTasks: vi.fn(), englishSpeaking: vi.fn(), englishTranscribe: vi.fn(), englishCreateMock: vi.fn(), englishToday: vi.fn(), englishReports: vi.fn(),
   englishSettings: vi.fn(), englishSaveSettings: vi.fn(), englishSubmitReport: vi.fn(), createTask: vi.fn(),
 })
 export type Client = ReturnType<typeof makeClient>

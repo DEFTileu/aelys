@@ -16,7 +16,7 @@ const TIP_ICON = { timing: Timer, vocab: Sparkles, good: Check }
 const plural = (n: number, a: string, b: string, c: string) => { const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c }
 
 export function SpeakingBlock({ lesson, en, active }: { lesson: EnglishLesson; en: CourseHook; active: boolean }) {
-  const { part2, part3, phrases } = lesson.content.speaking
+  const { part2, part3, phrases } = lesson.content.speaking!
   const [round, setRound] = useState<Round>(4)
   const [phase, setPhase] = useState<Phase>('idle')
   const [elapsed, setElapsed] = useState(0)

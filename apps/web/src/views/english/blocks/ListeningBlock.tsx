@@ -9,7 +9,7 @@ const MAX_PLAYS = 2
 const STEPS: [string, string, string][] = [['Предскажи', 'По заголовку: какие 5 слов прозвучат?', ''], ['Послушай', 'Живая запись, без текста', 'on'], ['Проверь', 'Вопросы, потом текст', ''], ['Разбери', 'Что не услышал и почему', '']]
 
 export function ListeningBlock({ lesson, en, active, defaultRate }: { lesson: EnglishLesson; en: CourseHook; active: boolean; defaultRate: number }) {
-  const listening = lesson.content.listening
+  const listening = lesson.content.listening!
   const stored = lesson.progress.listening
   const [rate, setRate] = useState(defaultRate)
   const [plays, setPlays] = useState(0)

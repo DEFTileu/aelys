@@ -6,7 +6,7 @@ import { speakParts, speechSupported } from '../speech'
 import type { CourseHook } from '../useEnglishCourse'
 
 export function VocabBlock({ lesson, en, onNext }: { lesson: EnglishLesson; en: CourseHook; onNext: () => void }) {
-  const words = lesson.content.vocab
+  const words = lesson.content.vocab ?? []
   const [mine, setMine] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState<Record<string, EnglishSentenceResult>>({})
   const [checked, setChecked] = useState(false)

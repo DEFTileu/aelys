@@ -1,18 +1,20 @@
 import { useState } from 'react'
 import type { EnglishBlockKey, EnglishCourse, EnglishLesson } from '@aelys/shared'
-import { ArrowRight, BookA, CircleCheck, Headphones, Mic, PenLine, Repeat, type AelysIconComponent } from '../../icons'
+import { ArrowRight, BookA, BookOpen, CircleCheck, Headphones, Lightbulb, Mic, PenLine, Repeat, type AelysIconComponent } from '../../icons'
 import type { useEnglish } from './useEnglish'
 import type { CourseHook } from './useEnglishCourse'
 import { ListeningBlock } from './blocks/ListeningBlock'
 import { SpeakingBlock } from './blocks/SpeakingBlock'
+import { TasksBlock } from './blocks/TasksBlock'
 import { VocabBlock } from './blocks/VocabBlock'
 import { WarmupBlock } from './blocks/WarmupBlock'
 import { WritingBlock } from './blocks/WritingBlock'
 
-const ORDER: EnglishBlockKey[] = ['warmup', 'vocab', 'listening', 'speaking', 'writing']
 const META: Record<EnglishBlockKey, { title: string; note: string; Icon: AelysIconComponent; tone: string }> = {
   warmup: { title: 'Разминка', note: 'Повторение в контексте', Icon: Repeat, tone: 'blue' },
   vocab: { title: 'Слова темы', note: 'Слова и свои предложения', Icon: BookA, tone: 'amber' },
+  grammar: { title: 'Грамматика', note: 'Правило + упражнения', Icon: Lightbulb, tone: 'amber' },
+  reading: { title: 'Reading', note: 'Текст в формате IELTS', Icon: BookOpen, tone: 'blue' },
   listening: { title: 'Listening', note: 'Живая речь + формат', Icon: Headphones, tone: 'purple' },
   speaking: { title: 'Speaking', note: '4/3/2 + Part 3', Icon: Mic, tone: 'coral' },
   writing: { title: 'Writing', note: 'Отчёт или Task 2', Icon: PenLine, tone: 'green' },
@@ -20,6 +22,8 @@ const META: Record<EnglishBlockKey, { title: string; note: string; Icon: AelysIc
 
 /** `active` is false while another top-level tab is shown: this tab stays mounted, so mic and speech must stop. */
 export function LessonTab({ course, lesson, en, daily, active }: { course: EnglishCourse; lesson: EnglishLesson | null; en: CourseHook; daily: ReturnType<typeof useEnglish>; active: boolean }) {
+  // Old lessons have five blocks, lessons made without an AI provider only the hand-written ones.
+  const ORDER: EnglishBlockKey[] = (lesson?.content.blocks ?? course.today.blocks).map((block) => block.key)
   const isDone = (key: EnglishBlockKey) => lesson?.progress[key]?.done ?? course.today.blocks.find((block) => block.key === key)?.done ?? false
   const [blk, setBlk] = useState<EnglishBlockKey>(() => ORDER.find((key) => !isDone(key)) ?? 'warmup')
   const [visited, setVisited] = useState<ReadonlySet<EnglishBlockKey>>(() => new Set([blk]))
@@ -28,7 +32,7 @@ export function LessonTab({ course, lesson, en, daily, active }: { course: Engli
 
   if (!lesson) return <section className="en-card en-start" aria-label="Урок дня">
     <h2 className="en-h">Урок {course.lesson_no}{course.plan.find((item) => item.status === 'now') ? ` · ${course.plan.find((item) => item.status === 'now')!.theme}` : ''}</h2>
-    <p className="en-muted">Пять блоков: разминка, слова темы, Listening, Speaking и Writing — около {Math.round(course.profile.minutes_per_day / 60 * 10) / 10} ч, можно частями. Урок собирает AI под твой уровень и слабые места.</p>
+    <p className="en-muted">Семь блоков: разминка, слова темы, грамматика, Reading, Listening, Speaking и Writing — около {Math.round(course.profile.minutes_per_day / 60 * 10) / 10} ч, можно частями. Грамматика и Reading — готовая программа курса, остальное AI собирает под твой уровень. Без AI-провайдера урок будет из разминки, грамматики и Reading.</p>
     <button type="button" className="en-btn en-btn--primary" disabled={en.busy || en.writeBlocked} onClick={() => void en.startLesson()}>{en.busy ? 'Готовим урок…' : `Начать урок ${course.lesson_no}`} <ArrowRight size={16} /></button>
   </section>
 
@@ -47,10 +51,12 @@ export function LessonTab({ course, lesson, en, daily, active }: { course: Engli
     </nav>
     <div className="en-stack en-lesson__main">
       {visited.has('warmup') && <div hidden={hidden('warmup')}><WarmupBlock lesson={lesson} en={en} onNext={() => next('warmup')} /></div>}
-      {visited.has('vocab') && <div hidden={hidden('vocab')}><VocabBlock lesson={lesson} en={en} onNext={() => next('vocab')} /></div>}
-      {visited.has('listening') && <div hidden={hidden('listening')}><ListeningBlock lesson={lesson} en={en} active={active && blk === 'listening'} defaultRate={lesson.content.listening.tts_rate ?? 1} /></div>}
-      {visited.has('speaking') && <div hidden={hidden('speaking')}><SpeakingBlock lesson={lesson} en={en} active={active && blk === 'speaking'} /></div>}
-      {visited.has('writing') && <div hidden={hidden('writing')}><WritingBlock lesson={lesson} daily={daily} en={en} /></div>}
+      {visited.has('vocab') && lesson.content.vocab && <div hidden={hidden('vocab')}><VocabBlock lesson={lesson} en={en} onNext={() => next('vocab')} /></div>}
+      {visited.has('grammar') && lesson.content.grammar && <div hidden={hidden('grammar')}><TasksBlock kind="grammar" lesson={lesson} en={en} onNext={() => next('grammar')} /></div>}
+      {visited.has('reading') && lesson.content.reading && <div hidden={hidden('reading')}><TasksBlock kind="reading" lesson={lesson} en={en} onNext={() => next('reading')} /></div>}
+      {visited.has('listening') && lesson.content.listening && <div hidden={hidden('listening')}><ListeningBlock lesson={lesson} en={en} active={active && blk === 'listening'} defaultRate={lesson.content.listening.tts_rate ?? 1} /></div>}
+      {visited.has('speaking') && lesson.content.speaking && <div hidden={hidden('speaking')}><SpeakingBlock lesson={lesson} en={en} active={active && blk === 'speaking'} /></div>}
+      {visited.has('writing') && lesson.content.writing && <div hidden={hidden('writing')}><WritingBlock lesson={lesson} daily={daily} en={en} /></div>}
     </div>
   </div>
 }

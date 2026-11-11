@@ -29,6 +29,7 @@ export function WarmupBlock({ lesson, en, onNext }: { lesson: EnglishLesson; en:
   const [knew, setKnew] = useState(0)
   const done = lesson.progress.warmup?.done ?? false
   const card = cards[index]
+  const nextTitle = lesson.content.vocab ? 'слова темы' : 'грамматика'
   const answer = (correct: boolean) => void en.run(async () => {
     await getSharedApiClient().englishReview(card!.word_id, en.day, correct)
     setKnew((n) => n + (correct ? 1 : 0)); setIndex((i) => i + 1); setShown(false)
@@ -48,9 +49,9 @@ export function WarmupBlock({ lesson, en, onNext }: { lesson: EnglishLesson; en:
           <button type="button" className="en-btn en-btn--primary" disabled={en.busy || en.writeBlocked} onClick={() => answer(true)}>Вспомнил</button></div>}
     </>}
     {!card && <div className="en-banner en-banner--ok" role="status">
-      <span>{cards.length ? `Разминка готова: ${knew} из ${cards.length}` : 'Сегодня повторять нечего — переходи к словам темы.'}</span>
-      {done ? <button type="button" className="en-btn en-btn--ok" onClick={onNext}>Дальше: слова темы</button>
-        : <button type="button" className="en-btn en-btn--ok" disabled={en.busy || en.writeBlocked} onClick={finish}>Дальше: слова темы</button>}
+      <span>{cards.length ? `Разминка готова: ${knew} из ${cards.length}` : `Сегодня повторять нечего — переходи дальше: ${nextTitle}.`}</span>
+      {done ? <button type="button" className="en-btn en-btn--ok" onClick={onNext}>Дальше: {nextTitle}</button>
+        : <button type="button" className="en-btn en-btn--ok" disabled={en.busy || en.writeBlocked} onClick={finish}>Дальше: {nextTitle}</button>}
     </div>}
     {drill && drill.items.length > 0 && <Drill drill={drill} />}
   </section>

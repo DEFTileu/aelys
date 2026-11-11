@@ -913,7 +913,7 @@ export interface EnglishToday {
 export type EnglishSkill = 'listening' | 'reading' | 'writing' | 'speaking';
 export type EnglishGoal = 'ielts_academic' | 'ielts_general' | 'conversation';
 export type EnglishLevel = 'b1' | 'b1b2' | 'b2' | 'test';
-export type EnglishBlockKey = 'warmup' | 'vocab' | 'listening' | 'speaking' | 'writing';
+export type EnglishBlockKey = 'warmup' | 'vocab' | 'grammar' | 'reading' | 'listening' | 'speaking' | 'writing';
 export interface EnglishProfile {
   readonly goal: EnglishGoal;
   readonly target_band: string;
@@ -942,10 +942,14 @@ export interface EnglishLessonContent {
   readonly grammar_focus: string;
   readonly blocks: readonly { readonly key: EnglishBlockKey; readonly title: string; readonly minutes: number }[];
   /** Mini gap-fill practice for the learner's recurring writing mistake type; null when there is none. */
-  readonly drill: { readonly type: EnglishErrorType; readonly items: readonly { readonly before: string; readonly after: string; readonly answer: string }[] } | null;
+  readonly drill?: { readonly type: EnglishErrorType; readonly items: readonly { readonly before: string; readonly after: string; readonly answer: string }[] } | null;
+  /** Hand-written blocks; absent on lessons made before they existed. Answers come only from the check. */
+  readonly grammar?: EnglishGrammarLesson;
+  readonly reading?: EnglishReadingPassage;
   readonly warmup: readonly { readonly word_id: Id; readonly before: string; readonly answer: string; readonly after: string; readonly hint_ru: string }[];
-  readonly vocab: readonly { readonly word_id: Id; readonly lemma: string; readonly ipa: string; readonly part_of_speech: string; readonly translation_ru: string; readonly definition_en: string; readonly example: string; readonly collocations: readonly string[] }[];
-  readonly listening: {
+  /** vocab, listening, speaking and writing are AI-generated and absent when no AI provider is connected. */
+  readonly vocab?: readonly { readonly word_id: Id; readonly lemma: string; readonly ipa: string; readonly part_of_speech: string; readonly translation_ru: string; readonly definition_en: string; readonly example: string; readonly collocations: readonly string[] }[];
+  readonly listening?: {
     readonly title: string;
     /** Whether the learner was already graded; the script is only meaningful then. */
     readonly script_visible: boolean;
@@ -957,9 +961,13 @@ export interface EnglishLessonContent {
     readonly questions: readonly { readonly n: number; readonly before: string; readonly after: string; readonly answer?: string }[];
     readonly connected_speech: readonly { readonly phrase: string; readonly sounds_like: string; readonly note_ru: string }[];
   };
-  readonly speaking: { readonly part2: { readonly topic: string; readonly bullets: readonly string[] }; readonly part3: readonly string[]; readonly phrases: readonly string[] };
-  readonly writing: { readonly kind: 'journal' | 'task2'; readonly prompt: string | null };
+  readonly speaking?: { readonly part2: { readonly topic: string; readonly bullets: readonly string[] }; readonly part3: readonly string[]; readonly phrases: readonly string[] };
+  readonly writing?: { readonly kind: 'journal' | 'task2'; readonly prompt: string | null };
 }
+export interface EnglishTask { readonly type: 'gap' | 'choice' | 'fix' | 'tfng' | 'mcq' | 'heading'; readonly prompt: string; readonly options: readonly string[] | null }
+export interface EnglishGrammarLesson { readonly id: string; readonly title: string; readonly rule_ru: readonly string[]; readonly examples: readonly { readonly en: string; readonly ru: string }[]; readonly exercises: readonly EnglishTask[] }
+export interface EnglishReadingPassage { readonly id: string; readonly title: string; readonly paragraphs: readonly { readonly label: string; readonly text: string }[]; readonly questions: readonly EnglishTask[] }
+export interface EnglishTasksResult { readonly score: number; readonly total: number; readonly results: readonly { readonly n: number; readonly given: string; readonly answer: string; readonly ok: boolean; readonly explain_ru: string }[] }
 export interface EnglishSpeakingRound {
   readonly round: 4 | 3 | 2;
   readonly criteria: { readonly fluency: string; readonly lexical: string; readonly grammar: string };
@@ -979,7 +987,7 @@ export interface EnglishBlockProgress {
   /** Speaking: stored round results, keyed by round length in minutes. */
   readonly rounds?: Readonly<Record<string, EnglishStoredSpeakingRound>>;
   /** Listening: graded answers, kept so a reloaded lesson shows what was typed. */
-  readonly results?: EnglishListeningResult['results'];
+  readonly results?: EnglishListeningResult['results'] | EnglishTasksResult['results'];
   readonly feedback_ru?: string;
 }
 export interface EnglishLesson {

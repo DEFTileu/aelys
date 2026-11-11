@@ -2,7 +2,7 @@ import { act } from 'react'
 import { ApiError } from '@aelys/shared'
 import type { EnglishLesson } from '@aelys/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { button, click, clickText, course, field, host, installClient, lesson, makeClient, mount, setValue, storedRound, task2Lesson, unmount } from './english-fixtures'
+import { button, byText, click, clickText, course, field, host, installClient, lesson, makeClient, mount, setValue, storedRound, task2Lesson, unmount } from './english-fixtures'
 
 const client = vi.hoisted(() => ({}) as Record<string, ReturnType<typeof vi.fn>>)
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
@@ -43,6 +43,26 @@ describe('English lesson', () => {
     expect(client.englishBlockDone).toHaveBeenCalledWith('l1', 'warmup')
     expect(nav('Слова темы').getAttribute('aria-current')).toBe('step')
     expect(nav('Разминка').querySelector('[aria-label="Готово"]')).toBeTruthy()
+  })
+
+  it('runs a lesson without AI: only warm-up, grammar and reading, graded once on the server', async () => {
+    const task = (prompt: string, options: string[] | null = null) => ({ type: options ? 'choice' as const : 'gap' as const, prompt, options })
+    const offline = { ...lesson, content: { theme: lesson.content.theme, grammar_focus: 'Present tenses', warmup: lesson.content.warmup,
+      blocks: [{ key: 'warmup' as const, title: 'Разминка', minutes: 30 }, { key: 'grammar' as const, title: 'Грамматика', minutes: 45 }, { key: 'reading' as const, title: 'Чтение', minutes: 45 }],
+      grammar: { id: 'g-w1-1', title: 'Present Simple', rule_ru: ['Привычки — Present Simple.', 'Сейчас — Continuous.'], examples: [{ en: 'I work.', ru: 'Я работаю.' }], exercises: [task('She ___ (work) here.'), task('He ___ now.', ['works', 'is working'])] },
+      reading: { id: 'r-w1-1', title: 'Sleep', paragraphs: [{ label: 'A', text: 'Text.' }], questions: [{ type: 'tfng' as const, prompt: 'Sleep matters.', options: ['TRUE', 'FALSE', 'NOT GIVEN'] }] } } } satisfies EnglishLesson
+    await startLesson(offline)
+    expect([...host.querySelectorAll('.en-nav__item strong')].map((item) => item.textContent)).toEqual(['Разминка', 'Грамматика', 'Reading'])
+    await click(nav('Грамматика'))
+    expect(section('Грамматика').textContent).toContain('Привычки — Present Simple.')
+    await setValue(field<HTMLInputElement>('input[aria-label="Ответ 1"]'), 'works')
+    await click(host.querySelector<HTMLButtonElement>('[role="radio"]')!)
+    client.englishTasks.mockResolvedValue({ score: 1, total: 2, results: [{ n: 1, given: 'works', answer: 'works', ok: true, explain_ru: 'Привычка.' }, { n: 2, given: 'works', answer: 'is working', ok: false, explain_ru: 'Now — Continuous.' }] })
+    await clickText('Проверить ответы')
+    expect(client.englishTasks).toHaveBeenCalledWith('l1', 'grammar', { '1': 'works', '2': 'works' })
+    expect(section('Грамматика').textContent).toContain('Правильно: is working.')
+    expect(section('Грамматика').textContent).toContain('1 из 2.')
+    expect(byText('button', 'Проверить ответы')).toBeUndefined()
   })
 
   it('resumes an existing lesson without asking to generate it again', async () => {
@@ -234,7 +254,7 @@ describe('English lesson', () => {
   })
 
   it('takes the listening speed from the lesson tts_rate, not from weekly stats', async () => {
-    await startLesson({ ...lesson, content: { ...lesson.content, listening: { ...lesson.content.listening, tts_rate: 0.9 } } }) // course week_stats say 71%
+    await startLesson({ ...lesson, content: { ...lesson.content, listening: { ...lesson.content.listening!, tts_rate: 0.9 } } }) // course week_stats say 71%
     await click(nav('Listening'))
     expect([...host.querySelectorAll<HTMLButtonElement>('.en-speeds button')].map((item) => item.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false'])
     await click(host.querySelector('button[aria-label="Слушать"]')!)
@@ -300,7 +320,7 @@ describe('English lesson', () => {
   })
 
   it('shows the answers the learner gave after reloading a graded listening block', async () => {
-    const graded = { ...lesson, content: { ...lesson.content, listening: { ...lesson.content.listening, script_visible: true, questions: [{ n: 1, before: 'The main benefit was ', after: '.', answer: 'work experience' }, { n: 2, before: 'Deadlines were every ', after: '.', answer: 'Friday' }] } },
+    const graded = { ...lesson, content: { ...lesson.content, listening: { ...lesson.content.listening!, script_visible: true, questions: [{ n: 1, before: 'The main benefit was ', after: '.', answer: 'work experience' }, { n: 2, before: 'Deadlines were every ', after: '.', answer: 'Friday' }] } },
       progress: { listening: { done: true, score: 1, total: 2, feedback_ru: 'Ты пропустил «Friday».', results: [{ n: 1, given: 'work experience', answer: 'work experience', ok: true }, { n: 2, given: 'Monday', answer: 'Friday', ok: false }] } } } satisfies EnglishLesson
     await startLesson(graded); await click(nav('Listening'))
     const inputs = [...host.querySelectorAll<HTMLInputElement>('.en-q input')]

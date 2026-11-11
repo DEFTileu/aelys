@@ -26,7 +26,7 @@ const reportLabel = (report: EnglishReport) => `${report.day} · ${report.cefr |
 
 /** Journal (evening report + tomorrow tasks) or IELTS Task 2, per lesson.content.writing.kind. */
 export function WritingBlock({ lesson, daily, en }: { lesson: EnglishLesson; daily: ReturnType<typeof useEnglish>; en: CourseHook }) {
-  const { kind, prompt } = lesson.content.writing
+  const { kind, prompt } = lesson.content.writing!
   const task2 = kind === 'task2'
   const { draft, rewriting, writeBlocked } = daily
   const report = daily.today?.report ?? null
