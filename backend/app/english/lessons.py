@@ -649,12 +649,14 @@ class TaskResult(BaseModel):
     answer: str
     ok: bool
     explain_ru: str
+    evidence: str | None = None
 
 
 class TasksOut(BaseModel):
     score: int
     total: int
     results: list[TaskResult]
+    done: bool
 
 
 @router.post("/english/lessons/{lesson_id}/grammar", response_model=TasksOut)
@@ -668,22 +670,33 @@ async def english_reading(lesson_id: str, body: TasksIn, principal=Depends(curre
 
 
 async def _check_tasks(lesson_id: str, kind: Literal["grammar", "reading"], body: TasksIn, principal: Any, db: AsyncSession) -> TasksOut:
-    """Grades hand-written grammar exercises or reading questions; the first check is final, like listening."""
+    """Grades grammar exercises one by one (or reading questions all at once); each item's first answer is final, like listening.
+
+    The block is done once every item has been answered.
+    """
     user, _ = principal
     await lock_owner(db, user.id)
     lesson = await owner_obj(EnglishLesson, lesson_id, user.id, db)
-    done = (lesson.progress_json or {}).get(kind) or {}
-    if not done.get("done"):
-        ref = lesson.content_json.get(kind)
-        item = material.by_id(kind, ref["id"]) if ref else None
-        if item is None:
-            raise fail(404, "NOT_FOUND", "В этом уроке нет такого блока")
-        results = material.grade(item, body.answers)
-        done = {"results": results, "score": sum(r["ok"] for r in results), "total": len(results)}
-        mark_block(lesson, kind, **done)
+    ref = lesson.content_json.get(kind)
+    item = material.by_id(kind, ref["id"]) if ref else None
+    if item is None:
+        raise fail(404, "NOT_FOUND", "В этом уроке нет такого блока")
+    total = len(item.exercises) if isinstance(item, material.GrammarLesson) else len(item.questions)
+    stored = (lesson.progress_json or {}).get(kind) or {}
+    graded = {r["n"]: r for r in stored.get("results", [])}
+    fresh = {n: a for n, a in body.answers.items() if int(n) not in graded}
+    if fresh and not stored.get("done"):
+        graded |= {r["n"]: r for r in material.grade(item, fresh)}
+        results = sorted(graded.values(), key=lambda r: r["n"])
+        entry = {"results": results, "score": sum(r["ok"] for r in results), "total": total}
+        if len(results) == total:
+            mark_block(lesson, kind, **entry)
+        else:
+            lesson.progress_json, lesson.version = {**(lesson.progress_json or {}), kind: entry}, lesson.version + 1
         await db.commit()
-        done = lesson.progress_json[kind]
-    return TasksOut(score=done["score"], total=done["total"], results=done["results"])
+        stored = lesson.progress_json[kind]
+    results = stored.get("results", [])
+    return TasksOut(score=sum(r["ok"] for r in results), total=total, results=results, done=bool(stored.get("done")))
 
 
 _SPEAKING_SYSTEM = (

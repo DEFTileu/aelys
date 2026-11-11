@@ -8196,6 +8196,8 @@
               "enum": [
                 "warmup",
                 "vocab",
+                "grammar",
+                "reading",
                 "listening",
                 "speaking",
                 "writing"
@@ -8337,6 +8339,114 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ListeningOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/lessons/{lesson_id}/grammar": {
+      "post": {
+        "summary": "English Grammar",
+        "operationId": "english_grammar_api_v1_english_lessons__lesson_id__grammar_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TasksIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/english/lessons/{lesson_id}/reading": {
+      "post": {
+        "summary": "English Reading",
+        "operationId": "english_reading_api_v1_english_lessons__lesson_id__reading_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TasksIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksOut"
                 }
               }
             }
@@ -8642,6 +8752,8 @@
             "enum": [
               "warmup",
               "vocab",
+              "grammar",
+              "reading",
               "listening",
               "speaking",
               "writing"
@@ -14758,6 +14870,102 @@
           "title"
         ],
         "title": "TaskPatchIn"
+      },
+      "TaskResult": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "given": {
+            "type": "string",
+            "title": "Given"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "explain_ru": {
+            "type": "string",
+            "title": "Explain Ru"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "given",
+          "answer",
+          "ok",
+          "explain_ru"
+        ],
+        "title": "TaskResult"
+      },
+      "TasksIn": {
+        "properties": {
+          "answers": {
+            "patternProperties": {
+              "^\\d{1,2}$": {
+                "type": "string",
+                "maxLength": 300
+              }
+            },
+            "type": "object",
+            "maxProperties": 12,
+            "title": "Answers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "title": "TasksIn"
+      },
+      "TasksOut": {
+        "properties": {
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/TaskResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "total",
+          "results",
+          "done"
+        ],
+        "title": "TasksOut"
       },
       "TodayOut": {
         "properties": {

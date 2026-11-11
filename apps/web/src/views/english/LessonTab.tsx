@@ -5,7 +5,8 @@ import type { useEnglish } from './useEnglish'
 import type { CourseHook } from './useEnglishCourse'
 import { ListeningBlock } from './blocks/ListeningBlock'
 import { SpeakingBlock } from './blocks/SpeakingBlock'
-import { TasksBlock } from './blocks/TasksBlock'
+import { GrammarBlock } from './blocks/GrammarBlock'
+import { ReadingBlock } from './blocks/ReadingBlock'
 import { VocabBlock } from './blocks/VocabBlock'
 import { WarmupBlock } from './blocks/WarmupBlock'
 import { WritingBlock } from './blocks/WritingBlock'
@@ -52,8 +53,8 @@ export function LessonTab({ course, lesson, en, daily, active }: { course: Engli
     <div className="en-stack en-lesson__main">
       {visited.has('warmup') && <div hidden={hidden('warmup')}><WarmupBlock lesson={lesson} en={en} onNext={() => next('warmup')} /></div>}
       {visited.has('vocab') && lesson.content.vocab && <div hidden={hidden('vocab')}><VocabBlock lesson={lesson} en={en} onNext={() => next('vocab')} /></div>}
-      {visited.has('grammar') && lesson.content.grammar && <div hidden={hidden('grammar')}><TasksBlock kind="grammar" lesson={lesson} en={en} onNext={() => next('grammar')} /></div>}
-      {visited.has('reading') && lesson.content.reading && <div hidden={hidden('reading')}><TasksBlock kind="reading" lesson={lesson} en={en} onNext={() => next('reading')} /></div>}
+      {visited.has('grammar') && lesson.content.grammar && <div hidden={hidden('grammar')}><GrammarBlock lesson={lesson} en={en} onNext={() => next('grammar')} /></div>}
+      {visited.has('reading') && lesson.content.reading && <div hidden={hidden('reading')}><ReadingBlock lesson={lesson} en={en} active={active && blk === 'reading'} onNext={() => next('reading')} /></div>}
       {visited.has('listening') && lesson.content.listening && <div hidden={hidden('listening')}><ListeningBlock lesson={lesson} en={en} active={active && blk === 'listening'} defaultRate={lesson.content.listening.tts_rate ?? 1} /></div>}
       {visited.has('speaking') && lesson.content.speaking && <div hidden={hidden('speaking')}><SpeakingBlock lesson={lesson} en={en} active={active && blk === 'speaking'} /></div>}
       {visited.has('writing') && lesson.content.writing && <div hidden={hidden('writing')}><WritingBlock lesson={lesson} daily={daily} en={en} /></div>}

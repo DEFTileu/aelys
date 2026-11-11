@@ -964,10 +964,29 @@ export interface EnglishLessonContent {
   readonly speaking?: { readonly part2: { readonly topic: string; readonly bullets: readonly string[] }; readonly part3: readonly string[]; readonly phrases: readonly string[] };
   readonly writing?: { readonly kind: 'journal' | 'task2'; readonly prompt: string | null };
 }
-export interface EnglishTask { readonly type: 'gap' | 'choice' | 'fix' | 'tfng' | 'mcq' | 'heading'; readonly prompt: string; readonly options: readonly string[] | null }
-export interface EnglishGrammarLesson { readonly id: string; readonly title: string; readonly rule_ru: readonly string[]; readonly examples: readonly { readonly en: string; readonly ru: string }[]; readonly exercises: readonly EnglishTask[] }
-export interface EnglishReadingPassage { readonly id: string; readonly title: string; readonly paragraphs: readonly { readonly label: string; readonly text: string }[]; readonly questions: readonly EnglishTask[] }
-export interface EnglishTasksResult { readonly score: number; readonly total: number; readonly results: readonly { readonly n: number; readonly given: string; readonly answer: string; readonly ok: boolean; readonly explain_ru: string }[] }
+export interface EnglishTask { readonly type: 'gap' | 'choice' | 'fix' | 'tfng' | 'mcq' | 'heading'; readonly prompt: string; readonly options: readonly string[] | null; readonly skill?: string | null; readonly about_figure?: boolean }
+export type EnglishTone = 'blue' | 'orange' | 'purple' | 'green';
+export interface EnglishFormula { readonly title: string; readonly when_ru: string; readonly tone: EnglishTone; readonly rows: readonly (readonly { readonly t: string; readonly role: 'subject' | 'verb' | 'aux' | 'ending' | 'word' }[])[]; readonly example_en: string; readonly example_ru: string; readonly markers: readonly string[] }
+/** Axis from -1 (past) through 0 (now) to 1 (future). */
+export interface EnglishTimelineItem { readonly label: string; readonly kind: 'repeat' | 'point' | 'span'; readonly at?: number | null; readonly start?: number | null; readonly end?: number | null; readonly caption_en: string }
+export interface EnglishGrammarLesson {
+  readonly id: string; readonly title: string; readonly rule_ru: readonly string[]; readonly examples: readonly { readonly en: string; readonly ru: string }[]; readonly exercises: readonly EnglishTask[];
+  /** Visual explanation; empty on lessons written before it existed. */
+  readonly formulas?: readonly EnglishFormula[];
+  readonly timeline?: { readonly title_ru: string; readonly items: readonly EnglishTimelineItem[] } | null;
+  readonly table?: { readonly title_ru: string; readonly head: readonly string[]; readonly rows: readonly (readonly string[])[] } | null;
+  readonly traps?: readonly { readonly wrong: string; readonly right: string; readonly note_ru: string }[];
+  readonly chips?: { readonly title_ru: string; readonly items: readonly { readonly en: string; readonly example: string; readonly ru: string }[] } | null;
+}
+export interface EnglishFigure { readonly kind: 'bar' | 'line'; readonly title: string; readonly unit: string; readonly labels: readonly string[]; readonly series: readonly { readonly name: string; readonly values: readonly number[] }[] }
+export interface EnglishReadingPassage {
+  readonly id: string; readonly title: string; readonly paragraphs: readonly { readonly label: string; readonly text: string }[]; readonly questions: readonly EnglishTask[];
+  readonly figure?: EnglishFigure | null;
+  readonly glossary?: readonly { readonly word: string; readonly ru: string }[];
+}
+export interface EnglishTaskResult { readonly n: number; readonly given: string; readonly answer: string; readonly ok: boolean; readonly explain_ru: string; readonly evidence?: string | null }
+/** Items are graded once each; `done` once every item is answered. */
+export interface EnglishTasksResult { readonly score: number; readonly total: number; readonly results: readonly EnglishTaskResult[]; readonly done: boolean }
 export interface EnglishSpeakingRound {
   readonly round: 4 | 3 | 2;
   readonly criteria: { readonly fluency: string; readonly lexical: string; readonly grammar: string };
