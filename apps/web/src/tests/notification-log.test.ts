@@ -9,7 +9,17 @@ describe('parsePayment', () => {
     expect(parsePayment('Halyk', 'Списание $12.99 Netflix')).toMatchObject({ amount: '12.99', currency: 'USD' })
   })
 
+  it('keeps purchases that also mention a bonus, cashback or a balance', () => {
+    expect(parsePayment('Kaspi Gold', 'Покупка: 2 500 ₸\nSMALL\nБонус +25 ₸')).toMatchObject({ amount: '2500.00', currency: 'KZT' })
+    expect(parsePayment('Freedom Bank', 'Оплата 3 200.00 KZT MAGNUM. Кешбэк 32 KZT')).toMatchObject({ amount: '3200.00', currency: 'KZT' })
+    expect(parsePayment('Samsung Wallet', '₸1,250.00 · Coffee Boom')).toBeNull()
+    expect(parsePayment('Samsung Wallet', 'Payment ₸1,250.00 Coffee Boom')).toMatchObject({ amount: '1250.00', currency: 'KZT' })
+    expect(parsePayment('Halyk', 'Расход -7 990,00 ₸ SULPAK')).toMatchObject({ amount: '7990.00', currency: 'KZT' })
+    expect(parsePayment('Bank', '-1 500 ₸ Glovo')).toMatchObject({ amount: '1500.00', currency: 'KZT' })
+  })
+
   it('ignores money coming in, declines and plain messages', () => {
+    expect(parsePayment('Kaspi.kz', 'Кешбэк 300 ₸ за покупки')).toBeNull()
     expect(parsePayment('Kaspi.kz', 'Пополнение 15 000 ₸ от Айгерим')).toBeNull()
     expect(parsePayment('Kaspi.kz', 'Возврат покупки 2 000 ₸')).toBeNull()
     expect(parsePayment('Halyk', 'Оплата отклонена: недостаточно средств 9 000 ₸')).toBeNull()

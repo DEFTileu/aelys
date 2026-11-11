@@ -62,7 +62,11 @@ fn validate_settings(settings: &Settings) -> Result<(), String> {
 
 fn validate_tx(tx: &Option<String>) -> Result<(), String> {
     match tx {
-        Some(id) if id.is_empty() || id.len() > 64 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') => {
+        Some(id)
+            if id.is_empty()
+                || id.len() > 64
+                || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') =>
+        {
             Err("INVALID_TRANSACTION".into())
         }
         _ => Ok(()),
@@ -85,7 +89,12 @@ async fn open_access_settings<R: Runtime>(app: AppHandle<R>) -> Result<Value, St
 
 #[tauri::command]
 async fn list<R: Runtime>(app: AppHandle<R>, limit: Option<u32>) -> Result<Value, String> {
-    log(&app).call("list", json!({ "limit": limit.unwrap_or(500).clamp(1, 2000) })).await
+    log(&app)
+        .call(
+            "list",
+            json!({ "limit": limit.unwrap_or(500).clamp(1, 2000) }),
+        )
+        .await
 }
 
 #[tauri::command]
@@ -108,17 +117,47 @@ async fn set_settings<R: Runtime>(app: AppHandle<R>, settings: Settings) -> Resu
 
 /// Links a log entry to the Finances transaction created from it (or unlinks with `null`).
 #[tauri::command]
-async fn set_finance<R: Runtime>(app: AppHandle<R>, id: i64, transaction: Option<String>) -> Result<Value, String> {
+async fn set_finance<R: Runtime>(
+    app: AppHandle<R>,
+    id: i64,
+    transaction: Option<String>,
+) -> Result<Value, String> {
     validate_tx(&transaction)?;
-    log(&app).call("setFinance", json!({ "id": id, "transaction": transaction })).await
+    log(&app)
+        .call(
+            "setFinance",
+            json!({ "id": id, "transaction": transaction }),
+        )
+        .await
+}
+
+/// Launcher icons of the given apps as PNG data URLs, so the log shows real app icons.
+#[tauri::command]
+async fn icons<R: Runtime>(app: AppHandle<R>, packages: Vec<String>) -> Result<Value, String> {
+    if packages.len() > 200 || !packages.iter().all(|p| valid_package(p)) {
+        return Err("INVALID_PACKAGES".into());
+    }
+    log(&app)
+        .call("icons", json!({ "packages": packages }))
+        .await
 }
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("aelys-notification-log")
-        .invoke_handler(tauri::generate_handler![status, open_access_settings, list, remove, clear, set_settings, set_finance])
+        .invoke_handler(tauri::generate_handler![
+            status,
+            open_access_settings,
+            list,
+            remove,
+            clear,
+            set_settings,
+            set_finance,
+            icons
+        ])
         .setup(|app, api| {
             #[cfg(target_os = "android")]
-            let handle = api.register_android_plugin("com.aelys.notificationlog", "NotificationLogPlugin")?;
+            let handle =
+                api.register_android_plugin("com.aelys.notificationlog", "NotificationLogPlugin")?;
             #[cfg(not(target_os = "android"))]
             let _ = api;
             app.manage(NotificationLog::<R> {
@@ -137,12 +176,28 @@ mod tests {
 
     #[test]
     fn settings_are_bounded() {
-        let ok = Settings { hide_codes: true, keep_days: 30, muted: vec!["kz.kaspi.mobile".into()] };
+        let ok = Settings {
+            hide_codes: true,
+            keep_days: 30,
+            muted: vec!["kz.kaspi.mobile".into()],
+        };
         assert!(validate_settings(&ok).is_ok());
         for bad in [
-            Settings { hide_codes: true, keep_days: 31, muted: vec![] },
-            Settings { hide_codes: true, keep_days: 30, muted: vec!["../etc".into()] },
-            Settings { hide_codes: true, keep_days: 30, muted: vec![String::new()] },
+            Settings {
+                hide_codes: true,
+                keep_days: 31,
+                muted: vec![],
+            },
+            Settings {
+                hide_codes: true,
+                keep_days: 30,
+                muted: vec!["../etc".into()],
+            },
+            Settings {
+                hide_codes: true,
+                keep_days: 30,
+                muted: vec![String::new()],
+            },
         ] {
             assert!(validate_settings(&bad).is_err());
         }

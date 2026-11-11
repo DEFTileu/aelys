@@ -8,4 +8,5 @@ permissions = [
   "allow-clear",
   "allow-set-settings",
   "allow-set-finance",
+  "allow-icons",
 ]

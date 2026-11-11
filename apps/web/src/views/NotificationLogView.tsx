@@ -45,6 +45,7 @@ function NotificationLog({ apiStatus }: { apiStatus: ApiStatus }) {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [icons, setIcons] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     try { const [s, list] = await Promise.all([notificationLog.status(), notificationLog.list()]); setStatus(s); setEntries(list); setFailed(false) }
@@ -60,6 +61,8 @@ function NotificationLog({ apiStatus }: { apiStatus: ApiStatus }) {
 
   const items = useMemo(() => mergePayments(entries).map((item) => notPayment.includes(item.id) ? { ...item, payment: null } : item), [entries, notPayment])
   const apps = useMemo(() => [...new Map(items.map((i) => [i.pkg, i.app])).entries()], [items])
+  const packages = useMemo(() => [...new Set([...apps.map(([pkg]) => pkg), ...(status?.settings.muted ?? [])])].slice(0, 200).join(' '), [apps, status])
+  useEffect(() => { if (packages) notificationLog.icons(packages.split(' ')).then(setIcons).catch(() => undefined) }, [packages])
   const q = query.trim().toLowerCase()
   const shown = items.filter((i) => (app === 'all' || i.pkg === app) && (!q || [i.app, i.title, i.body, i.payment?.merchant, i.payment?.amount].join(' ').toLowerCase().includes(q)))
   const groups = useMemo(() => { const map = new Map<string, LogItem[]>(); for (const i of shown) map.set(dayOf(i.posted), [...(map.get(dayOf(i.posted)) ?? []), i]); return [...map.entries()] }, [shown])
@@ -91,7 +94,7 @@ function NotificationLog({ apiStatus }: { apiStatus: ApiStatus }) {
 
   const item = view.kind === 'detail' ? items.find((i) => i.id === view.id) : undefined
   if (item) {
-    return <Detail item={item} accounts={accounts} categories={categories} accountFor={accountFor} busy={busy} apiReady={apiStatus === 'ready'} notice={notice}
+    return <Detail item={item} icon={icons[item.pkg]} accounts={accounts} categories={categories} accountFor={accountFor} busy={busy} apiReady={apiStatus === 'ready'} notice={notice}
       onBack={() => { setNotice(''); setView({ kind: 'list' }) }}
       onAdd={async (accountId, categoryId) => { setBusy(true); setNotice(''); try { await addToFinance(item, accountId, categoryId) } catch (error) { setNotice(error instanceof ApiError ? error.message : 'Could not add it to Finances. Check the connection and try again.') } finally { setBusy(false) } }}
       onNotPayment={() => { const next = [...notPayment, item.id]; setNotPayment(next); writeJson(NOT_PAYMENT_KEY, next); setView({ kind: 'list' }) }}
@@ -113,7 +116,7 @@ function NotificationLog({ apiStatus }: { apiStatus: ApiStatus }) {
       </div>
       {(apps.length > 0 || s.muted.length > 0) && <><div className="nlog__group-h">Apps</div>
         <div className="nlog__card">{[...new Map([...apps, ...s.muted.map((p) => [p, p] as [string, string])]).entries()].map(([pkg, name]) => { const [c, soft] = tintOf(pkg); const on = !s.muted.includes(pkg)
-          return <div key={pkg} className="nlog__srow"><span className="nlog__tile nlog__tile--sm" style={{ color: c, background: soft }}>{name.charAt(0).toUpperCase()}</span><span className="nlog__app-name">{name}</span>
+          return <div key={pkg} className="nlog__srow"><AppTile name={name} color={c} soft={soft} icon={icons[pkg]} small /><span className="nlog__app-name">{name}</span>
             <Switch on={on} label={`Save notifications from ${name}`} onChange={(next) => void saveSettings({ ...s, muted: next ? s.muted.filter((p) => p !== pkg) : [...s.muted, pkg] })} /></div> })}</div></>}
       <p className="nlog__privacy"><Lock size={15} />Stored on this phone only. The server gets nothing except the payments you add to Finances.</p>
       <button type="button" className="nlog__btn nlog__btn--soft" onClick={() => setView({ kind: 'guide' })}><Info size={18} />How it works</button>
@@ -135,7 +138,7 @@ function NotificationLog({ apiStatus }: { apiStatus: ApiStatus }) {
       <h2 className="nlog__group-h">{day}</h2>
       <div className="nlog__card">{rows.map((i) => { const [c, soft] = tintOf(i.pkg)
         return <button key={i.id} type="button" className="nlog__row" onClick={() => { setNotice(''); setView({ kind: 'detail', id: i.id }) }}>
-          <span className="nlog__tile" style={{ color: c, background: soft }}>{i.app.charAt(0).toUpperCase()}</span>
+          <AppTile name={i.app} color={c} soft={soft} icon={icons[i.pkg]} />
           <span className="nlog__row-body">
             <span className="nlog__app">{i.app}</span>
             <span className={`nlog__title${i.payment ? ' is-pay' : ''}`}>{i.payment ? `${money(i.payment.amount, i.payment.currency)}${i.payment.merchant ? ` · ${i.payment.merchant}` : ''}` : i.title || i.app}</span>
@@ -147,6 +150,12 @@ function NotificationLog({ apiStatus }: { apiStatus: ApiStatus }) {
     </section>)}
     {shown.length === 0 && <div className="nlog__empty"><Bell size={28} /><div className="nlog__empty-title">{items.length ? 'Nothing here' : 'No notifications yet'}</div><div>{!items.length ? 'New notifications will show up here' : q ? `Nothing matches “${query.trim()}”` : 'No notifications from this app'}</div></div>}
   </div>
+}
+
+function AppTile({ name, color, soft, icon, small }: { name: string; color: string; soft: string; icon?: string; small?: boolean }) {
+  const cls = `nlog__tile${small ? ' nlog__tile--sm' : ''}`
+  if (icon) return <img className={`${cls} nlog__tile--img`} src={icon} alt="" />
+  return <span className={cls} style={{ color, background: soft }}>{name.charAt(0).toUpperCase()}</span>
 }
 
 function Guide({ access, onAllow }: { access: boolean; onAllow: () => void }) {
@@ -164,7 +173,7 @@ function Guide({ access, onAllow }: { access: boolean; onAllow: () => void }) {
   </div>
 }
 
-function Detail({ item, accounts, categories, accountFor, busy, apiReady, notice, onBack, onAdd, onNotPayment, onDelete }: { item: LogItem; accounts: readonly FinanceAccount[]; categories: readonly FinanceCategory[]; accountFor: (currency: string) => FinanceAccount | undefined; busy: boolean; apiReady: boolean; notice: string; onBack: () => void; onAdd: (accountId: string, categoryId: string | null) => void; onNotPayment: () => void; onDelete: () => void }) {
+function Detail({ item, icon, accounts, categories, accountFor, busy, apiReady, notice, onBack, onAdd, onNotPayment, onDelete }: { item: LogItem; icon?: string; accounts: readonly FinanceAccount[]; categories: readonly FinanceCategory[]; accountFor: (currency: string) => FinanceAccount | undefined; busy: boolean; apiReady: boolean; notice: string; onBack: () => void; onAdd: (accountId: string, categoryId: string | null) => void; onNotPayment: () => void; onDelete: () => void }) {
   const [c, soft] = tintOf(item.pkg)
   const pay = item.payment
   const usable = pay ? accounts.filter((a) => a.currency === pay.currency) : []
@@ -175,7 +184,7 @@ function Detail({ item, accounts, categories, accountFor, busy, apiReady, notice
   return <div className="nlog">
     <button type="button" className="nlog__crumb" onClick={onBack}><ChevronLeft size={18} />Notification log</button>
     <div className="nlog__card nlog__hero">
-      <div className="nlog__src"><span className="nlog__tile" style={{ color: c, background: soft }}>{item.app.charAt(0).toUpperCase()}</span><div><b>{item.app}</b><small>{dayOf(item.posted)} · {time(item.posted)}</small></div></div>
+      <div className="nlog__src"><AppTile name={item.app} color={c} soft={soft} icon={icon} /><div><b>{item.app}</b><small>{dayOf(item.posted)} · {time(item.posted)}</small></div></div>
       {pay ? <><div className="nlog__amount">{money(pay.amount, pay.currency)}</div>{pay.merchant && <div className="nlog__merchant">{pay.merchant}</div>}</> : <div className="nlog__merchant">{item.title || item.app}</div>}
     </div>
     {pay && !item.financeTx && <div className="nlog__card">

@@ -21,16 +21,19 @@ export const notificationLog = {
   clear: () => call<void>('clear'),
   setSettings: (settings: LogSettings) => call<LogSettings>('set_settings', { settings }),
   setFinance: (id: number, transaction: string | null) => call<void>('set_finance', { id, transaction }),
+  icons: async (packages: string[]) => (await call<{ icons: Record<string, string> }>('icons', { packages })).icons,
 }
 
 export type Payment = { amount: string; currency: string; merchant: string }
 
 const CURRENCIES: readonly [RegExp, string][] = [[/₸|тг\.?|тенге|kzt/i, 'KZT'], [/\$|usd/i, 'USD'], [/€|eur/i, 'EUR'], [/₽|руб\.?|rub/i, 'RUB']]
-const SPEND = /(покупк|оплат|списан|платеж|платёж|снятие|purchase|paid|payment|spent|debit|сатып|төлем)/i
-// Money coming in, or not money moving at all, is never an expense.
-const NOT_SPEND = /(пополнен|зачислен|получен|поступлен|возврат|перевод от|кэшбэк|cashback|refund|received|credited|top.?up|бонус|отклон|declined|недостаточно|insufficient|баланс:?\s*$)/i
-// Amount with its currency on either side: "4 280 ₸", "4 280,50 тг", "$12.99", "KZT 1 950".
-const AMOUNT = /(?:(₸|\$|€|₽|kzt|usd|eur|rub)\s?)?(\d{1,3}(?:[   ]\d{3})+|\d+)(?:[.,](\d{1,2}))?\s?(₸|тг\.?|тенге|kzt|\$|usd|€|eur|₽|руб\.?|rub)?/gi
+const SPEND = /(покупк|оплат|списан|платеж|платёж|снятие|расход|транзакц|purchase|paid|payment|spent|debit|сатып|төлем|(?:^|\s)[-−]\s?(?:₸|\$|€|₽)?\d)/i
+// Money coming in. Banks add "Бонус +25 ₸" or "Кэшбэк" lines to purchases, so only the earlier keyword counts.
+const INCOME = /(пополнен|зачислен|получен|поступлен|возврат|перевод от|кэшбэк|кешбэк|cashback|refund|received|credited|top.?up|бонус)/i
+// Not money moving at all, wherever it appears.
+const FAILED = /(отклон|declined|недостаточно|insufficient|не прошл|failed)/i
+// Amount with its currency on either side: "4 280 ₸", "4 280,50 тг", "$12.99", "KZT 1 950", "₸1,250.00".
+const AMOUNT = /(?:(₸|\$|€|₽|kzt|usd|eur|rub)\s?)?(\d{1,3}(?:[   ,.]\d{3})+(?!\d)|\d+)(?:[.,](\d{1,2}))?\s?(₸|тг\.?|тенге|kzt|\$|usd|€|eur|₽|руб\.?|rub)?/gi
 
 /**
  * Reads an expense out of a bank or wallet notification. Returns null unless the text says
@@ -38,13 +41,15 @@ const AMOUNT = /(?:(₸|\$|€|₽|kzt|usd|eur|rub)\s?)?(\d{1,3}(?:[   ]\d{3}
  */
 export function parsePayment(title: string, body: string): Payment | null {
   const text = `${title}\n${body}`
-  if (!SPEND.test(text) || NOT_SPEND.test(text)) return null
+  const spend = text.search(SPEND)
+  const income = text.search(INCOME)
+  if (spend < 0 || FAILED.test(text) || (income >= 0 && income < spend)) return null
   for (const match of text.matchAll(AMOUNT)) {
     const symbol = match[1] ?? match[4]
     if (!symbol) continue
     const currency = CURRENCIES.find(([re]) => re.test(symbol))?.[1]
     if (!currency) continue
-    const whole = match[2]!.replace(/[   ]/g, '').replace(/^0+(?=\d)/, '')
+    const whole = match[2]!.replace(/[   ,.]/g, '').replace(/^0+(?=\d)/, '')
     if (!/[1-9]/.test(whole + (match[3] ?? ''))) continue
     const amount = `${whole}.${(match[3] ?? '').padEnd(2, '0')}`
     return { amount, currency, merchant: merchantOf(text, match.index ?? 0, match[0].length) }
