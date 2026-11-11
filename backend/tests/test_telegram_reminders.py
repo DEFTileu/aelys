@@ -222,7 +222,7 @@ async def test_quiet_hours_defer_urgent_delivery_until_persisted_end(setup):
 
 async def test_deadline_opt_in_offsets_catch_up_and_due_change(setup):
     async with setup.sessions() as session:
-        session.add(Task(id='deadline', owner_id='owner', title='Private deadline', due_at=AT + timedelta(hours=5)))
+        session.add(Task(id='deadline', owner_id='owner', title='Private deadline', due_at=AT + timedelta(hours=5), updated_at=AT))
         await session.commit()
     await deliver_telegram_reminders('integration', at=AT)
     assert not setup.sent
@@ -243,9 +243,41 @@ async def test_deadline_opt_in_offsets_catch_up_and_due_change(setup):
         assert len(rows) == 2 and len({row.idempotency_key for row in rows}) == 2
         task = await session.get(Task, 'deadline')
         task.due_at = late + timedelta(hours=5)
+        task.updated_at = late
         await session.commit()
     await deliver_telegram_reminders('integration', at=late)
     assert len(setup.sent) == 3
+
+
+async def test_deadline_offset_already_past_at_task_update_is_not_sent(setup):
+    async with setup.sessions() as session:
+        integration = await session.get(TelegramIntegration, 'integration')
+        integration.deadline_reminders = True
+        session.add(Task(id='soon', owner_id='owner', title='Private soon deadline',
+                         due_at=AT + timedelta(hours=1, minutes=40), updated_at=AT))
+        await session.commit()
+    await deliver_telegram_reminders('integration', at=AT)
+    assert not setup.sent
+    async with setup.sessions() as session:
+        rows = list((await session.execute(select(TaskReminder))).scalars())
+        assert [utc(row.notify_at) for row in rows] == [AT + timedelta(hours=1, minutes=30)]
+    await deliver_telegram_reminders('integration', at=AT + timedelta(hours=1, minutes=30))
+    assert len(setup.sent) == 1
+
+
+async def test_deadline_offsets_seeded_when_task_set_well_before_due(setup):
+    due = AT + timedelta(days=2)
+    async with setup.sessions() as session:
+        integration = await session.get(TelegramIntegration, 'integration')
+        integration.deadline_reminders = True
+        session.add(Task(id='early', owner_id='owner', title='Private early deadline',
+                         due_at=due, updated_at=AT - timedelta(days=1)))
+        await session.commit()
+    await deliver_telegram_reminders('integration', at=AT)
+    assert not setup.sent
+    async with setup.sessions() as session:
+        rows = list((await session.execute(select(TaskReminder))).scalars())
+        assert sorted(utc(row.notify_at) for row in rows) == [due - timedelta(hours=5), due - timedelta(minutes=10)]
 
 
 async def test_calendar_recurrence_claims_occurrence_once_across_dst(setup):
@@ -345,13 +377,14 @@ async def test_due_change_and_opt_out_cancel_old_seeded_schedules(setup):
         integration = await session.get(TelegramIntegration, 'integration')
         integration.deadline_reminders = True
         session.add(Task(id='rescheduled', owner_id='owner', title='Private rescheduled',
-                         due_at=AT + timedelta(hours=6)))
+                         due_at=AT + timedelta(hours=6), updated_at=AT))
         await session.commit()
     await deliver_telegram_reminders('integration', at=AT)
     assert not setup.sent
     async with setup.sessions() as session:
         task = await session.get(Task, 'rescheduled')
         task.due_at = AT + timedelta(days=1)
+        task.updated_at = AT + timedelta(hours=1)
         await session.commit()
     await deliver_telegram_reminders('integration', at=AT + timedelta(hours=1))
     assert not setup.sent

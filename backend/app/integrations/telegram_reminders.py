@@ -123,8 +123,12 @@ async def _seed_deadlines(db: AsyncSession, item: TelegramIntegration) -> None:
         if task.due_at is None:
             continue
         for offset in DEADLINE_OFFSETS:
+            notify_at = utc(task.due_at) - timedelta(seconds=offset)
+            # Skip offsets already past when the task last changed; compare to updated_at, not now, so downtime still sends late.
+            if notify_at < utc(task.updated_at):
+                continue
             await db.execute(_insert(db, TaskReminder).values(owner_id=item.owner_id,
-                task_id=task.id, channel='telegram', notify_at=utc(task.due_at) - timedelta(seconds=offset),
+                task_id=task.id, channel='telegram', notify_at=notify_at,
                 idempotency_key=_deadline_key(item.owner_id, task.id, task.due_at, offset)
             ).on_conflict_do_nothing(index_elements=['idempotency_key']))
 
