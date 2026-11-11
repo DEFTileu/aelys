@@ -3,7 +3,11 @@ package com.aelys.notificationlog
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.provider.Settings
+import android.util.Base64
+import java.io.ByteArrayOutputStream
 import app.tauri.annotation.Command
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
@@ -70,7 +74,26 @@ class NotificationLogPlugin(private val activity: Activity) : Plugin(activity) {
         store.setFinance(args.getLong("id"), if (args.isNull("transaction")) null else args.getString("transaction")); JSObject()
     }
 
+    @Command fun icons(invoke: Invoke) = submit(invoke) { args ->
+        val packages = args.getJSONArray("packages").let { a -> (0 until a.length()).map { a.getString(it) } }
+        JSObject().apply { put("icons", JSObject().apply { packages.forEach { pkg -> iconOf(pkg)?.let { put(pkg, it) } } }) }
+    }
+
+    private fun iconOf(pkg: String): String? = iconCache.getOrPut(pkg) {
+        try {
+            val drawable = activity.packageManager.getApplicationIcon(pkg)
+            val bitmap = Bitmap.createBitmap(ICON_PX, ICON_PX, Bitmap.Config.ARGB_8888)
+            drawable.setBounds(0, 0, ICON_PX, ICON_PX)
+            drawable.draw(Canvas(bitmap))
+            val png = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+            bitmap.recycle()
+            "data:image/png;base64," + Base64.encodeToString(png, Base64.NO_WRAP)
+        } catch (_: Exception) { "" }
+    }.takeIf { it.isNotEmpty() }
+
     companion object {
+        private const val ICON_PX = 96
+        private val iconCache = java.util.concurrent.ConcurrentHashMap<String, String>()
         private val executor = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(32), ThreadPoolExecutor.AbortPolicy())
     }
 }
