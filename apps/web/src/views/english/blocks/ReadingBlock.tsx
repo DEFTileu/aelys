@@ -73,7 +73,7 @@ export function ReadingBlock({ lesson, en, active, onNext }: { lesson: EnglishLe
   })
   const show = (r: EnglishTaskResult, aboutFigure: boolean) => {
     setFocus({ evidence: r.evidence ?? null, figure: aboutFigure })
-    requestAnimationFrame(() => textRef.current?.querySelector(aboutFigure ? '.en-figure' : 'mark')?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    requestAnimationFrame(() => textRef.current?.querySelector(aboutFigure ? '.en-figure' : 'mark')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }))
   }
   const right = graded.filter((r) => r.ok).length
   const band = readingBand(right, p.questions.length)
