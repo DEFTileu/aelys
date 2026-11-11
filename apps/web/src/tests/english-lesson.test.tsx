@@ -45,24 +45,56 @@ describe('English lesson', () => {
     expect(nav('Разминка').querySelector('[aria-label="Готово"]')).toBeTruthy()
   })
 
-  it('runs a lesson without AI: only warm-up, grammar and reading, graded once on the server', async () => {
-    const task = (prompt: string, options: string[] | null = null) => ({ type: options ? 'choice' as const : 'gap' as const, prompt, options })
+  it('runs a lesson without AI: grammar steps with per-exercise checks, then reading with chart and evidence', async () => {
+    const task = (prompt: string, options: string[] | null = null) => ({ type: options ? 'choice' as const : 'gap' as const, prompt, options, skill: options ? 'Сейчас или всегда' : 'Форма' })
     const offline = { ...lesson, content: { theme: lesson.content.theme, grammar_focus: 'Present tenses', warmup: lesson.content.warmup,
       blocks: [{ key: 'warmup' as const, title: 'Разминка', minutes: 30 }, { key: 'grammar' as const, title: 'Грамматика', minutes: 45 }, { key: 'reading' as const, title: 'Чтение', minutes: 45 }],
-      grammar: { id: 'g-w1-1', title: 'Present Simple', rule_ru: ['Привычки — Present Simple.', 'Сейчас — Continuous.'], examples: [{ en: 'I work.', ru: 'Я работаю.' }], exercises: [task('She ___ (work) here.'), task('He ___ now.', ['works', 'is working'])] },
-      reading: { id: 'r-w1-1', title: 'Sleep', paragraphs: [{ label: 'A', text: 'Text.' }], questions: [{ type: 'tfng' as const, prompt: 'Sleep matters.', options: ['TRUE', 'FALSE', 'NOT GIVEN'] }] } } } satisfies EnglishLesson
+      grammar: { id: 'g-w1-1', title: 'Present Simple', rule_ru: ['Привычки — Present Simple.', 'Сейчас — Continuous.'], examples: [{ en: 'I work.', ru: 'Я работаю.' }], exercises: [task('She ___ (work) here.'), task('He ___ now.', ['works', 'is working'])],
+        formulas: [{ title: 'Present Simple', when_ru: 'всегда', tone: 'blue' as const, rows: [[{ t: 'he / she / it', role: 'subject' as const }, { t: '+ s', role: 'ending' as const }]], example_en: 'She works.', example_ru: 'Она работает.', markers: ['always'] }],
+        timeline: { title_ru: 'Линия времени', items: [{ label: 'Simple', kind: 'repeat' as const, caption_en: 'I work every day' }, { label: 'Continuous', kind: 'span' as const, start: -0.2, end: 0.2, caption_en: 'I am working now' }] },
+        traps: [{ wrong: 'I am agree.', right: 'I agree.', note_ru: 'agree — состояние.' }] },
+      reading: { id: 'r-w1-1', title: 'Sleep', paragraphs: [{ label: 'A', text: 'Teenagers need more sleep than adults. Schools rarely start late.' }],
+        figure: { kind: 'bar' as const, title: 'Figure 1. Sleep hours', unit: 'hours', labels: ['13', '16'], series: [{ name: 'Teens', values: [9, 8] }] },
+        glossary: [{ word: 'rarely', ru: 'редко' }],
+        questions: [{ type: 'tfng' as const, prompt: 'Teens need more sleep.', options: ['TRUE', 'FALSE', 'NOT GIVEN'] }, { type: 'mcq' as const, prompt: 'Hours at 16?', options: ['8', '9'], about_figure: true }] } } } satisfies EnglishLesson
     await startLesson(offline)
     expect([...host.querySelectorAll('.en-nav__item strong')].map((item) => item.textContent)).toEqual(['Разминка', 'Грамматика', 'Reading'])
     await click(nav('Грамматика'))
-    expect(section('Грамматика').textContent).toContain('Привычки — Present Simple.')
-    await setValue(field<HTMLInputElement>('input[aria-label="Ответ 1"]'), 'works')
-    await click(host.querySelector<HTMLButtonElement>('[role="radio"]')!)
-    client.englishTasks.mockResolvedValue({ score: 1, total: 2, results: [{ n: 1, given: 'works', answer: 'works', ok: true, explain_ru: 'Привычка.' }, { n: 2, given: 'works', answer: 'is working', ok: false, explain_ru: 'Now — Continuous.' }] })
+    const grammar = section('Грамматика')
+    expect(grammar.textContent).toContain('Шаг 1 из 4')
+    expect(grammar.querySelector('[data-role="ending"]')!.textContent).toBe('+ s')
+    expect(grammar.querySelector('.en-tl')!.getAttribute('aria-label')).toContain('Continuous: длится')
+    await clickText('Continuous'); expect(grammar.querySelectorAll('.en-tl__dot')).toHaveLength(0) // only the span is drawn
+    await click(button('Дальше: ловушка').closest('button')!)
+    expect(grammar.textContent).toContain('I am agree.')
+    await click(byText('button', 'К упражнениям') ?? [...grammar.querySelectorAll('button')].find((b) => b.textContent?.includes('К упражнениям'))!)
+    client.englishTasks.mockResolvedValueOnce({ score: 1, total: 2, done: false, results: [{ n: 1, given: 'works', answer: 'works', ok: true, explain_ru: 'Привычка.' }] })
+    await setValue(field<HTMLInputElement>('input[aria-label="Пропущенное слово"]'), 'works')
+    await clickText('Проверить')
+    expect(client.englishTasks).toHaveBeenLastCalledWith('l1', 'grammar', { '1': 'works' })
+    expect(grammar.textContent).toContain('Верно.')
+    await click([...grammar.querySelectorAll('button')].find((b) => b.textContent?.includes('Следующее'))!)
+    client.englishTasks.mockResolvedValueOnce({ score: 1, total: 2, done: true, results: [{ n: 1, given: 'works', answer: 'works', ok: true, explain_ru: 'Привычка.' }, { n: 2, given: 'works', answer: 'is working', ok: false, explain_ru: 'Now — Continuous.' }] })
+    await clickText('works')
+    expect(client.englishTasks).toHaveBeenLastCalledWith('l1', 'grammar', { '2': 'works' })
+    expect(grammar.textContent).toContain('Правильно: is working.')
+    await click([...grammar.querySelectorAll('button')].find((b) => b.textContent?.includes('Посмотреть итог'))!)
+    expect(grammar.querySelector('.en-ring')!.getAttribute('aria-label')).toBe('Верно 1 из 2')
+    expect(grammar.textContent).toContain('Повтори: Сейчас или всегда')
+
+    await click(nav('Reading'))
+    const reading = section('Чтение')
+    expect(reading.querySelector('svg[role="img"]')!.getAttribute('aria-label')).toContain('Teens: 13 — 9, 16 — 8')
+    await clickText('rarely'); expect(reading.querySelector('[role="note"]')!.textContent).toBe('редко')
+    await click(reading.querySelector<HTMLButtonElement>('[role="radio"]')!)
+    client.englishTasks.mockResolvedValueOnce({ score: 1, total: 2, done: true, results: [{ n: 1, given: 'TRUE', answer: 'TRUE', ok: true, explain_ru: 'A.', evidence: 'Teenagers need more sleep than adults.' }, { n: 2, given: '', answer: '8', ok: false, explain_ru: 'График.', evidence: null }] })
     await clickText('Проверить ответы')
-    expect(client.englishTasks).toHaveBeenCalledWith('l1', 'grammar', { '1': 'works', '2': 'works' })
-    expect(section('Грамматика').textContent).toContain('Правильно: is working.')
-    expect(section('Грамматика').textContent).toContain('1 из 2.')
-    expect(byText('button', 'Проверить ответы')).toBeUndefined()
+    expect(client.englishTasks).toHaveBeenLastCalledWith('l1', 'reading', { '1': 'TRUE', '2': '' })
+    expect(reading.textContent).toContain('≈ Band')
+    await clickText('Показать в тексте')
+    expect(reading.querySelector('mark')!.textContent).toBe('Teenagers need more sleep than adults.')
+    await clickText('Показать на графике')
+    expect(reading.querySelector('.en-figure')!.hasAttribute('data-focus')).toBe(true)
   })
 
   it('resumes an existing lesson without asking to generate it again', async () => {
@@ -336,5 +368,13 @@ describe('English lesson', () => {
     await click(recordBtn()); await click(host.querySelector('button[aria-label="Остановить запись"]')!)
     expect(field<HTMLTextAreaElement>('#en-transcript').value).toHaveLength(6000)
     expect(section('Speaking').textContent).toContain('6000/6000')
+  })
+})
+
+describe('reading helpers', () => {
+  it('splits a paragraph into glossary words and the evidence, never overlapping', async () => {
+    const { segments, readingBand } = await import('../views/english/blocks/ReadingBlock')
+    expect(segments('They rarely sleep. Schools start early.', ['rarely', 'early'], 'Schools start early.')).toEqual([{ t: 'They ' }, { t: 'rarely', gloss: 'rarely', mark: undefined }, { t: ' sleep. ' }, { t: 'Schools start early.', gloss: undefined, mark: true }])
+    expect(readingBand(8, 8)).toBe(9); expect(readingBand(5, 8)).toBe(6); expect(readingBand(0, 8)).toBe(3.5)
   })
 })
