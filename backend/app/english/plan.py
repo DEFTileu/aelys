@@ -21,9 +21,10 @@ PLAN = (
 )
 HOURS_TARGET = 150
 SKILLS = ("listening", "reading", "writing", "speaking")
-BLOCKS = (("warmup", "Разминка"), ("vocab", "Новые слова"), ("listening", "Аудирование"), ("speaking", "Говорение"), ("writing", "Письмо"))
+BLOCKS = (("warmup", "Разминка"), ("vocab", "Новые слова"), ("grammar", "Грамматика"), ("reading", "Чтение"), ("listening", "Аудирование"), ("speaking", "Говорение"), ("writing", "Письмо"))
 BLOCK_KEYS = tuple(k for k, _ in BLOCKS)
-MINUTES = {60: (8, 12, 15, 15, 10), 120: (15, 20, 30, 30, 25), 180: (20, 30, 45, 45, 40)}
+OFFLINE_KEYS = ("warmup", "grammar", "reading")  # hand-written blocks that work without an AI provider
+MINUTES = {60: (5, 8, 10, 10, 10, 10, 7), 120: (10, 15, 20, 20, 20, 20, 15), 180: (15, 25, 25, 30, 30, 30, 25)}
 VOCAB_COUNT = {60: 6, 120: 8, 180: 10}
 ERROR_RU = {"tense": "Времена", "article": "Артикли", "preposition": "Предлоги", "collocation": "Словосочетания", "word_choice": "Выбор слова", "word_order": "Порядок слов", "spelling": "Орфография", "grammar": "Грамматика", "punctuation": "Пунктуация"}
 LISTENING_SLOW = 70  # % below which the next listening is slower
@@ -44,8 +45,14 @@ def mock_due(day: date, week: int, first: date, last: date, mock_days: list[date
     return day.weekday() == 6 and week >= 3 and not any(first <= d <= last for d in mock_days)
 
 
-def block_plan(minutes_per_day: int) -> list[dict[str, Any]]:
-    return [{"key": k, "title": t, "minutes": m} for (k, t), m in zip(BLOCKS, MINUTES.get(minutes_per_day, MINUTES[120]), strict=True)]
+def block_plan(minutes_per_day: int, offline: bool = False) -> list[dict[str, Any]]:
+    """Without AI only the hand-written blocks remain; they share the day's minutes."""
+    rows = list(zip(BLOCKS, MINUTES.get(minutes_per_day, MINUTES[120]), strict=True))
+    if offline:
+        rows = [(block, m) for block, m in rows if block[0] in OFFLINE_KEYS]
+        total = sum(m for _, m in rows)
+        rows = [(block, round(minutes_per_day * m / total)) for block, m in rows]
+    return [{"key": k, "title": t, "minutes": m} for (k, t), m in rows]
 
 
 def mark_block(lesson: Any, key: str, minutes: int | None = None, **extra: Any) -> None:

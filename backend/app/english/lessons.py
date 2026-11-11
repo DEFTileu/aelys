@@ -10,6 +10,7 @@ from app.core.db import get_db
 from app.core.models import EnglishLesson, EnglishMock, EnglishProfile, EnglishWord
 from app.core.security import current_principal
 from app.domains.api import owner_obj
+from app.english import content as material
 from app.english import speech
 from app.english.ai import complete_json, fail, validated
 from app.english.api import (
@@ -47,7 +48,7 @@ from app.english.plan import (
     week_range,
 )
 from app.sync.change_log import lock_owner
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import (
     BaseModel,
     Field,
@@ -66,7 +67,8 @@ Level = Literal["b1", "b1b2", "b2", "test"]
 Skill = Literal["listening", "reading", "writing", "speaking"]
 Band = Annotated[str, StringConstraints(pattern=r"^([0-8]\.[05]|9\.0)$")]
 TargetBand = Annotated[str, StringConstraints(pattern=r"^([4-8]\.[05]|9\.0)$")]  # 4.0 .. 9.0 in steps of 0.5
-BlockKey = Literal["warmup", "vocab", "listening", "speaking", "writing"]
+BlockKey = Literal["warmup", "vocab", "grammar", "reading", "listening", "speaking", "writing"]
+CHECKED = ("listening", "grammar", "reading")  # completed by their check: marking them done would reveal the answers
 LIVE = {"source": "BBC 6 Minute English", "url": "https://www.bbc.co.uk/learningenglish/english/features/6-minute-english"}
 LIVE_HINT = "Послушай похожий выпуск целиком, без текста."
 WARMUP_MAX = 8
@@ -378,6 +380,9 @@ def _lesson_out(lesson: EnglishLesson) -> EnglishLessonOut:
         if not checked:
             for question in listening.get("questions", []):
                 question.pop("answer", None)  # answers are never sent before the learner has been graded
+    for kind in ("grammar", "reading"):
+        if (ref := content.get(kind)) and (item := material.by_id(kind, ref["id"])) is not None:
+            content[kind] = material.public(item)
     return EnglishLessonOut(id=lesson.id, day=lesson.day, lesson_no=lesson.lesson_no, week=lesson.week, theme=lesson.theme, content=content, progress=progress)
 
 
@@ -511,8 +516,13 @@ async def english_lesson_today(body: LessonIn, principal=Depends(current_princip
     task2 = body.day.weekday() in TASK2_WEEKDAYS
     system = _LESSON_SYSTEM.format(level=profile.level, band=profile.target_band, goal=profile.goal, weak=", ".join(profile.weak_skills or []) or "none", topic=topic, grammar=grammar, count=count, exclude=", ".join(owned[:400]) or "(none)",
                                    connected=5 if slow else "3-4", phrases=8 if pausey else 5, writing=_writing_instruction(task2), drill=drill)
-    gen = validated(LessonGen, await complete_json(db, user.id, system, f"Build today's lesson. {context}".strip(), 6000))
-    if task2 and len(gen.writing.prompt.strip()) < 20:
+    gen: LessonGen | None = None
+    try:
+        gen = validated(LessonGen, await complete_json(db, user.id, system, f"Build today's lesson. {context}".strip(), 6000))
+    except HTTPException as exc:  # no provider: the hand-written blocks still make a lesson
+        if not isinstance(exc.detail, dict) or exc.detail.get("code") != "AI_UNAVAILABLE":
+            raise
+    if gen is not None and task2 and len(gen.writing.prompt.strip()) < 20:
         raise fail(502, "AI_BAD_OUTPUT", "AI вернул некорректный ответ")
     await lock_owner(db, user.id)  # serialises concurrent generation per owner on PostgreSQL
     if (existing := await _lesson_for(db, user.id, body.day)) is not None:  # a concurrent call won
@@ -525,19 +535,32 @@ async def english_lesson_today(body: LessonIn, principal=Depends(current_princip
             warmup.append({"word_id": word.id, "before": parts[0], "answer": parts[1], "after": parts[2], "hint_ru": word.translation_ru})
     seen: set[str] = set(owned)
     vocab: list[tuple[EnglishWord, VocabGen]] = []
-    for item in gen.vocab:
+    for item in gen.vocab if gen else []:
         if item.lemma in seen or len(vocab) >= count:
             continue
         seen.add(item.lemma)
         row = EnglishWord(owner_id=user.id, lemma=item.lemma, part_of_speech=item.part_of_speech, ipa=item.ipa, definition_en=item.definition_en, translation_ru=item.translation_ru, example=item.example, collocations_json=item.collocations, false_friend_ru=item.false_friend_ru, box=1, due_on=body.day + timedelta(days=INTERVALS[1]), introduced_on=body.day)
         db.add(row)
         vocab.append((row, item))
-    if not vocab:
+    if gen is not None and not vocab:
         raise fail(502, "AI_BAD_OUTPUT", "AI вернул некорректный ответ")
     await db.flush()
+    lesson_grammar, passage = material.pick(week, week_range(started, week, body.day)[0], body.day, error)
+    content: dict[str, Any] = {"theme": theme, "grammar_focus": grammar, "blocks": block_plan(profile.minutes_per_day, offline=gen is None), "warmup": warmup,
+                               "grammar": {"id": lesson_grammar.id}, "reading": {"id": passage.id}}
+    if gen is not None:
+        content |= _generated(gen, vocab, error, slow, task2)
+    lesson_no = (await db.execute(select(func.count()).select_from(EnglishLesson).where(EnglishLesson.owner_id == user.id, EnglishLesson.deleted_at.is_(None), EnglishLesson.day <= body.day))).scalar_one() + 1
+    (await _get_profile(db, user.id)).course_started_on = started
+    lesson = EnglishLesson(owner_id=user.id, day=body.day, lesson_no=lesson_no, week=week, theme=theme, content_json=content, progress_json={})
+    db.add(lesson)
+    await db.commit()
+    return _lesson_out(lesson)
+
+
+def _generated(gen: LessonGen, vocab: list[tuple[EnglishWord, VocabGen]], error: str | None, slow: bool, task2: bool) -> dict[str, Any]:
     listening = gen.listening
-    content = {
-        "theme": theme, "grammar_focus": grammar, "blocks": block_plan(profile.minutes_per_day), "warmup": warmup,
+    return {
         "vocab": [{"word_id": row.id, "lemma": row.lemma, "ipa": row.ipa, "part_of_speech": row.part_of_speech, "translation_ru": row.translation_ru, "definition_en": row.definition_en, "example": row.example, "collocations": list(item.collocations)} for row, item in vocab],
         "drill": {"type": error, "items": [q.model_dump() for q in gen.drill]} if error and gen.drill else None,
         "listening": {"title": listening.title, "live": {**LIVE, "hint_ru": listening.live_hint_ru or LIVE_HINT}, "tts_rate": 0.9 if slow else 1.0,
@@ -547,12 +570,6 @@ async def english_lesson_today(body: LessonIn, principal=Depends(current_princip
         "speaking": gen.speaking.model_dump(),
         "writing": {"kind": "task2" if task2 else "journal", "prompt": gen.writing.prompt.strip() if task2 else None},
     }
-    lesson_no = (await db.execute(select(func.count()).select_from(EnglishLesson).where(EnglishLesson.owner_id == user.id, EnglishLesson.deleted_at.is_(None), EnglishLesson.day <= body.day))).scalar_one() + 1
-    (await _get_profile(db, user.id)).course_started_on = started
-    lesson = EnglishLesson(owner_id=user.id, day=body.day, lesson_no=lesson_no, week=week, theme=theme, content_json=content, progress_json={})
-    db.add(lesson)
-    await db.commit()
-    return _lesson_out(lesson)
 
 
 @router.get("/english/lessons/{lesson_id}", response_model=EnglishLessonOut)
@@ -564,7 +581,7 @@ async def english_lesson(lesson_id: str, principal=Depends(current_principal), d
 @router.post("/english/lessons/{lesson_id}/blocks/{key}/done", response_model=EnglishLessonOut)
 async def english_block_done(lesson_id: str, key: BlockKey, body: BlockDoneIn | None = None, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     user, _ = principal
-    if key == "listening":  # marking it done would reveal the answers; it is completed by the check
+    if key in CHECKED:
         raise fail(422, "LISTENING_NOT_CHECKED", "Сначала проверь ответы")
     await lock_owner(db, user.id)
     lesson = await owner_obj(EnglishLesson, lesson_id, user.id, db)
@@ -620,6 +637,53 @@ async def english_listening(lesson_id: str, body: ListeningIn, principal=Depends
         await db.commit()
         done = lesson.progress_json["listening"]
     return ListeningOut(score=done["score"], total=done["total"], results=done["results"], feedback_ru=done["feedback_ru"])
+
+
+class TasksIn(StrictModel):
+    answers: dict[Annotated[str, StringConstraints(pattern=r"^\d{1,2}$")], Annotated[str, StringConstraints(max_length=300)]] = Field(max_length=12)
+
+
+class TaskResult(BaseModel):
+    n: int
+    given: str
+    answer: str
+    ok: bool
+    explain_ru: str
+
+
+class TasksOut(BaseModel):
+    score: int
+    total: int
+    results: list[TaskResult]
+
+
+@router.post("/english/lessons/{lesson_id}/grammar", response_model=TasksOut)
+async def english_grammar(lesson_id: str, body: TasksIn, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    return await _check_tasks(lesson_id, "grammar", body, principal, db)
+
+
+@router.post("/english/lessons/{lesson_id}/reading", response_model=TasksOut)
+async def english_reading(lesson_id: str, body: TasksIn, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    return await _check_tasks(lesson_id, "reading", body, principal, db)
+
+
+async def _check_tasks(lesson_id: str, kind: Literal["grammar", "reading"], body: TasksIn, principal: Any, db: AsyncSession) -> TasksOut:
+    """Grades hand-written grammar exercises or reading questions; the first check is final, like listening."""
+    user, _ = principal
+    await lock_owner(db, user.id)
+    lesson = await owner_obj(EnglishLesson, lesson_id, user.id, db)
+    done = (lesson.progress_json or {}).get(kind) or {}
+    if not done.get("done"):
+        ref = lesson.content_json.get(kind)
+        item = material.by_id(kind, ref["id"]) if ref else None
+        if item is None:
+            raise fail(404, "NOT_FOUND", "В этом уроке нет такого блока")
+        results = material.grade(item, body.answers)
+        done = {"results": results, "score": sum(r["ok"] for r in results), "total": len(results)}
+        mark_block(lesson, kind, **done)
+        await db.commit()
+        done = lesson.progress_json[kind]
+    return TasksOut(score=done["score"], total=done["total"], results=done["results"])
 
 
 _SPEAKING_SYSTEM = (

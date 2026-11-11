@@ -1151,6 +1151,8 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "english/lessons/*/blocks/*/done"),
     ("POST", "english/lessons/*/sentences"),
     ("POST", "english/lessons/*/listening"),
+    ("POST", "english/lessons/*/grammar"),
+    ("POST", "english/lessons/*/reading"),
     ("POST", "english/lessons/*/speaking"),
     ("POST", "english/mocks"),
     ("GET", "english/mocks"),
@@ -4836,6 +4838,8 @@ mod tests {
         assert!(ok("POST", "/api/v1/english/today/words"));
         assert!(ok("POST", "/api/v1/english/words/abc123/review"));
         assert!(ok("POST", "/api/v1/english/reports"));
+        assert!(ok("POST", "/api/v1/english/lessons/abc123/grammar"));
+        assert!(ok("POST", "/api/v1/english/lessons/abc123/reading"));
         assert!(ok("GET", "/api/v1/english/reports"));
         assert!(ok("GET", "/api/v1/english/settings"));
         assert!(ok("PUT", "/api/v1/english/settings"));

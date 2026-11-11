@@ -18,6 +18,7 @@ from app.core.models import (
 from app.core.security import create_token
 from app.english import ai as english_ai
 from app.english import api as english_api
+from app.english import content as material
 from app.english import lessons, plan
 from app.english import speech as english_speech
 from app.integrations import telegram_transcription
@@ -110,7 +111,7 @@ async def test_course_defaults(client):
     assert body["plan"][1] == {"week": 2, "theme": "Education & learning", "grammar": "Артикли", "status": "next"}
     assert body["skills"] == [{"skill": s, "band": None, "trend": None} for s in ("listening", "reading", "writing", "speaking")]
     assert body["adaptations"] == [] and body["week_stats"] == {"speaking_rounds": 0, "new_words": 0, "listening_pct": None, "streak": 0}
-    assert body["today"]["id"] is None and [b["key"] for b in body["today"]["blocks"]] == ["warmup", "vocab", "listening", "speaking", "writing"]
+    assert body["today"]["id"] is None and [b["key"] for b in body["today"]["blocks"]] == ["warmup", "vocab", "grammar", "reading", "listening", "speaking", "writing"]
     assert sum(b["minutes"] for b in body["today"]["blocks"]) == 120 and not any(b["done"] for b in body["today"]["blocks"])
     assert (await api.get(f"{API}/course", params={"day": iso(TODAY + timedelta(days=3))})).json()["detail"]["code"] == "INVALID_DAY"
 
@@ -157,7 +158,7 @@ async def test_lesson_generation_is_idempotent_with_vocab_and_warmup(client, ai)
     assert set(content["vocab"][0]) == {"word_id", "lemma", "ipa", "part_of_speech", "translation_ru", "definition_en", "example", "collocations"}
     assert content["listening"]["live"]["source"] == "BBC 6 Minute English" and content["listening"]["tts_rate"] == 1.0
     assert [q["n"] for q in content["listening"]["questions"]] == [1, 2, 3, 4, 5] and all("answer" not in q for q in content["listening"]["questions"])
-    assert content["listening"]["script_visible"] is False and content["blocks"][0] == {"key": "warmup", "title": "Разминка", "minutes": 15}
+    assert content["listening"]["script_visible"] is False and content["blocks"][0] == {"key": "warmup", "title": "Разминка", "minutes": 10}
     assert "Present tenses" in calls[0][0] and "exactly 8 useful topic words" in calls[0][0] and "harvest" in calls[0][0]
     again = (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()
     assert again == lesson and len(calls) == 1
@@ -197,7 +198,7 @@ async def test_answers_hidden_until_listening_checked_then_graded_once(client, a
     shown = (await api.get(path)).json()
     assert [q["answer"] for q in shown["content"]["listening"]["questions"]] == ANSWERS and shown["content"]["listening"]["script_visible"] is True
     assert shown["progress"]["listening"]["done"] is True and shown["progress"]["listening"]["pct"] == 60 and shown["progress"]["listening"]["missed"] == ["online courses", "registration"]
-    assert shown["progress"]["listening"]["minutes"] == 30
+    assert shown["progress"]["listening"]["minutes"] == 20
     again = (await api.post(f"{path}/listening", json={"answers": right(lesson)})).json()
     assert again == result  # the first check is final
     for bad in ({"answers": {"x": "a"}}, {"answers": {"1": "a" * 81}}, {"answers": {}, "extra": 1}):
@@ -226,15 +227,17 @@ async def test_blocks_done_marks_progress_and_hours(client, ai):
     lesson = await make_lesson(api, ai[1])
     path = f"{API}/lessons/{lesson['id']}/blocks"
     warm = (await api.post(f"{path}/warmup/done", json={})).json()["progress"]["warmup"]
-    assert warm == {"done": True, "minutes": 15}
+    assert warm == {"done": True, "minutes": 10}
     vocab = (await api.post(f"{path}/vocab/done", json={"minutes": 30})).json()["progress"]["vocab"]
     assert vocab == {"done": True, "minutes": 30}
     assert (await api.post(f"{path}/vocab/done")).status_code == 200  # body is optional
     assert (await api.post(f"{path}/nope/done", json={})).status_code == 422
     assert (await api.post(f"{path}/vocab/done", json={"minutes": -1})).status_code == 422
     course = (await api.get(f"{API}/course", params={"day": iso(TODAY)})).json()
-    assert course["hours_done"] == 0.8 and course["week_stats"]["streak"] == 1  # 45 min
-    assert [b["done"] for b in course["today"]["blocks"]] == [True, True, False, False, False]
+    assert course["hours_done"] == 0.7 and course["week_stats"]["streak"] == 1  # 40 min
+    assert [b["done"] for b in course["today"]["blocks"]] == [True, True, False, False, False, False, False]
+    for key in ("grammar", "reading", "listening"):  # graded blocks are only finished by their check
+        assert (await api.post(f"{path}/{key}/done", json={})).json()["detail"]["code"] == "LISTENING_NOT_CHECKED"
 
 
 @pytest.mark.asyncio
@@ -279,7 +282,7 @@ async def test_speaking_rounds_store_criteria_and_finish_after_round_two(client,
     round2 = (await api.post(path, json={"round": 2, "transcript": "I went to the library.", "duration_sec": 100, "pause_count": 1})).json()
     assert round2["pauses"] == 1
     progress = (await api.get(f"{API}/lessons/{lesson['id']}")).json()["progress"]["speaking"]
-    assert progress["done"] is True and set(progress["rounds"]) == {"4", "2"} and progress["minutes"] == 30
+    assert progress["done"] is True and set(progress["rounds"]) == {"4", "2"} and progress["minutes"] == 20
     course = (await api.get(f"{API}/course", params={"day": iso(TODAY)})).json()
     assert course["week_stats"]["speaking_rounds"] == 2
     assert next(s for s in course["skills"] if s["skill"] == "speaking")["band"] == "≈5.5"  # mean of 5.5, 6.0, 5.5 over two rounds = 5.67
@@ -315,7 +318,7 @@ async def test_journal_report_is_labelled_and_marks_writing_done(client, ai):
     assert body["result"]["kind"] == "journal" and body["result"]["criteria"] is None
     assert "IELTS" not in calls[-1][0]
     progress = (await api.get(f"{API}/lessons/{lesson['id']}")).json()["progress"]["writing"]
-    assert progress == {"done": True, "minutes": 25}
+    assert progress == {"done": True, "minutes": 15}
     assert (await api.post(f"{API}/reports", json={"day": iso(TODAY), "text": "x" * 30, "kind": "essay"})).status_code == 422
 
 
@@ -367,9 +370,51 @@ async def test_bad_lesson_output_is_502_and_stores_nothing(client, ai):
 
 
 @pytest.mark.asyncio
-async def test_lesson_requires_ai_provider(client):
+async def test_lesson_without_ai_provider_has_only_hand_written_blocks(client):
     api, _ = client
-    assert (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()["detail"]["code"] == "AI_UNAVAILABLE"
+    lesson = (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()
+    content = lesson["content"]
+    assert [(b["key"], b["minutes"]) for b in content["blocks"]] == [("warmup", 24), ("grammar", 48), ("reading", 48)]
+    assert not {"vocab", "listening", "speaking", "writing"} & set(content)
+    assert content["grammar"]["id"] == "g-w1-1" and content["reading"]["id"] == "r-w1-1"
+    tasks = content["grammar"]["exercises"] + content["reading"]["questions"]
+    assert tasks and all(set(t) == {"type", "prompt", "options"} for t in tasks)  # answers and explanations stay on the server
+    assert all(t["options"] == material.TFNG for t in content["reading"]["questions"] if t["type"] == "tfng")
+
+
+@pytest.mark.asyncio
+async def test_grammar_and_reading_are_graded_once_on_the_server(client):
+    api, _ = client
+    lesson = (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()
+    item = material.grammar().weeks["1"][0]
+    answers = {str(n): t.answers[0].upper() + "!" for n, t in enumerate(item.exercises, 1) if t.type != "choice"}  # case and punctuation are ignored
+    answers |= {str(n): t.answers[0] for n, t in enumerate(item.exercises, 1) if t.type == "choice"}
+    answers["1"] = "definitely wrong"
+    first = (await api.post(f"{API}/lessons/{lesson['id']}/grammar", json={"answers": answers})).json()
+    assert (first["score"], first["total"]) == (len(item.exercises) - 1, len(item.exercises))
+    assert first["results"][0] == {"n": 1, "given": "definitely wrong", "answer": item.exercises[0].answers[0], "ok": False, "explain_ru": item.exercises[0].explain_ru}
+    again = (await api.post(f"{API}/lessons/{lesson['id']}/grammar", json={"answers": {}})).json()
+    assert again == first  # the first check is final
+    progress = (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()["progress"]
+    assert progress["grammar"]["done"] and progress["grammar"]["score"] == first["score"]
+    reading = (await api.post(f"{API}/lessons/{lesson['id']}/reading", json={"answers": {"1": "TRUE"}})).json()
+    assert reading["total"] == len(material.reading().weeks["1"][0].questions)
+    assert (await api.post(f"{API}/lessons/{lesson['id']}/reading", json={"answers": {"x": "a"}})).status_code == 422
+
+
+def test_course_material_is_valid_and_complete():
+    g, r = material.grammar(), material.reading()
+    assert sum(map(len, g.weeks.values())) >= 50 and sum(map(len, r.weeks.values())) >= 40 and set(g.remedial) == set(material.REMEDIAL_TYPES)
+
+
+def test_remedial_grammar_replaces_the_weekly_lesson_on_days_three_and_six():
+    start = date(2030, 1, 7)
+    weekly = material.grammar().weeks["2"]
+    assert [material.pick(2, start, start + timedelta(days=n), None)[0].id for n in range(5)] == [x.id for x in weekly[:5]]
+    remedial = {x.id for x in material.grammar().remedial["article"]}
+    assert material.pick(2, start, start + timedelta(days=2), "article")[0].id in remedial
+    assert material.pick(2, start, start + timedelta(days=1), "article")[0].id == weekly[1].id
+    assert material.pick(2, start, start + timedelta(days=2), "spelling")[0].id == weekly[2].id  # no remedial lesson for this type
 
 
 @pytest.mark.asyncio
