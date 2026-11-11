@@ -378,7 +378,8 @@ async def test_lesson_without_ai_provider_has_only_hand_written_blocks(client):
     assert not {"vocab", "listening", "speaking", "writing"} & set(content)
     assert content["grammar"]["id"] == "g-w1-1" and content["reading"]["id"] == "r-w1-1"
     tasks = content["grammar"]["exercises"] + content["reading"]["questions"]
-    assert tasks and all(set(t) == {"type", "prompt", "options"} for t in tasks)  # answers and explanations stay on the server
+    assert tasks and not any({"answers", "explain_ru", "evidence"} & set(t) for t in tasks)  # they stay on the server until the check
+    assert content["grammar"]["formulas"] and content["reading"]["figure"] and content["reading"]["glossary"]
     assert all(t["options"] == material.TFNG for t in content["reading"]["questions"] if t["type"] == "tfng")
 
 
@@ -392,7 +393,8 @@ async def test_grammar_and_reading_are_graded_once_on_the_server(client):
     answers["1"] = "definitely wrong"
     first = (await api.post(f"{API}/lessons/{lesson['id']}/grammar", json={"answers": answers})).json()
     assert (first["score"], first["total"]) == (len(item.exercises) - 1, len(item.exercises))
-    assert first["results"][0] == {"n": 1, "given": "definitely wrong", "answer": item.exercises[0].answers[0], "ok": False, "explain_ru": item.exercises[0].explain_ru}
+    assert first["results"][0] == {"n": 1, "given": "definitely wrong", "answer": item.exercises[0].answers[0], "ok": False, "explain_ru": item.exercises[0].explain_ru, "evidence": None}
+    assert first["done"] is True
     again = (await api.post(f"{API}/lessons/{lesson['id']}/grammar", json={"answers": {}})).json()
     assert again == first  # the first check is final
     progress = (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()["progress"]
@@ -405,6 +407,36 @@ async def test_grammar_and_reading_are_graded_once_on_the_server(client):
 def test_course_material_is_valid_and_complete():
     g, r = material.grammar(), material.reading()
     assert sum(map(len, g.weeks.values())) >= 50 and sum(map(len, r.weeks.values())) >= 40 and set(g.remedial) == set(material.REMEDIAL_TYPES)
+    lessons = [x for group in [*g.weeks.values(), *g.remedial.values()] for x in group]
+    passages = [x for group in r.weeks.values() for x in group]
+    assert all(x.visual for x in lessons) and all(x.visual for x in passages)  # formulas, traps, chart, glossary, evidence everywhere
+
+
+@pytest.mark.asyncio
+async def test_grammar_is_graded_one_exercise_at_a_time_and_each_answer_is_final(client):
+    api, _ = client
+    lesson = (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()
+    item = material.grammar().weeks["1"][0]
+    path = f"{API}/lessons/{lesson['id']}/grammar"
+    one = (await api.post(path, json={"answers": {"1": item.exercises[0].answers[0]}})).json()
+    assert (one["score"], one["total"], one["done"], [r["n"] for r in one["results"]]) == (1, len(item.exercises), False, [1])
+    retry = (await api.post(path, json={"answers": {"1": "wrong now", "2": "nope"}})).json()
+    assert [(r["n"], r["ok"]) for r in retry["results"]] == [(1, True), (2, False)]  # answer 1 stays as first given
+    progress = (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()["progress"]["grammar"]
+    assert "done" not in progress and progress["score"] == 1
+    rest = {str(n): "x" for n in range(3, len(item.exercises) + 1)}
+    last = (await api.post(path, json={"answers": rest})).json()
+    assert last["done"] is True and len(last["results"]) == len(item.exercises)
+    course = (await api.get(f"{API}/course", params={"day": iso(TODAY)})).json()
+    assert next(b for b in course["today"]["blocks"] if b["key"] == "grammar")["done"] is True
+
+
+def test_reading_evidence_and_glossary_come_from_the_passage():
+    passage = material.reading().weeks["1"][0]
+    text = " ".join(p.text for p in passage.paragraphs)
+    assert all(q.evidence in text for q in passage.questions if q.evidence)
+    graded = material.grade(passage, {"1": passage.questions[0].answers[0]})
+    assert graded == [{"n": 1, "given": passage.questions[0].answers[0], "answer": passage.questions[0].answers[0], "ok": True, "explain_ru": passage.questions[0].explain_ru, "evidence": passage.questions[0].evidence}]
 
 
 def test_remedial_grammar_replaces_the_weekly_lesson_on_days_three_and_six():
