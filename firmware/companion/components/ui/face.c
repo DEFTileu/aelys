@@ -5,15 +5,26 @@
 #include "ui_face_priv.h"
 #include "ui_theme.h"
 
+/* A filled quadrilateral drawn by an object's draw event: corners relative to the object's top-left.
+ * Replaces transform_rotation, whose software path mallocs a full ARGB layer on every redraw. */
+typedef struct {
+    lv_point_t p[4];
+    lv_color_t color;
+} quad_t;
+
 typedef struct {
     lv_obj_t *eye[2], *lid[2], *smile[2], *cheek[2];
     lv_obj_t *glyph, *zz[2], *sweat, *sweat_tip, *spark_v, *spark_h, *dot[3];
     int32_t s;     /* scale_x100 */
+    quad_t lid_q[2], tip_q;
     mood_t mood;
     int32_t blink; /* eye openness, permille */
 } face_t;
 
 #define BLINK_PERIOD_MS 5200
+
+/* lv_trigo_sin() is scaled by 32768 */
+static int32_t trig_round(int32_t v) { return (v + (v < 0 ? -16384 : 16384)) / 32768; }
 
 static int32_t px(const face_t *f, int32_t v) { return (v * f->s + (v < 0 ? -50 : 50)) / 100; }
 
@@ -35,6 +46,53 @@ static lv_obj_t *label(lv_obj_t *parent, uint32_t color, const char *txt)
     lv_obj_t *o = lv_label_create(parent);
     lv_obj_set_style_text_color(o, lv_color_hex(color), 0);
     lv_label_set_text_static(o, txt);
+    return o;
+}
+
+static void quad_draw(lv_event_t *e)
+{
+    const quad_t *q = lv_event_get_user_data(e);
+    lv_area_t a;
+    lv_obj_get_coords(lv_event_get_target_obj(e), &a);
+    /* 4 triangles, not 2: with 2 the shared diagonal is anti-aliased twice and leaves a faint seam */
+    static const uint8_t tri[4][3] = { { 0, 1, 2 }, { 0, 2, 3 }, { 0, 1, 3 }, { 1, 2, 3 } };
+    lv_draw_triangle_dsc_t d;
+    lv_draw_triangle_dsc_init(&d);
+    d.color = q->color;
+    for (int t = 0; t < 4; t++) {
+        for (int i = 0; i < 3; i++) {
+            d.p[i].x = a.x1 + q->p[tri[t][i]].x;
+            d.p[i].y = a.y1 + q->p[tri[t][i]].y;
+        }
+        lv_draw_triangle(lv_event_get_layer(e), &d);
+    }
+}
+
+/* Fit `o` to the bounding box of the four corners (face coordinates) and keep them relative to it. */
+static void quad_place(lv_obj_t *o, quad_t *q, const lv_point_t c[4])
+{
+    int32_t x1 = c[0].x, x2 = c[0].x, y1 = c[0].y, y2 = c[0].y;
+    for (int i = 1; i < 4; i++) {
+        if (c[i].x < x1) x1 = c[i].x;
+        if (c[i].x > x2) x2 = c[i].x;
+        if (c[i].y < y1) y1 = c[i].y;
+        if (c[i].y > y2) y2 = c[i].y;
+    }
+    for (int i = 0; i < 4; i++) {
+        q->p[i].x = c[i].x - x1;
+        q->p[i].y = c[i].y - y1;
+    }
+    lv_obj_set_pos(o, x1, y1);
+    lv_obj_set_size(o, x2 - x1 + 1, y2 - y1 + 1);
+    lv_obj_invalidate(o);
+}
+
+static lv_obj_t *quad_obj(lv_obj_t *parent, quad_t *q, uint32_t color)
+{
+    lv_obj_t *o = box(parent, color);
+    q->color = lv_color_hex(color);
+    lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);
+    lv_obj_add_event_cb(o, quad_draw, LV_EVENT_DRAW_MAIN, q);
     return o;
 }
 
@@ -60,12 +118,18 @@ static void layout_eyes(face_t *f)
         lv_obj_set_style_radius(f->eye[side], e->r_pct * shorter / 100, 0);
 
         if (e->lid_pct) {
+            /* lid = black rect 170 % of the eye wide, rotated about the middle of its bottom edge */
             int32_t lw = 170 * r.w / 100, lh = e->lid_pct * r.h / 100 + px(f, 2);
-            lv_obj_set_pos(f->lid[side], r.x - 35 * r.w / 100, r.y - 2);
-            lv_obj_set_size(f->lid[side], lw, lh);
-            lv_obj_set_style_transform_pivot_x(f->lid[side], lw / 2, 0);
-            lv_obj_set_style_transform_pivot_y(f->lid[side], lh, 0);
-            lv_obj_set_style_transform_rotation(f->lid[side], e->tilt * (side ? -10 : 10), 0);
+            int32_t ang = e->tilt * (side ? -1 : 1);
+            int32_t sn = lv_trigo_sin((int16_t)ang), cs = lv_trigo_sin((int16_t)(ang + 90));
+            int32_t pvx = r.x - 35 * r.w / 100 + lw / 2, pvy = r.y - 2 + lh;
+            const int32_t cx[4] = { -lw / 2, lw / 2, lw / 2, -lw / 2 }, cy[4] = { -lh, -lh, 0, 0 };
+            lv_point_t c[4];
+            for (int i = 0; i < 4; i++) { /* clockwise on screen (y down) */
+                c[i].x = pvx + trig_round(cx[i] * cs - cy[i] * sn);
+                c[i].y = pvy + trig_round(cx[i] * sn + cy[i] * cs);
+            }
+            quad_place(f->lid[side], &f->lid_q[side], c);
         }
         if (e->smile) {
             /* CSS dome: 140 % wide, top corners radius 50 % (an ellipse arch). A circle through the same
@@ -112,11 +176,9 @@ static void layout_fx(face_t *f)
     int32_t d = px(f, 18), q = px(f, 9), dx0 = px(f, rcx + 46), dy0 = px(f, rcy - 58);
     lv_obj_set_pos(f->sweat, dx0, dy0);
     lv_obj_set_size(f->sweat, d, d);
-    lv_obj_set_size(f->sweat_tip, q, q);
-    lv_obj_set_pos(f->sweat_tip, dx0 + d / 2 - q / 2, dy0 + d / 2 - d * 354 / 1000 - q / 2);
-    lv_obj_set_style_transform_pivot_x(f->sweat_tip, q / 2, 0);
-    lv_obj_set_style_transform_pivot_y(f->sweat_tip, q / 2, 0);
-    lv_obj_set_style_transform_rotation(f->sweat_tip, 450, 0);
+    int32_t tcx = dx0 + d / 2, tcy = dy0 + d / 2 - d * 354 / 1000, th = q * 7071 / 10000; /* q x q square turned 45 degrees */
+    const lv_point_t tip[4] = { { tcx, tcy - th }, { tcx + th, tcy }, { tcx, tcy + th }, { tcx - th, tcy } };
+    quad_place(f->sweat_tip, &f->tip_q, tip);
 
     int32_t sp = px(f, 30), sx = px(f, rcx + 40), sy = px(f, rcy - 90);
     lv_obj_set_pos(f->spark_v, sx + 44 * sp / 100, sy);
@@ -203,7 +265,7 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
     for (int i = 0; i < 2; i++) {
         f->eye[i] = box(root, UI_COLOR_EYE);
         lv_obj_set_style_border_color(f->eye[i], lv_color_hex(UI_COLOR_EYE), 0); /* ring for the hollow eye */
-        f->lid[i] = box(root, UI_COLOR_BG);
+        f->lid[i] = quad_obj(root, &f->lid_q[i], UI_COLOR_BG);
         f->smile[i] = box(root, UI_COLOR_BG);
         lv_obj_set_style_radius(f->smile[i], LV_RADIUS_CIRCLE, 0);
     }
@@ -218,7 +280,7 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
 
     f->sweat = box(root, UI_COLOR_SWEAT);
     lv_obj_set_style_radius(f->sweat, LV_RADIUS_CIRCLE, 0);
-    f->sweat_tip = box(root, UI_COLOR_SWEAT);
+    f->sweat_tip = quad_obj(root, &f->tip_q, UI_COLOR_SWEAT);
 
     f->spark_v = box(root, UI_COLOR_ACCENT);
     f->spark_h = box(root, UI_COLOR_ACCENT);
