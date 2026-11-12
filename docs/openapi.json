@@ -929,6 +929,32 @@
         }
       }
     },
+    "/api/v1/companion/snapshot": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Get Snapshot",
+        "operationId": "get_snapshot_api_v1_companion_snapshot_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanionSnapshot"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/browser/status": {
       "get": {
         "tags": [
@@ -9292,6 +9318,71 @@
         ],
         "title": "ChatSendIn"
       },
+      "CompanionSnapshot": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "next_task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapTask"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overdue_count": {
+            "type": "integer",
+            "title": "Overdue Count"
+          },
+          "next_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unread_count": {
+            "type": "integer",
+            "title": "Unread Count"
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/SnapNotice"
+            },
+            "type": "array",
+            "title": "Notices"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapFocus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "next_task",
+          "overdue_count",
+          "next_event",
+          "unread_count",
+          "notices",
+          "focus"
+        ],
+        "title": "CompanionSnapshot"
+      },
       "ConnectIn": {
         "properties": {
           "bot_token": {
@@ -14228,6 +14319,139 @@
           "trend"
         ],
         "title": "SkillOut"
+      },
+      "SnapEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "all_day": {
+            "type": "boolean",
+            "title": "All Day"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "all_day"
+        ],
+        "title": "SnapEvent"
+      },
+      "SnapFocus": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused"
+            ],
+            "title": "Status"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "elapsed_seconds": {
+            "type": "integer",
+            "title": "Elapsed Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "mode",
+          "started_at",
+          "elapsed_seconds"
+        ],
+        "title": "SnapFocus"
+      },
+      "SnapNotice": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "created_at"
+        ],
+        "title": "SnapNotice"
+      },
+      "SnapTask": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Due At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "due_at"
+        ],
+        "title": "SnapTask"
       },
       "SpeakingIn": {
         "properties": {

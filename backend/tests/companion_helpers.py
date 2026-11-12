@@ -63,6 +63,7 @@ async def pair_companion(client):
     assert approved.status_code == 200, approved.text
     done = await client.post(f'{B}/pairing/{pairing_id}/finish', json={'signature': board.sign(f'aelys-pairing-finish-v1\n{pairing_id}', raw=True)})
     assert done.status_code == 200, done.text
+    assert not done.json().get('refresh_token'), 'a board must never be handed a refresh token'
     return owner, board, done.json()['device_id']
 
 
