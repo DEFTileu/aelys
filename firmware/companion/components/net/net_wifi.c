@@ -176,7 +176,7 @@ static void net_task(void *arg)
             if (idx >= saved.n) idx = 0;
             size_t tried = 0;
             result_t r = R_FAIL;
-            while (tried < saved.n && (r = attempt(saved.net[idx].ssid, saved.net[idx].pass)) != R_OK &&
+            while (tried < saved.n && !abort_req && (r = attempt(saved.net[idx].ssid, saved.net[idx].pass)) != R_OK &&
                    r != R_ABORT) {
                 idx = (idx + 1) % saved.n; /* next saved network straight away; back off after a full round */
                 tried++;
