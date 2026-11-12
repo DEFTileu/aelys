@@ -1,6 +1,7 @@
 """Idempotent device actions: the board repeats an id after a lost reply, the effect happens once."""
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,6 +19,10 @@ from pydantic import UUID4, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+# Service error codes the board may see; any other HTTP failure is reported as ACTION_FAILED.
+BOARD_ERROR_CODES = frozenset({"TIMER_ACTIVE", "NOT_FOUND", "VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT", "INVALID_STATE"})
 
 # Static grant to every companion; each action kind demands exactly one scope. The denial path is exercised by tests.
 COMPANION_SCOPES = frozenset({"companion.notifications", "companion.focus", "companion.tasks"})
@@ -121,10 +126,14 @@ async def run_action(db: AsyncSession, owner_id: str, device: Device, action: Ac
             try:
                 error = await handler(db, owner_id, action.payload)
             except HTTPException as exc:
-                # Shared services fail with an HTTP error whose detail code (TIMER_ACTIVE, NOT_FOUND, ...) is the action's error code.
-                if not isinstance(exc.detail, dict) or not isinstance(exc.detail.get("code"), str):
-                    raise
-                error = exc.detail["code"]
+                code = exc.detail.get("code") if isinstance(exc.detail, dict) else None
+                if code not in BOARD_ERROR_CODES:
+                    logger.warning("companion action %s failed with %s", action.kind, code or exc.status_code)
+                    code = "ACTION_FAILED"
+                error = code
+    if error is not None:
+        # A failed action must leave no half-done effect (a handler may have written before it raised).
+        await db.rollback()
     result = ActionResult(id=action.id, ok=error is None, error_code=error)
     # The effect and its ledger row share one transaction, so a losing concurrent insert rolls both back.
     db.add(CompanionAction(id=str(action.id), owner_id=owner_id, device_id=device_id, kind=action.kind,

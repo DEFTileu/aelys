@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 import pytest_asyncio
 from app.ai.errors import PolicyDenied
@@ -242,3 +243,87 @@ async def test_task_complete_action(client):
         assert (await session.get(Task, 't1')).version == 2
     assert (await run(client, headers, 'task.complete', task_id='missing'))['error_code'] == 'NOT_FOUND'
     assert (await run(client, headers, 'task.complete'))['error_code'] == 'NOT_FOUND'
+
+
+async def add_task(owner_id, task_id='t1'):
+    from app.core.models import Task
+    async with db.SessionLocal() as session:
+        session.add(Task(id=task_id, owner_id=owner_id, title='Ship'))
+        await session.commit()
+
+
+async def other_owner():
+    from app.core.models import User
+    async with db.SessionLocal() as session:
+        other = User(email='other@example.com')
+        session.add(other)
+        await session.commit()
+        return other.id
+
+
+async def test_failed_action_rolls_back_the_handlers_partial_write(client, monkeypatch):
+    from app.core.models import Task
+    from app.domains import task_service
+    from fastapi import HTTPException
+    owner_id, headers = await board(client)
+    await add_task(owner_id)
+
+    async def fail(db, item):
+        raise HTTPException(409, detail={'code': 'SYNC_RECONCILIATION_REQUIRED', 'message': 'x'})
+    monkeypatch.setattr(task_service, 'record_domain_change', fail)
+    body = action('task.complete', task_id='t1')
+    first = (await client.post(f'{B}/companion/actions', headers=headers, json=body)).json()
+    assert first['ok'] is False and first['error_code'] == 'ACTION_FAILED'
+    async with db.SessionLocal() as session:
+        task = await session.get(Task, 't1')
+        assert (task.status, task.version, task.completed_at) == ('todo', 1, None), 'the UPDATE must not survive the failure'
+    from app.companion.models import CompanionAction
+    async with db.SessionLocal() as session:
+        assert await session.scalar(select(func.count()).select_from(CompanionAction)) == 1
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json=body)).json() == first
+
+
+async def test_internal_service_code_is_hidden_and_logged_without_payload(client, monkeypatch, caplog):
+    from app.domains import task_service
+    from fastapi import HTTPException
+    _, headers = await board(client)
+
+    async def fail(*args, **kwargs):
+        raise HTTPException(500, detail={'code': 'INTERNAL_SECRET_CODE', 'message': 'm'})
+    monkeypatch.setattr(task_service, 'complete_task', fail)
+    result = await run(client, headers, 'task.complete', task_id='secret-task-id')
+    assert result['error_code'] == 'ACTION_FAILED'
+    assert 'INTERNAL_SECRET_CODE' in caplog.text and 'secret-task-id' not in caplog.text
+
+
+async def test_policy_denied_for_focus_and_task_actions_applies_no_effect(client, monkeypatch):
+    from app.core.models import Task
+    owner_id, headers = await board(client)
+    await add_task(owner_id)
+
+    def deny(self, tool, call, context):
+        raise PolicyDenied('no')
+    monkeypatch.setattr(ServerPolicyEngine, 'authorize', deny)
+    for kind, payload in (('focus.start', {}), ('focus.pause', {}), ('focus.resume', {}), ('focus.stop', {}), ('task.complete', {'task_id': 't1'})):
+        result = await run(client, headers, kind, **payload)
+        assert result['ok'] is False and result['error_code'] == 'POLICY_DENIED', kind
+    assert await focus_row(owner_id) == []
+    async with db.SessionLocal() as session:
+        assert (await session.get(Task, 't1')).status == 'todo'
+
+
+async def test_actions_cannot_touch_another_owners_task_or_focus(client):
+    from app.core.models import FocusSession, Task
+    from app.domains import focus_service
+    _, headers = await board(client)
+    other_id = await other_owner()
+    await add_task(other_id)
+    async with db.SessionLocal() as session:
+        await focus_service.start_focus(session, other_id, started_at=datetime.now(UTC), mode='pomodoro', task_id=None, idempotency_key=None)
+        await session.commit()
+    assert (await run(client, headers, 'task.complete', task_id='t1'))['error_code'] == 'NOT_FOUND'
+    for kind in ('focus.pause', 'focus.stop'):
+        assert (await run(client, headers, kind))['error_code'] == 'NO_ACTIVE_FOCUS'
+    async with db.SessionLocal() as session:
+        assert (await session.get(Task, 't1')).status == 'todo'
+        assert (await session.execute(select(FocusSession.status))).scalar_one() == 'active'

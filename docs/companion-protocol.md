@@ -191,9 +191,12 @@ Result error codes (`action_result.error_code`):
 - `NOT_FOUND`: the notification or task does not exist or belongs to another owner.
 - `VALIDATION_ERROR`: the payload is invalid (for example a `focus.start` `mode` other than `pomodoro` or `stopwatch`).
 - `POLICY_DENIED`: the Policy Engine denied the action.
+- `ACTION_FAILED`: the action failed for a reason the board cannot act on.
 
-Other codes come from the shared services (for example `TIMER_ACTIVE` on
-`focus.start`) and are passed through as-is.
+Errors from the shared services pass through as-is only for `TIMER_ACTIVE`
+(`focus.start` while a session is running), `VERSION_CONFLICT`,
+`IDEMPOTENCY_CONFLICT` and `INVALID_STATE`. Any other server failure is
+reported as `ACTION_FAILED`; the real cause is logged on the server only.
 
 ## Notes
 
