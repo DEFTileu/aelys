@@ -1,4 +1,4 @@
-/* companion_sim --shot home|lost|ice|ice_progress|lost_max|ice_max|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|face:<mood> --out file.bmp [--scale 100]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,12 +51,13 @@ static int screen_shot(const char *shot)
     const uint8_t on = 1, pct = 60;
     ui_setup();
     if (!strcmp(shot, "lost_max") || !strcmp(shot, "ice_max")) max_owner(&owner);
+    else if (!strcmp(shot, "ice_defaults")) owner_defaults(&owner);
     else demo_owner(&owner);
     post_owner(&owner);
     sim_post(UI_EV_TIME, time_hm, sizeof time_hm);
     if (!strcmp(shot, "home")) return 0;
     if (!strcmp(shot, "lost") || !strcmp(shot, "lost_max")) { sim_post(UI_EV_LOST, &on, 1); return 0; }
-    if (!strcmp(shot, "ice") || !strcmp(shot, "ice_max")) { sim_post(UI_EV_COMBO_FIRE, NULL, 0); return 0; }
+    if (!strcmp(shot, "ice") || !strcmp(shot, "ice_max") || !strcmp(shot, "ice_defaults")) { sim_post(UI_EV_COMBO_FIRE, NULL, 0); return 0; }
     if (!strcmp(shot, "ice_progress")) { sim_post(UI_EV_COMBO_PROGRESS, &pct, 1); return 0; }
     return -1;
 }
@@ -72,7 +73,7 @@ int main(int argc, char **argv)
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot home|lost|ice|ice_progress|lost_max|ice_max|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|face:<mood> --out <file.bmp> [--scale <percent>]\n",
                 argv[0]);
         return 2;
     }

@@ -1,5 +1,6 @@
 /* ICE card (design "10 · Safety", "Emergency card"): red ring, owner name, up to two emergency contacts and
- * a medical note. Only the fields that are filled in are shown. Deviations: no heart icon, no contact
+ * a medical note. Only the fields that are filled in are shown; with no contact set the owner's phone and
+ * Telegram take their place. Deviations: no heart icon, no contact
  * "relation" line (owner_info_t has none), no SOS button hint (the design marks SOS as a proposal). */
 #include "ui_screens_priv.h"
 
@@ -17,16 +18,25 @@ static struct {
 
 void scr_ice_set_owner(const owner_info_t *o)
 {
+    /* No ICE contact set (factory defaults): the owner's own phone and Telegram are the contacts. */
+    bool fallback = !o->ice_name[0][0] && !o->ice_phone[0][0] && !o->ice_name[1][0] && !o->ice_phone[1][0] &&
+                    (o->phone[0] || o->telegram[0]);
+    const char *cn[2] = { o->ice_name[0], o->ice_name[1] }, *cp[2] = { o->ice_phone[0], o->ice_phone[1] };
+    if (fallback) {
+        cn[0] = "Phone", cp[0] = o->phone;
+        cn[1] = "Telegram", cp[1] = o->telegram;
+    }
+
     lv_label_set_text(h.name, o->name);
     lv_obj_set_hidden(h.name, !o->name[0]);
-    lv_obj_set_hidden(h.role, !o->name[0]);
+    lv_obj_set_hidden(h.role, !o->name[0] && !fallback);
 
     bool any = o->name[0] || o->med_note[0];
     for (int i = 0; i < 2; i++) {
-        bool on = o->ice_name[i][0] || o->ice_phone[i][0];
+        bool on = cn[i][0] || cp[i][0];
         any = any || on;
-        lv_label_set_text(h.cname[i], o->ice_name[i]);
-        lv_label_set_text(h.cphone[i], o->ice_phone[i]);
+        lv_label_set_text(h.cname[i], cn[i]);
+        lv_label_set_text(h.cphone[i], cp[i]);
         lv_obj_set_hidden(h.row[i], !on);
     }
     /* a rule between the two contacts, not above the first */

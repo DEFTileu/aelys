@@ -132,6 +132,39 @@ static void test_short_data(void)
     post_lost(0);
 }
 
+/* A visible label with this exact text anywhere under obj, fully inside the circle, with lit pixels. */
+static bool shows_text(lv_obj_t *obj, const char *txt)
+{
+    if (lv_obj_check_type(obj, &lv_label_class) && !strcmp(lv_label_get_text(obj), txt) && lv_obj_is_visible(obj)) {
+        lv_area_t a;
+        lv_obj_get_coords(obj, &a);
+        int dx = a.x1 + a.x2 + 1 - SIM_W, dy = a.y1 + a.y2 + 1 - SIM_H; /* centre of the box, doubled */
+        int lit = 0;
+        const uint16_t *fb = sim_fb();
+        for (int y = a.y1; y <= a.y2; y++)
+            for (int x = a.x1; x <= a.x2; x++) lit += fb[y * SIM_W + x] != 0;
+        if (dx * dx + dy * dy < 4 * R * R && lit > 20) return true;
+    }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++)
+        if (shows_text(lv_obj_get_child(obj, i), txt)) return true;
+    return false;
+}
+
+/* Factory defaults (no name, no ICE contacts): the card shows the owner's phone and Telegram. */
+static void test_ice_defaults(void)
+{
+    static owner_info_t o;
+    owner_defaults(&o);
+    CHECK(o.phone[0] && o.telegram[0]);
+    post_owner(&o);
+    post(UI_EV_COMBO_FIRE);
+    check_inside("ice (defaults)");
+    CHECK(shows_text(lv_screen_active(), o.phone));
+    CHECK(shows_text(lv_screen_active(), o.telegram));
+    CHECK(!shows_text(lv_screen_active(), "No emergency info set"));
+    post(UI_EV_TOUCH);
+}
+
 static void test_max_length(void)
 {
     static owner_info_t o;
@@ -167,6 +200,7 @@ int main(void)
     test_hold_ring();
     test_wifi_status();
     test_short_data();
+    test_ice_defaults();
     test_max_length();
     return g_failed ? 1 : 0;
 }
