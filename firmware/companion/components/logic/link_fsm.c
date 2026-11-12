@@ -15,6 +15,7 @@ static link_action_t backoff(link_fsm_t *f, uint32_t rnd, uint32_t *wait_ms)
     uint32_t b = f->backoff_ms ? f->backoff_ms * 2 : LINK_BACKOFF_MIN_MS;
     if (b > LINK_BACKOFF_MAX_MS) b = LINK_BACKOFF_MAX_MS;
     f->backoff_ms = b;
+    f->login_rejects = 0; /* every backoff window gets fresh CHECK attempts, else a revoked board never learns it */
     *wait_ms = (uint32_t)((uint64_t)b * (800 + rnd % 401) / 1000);
     f->st = LS_BACKOFF;
     return LA_NONE;

@@ -12,7 +12,8 @@ typedef enum {
     LE_LOGIN_OK,
     LE_LOGIN_REJECTED,     /* 401/403 */
     LE_LOGIN_FAIL,         /* net, TLS, 5xx, 429 */
-    LE_WS_OPEN,
+    LE_WS_OPEN,            /* the server's `ready` frame for our device_id arrived, NOT the HTTP upgrade:
+                            * Starlette can only send 4401/4403 after accept, so the upgrade alone would loop without backoff */
     LE_WS_CLOSED,          /* + close code, 0 = no code */
     LE_CHALLENGE_UNKNOWN,  /* challenge -> 401 UNAUTHORIZED: the server forgot this device */
     LE_CHALLENGE_OK,
@@ -26,7 +27,7 @@ typedef enum { LA_NONE, LA_LOGIN, LA_CONNECT, LA_CHECK, LA_WIPE_PAIRING, LA_CLOS
 typedef struct {
     link_state_t st;
     uint32_t backoff_ms;    /* current un-jittered backoff step, 0 = none yet */
-    uint8_t login_rejects;  /* consecutive rejected logins / early 4401-4403 closes, cleared on LE_WS_OPEN */
+    uint8_t login_rejects;  /* consecutive rejected logins / early 4401-4403 closes, cleared on LE_WS_OPEN and on entering LS_BACKOFF */
 } link_fsm_t;
 
 #define LINK_BACKOFF_MIN_MS 1000u
@@ -36,5 +37,8 @@ void link_fsm_init(link_fsm_t *f, bool paired);
 
 /* Returns the action to run; *wait_ms > 0 means arm LE_TIMER after that delay (state is LS_BACKOFF).
  * rnd = esp_random() for jitter. Events that make no sense in the current state are ignored (LA_NONE).
+ * Caller contract: drop events from stale socket/request generations (tag every attempt with an id);
+ * own the request timeouts and emit LE_LOGIN_FAIL / LE_CHALLENGE_FAIL / LE_WS_CLOSED(0) on a hang;
+ * LE_PAIRED is ignored unless LS_UNPAIRED, so send LE_UNPAIR first when re-pairing replaces a pairing.
  * LA_WIPE_PAIRING is returned ONLY for LE_UNPAIR, or LE_CHALLENGE_UNKNOWN while in LS_CHECK. */
 link_action_t link_next(link_fsm_t *f, link_event_t ev, int close_code, uint32_t rnd, uint32_t *wait_ms);

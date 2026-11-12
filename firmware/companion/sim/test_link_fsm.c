@@ -59,6 +59,11 @@ static void test_4403_checks_then_relogins_when_known(void)
     CHECK_EQ(step(&f, LE_LOGIN_REJECTED, 0, &w), LA_NONE);
     CHECK_EQ(f.st, LS_BACKOFF);
     CHECK(w > 0);
+    /* the next backoff window re-checks again: a revoked board must still learn it */
+    CHECK_EQ(step(&f, LE_TIMER, 0, NULL), LA_LOGIN);
+    CHECK_EQ(step(&f, LE_LOGIN_REJECTED, 0, NULL), LA_CHECK);
+    CHECK_EQ(f.st, LS_CHECK);
+    CHECK_EQ(step(&f, LE_CHALLENGE_UNKNOWN, 0, NULL), LA_WIPE_PAIRING);
     /* a socket refused before opening cannot spin either */
     link_fsm_init(&f, true);
     step(&f, LE_NET_UP, 0, NULL);
