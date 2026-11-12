@@ -9,3 +9,6 @@
 void sim_init(void);               /* lv_init + display + black screen; call once per process */
 void sim_step(uint32_t ms);        /* advance the fake clock and render */
 const uint16_t *sim_fb(void);      /* SIM_W*SIM_H RGB565 */
+
+/* Deliver one UI event to ui_handle_event() (the UI must have been set up with ui_setup()). */
+void sim_post(uint8_t type, const void *data, uint8_t len);

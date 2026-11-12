@@ -9,11 +9,23 @@
 #define UI_COLOR_DIM     0x625D69
 #define UI_COLOR_CHEEK   0xF6907F /* drawn at 55 % opacity */
 #define UI_COLOR_SWEAT   0x6F9CF0
+/* Screens (design "ACTUAL AELYS Companion", section 1 and 10) */
+#define UI_COLOR_TEXT    0xF1EEF6
+#define UI_COLOR_TEXT2   0xCBC6D5
+#define UI_COLOR_SUBTLE  0xA6A0B2
+#define UI_COLOR_AMBER   0xF4C46B /* lost mode */
+#define UI_COLOR_DANGER  0xFF8A84 /* emergency / ICE */
+#define UI_COLOR_DANGER_BG 0x2A1618
+#define UI_COLOR_RULE    0x23202B
+#define UI_COLOR_ORBIT_OFF 0x2B2836
+#define UI_COLOR_QR_LIGHT  0xF1EEF6
 
 /* lv_font_conv 1.5.2 emits non-const font structs for LVGL 9 (see fonts/README.md) */
 #define UI_FONT_DECLARE(name) extern lv_font_t name
 
+UI_FONT_DECLARE(inter_16);
 UI_FONT_DECLARE(inter_20);
+UI_FONT_DECLARE(inter_24);
 UI_FONT_DECLARE(inter_28);
 UI_FONT_DECLARE(inter_40);
 UI_FONT_DECLARE(inter_clock_96); /* digits 0-9, ':' and space only */
