@@ -3,4 +3,6 @@ if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/owner_contact.local.h")
 endif()
 
 idf_component_register(SRCS "app_main.c"
-                       INCLUDE_DIRS ".")
+                       INCLUDE_DIRS "."
+                       REQUIRES board
+                       PRIV_REQUIRES lvgl__lvgl esp_psram)
