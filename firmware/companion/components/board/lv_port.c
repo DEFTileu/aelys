@@ -39,7 +39,7 @@ static bool frame_flushed; /* this refresh sent something to the panel */
 /* frame statistics: the window being filled, and the last full window */
 static int64_t win_start, refr_start;
 static uint32_t win_frames, win_worst;
-static volatile uint32_t out_fps_x10, out_worst_us;
+static volatile uint32_t out_fps_x10, out_worst_us, last_flush_end_us;
 
 /* ---- LVGL heap in PSRAM (LV_USE_CUSTOM_MALLOC). The draw buffers below stay in internal RAM. ---- */
 void lv_mem_init(void) {}
@@ -136,6 +136,7 @@ static void disp_event(lv_event_t *e)
         break;
     case LV_EVENT_REFR_READY:
         if (!frame_flushed) break; /* nothing was invalid: not a frame */
+        last_flush_end_us = (uint32_t)now;
         win_frames++;
         if ((uint32_t)(now - refr_start) > win_worst) win_worst = (uint32_t)(now - refr_start);
         stats_tick(now);
@@ -218,10 +219,12 @@ esp_err_t lv_port_start(void (*ui_setup)(void))
     return (esp_err_t)res;
 }
 
-void lv_port_post(const ui_event_t *ev)
+bool lv_port_post(const ui_event_t *ev)
 {
-    if (ev_queue) xQueueSend(ev_queue, ev, 0);
+    return ev_queue && xQueueSend(ev_queue, ev, 0) == pdTRUE;
 }
+
+uint32_t lv_port_last_flush_end_us(void) { return last_flush_end_us; }
 
 void lv_port_set_handler(void (*fn)(const ui_event_t *)) { ev_handler = fn; }
 

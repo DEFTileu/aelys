@@ -4,5 +4,5 @@ endif()
 
 idf_component_register(SRCS "app_main.c"
                        INCLUDE_DIRS "."
-                       REQUIRES board
+                       REQUIRES board logic ui
                        PRIV_REQUIRES lvgl__lvgl esp_psram)
