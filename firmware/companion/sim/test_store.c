@@ -35,7 +35,7 @@ static void test_store_roundtrip_owner(void)
     fill_owner(&in);
     size_t n = store_encode_owner(&in, buf, sizeof buf);
     CHECK_EQ(n, sizeof buf);
-    CHECK_EQ(buf[0], STORE_VERSION);
+    CHECK_EQ(buf[0], STORE_OWNER_VERSION);
     memset(&out, 0, sizeof out);
     CHECK(store_decode_owner(buf, n, &out));
     CHECK(memcmp(&in, &out, sizeof in) == 0);
@@ -88,6 +88,28 @@ static void test_v1_blob_falls_back_to_defaults(void)
     size_t ln = store_encode_lost(&lin, lb, sizeof lb);
     lb[0] = 1; reseal(lb, ln);
     CHECK(!store_decode_lost(lb, ln, &lout));
+}
+
+/* The exact bytes plan-1 firmware wrote for the "wifi" key: version 1, wifi_list_t, CRC32 LE. A board
+ * flashed with plan-1 code must keep its networks after the upgrade (no re-provisioning). */
+static void test_wifi_v1_blob_from_plan1_still_decodes(void)
+{
+    uint8_t b[1 + 1 + WIFI_MAX * (33 + 65) + 4] = { 1 /* version */, 2 /* n */ };
+    strcpy((char *)b + 2, "Office");                    strcpy((char *)b + 2 + 33, "p@ss word");
+    strcpy((char *)b + 2 + 98, "Home");                 /* second net: empty password */
+    CHECK_EQ(sizeof b, STORE_WIFI_BLOB);
+    reseal(b, sizeof b);
+    wifi_list_t out;
+    memset(&out, 0xAA, sizeof out);
+    CHECK(store_decode_wifi(b, sizeof b, &out));
+    CHECK_EQ(out.n, 2);
+    CHECK(!strcmp(out.net[0].ssid, "Office") && !strcmp(out.net[0].pass, "p@ss word"));
+    CHECK(!strcmp(out.net[1].ssid, "Home") && !out.net[1].pass[0]);
+    /* and what we write today is byte-identical to plan 1 */
+    uint8_t enc[STORE_WIFI_BLOB];
+    CHECK_EQ(store_encode_wifi(&out, enc, sizeof enc), sizeof enc);
+    CHECK_EQ(enc[0], 1);
+    CHECK(memcmp(enc, b, 2 + 98 * 2) == 0);
 }
 
 static void test_owner_v2_fields_terminated(void)
@@ -189,6 +211,7 @@ int main(void)
     test_store_corrupt_blob_falls_back();
     test_owner_overlong_field_truncated();
     test_v1_blob_falls_back_to_defaults();
+    test_wifi_v1_blob_from_plan1_still_decodes();
     test_owner_v2_fields_terminated();
     test_wifi_roundtrip_and_overlong();
     test_wifi_upsert_replaces_same_ssid();

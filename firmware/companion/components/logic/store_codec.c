@@ -19,11 +19,11 @@ uint32_t store_crc32(const uint8_t *p, size_t n)
     return ~c;
 }
 
-static size_t seal(const void *payload, size_t plen, uint8_t *buf, size_t cap)
+static size_t seal(uint8_t ver, const void *payload, size_t plen, uint8_t *buf, size_t cap)
 {
     size_t total = 1 + plen + 4;
     if (!buf || cap < total) return 0;
-    buf[0] = STORE_VERSION;
+    buf[0] = ver;
     memcpy(buf + 1, payload, plen);
     uint32_t c = store_crc32(buf, 1 + plen);
     for (int i = 0; i < 4; i++) buf[1 + plen + i] = (uint8_t)(c >> (8 * i));
@@ -31,9 +31,9 @@ static size_t seal(const void *payload, size_t plen, uint8_t *buf, size_t cap)
 }
 
 /* Returns the payload pointer, or NULL on bad length/version/CRC. */
-static const uint8_t *unseal(const uint8_t *buf, size_t len, size_t plen)
+static const uint8_t *unseal(uint8_t ver, const uint8_t *buf, size_t len, size_t plen)
 {
-    if (!buf || len != 1 + plen + 4 || buf[0] != STORE_VERSION) return NULL;
+    if (!buf || len != 1 + plen + 4 || buf[0] != ver) return NULL;
     uint32_t want = 0;
     for (int i = 0; i < 4; i++) want |= (uint32_t)buf[1 + plen + i] << (8 * i);
     return store_crc32(buf, 1 + plen) == want ? buf + 1 : NULL;
@@ -49,12 +49,12 @@ static void term_owner(owner_info_t *o)
 
 size_t store_encode_owner(const owner_info_t *in, uint8_t *buf, size_t cap)
 {
-    return seal(in, sizeof *in, buf, cap);
+    return seal(STORE_OWNER_VERSION, in, sizeof *in, buf, cap);
 }
 
 bool store_decode_owner(const uint8_t *buf, size_t len, owner_info_t *out)
 {
-    const uint8_t *p = unseal(buf, len, sizeof *out);
+    const uint8_t *p = unseal(STORE_OWNER_VERSION, buf, len, sizeof *out);
     if (!p) return false;
     memcpy(out, p, sizeof *out);
     term_owner(out);
@@ -63,12 +63,12 @@ bool store_decode_owner(const uint8_t *buf, size_t len, owner_info_t *out)
 
 size_t store_encode_wifi(const wifi_list_t *in, uint8_t *buf, size_t cap)
 {
-    return seal(in, sizeof *in, buf, cap);
+    return seal(STORE_WIFI_VERSION, in, sizeof *in, buf, cap);
 }
 
 bool store_decode_wifi(const uint8_t *buf, size_t len, wifi_list_t *out)
 {
-    const uint8_t *p = unseal(buf, len, sizeof *out);
+    const uint8_t *p = unseal(STORE_WIFI_VERSION, buf, len, sizeof *out);
     if (!p || p[0] > WIFI_MAX) return false;
     memcpy(out, p, sizeof *out);
     for (int i = 0; i < WIFI_MAX; i++) { TERM(out->net[i].ssid); TERM(out->net[i].pass); }
@@ -80,12 +80,12 @@ size_t store_encode_lost(const lost_state_t *in, uint8_t *buf, size_t cap)
     uint8_t p[1 + sizeof(owner_info_t)];
     p[0] = in->on ? 1 : 0;
     memcpy(p + 1, &in->shown, sizeof in->shown);
-    return seal(p, sizeof p, buf, cap);
+    return seal(STORE_LOST_VERSION, p, sizeof p, buf, cap);
 }
 
 bool store_decode_lost(const uint8_t *buf, size_t len, lost_state_t *out)
 {
-    const uint8_t *p = unseal(buf, len, 1 + sizeof(owner_info_t));
+    const uint8_t *p = unseal(STORE_LOST_VERSION, buf, len, 1 + sizeof(owner_info_t));
     if (!p) return false;
     out->on = p[0] != 0;
     memcpy(&out->shown, p + 1, sizeof out->shown);

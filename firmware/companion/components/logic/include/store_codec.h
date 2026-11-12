@@ -7,7 +7,12 @@
 #include "owner.h"
 
 #define WIFI_MAX 5
-#define STORE_VERSION 2 /* v2: owner_info_t gained email, ice_rel, show, qr. v1 blobs only held factory data and are dropped. */
+/* Each blob type has its own version byte, so changing one layout never invalidates another.
+ * Wi-Fi stays at 1 exactly as plan 1 wrote it (a board must never forget its networks). Owner and lost
+ * are 2: owner_info_t gained email, ice_rel, show, qr; their v1 blobs only held factory data and are dropped. */
+#define STORE_WIFI_VERSION  1
+#define STORE_OWNER_VERSION 2
+#define STORE_LOST_VERSION  2
 
 typedef struct { char ssid[33]; char pass[65]; } wifi_cred_t;
 typedef struct { uint8_t n; wifi_cred_t net[WIFI_MAX]; } wifi_list_t;
