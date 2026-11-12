@@ -20,8 +20,9 @@ name, code or close code requires a new version of this file.
 - Heartbeat: the board sends `heartbeat` every 30 s; the server answers
   `heartbeat_ack`. The server re-checks the device and session every 60 s and
   closes the socket if they are no longer valid.
-- Ids: `id` on `action` and `command_ack` is a UUID v4 chosen by the board
-  for actions; `command.id` is a UUID chosen by the server.
+- Ids: `id` fields are opaque strings. The receiver echoes them back unchanged
+  and compares them only for equality. Examples use UUIDs. The server requires
+  an action `id` to be a UUID v4 chosen by the board.
 
 ## Connection lifecycle
 
@@ -38,7 +39,7 @@ name, code or close code requires a new version of this file.
 |---|---|---|
 | `4401` | Auth: token or session invalid or expired | Re-login by device signature, then reconnect. |
 | `4403` | Device revoked, missing, or not a companion | Re-check with `/auth/device/challenge`. Wipe pairing only if that response says the device is unknown or revoked. |
-| `4000` | Replaced by a newer connection of the same device | This socket is closed; the newer connection stays. |
+| `4000` | Replaced by a newer connection of the same device | This socket is closed and must not reconnect; the newer connection is live. |
 
 ## Board to server
 
@@ -61,23 +62,34 @@ name, code or close code requires a new version of this file.
 
 ### `action`
 `kind` is one of the action kinds listed below. Repeating an `id` returns the
-stored `action_result` without a second effect.
+stored `action_result` without a second effect. A non-UUID `id` or a non-object
+`payload` gets `error` with `code: "VALIDATION_ERROR"`, not `action_result`.
 ```json
 {"type": "action", "id": "5f0c2a7e-3b1d-4c8e-9a6f-2d7b1e4c9a10", "kind": "focus.start", "payload": {"mode": "pomodoro"}}
 ```
 
 ### `command_ack`
-Acknowledges a `command`; the server drops the matching pending command.
-`error_code` is an open string set by the firmware; the server does not act on
-its value in v1.
+Acknowledges a `command` (every name except `wifi_scan`); the server drops the
+matching pending command. `error_code` is present only when `ok` is false:
+
+| `error_code` | Meaning |
+|---|---|
+| `BAD_ARGS` | `args` are invalid. |
+| `UNSUPPORTED` | `name` is unknown to this firmware. |
+| `BUSY` | The command cannot run now. |
+| `DECRYPT_FAILED` | The `wifi_add` blob did not decrypt. |
+| `WIFI_FAILED` | The blob decrypted but the board could not join the network. |
+
 ```json
 {"type": "command_ack", "id": "c1d2e3f4-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "ok": true}
 ```
 ```json
-{"type": "command_ack", "id": "c1d2e3f4-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "ok": false, "error_code": "BUSY"}
+{"type": "command_ack", "id": "e5f6a7b8-2c3d-4e4f-8a9b-0c1d2e3f4a5b", "ok": false, "error_code": "WIFI_FAILED"}
 ```
 
 ### `wifi_scan_result`
+`id` is the id of the `wifi_scan` command it answers, and this message is that
+command's ack. No separate `command_ack` is sent for `wifi_scan`.
 `rssi` is dBm (negative integer); `secure` is a boolean.
 ```json
 {"type": "wifi_scan_result", "id": "d4e5f6a7-1b2c-4d3e-9f8a-7b6c5d4e3f2a", "networks": [{"ssid": "HomeNet", "rssi": -48, "secure": true}, {"ssid": "Guest", "rssi": -71, "secure": false}]}
@@ -130,14 +142,15 @@ here, not as an `error` message.
 
 ### `command`
 `name` is one of `lost_mode`, `play_sound`, `ice_update`, `wifi_add`,
-`wifi_scan`. Board must answer with `command_ack`.
+`wifi_scan`. The board answers with `command_ack`, except `wifi_scan`, which is
+answered by `wifi_scan_result`.
 
 | `name` | `args` |
 |---|---|
 | `lost_mode` | `{"on": bool, "message": str (max 64), "show_phone": bool, "show_telegram": bool}` |
 | `play_sound` | `{}` |
 | `ice_update` | `{"contacts": [{"name": str (max 32), "phone": str (max 23)}] (max 2), "med_note": str (max 96), "show_name": bool}` |
-| `wifi_add` | `{"blob": str}`: base64url, at most 512 bytes decoded. Opaque to the board's logic; encrypted by the app. |
+| `wifi_add` | `{"blob": str}`: base64url, at most 512 bytes decoded. Opaque to the server. The app encrypts it to the board's public key (ECIES); the board decrypts it. Never logged or stored by the server. |
 | `wifi_scan` | `{}` |
 
 ```json
@@ -147,8 +160,13 @@ here, not as an `error` message.
 {"type": "command", "id": "e5f6a7b8-2c3d-4e4f-8a9b-0c1d2e3f4a5b", "name": "wifi_add", "args": {"blob": "q2V5ZGF0YS1lbmNyeXB0ZWQ"}}
 ```
 
-Pending commands are kept until acknowledged. Pending `lost_mode` and
-`ice_update` commands are deduplicated by name; the newest replaces the older.
+Pending commands are kept until acknowledged.
+
+Queueing while the board is offline:
+- Only `lost_mode` and `ice_update` are queued, delivered after `hello`. Pending
+  commands are deduplicated by name; the newest replaces the older.
+- `play_sound`, `wifi_add` and `wifi_scan` are never queued. The server answers
+  the app with `409 DEVICE_OFFLINE`.
 
 ### `error`
 ```json
@@ -160,7 +178,7 @@ Pending commands are kept until acknowledged. Pending `lost_mode` and
 | `kind` | `payload` | Scope | Result |
 |---|---|---|---|
 | `notification.read` | `{"notification_id": str}` | `companion.notifications` | Marks the notification read. |
-| `focus.start` | `{"mode": "pomodoro" \| "stopwatch"}` (`mode` optional) | `companion.focus` | Starts a focus session; server time is `started_at`. |
+| `focus.start` | `{"mode": "pomodoro" \| "stopwatch"}` (`mode` optional, default `"pomodoro"`) | `companion.focus` | Starts a focus session; server time is `started_at`. |
 | `focus.pause` | `{}` | `companion.focus` | Pauses the active session. |
 | `focus.resume` | `{}` | `companion.focus` | Resumes the paused session. |
 | `focus.stop` | `{}` | `companion.focus` | Stops the active session. |
@@ -182,8 +200,5 @@ Other codes come from the shared services (for example `TIMER_ACTIVE` on
   or `focus.`. Other kinds are counted in `unread_count` but never sent with
   their title or body.
 - The board never receives a refresh token, a notification body, or `data_json`.
-- Open: the default `mode` of `focus.start` when `mode` is omitted is not fixed by
-  this contract; the focus service (plan Task 5) decides it.
-- Open: whether `reauth` from the `lost-mode` HTTP body is forwarded to the board
-  is not in this contract; the board receives only the `args` listed above.
+- `reauth` is HTTP-only and never forwarded to the board.
 - Firmware OTA is not part of v1 (plan 4).
