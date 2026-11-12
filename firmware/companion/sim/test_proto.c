@@ -260,12 +260,48 @@ static void test_rejects(void)
     const char *unk = "{\"type\":\"from_the_future\",\"x\":1}";
     CHECK(proto_parse(unk, strlen(unk), &g_m));
     CHECK_EQ(g_m.type, MSG_UNKNOWN);
+    int o;
+    /* bare strings inside an object (not key/value pairs) must be rejected, never walked off the token array */
+    static char hostile[2200];
+    o = snprintf(hostile, sizeof hostile, "{\"type\":\"snapshot\",\"snapshot\":{\"generated_at\":\"2026-11-13T09:30:00Z\"");
+    for (int i = 0; i < 236; i++) o += snprintf(hostile + o, sizeof hostile - (size_t)o, ",\"a\"");
+    snprintf(hostile + o, sizeof hostile - (size_t)o, "}}");
+    CHECK(!proto_parse(hostile, strlen(hostile), &g_m));
+    o = snprintf(hostile, sizeof hostile, "{\"type\":\"ready\",\"device_id\":\"d\"");
+    for (int i = 0; i < 200; i++) o += snprintf(hostile + o, sizeof hostile - (size_t)o, ",\"a\"");
+    snprintf(hostile + o, sizeof hostile - (size_t)o, "}");
+    CHECK(!proto_parse(hostile, strlen(hostile), &g_m));
     /* more tokens than the static array holds must fail, not overflow */
     static char many[4096];
-    int o = snprintf(many, sizeof many, "{\"type\":\"ready\",\"device_id\":\"d\",\"x\":[");
+    o = snprintf(many, sizeof many, "{\"type\":\"ready\",\"device_id\":\"d\",\"x\":[");
     for (int i = 0; i < 700; i++) o += snprintf(many + o, sizeof many - (size_t)o, "%s1", i ? "," : "");
     snprintf(many + o, sizeof many - (size_t)o, "]}");
     CHECK(!proto_parse(many, strlen(many), &g_m));
+}
+
+static void test_long_free_text_is_cut_not_rejected(void)
+{
+    static char j[1200];
+    char zh40[81] = "", zh60[121] = "";
+    for (int i = 0; i < 40; i++) strcat(zh40, "\xD0\x96");
+    for (int i = 0; i < 60; i++) strcat(zh60, "\xD0\x96");
+    snprintf(j, sizeof j, "{\"type\":\"command\",\"id\":\"c\",\"name\":\"lost_mode\",\"args\":{\"on\":true,\"message\":\"%s\",\"email\":\"%s\"}}", zh40, zh60);
+    CHECK(proto_parse(j, strlen(j), &g_m));
+    CHECK_EQ(strlen(g_m.u.cmd.a.lost.message), 64);
+    CHECK_EQ(strlen(g_m.u.cmd.a.lost.email), 48);
+    CHECK(valid_utf8(g_m.u.cmd.a.lost.message) && valid_utf8(g_m.u.cmd.a.lost.email));
+    snprintf(j, sizeof j, "{\"type\":\"command\",\"id\":\"c\",\"name\":\"ice_update\",\"args\":{\"owner_name\":\"%s\",\"med_note\":\"%s\","
+             "\"contacts\":[{\"name\":\"%s\",\"relation\":\"%s\",\"phone\":\"+7\"}]}}", zh40, zh60, zh40, zh40);
+    CHECK(proto_parse(j, strlen(j), &g_m));
+    const ice_cmd_t *ic = &g_m.u.cmd.a.ice;
+    CHECK_EQ(strlen(ic->owner_name), 32);
+    CHECK_EQ(strlen(ic->med_note), 96);
+    CHECK_EQ(strlen(ic->name[0]), 32);
+    CHECK_EQ(strlen(ic->rel[0]), 16);
+    CHECK(valid_utf8(ic->owner_name) && valid_utf8(ic->med_note) && valid_utf8(ic->name[0]) && valid_utf8(ic->rel[0]));
+    /* ids, ssid, phone stay strict */
+    snprintf(j, sizeof j, "{\"type\":\"command\",\"id\":\"c\",\"name\":\"ice_update\",\"args\":{\"contacts\":[{\"name\":\"a\",\"phone\":\"123456789012345678901234\"}]}}");
+    CHECK(!proto_parse(j, strlen(j), &g_m));
 }
 
 static void test_command_bad_args_still_reports_id(void)
@@ -434,6 +470,7 @@ int main(void)
     test_titles_cut_on_utf8_boundary();
     test_string_escapes_are_decoded();
     test_rejects();
+    test_long_free_text_is_cut_not_rejected();
     test_command_bad_args_still_reports_id();
     test_built_messages_parse_as_json();
     test_wifi_state_escapes_ssid();

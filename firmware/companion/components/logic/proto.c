@@ -14,7 +14,7 @@
 
 /* ------------------------------------------------------------------ parsing */
 
-typedef struct { const char *js; const jsmntok_t *t; } P;
+typedef struct { const char *js; const jsmntok_t *t; int n; } P; /* n = tokens jsmn produced; every walk stays below it */
 
 enum { S_REQ = 1, S_TRUNC = 2 }; /* S_TRUNC: cut an over-long value on a UTF-8 boundary instead of rejecting it */
 
@@ -22,7 +22,7 @@ enum { S_REQ = 1, S_TRUNC = 2 }; /* S_TRUNC: cut an over-long value on a UTF-8 b
 static int skip(const P *p, int i)
 {
     int pending = 1;
-    while (pending > 0) pending += p->t[i++].size - 1;
+    while (pending > 0 && i < p->n) pending += p->t[i++].size - 1;
     return i;
 }
 
@@ -32,7 +32,7 @@ static int find(const P *p, int obj, const char *key)
     if (obj < 0 || p->t[obj].type != JSMN_OBJECT) return -1;
     size_t kl = strlen(key);
     int i = obj + 1;
-    for (int c = 0; c < p->t[obj].size; c++) {
+    for (int c = 0; c < p->t[obj].size && i + 1 < p->n; c++) {
         const jsmntok_t *k = &p->t[i];
         if ((size_t)(k->end - k->start) == kl && memcmp(p->js + k->start, key, kl) == 0) return i + 1;
         i = skip(p, i + 1);
@@ -240,7 +240,7 @@ static bool parse_snapshot(const P *p, int root, snap_t *s)
         if (p->t[v].type != JSMN_ARRAY) return false;
         int i = v + 1;
         for (int k = 0; k < p->t[v].size && k < 5; k++, i = skip(p, i)) {
-            if (p->t[i].type != JSMN_OBJECT || !parse_notice(p, i, &s->notices[k])) return false;
+            if (i >= p->n || p->t[i].type != JSMN_OBJECT || !parse_notice(p, i, &s->notices[k])) return false;
             s->n_notices++;
         }
     }
@@ -257,9 +257,9 @@ static bool parse_lost(const P *p, int a, lost_cmd_t *l)
 {
     char qr[10];
     l->qr = QR_TELEGRAM;
-    if (!get_bool(p, a, "on", &l->on, S_REQ) || !get_str(p, a, "message", l->message, sizeof l->message, 0) ||
+    if (!get_bool(p, a, "on", &l->on, S_REQ) || !get_str(p, a, "message", l->message, sizeof l->message, S_TRUNC) ||
         !get_bool(p, a, "show_phone", &l->show_phone, 0) || !get_bool(p, a, "show_telegram", &l->show_telegram, 0) ||
-        !get_bool(p, a, "show_email", &l->show_email, 0) || !get_str(p, a, "email", l->email, sizeof l->email, 0) ||
+        !get_bool(p, a, "show_email", &l->show_email, 0) || !get_str(p, a, "email", l->email, sizeof l->email, S_TRUNC) ||
         !get_str(p, a, "qr", qr, sizeof qr, 0)) return false;
     if (qr[0] == '\0' || strcmp(qr, "telegram") == 0) l->qr = QR_TELEGRAM;
     else if (strcmp(qr, "phone") == 0) l->qr = QR_PHONE;
@@ -273,13 +273,13 @@ static bool parse_ice(const P *p, int a, ice_cmd_t *c)
     c->show_contacts = c->show_med = true; /* v1 args have no such keys */
     int v = find(p, a, "contacts");
     if (v < 0 || p->t[v].type != JSMN_ARRAY || p->t[v].size > 2) return false;
-    if (!get_str(p, a, "owner_name", c->owner_name, sizeof c->owner_name, 0) ||
-        !get_str(p, a, "med_note", c->med_note, sizeof c->med_note, 0) || !get_bool(p, a, "show_name", &c->show_name, 0) ||
+    if (!get_str(p, a, "owner_name", c->owner_name, sizeof c->owner_name, S_TRUNC) ||
+        !get_str(p, a, "med_note", c->med_note, sizeof c->med_note, S_TRUNC) || !get_bool(p, a, "show_name", &c->show_name, 0) ||
         !get_bool(p, a, "show_contacts", &c->show_contacts, 0) || !get_bool(p, a, "show_med", &c->show_med, 0)) return false;
     int i = v + 1;
     for (int k = 0; k < p->t[v].size; k++, i = skip(p, i)) {
-        if (p->t[i].type != JSMN_OBJECT || !get_str(p, i, "name", c->name[k], sizeof c->name[k], S_REQ) ||
-            !get_str(p, i, "relation", c->rel[k], sizeof c->rel[k], 0) || !get_str(p, i, "phone", c->phone[k], sizeof c->phone[k], S_REQ)) return false;
+        if (i >= p->n || p->t[i].type != JSMN_OBJECT || !get_str(p, i, "name", c->name[k], sizeof c->name[k], S_REQ | S_TRUNC) ||
+            !get_str(p, i, "relation", c->rel[k], sizeof c->rel[k], S_TRUNC) || !get_str(p, i, "phone", c->phone[k], sizeof c->phone[k], S_REQ)) return false;
         c->n++;
     }
     return true;
@@ -291,6 +291,7 @@ static bool parse_order(const P *p, int a, uint8_t *n, char ssid[5][33])
     if (v < 0 || p->t[v].type != JSMN_ARRAY || p->t[v].size > 5) return false;
     for (int k = 0; k < p->t[v].size; k++) {
         int j = v + 1 + k; /* string elements are single tokens */
+        if (j >= p->n) return false;
         int len = jstr(p, j, ssid[k], 33);
         if (len < 1 || len > 32) return false;
         (*n)++;
@@ -323,7 +324,7 @@ static bool parse_command(const P *p, proto_msg_t *out)
     out->u.cmd.name = CMD_UNKNOWN;
     for (size_t i = 0; i < sizeof CMDS / sizeof CMDS[0]; i++)
         if (strcmp(name, CMDS[i].name) == 0) out->u.cmd.name = CMDS[i].cmd;
-    memcpy(out->u.cmd.raw_name, name, sizeof name);
+    memcpy(out->u.cmd.raw_name, name, strlen(name) + 1); /* name is NUL-terminated by jstr */
     out->type = MSG_COMMAND; /* from here a failure still lets the caller ack BAD_ARGS */
     return parse_args(p, find(p, 0, "args"), out->u.cmd.name, out);
 }
@@ -338,7 +339,10 @@ bool proto_parse(const char *json, size_t len, proto_msg_t *out)
     jsmn_init(&jp);
     int n = jsmn_parse(&jp, json, len, toks, MAX_TOKENS);
     if (n < 1 || toks[0].type != JSMN_OBJECT) return false;
-    P p = { json, toks };
+    /* jsmn (non-strict about structure) lets bare strings into an object; require key/value pairs everywhere */
+    for (int i = 1; i < n; i++)
+        if (toks[toks[i].parent].type == JSMN_OBJECT && (toks[i].type != JSMN_STRING || toks[i].size != 1)) return false;
+    P p = { json, toks, n };
     char type[16];
     if (!get_str(&p, 0, "type", type, sizeof type, S_REQ | S_TRUNC)) return false;
     msg_type_t t;
