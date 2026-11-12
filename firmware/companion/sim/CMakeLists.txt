@@ -26,6 +26,12 @@ target_include_directories(lvgl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../components
 add_subdirectory(../components/ui ui) # plain-library branch of the component CMakeLists
 target_compile_options(ui PRIVATE -Wall -Wextra)
 
+# Pure-C logic (no LVGL, no IDF); owner.c reads the example contacts, never the git-ignored local header.
+add_subdirectory(../components/logic logic)
+target_compile_options(logic PRIVATE -Wall -Wextra)
+target_compile_definitions(logic PRIVATE OWNER_CONTACT_HEADER="owner_contact.example.h")
+target_include_directories(logic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main)
+
 add_library(simlib STATIC sim_display.c bmp.c)
 target_compile_options(simlib PRIVATE -Wall -Wextra)
 target_include_directories(simlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -38,6 +44,12 @@ enable_testing()
 foreach(t test_face_moods test_face_geometry test_bmp)
     add_executable(${t} ${t}.c)
     target_link_libraries(${t} PRIVATE simlib)
+    add_test(NAME ${t} COMMAND ${t})
+endforeach()
+foreach(t test_combo)
+    add_executable(${t} ${t}.c)
+    target_compile_options(${t} PRIVATE -Wall -Wextra)
+    target_link_libraries(${t} PRIVATE logic)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
 add_test(NAME sim_shot_smoke COMMAND companion_sim --shot face:happy --out ${CMAKE_BINARY_DIR}/smoke.bmp)
