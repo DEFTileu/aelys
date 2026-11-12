@@ -19,7 +19,11 @@ int improv_feed(improv_parser_t *p, uint8_t b, improv_frame_t *out)
         }
         return 0;
     case S_VER:
-        if (b != IMPROV_VERSION) { restart(p); return 0; }
+        if (b != IMPROV_VERSION) { /* e.g. "IMPROVIMPROV": this byte may start the real header */
+            restart(p);
+            if (b == (uint8_t)HDR[0]) { p->sum = b; p->idx = 1; }
+            return 0;
+        }
         p->sum += b; p->st = S_TYPE;
         return 0;
     case S_TYPE:

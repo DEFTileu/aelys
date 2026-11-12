@@ -78,6 +78,15 @@ static void test_garbage_before_header_skipped(void)
     buf[6] = 2;
     memset(&p, 0, sizeof p);
     CHECK_EQ(feed_all(&p, buf, n, &f), 0);
+    buf[6] = IMPROV_VERSION;
+
+    /* "IMPROVIMPROV\x01...": the 'I' that fails the version check starts the next header */
+    uint8_t in3[90];
+    memcpy(in3, "IMPROV", 6);
+    memcpy(in3 + 6, buf, n);
+    memset(&p, 0, sizeof p);
+    CHECK_EQ(feed_all(&p, in3, 6 + n, &f), 1);
+    CHECK_EQ(f.data[0], 7);
 }
 
 static void test_parse_wifi_rpc(void)
