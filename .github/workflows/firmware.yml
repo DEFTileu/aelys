@@ -38,3 +38,20 @@ jobs:
           path: |
             firmware/companion/build/companion.bin
             firmware/companion/build/companion.elf
+  qemu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp firmware/companion/main/owner_contact.example.h firmware/companion/main/owner_contact.local.h
+      # v1.2.0, same pin as the build job. The command must not contain single quotes (the action wraps it in them).
+      - uses: espressif/esp-idf-ci-action@e6f5c74232b1ccd4c97ed641f1e48553853f1fd5
+        with:
+          esp_idf_version: v6.1
+          target: esp32s3
+          path: firmware/companion
+          command: >-
+            apt-get update
+            && apt-get install -y --no-install-recommends libgcrypt20 libglib2.0-0 libpixman-1-0 libsdl2-2.0-0 libslirp0
+            && python $IDF_PATH/tools/idf_tools.py install qemu-xtensa
+            && . $IDF_PATH/export.sh
+            && tools/qemu_smoke.sh
