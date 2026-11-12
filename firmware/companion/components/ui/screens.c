@@ -5,10 +5,12 @@
 
 #define ICE_TIMEOUT_MS 15000
 
+tribuf_t ui_owner_tb;
+static owner_info_t owner_buf[3];
+
 static struct {
     scr_t cur;
     bool lost;
-    owner_info_t owner;
     lv_obj_t *scr[3]; /* indexed by scr_t */
     lv_timer_t *ice_timer;
 } g;
@@ -110,22 +112,8 @@ static void show(scr_t s)
 
 static void set_owner(const owner_info_t *o)
 {
-    if (o != &g.owner) {
-        g.owner = *o;
-        /* the sender's buffer may lack terminators: the screens run string functions on these */
-        g.owner.name[sizeof g.owner.name - 1] = 0;
-        g.owner.phone[sizeof g.owner.phone - 1] = 0;
-        g.owner.telegram[sizeof g.owner.telegram - 1] = 0;
-        g.owner.qr_url[sizeof g.owner.qr_url - 1] = 0;
-        g.owner.message[sizeof g.owner.message - 1] = 0;
-        g.owner.med_note[sizeof g.owner.med_note - 1] = 0;
-        for (int i = 0; i < 2; i++) {
-            g.owner.ice_name[i][sizeof g.owner.ice_name[i] - 1] = 0;
-            g.owner.ice_phone[i][sizeof g.owner.ice_phone[i] - 1] = 0;
-        }
-    }
-    scr_lost_set_owner(&g.owner);
-    scr_ice_set_owner(&g.owner);
+    scr_lost_set_owner(o);
+    scr_ice_set_owner(o);
 }
 
 void ui_setup(void)
@@ -136,8 +124,9 @@ void ui_setup(void)
     g.scr[SCR_LOST] = scr_lost_create(root);
     g.scr[SCR_ICE] = scr_ice_create(root);
     scr_hold_create(root);
-    owner_defaults(&g.owner);
-    set_owner(&g.owner);
+    for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
+    tribuf_init(&ui_owner_tb, &owner_buf[0], &owner_buf[1], &owner_buf[2]);
+    set_owner(tribuf_latest(&ui_owner_tb, NULL));
     g.lost = false;
     show(SCR_HOME);
 }
@@ -153,10 +142,9 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->len >= 1) scr_home_set_wifi(ev->data[0]);
         return;
     case UI_EV_OWNER: {
-        const owner_info_t *o;
-        if (ev->len < sizeof o) return;
-        memcpy(&o, ev->data, sizeof o);
-        if (o) set_owner(o);
+        bool fresh;
+        const owner_info_t *o = tribuf_latest(&ui_owner_tb, &fresh);
+        if (fresh) set_owner(o);
         return;
     }
     case UI_EV_COMBO_PROGRESS:

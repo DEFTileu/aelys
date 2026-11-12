@@ -16,7 +16,6 @@
 
 static const char *TAG = "companion";
 
-/* The ui copies from these on receipt, so they must stay valid until it has drained the queue. */
 static owner_info_t owner;
 static lost_state_t lost;
 
@@ -24,9 +23,9 @@ static lost_state_t lost;
 static void boot_ui_setup(void)
 {
     ui_setup();
-    ui_event_t ev = {.type = UI_EV_OWNER, .len = sizeof(const owner_info_t *)};
-    const owner_info_t *p = lost.on ? &lost.shown : &owner; /* lost mode shows what the owner chose */
-    memcpy(ev.data, &p, sizeof p);
+    *(owner_info_t *)tribuf_back(&ui_owner_tb) = lost.on ? lost.shown : owner; /* lost mode shows what the owner chose */
+    tribuf_publish(&ui_owner_tb);
+    ui_event_t ev = {.type = UI_EV_OWNER};
     ui_handle_event(&ev);
     if (lost.on) {
         ui_event_t lev = {.type = UI_EV_LOST, .len = 1, .data = {1}};

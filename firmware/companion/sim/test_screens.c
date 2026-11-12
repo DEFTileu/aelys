@@ -13,7 +13,12 @@ static void fill_w(char *dst, size_t cap)
     dst[cap - 1] = '\0';
 }
 
-static void post_owner(const owner_info_t *o) { sim_post(UI_EV_OWNER, &o, sizeof o); }
+static void post_owner(const owner_info_t *o)
+{
+    *(owner_info_t *)tribuf_back(&ui_owner_tb) = *o;
+    tribuf_publish(&ui_owner_tb);
+    sim_post(UI_EV_OWNER, NULL, 0);
+}
 static void post_lost(int on) { uint8_t v = (uint8_t)on; sim_post(UI_EV_LOST, &v, 1); }
 static void post_progress(int pct) { uint8_t v = (uint8_t)pct; sim_post(UI_EV_COMBO_PROGRESS, &v, 1); }
 static void post(uint8_t type) { sim_post(type, NULL, 0); }

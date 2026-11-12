@@ -2,6 +2,8 @@
 /* Aelys companion UI: mood/face API. Portable C: only lvgl.h + libc, no IDF headers. */
 #include <stdint.h>
 #include "lvgl.h"
+#include "owner.h"
+#include "tribuf.h"
 #include "ui_events.h"
 
 #ifdef __cplusplus
@@ -24,8 +26,12 @@ const char *mood_name(mood_t m);
 /* Screens (home, lost mode, ICE card). ui_setup() builds them on the active LVGL screen: it is the
  * lv_port_start callback, so call it with the LVGL lock held. ui_handle_event() applies one event
  * (payloads: UI_EV_TIME = hour, minute; UI_EV_WIFI = ui_wifi_state_t; UI_EV_COMBO_PROGRESS = percent; UI_EV_LOST = 1/0;
- * UI_EV_OWNER = a const owner_info_t * that is copied on receipt). Same locking rule. */
+ * UI_EV_OWNER = no payload, see ui_owner_tb). Same locking rule. */
 void ui_setup(void);
+/* The UI owns the owner-data buffers (valid after ui_setup()). A producer fills tribuf_back(&ui_owner_tb),
+ * NUL-terminates every string, calls tribuf_publish(), then posts UI_EV_OWNER (len 0); the UI reads
+ * tribuf_latest(). The content is what the lost and ICE screens show: lost.on ? lost.shown : owner. */
+extern tribuf_t ui_owner_tb; /* owner_info_t */
 void ui_handle_event(const ui_event_t *ev);
 
 #ifdef __cplusplus

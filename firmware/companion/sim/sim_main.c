@@ -17,7 +17,9 @@ static int find_mood(const char *name)
 
 static void post_owner(const owner_info_t *o)
 {
-    sim_post(UI_EV_OWNER, &o, sizeof o);
+    *(owner_info_t *)tribuf_back(&ui_owner_tb) = *o;
+    tribuf_publish(&ui_owner_tb);
+    sim_post(UI_EV_OWNER, NULL, 0);
 }
 
 /* owner_defaults() gives the example contacts; the rest is made up for the screenshots */
