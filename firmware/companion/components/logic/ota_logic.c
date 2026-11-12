@@ -30,7 +30,7 @@ int semver_cmp(const char *a, const char *b)
 
 static bool is_hex64(const char *s)
 {
-    if (strnlen(s, 65) != 64) return false;
+    if (memchr(s, 0, 65) != s + 64) return false; /* strnlen is not C11 */
     for (int i = 0; i < 64; i++)
         if (!((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'f') || (s[i] >= 'A' && s[i] <= 'F'))) return false;
     return true;
