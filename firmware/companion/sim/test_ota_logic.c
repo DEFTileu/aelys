@@ -88,11 +88,16 @@ static void test_url_must_be_own_api_path(void)
     const char *bad[] = {"https://evil/x", "http://evil/x", "//host/x",
                          "/api/v1/companion/firmware/../../x", "/other", "",
                          "/api/v1/companion/firmware//x",
-                         "/api/v1/companion/firmware/x?u=http://evil"};
+                         "/api/v1/companion/firmware/x?u=http://evil",
+                         "/api/v1/companion/firmware/%2e%2e/x", "/api/v1/companion/firmware/0.3.0\r\nX: y",
+                         "/api/v1/companion/firmware/a\\b", "/api/v1/companion/firmware/a b",
+                         "/api/v1/companion/firmware/0.3.0?x=1", "/api/v1/companion/firmware/"};
     for (unsigned i = 0; i < sizeof bad / sizeof *bad; i++) {
         ota_meta_t m = meta("0.3.0", "0.1.0", bad[i], 1000);
         CHECK_EQ(ota_decide("0.2.0", NULL, &m, SLOT), OTA_BAD_URL);
     }
+    ota_meta_t ok = meta("0.3.0", "0.1.0", "/api/v1/companion/firmware/0.3.0/image", 1000);
+    CHECK_EQ(ota_decide("0.2.0", NULL, &ok, SLOT), OTA_INSTALL);
 }
 
 static void test_size_limits(void)
@@ -107,37 +112,37 @@ static void test_confirm_needs_all_three_events(void)
 {
     ota_confirm_t c;
     ota_confirm_start(&c, true, 1000, 60000);
-    CHECK_EQ(ota_confirm_update(&c, 0, 1100), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 3, 1200), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 1, 1300), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 2, 1400), CONFIRM_VALID);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 1100), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_HELLO_SENT, 1200), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_READY, 1300), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_SNAPSHOT, 1400), CONFIRM_VALID);
     /* any order */
     ota_confirm_start(&c, true, 0, 60000);
-    CHECK_EQ(ota_confirm_update(&c, 2, 10), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 3, 20), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 1, 30), CONFIRM_VALID);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_SNAPSHOT, 10), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_HELLO_SENT, 20), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_READY, 30), CONFIRM_VALID);
 }
 
 static void test_confirm_rolls_back_after_window(void)
 {
     ota_confirm_t c;
     ota_confirm_start(&c, true, 1000, 60000);
-    CHECK_EQ(ota_confirm_update(&c, 1, 5000), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 0, 60999), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 0, 61000), CONFIRM_ROLLBACK);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_READY, 5000), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 60999), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 61000), CONFIRM_ROLLBACK);
     /* wraparound of the 32-bit ms clock */
     ota_confirm_start(&c, true, 0xFFFFFF00u, 1000);
-    CHECK_EQ(ota_confirm_update(&c, 0, 0xFFFFFF10u), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 0, 0x000002E7u), CONFIRM_WAIT);
-    CHECK_EQ(ota_confirm_update(&c, 0, 0x000002E8u), CONFIRM_ROLLBACK);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 0xFFFFFF10u), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 0x000002E7u), CONFIRM_WAIT);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 0x000002E8u), CONFIRM_ROLLBACK);
 }
 
 static void test_not_pending_never_rolls_back(void)
 {
     ota_confirm_t c;
     ota_confirm_start(&c, false, 1000, 10);
-    CHECK_EQ(ota_confirm_update(&c, 0, 1000000), CONFIRM_VALID);
-    CHECK_EQ(ota_confirm_update(&c, 0, 2000000), CONFIRM_VALID);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 1000000), CONFIRM_VALID);
+    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 2000000), CONFIRM_VALID);
 }
 
 int main(void)

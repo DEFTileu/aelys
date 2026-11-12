@@ -36,6 +36,19 @@ static bool is_hex64(const char *s)
     return true;
 }
 
+/* non-empty, [A-Za-z0-9._/-] only (no %, ?, \\, CR/LF, space), no ".." and no "//" */
+static bool url_tail_ok(const char *t)
+{
+    if (!*t || *t == '/') return false; /* empty, or "//" across the prefix */
+    for (const char *p = t; *p; p++) {
+        char c = *p;
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '_' || c == '/' || c == '-'))
+            return false;
+        if (p[1] && ((c == '.' && p[1] == '.') || (c == '/' && p[1] == '/'))) return false;
+    }
+    return true;
+}
+
 ota_verdict_t ota_decide(const char *running, const char *bad_version, const ota_meta_t *m, uint32_t slot_size)
 {
     uint16_t v[3];
@@ -44,7 +57,7 @@ ota_verdict_t ota_decide(const char *running, const char *bad_version, const ota
         semver_parse(m->min_version, v) || !is_hex64(m->sha256))
         return OTA_BAD_META;
     if (memchr(m->url, 0, sizeof m->url) == NULL || strncmp(m->url, URL_PREFIX, sizeof URL_PREFIX - 1) != 0 ||
-        strstr(m->url, "..") || strstr(m->url, "//") || strstr(m->url, "://"))
+        !url_tail_ok(m->url + sizeof URL_PREFIX - 1))
         return OTA_BAD_URL;
     if (m->size == 0 || m->size > slot_size) return OTA_BAD_SIZE;
     if (semver_cmp(m->version, running) <= 0) return OTA_UP_TO_DATE;
@@ -63,9 +76,9 @@ void ota_confirm_start(ota_confirm_t *c, bool pending_verify, uint32_t now_ms, u
 confirm_t ota_confirm_update(ota_confirm_t *c, uint8_t channel_event, uint32_t now_ms)
 {
     if (!c->pending) return CONFIRM_VALID;
-    if (channel_event == 1) c->got_ready = true;
-    else if (channel_event == 2) c->got_snapshot = true;
-    else if (channel_event == 3) c->sent_hello = true;
+    if (channel_event == OTA_EV_READY) c->got_ready = true;
+    else if (channel_event == OTA_EV_SNAPSHOT) c->got_snapshot = true;
+    else if (channel_event == OTA_EV_HELLO_SENT) c->sent_hello = true;
     if (c->got_ready && c->got_snapshot && c->sent_hello) { c->pending = false; return CONFIRM_VALID; }
     /* signed difference keeps the deadline correct across the 32-bit ms wrap */
     return (int32_t)(now_ms - c->deadline_ms) >= 0 ? CONFIRM_ROLLBACK : CONFIRM_WAIT;

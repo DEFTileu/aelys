@@ -27,5 +27,6 @@ typedef enum { CONFIRM_WAIT, CONFIRM_VALID, CONFIRM_ROLLBACK } confirm_t;
 typedef struct { bool pending; bool got_ready, got_snapshot, sent_hello; uint32_t deadline_ms; } ota_confirm_t;
 
 void ota_confirm_start(ota_confirm_t *c, bool pending_verify, uint32_t now_ms, uint32_t window_ms);
-/* channel_event: 1 ready, 2 snapshot, 3 hello sent, 0 tick. VALID once all three happened. */
+enum { OTA_EV_TICK = 0, OTA_EV_READY = 1, OTA_EV_SNAPSHOT = 2, OTA_EV_HELLO_SENT = 3 };
+/* channel_event: an OTA_EV_* value. VALID once ready, snapshot and hello-sent all happened. */
 confirm_t ota_confirm_update(ota_confirm_t *c, uint8_t channel_event, uint32_t now_ms);
