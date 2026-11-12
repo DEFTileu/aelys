@@ -6,6 +6,7 @@
 #include "esp_psram.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "net.h"
 #include "owner.h"
 #include "store_nvs.h"
 #include "ui.h"
@@ -45,6 +46,13 @@ void app_main(void)
 
     esp_err_t err = board_input_start();
     if (err != ESP_OK) ESP_LOGE(TAG, "input start: %s", esp_err_to_name(err));
+
+#ifndef CONFIG_AELYS_NO_WIFI
+    static const net_store_t nstore = {.load = store_load_wifi, .save = store_save_wifi};
+    err = net_start(&nstore);
+    if (err != ESP_OK) ESP_LOGE(TAG, "net start: %s", esp_err_to_name(err));
+    ESP_LOGW(TAG, "wifi started: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+#endif
 
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(5000));

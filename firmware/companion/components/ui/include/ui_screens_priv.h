@@ -30,6 +30,7 @@ void orbit_set(lv_obj_t *orbit, int done, int total);
 lv_obj_t *scr_home_create(lv_obj_t *parent);
 void scr_home_set_time(uint8_t hour, uint8_t minute);
 void scr_home_set_tasks(int done, int total);
+void scr_home_set_wifi(uint8_t state); /* ui_wifi_state_t */
 
 lv_obj_t *scr_lost_create(lv_obj_t *parent);
 void scr_lost_set_owner(const owner_info_t *o);

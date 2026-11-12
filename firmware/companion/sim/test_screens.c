@@ -107,6 +107,18 @@ static void test_hold_ring(void)
     post(UI_EV_TOUCH);
 }
 
+static void test_wifi_status(void)
+{
+    for (uint8_t st = UI_WIFI_OFFLINE; st <= UI_WIFI_BAD_PASSWORD; st++) {
+        sim_post(UI_EV_WIFI, &st, 1);
+        check_inside("home wifi status");
+    }
+    uint8_t bad = 99;
+    sim_post(UI_EV_WIFI, &bad, 1);              /* out of range: ignored */
+    sim_post(UI_EV_WIFI, NULL, 0);              /* no payload: ignored */
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
 static void test_short_data(void)
 {
     static owner_info_t o; /* only the defaults: no name, no contacts */
@@ -153,6 +165,7 @@ int main(void)
     sim_init();
     test_flow();
     test_hold_ring();
+    test_wifi_status();
     test_short_data();
     test_max_length();
     return g_failed ? 1 : 0;

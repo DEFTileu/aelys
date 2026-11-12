@@ -20,3 +20,6 @@ typedef struct {
 } ui_event_t;
 
 _Static_assert(sizeof(ui_event_t) == 64, "ui_event_t");
+
+/* UI_EV_WIFI data[0] */
+typedef enum { UI_WIFI_OFFLINE, UI_WIFI_CONNECTING, UI_WIFI_ONLINE, UI_WIFI_BAD_PASSWORD } ui_wifi_state_t;

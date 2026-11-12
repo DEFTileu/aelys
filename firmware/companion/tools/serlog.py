@@ -17,7 +17,11 @@ def main():
         print(f"board not found on {port}", file=sys.stderr)
         return 2
     try:
-        s = serial.Serial(port, 115200, timeout=0.2)
+        s = serial.Serial()
+        s.port, s.baudrate, s.timeout = port, 115200, 0.2
+        s.open()
+        s.rts = False  # RTS first, then DTR: the other order pulses a chip reset (only --reset should)
+        s.dtr = False
     except serial.SerialException as e:
         print(f"board not found on {port} ({e})", file=sys.stderr)
         return 2

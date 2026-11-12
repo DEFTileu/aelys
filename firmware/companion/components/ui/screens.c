@@ -149,6 +149,9 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_TIME:
         if (ev->len >= 2) scr_home_set_time(ev->data[0], ev->data[1]);
         return;
+    case UI_EV_WIFI:
+        if (ev->len >= 1) scr_home_set_wifi(ev->data[0]);
+        return;
     case UI_EV_OWNER: {
         const owner_info_t *o;
         if (ev->len < sizeof o) return;

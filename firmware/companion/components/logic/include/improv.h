@@ -11,6 +11,19 @@
 #define IMPROV_TYPE_RPC    0x03
 #define IMPROV_TYPE_RESULT 0x04
 #define IMPROV_RPC_WIFI    0x01 /* RPC data: cmd, len, ssid_len, ssid, pass_len, pass */
+#define IMPROV_RPC_STATE   0x02 /* request current state */
+#define IMPROV_RPC_INFO    0x03 /* request device information */
+
+/* STATE packet payload */
+#define IMPROV_ST_AUTHORIZED   0x02
+#define IMPROV_ST_PROVISIONING 0x03
+#define IMPROV_ST_PROVISIONED  0x04
+/* ERROR packet payload */
+#define IMPROV_ERR_NONE       0x00
+#define IMPROV_ERR_INVALID_RPC 0x01
+#define IMPROV_ERR_UNKNOWN_RPC 0x02
+#define IMPROV_ERR_CONNECT     0x03
+#define IMPROV_ERR_UNKNOWN     0xFF
 
 typedef struct { uint8_t type; uint8_t len; uint8_t data[255]; } improv_frame_t;
 typedef struct { uint8_t st, idx, sum; improv_frame_t f; } improv_parser_t; /* zero-initialise */

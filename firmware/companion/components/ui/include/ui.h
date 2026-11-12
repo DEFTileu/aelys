@@ -23,7 +23,7 @@ const char *mood_name(mood_t m);
 
 /* Screens (home, lost mode, ICE card). ui_setup() builds them on the active LVGL screen: it is the
  * lv_port_start callback, so call it with the LVGL lock held. ui_handle_event() applies one event
- * (payloads: UI_EV_TIME = hour, minute; UI_EV_COMBO_PROGRESS = percent; UI_EV_LOST = 1/0;
+ * (payloads: UI_EV_TIME = hour, minute; UI_EV_WIFI = ui_wifi_state_t; UI_EV_COMBO_PROGRESS = percent; UI_EV_LOST = 1/0;
  * UI_EV_OWNER = a const owner_info_t * that is copied on receipt). Same locking rule. */
 void ui_setup(void);
 void ui_handle_event(const ui_event_t *ev);
