@@ -9824,7 +9824,14 @@
             "title": "Access Token"
           },
           "refresh_token": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Refresh Token"
           },
           "token_type": {
@@ -9840,7 +9847,6 @@
         "type": "object",
         "required": [
           "access_token",
-          "refresh_token",
           "device_id"
         ],
         "title": "DeviceSession"
@@ -11253,7 +11259,7 @@
           },
           "platform": {
             "type": "string",
-            "pattern": "^(web|macos|android|helper)$",
+            "pattern": "^(web|macos|android|helper|companion)$",
             "title": "Platform"
           },
           "display_name": {
@@ -12711,7 +12717,7 @@
           },
           "platform": {
             "type": "string",
-            "pattern": "^(web|macos|android|helper)$",
+            "pattern": "^(web|macos|android|helper|companion)$",
             "title": "Platform"
           },
           "display_name": {
@@ -12772,7 +12778,7 @@
           },
           "platform": {
             "type": "string",
-            "pattern": "^(web|macos|android|helper)$",
+            "pattern": "^(web|macos|android|helper|companion)$",
             "title": "Platform"
           },
           "display_name": {
@@ -14161,7 +14167,7 @@
           },
           "platform": {
             "type": "string",
-            "pattern": "^(web|macos|android|helper)$",
+            "pattern": "^(web|macos|android|helper|companion)$",
             "title": "Platform"
           },
           "display_name": {

@@ -65,6 +65,9 @@ async def refresh(body: dict, request: Request, db: AsyncSession = Depends(get_d
     enforce(request, "refresh", (300, 600))
     claims = decode_refresh_token(body.get("refresh_token", "")); user = await db.get(User, claims["sub"])
     if not user: raise HTTPException(401, detail={"code":"UNAUTHORIZED","message":"Unknown owner"})
+    # Companion boards never refresh (they re-sign with their key), so any refresh token naming one is refused outright.
+    if claims.get("device_id") and getattr(await db.get(Device, claims["device_id"]), "platform", None) == "companion":
+        raise HTTPException(403, detail={"code":"DEVICE_SCOPE_DENIED","message":"This device may not use this endpoint"})
     raw_refresh=body.get("refresh_token",""); session_query=select(AuthSession).where(AuthSession.owner_id==user.id,AuthSession.refresh_token_hash==token_hash(raw_refresh),AuthSession.revoked_at.is_(None))
     if claims.get("sid"): session_query=session_query.where(AuthSession.id==claims["sid"])
     session=(await db.execute(session_query)).scalar_one_or_none()
