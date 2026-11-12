@@ -10,9 +10,9 @@ Plan 1 (`docs/superpowers/plans/2026-11-12-companion-firmware-base.md`) is done.
 ## Memory and TLS (plan 3)
 - Internal heap dips to 62 KB within ~12 s of Wi-Fi bring-up (steady ONLINE minimum 96.9 KB). Measure free heap at every reconnect and set `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y` (or the v6.1 equivalent) before adding the TLS/WebSocket channel.
 
-## Open owner checks
-- Touch latency on real taps: flash a build with `CONFIG_AELYS_INPUT_SELFTEST=y`, open the emergency card, tap it 20 times; the log prints the median/max.
-- Is the amber/red ring centred on the round edge (checks the panel x offset of 6 px)?
+## Owner checks (done 2026-11-13)
+- Touch latency on real taps: median 27 ms, max 35 ms (budget 50 ms).
+- Ring centred on the round edge: OK, so the panel x offset of 6 px is right.
 
 ## Known limits left as they are
 - The two-button hold ring runs at ~48 fps (worst frame 35–42 ms) during the 2 s hold; the rest of the UI holds 60 fps.
