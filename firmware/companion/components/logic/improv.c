@@ -4,7 +4,12 @@
 static const char HDR[6] = { 'I', 'M', 'P', 'R', 'O', 'V' };
 enum { S_HDR, S_VER, S_TYPE, S_LEN, S_DATA, S_SUM };
 
-static void restart(improv_parser_t *p) { p->st = S_HDR; p->idx = 0; p->sum = 0; }
+/* A finished or aborted frame may have carried a Wi-Fi password: do not leave it in the parser. */
+static void restart(improv_parser_t *p)
+{
+    if (p->st > S_VER) memset(&p->f, 0, sizeof p->f);
+    p->st = S_HDR; p->idx = 0; p->sum = 0;
+}
 
 int improv_feed(improv_parser_t *p, uint8_t b, improv_frame_t *out)
 {

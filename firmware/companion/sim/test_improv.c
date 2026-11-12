@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <string.h>
 #include "check.h"
 #include "improv.h"
@@ -138,6 +139,33 @@ static void test_oversized_ssid_rejected(void)
     CHECK(improv_parse_wifi(&f, ssid, pass) && strlen(ssid) == 32);
 }
 
+static int parser_data_is_zero(const improv_parser_t *p)
+{
+    const uint8_t *b = (const uint8_t *)&p->f;
+    for (size_t i = 0; i < sizeof p->f; i++) if (b[i]) return 0;
+    return 1;
+}
+
+/* A frame that carried a Wi-Fi password must not stay in the parser once it is done (flash coredump). */
+static void test_parser_wiped_after_frame(void)
+{
+    uint8_t buf[128]; improv_parser_t p; memset(&p, 0, sizeof p);
+    improv_frame_t f;
+    size_t n = wifi_rpc(buf, sizeof buf, "Office", "p@ss word");
+    CHECK_EQ(feed_all(&p, buf, n, &f), 1);
+    CHECK(memmem(f.data, f.len, "p@ss word", 9) != NULL); /* the caller's copy has it */
+    CHECK(parser_data_is_zero(&p));
+
+    memset(&p, 0, sizeof p);
+    buf[n - 1] ^= 0x55;                                   /* bad checksum: also wiped */
+    CHECK_EQ(feed_all(&p, buf, n, &f), -1);
+    CHECK(parser_data_is_zero(&p));
+
+    buf[n - 1] ^= 0x55;                                   /* and the parser still works */
+    CHECK_EQ(feed_all(&p, buf, n, &f), 1);
+    CHECK(parser_data_is_zero(&p));
+}
+
 int main(void)
 {
     test_build_then_parse_roundtrip();
@@ -145,5 +173,6 @@ int main(void)
     test_garbage_before_header_skipped();
     test_parse_wifi_rpc();
     test_oversized_ssid_rejected();
+    test_parser_wiped_after_frame();
     return g_failed ? 1 : 0;
 }
