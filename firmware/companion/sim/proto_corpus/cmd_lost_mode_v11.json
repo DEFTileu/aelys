@@ -1,0 +1,1 @@
+{"type": "command", "id": "c3c3c3c3-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "name": "lost_mode", "args": {"on": true, "message": "Call me", "show_phone": false, "show_telegram": false, "show_email": true, "email": "owner@example.com", "qr": "phone", "since": "2026-11-13T09:00:00Z"}}
