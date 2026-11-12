@@ -297,6 +297,68 @@ static void test_max_length(void)
     post_progress(0);
 }
 
+static void post_pair(uint8_t state, const char *digits)
+{
+    uint8_t d[7] = { state };
+    if (digits) memcpy(d + 1, digits, 6);
+    sim_post(UI_EV_PAIR, d, sizeof d);
+}
+
+/* The code screen shows the six digits inside the circle; "Paired" shows for 2 s, then home. */
+static void test_pair_screen_shot(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    post_pair(PAIR_UI_CODE, "482913");
+    CHECK_EQ(ui_current_screen(), SCR_PAIR);
+    check_inside("pair code");
+    CHECK(shows_text(scr, "482913"));
+    CHECK(shows_text(scr, "Confirm this code in Aelys web"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    post_pair(PAIR_UI_CODE, "12x456");                      /* not digits: ignored, old code stays */
+    CHECK(shows_text(scr, "482913"));
+
+    post_pair(PAIR_UI_DONE, NULL);
+    CHECK_EQ(ui_current_screen(), SCR_PAIR);
+    check_inside("pair done");
+    CHECK(shows_text(scr, "Paired") && shows_text(scr, "Syncing your day"));
+    CHECK(!shows_text(scr, "482913"));
+    sim_step(1700);
+    CHECK_EQ(ui_current_screen(), SCR_PAIR);
+    sim_step(300);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    post_pair(PAIR_UI_CODE, "000000");
+    post_pair(PAIR_UI_HIDE, NULL);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    post_pair(PAIR_UI_CODE, "000000");                      /* lost mode takes the screen over */
+    post_lost(1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_pair(PAIR_UI_CODE, "111111");
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_lost(0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
+/* First boot (unpaired, no Wi-Fi): home shows the welcome, and pairing clears it. */
+static void test_first_boot_welcome(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    uint8_t unpaired = LINK_UI_UNPAIRED, online = LINK_UI_ONLINE;
+    CHECK(!shows_text(scr, "Hi, I'm Aelys"));
+    sim_post(UI_EV_LINK, &unpaired, 1);
+    check_inside("home welcome");
+    CHECK(shows_text(scr, "Hi, I'm Aelys") && shows_text(scr, "Connect me by USB and open Aelys web"));
+    sim_post(UI_EV_LINK, &online, 1);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Hi, I'm Aelys"));
+    sim_post(UI_EV_LINK, &unpaired, 1);
+    post_pair(PAIR_UI_DONE, NULL);
+    sim_step(2100);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK(!shows_text(scr, "Hi, I'm Aelys"));
+}
+
 int main(void)
 {
     sim_init();
@@ -309,5 +371,7 @@ int main(void)
     test_lost_fields_follow_show_bits();
     test_cyrillic_and_kazakh_render();
     test_max_length();
+    test_pair_screen_shot();
+    test_first_boot_welcome();
     return g_failed ? 1 : 0;
 }

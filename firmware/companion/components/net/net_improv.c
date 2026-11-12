@@ -2,6 +2,7 @@
  * log output. The usb_serial_jtag driver owns RX and, once installed, the console (stdout) TX too, so
  * logs and frames go through one path. Frames use write_bytes so binary bytes are not CRLF-translated. Never logs credentials. */
 #include <string.h>
+#include "board.h"
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_app_desc.h"
@@ -9,10 +10,13 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "identity.h"
 #include "improv.h"
 #include "net_priv.h"
+#include "ui_events.h"
 
 #define GAP_US 100000 /* silence inside a frame this long: drop the partial frame */
+#define PAIR_TTL_US 180000000LL /* a begun pairing that is not committed by then is dropped */
 
 static const char *TAG = "improv";
 static improv_parser_t par;
@@ -22,6 +26,9 @@ static bool provisioning;
 /* A Wi-Fi RPC that arrives while an attempt is running: parked here, the attempt is aborted and the
  * net task runs it next. Wiped as soon as it is taken. */
 static struct { bool set; char ssid[33], pass[65]; } pending;
+
+/* USB pairing, RAM only. The identity API is single-threaded: only this (net) task calls it. */
+static struct { bool active; int64_t deadline_us; char secret[129]; } pair; /* secret is "" once the SAS was computed */
 
 static void send(uint8_t type, const uint8_t *data, size_t len)
 {
@@ -90,6 +97,75 @@ void net_improv_run_pending(void)
     explicit_bzero(pass, sizeof pass);
 }
 
+/* The pair screen is the only place the SAS appears, so a full event queue is retried briefly. */
+static void post_pair(uint8_t state, const char *digits)
+{
+    ui_event_t ev = {.type = UI_EV_PAIR, .len = digits ? 7 : 1, .data = {state}};
+    if (digits) memcpy(&ev.data[1], digits, 6);
+    for (int i = 0; i < 20 && !lv_port_post(&ev); i++) vTaskDelay(pdMS_TO_TICKS(10));
+    explicit_bzero(&ev, sizeof ev);
+}
+
+static void pair_drop(void)
+{
+    explicit_bzero(pair.secret, sizeof pair.secret);
+    pair.active = false;
+    identity_pair_cancel();
+}
+
+static void handle_pair(const improv_frame_t *f)
+{
+    char s[2][129];
+    int n = improv_rpc_strings(f, s, 2);
+    uint8_t cmd = f->data[0];
+    uint8_t err = IMPROV_ERR_NONE;
+    switch (cmd) {
+    case IMPROV_RPC_PAIR_BEGIN: {
+        size_t sl = n == 2 ? strlen(s[0]) : 0;
+        if (net_lost_on()) { err = IMPROV_ERR_LOST_MODE; break; }
+        if (n != 2 || sl < 32 || sl > 128 || identity_pair_begin(s[1]) != ESP_OK) { err = IMPROV_ERR_INVALID_RPC; break; }
+        char pub[88];
+        if (identity_pub_b64(pub) != ESP_OK) { identity_pair_cancel(); err = IMPROV_ERR_UNKNOWN; break; }
+        memcpy(pair.secret, s[0], sl + 1);
+        pair.deadline_us = esp_timer_get_time() + PAIR_TTL_US;
+        pair.active = true;
+        const char *res[] = { pub };
+        send_result(cmd, res, 1);
+        ESP_LOGI(TAG, "pairing begun");
+        break;
+    }
+    case IMPROV_RPC_PAIR_CODE: {
+        if (n != 1 || !s[0][0] || strlen(s[0]) > 39) { err = IMPROV_ERR_INVALID_RPC; break; }
+        if (!pair.active || !pair.secret[0]) { err = IMPROV_ERR_NOT_PENDING; break; }
+        char sas[7];
+        esp_err_t e = identity_pair_code(pair.secret, s[0], sas);
+        explicit_bzero(pair.secret, sizeof pair.secret); /* the secret is needed once */
+        if (e != ESP_OK) { err = IMPROV_ERR_UNKNOWN; break; }
+        post_pair(PAIR_UI_CODE, sas);
+        explicit_bzero(sas, sizeof sas);
+        send_result(cmd, NULL, 0);
+        break;
+    }
+    case IMPROV_RPC_PAIR_COMMIT: {
+        if (n != 1 || !s[0][0] || strlen(s[0]) > 39) { err = IMPROV_ERR_INVALID_RPC; break; }
+        if (!pair.active) { err = IMPROV_ERR_NOT_PENDING; break; }
+        if (identity_pair_commit(s[0]) != ESP_OK) { err = IMPROV_ERR_UNKNOWN; break; } /* pending stays: retry */
+        explicit_bzero(pair.secret, sizeof pair.secret);
+        pair.active = false;
+        post_pair(PAIR_UI_DONE, NULL);
+        send_result(cmd, NULL, 0);
+        ESP_LOGW(TAG, "paired");
+        break;
+    }
+    default: { /* IMPROV_RPC_PAIR_STATUS */
+        const char *res[] = { identity_paired() ? "paired" : "unpaired", identity_device_id() };
+        send_result(cmd, res, identity_paired() ? 2 : 1);
+    }
+    }
+    if (err) send_byte(IMPROV_TYPE_ERROR, err);
+    explicit_bzero(s, sizeof s);
+}
+
 static void handle(const improv_frame_t *f)
 {
     if (f->type != IMPROV_TYPE_RPC || f->len < 2 || f->data[1] != f->len - 2) {
@@ -125,6 +201,12 @@ static void handle(const improv_frame_t *f)
         send_result(IMPROV_RPC_INFO, info, 4);
         return;
     }
+    case IMPROV_RPC_PAIR_BEGIN:
+    case IMPROV_RPC_PAIR_CODE:
+    case IMPROV_RPC_PAIR_COMMIT:
+    case IMPROV_RPC_PAIR_STATUS:
+        handle_pair(f);
+        return;
     default:
         send_byte(IMPROV_TYPE_ERROR, IMPROV_ERR_UNKNOWN_RPC);
     }
@@ -145,6 +227,11 @@ void net_improv_poll(void)
     uint8_t b[64];
     int n = usb_serial_jtag_read_bytes(b, sizeof b, pdMS_TO_TICKS(10));
     int64_t now = esp_timer_get_time();
+    if (pair.active && now > pair.deadline_us) { /* expired: wipe it and take the code off the screen */
+        pair_drop();
+        post_pair(PAIR_UI_HIDE, NULL);
+        ESP_LOGW(TAG, "pairing expired");
+    }
     if ((par.st || par.idx) && now - last_rx_us > GAP_US) memset(&par, 0, sizeof par);
     for (int i = 0; i < n; i++) {
         improv_frame_t f;

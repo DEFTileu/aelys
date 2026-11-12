@@ -31,6 +31,7 @@ lv_obj_t *scr_home_create(lv_obj_t *parent);
 void scr_home_set_time(uint8_t hour, uint8_t minute);
 void scr_home_set_tasks(int done, int total);
 void scr_home_set_wifi(uint8_t state); /* ui_wifi_state_t */
+void scr_home_set_welcome(bool on);   /* first boot: "Hi, I'm Aelys / Connect me by USB ..." instead of the agenda line */
 
 lv_obj_t *scr_lost_create(lv_obj_t *parent);
 void scr_lost_set_owner(const owner_info_t *o);
@@ -41,3 +42,7 @@ void scr_ice_set_owner(const owner_info_t *o);
 /* Both-buttons-held overlay: ring that fills with pct (0..100). */
 lv_obj_t *scr_hold_create(lv_obj_t *parent);
 void scr_hold_set(int pct);
+
+lv_obj_t *scr_pair_create(lv_obj_t *parent);
+bool scr_pair_set_code(const char *digits); /* 6 ASCII digits; false (nothing changed) if one is not a digit */
+void scr_pair_set_done(void);               /* the "Paired" card */

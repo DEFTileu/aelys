@@ -19,6 +19,9 @@ static const char *TAG = "companion";
 
 static owner_info_t owner;
 static lost_state_t lost;
+static bool first_boot; /* unpaired and no saved Wi-Fi: home shows the welcome */
+
+static bool lost_is_on(void) { return lost.on; }
 
 /* Runs in the ui task (LVGL lock held) before the first frame. */
 static void boot_ui_setup(void)
@@ -28,6 +31,10 @@ static void boot_ui_setup(void)
     tribuf_publish(&ui_owner_tb);
     ui_event_t ev = {.type = UI_EV_OWNER};
     ui_handle_event(&ev);
+    if (first_boot) {
+        ui_event_t fev = {.type = UI_EV_LINK, .len = 1, .data = {LINK_UI_UNPAIRED}};
+        ui_handle_event(&fev);
+    }
     if (lost.on) {
         ui_event_t lev = {.type = UI_EV_LOST, .len = 1, .data = {1}};
         ui_handle_event(&lev);
@@ -64,6 +71,11 @@ void app_main(void)
     if (ierr != ESP_OK) ESP_LOGE(TAG, "identity: %s (running unpaired)", esp_err_to_name(ierr));
     ESP_LOGW(TAG, "boot: paired=%d", identity_paired());
 #endif
+    ESP_LOGW(TAG, "boot: main stack free=%u bytes", (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    static wifi_list_t saved_wifi;
+    store_load_wifi(&saved_wifi);
+    first_boot = !identity_paired() && saved_wifi.n == 0;
+    explicit_bzero(&saved_wifi, sizeof saved_wifi); /* only the count was wanted; the list holds passwords */
     ESP_LOGW(TAG, "boot: lost_mode=%s", lost.on ? "on" : "off");
 
     lv_port_set_handler(ui_handle_event);
@@ -74,7 +86,7 @@ void app_main(void)
     if (err != ESP_OK) ESP_LOGE(TAG, "input start: %s", esp_err_to_name(err));
 
 #ifndef CONFIG_AELYS_NO_WIFI
-    static const net_store_t nstore = {.load = store_load_wifi, .save = store_save_wifi};
+    static const net_store_t nstore = {.load = store_load_wifi, .save = store_save_wifi, .lost_on = lost_is_on};
     err = net_start(&nstore);
     if (err != ESP_OK) ESP_LOGE(TAG, "net start: %s", esp_err_to_name(err));
     ESP_LOGW(TAG, "wifi started: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));

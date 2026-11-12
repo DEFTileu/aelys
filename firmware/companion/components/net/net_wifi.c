@@ -39,6 +39,7 @@ static uint8_t want_state = UI_WIFI_OFFLINE, posted_state = 0xFF;
 
 void net_set_wifi_state(uint8_t s) { want_state = s; }
 bool net_wifi_online(void) { return online; }
+bool net_lost_on(void) { return !store.lost_on || store.lost_on(); }
 bool net_wifi_busy(void) { return attempting; }
 void net_wifi_abort(void) { abort_req = true; }
 

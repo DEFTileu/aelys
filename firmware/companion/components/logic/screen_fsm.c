@@ -14,3 +14,9 @@ scr_t screen_next(scr_t cur, bool lost_mode, ui_event_type_t ev)
         return cur;
     }
 }
+
+scr_t screen_next_pair(scr_t cur, bool lost_mode, ui_pair_t what)
+{
+    if (what == PAIR_UI_CODE) return (lost_mode || cur == SCR_LOST || cur == SCR_ICE) ? cur : SCR_PAIR;
+    return cur == SCR_PAIR && !lost_mode ? SCR_HOME : cur;
+}

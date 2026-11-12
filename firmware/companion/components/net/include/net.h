@@ -1,5 +1,6 @@
 #pragma once
 /* Wi-Fi station, SNTP and Improv Serial provisioning. Runs in one `net` task on core 0. */
+#include <stdbool.h>
 #include "esp_err.h"
 #include "store_codec.h"
 
@@ -7,6 +8,7 @@
 typedef struct {
     void (*load)(wifi_list_t *l);
     esp_err_t (*save)(const wifi_list_t *l);
+    bool (*lost_on)(void); /* lost mode is on: USB pairing is refused (a missing callback counts as on) */
 } net_store_t;
 
 /* Brings Wi-Fi up (STA, modem power save) and starts the net task: tries the saved networks in

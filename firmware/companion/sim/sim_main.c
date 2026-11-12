@@ -1,4 +1,4 @@
-/* companion_sim --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out file.bmp [--scale 100]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,6 +78,9 @@ static int screen_shot(const char *shot)
     if (!strcmp(shot, "home")) return 0;
     if (!strcmp(shot, "lost") || !strcmp(shot, "lost_max") || !strcmp(shot, "lost_cyr")) { sim_post(UI_EV_LOST, &on, 1); return 0; }
     if (!strcmp(shot, "ice") || !strcmp(shot, "ice_max") || !strcmp(shot, "ice_defaults") || !strcmp(shot, "ice_cyr")) { sim_post(UI_EV_COMBO_FIRE, NULL, 0); return 0; }
+    if (!strcmp(shot, "pair")) { const uint8_t d[7] = { PAIR_UI_CODE, '4', '8', '2', '9', '1', '3' }; sim_post(UI_EV_PAIR, d, sizeof d); return 0; }
+    if (!strcmp(shot, "pair_done")) { const uint8_t d = PAIR_UI_DONE; sim_post(UI_EV_PAIR, &d, 1); return 0; }
+    if (!strcmp(shot, "welcome")) { const uint8_t d = LINK_UI_UNPAIRED; sim_post(UI_EV_LINK, &d, 1); return 0; }
     if (!strcmp(shot, "ice_progress")) { sim_post(UI_EV_COMBO_PROGRESS, &pct, 1); return 0; }
     return -1;
 }
@@ -93,7 +96,7 @@ int main(int argc, char **argv)
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out <file.bmp> [--scale <percent>]\n",
                 argv[0]);
         return 2;
     }

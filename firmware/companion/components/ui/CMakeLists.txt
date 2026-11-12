@@ -1,6 +1,6 @@
 # Works as an ESP-IDF component and as a plain CMake library (host sim).
 set(UI_SRCS
-    theme.c face.c face_moods.c screens.c scr_home.c scr_lost.c scr_ice.c scr_hold.c orbit.c
+    theme.c face.c face_moods.c screens.c scr_home.c scr_lost.c scr_ice.c scr_hold.c scr_pair.c orbit.c
     fonts/inter_16.c fonts/inter_24.c
     fonts/inter_20.c fonts/inter_28.c fonts/inter_40.c fonts/inter_clock_96.c
     fonts/inter_bold_fx_24.c fonts/inter_bold_fx_34.c fonts/inter_bold_fx_54.c

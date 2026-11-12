@@ -1,9 +1,10 @@
-/* Screen switching: home, lost mode and the ICE card are three full-size objects on the one active
- * LVGL screen, shown and hidden by screen_next(); a fourth overlay shows the both-buttons progress. */
+/* Screen switching: home, lost mode, the ICE card and the pairing screen are full-size objects on the one
+ * active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress. */
 #include <string.h>
 #include "ui_screens_priv.h"
 
 #define ICE_TIMEOUT_MS 15000
+#define PAIRED_SHOW_MS 2000
 
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
@@ -11,8 +12,8 @@ static owner_info_t owner_buf[3];
 static struct {
     scr_t cur;
     bool lost;
-    lv_obj_t *scr[3]; /* indexed by scr_t */
-    lv_timer_t *ice_timer;
+    lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
+    lv_timer_t *ice_timer, *paired_timer;
 } g;
 
 lv_obj_t *ui_plain(lv_obj_t *parent, int32_t w, int32_t h)
@@ -92,9 +93,20 @@ static void ice_timeout(lv_timer_t *t)
     ui_handle_event(&ev); /* a tap on the card: back to home or lost mode */
 }
 
+static void show(scr_t s);
+
+static void paired_timeout(lv_timer_t *t)
+{
+    (void)t;
+    g.paired_timer = NULL; /* one-shot */
+    scr_t next = screen_next_pair(g.cur, g.lost, PAIR_UI_DONE);
+    if (next != g.cur) show(next);
+}
+
 static void show(scr_t s)
 {
-    for (int i = 0; i < 3; i++) lv_obj_set_hidden(g.scr[i], i != (int)s);
+    for (int i = 0; i < SCR_COUNT; i++)
+        if (g.scr[i]) lv_obj_set_hidden(g.scr[i], i != (int)s);
     g.cur = s;
     scr_hold_set(0);
     if (s == SCR_ICE) {
@@ -107,6 +119,10 @@ static void show(scr_t s)
     } else if (g.ice_timer) {
         lv_timer_delete(g.ice_timer);
         g.ice_timer = NULL;
+    }
+    if (s != SCR_PAIR && g.paired_timer) {
+        lv_timer_delete(g.paired_timer);
+        g.paired_timer = NULL;
     }
 }
 
@@ -123,6 +139,7 @@ void ui_setup(void)
     g.scr[SCR_HOME] = scr_home_create(root);
     g.scr[SCR_LOST] = scr_lost_create(root);
     g.scr[SCR_ICE] = scr_ice_create(root);
+    g.scr[SCR_PAIR] = scr_pair_create(root);
     scr_hold_create(root);
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
     tribuf_init(&ui_owner_tb, &owner_buf[0], &owner_buf[1], &owner_buf[2]);
@@ -146,6 +163,34 @@ void ui_handle_event(const ui_event_t *ev)
         const owner_info_t *o = tribuf_latest(&ui_owner_tb, &fresh);
         if (fresh) set_owner(o);
         return;
+    }
+    case UI_EV_LINK:
+        if (ev->len >= 1) scr_home_set_welcome(ev->data[0] == LINK_UI_UNPAIRED);
+        return;
+    case UI_EV_PAIR: {
+        if (ev->len < 1) return;
+        ui_pair_t what = (ui_pair_t)ev->data[0];
+        if (what == PAIR_UI_CODE) {
+            if (ev->len < 7 || screen_next_pair(g.cur, g.lost, what) != SCR_PAIR || !scr_pair_set_code((const char *)&ev->data[1]))
+                return;
+            if (g.paired_timer) { lv_timer_delete(g.paired_timer); g.paired_timer = NULL; } /* a new code replaces the card */
+            next = SCR_PAIR;
+        } else if (what == PAIR_UI_DONE) {
+            scr_home_set_welcome(false); /* paired: the first-boot welcome is over, whatever screen is up */
+            if (screen_next_pair(g.cur, g.lost, PAIR_UI_CODE) != SCR_PAIR) return; /* lost mode / ICE card: no card */
+            scr_pair_set_done();
+            if (g.paired_timer) lv_timer_reset(g.paired_timer);
+            else {
+                g.paired_timer = lv_timer_create(paired_timeout, PAIRED_SHOW_MS, NULL);
+                lv_timer_set_repeat_count(g.paired_timer, 1);
+            }
+            next = SCR_PAIR;
+        } else if (what == PAIR_UI_HIDE) {
+            next = screen_next_pair(g.cur, g.lost, what);
+        } else {
+            return;
+        }
+        break;
     }
     case UI_EV_COMBO_PROGRESS:
         /* the overlay is for opening the card: not while it is already open */

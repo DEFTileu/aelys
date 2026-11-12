@@ -36,6 +36,33 @@ static void test_ice_ignores_non_tap_events(void)
     CHECK_EQ(screen_next(SCR_HOME, false, UI_EV_TOUCH), SCR_HOME);
 }
 
+static void test_pair_code_shows_pair_screen(void)
+{
+    CHECK_EQ(screen_next_pair(SCR_HOME, false, PAIR_UI_CODE), SCR_PAIR);
+    CHECK_EQ(screen_next_pair(SCR_PAIR, false, PAIR_UI_CODE), SCR_PAIR);
+    CHECK_EQ(screen_next_pair(SCR_ICE, false, PAIR_UI_CODE), SCR_ICE); /* the emergency card is never covered */
+}
+static void test_pair_done_returns_home(void)
+{
+    CHECK_EQ(screen_next_pair(SCR_PAIR, false, PAIR_UI_DONE), SCR_HOME);
+    CHECK_EQ(screen_next_pair(SCR_PAIR, false, PAIR_UI_HIDE), SCR_HOME);
+    CHECK_EQ(screen_next_pair(SCR_ICE, false, PAIR_UI_HIDE), SCR_ICE);
+    CHECK_EQ(screen_next_pair(SCR_HOME, false, PAIR_UI_DONE), SCR_HOME);
+}
+static void test_pair_code_ignored_in_lost_mode(void)
+{
+    CHECK_EQ(screen_next_pair(SCR_LOST, true, PAIR_UI_CODE), SCR_LOST);
+    CHECK_EQ(screen_next_pair(SCR_HOME, true, PAIR_UI_CODE), SCR_HOME);
+    CHECK_EQ(screen_next_pair(SCR_LOST, true, PAIR_UI_DONE), SCR_LOST);
+    CHECK_EQ(screen_next_pair(SCR_LOST, true, PAIR_UI_HIDE), SCR_LOST);
+}
+static void test_pair_screen_follows_lost_and_combo(void)
+{
+    CHECK_EQ(screen_next(SCR_PAIR, true, UI_EV_LOST), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_PAIR, false, UI_EV_COMBO_FIRE), SCR_ICE);
+    CHECK_EQ(screen_next(SCR_PAIR, false, UI_EV_TOUCH), SCR_PAIR);
+}
+
 static int terminated(const char *s, size_t cap) { return memchr(s, '\0', cap) != NULL; }
 
 static void test_owner_defaults(void)
@@ -69,6 +96,10 @@ int main(void)
     test_buttons_cannot_leave_lost();
     test_lost_off_goes_home();
     test_ice_ignores_non_tap_events();
+    test_pair_code_shows_pair_screen();
+    test_pair_done_returns_home();
+    test_pair_code_ignored_in_lost_mode();
+    test_pair_screen_follows_lost_and_combo();
     test_owner_defaults();
     return g_failed ? 1 : 0;
 }

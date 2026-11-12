@@ -166,8 +166,33 @@ static void test_parser_wiped_after_frame(void)
     CHECK(parser_data_is_zero(&p));
 }
 
+static void test_rpc_strings(void)
+{
+    improv_frame_t f;
+    memset(&f, 0, sizeof f);
+    f.type = IMPROV_TYPE_RPC;
+    uint8_t d[] = { IMPROV_RPC_PAIR_BEGIN, 9, 3, 'a', 'b', 'c', 4, 'h', 't', 't', 'p' };
+    memcpy(f.data, d, sizeof d);
+    f.len = sizeof d;
+    char out[3][129];
+    CHECK_EQ(improv_rpc_strings(&f, out, 3), 2);
+    CHECK(!strcmp(out[0], "abc") && !strcmp(out[1], "http"));
+    CHECK_EQ(improv_rpc_strings(&f, out, 1), -1);            /* more strings than room */
+    f.data[2] = 9;                                           /* first string overruns the frame */
+    CHECK_EQ(improv_rpc_strings(&f, out, 3), -1);
+    f.data[2] = 3; f.data[1] = 8;                            /* inner length disagrees with the frame */
+    CHECK_EQ(improv_rpc_strings(&f, out, 3), -1);
+    f.data[1] = 0; f.len = 2;                                /* no strings is fine */
+    CHECK_EQ(improv_rpc_strings(&f, out, 3), 0);
+    f.data[1] = 130; f.data[2] = 129; f.len = 132;           /* 129 bytes does not fit a 128-char string */
+    CHECK_EQ(improv_rpc_strings(&f, out, 3), -1);
+    f.type = IMPROV_TYPE_STATE;
+    CHECK_EQ(improv_rpc_strings(&f, out, 3), -1);
+}
+
 int main(void)
 {
+    test_rpc_strings();
     test_build_then_parse_roundtrip();
     test_bad_checksum_rejected();
     test_garbage_before_header_skipped();
