@@ -2,6 +2,7 @@
 
 #include "board.h"
 #include "esp_heap_caps.h"
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_psram.h"
 #include "metrics.h"
@@ -11,8 +12,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ui.h"
-
-#define FW_VERSION "0.1.0"
 
 static const char *TAG = "companion";
 
@@ -44,7 +43,7 @@ static void halt(const char *what, esp_err_t err)
 
 void app_main(void)
 {
-    ESP_LOGW(TAG, "Aelys companion fw %s", FW_VERSION);
+    ESP_LOGW(TAG, "Aelys companion fw %s", esp_app_get_description()->version);
     ESP_LOGW(TAG, "psram_size=%u free_internal=%u free_spiram=%u", (unsigned)esp_psram_get_size(),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     esp_err_t berr = board_init();
