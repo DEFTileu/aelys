@@ -7,7 +7,7 @@ set(UI_SRCS
     fonts/inter_bold_fx_36.c fonts/inter_bold_fx_51.c fonts/inter_bold_fx_81.c)
 
 if(ESP_PLATFORM)
-    idf_component_register(SRCS ${UI_SRCS} INCLUDE_DIRS include REQUIRES lvgl__lvgl)
+    idf_component_register(SRCS ${UI_SRCS} INCLUDE_DIRS include REQUIRES lvgl__lvgl logic)
 else()
     add_library(ui STATIC ${UI_SRCS})
     target_include_directories(ui PUBLIC include)

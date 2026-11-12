@@ -110,7 +110,20 @@ static void show(scr_t s)
 
 static void set_owner(const owner_info_t *o)
 {
-    g.owner = *o;
+    if (o != &g.owner) {
+        g.owner = *o;
+        /* the sender's buffer may lack terminators: the screens run string functions on these */
+        g.owner.name[sizeof g.owner.name - 1] = 0;
+        g.owner.phone[sizeof g.owner.phone - 1] = 0;
+        g.owner.telegram[sizeof g.owner.telegram - 1] = 0;
+        g.owner.qr_url[sizeof g.owner.qr_url - 1] = 0;
+        g.owner.message[sizeof g.owner.message - 1] = 0;
+        g.owner.med_note[sizeof g.owner.med_note - 1] = 0;
+        for (int i = 0; i < 2; i++) {
+            g.owner.ice_name[i][sizeof g.owner.ice_name[i] - 1] = 0;
+            g.owner.ice_phone[i][sizeof g.owner.ice_phone[i] - 1] = 0;
+        }
+    }
     scr_lost_set_owner(&g.owner);
     scr_ice_set_owner(&g.owner);
 }
