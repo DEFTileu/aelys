@@ -5,17 +5,16 @@ from datetime import datetime
 
 from app.core.db import Base
 from app.core.models import now
-from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 
 class CompanionAction(Base):
     """One row per board action id; `result_json` is replayed verbatim, never recomputed."""
     __tablename__ = "companion_actions"
-    __table_args__ = (UniqueConstraint("device_id", "id", name="uq_companion_actions_device_id_id"),)
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)  # the board's uuid
+    device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"), primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)  # the board's uuid, unique per device only
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"))
     kind: Mapped[str] = mapped_column(String(40))
     result_json: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

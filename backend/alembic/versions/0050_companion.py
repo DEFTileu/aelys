@@ -13,13 +13,12 @@ def upgrade() -> None:
     if "companion_actions" not in existing:
         op.create_table(
             "companion_actions",
+            sa.Column("device_id", sa.String(36), sa.ForeignKey("devices.id"), primary_key=True),
             sa.Column("id", sa.String(36), primary_key=True),
             sa.Column("owner_id", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
-            sa.Column("device_id", sa.String(36), sa.ForeignKey("devices.id"), nullable=False),
             sa.Column("kind", sa.String(40), nullable=False),
             sa.Column("result_json", sa.JSON, nullable=False),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-            sa.UniqueConstraint("device_id", "id", name="uq_companion_actions_device_id_id"),
         )
         op.create_index("ix_companion_actions_owner_id", "companion_actions", ["owner_id"])
     if "companion_state" not in existing:

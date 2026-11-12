@@ -8694,11 +8694,12 @@
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid",
+            "format": "uuid4",
             "title": "Id"
           },
           "kind": {
             "type": "string",
+            "maxLength": 40,
             "title": "Kind"
           },
           "payload": {
@@ -8719,7 +8720,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid",
+            "format": "uuid4",
             "title": "Id"
           },
           "ok": {

@@ -4,9 +4,18 @@ import pytest_asyncio
 from app.ai.errors import PolicyDenied
 from app.ai.policy import ServerPolicyEngine
 from app.core import db
+from app.core.device_auth import sas_code
 from app.core.models import Notification
 from app.main import app
-from companion_helpers import B, bearer, claim_owner, companion_token, pair_companion
+from companion_helpers import (
+    B,
+    Key,
+    bearer,
+    claim_owner,
+    companion_token,
+    new_secret,
+    pair_companion,
+)
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -126,3 +135,63 @@ async def test_concurrent_first_requests_execute_once(client):
     first, second = await asyncio.gather(*(client.post(f'{B}/companion/actions', headers=headers, json=body) for _ in range(2)))
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json() and first.json()['ok'] is True
+
+
+async def pair_second_board(client, owner):
+    secret, secret_hash = new_secret()
+    key = Key()
+    request = (await client.post(f'{B}/pairing/request', json={'secret_hash': secret_hash, 'public_key': key.public, 'platform': 'companion', 'display_name': 'Desk 2'})).json()
+    pid = request['pairing_id']
+    approved = await client.post(f'{B}/pairing/{pid}/approve', headers=bearer(owner), json={'secret': secret, 'sas': sas_code(secret, pid, key.public)})
+    assert approved.status_code == 200, approved.text
+    done = await client.post(f'{B}/pairing/{pid}/finish', json={'signature': key.sign(f'aelys-pairing-finish-v1\n{pid}', raw=True)})
+    return {'Authorization': f"Bearer {await companion_token(client, key, done.json()['device_id'])}"}
+
+
+async def test_same_action_id_on_two_devices_of_one_owner_does_not_collide(client):
+    owner, key, device_id = await pair_companion(client)
+    first = {'Authorization': f'Bearer {await companion_token(client, key, device_id)}'}
+    second = await pair_second_board(client, owner)
+    owner_id = (await client.get(f'{B}/me', headers=bearer(owner))).json()['id']
+    item_id = await add_notification(owner_id)
+    body = action(notification_id=item_id)
+    one = await client.post(f'{B}/companion/actions', headers=first, json=body)
+    async with db.SessionLocal() as session:
+        (await session.get(Notification, item_id)).read_at = None
+        await session.commit()
+    two = await client.post(f'{B}/companion/actions', headers=second, json=body)
+    assert one.status_code == two.status_code == 200
+    assert two.json()['ok'] is True and await read_at(item_id) is not None, 'the second device runs its own action, not a replay'
+
+
+async def test_same_action_id_for_two_owners_does_not_collide(client):
+    from app.companion.actions import ActionIn, run_action
+    from app.core.models import Device, User
+    owner_id, headers = await board(client)
+    item_id = await add_notification(owner_id)
+    body = action(notification_id=item_id)
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json=body)).json()['ok'] is True
+    async with db.SessionLocal() as session:
+        other = User(email='other@example.com')
+        session.add(other)
+        await session.flush()
+        device = Device(owner_id=other.id, platform='companion', display_name='Other', credential_hash='x')
+        session.add(device)
+        await session.commit()
+        result = await run_action(session, other.id, device, ActionIn(**body))
+    assert result.ok is False and result.error_code == 'NOT_FOUND', 'the other owner gets their own result, not the first one'
+
+
+async def test_malformed_notification_id_is_not_found(client):
+    _, headers = await board(client)
+    for payload in ({}, {'notification_id': 5}, {'notification_id': None}):
+        response = await client.post(f'{B}/companion/actions', headers=headers, json={'id': str(uuid.uuid4()), 'kind': 'notification.read', 'payload': payload})
+        assert response.json()['error_code'] == 'NOT_FOUND'
+
+
+async def test_action_id_must_be_v4_and_kind_bounded(client):
+    _, headers = await board(client)
+    v1 = {'id': str(uuid.uuid1()), 'kind': 'notification.read', 'payload': {}}
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json=v1)).status_code == 422
+    long_kind = {'id': str(uuid.uuid4()), 'kind': 'k' * 41, 'payload': {}}
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json=long_kind)).status_code == 422

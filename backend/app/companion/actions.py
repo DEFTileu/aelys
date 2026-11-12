@@ -4,7 +4,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
 
 from app.ai.errors import PolicyDenied
 from app.ai.models import PermissionContext, ToolCall
@@ -13,23 +12,23 @@ from app.companion.models import CompanionAction
 from app.core.models import Device
 from app.domains.api import set_notification_read
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import UUID4, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Every scope a paired board may hold; each action kind demands exactly one of them.
+# Static grant to every companion; each action kind demands exactly one scope. The denial path is exercised by tests.
 COMPANION_SCOPES = frozenset({"companion.notifications", "companion.focus", "companion.tasks"})
 
 
 class ActionIn(BaseModel):
-    id: UUID
-    kind: str
+    id: UUID4
+    kind: str = Field(max_length=40)
     payload: dict = {}
 
 
 class ActionResult(BaseModel):
-    id: UUID
+    id: UUID4
     ok: bool
     error_code: str | None = None
 
@@ -46,8 +45,11 @@ class _Tool:
 
 
 async def _notification_read(db: AsyncSession, owner_id: str, payload: dict[str, Any]) -> str | None:
+    notification_id = payload.get("notification_id")
+    if not isinstance(notification_id, str):
+        return "NOT_FOUND"
     try:
-        await set_notification_read(str(payload.get("notification_id")), owner_id, db)
+        await set_notification_read(notification_id, owner_id, db)
     except HTTPException as exc:
         if exc.status_code != 404:
             raise
@@ -59,7 +61,7 @@ ACTION_HANDLERS: dict[str, Handler] = {"notification.read": _notification_read}
 ACTION_SCOPES: dict[str, str] = {"notification.read": "companion.notifications"}
 
 
-async def _stored(db: AsyncSession, device_id: str, action_id: UUID) -> ActionResult | None:
+async def _stored(db: AsyncSession, device_id: str, action_id: UUID4) -> ActionResult | None:
     row = (await db.execute(select(CompanionAction).where(
         CompanionAction.device_id == device_id, CompanionAction.id == str(action_id)))).scalar_one_or_none()
     return ActionResult(id=action_id, **row.result_json) if row else None
@@ -83,7 +85,7 @@ async def run_action(db: AsyncSession, owner_id: str, device: Device, action: Ac
             error = await handler(db, owner_id, action.payload)
     result = ActionResult(id=action.id, ok=error is None, error_code=error)
     # The effect and its ledger row share one transaction, so a losing concurrent insert rolls both back.
-    db.add(CompanionAction(id=str(action.id), owner_id=owner_id, device_id=device_id, kind=action.kind[:40],
+    db.add(CompanionAction(id=str(action.id), owner_id=owner_id, device_id=device_id, kind=action.kind,
                            result_json=result.model_dump(mode="json", exclude={"id"})))
     try:
         await db.commit()
