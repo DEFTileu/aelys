@@ -16,7 +16,7 @@ static int b64_val(char c)
 size_t b64url_encode(const uint8_t *in, size_t n, char *out, size_t cap)
 {
     size_t len = (n * 4 + 2) / 3;
-    if (cap < len + 1) return 0;
+    if (cap < len + 1) { if (cap) out[0] = '\0'; return 0; }
     size_t o = 0;
     for (size_t i = 0; i < n; i += 3) {
         uint32_t v = (uint32_t)in[i] << 16;
@@ -60,13 +60,13 @@ size_t json_escape(const char *in, char *out, size_t cap)
     for (const char *p = in; *p; p++) {
         unsigned char c = (unsigned char)*p;
         size_t need = (c == '"' || c == '\\') ? 2 : (c < 0x20) ? 6 : 1;
-        if (o + need + 1 > cap) return 0;
+        if (o + need + 1 > cap) { if (cap) out[0] = '\0'; return 0; }
         if (need == 2)      { out[o++] = '\\'; out[o++] = (char)c; }
         else if (need == 6) { out[o++] = '\\'; out[o++] = 'u'; out[o++] = '0'; out[o++] = '0';
                               out[o++] = HEX[c >> 4]; out[o++] = HEX[c & 15]; }
         else                { out[o++] = (char)c; }
     }
-    if (o + 1 > cap) return 0;
+    if (o + 1 > cap) { out[0] = '\0'; return 0; }
     out[o] = '\0';
     return o;
 }
@@ -106,16 +106,20 @@ static int64_t days_from_civil(int64_t y, unsigned m, unsigned d)
 
 bool iso8601_to_epoch(const char *s, size_t n, int64_t *out)
 {
-    /* base 19 chars + optional ".fff" + zone ("Z" or "+00:00") */
+    /* base 19 chars + optional fraction + zone ("Z" or "+00:00") */
     if (n < 20 || s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || s[16] != ':') return false;
     size_t i = 19;
-    if (n >= i + 4 && s[i] == '.') i += 4;
+    if (i < n && s[i] == '.') {               /* 1..9 fractional digits, value ignored */
+        size_t j = i + 1;
+        while (j < n && s[j] >= '0' && s[j] <= '9') j++;
+        if (j - i - 1 < 1 || j - i - 1 > 9) return false;
+        i = j;
+    }
     size_t zone = n - i;
     if (!((zone == 1 && s[i] == 'Z') || (zone == 6 && memcmp(s + i, "+00:00", 6) == 0))) return false;
     int y, mo, d, h, mi, sec;
     if (!digits(s, 4, &y) || !digits(s + 5, 2, &mo) || !digits(s + 8, 2, &d) ||
         !digits(s + 11, 2, &h) || !digits(s + 14, 2, &mi) || !digits(s + 17, 2, &sec)) return false;
-    if (i == 23) { int frac; if (!digits(s + 20, 3, &frac)) return false; } /* i == 23 implies s[19] == '.' */
     static const int MDAYS[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
     bool leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
     int mdays = (mo == 2 && leap) ? 29 : (mo >= 1 && mo <= 12 ? MDAYS[mo - 1] : 0);

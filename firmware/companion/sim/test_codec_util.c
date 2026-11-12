@@ -15,7 +15,9 @@ static void test_b64url_roundtrip_0_to_70_bytes(void)
         CHECK_EQ(b64url_decode(enc, out, sizeof out), (int)n);
         CHECK(memcmp(in, out, n) == 0);
     }
+    enc[0] = 'x';
     CHECK_EQ(b64url_encode((const uint8_t *)"ab", 2, enc, 3), 0); /* cap too small (needs 4) */
+    CHECK_EQ(enc[0], '\0');
 }
 
 static void test_b64url_rejects_plus_slash_and_bad_len(void)
@@ -34,7 +36,9 @@ static void test_json_escape_quotes_backslash_ctrl(void)
     char out[64];
     CHECK_EQ(json_escape("a\"b\\c\n", out, sizeof out), strlen("a\\\"b\\\\c\\u000a"));
     CHECK(strcmp(out, "a\\\"b\\\\c\\u000a") == 0);
+    out[0] = 'x';
     CHECK_EQ(json_escape("abcd", out, 4), 0);            /* needs 5 with NUL */
+    CHECK_EQ(out[0], '\0');
 }
 
 static void test_utf8_copy_never_splits(void)
@@ -64,6 +68,14 @@ static void test_iso8601(void)
     CHECK(!iso8601_to_epoch("2026-02-29T00:00:00Z", 20, &t)); /* 2026 is not a leap year */
     CHECK(!iso8601_to_epoch("2026-11-13T09:30:00", 19, &t));  /* no zone */
     CHECK(!iso8601_to_epoch("2026-11-13T09:30:00Zx", 21, &t)); /* trailing junk */
+    CHECK(iso8601_to_epoch("2026-11-13T09:30:00.1Z", 22, &t));
+    CHECK_EQ(t, 1794562200);
+    CHECK(iso8601_to_epoch("2026-11-13T09:30:00.123456Z", 27, &t));
+    CHECK_EQ(t, 1794562200);
+    CHECK(iso8601_to_epoch("2026-11-13T09:30:00.123456789+00:00", 35, &t));
+    CHECK_EQ(t, 1794562200);
+    CHECK(!iso8601_to_epoch("2026-11-13T09:30:00.Z", 21, &t));       /* 0 fraction digits */
+    CHECK(!iso8601_to_epoch("2026-11-13T09:30:00.1234567890Z", 31, &t)); /* 10 fraction digits */
 }
 
 static void test_uuid4_bits(void)
