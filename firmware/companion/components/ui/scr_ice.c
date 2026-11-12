@@ -5,9 +5,9 @@
  * (the design marks SOS as a proposal). */
 #include "ui_screens_priv.h"
 
-#define ROW_W 330
+#define ROW_W 350
 #define ROW_H 50
-#define NAME_W 150
+#define NAME_W 200
 #define NOTE_W 310
 #define NOTE_PAD_X 14
 #define NOTE_PAD_Y 10
@@ -88,8 +88,8 @@ lv_obj_t *scr_ice_create(lv_obj_t *parent)
         lv_obj_set_style_border_width(r, 0, 0);
         h.cname[i] = ui_label(r, &inter_20, UI_COLOR_TEXT, NAME_W, 1, LV_TEXT_ALIGN_LEFT);
         h.crel[i] = ui_label(r, &inter_16, UI_COLOR_SUBTLE, NAME_W, 1, LV_TEXT_ALIGN_LEFT);
-        h.cphone[i] = ui_label(r, &inter_16, UI_COLOR_TEXT, ROW_W - NAME_W - 10, 1, LV_TEXT_ALIGN_RIGHT);
-        lv_obj_set_pos(h.cphone[i], NAME_W + 10, (ROW_H - lv_obj_get_height(h.cphone[i])) / 2);
+        h.cphone[i] = ui_label(r, &inter_16, UI_COLOR_TEXT, ROW_W - NAME_W - 6, 1, LV_TEXT_ALIGN_RIGHT);
+        lv_obj_set_pos(h.cphone[i], NAME_W + 6, (ROW_H - lv_obj_get_height(h.cphone[i])) / 2);
     }
 
     h.note = ui_plain(h.root, NOTE_W, 40);

@@ -1,4 +1,4 @@
-/* companion_sim --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|face:<mood> --out file.bmp [--scale 100]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,6 +51,18 @@ static void max_owner(owner_info_t *o)
     o->show = 0x3F;
 }
 
+/* Cyrillic and Kazakh text (UTF-8 escapes), fake names */
+static void cyr_owner(owner_info_t *o)
+{
+    demo_owner(o);
+    strcpy(o->name, "\xD0\x90\xD0\xB9\xD0\xB3\xD0\xB5\xD1\x80\xD0\xB8\xD0\xBC \xD0\xA1\xD0\xB0\xD0\xBF\xD0\xB0\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB0");
+    strcpy(o->ice_name[0], "\xD3\x98\xD1\x81\xD0\xB5\xD0\xBC \xD2\x9A\xD2\xB1\xD1\x80\xD0\xBC\xD0\xB0\xD0\xBD\xD2\x93\xD0\xB0\xD0\xBB\xD0\xB8");
+    strcpy(o->ice_rel[0], "\xD0\xA1\xD0\xB5\xD1\x81\xD1\x82\xD1\x80\xD0\xB0");
+    strcpy(o->ice_rel[1], "\xD0\x90\xD2\x93\xD0\xB0");
+    strcpy(o->med_note, "\xD0\x90\xD0\xBB\xD0\xBB\xD0\xB5\xD1\x80\xD0\xB3\xD0\xB8\xD1\x8F: \xD0\xBF\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x86\xD0\xB8\xD0\xBB\xD0\xBB\xD0\xB8\xD0\xBD");
+    strcpy(o->message, "\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8 \xD0\xBD\xD0\xB0\xD1\x88\xD0\xBB\xD0\xB8, \xD0\xBF\xD0\xBE\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xBD\xD0\xB8\xD1\x82\xD0\xB5");
+}
+
 static int screen_shot(const char *shot)
 {
     static owner_info_t owner;
@@ -59,12 +71,13 @@ static int screen_shot(const char *shot)
     ui_setup();
     if (!strcmp(shot, "lost_max") || !strcmp(shot, "ice_max")) max_owner(&owner);
     else if (!strcmp(shot, "ice_defaults")) owner_defaults(&owner);
+    else if (!strcmp(shot, "lost_cyr") || !strcmp(shot, "ice_cyr")) cyr_owner(&owner);
     else demo_owner(&owner);
     post_owner(&owner);
     sim_post(UI_EV_TIME, time_hm, sizeof time_hm);
     if (!strcmp(shot, "home")) return 0;
-    if (!strcmp(shot, "lost") || !strcmp(shot, "lost_max")) { sim_post(UI_EV_LOST, &on, 1); return 0; }
-    if (!strcmp(shot, "ice") || !strcmp(shot, "ice_max") || !strcmp(shot, "ice_defaults")) { sim_post(UI_EV_COMBO_FIRE, NULL, 0); return 0; }
+    if (!strcmp(shot, "lost") || !strcmp(shot, "lost_max") || !strcmp(shot, "lost_cyr")) { sim_post(UI_EV_LOST, &on, 1); return 0; }
+    if (!strcmp(shot, "ice") || !strcmp(shot, "ice_max") || !strcmp(shot, "ice_defaults") || !strcmp(shot, "ice_cyr")) { sim_post(UI_EV_COMBO_FIRE, NULL, 0); return 0; }
     if (!strcmp(shot, "ice_progress")) { sim_post(UI_EV_COMBO_PROGRESS, &pct, 1); return 0; }
     return -1;
 }
@@ -80,7 +93,7 @@ int main(int argc, char **argv)
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|face:<mood> --out <file.bmp> [--scale <percent>]\n",
                 argv[0]);
         return 2;
     }
