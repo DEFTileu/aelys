@@ -20,6 +20,8 @@ FetchContent_Declare(lvgl
     GIT_TAG v9.6.0
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(lvgl)
+# GCC >= 14 in strict C11 does not declare strnlen (lv_string_clib.c) without POSIX
+target_compile_definitions(lvgl PRIVATE _POSIX_C_SOURCE=200809L)
 # lv_conf.h pulls in ui_lv_font.h (default font), so every LVGL file needs the ui include dir
 target_include_directories(lvgl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../components/ui/include)
 
