@@ -204,6 +204,36 @@ static void test_lost_roundtrip(void)
     CHECK(memchr(out.shown.name, 0, sizeof out.shown.name) != NULL);
 }
 
+static void test_pair_roundtrip_and_corrupt(void)
+{
+    pair_rec_t in, out; uint8_t buf[STORE_PAIR_BLOB];
+    memset(&in, 0, sizeof in);
+    strcpy(in.device_id, "7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a64");
+    strcpy(in.api_url, "https://aelys.example.com");
+    for (int i = 0; i < 32; i++) in.priv[i] = (uint8_t)(i * 7 + 1);
+    size_t n = store_encode_pair(&in, buf, sizeof buf);
+    CHECK_EQ(n, sizeof buf);
+    CHECK_EQ(buf[0], STORE_PAIR_VERSION);
+    CHECK_EQ(STORE_PAIR_VERSION, 1);
+    memset(&out, 0, sizeof out);
+    CHECK(store_decode_pair(buf, n, &out));
+    CHECK(memcmp(&in, &out, sizeof in) == 0);
+    CHECK_EQ(store_encode_pair(&in, buf, n - 1), 0);   /* cap too small */
+    buf[5] ^= 1;                                       /* flipped payload byte */
+    CHECK(!store_decode_pair(buf, n, &out));
+    buf[5] ^= 1;
+    CHECK(!store_decode_pair(buf, n - 1, &out));       /* truncated */
+    CHECK(!store_decode_pair(NULL, 0, &out));
+    buf[0] = 9; reseal(buf, n);                        /* valid CRC, unknown version */
+    CHECK(!store_decode_pair(buf, n, &out));
+    buf[0] = STORE_PAIR_VERSION;
+    memset(buf + 1, 'W', sizeof in.device_id + 5);     /* device_id spills into api_url */
+    reseal(buf, n);
+    CHECK(store_decode_pair(buf, n, &out));
+    CHECK(memchr(out.device_id, 0, sizeof out.device_id) != NULL);
+    CHECK(memchr(out.api_url, 0, sizeof out.api_url) != NULL);
+}
+
 int main(void)
 {
     test_crc32_known_vector();
@@ -218,5 +248,6 @@ int main(void)
     test_wifi_upsert_drops_oldest_when_full();
     test_wifi_upsert_rejects_bad_input();
     test_lost_roundtrip();
+    test_pair_roundtrip_and_corrupt();
     return g_failed ? 1 : 0;
 }

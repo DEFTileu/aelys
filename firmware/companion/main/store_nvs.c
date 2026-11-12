@@ -89,3 +89,31 @@ esp_err_t store_save_lost(const lost_state_t *s)
     size_t n = store_encode_lost(s, b, sizeof b);
     return n ? write_blob("lost", b, n) : ESP_ERR_INVALID_SIZE;
 }
+
+bool store_load_pair(pair_rec_t *p)
+{
+    uint8_t b[STORE_PAIR_BLOB];
+    size_t n = read_blob("pair", b, sizeof b);
+    if (n && store_decode_pair(b, n, p)) return true;
+    if (n) ESP_LOGW(TAG, "pair blob corrupt, board is unpaired");
+    return false;
+}
+
+esp_err_t store_save_pair(const pair_rec_t *p)
+{
+    uint8_t b[STORE_PAIR_BLOB];
+    size_t n = store_encode_pair(p, b, sizeof b);
+    return n ? write_blob("pair", b, n) : ESP_ERR_INVALID_SIZE;
+}
+
+esp_err_t store_erase_pair(void)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_erase_key(h, "pair");
+    if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}

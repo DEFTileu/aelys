@@ -4,6 +4,7 @@
 /* No padding anywhere, so the in-memory layout is the blob layout. */
 _Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 49 + 97 + 65 + 97 + 2 * 33 + 2 * 17 + 2 * 24 + 2, "owner layout");
 _Static_assert(sizeof(wifi_list_t) == 1 + WIFI_MAX * (33 + 65), "wifi layout");
+_Static_assert(sizeof(pair_rec_t) == 40 + 129 + 32, "pair layout");
 
 uint32_t store_crc32(const uint8_t *p, size_t n)
 {
@@ -90,6 +91,20 @@ bool store_decode_lost(const uint8_t *buf, size_t len, lost_state_t *out)
     out->on = p[0] != 0;
     memcpy(&out->shown, p + 1, sizeof out->shown);
     term_owner(&out->shown);
+    return true;
+}
+
+size_t store_encode_pair(const pair_rec_t *in, uint8_t *buf, size_t cap)
+{
+    return seal(STORE_PAIR_VERSION, in, sizeof *in, buf, cap);
+}
+
+bool store_decode_pair(const uint8_t *buf, size_t len, pair_rec_t *out)
+{
+    const uint8_t *p = unseal(STORE_PAIR_VERSION, buf, len, sizeof *out);
+    if (!p) return false;
+    memcpy(out, p, sizeof *out);
+    TERM(out->device_id); TERM(out->api_url);
     return true;
 }
 

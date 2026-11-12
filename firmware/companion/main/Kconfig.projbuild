@@ -16,4 +16,10 @@ menu "Aelys companion"
         default 60
         help
             One WARN line with heap, frame, stack and boot figures every period.
+    config AELYS_IDENTITY_SELFTEST
+        bool "Run the identity self-test at boot (bench only)"
+        default n
+        help
+            Checks the device key, SAS and Wi-Fi decryption against generated vectors, in RAM only
+            (never writes NVS), and logs "identity selftest PASS" or FAIL.
 endmenu

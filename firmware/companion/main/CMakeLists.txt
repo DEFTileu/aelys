@@ -4,5 +4,5 @@ endif()
 
 idf_component_register(SRCS "app_main.c" "store_nvs.c" "metrics.c"
                        INCLUDE_DIRS "."
-                       REQUIRES board logic ui net
+                       REQUIRES board logic ui net identity
                        PRIV_REQUIRES lvgl__lvgl esp_psram nvs_flash esp_netif esp_timer)

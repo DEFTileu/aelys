@@ -4,6 +4,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_psram.h"
+#include "identity.h"
 #include "metrics.h"
 #include "net.h"
 #include "owner.h"
@@ -55,6 +56,14 @@ void app_main(void)
     if (nerr != ESP_OK) ESP_LOGE(TAG, "nvs: %s (running on defaults)", esp_err_to_name(nerr));
     store_load_owner(&owner);
     store_load_lost(&lost);
+#ifdef CONFIG_AELYS_IDENTITY_SELFTEST
+    identity_selftest();
+#else
+    static const identity_store_t istore = {.load = store_load_pair, .save = store_save_pair, .erase = store_erase_pair};
+    esp_err_t ierr = identity_init(&istore);
+    if (ierr != ESP_OK) ESP_LOGE(TAG, "identity: %s (running unpaired)", esp_err_to_name(ierr));
+    ESP_LOGW(TAG, "boot: paired=%d", identity_paired());
+#endif
     ESP_LOGW(TAG, "boot: lost_mode=%s", lost.on ? "on" : "off");
 
     lv_port_set_handler(ui_handle_event);
