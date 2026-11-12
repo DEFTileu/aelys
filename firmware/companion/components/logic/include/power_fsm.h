@@ -6,7 +6,7 @@
 typedef enum { PWR_ACTIVE, PWR_DIM, PWR_OFF } pwr_state_t;
 typedef enum {
     PWR_IN_TICK, PWR_IN_TOUCH, PWR_IN_BUTTON, PWR_IN_LIFT, PWR_IN_FACE_DOWN, PWR_IN_FACE_UP,
-    PWR_IN_HOLD /* ui animating or combo held */
+    PWR_IN_HOLD /* two-button combo held, or a one-shot UI animation the user triggered; never the idle face loop */
 } pwr_in_t;
 typedef struct { pwr_state_t state; bool face_down; uint32_t last_activity_ms, dim_ms, off_ms; } power_t;
 
