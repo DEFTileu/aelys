@@ -17,6 +17,7 @@ static void test_b64url_roundtrip_0_to_70_bytes(void)
     }
     enc[0] = 'x';
     CHECK_EQ(b64url_encode((const uint8_t *)"ab", 2, enc, 3), 0); /* cap too small (needs 4) */
+    CHECK_EQ(b64url_encode((const uint8_t *)"", 0, NULL, 0), 0);  /* zero-length buffer: no write */
     CHECK_EQ(enc[0], '\0');
 }
 
@@ -38,6 +39,7 @@ static void test_json_escape_quotes_backslash_ctrl(void)
     CHECK(strcmp(out, "a\\\"b\\\\c\\u000a") == 0);
     out[0] = 'x';
     CHECK_EQ(json_escape("abcd", out, 4), 0);            /* needs 5 with NUL */
+    CHECK_EQ(json_escape("", NULL, 0), 0);               /* zero-length buffer: no write */
     CHECK_EQ(out[0], '\0');
 }
 

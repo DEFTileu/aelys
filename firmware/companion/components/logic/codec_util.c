@@ -66,7 +66,7 @@ size_t json_escape(const char *in, char *out, size_t cap)
                               out[o++] = HEX[c >> 4]; out[o++] = HEX[c & 15]; }
         else                { out[o++] = (char)c; }
     }
-    if (o + 1 > cap) { out[0] = '\0'; return 0; }
+    if (o + 1 > cap) { if (cap) out[0] = '\0'; return 0; }
     out[o] = '\0';
     return o;
 }
@@ -76,7 +76,7 @@ size_t utf8_copy(char *dst, size_t cap, const char *src, size_t n)
     if (cap == 0) return 0;
     size_t k = 0;
     while (k < n && k < cap - 1 && src[k]) k++;
-    /* src[k] is in bounds: k never passes the terminating NUL. Back off if it is a continuation byte. */
+    /* src[k] may be src[n] (see header): the caller guarantees that byte exists. Back off if it is a continuation byte. */
     while (k > 0 && ((unsigned char)src[k] & 0xC0) == 0x80) k--;
     memcpy(dst, src, k);
     dst[k] = '\0';
