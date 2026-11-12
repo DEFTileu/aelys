@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC
 
+from app.companion.hub import hub
 from app.sync.change_log import lock_owner, record_domain_change
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select, text, update
@@ -135,7 +136,9 @@ async def revoke(device_id: str, principal=Depends(current_principal), db: Async
     from .models import now
     device.revoked_at = now(); device.credential_version += 1
     db.add(AuditLog(owner_id=user.id,action="device.revoke",actor="owner",scope=f"device:{device_id}",decision="allow",outcome="revoked",correlation_id=device_id,redacted_metadata={}))
-    await db.commit(); return {"revoked": True}
+    await db.commit()
+    await hub.close_device(device_id, 4403)  # an open board socket must not outlive its revocation
+    return {"revoked": True}
 
 @router.get("/projects", response_model=list[ProjectResponse])
 async def list_projects(principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):

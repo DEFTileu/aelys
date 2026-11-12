@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 DEBOUNCE_SECONDS = 0.25
 SEND_TIMEOUT_SECONDS = 5.0
 CLOSE_TIMEOUT_SECONDS = 2.0
+BUILD_TIMEOUT_SECONDS = 10.0  # a hung build must not hold an owner's lock forever
 SEND_FAILED_CLOSE_CODE = 1011
 REPLACED_CLOSE_CODE = 4000
 _DIRTY_KEY = "aelys_companion_dirty_owners"
@@ -102,14 +103,23 @@ class CompanionHub:
         if not task.cancelled() and (error := task.exception()):
             logger.warning("companion hub task failed reason=%s", type(error).__name__)
 
+    async def push_snapshot(self, device_id: str) -> None:
+        """Send one board a fresh snapshot, ordered against the owner's other pushes."""
+        connection = self._connections.get(device_id)
+        if connection:
+            await self._push(connection.owner_id, device_id)
+
     async def _flush(self, owner_id: str) -> None:
         try:
             await asyncio.sleep(self.debounce)
         finally:  # commits landing during the rebuild schedule a fresh pass; also on cancel
             if self._pending.get(owner_id) is asyncio.current_task():
                 del self._pending[owner_id]
+        await self._push(owner_id, None)
+
+    async def _push(self, owner_id: str, device_id: str | None) -> None:
         async with self._owner_locks.setdefault(owner_id, asyncio.Lock()):
-            targets = [c for c in self._connections.values() if c.owner_id == owner_id]
+            targets = [c for c in self._connections.values() if c.owner_id == owner_id and device_id in (None, c.device_id)]
             if not targets:
                 return
             # lazy: snapshot imports domains, which import this hub
@@ -117,8 +127,8 @@ class CompanionHub:
 
             try:
                 async with database.SessionLocal() as db:
-                    snapshot = await build_snapshot(db, owner_id, datetime.now(UTC))
-            except Exception as exc:  # noqa: BLE001 - a failed rebuild must not kill the hub
+                    snapshot = await asyncio.wait_for(build_snapshot(db, owner_id, datetime.now(UTC)), BUILD_TIMEOUT_SECONDS)
+            except Exception as exc:  # noqa: BLE001 - a failed or hung rebuild must not kill the hub
                 logger.warning("companion snapshot rebuild failed owner=%s reason=%s", owner_id, type(exc).__name__)
                 return
             message = {"type": "snapshot", "snapshot": snapshot.model_dump(mode="json")}

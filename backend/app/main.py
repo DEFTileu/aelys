@@ -18,6 +18,7 @@ from .ai.memory_api import router as memory_router
 from .automation.api import router as automation_router
 from .automation.hooks import wait_for_automations
 from .companion.api import router as companion_router
+from .companion.channel import router as companion_channel_router
 from .companion.hub import install_change_listeners
 from .core import models  # noqa: F401 - register domain metadata
 from .core.api import router as core_router
@@ -105,6 +106,7 @@ async def value_error(_: Request, exc: ValueError):
 @app.get("/healthz", include_in_schema=False)
 async def healthz(): return {"status":"ok"}
 
+app.include_router(companion_channel_router, prefix="/api/v1")  # before core: no /devices/{device_id} pattern may shadow /devices/channel
 app.include_router(core_router, prefix="/api/v1")
 app.include_router(device_auth_router, prefix="/api/v1")
 app.include_router(companion_router, prefix="/api/v1")
