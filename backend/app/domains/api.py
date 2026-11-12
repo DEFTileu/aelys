@@ -1026,6 +1026,9 @@ async def notifications(principal=Depends(current_principal), db:AsyncSession=De
 @router.post("/notifications")
 async def create_notification(body:NotificationIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; item=Notification(owner_id=user.id,kind=body.kind,title=body.title,body=body.body,data_json=body.data,dedup_key=body.dedup_key); db.add(item); await db.commit(); await db.refresh(item); return item
+async def set_notification_read(item_id:str, owner_id:str, db:AsyncSession):
+    """Mark an owner's notification read without committing; shared with the companion action."""
+    item=await owner_obj(Notification,item_id,owner_id,db); item.read_at=datetime.now(UTC); return item
 @router.post("/notifications/{item_id}/read")
 async def mark_notification_read(item_id:str, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(Notification,item_id,user.id,db); item.read_at=datetime.now(UTC); await db.commit(); return item
+    user,_=principal; item=await set_notification_read(item_id,user.id,db); await db.commit(); return item
