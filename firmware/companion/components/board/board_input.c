@@ -1,4 +1,5 @@
 /* Input glue: CST9217 touch, the BOOT key (GPIO0, active low) and the AXP2101 PWR key.
+ * The touch controller is read over I2C only when its INT line is low (or a falling edge latched it).
  * The PWR key reaches the SoC only through the PMIC, so it is read as PKEY press/release edge
  * interrupts, polled and cleared over I2C every 20 ms (the PMIC IRQ line is not wired).
  * BOOT + PWR held COMBO_HOLD_MS opens the ICE card; the PMIC's own long-press power-off is pushed
@@ -14,12 +15,14 @@
 #include "esp_lcd_touch_cst9217.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "pwrkey.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 static const char *TAG = "input";
 
-#define POLL_MS 10 /* touch every pass, the PMIC every second pass */
+#define POLL_MS     4 /* loop period: INT level, BOOT key, combo */
+#define SLOW_PASSES 5 /* every 20 ms: PMIC edges, and the release check while a finger is down */
 
 /* AXP2101 registers (datasheet / XPowersLib) */
 #define AXP_PWRKEY_TIMES 0x27 /* [5:4] IRQ time, [3:2] power-on time, [1:0] power-off time: 4/6/8/10 s */
@@ -31,6 +34,18 @@ static const char *TAG = "input";
 
 static i2c_master_dev_handle_t axp;
 static esp_lcd_touch_handle_t touch;
+static volatile bool touch_irq; /* INT fell since the last read: a pulse shorter than a poll still counts */
+
+#ifdef CONFIG_AELYS_INPUT_SELFTEST
+static volatile uint32_t st_int_edges;
+#endif
+static void IRAM_ATTR touch_isr(void *arg)
+{
+    touch_irq = true;
+#ifdef CONFIG_AELYS_INPUT_SELFTEST
+    st_int_edges++;
+#endif
+}
 
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
 static volatile bool st_boot, st_pwr; /* synthetic key holds from the self-test */
@@ -92,6 +107,7 @@ static bool post(uint8_t type, int pct)
 static bool touch_down(uint16_t *x, uint16_t *y)
 {
     uint8_t n = 0;
+    touch_irq = false;
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
     int64_t t0 = esp_timer_get_time();
 #endif
@@ -110,47 +126,94 @@ static bool touch_down(uint16_t *x, uint16_t *y)
     return true;
 }
 
+#ifdef CONFIG_AELYS_INPUT_SELFTEST
+/* Real taps on the ICE card: from just before the I2C read that saw the finger to the end of the
+ * refresh that drew the home screen. Reported per 20 taps. A tap on any other screen redraws nothing,
+ * so only taps while this task knows the card is open count. */
+#define TAP_N 20
+static uint32_t tap_t0, tap_lat_us[TAP_N];
+static bool tap_pending, ice_open;
+static int tap_n;
+static uint32_t ice_open_ms;
+static TaskHandle_t input_h;
+
+static int cmp_u32(const void *a, const void *b)
+{
+    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
+    return x < y ? -1 : x > y;
+}
+
+static void tap_poll(void)
+{
+    if (!tap_pending) return;
+    uint32_t done = lv_port_last_flush_end_us(), now = (uint32_t)esp_timer_get_time();
+    if ((int32_t)(done - tap_t0) > 0) {
+        tap_pending = false;
+        tap_lat_us[tap_n++] = done - tap_t0;
+        ESP_LOGW(TAG, "touch -> flush end %u us (tap %d/%d)", (unsigned)(done - tap_t0), tap_n, TAP_N);
+        if (tap_n == TAP_N) {
+            qsort(tap_lat_us, TAP_N, sizeof tap_lat_us[0], cmp_u32);
+            ESP_LOGW(TAG, "touch latency n=%d median=%u ms max=%u ms (stack high-water %u bytes)", TAP_N,
+                     (unsigned)(tap_lat_us[TAP_N / 2] / 1000), (unsigned)(tap_lat_us[TAP_N - 1] / 1000),
+                     (unsigned)uxTaskGetStackHighWaterMark(input_h));
+            tap_n = 0;
+        }
+    } else if (now - tap_t0 > 300000) {
+        tap_pending = false;
+        ESP_LOGW(TAG, "tap: no redraw within 300 ms (not counted)");
+    }
+}
+#endif
+
 static void input_task(void *arg)
 {
     combo_t combo;
+    pwrkey_t pwrkey;
     combo_reset(&combo);
-    bool was_touched = false, pwr_real = false, fire_pending = false;
+    pwrkey_reset(&pwrkey);
+    bool was_touched = false, fire_pending = false;
     int shown = 0; /* the last progress percent the ui was told about */
     uint32_t pass = 0;
     TickType_t wake = xTaskGetTickCount();
 
     for (;;) {
-        if (touch) {
+        bool slow = ++pass % SLOW_PASSES == 0;
+
+        /* INT is active low; while a finger is down the release is found by a read every 20 ms */
+        if (touch && (touch_irq || gpio_get_level(PIN_TOUCH_INT) == 0 || (was_touched && slow))) {
             uint16_t x = 0, y = 0;
+#ifdef CONFIG_AELYS_INPUT_SELFTEST
+            uint32_t t0 = (uint32_t)esp_timer_get_time();
+#endif
             if (!touch_down(&x, &y)) {
                 was_touched = false;
             } else if (!was_touched) {
                 ui_event_t ev = {.type = UI_EV_TOUCH, .len = 4, .data = {x, x >> 8, y, y >> 8}};
-                was_touched = lv_port_post(&ev); /* a dropped tap is retried on the next pass */
+                was_touched = lv_port_post(&ev); /* a dropped tap is retried on the next read */
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
-                if (was_touched) {
-                    uint32_t t0 = (uint32_t)esp_timer_get_time();
-                    int32_t wait_ms = 0;
-                    while ((int32_t)(lv_port_last_flush_end_us() - t0) <= 0 && wait_ms++ < 300) vTaskDelay(1);
-                    ESP_LOGW(TAG, "touch (%u,%u) -> flush end %d ms", x, y,
-                             wait_ms > 300 ? -1 : (int)((lv_port_last_flush_end_us() - t0) / 1000));
+                if (was_touched && ice_open && (uint32_t)(esp_timer_get_time() / 1000) - ice_open_ms < 15000) {
+                    tap_t0 = t0;
+                    tap_pending = true;
+                    ice_open = false;
                 }
 #endif
             }
         }
 
-        if (axp && (pass++ & 1) == 0) {
+        if (axp && slow) {
             uint8_t sts;
-            if (axp_rd(AXP_IRQ_STS1, &sts) == ESP_OK && (sts & (AXP_PKEY_POS | AXP_PKEY_NEG))) {
-                axp_wr(AXP_IRQ_STS1, sts & (AXP_PKEY_POS | AXP_PKEY_NEG));
-                /* both edges in one poll = a quick tap: ends released */
-                if (sts & AXP_PKEY_NEG) pwr_real = true;
-                if (sts & AXP_PKEY_POS) pwr_real = false;
-                ESP_LOGI(TAG, "PWR key %s", pwr_real ? "down" : "up");
+            if (axp_rd(AXP_IRQ_STS1, &sts) == ESP_OK) {
+                uint8_t edges = sts & (AXP_PKEY_POS | AXP_PKEY_NEG);
+                /* the edges count only once cleared: a failed clear is read again next poll */
+                if (edges && axp_wr(AXP_IRQ_STS1, edges) == ESP_OK)
+                    pwrkey_update(&pwrkey, edges & AXP_PKEY_NEG, edges & AXP_PKEY_POS,
+                                  (uint32_t)(esp_timer_get_time() / 1000));
+                if (edges) ESP_LOGI(TAG, "PWR key edges 0x%X, now %s", edges, pwrkey.down ? "down" : "up");
             }
         }
-
-        bool boot = gpio_get_level(PIN_BOOT) == 0, pwr = pwr_real;
+        /* no edge: only ages the state, so a lost release edge cannot leave the key down for good */
+        bool pwr = pwrkey_update(&pwrkey, false, false, (uint32_t)(esp_timer_get_time() / 1000));
+        bool boot = gpio_get_level(PIN_BOOT) == 0;
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
         boot = boot || st_boot;
         pwr = pwr || st_pwr;
@@ -167,19 +230,20 @@ static void input_task(void *arg)
         if (fire_pending && post(UI_EV_COMBO_FIRE, -1)) {
             fire_pending = false;
             ESP_LOGW(TAG, "combo fired: BOOT + PWR held %d ms", COMBO_HOLD_MS);
+#ifdef CONFIG_AELYS_INPUT_SELFTEST
+            ice_open = true;
+            ice_open_ms = (uint32_t)(esp_timer_get_time() / 1000);
+#endif
         }
+#ifdef CONFIG_AELYS_INPUT_SELFTEST
+        tap_poll();
+#endif
         xTaskDelayUntil(&wake, pdMS_TO_TICKS(POLL_MS));
     }
 }
 
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
 #include "esp_heap_caps.h"
-
-static int cmp_u32(const void *a, const void *b)
-{
-    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
-    return x < y ? -1 : x > y;
-}
 
 static void report(const char *what, uint32_t *v, int n)
 {
@@ -246,6 +310,9 @@ static void selftest_task(void *arg)
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    ESP_LOGW(TAG, "SELFTEST INT falling edges during the run (no finger): %u; INT level now %d",
+             (unsigned)st_int_edges, gpio_get_level(PIN_TOUCH_INT));
+    ESP_LOGW(TAG, "SELFTEST input task stack high-water: %u of 4096 bytes free", (unsigned)uxTaskGetStackHighWaterMark(input_h));
     ESP_LOGW(TAG, "SELFTEST DONE");
     vTaskDelete(NULL);
 }
@@ -264,7 +331,17 @@ esp_err_t board_input_start(void)
         axp = NULL;
         if (first == ESP_OK) first = err;
     }
-    if (xTaskCreatePinnedToCore(input_task, "input", 4096, NULL, 5, NULL, 0) != pdPASS) return ESP_ERR_NO_MEM;
+    if (touch) {
+        /* the touch driver already set PIN_TOUCH_INT up as an input with a falling-edge interrupt */
+        err = gpio_isr_handler_add(PIN_TOUCH_INT, touch_isr, NULL);
+        if (err == ESP_ERR_INVALID_STATE && (err = gpio_install_isr_service(0)) == ESP_OK) /* lv_port normally did it */
+            err = gpio_isr_handler_add(PIN_TOUCH_INT, touch_isr, NULL);
+        if (err != ESP_OK) ESP_LOGW(TAG, "touch INT edge latch off (%s): level polling only", esp_err_to_name(err));
+    }
+#ifndef CONFIG_AELYS_INPUT_SELFTEST
+    TaskHandle_t input_h;
+#endif
+    if (xTaskCreatePinnedToCore(input_task, "input", 4096, NULL, 5, &input_h, 0) != pdPASS) return ESP_ERR_NO_MEM;
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
     xTaskCreatePinnedToCore(selftest_task, "selftest", 4096, NULL, 4, NULL, 0);
 #endif
