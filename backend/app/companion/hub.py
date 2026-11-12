@@ -46,6 +46,7 @@ class CompanionHub:
         self._connections: dict[str, _Connection] = {}
         self._pending: dict[str, asyncio.Task[None]] = {}  # owners inside their debounce window
         self._background: set[asyncio.Task[None]] = set()
+        self._owner_locks: dict[str, asyncio.Lock] = {}  # build + send as one unit keeps an older snapshot from landing last
 
     def register(self, device_id: str, owner_id: str, send: Send, close: Close | None = None) -> Callable[[], None]:
         connection = _Connection(device_id, owner_id, send, close)
@@ -107,21 +108,21 @@ class CompanionHub:
         finally:  # commits landing during the rebuild schedule a fresh pass; also on cancel
             if self._pending.get(owner_id) is asyncio.current_task():
                 del self._pending[owner_id]
-        targets = [c for c in self._connections.values() if c.owner_id == owner_id]
-        if not targets:
-            return
-        from app.companion.snapshot import (
-            build_snapshot,  # lazy: snapshot imports domains, which import this hub
-        )
+        async with self._owner_locks.setdefault(owner_id, asyncio.Lock()):
+            targets = [c for c in self._connections.values() if c.owner_id == owner_id]
+            if not targets:
+                return
+            # lazy: snapshot imports domains, which import this hub
+            from app.companion.snapshot import build_snapshot
 
-        try:
-            async with database.SessionLocal() as db:
-                snapshot = await build_snapshot(db, owner_id, datetime.now(UTC))
-        except Exception as exc:  # noqa: BLE001 - a failed rebuild must not kill the hub
-            logger.warning("companion snapshot rebuild failed owner=%s reason=%s", owner_id, type(exc).__name__)
-            return
-        message = {"type": "snapshot", "snapshot": snapshot.model_dump(mode="json")}
-        await asyncio.gather(*(self._send(c, message) for c in targets))
+            try:
+                async with database.SessionLocal() as db:
+                    snapshot = await build_snapshot(db, owner_id, datetime.now(UTC))
+            except Exception as exc:  # noqa: BLE001 - a failed rebuild must not kill the hub
+                logger.warning("companion snapshot rebuild failed owner=%s reason=%s", owner_id, type(exc).__name__)
+                return
+            message = {"type": "snapshot", "snapshot": snapshot.model_dump(mode="json")}
+            await asyncio.gather(*(self._send(c, message) for c in targets))
 
     async def _send(self, connection: _Connection, message: dict) -> bool:
         try:

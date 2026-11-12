@@ -297,3 +297,34 @@ async def test_cancelled_flush_clears_pending(setup):
     pending[0].cancel()
     await hub.wait_idle()
     assert hub._pending == {}
+
+
+@pytest.mark.asyncio
+async def test_slow_older_build_is_sent_before_newer_snapshot(setup, monkeypatch):
+    from app.companion import snapshot as snapshot_module
+    real, started, release, calls = snapshot_module.build_snapshot, asyncio.Event(), asyncio.Event(), 0
+
+    async def slow_first(session, owner_id, now):
+        nonlocal calls
+        calls += 1
+        built = await real(session, owner_id, now)
+        if calls == 1:
+            started.set()
+            await release.wait()  # flush A: built from older data, still in flight
+        return built
+    monkeypatch.setattr(snapshot_module, 'build_snapshot', slow_first)
+
+    async def notify():
+        async with db.SessionLocal() as session:
+            session.add(Notification(owner_id=OWNER, kind='task.reminder', title='n'))
+            await session.commit()
+    await notify()
+    await started.wait()
+    await notify()  # schedules flush B while A's build is blocked
+    while OWNER in hub._pending:
+        await asyncio.sleep(0)  # B's debounce is over: without the owner lock it would now build and send first
+    for _ in range(50):
+        await asyncio.sleep(0.001)
+    release.set()
+    await hub.wait_idle()
+    assert [m['snapshot']['unread_count'] for m in setup] == [1, 2]
