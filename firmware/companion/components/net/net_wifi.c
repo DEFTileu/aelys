@@ -201,21 +201,44 @@ esp_err_t net_start(const net_store_t *s)
 
     evg = xEventGroupCreate();
     if (!evg) return ESP_ERR_NO_MEM;
-    ESP_ERROR_CHECK(esp_netif_init());
-    esp_err_t err = esp_event_loop_create_default();
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
-    esp_netif_create_default_wifi_sta();
+    esp_err_t err = esp_netif_init();
+    if (err != ESP_OK) goto fail_evg;
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) goto fail_evg;
+    esp_netif_t *sta = esp_netif_create_default_wifi_sta();
+    if (!sta) { err = ESP_FAIL; goto fail_evg; }
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, on_event, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_event, NULL));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM)); /* credentials live in our NVS blob only */
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) goto fail_netif;
+    err = esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, on_event, NULL);
+    if (err != ESP_OK) goto fail_wifi;
+    err = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_event, NULL);
+    if (err != ESP_OK) goto fail_h1;
+    /* credentials live in our NVS blob only */
+    if ((err = esp_wifi_set_storage(WIFI_STORAGE_RAM)) != ESP_OK || (err = esp_wifi_set_mode(WIFI_MODE_STA)) != ESP_OK ||
+        (err = esp_wifi_set_ps(WIFI_PS_MIN_MODEM)) != ESP_OK || (err = esp_wifi_start()) != ESP_OK)
+        goto fail_h2;
 
     err = net_improv_init();
     if (err != ESP_OK) ESP_LOGE(TAG, "improv listener: %s", esp_err_to_name(err));
-    if (xTaskCreatePinnedToCore(net_task, "net", 8192, NULL, 5, NULL, 0) != pdPASS) return ESP_ERR_NO_MEM;
+    if (xTaskCreatePinnedToCore(net_task, "net", 8192, NULL, 5, NULL, 0) != pdPASS) {
+        err = ESP_ERR_NO_MEM;
+        goto fail_h2;
+    }
     return ESP_OK;
+
+/* Wi-Fi is optional: undo what was set up so the caller can log the error and carry on without it. */
+fail_h2:
+    esp_wifi_stop();
+    esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, on_event);
+fail_h1:
+    esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, on_event);
+fail_wifi:
+    esp_wifi_deinit();
+fail_netif:
+    esp_netif_destroy_default_wifi(sta);
+fail_evg:
+    vEventGroupDelete(evg);
+    evg = NULL;
+    return err;
 }

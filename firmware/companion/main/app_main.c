@@ -8,6 +8,8 @@
 #include "net.h"
 #include "owner.h"
 #include "store_nvs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "ui.h"
 
 #define FW_VERSION "0.1.0"
@@ -32,12 +34,21 @@ static void boot_ui_setup(void)
     }
 }
 
+/* A dead panel or UI task is not fixed by rebooting: log it once and idle instead of looping through
+ * panics and coredump writes. */
+static void halt(const char *what, esp_err_t err)
+{
+    ESP_LOGE(TAG, "%s failed: %s (idle)", what, esp_err_to_name(err));
+    for (;;) vTaskDelay(portMAX_DELAY);
+}
+
 void app_main(void)
 {
     ESP_LOGW(TAG, "Aelys companion fw %s", FW_VERSION);
     ESP_LOGW(TAG, "psram_size=%u free_internal=%u free_spiram=%u", (unsigned)esp_psram_get_size(),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    ESP_ERROR_CHECK(board_init());
+    esp_err_t berr = board_init();
+    if (berr != ESP_OK) halt("board_init", berr);
     /* Load settings before the UI exists, and apply them inside the ui task right after ui_setup(), so
      * the first frame is already the right screen (no home flash before lost mode). Empty or corrupt
      * NVS gives the factory contacts and lost mode off; never a crash or a reboot. */
@@ -48,7 +59,8 @@ void app_main(void)
     ESP_LOGW(TAG, "boot: lost_mode=%s", lost.on ? "on" : "off");
 
     lv_port_set_handler(ui_handle_event);
-    ESP_ERROR_CHECK(lv_port_start(boot_ui_setup));
+    berr = lv_port_start(boot_ui_setup);
+    if (berr != ESP_OK) halt("ui start", berr);
 
     esp_err_t err = board_input_start();
     if (err != ESP_OK) ESP_LOGE(TAG, "input start: %s", esp_err_to_name(err));
