@@ -340,8 +340,10 @@ bool proto_parse(const char *json, size_t len, proto_msg_t *out)
     int n = jsmn_parse(&jp, json, len, toks, MAX_TOKENS);
     if (n < 1 || toks[0].type != JSMN_OBJECT) return false;
     /* jsmn (non-strict about structure) lets bare strings into an object; require key/value pairs everywhere */
-    for (int i = 1; i < n; i++)
+    for (int i = 1; i < n; i++) {
+        if (toks[i].start >= toks[0].end || toks[i].parent < 0) return false; /* data after the root object */
         if (toks[toks[i].parent].type == JSMN_OBJECT && (toks[i].type != JSMN_STRING || toks[i].size != 1)) return false;
+    }
     P p = { json, toks, n };
     char type[16];
     if (!get_str(&p, 0, "type", type, sizeof type, S_REQ | S_TRUNC)) return false;

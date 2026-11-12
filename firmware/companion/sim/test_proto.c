@@ -261,6 +261,11 @@ static void test_rejects(void)
     CHECK(proto_parse(unk, strlen(unk), &g_m));
     CHECK_EQ(g_m.type, MSG_UNKNOWN);
     int o;
+    /* data after the root object */
+    const char *trail[] = { "{\"type\":\"ready\",\"device_id\":\"d\"} \"x\"", "{\"type\":\"ready\",\"device_id\":\"d\"} 5",
+                            "{\"type\":\"ready\",\"device_id\":\"d\"} {\"a\":1}", "{\"type\":\"ready\",\"device_id\":\"d\"}{\"type\":\"ready\"}" };
+    for (size_t i = 0; i < sizeof trail / sizeof trail[0]; i++) CHECK(!proto_parse(trail[i], strlen(trail[i]), &g_m));
+    CHECK(proto_parse("{\"type\":\"ready\",\"device_id\":\"d\"}  \n", 38, &g_m)); /* trailing whitespace is fine */
     /* bare strings inside an object (not key/value pairs) must be rejected, never walked off the token array */
     static char hostile[2200];
     o = snprintf(hostile, sizeof hostile, "{\"type\":\"snapshot\",\"snapshot\":{\"generated_at\":\"2026-11-13T09:30:00Z\"");
