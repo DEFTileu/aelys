@@ -195,3 +195,50 @@ async def test_action_id_must_be_v4_and_kind_bounded(client):
     assert (await client.post(f'{B}/companion/actions', headers=headers, json=v1)).status_code == 422
     long_kind = {'id': str(uuid.uuid4()), 'kind': 'k' * 41, 'payload': {}}
     assert (await client.post(f'{B}/companion/actions', headers=headers, json=long_kind)).status_code == 422
+
+
+async def run(client, headers, kind, **payload):
+    return (await client.post(f'{B}/companion/actions', headers=headers, json=action(kind, **payload))).json()
+
+
+async def focus_row(owner_id):
+    from app.core.models import FocusSession
+    async with db.SessionLocal() as session:
+        return (await session.execute(select(FocusSession).where(FocusSession.owner_id == owner_id))).scalars().all()
+
+
+async def test_focus_actions_drive_the_active_session(client):
+    owner_id, headers = await board(client)
+    assert (await run(client, headers, 'focus.pause'))['error_code'] == 'NO_ACTIVE_FOCUS'
+    assert (await run(client, headers, 'focus.stop'))['error_code'] == 'NO_ACTIVE_FOCUS'
+    assert (await run(client, headers, 'focus.start', mode='bogus'))['error_code'] == 'VALIDATION_ERROR'
+    assert (await run(client, headers, 'focus.start'))['ok'] is True
+    (item,) = await focus_row(owner_id)
+    assert item.status == 'active' and item.mode == 'pomodoro'
+    assert (await run(client, headers, 'focus.start', mode='stopwatch'))['error_code'] == 'TIMER_ACTIVE'
+    assert (await run(client, headers, 'focus.pause'))['ok'] is True
+    assert (await focus_row(owner_id))[0].status == 'paused'
+    assert (await run(client, headers, 'focus.resume'))['ok'] is True
+    assert (await focus_row(owner_id))[0].status == 'active'
+    assert (await run(client, headers, 'focus.stop'))['ok'] is True
+    (done,) = await focus_row(owner_id)
+    assert done.status == 'completed' and done.ended_at is not None
+    assert (await run(client, headers, 'focus.stop'))['error_code'] == 'NO_ACTIVE_FOCUS'
+    assert (await run(client, headers, 'focus.start', mode='stopwatch'))['ok'] is True
+
+
+async def test_task_complete_action(client):
+    from app.core.models import Task
+    owner_id, headers = await board(client)
+    async with db.SessionLocal() as session:
+        session.add(Task(id='t1', owner_id=owner_id, title='Ship'))
+        await session.commit()
+    assert (await run(client, headers, 'task.complete', task_id='t1'))['ok'] is True
+    async with db.SessionLocal() as session:
+        task = await session.get(Task, 't1')
+        assert task.status == 'completed' and task.completed_at is not None and task.version == 2
+    assert (await run(client, headers, 'task.complete', task_id='t1'))['ok'] is True, 'completing again is idempotent'
+    async with db.SessionLocal() as session:
+        assert (await session.get(Task, 't1')).version == 2
+    assert (await run(client, headers, 'task.complete', task_id='missing'))['error_code'] == 'NOT_FOUND'
+    assert (await run(client, headers, 'task.complete'))['error_code'] == 'NOT_FOUND'

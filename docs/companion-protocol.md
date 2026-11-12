@@ -189,6 +189,7 @@ Result error codes (`action_result.error_code`):
 - `ACTION_UNKNOWN`: `kind` is not in the table above.
 - `NO_ACTIVE_FOCUS`: a `focus.pause`, `focus.resume` or `focus.stop` found no active session.
 - `NOT_FOUND`: the notification or task does not exist or belongs to another owner.
+- `VALIDATION_ERROR`: the payload is invalid (for example a `focus.start` `mode` other than `pomodoro` or `stopwatch`).
 - `POLICY_DENIED`: the Policy Engine denied the action.
 
 Other codes come from the shared services (for example `TIMER_ACTIVE` on
