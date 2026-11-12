@@ -165,7 +165,9 @@ void ui_handle_event(const ui_event_t *ev)
         return;
     }
     case UI_EV_LINK:
-        if (ev->len >= 1) scr_home_set_welcome(ev->data[0] == LINK_UI_UNPAIRED);
+        if (ev->len < 1) return;
+        scr_home_set_paired(ev->data[0] != LINK_UI_UNPAIRED);
+        scr_home_set_welcome(ev->data[0] == LINK_UI_UNPAIRED);
         return;
     case UI_EV_PAIR: {
         if (ev->len < 1) return;
@@ -176,7 +178,8 @@ void ui_handle_event(const ui_event_t *ev)
             if (g.paired_timer) { lv_timer_delete(g.paired_timer); g.paired_timer = NULL; } /* a new code replaces the card */
             next = SCR_PAIR;
         } else if (what == PAIR_UI_DONE) {
-            scr_home_set_welcome(false); /* paired: the first-boot welcome is over, whatever screen is up */
+            scr_home_set_paired(true); /* paired: the first-boot welcome is over, whatever screen is up */
+            scr_home_set_welcome(false);
             if (screen_next_pair(g.cur, g.lost, PAIR_UI_CODE) != SCR_PAIR) return; /* lost mode / ICE card: no card */
             scr_pair_set_done();
             if (g.paired_timer) lv_timer_reset(g.paired_timer);

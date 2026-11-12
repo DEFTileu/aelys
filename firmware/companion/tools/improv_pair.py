@@ -7,8 +7,8 @@
   improv_pair.py --commit <device_id>    PAIR_COMMIT, then PAIR_STATUS (board shows "Paired")
   improv_pair.py --status                PAIR_STATUS only
 
-The pairing secret is random and lives only in this process (or comes from the AELYS_PAIR_SECRET env var
-for a begin that is not --secret-gen); it is never printed. Port: $PORT, default the first /dev/cu.usbmodem*.
+The pairing secret is random, lives only in this process and is never printed. --commit works only in a
+pairing whose code was requested (BEGIN and CODE), so it is normally combined with --secret-gen. Port: $PORT, default the first /dev/cu.usbmodem*.
 Run with the repo venv (needs pyserial and the backend deps): .venv/bin/python firmware/companion/tools/improv_pair.py
 Exit codes: 0 ok, 1 board answered with an error or not at all, 2 board not found.
 """

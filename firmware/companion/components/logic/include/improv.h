@@ -50,3 +50,6 @@ bool improv_parse_wifi(const improv_frame_t *f, char ssid[33], char pass[65]);
  * most 128 bytes. Returns the count, or -1 on a wrong type, inconsistent lengths, a string over 128
  * bytes or more than `max` strings. */
 int improv_rpc_strings(const improv_frame_t *f, char out[][129], int max);
+
+/* True for a 36-char lowercase-hex UUID (8-4-4-4-12). */
+bool improv_is_uuid(const char *s);

@@ -28,7 +28,7 @@ static bool provisioning;
 static struct { bool set; char ssid[33], pass[65]; } pending;
 
 /* USB pairing, RAM only. The identity API is single-threaded: only this (net) task calls it. */
-static struct { bool active; int64_t deadline_us; char secret[129]; } pair; /* secret is "" once the SAS was computed */
+static struct { bool active, coded; int64_t deadline_us; char secret[129]; } pair; /* secret is "" once the SAS was computed */
 
 static void send(uint8_t type, const uint8_t *data, size_t len)
 {
@@ -109,7 +109,7 @@ static void post_pair(uint8_t state, const char *digits)
 static void pair_drop(void)
 {
     explicit_bzero(pair.secret, sizeof pair.secret);
-    pair.active = false;
+    pair.active = pair.coded = false;
     identity_pair_cancel();
 }
 
@@ -123,7 +123,10 @@ static void handle_pair(const improv_frame_t *f)
     case IMPROV_RPC_PAIR_BEGIN: {
         size_t sl = n == 2 ? strlen(s[0]) : 0;
         if (net_lost_on()) { err = IMPROV_ERR_LOST_MODE; break; }
-        if (n != 2 || sl < 32 || sl > 128 || identity_pair_begin(s[1]) != ESP_OK) { err = IMPROV_ERR_INVALID_RPC; break; }
+        if (n != 2 || sl < 32 || sl > 128) { err = IMPROV_ERR_INVALID_RPC; break; }
+        pair_drop(); /* a second or failing begin leaves no old key, secret or digits behind */
+        post_pair(PAIR_UI_HIDE, NULL);
+        if (identity_pair_begin(s[1]) != ESP_OK) { err = IMPROV_ERR_INVALID_RPC; break; }
         char pub[88];
         if (identity_pub_b64(pub) != ESP_OK) { identity_pair_cancel(); err = IMPROV_ERR_UNKNOWN; break; }
         memcpy(pair.secret, s[0], sl + 1);
@@ -135,23 +138,26 @@ static void handle_pair(const improv_frame_t *f)
         break;
     }
     case IMPROV_RPC_PAIR_CODE: {
+        if (net_lost_on()) { pair_drop(); err = IMPROV_ERR_LOST_MODE; break; }
         if (n != 1 || !s[0][0] || strlen(s[0]) > 39) { err = IMPROV_ERR_INVALID_RPC; break; }
         if (!pair.active || !pair.secret[0]) { err = IMPROV_ERR_NOT_PENDING; break; }
         char sas[7];
         esp_err_t e = identity_pair_code(pair.secret, s[0], sas);
         explicit_bzero(pair.secret, sizeof pair.secret); /* the secret is needed once */
         if (e != ESP_OK) { err = IMPROV_ERR_UNKNOWN; break; }
+        pair.coded = true;
         post_pair(PAIR_UI_CODE, sas);
         explicit_bzero(sas, sizeof sas);
         send_result(cmd, NULL, 0);
         break;
     }
     case IMPROV_RPC_PAIR_COMMIT: {
-        if (n != 1 || !s[0][0] || strlen(s[0]) > 39) { err = IMPROV_ERR_INVALID_RPC; break; }
-        if (!pair.active) { err = IMPROV_ERR_NOT_PENDING; break; }
+        if (net_lost_on()) { pair_drop(); err = IMPROV_ERR_LOST_MODE; break; }
+        if (n != 1 || !improv_is_uuid(s[0])) { err = IMPROV_ERR_INVALID_RPC; break; }
+        if (!pair.active || !pair.coded) { err = IMPROV_ERR_NOT_PENDING; break; }
         if (identity_pair_commit(s[0]) != ESP_OK) { err = IMPROV_ERR_UNKNOWN; break; } /* pending stays: retry */
         explicit_bzero(pair.secret, sizeof pair.secret);
-        pair.active = false;
+        pair.active = pair.coded = false;
         post_pair(PAIR_UI_DONE, NULL);
         send_result(cmd, NULL, 0);
         ESP_LOGW(TAG, "paired");

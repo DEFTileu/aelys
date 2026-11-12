@@ -19,7 +19,7 @@ static const char *TAG = "companion";
 
 static owner_info_t owner;
 static lost_state_t lost;
-static bool first_boot; /* unpaired and no saved Wi-Fi: home shows the welcome */
+static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi, home shows the welcome */
 
 static bool lost_is_on(void) { return lost.on; }
 
@@ -31,8 +31,8 @@ static void boot_ui_setup(void)
     tribuf_publish(&ui_owner_tb);
     ui_event_t ev = {.type = UI_EV_OWNER};
     ui_handle_event(&ev);
-    if (first_boot) {
-        ui_event_t fev = {.type = UI_EV_LINK, .len = 1, .data = {LINK_UI_UNPAIRED}};
+    if (first_boot || boot_paired) { /* unpaired with Wi-Fi saved keeps the plain "Not paired yet" home */
+        ui_event_t fev = {.type = UI_EV_LINK, .len = 1, .data = {first_boot ? LINK_UI_UNPAIRED : LINK_UI_OFFLINE}};
         ui_handle_event(&fev);
     }
     if (lost.on) {
@@ -71,10 +71,11 @@ void app_main(void)
     if (ierr != ESP_OK) ESP_LOGE(TAG, "identity: %s (running unpaired)", esp_err_to_name(ierr));
     ESP_LOGW(TAG, "boot: paired=%d", identity_paired());
 #endif
-    ESP_LOGW(TAG, "boot: main stack free=%u bytes", (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    ESP_LOGI(TAG, "boot: main stack free=%u bytes", (unsigned)uxTaskGetStackHighWaterMark(NULL));
     static wifi_list_t saved_wifi;
     store_load_wifi(&saved_wifi);
-    first_boot = !identity_paired() && saved_wifi.n == 0;
+    boot_paired = identity_paired();
+    first_boot = !boot_paired && saved_wifi.n == 0;
     explicit_bzero(&saved_wifi, sizeof saved_wifi); /* only the count was wanted; the list holds passwords */
     ESP_LOGW(TAG, "boot: lost_mode=%s", lost.on ? "on" : "off");
 

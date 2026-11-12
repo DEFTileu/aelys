@@ -304,6 +304,20 @@ static void post_pair(uint8_t state, const char *digits)
     sim_post(UI_EV_PAIR, d, sizeof d);
 }
 
+/* A paired home with no tasks yet has no "Not paired yet" line. */
+static void test_home_paired_line(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK(shows_text(scr, "Not paired yet"));
+    uint8_t offline = LINK_UI_OFFLINE;
+    sim_post(UI_EV_LINK, &offline, 1);                       /* boot of a paired board */
+    sim_step(100);
+    CHECK(!shows_text(scr, "Not paired yet") && !shows_text(scr, "Hi, I'm Aelys"));
+    check_inside("home paired");
+}
+
 /* The code screen shows the six digits inside the circle; "Paired" shows for 2 s, then home. */
 static void test_pair_screen_shot(void)
 {
@@ -312,7 +326,9 @@ static void test_pair_screen_shot(void)
     CHECK_EQ(ui_current_screen(), SCR_PAIR);
     check_inside("pair code");
     CHECK(shows_text(scr, "482913"));
+    CHECK(shows_text(scr, "Pair with Aelys"));
     CHECK(shows_text(scr, "Confirm this code in Aelys web"));
+    CHECK(!shows_text(scr, "Both codes must match"));
     CHECK_EQ(missing_glyphs(scr), 0);
     post_pair(PAIR_UI_CODE, "12x456");                      /* not digits: ignored, old code stays */
     CHECK(shows_text(scr, "482913"));
@@ -356,7 +372,7 @@ static void test_first_boot_welcome(void)
     post_pair(PAIR_UI_DONE, NULL);
     sim_step(2100);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
-    CHECK(!shows_text(scr, "Hi, I'm Aelys"));
+    CHECK(!shows_text(scr, "Hi, I'm Aelys") && !shows_text(scr, "Not paired yet")); /* paired, no tasks yet */
 }
 
 int main(void)
@@ -371,6 +387,7 @@ int main(void)
     test_lost_fields_follow_show_bits();
     test_cyrillic_and_kazakh_render();
     test_max_length();
+    test_home_paired_line();
     test_pair_screen_shot();
     test_first_boot_welcome();
     return g_failed ? 1 : 0;

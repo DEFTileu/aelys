@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include "ui_screens_priv.h"
 
-static struct { lv_obj_t *orbit, *clock, *face, *agenda, *hint, *wifi; int done, total; bool welcome; } h;
+static struct { lv_obj_t *orbit, *clock, *face, *agenda, *hint, *wifi; int done, total; bool welcome, paired; } h;
 
 void scr_home_set_time(uint8_t hour, uint8_t minute)
 {
@@ -27,6 +27,12 @@ static void restack(void)
     ui_stack(col, gap, 4, 0, UI_SCREEN_SIZE, -1);
 }
 
+void scr_home_set_paired(bool on)
+{
+    h.paired = on;
+    scr_home_set_tasks(h.done, h.total);
+}
+
 void scr_home_set_welcome(bool on)
 {
     if (on == h.welcome) return;
@@ -41,7 +47,7 @@ void scr_home_set_tasks(int done, int total)
     h.done = done; h.total = total;
     orbit_set(h.orbit, done, total);
     if (h.welcome) lv_label_set_text(h.agenda, "Hi, I'm Aelys");
-    else if (total <= 0) lv_label_set_text(h.agenda, "Not paired yet");
+    else if (total <= 0) lv_label_set_text(h.agenda, h.paired ? "" : "Not paired yet");
     else lv_label_set_text_fmt(h.agenda, "%d left today", total > done ? total - done : 0);
 }
 

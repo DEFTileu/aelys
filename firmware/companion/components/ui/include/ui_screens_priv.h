@@ -31,6 +31,7 @@ lv_obj_t *scr_home_create(lv_obj_t *parent);
 void scr_home_set_time(uint8_t hour, uint8_t minute);
 void scr_home_set_tasks(int done, int total);
 void scr_home_set_wifi(uint8_t state); /* ui_wifi_state_t */
+void scr_home_set_paired(bool on);    /* paired: no "Not paired yet" line while there are no tasks */
 void scr_home_set_welcome(bool on);   /* first boot: "Hi, I'm Aelys / Connect me by USB ..." instead of the agenda line */
 
 lv_obj_t *scr_lost_create(lv_obj_t *parent);

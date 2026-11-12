@@ -89,3 +89,13 @@ int improv_rpc_strings(const improv_frame_t *f, char out[][129], int max)
     }
     return n;
 }
+
+bool improv_is_uuid(const char *s)
+{
+    for (int i = 0; i < 36; i++) {
+        char c = s[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23 ? c != '-' : !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+            return false; /* a NUL fails both tests, so a short string stops here */
+    }
+    return s[36] == '\0';
+}

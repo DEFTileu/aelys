@@ -190,8 +190,21 @@ static void test_rpc_strings(void)
     CHECK_EQ(improv_rpc_strings(&f, out, 3), -1);
 }
 
+static void test_is_uuid(void)
+{
+    CHECK(improv_is_uuid("11111111-1111-4111-8111-111111111111"));
+    CHECK(improv_is_uuid("7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a64"));
+    CHECK(!improv_is_uuid("7B0E5C3A-4D21-4F6B-9A38-2C1D5E8F0A64"));   /* upper case */
+    CHECK(!improv_is_uuid("7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a6"));    /* short */
+    CHECK(!improv_is_uuid("7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a644"));  /* long */
+    CHECK(!improv_is_uuid("7b0e5c3a04d21-4f6b-9a38-2c1d5e8f0a64"));   /* dash missing */
+    CHECK(!improv_is_uuid("7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a6g"));   /* not hex */
+    CHECK(!improv_is_uuid(""));
+}
+
 int main(void)
 {
+    test_is_uuid();
     test_rpc_strings();
     test_build_then_parse_roundtrip();
     test_bad_checksum_rejected();
