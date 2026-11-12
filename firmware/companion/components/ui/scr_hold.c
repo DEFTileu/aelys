@@ -28,14 +28,46 @@ static void ring_draw(lv_event_t *e)
     lv_draw_arc(lv_event_get_layer(e), &d);
 }
 
+/* Grow `box` to take in the point at `deg` on radius r around the ring centre. */
+static void box_add(lv_area_t *box, const lv_area_t *ring, int deg, int32_t r)
+{
+    int32_t x = ring->x1 + UI_SCREEN_SIZE / 2 + (lv_trigo_cos(deg) * r >> LV_TRIGO_SHIFT);
+    int32_t y = ring->y1 + UI_SCREEN_SIZE / 2 + (lv_trigo_sin(deg) * r >> LV_TRIGO_SHIFT);
+    if (x < box->x1) box->x1 = x;
+    if (x > box->x2) box->x2 = x;
+    if (y < box->y1) box->y1 = y;
+    if (y > box->y2) box->y2 = y;
+}
+
+/* Redraw only the arc between two percentages: a full-screen invalidation costs ~50 ms a frame. */
+static void ring_invalidate(int from, int to)
+{
+    const int32_t r_out = UI_SCREEN_SIZE / 2 - RING_INSET, r_in = r_out - RING_WIDTH;
+    int lo = from < to ? from : to, hi = from < to ? to : from;
+    int a0 = 270 + 360 * lo / 100, a1 = 270 + 360 * hi / 100;
+    lv_area_t ring, box = { INT32_MAX, INT32_MAX, INT32_MIN, INT32_MIN };
+    lv_obj_get_coords(h.ring, &ring);
+    box_add(&box, &ring, a0, r_out);
+    box_add(&box, &ring, a0, r_in);
+    box_add(&box, &ring, a1, r_out);
+    box_add(&box, &ring, a1, r_in);
+    for (int a = (a0 / 90 + 1) * 90; a < a1; a += 90) box_add(&box, &ring, a, r_out); /* axis extremes */
+    box.x1 -= 2; box.y1 -= 2; box.x2 += 2; box.y2 += 2; /* anti-aliased edge */
+    lv_obj_invalidate_area(h.ring, &box);
+}
+
 void scr_hold_set(int pct)
 {
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     if (pct == h.pct) return;
+    int old = h.pct;
     h.pct = pct;
     lv_obj_set_hidden(h.root, pct == 0);
-    lv_obj_invalidate(h.ring);
+    if (old > 0 && pct > 0)
+        ring_invalidate(old, pct);
+    else
+        lv_obj_invalidate(h.ring);
 }
 
 lv_obj_t *scr_hold_create(lv_obj_t *parent)
