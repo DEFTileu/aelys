@@ -1,3 +1,6 @@
+# Chip: a fresh checkout has no sdkconfig, and without this IDF defaults to the plain ESP32
+CONFIG_IDF_TARGET="esp32s3"
+
 # Flash: 32 MB, QIO, 80 MHz
 CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
