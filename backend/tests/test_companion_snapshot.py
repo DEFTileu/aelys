@@ -129,3 +129,79 @@ async def test_snapshot_route_companion_only(client):
     ok = await client.get(f'{B}/companion/snapshot', headers={'Authorization': f'Bearer {token}'})
     assert ok.status_code == 200, ok.text
     assert set(ok.json()) == {'generated_at', 'next_task', 'overdue_count', 'next_event', 'unread_count', 'notices', 'focus'}
+
+
+@pytest.mark.asyncio
+async def test_notice_filter_is_case_and_prefix_exact(owner):
+    kinds = ['Task.x', 'TASK.y', 'taskx', ' task.z', 'task_x', 'Calendar.a', 'FOCUS.b']
+    rows = [Notification(owner_id=owner, kind=kind, title=f'LEAK-{index}', created_at=NOW - timedelta(minutes=index)) for index, kind in enumerate(kinds)]
+    snap = await snapshot(owner, rows)
+    assert snap.unread_count == len(kinds) and snap.notices == []
+    assert 'LEAK' not in snap.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_broken_calendar_degrades_to_no_event_with_a_warning(owner, caplog):
+    start = NOW + timedelta(hours=1)
+    bad_rule = CalendarEvent(owner_id=owner, title='TITLE-LEAK', starts_at=start, ends_at=start + timedelta(hours=1), rrule='FREQ=NOPE')
+    with caplog.at_level('WARNING', logger='app.companion.snapshot'):
+        snap = await snapshot(owner, [bad_rule])
+    assert snap.next_event is None and f'owner={owner}' in caplog.text and 'TITLE-LEAK' not in caplog.text
+    caplog.clear()
+    async with db.SessionLocal() as session:
+        await session.delete(await session.get(CalendarEvent, bad_rule.id))
+        await session.commit()
+    bad_zone = CalendarEvent(owner_id=owner, title='TITLE-LEAK', starts_at=start, ends_at=start + timedelta(hours=1), rrule='FREQ=DAILY', timezone='Nowhere/Land')
+    with caplog.at_level('WARNING', logger='app.companion.snapshot'):
+        snap = await snapshot(owner, [bad_zone])
+    assert snap.next_event is None and f'owner={owner}' in caplog.text and 'TITLE-LEAK' not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_oversized_calendar_degrades_with_a_warning(owner, caplog):
+    start = NOW + timedelta(hours=1)
+    rows = [CalendarEvent(owner_id=owner, title='e', starts_at=start, ends_at=start + timedelta(hours=1)) for _ in range(10001)]
+    with caplog.at_level('WARNING', logger='app.companion.snapshot'):
+        snap = await snapshot(owner, rows)
+    assert snap.next_event is None and 'too large' in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_timed_event_beats_all_day_and_all_day_is_a_fallback(owner):
+    midnight = NOW.replace(hour=0, minute=0)
+    holiday = CalendarEvent(owner_id=owner, title='Holiday', starts_at=midnight, ends_at=midnight + timedelta(days=1), all_day=True)
+    standup = CalendarEvent(owner_id=owner, title='Standup', starts_at=NOW + timedelta(minutes=30), ends_at=NOW + timedelta(minutes=45))
+    assert (await snapshot(owner, [holiday, standup])).next_event.id == standup.id
+    async with db.SessionLocal() as session:
+        await session.delete(await session.get(CalendarEvent, standup.id))
+        await session.commit()
+    only = (await snapshot(owner)).next_event
+    assert (only.id, only.all_day, only.starts_at, only.ends_at) == (holiday.id, True, midnight, midnight + timedelta(days=1))
+
+
+@pytest.mark.asyncio
+async def test_deleted_rows_are_excluded(owner):
+    gone = NOW - timedelta(minutes=1)
+    rows = [
+        Task(owner_id=owner, title='deleted task', due_at=NOW + timedelta(hours=1), deleted_at=gone),
+        Task(owner_id=owner, title='deleted overdue', due_at=NOW - timedelta(hours=1), deleted_at=gone),
+        CalendarEvent(owner_id=owner, title='deleted event', starts_at=NOW + timedelta(hours=1), ends_at=NOW + timedelta(hours=2), deleted_at=gone),
+        Notification(owner_id=owner, kind='task.reminder', title='deleted notice', deleted_at=gone),
+        FocusSession(owner_id=owner, started_at=NOW - timedelta(minutes=5), status='active', deleted_at=gone),
+    ]
+    snap = await snapshot(owner, rows)
+    assert (snap.next_task, snap.overdue_count, snap.next_event, snap.unread_count, snap.notices, snap.focus) == (None, 0, None, 0, [], None)
+
+
+@pytest.mark.asyncio
+async def test_other_owners_rows_never_appear(client, owner):
+    other = await claim_owner_user(client)
+    soon = NOW + timedelta(hours=1)
+    foreign = [
+        Task(owner_id=other, title='their task', due_at=soon), Task(owner_id=other, title='their late task', due_at=NOW - timedelta(hours=1)),
+        CalendarEvent(owner_id=other, title='their event', starts_at=soon, ends_at=soon + timedelta(hours=1)),
+        Notification(owner_id=other, kind='task.reminder', title='their notice'),
+        FocusSession(owner_id=other, started_at=NOW - timedelta(minutes=5), status='active'),
+    ]
+    snap = await snapshot(owner, foreign)
+    assert (snap.next_task, snap.overdue_count, snap.next_event, snap.unread_count, snap.notices, snap.focus) == (None, 0, None, 0, [], None)

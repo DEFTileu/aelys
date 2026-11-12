@@ -1,6 +1,7 @@
 """What the desk board may show: a small, privacy-filtered view of the owner's day."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import Literal
 
@@ -12,6 +13,9 @@ from app.domains.recurrence import utc
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
+
+logger = logging.getLogger(__name__)
 
 # Only these notification kinds may show a title on the board; every other kind is counted, never named.
 ALLOWED_NOTICE_PREFIXES = ("task.", "calendar.", "focus.")
@@ -76,19 +80,27 @@ async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> Comp
     overdue = (await db.execute(select(func.count()).select_from(Task).where(*open_task, Task.due_at < now))).scalar_one()
 
     # Same projection as GET /calendar/occurrences: it needs every owner row, deleted exception placeholders included.
-    events = list((await db.execute(select(CalendarEvent).where(CalendarEvent.owner_id == owner_id).limit(10001))).scalars())
-    try:
-        projected = project_google_calendar_events(events, now, now + EVENT_WINDOW) if len(events) <= 10000 else []
-    except ValueError:  # a runaway recurrence must not take the whole board offline
-        projected = []
+    # It never reads the description, so that heavy column stays unloaded.
+    events = list((await db.execute(select(CalendarEvent).where(CalendarEvent.owner_id == owner_id).options(defer(CalendarEvent.description)).limit(10001))).scalars())
+    projected: list = []
+    if len(events) > 10000:
+        logger.warning("companion snapshot: calendar too large to project owner=%s", owner_id)
+    else:
+        try:
+            projected = project_google_calendar_events(events, now, now + EVENT_WINDOW)
+        except (ValueError, TypeError, KeyError) as exc:  # bad rrule/timezone (ZoneInfoNotFoundError is a KeyError) must not take the board offline
+            logger.warning("companion snapshot: calendar projection failed owner=%s reason=%s", owner_id, type(exc).__name__)
+    # A timed event that is ongoing or upcoming wins; an all-day event only shows when no timed one is in the window.
+    chosen = next((item for item in projected if not item[0].all_day), projected[0] if projected else None)
     next_event = None
-    if projected:
-        event, start, end = projected[0]
+    if chosen:
+        event, start, end = chosen
         next_event = SnapEvent(id=event.id, title=event.title, starts_at=start, ends_at=end, all_day=event.all_day)
 
     unread = (Notification.owner_id == owner_id, Notification.deleted_at.is_(None), Notification.read_at.is_(None))
     unread_count = (await db.execute(select(func.count()).select_from(Notification).where(*unread))).scalar_one()
-    notices = (await db.execute(select(Notification).where(*unread, or_(*(Notification.kind.startswith(p) for p in ALLOWED_NOTICE_PREFIXES)))
+    # substr == p, not LIKE: LIKE is case-insensitive on SQLite and would admit kinds such as 'Task.x'.
+    notices = (await db.execute(select(Notification).where(*unread, or_(*(func.substr(Notification.kind, 1, len(p)) == p for p in ALLOWED_NOTICE_PREFIXES)))
                                 .order_by(Notification.created_at.desc(), Notification.id).limit(MAX_NOTICES))).scalars()
 
     session = (await db.execute(select(FocusSession).where(FocusSession.owner_id == owner_id, FocusSession.deleted_at.is_(None),
@@ -101,4 +113,4 @@ async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> Comp
 
     return CompanionSnapshot(
         generated_at=now, next_task=SnapTask.model_validate(next_task) if next_task else None, overdue_count=overdue,
-        next_event=next_event, unread_count=unread_count, notices=[SnapNotice.model_validate(n) for n in notices], focus=focus)
+        next_event=next_event, unread_count=unread_count, notices=[SnapNotice.model_validate(n) for n in notices if n.kind.startswith(ALLOWED_NOTICE_PREFIXES)], focus=focus)
