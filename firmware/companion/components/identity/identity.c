@@ -34,12 +34,6 @@ static psa_key_id_t pend;                /* the key being paired: RAM only until
 static uint8_t pend_pub[PUB_LEN];
 static char pend_url[129];
 
-static void zero(void *p, size_t n)
-{
-    volatile uint8_t *v = p;
-    while (n--) *v++ = 0;
-}
-
 static void key_attrs(psa_key_attributes_t *a)
 {
     psa_set_key_type(a, PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
@@ -79,14 +73,14 @@ esp_err_t identity_init(const identity_store_t *store)
     drop_key();
     pair_rec_t r;
     if (!st->load(&r)) return ESP_OK;
-    esp_err_t err = import_active(r.priv, &key, pub);
+    esp_err_t err = strncmp(r.api_url, "https://", 8) == 0 ? import_active(r.priv, &key, pub) : ESP_ERR_INVALID_ARG;
     if (err == ESP_OK) {
         strcpy(dev_id, r.device_id);
         strcpy(api_url, r.api_url);
     } else {
-        ESP_LOGW(TAG, "stored key unusable, board is unpaired");
+        ESP_LOGW(TAG, "stored pairing unusable, board is unpaired");
     }
-    zero(&r, sizeof r);
+    explicit_bzero(&r, sizeof r);
     return ESP_OK;
 }
 
@@ -154,8 +148,10 @@ static esp_err_t sas_for(const char *secret, const char *id, const uint8_t p[PUB
     uint8_t mac[32]; size_t ml = 0;
     s = psa_mac_compute(k, PSA_ALG_HMAC(PSA_ALG_SHA_256), msg, n, mac, sizeof mac, &ml);
     psa_destroy_key(k);
-    if (s != PSA_SUCCESS || ml != sizeof mac) return ESP_FAIL;
     uint32_t v = (uint32_t)mac[0] << 24 | (uint32_t)mac[1] << 16 | (uint32_t)mac[2] << 8 | mac[3];
+    bool good = s == PSA_SUCCESS && ml == sizeof mac;
+    explicit_bzero(mac, sizeof mac);
+    if (!good) return ESP_FAIL;
     snprintf(sas, 7, "%06u", (unsigned)(v % 1000000u));
     return ESP_OK;
 }
@@ -184,7 +180,7 @@ esp_err_t identity_pair_commit(const char *device_id)
         err = st->save(&r);                          /* the one NVS write */
         if (err != ESP_OK) psa_destroy_key(nk);
     }
-    zero(&r.priv, sizeof r.priv);
+    explicit_bzero(&r.priv, sizeof r.priv);
     if (err != ESP_OK) return err;
     drop_key();
     key = nk;
@@ -240,7 +236,7 @@ esp_err_t identity_wifi_decrypt(const uint8_t *blob, size_t n, char ssid[33], ch
     psa_destroy_key(aes);
     esp_err_t err = ESP_FAIL;
     if (s == PSA_SUCCESS && wifi_plain_parse(plain, pl, ssid, pass)) err = ESP_OK;
-    zero(plain, sizeof plain);
+    explicit_bzero(plain, sizeof plain);
     return err;
 }
 
@@ -307,7 +303,7 @@ static void selftest_run(void)
     T(!strcmp(identity_device_id(), "selftest-device") && memcmp(pub, newpub, PUB_LEN) == 0);
     T(identity_sign("x", sig) == ESP_OK);
     T(identity_wipe() == ESP_OK && st_erases == 1 && !identity_paired() && identity_sign("x", sig) == ESP_ERR_INVALID_STATE);
-    zero(&st_rec, sizeof st_rec);
+    explicit_bzero(&st_rec, sizeof st_rec);
 
     ESP_LOGW(TAG, "identity selftest %s", ok ? "PASS" : "FAIL");
 }

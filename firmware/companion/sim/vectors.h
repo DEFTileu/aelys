@@ -3,13 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-static const uint8_t VEC_DEVICE_PRIV[] = {
+__attribute__((unused)) static const uint8_t VEC_DEVICE_PRIV[] = {
     0x0b, 0x7d, 0x3a, 0x5c, 0x1e, 0x9f, 0x4a, 0x2d, 0x8c, 0x6b, 0x0e, 0x1f,
     0x3a, 0x5d, 0x7c, 0x9b, 0x2e, 0x4f, 0x6a, 0x8c, 0x0d, 0x1b, 0x3e, 0x5f,
     0x7a, 0x9c, 0x1d, 0x3e, 0x5f, 0x7a, 0x9b, 0x11,
 };
 #define VEC_DEVICE_PRIV_LEN 32
-static const uint8_t VEC_DEVICE_PUB[] = {
+__attribute__((unused)) static const uint8_t VEC_DEVICE_PUB[] = {
     0x04, 0xf3, 0x4a, 0x4e, 0x11, 0x65, 0xe9, 0xad, 0xff, 0x4a, 0xf6, 0x02,
     0x2e, 0xab, 0xd2, 0xc7, 0xaf, 0x30, 0x9c, 0xa7, 0x48, 0x32, 0xe4, 0x44,
     0xd2, 0x2d, 0x2e, 0xdb, 0x00, 0x5d, 0xf6, 0x31, 0xd6, 0x85, 0xfd, 0x96,
@@ -18,7 +18,7 @@ static const uint8_t VEC_DEVICE_PUB[] = {
     0xde, 0xd6, 0xda, 0x8a, 0xd0,
 };
 #define VEC_DEVICE_PUB_LEN 65
-static const uint8_t VEC_BLOB[] = {
+__attribute__((unused)) static const uint8_t VEC_BLOB[] = {
     0x01, 0x04, 0xe1, 0xe3, 0x40, 0x87, 0xb1, 0x21, 0x1b, 0x50, 0xb2, 0xeb,
     0xba, 0x27, 0x2c, 0xd3, 0x68, 0xcf, 0x68, 0x0a, 0x56, 0xa7, 0xd3, 0x18,
     0x0b, 0x17, 0xd2, 0x5e, 0x6c, 0x8d, 0x22, 0xa5, 0x2d, 0x15, 0xf7, 0x74,
@@ -32,7 +32,7 @@ static const uint8_t VEC_BLOB[] = {
     0xde,
 };
 #define VEC_BLOB_LEN 121
-static const uint8_t VEC_BLOB_WRONG_AAD[] = {
+__attribute__((unused)) static const uint8_t VEC_BLOB_WRONG_AAD[] = {
     0x01, 0x04, 0xe1, 0xe3, 0x40, 0x87, 0xb1, 0x21, 0x1b, 0x50, 0xb2, 0xeb,
     0xba, 0x27, 0x2c, 0xd3, 0x68, 0xcf, 0x68, 0x0a, 0x56, 0xa7, 0xd3, 0x18,
     0x0b, 0x17, 0xd2, 0x5e, 0x6c, 0x8d, 0x22, 0xa5, 0x2d, 0x15, 0xf7, 0x74,
@@ -46,10 +46,10 @@ static const uint8_t VEC_BLOB_WRONG_AAD[] = {
     0x5a,
 };
 #define VEC_BLOB_WRONG_AAD_LEN 121
-static const char VEC_DEVICE_ID[] = "7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a64";
-static const char VEC_SECRET[] = "test-pairing-secret-0123456789abcdef-not-real";
-static const char VEC_PAIRING_ID[] = "9f2c4e6a-1b3d-4857-a0c2-e4f6a8b0d2c4";
-static const char VEC_SAS[] = "327341";
-static const char VEC_SSID[] = "Caf\303\251 \320\226\042\134";
-static const char VEC_PASS[] = "p@ss word 12345";
-static const char VEC_LOGIN_MSG[] = "aelys-device-login-v1\0127b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a64\012dGVzdC1sb2dpbi1ub25jZS0wMTIzNDU2Nzg5";
+__attribute__((unused)) static const char VEC_DEVICE_ID[] = "7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a64";
+__attribute__((unused)) static const char VEC_SECRET[] = "test-pairing-secret-0123456789abcdef-not-real";
+__attribute__((unused)) static const char VEC_PAIRING_ID[] = "9f2c4e6a-1b3d-4857-a0c2-e4f6a8b0d2c4";
+__attribute__((unused)) static const char VEC_SAS[] = "327341";
+__attribute__((unused)) static const char VEC_SSID[] = "Caf\303\251 \320\226\042\134";
+__attribute__((unused)) static const char VEC_PASS[] = "p@ss word 12345";
+__attribute__((unused)) static const char VEC_LOGIN_MSG[] = "aelys-device-login-v1\0127b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a64\012dGVzdC1sb2dpbi1ub25jZS0wMTIzNDU2Nzg5";

@@ -94,16 +94,19 @@ bool store_load_pair(pair_rec_t *p)
 {
     uint8_t b[STORE_PAIR_BLOB];
     size_t n = read_blob("pair", b, sizeof b);
-    if (n && store_decode_pair(b, n, p)) return true;
-    if (n) ESP_LOGW(TAG, "pair blob corrupt, board is unpaired");
-    return false;
+    bool ok = n && store_decode_pair(b, n, p);
+    explicit_bzero(b, sizeof b); /* b holds the private key */
+    if (!ok && n) ESP_LOGW(TAG, "pair blob corrupt, board is unpaired");
+    return ok;
 }
 
 esp_err_t store_save_pair(const pair_rec_t *p)
 {
     uint8_t b[STORE_PAIR_BLOB];
     size_t n = store_encode_pair(p, b, sizeof b);
-    return n ? write_blob("pair", b, n) : ESP_ERR_INVALID_SIZE;
+    esp_err_t err = n ? write_blob("pair", b, n) : ESP_ERR_INVALID_SIZE;
+    explicit_bzero(b, sizeof b);
+    return err;
 }
 
 esp_err_t store_erase_pair(void)

@@ -31,6 +31,9 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
 
+# app_main runs identity_init (P-256 import, about 4.3 KB peak): the 3.5 KB default overflows
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+
 # The ui task is created explicitly; app_main may run on either core
 CONFIG_ESP_MAIN_TASK_AFFINITY_NO_AFFINITY=y
 

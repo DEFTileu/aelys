@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
+#include "sdkconfig.h"
 #include "store_codec.h"
 
 typedef struct {
