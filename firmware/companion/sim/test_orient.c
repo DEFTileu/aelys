@@ -70,6 +70,16 @@ static void test_tap_is_not_face_up(void)
     CHECK_EQ(feed(&o, &t, 240, 0, 0, 1000), ORIENT_FACE_UP);  /* a real flip still reports */
 }
 
+static void test_face_down_exit_has_hysteresis(void)
+{
+    orient_t o; uint32_t t = 0;
+    orient_init(&o, -1);
+    CHECK_EQ(feed(&o, &t, 1200, 0, 0, -1000), ORIENT_FACE_DOWN);
+    CHECK_EQ(feed(&o, &t, 2000, 0, 0, -700), ORIENT_NONE);  /* ~45 deg-ish rest: still face-down, no flapping */
+    CHECK_EQ(feed(&o, &t, 180, 0, 0, -500), ORIENT_NONE);   /* under the 200 ms debounce */
+    CHECK_EQ(feed(&o, &t, 120, 0, 0, -500), ORIENT_FACE_UP); /* now clearly lifted */
+}
+
 static void test_tilt_from_rest_is_lift(void)
 {
     orient_t o; uint32_t t;
@@ -122,6 +132,7 @@ int main(void)
     test_face_down_interrupted_restarts();
     test_face_down_ignores_steep_tilt();
     test_face_up_after_down();
+    test_face_down_exit_has_hysteresis();
     test_tap_is_not_face_up();
     test_tilt_from_rest_is_lift();
     test_small_tilt_is_not_lift();

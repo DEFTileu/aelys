@@ -3,6 +3,8 @@
 #define DOWN_Z_MG      800
 #define DOWN_XY_MG     300
 #define DOWN_HOLD_MS   1000
+#define STAY_Z_MG      600 /* leaving face-down needs less than this: hysteresis against a ~37 deg rest */
+#define STAY_XY_MG     400
 #define UP_HOLD_MS     200 /* a table tap is a one-sample excursion, not a flip */
 #define STILL_MG       50
 #define STILL_MS       2000
@@ -40,7 +42,8 @@ orient_ev_t orient_update(orient_t *o, int16_t ax_mg, int16_t ay_mg, int16_t az_
 {
     const int a[3] = { clampg(ax_mg), clampg(ay_mg), clampg(az_mg) };
 
-    if (o->z_sign * a[2] >= DOWN_Z_MG && absi(a[0]) <= DOWN_XY_MG && absi(a[1]) <= DOWN_XY_MG) {
+    const int z_min = o->down ? STAY_Z_MG : DOWN_Z_MG, xy_max = o->down ? STAY_XY_MG : DOWN_XY_MG;
+    if (o->z_sign * a[2] >= z_min && absi(a[0]) <= xy_max && absi(a[1]) <= xy_max) {
         o->up_pending = false;
         if (!o->down_pending) { o->down_pending = true; o->down_since_ms = now_ms; }
         if (!o->down && elapsed(now_ms, o->down_since_ms, DOWN_HOLD_MS)) {
