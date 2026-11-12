@@ -1,8 +1,9 @@
 /* Improv Serial (https://www.improv-wifi.com/serial/) on the USB-Serial/JTAG console, next to the
- * log output. The usb_serial_jtag driver owns RX; logs keep their own polled TX path. Frames are
- * written through the driver so binary bytes are not CRLF-translated. Never logs credentials. */
+ * log output. The usb_serial_jtag driver owns RX and, once installed, the console (stdout) TX too, so
+ * logs and frames go through one path. Frames use write_bytes so binary bytes are not CRLF-translated. Never logs credentials. */
 #include <string.h>
 #include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -134,6 +135,7 @@ esp_err_t net_improv_init(void)
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     esp_err_t err = usb_serial_jtag_driver_install(&cfg);
     ready = err == ESP_OK;
+    if (ready) usb_serial_jtag_vfs_use_driver(); /* logs and frames share the driver's TX path: frames stay whole */
     return err;
 }
 
