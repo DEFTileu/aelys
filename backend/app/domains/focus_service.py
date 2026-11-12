@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+from app.companion.hub import mark_dirty
 from app.core.models import FocusSession
 from app.domains.ownership import owner_obj
 from app.domains.recurrence import utc
@@ -64,6 +65,7 @@ async def stop_focus(db: AsyncSession, owner_id: str, focus_id: str, version: in
         await db.rollback()
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
     await db.refresh(item)
+    mark_dirty(db, owner_id)  # Core UPDATE: no mapper event fires
     return item
 
 
@@ -86,4 +88,5 @@ async def set_focus_paused(db: AsyncSession, owner_id: str, focus_id: str, pause
         await db.rollback()
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
     await db.refresh(item)
+    mark_dirty(db, owner_id)  # Core UPDATE: no mapper event fires
     return item

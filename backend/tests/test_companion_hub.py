@@ -1,11 +1,18 @@
-from datetime import UTC, datetime
+import asyncio
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
 from app.companion import hub as hub_module
 from app.companion.hub import CompanionHub, hub, install_change_listeners
 from app.core import db
-from app.core.models import FocusSession, Notification, Task
+from app.core.models import FocusSession, Notification, Task, TaskReminder
+from app.domains import task_service
+from app.integrations.telegram_reminders import _notification
+from app.main import app
+from companion_helpers import B, bearer, claim_owner
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 OWNER = 'owner-1'
@@ -148,3 +155,145 @@ async def test_send_to_offline_device_returns_false():
 def test_install_is_guarded():
     install_change_listeners()
     assert hub_module._installed is True
+
+
+# --- real write paths: Core statements bypass mapper events, each must still push exactly one snapshot ---
+
+@pytest_asyncio.fixture
+async def client_owner(setup):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        _, session = await claim_owner(client)
+        headers = bearer(session)
+        owner_id = (await client.get(f'{B}/me', headers=headers)).json()['id']
+        yield client, owner_id, headers
+
+
+class Board:
+    """A connected board for the real owner; `settle` returns snapshots pushed since the last call."""
+    def __init__(self, owner_id):
+        self.sent = []
+
+        async def send(message):
+            self.sent.append(message)
+        self.unregister = hub.register('dev-real', owner_id, send)
+
+    async def settle(self):
+        await hub.wait_idle()
+        got, self.sent = self.sent, []
+        return got
+
+
+@pytest_asyncio.fixture
+async def board(client_owner):
+    _, owner_id, _ = client_owner
+    board = Board(owner_id)
+    yield board
+    board.unregister()
+
+
+async def new_task(client, headers, board, **extra):
+    body = {'title': 'T', 'due_at': (datetime.now(UTC) + timedelta(hours=2)).isoformat(), **extra}
+    task = (await client.post(f'{B}/tasks', json=body, headers=headers)).json()
+    await board.settle()
+    return task
+
+
+@pytest.mark.asyncio
+async def test_task_patch_route_pushes_one_snapshot(client_owner, board):
+    client, _, headers = client_owner
+    task = await new_task(client, headers, board)
+    body = {'title': 'Renamed', 'due_at': task['due_at'], 'version': task['version']}
+    assert (await client.patch(f"{B}/tasks/{task['id']}", json=body, headers=headers)).status_code == 200
+    got = await board.settle()
+    assert len(got) == 1 and got[0]['snapshot']['next_task']['title'] == 'Renamed'
+
+
+@pytest.mark.asyncio
+async def test_complete_task_service_pushes_one_snapshot(client_owner, board):
+    client, owner_id, headers = client_owner
+    task = await new_task(client, headers, board)
+    async with db.SessionLocal() as session:
+        await task_service.complete_task(session, owner_id, task['id'])
+        await session.commit()
+    got = await board.settle()
+    assert len(got) == 1 and got[0]['snapshot']['next_task'] is None
+
+
+@pytest.mark.asyncio
+async def test_event_update_and_delete_routes_push_one_snapshot_each(client_owner, board):
+    client, _, headers = client_owner
+    start = datetime.now(UTC) + timedelta(hours=3)
+    body = {'title': 'Standup', 'starts_at': start.isoformat(), 'ends_at': (start + timedelta(minutes=15)).isoformat()}
+    event = (await client.post(f'{B}/calendar/events', json=body, headers=headers)).json()
+    await board.settle()
+    assert (await client.patch(f"{B}/calendar/events/{event['id']}", json={**body, 'title': 'Renamed', 'version': event['version']}, headers=headers)).status_code == 200
+    got = await board.settle()
+    assert len(got) == 1 and got[0]['snapshot']['next_event']['title'] == 'Renamed'
+    assert (await client.delete(f"{B}/calendar/events/{event['id']}", params={'version': event['version'] + 1}, headers=headers)).status_code == 200
+    got = await board.settle()
+    assert len(got) == 1 and got[0]['snapshot']['next_event'] is None
+
+
+@pytest.mark.asyncio
+async def test_focus_pause_resume_stop_routes_push_one_snapshot_each(client_owner, board):
+    client, _, headers = client_owner
+    focus = (await client.post(f'{B}/focus/sessions', json={'started_at': datetime.now(UTC).isoformat()}, headers=headers)).json()
+    assert len(await board.settle()) == 1
+    for action, status in (('pause', 'paused'), ('resume', 'active'), ('stop', None)):
+        assert (await client.post(f"{B}/focus/sessions/{focus['id']}/{action}", headers=headers)).status_code == 200
+        got = await board.settle()
+        assert len(got) == 1, action
+        assert (got[0]['snapshot']['focus'] or {}).get('status') == status, action
+
+
+@pytest.mark.asyncio
+async def test_telegram_reminder_notification_insert_pushes_one_snapshot(client_owner, board):
+    _, owner_id, _ = client_owner
+    async with db.SessionLocal() as session:
+        reminder = TaskReminder(id='r1')
+        assert await _notification(session, SimpleNamespace(owner_id=owner_id), reminder, 't1', datetime.now(UTC))
+        await session.commit()
+    assert len(await board.settle()) == 1
+
+
+@pytest.mark.asyncio
+async def test_sends_to_one_socket_never_overlap_and_stay_ordered(setup):
+    local, order, running = CompanionHub(), [], 0
+
+    async def send(message):
+        nonlocal running
+        running += 1
+        assert running == 1
+        await asyncio.sleep(0.01)
+        order.append(message['n'])
+        running -= 1
+    local.register('d', 'o', send)
+    await asyncio.gather(*(local.send_to_device('d', {'n': n}) for n in range(5)))
+    assert order == [0, 1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_failed_send_unregisters_and_closes_with_1011():
+    local, closed = CompanionHub(), []
+
+    async def broken(message):
+        raise RuntimeError('gone')
+
+    async def close(code):
+        closed.append(code)
+    local.register('d', 'o', broken, close)
+    assert await local.send_to_device('d', {'type': 'x'}) is False
+    assert closed == [1011] and not local.is_online('d')
+
+
+@pytest.mark.asyncio
+async def test_cancelled_flush_clears_pending(setup):
+    hub.debounce = 5
+    async with db.SessionLocal() as session:
+        session.add(task())
+        await session.commit()
+    pending = list(hub._pending.values())
+    assert len(pending) == 1
+    pending[0].cancel()
+    await hub.wait_idle()
+    assert hub._pending == {}

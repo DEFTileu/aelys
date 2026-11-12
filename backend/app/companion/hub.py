@@ -8,20 +8,22 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from app.companion.snapshot import build_snapshot
 from app.core import db as database
-from app.core.models import CalendarEvent, FocusSession, Notification, Task
+from app.core.models import CalendarEvent, FocusSession, Notification, SyncChange, Task
 from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, object_session
 
 logger = logging.getLogger(__name__)
 
 DEBOUNCE_SECONDS = 0.25
 SEND_TIMEOUT_SECONDS = 5.0
+CLOSE_TIMEOUT_SECONDS = 2.0
+SEND_FAILED_CLOSE_CODE = 1011
 REPLACED_CLOSE_CODE = 4000
 _DIRTY_KEY = "aelys_companion_dirty_owners"
 
@@ -35,6 +37,7 @@ class _Connection:
     owner_id: str
     send: Send
     close: Close | None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)  # one send at a time keeps snapshots in order
 
 
 class CompanionHub:
@@ -78,25 +81,39 @@ class CompanionHub:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        self._pending[owner_id] = task = loop.create_task(self._flush(owner_id))
-        self._background.add(task)
-        task.add_done_callback(self._background.discard)
+        task = loop.create_task(self._flush(owner_id))
+        self._pending[owner_id] = task
+        self._track(task)
 
     async def wait_idle(self) -> None:
         while self._background:
             await asyncio.gather(*self._background, return_exceptions=True)
 
     def _spawn(self, coro: Awaitable[None]) -> None:
-        task = asyncio.ensure_future(coro)
+        self._track(asyncio.ensure_future(coro))
+
+    def _track(self, task: asyncio.Task[None]) -> None:
         self._background.add(task)
-        task.add_done_callback(self._background.discard)
+        task.add_done_callback(self._done)
+
+    def _done(self, task: asyncio.Task[None]) -> None:
+        self._background.discard(task)
+        if not task.cancelled() and (error := task.exception()):
+            logger.warning("companion hub task failed reason=%s", type(error).__name__)
 
     async def _flush(self, owner_id: str) -> None:
-        await asyncio.sleep(self.debounce)
-        self._pending.pop(owner_id, None)  # commits landing during the rebuild schedule a fresh pass
+        try:
+            await asyncio.sleep(self.debounce)
+        finally:  # commits landing during the rebuild schedule a fresh pass; also on cancel
+            if self._pending.get(owner_id) is asyncio.current_task():
+                del self._pending[owner_id]
         targets = [c for c in self._connections.values() if c.owner_id == owner_id]
         if not targets:
             return
+        from app.companion.snapshot import (
+            build_snapshot,  # lazy: snapshot imports domains, which import this hub
+        )
+
         try:
             async with database.SessionLocal() as db:
                 snapshot = await build_snapshot(db, owner_id, datetime.now(UTC))
@@ -108,19 +125,21 @@ class CompanionHub:
 
     async def _send(self, connection: _Connection, message: dict) -> bool:
         try:
-            await asyncio.wait_for(connection.send(message), SEND_TIMEOUT_SECONDS)
+            async with connection.lock:
+                await asyncio.wait_for(connection.send(message), SEND_TIMEOUT_SECONDS)
             return True
         except Exception as exc:  # noqa: BLE001 - a dead or slow socket is dropped, others keep going
             logger.info("companion send failed device=%s reason=%s", connection.device_id, type(exc).__name__)
             if self._connections.get(connection.device_id) is connection:
                 del self._connections[connection.device_id]
+            await self._close(connection, SEND_FAILED_CLOSE_CODE)  # the board reconnects and gets a fresh snapshot
             return False
 
     @staticmethod
     async def _close(connection: _Connection, code: int) -> None:
         if connection.close:
             try:
-                await connection.close(code)
+                await asyncio.wait_for(connection.close(code), CLOSE_TIMEOUT_SECONDS)
             except Exception as exc:  # noqa: BLE001 - already gone is fine
                 logger.info("companion close failed device=%s reason=%s", connection.device_id, type(exc).__name__)
 
@@ -129,6 +148,17 @@ hub = CompanionHub()
 
 _WATCHED = (Task, CalendarEvent, Notification, FocusSession)
 _installed = False
+
+
+def mark_dirty(db: AsyncSession, owner_id: str) -> None:
+    """For writes that bypass mapper events (Core UPDATE/INSERT): push a snapshot after this session commits."""
+    db.sync_session.info.setdefault(_DIRTY_KEY, set()).add(owner_id)
+
+
+def _note_sync_change(_mapper: Any, _connection: Any, target: Any) -> None:
+    # Every record_domain_change writes a SyncChange, so this covers task/event writes made with Core UPDATEs.
+    if target.resource_kind in ("task", "event"):
+        _note_owner(_mapper, _connection, target)
 
 
 def _note_owner(_mapper: Any, _connection: Any, target: Any) -> None:
@@ -160,6 +190,7 @@ def install_change_listeners() -> None:
     for model in _WATCHED:
         for name in ("after_insert", "after_update", "after_delete"):
             event.listen(model, name, _note_owner)
+    event.listen(SyncChange, "after_insert", _note_sync_change)
     event.listen(Session, "after_commit", _after_commit)
     event.listen(Session, "after_rollback", _after_rollback)
     event.listen(Session, "after_soft_rollback", _after_soft_rollback)
