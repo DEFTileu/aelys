@@ -17,6 +17,10 @@ static const char *TAG = "improv";
 static improv_parser_t par;
 static int64_t last_rx_us;
 static bool ready;
+static bool provisioning;
+/* A Wi-Fi RPC that arrives while an attempt is running: parked here, the attempt is aborted and the
+ * net task runs it next. Wiped as soon as it is taken. */
+static struct { bool set; char ssid[33], pass[65]; } pending;
 
 static void send(uint8_t type, const uint8_t *data, size_t len)
 {
@@ -44,7 +48,46 @@ static void send_result(uint8_t cmd, const char *const *str, int n)
     send(IMPROV_TYPE_RESULT, d, i);
 }
 
-static uint8_t current_state(void) { return net_wifi_online() ? IMPROV_ST_PROVISIONED : IMPROV_ST_AUTHORIZED; }
+static uint8_t current_state(void)
+{
+    if (provisioning) return IMPROV_ST_PROVISIONING;
+    return net_wifi_online() ? IMPROV_ST_PROVISIONED : IMPROV_ST_AUTHORIZED;
+}
+
+/* Runs the request and answers it; a request that arrived meanwhile is run right after. Wipes the
+ * password buffer it is given. */
+static void provision_and_reply(char ssid[33], char pass[65])
+{
+    for (;;) {
+        provisioning = true;
+        send_byte(IMPROV_TYPE_STATE, IMPROV_ST_PROVISIONING);
+        bool ok = net_wifi_provision(ssid, pass);
+        provisioning = false;
+        explicit_bzero(pass, 65);
+        if (ok) {
+            send_byte(IMPROV_TYPE_STATE, IMPROV_ST_PROVISIONED);
+            send_result(IMPROV_RPC_WIFI, NULL, 0); /* no device URL */
+        } else {
+            send_byte(IMPROV_TYPE_ERROR, IMPROV_ERR_CONNECT);
+            send_byte(IMPROV_TYPE_STATE, IMPROV_ST_AUTHORIZED);
+        }
+        if (!pending.set) return;
+        memcpy(ssid, pending.ssid, 33);
+        memcpy(pass, pending.pass, 65);
+        explicit_bzero(&pending, sizeof pending);
+    }
+}
+
+void net_improv_run_pending(void)
+{
+    if (!pending.set) return;
+    char ssid[33], pass[65];
+    memcpy(ssid, pending.ssid, 33);
+    memcpy(pass, pending.pass, 65);
+    explicit_bzero(&pending, sizeof pending);
+    provision_and_reply(ssid, pass);
+    explicit_bzero(pass, sizeof pass);
+}
 
 static void handle(const improv_frame_t *f)
 {
@@ -61,16 +104,15 @@ static void handle(const improv_frame_t *f)
             return;
         }
         ESP_LOGI(TAG, "wifi settings received");
-        send_byte(IMPROV_TYPE_STATE, IMPROV_ST_PROVISIONING);
-        bool ok = net_wifi_provision(ssid, pass);
-        explicit_bzero(pass, sizeof pass);
-        if (ok) {
-            send_byte(IMPROV_TYPE_STATE, IMPROV_ST_PROVISIONED);
-            send_result(IMPROV_RPC_WIFI, NULL, 0); /* no device URL */
+        if (net_wifi_busy()) { /* called from inside an attempt: replace it, run after it returns */
+            memcpy(pending.ssid, ssid, sizeof ssid);
+            memcpy(pending.pass, pass, sizeof pass);
+            pending.set = true;
+            net_wifi_abort();
         } else {
-            send_byte(IMPROV_TYPE_ERROR, IMPROV_ERR_CONNECT);
-            send_byte(IMPROV_TYPE_STATE, IMPROV_ST_AUTHORIZED);
+            provision_and_reply(ssid, pass);
         }
+        explicit_bzero(pass, sizeof pass);
         return;
     }
     case IMPROV_RPC_STATE:
@@ -105,8 +147,11 @@ void net_improv_poll(void)
     for (int i = 0; i < n; i++) {
         improv_frame_t f;
         int r = improv_feed(&par, b[i], &f);
+        explicit_bzero(b, i + 1); /* consumed bytes may be the password: gone before handle() blocks */
         if (r == 1) handle(&f);
         else if (r < 0) send_byte(IMPROV_TYPE_ERROR, IMPROV_ERR_INVALID_RPC);
+        explicit_bzero(&f, sizeof f); /* a coredump of this stack must not hold a Wi-Fi password */
     }
+    explicit_bzero(b, sizeof b);
     if (n > 0) last_rx_us = esp_timer_get_time(); /* after handle(): it may have blocked for seconds */
 }

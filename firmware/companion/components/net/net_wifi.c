@@ -20,7 +20,7 @@
 #define BACKOFF_MIN_MS 1000
 #define BACKOFF_MAX_MS 60000
 
-typedef enum { R_OK, R_BAD_PASSWORD, R_FAIL } result_t;
+typedef enum { R_OK, R_BAD_PASSWORD, R_FAIL, R_ABORT } result_t;
 
 static const char *TAG = "net";
 static EventGroupHandle_t evg;
@@ -34,10 +34,13 @@ static size_t idx;                      /* network being tried / in use */
 static bool online;
 static int64_t next_try_us;
 static uint32_t backoff_ms = BACKOFF_MIN_MS;
+static bool attempting, abort_req;
 static uint8_t want_state = UI_WIFI_OFFLINE, posted_state = 0xFF;
 
 void net_set_wifi_state(uint8_t s) { want_state = s; }
 bool net_wifi_online(void) { return online; }
+bool net_wifi_busy(void) { return attempting; }
+void net_wifi_abort(void) { abort_req = true; }
 
 void net_housekeeping(void)
 {
@@ -67,8 +70,20 @@ static bool is_bad_password(uint8_t r)
            r == WIFI_REASON_HANDSHAKE_TIMEOUT || r == WIFI_REASON_MIC_FAILURE;
 }
 
-/* One blocking connection attempt (<= ATTEMPT_TIMEOUT_MS). Shows CONNECTING, then the outcome. */
+static result_t attempt_inner(const char *ssid, const char *pass);
+
+/* One blocking connection attempt (<= ATTEMPT_TIMEOUT_MS). Shows CONNECTING, then the outcome.
+ * Keeps Improv answering while it waits. */
 static result_t attempt(const char *ssid, const char *pass)
+{
+    attempting = true;
+    abort_req = false;
+    result_t r = attempt_inner(ssid, pass);
+    attempting = false;
+    return r;
+}
+
+static result_t attempt_inner(const char *ssid, const char *pass)
 {
     if (link_up) { /* leaving a working link: wait for its disconnect event so it is not mistaken for ours */
         esp_wifi_disconnect();
@@ -93,8 +108,9 @@ static result_t attempt(const char *ssid, const char *pass)
 
     int64_t end = esp_timer_get_time() + ATTEMPT_TIMEOUT_MS * 1000LL;
     for (;;) {
-        EventBits_t b = xEventGroupWaitBits(evg, BIT_IP | BIT_DISC, pdFALSE, pdFALSE, pdMS_TO_TICKS(100));
+        net_improv_poll(); /* paces the loop (10 ms read) */
         net_housekeeping();
+        EventBits_t b = xEventGroupWaitBits(evg, BIT_IP | BIT_DISC, pdFALSE, pdFALSE, 0);
         if (b & BIT_IP) { net_set_wifi_state(UI_WIFI_ONLINE); return R_OK; }
         if (b & BIT_DISC) {
             bool bad = is_bad_password(disc_reason);
@@ -102,12 +118,13 @@ static result_t attempt(const char *ssid, const char *pass)
             net_set_wifi_state(bad ? UI_WIFI_BAD_PASSWORD : UI_WIFI_OFFLINE);
             return bad ? R_BAD_PASSWORD : R_FAIL;
         }
-        if (esp_timer_get_time() > end) {
-            ESP_LOGW(TAG, "attempt timed out");
+        if (abort_req || esp_timer_get_time() > end) {
+            if (abort_req) ESP_LOGW(TAG, "attempt replaced by a new request");
+            else ESP_LOGW(TAG, "attempt timed out");
             esp_wifi_disconnect();
             xEventGroupWaitBits(evg, BIT_DISC, pdTRUE, pdFALSE, pdMS_TO_TICKS(500));
             net_set_wifi_state(UI_WIFI_OFFLINE);
-            return R_FAIL;
+            return abort_req ? R_ABORT : R_FAIL;
         }
     }
 }
@@ -128,13 +145,16 @@ bool net_wifi_provision(const char *ssid, const char *pass)
         backoff_ms = BACKOFF_MIN_MS;
         return false;
     }
-    wifi_list_t l = saved;
-    if (wifi_list_upsert(&l, ssid, pass)) { /* only a network that connected is ever stored */
-        if (store.save(&l) == ESP_OK) saved = l;
+    /* Only a network that connected is ever stored. It becomes the active one in RAM even if the
+     * NVS write fails, so the reported success and the reconnect target agree. */
+    if (wifi_list_upsert(&saved, ssid, pass)) {
         for (size_t i = 0; i < saved.n; i++)
             if (!strcmp(saved.net[i].ssid, ssid)) idx = i;
+        esp_err_t err = store.save(&saved);
+        if (err != ESP_OK) ESP_LOGE(TAG, "saving the network failed: %s (kept in RAM only)", esp_err_to_name(err));
+    } else {
+        ESP_LOGE(TAG, "network not added to the saved list");
     }
-    explicit_bzero(&l, sizeof l);
     went_online();
     return true;
 }
@@ -156,19 +176,21 @@ static void net_task(void *arg)
             if (idx >= saved.n) idx = 0;
             size_t tried = 0;
             result_t r = R_FAIL;
-            while (tried < saved.n && (r = attempt(saved.net[idx].ssid, saved.net[idx].pass)) != R_OK) {
+            while (tried < saved.n && (r = attempt(saved.net[idx].ssid, saved.net[idx].pass)) != R_OK &&
+                   r != R_ABORT) {
                 idx = (idx + 1) % saved.n; /* next saved network straight away; back off after a full round */
                 tried++;
             }
             if (r == R_OK) {
                 went_online();
-            } else {
+            } else if (r != R_ABORT) {
                 uint32_t delay = backoff_ms * 3 / 4 + esp_random() % (backoff_ms / 2 + 1); /* 75..125 % */
                 next_try_us = esp_timer_get_time() + (int64_t)delay * 1000;
                 ESP_LOGI(TAG, "offline, retry in %u ms", (unsigned)delay);
                 backoff_ms = backoff_ms * 2 > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : backoff_ms * 2;
             }
         }
+        net_improv_run_pending();
     }
 }
 

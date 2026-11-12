@@ -8,6 +8,8 @@
 void net_set_wifi_state(uint8_t state); /* ui_wifi_state_t; posted to the ui by the net task, once per change */
 void net_housekeeping(void);  /* clock tick and pending UI posts; cheap, call from any wait loop in the net task */
 bool net_wifi_online(void);
+bool net_wifi_busy(void);   /* a connection attempt is running (the net task is inside attempt()) */
+void net_wifi_abort(void);  /* ends the running attempt early (a new provisioning request replaces it) */
 /* Blocks up to ~15 s. Pauses the automatic reconnect while it runs. True once an IP is held. */
 bool net_wifi_provision(const char *ssid, const char *pass);
 
@@ -17,4 +19,5 @@ void net_time_tick(void);    /* posts UI_EV_TIME when the minute changed */
 
 /* net_improv.c */
 esp_err_t net_improv_init(void);
-void net_improv_poll(void);  /* ~10 ms blocking read, then parses and answers */
+void net_improv_poll(void);  /* ~10 ms blocking read, then parses and answers; safe inside attempt() */
+void net_improv_run_pending(void); /* runs a Wi-Fi RPC that arrived during an attempt and was deferred */

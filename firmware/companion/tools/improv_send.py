@@ -105,6 +105,9 @@ def main():
                     rc, end = 1, time.time() + 0.3
                 elif ptype == final:
                     rc, end = 0, time.time() + 0.5  # let a trailing frame arrive
+    if seen == 0:
+        print(f"no reply within {args.timeout:g} s", file=sys.stderr)
+        return 1
     return rc
 
 
