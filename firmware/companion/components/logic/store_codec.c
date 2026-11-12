@@ -2,7 +2,7 @@
 #include "store_codec.h"
 
 /* No padding anywhere, so the in-memory layout is the blob layout. */
-_Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 97 + 65 + 97 + 2 * 33 + 2 * 24, "owner layout");
+_Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 49 + 97 + 65 + 97 + 2 * 33 + 2 * 17 + 2 * 24 + 2, "owner layout");
 _Static_assert(sizeof(wifi_list_t) == 1 + WIFI_MAX * (33 + 65), "wifi layout");
 
 uint32_t store_crc32(const uint8_t *p, size_t n)
@@ -43,7 +43,8 @@ static const uint8_t *unseal(const uint8_t *buf, size_t len, size_t plen)
 static void term_owner(owner_info_t *o)
 {
     TERM(o->name); TERM(o->phone); TERM(o->telegram); TERM(o->qr_url); TERM(o->message); TERM(o->med_note);
-    for (int i = 0; i < 2; i++) { TERM(o->ice_name[i]); TERM(o->ice_phone[i]); }
+    TERM(o->email);
+    for (int i = 0; i < 2; i++) { TERM(o->ice_name[i]); TERM(o->ice_rel[i]); TERM(o->ice_phone[i]); }
 }
 
 size_t store_encode_owner(const owner_info_t *in, uint8_t *buf, size_t cap)

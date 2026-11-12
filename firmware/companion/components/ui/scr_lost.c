@@ -1,5 +1,6 @@
 /* Lost mode (design "10 · Safety", "Lost mode"): amber ring, sad Aelys, "This Aelys is lost", the owner's
- * message, QR to the contact link and name / phone / Telegram. Empty fields are left out.
+ * message, QR to the contact link and name / phone / Telegram / email. Empty fields and fields whose
+ * owner->show bit is clear are left out.
  * Deviations: no phone/send icons (no icon font), no pulsing ring (no opacity layers), no second quote line
  * (owner_info_t has one message). */
 #include <string.h>
@@ -10,22 +11,25 @@
 #define COL_X (QR_SIZE + 16)
 #define MSG_W 300
 
-static struct { lv_obj_t *root, *face, *title, *msg, *row, *qr, *name, *phone, *tg; } h;
+static struct { lv_obj_t *root, *face, *title, *msg, *row, *qr, *name, *phone, *tg, *email; } h;
 
 void scr_lost_set_owner(const owner_info_t *o)
 {
-    lv_label_set_text(h.name, o->name);
-    lv_label_set_text(h.phone, o->phone);
-    lv_label_set_text(h.tg, o->telegram);
-    lv_obj_set_hidden(h.name, !o->name[0]);
-    lv_obj_set_hidden(h.phone, !o->phone[0]);
-    lv_obj_set_hidden(h.tg, !o->telegram[0]);
-    bool qr = o->qr_url[0] != 0 && lv_qrcode_update(h.qr, o->qr_url, (uint32_t)strlen(o->qr_url)) == LV_RESULT_OK;
+    const char *txt[] = { o->name, o->phone, o->telegram, o->email };
+    const uint8_t bit[] = { OWNER_SHOW_NAME, OWNER_SHOW_PHONE, OWNER_SHOW_TELEGRAM, OWNER_SHOW_EMAIL };
+    lv_obj_t *col[] = { h.name, h.phone, h.tg, h.email };
+    bool text = false;
+    for (int i = 0; i < 4; i++) {
+        bool on = txt[i][0] && (o->show & bit[i]);
+        lv_label_set_text(col[i], txt[i]);
+        lv_obj_set_hidden(col[i], !on);
+        text = text || on;
+    }
+    bool qr = o->qr != QR_NONE && o->qr_url[0] != 0 &&
+              lv_qrcode_update(h.qr, o->qr_url, (uint32_t)strlen(o->qr_url)) == LV_RESULT_OK;
     lv_obj_set_hidden(h.qr, !qr);
-    bool text = o->name[0] || o->phone[0] || o->telegram[0];
-    lv_obj_t *col[] = { h.name, h.phone, h.tg };
-    const uint8_t cgap[] = { 0, 6, 6 };
-    ui_stack(col, cgap, 3, 0, QR_SIZE, qr ? COL_X : 0);
+    const uint8_t cgap[] = { 0, 6, 6, 6 };
+    ui_stack(col, cgap, 4, 0, QR_SIZE, qr ? COL_X : 0);
     lv_obj_set_width(h.row, (qr ? COL_X : 0) + (text ? COL_W : 0));
     lv_obj_set_hidden(h.row, !qr && !text);
 
@@ -58,5 +62,6 @@ lv_obj_t *scr_lost_create(lv_obj_t *parent)
     h.name = ui_label(h.row, &inter_20, UI_COLOR_TEXT, COL_W, 1, LV_TEXT_ALIGN_LEFT);
     h.phone = ui_label(h.row, &inter_16, UI_COLOR_TEXT2, COL_W, 1, LV_TEXT_ALIGN_LEFT);
     h.tg = ui_label(h.row, &inter_16, UI_COLOR_TEXT2, COL_W, 1, LV_TEXT_ALIGN_LEFT);
+    h.email = ui_label(h.row, &inter_16, UI_COLOR_TEXT2, COL_W, 1, LV_TEXT_ALIGN_LEFT);
     return h.root;
 }

@@ -170,6 +170,54 @@ static void test_ice_defaults(void)
     post(UI_EV_TOUCH);
 }
 
+/* Contacts show their relation; the show bits hide the name, the contacts and the medical note independently. */
+static void test_ice_relation_and_show_bits(void)
+{
+    static owner_info_t o;
+    owner_defaults(&o);
+    strcpy(o.name, "Alex Morgan");
+    strcpy(o.ice_name[0], "Jamie Lee"); strcpy(o.ice_rel[0], "Sister"); strcpy(o.ice_phone[0], "+0 000 000 00 01");
+    strcpy(o.ice_name[1], "Sam Rivera"); strcpy(o.ice_rel[1], "Doctor"); strcpy(o.ice_phone[1], "+0 000 000 00 02");
+    strcpy(o.med_note, "Asthma");
+    post_owner(&o);
+    post(UI_EV_COMBO_FIRE);
+    check_inside("ice (relations)");
+    lv_obj_t *scr = lv_screen_active();
+    CHECK(shows_text(scr, "Alex Morgan") && shows_text(scr, "Sister") && shows_text(scr, "Doctor"));
+    CHECK(shows_text(scr, "Asthma") && shows_text(scr, "Jamie Lee"));
+
+    o.show &= (uint8_t)~OWNER_SHOW_CONTACTS;
+    post_owner(&o);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Jamie Lee") && !shows_text(scr, "Sister"));
+    CHECK(shows_text(scr, "Alex Morgan") && shows_text(scr, "Asthma"));
+
+    o.show = OWNER_SHOW_CONTACTS;
+    post_owner(&o);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Alex Morgan") && !shows_text(scr, "Asthma"));
+    CHECK(shows_text(scr, "Jamie Lee") && shows_text(scr, "Doctor"));
+    post(UI_EV_TOUCH);
+}
+
+/* Lost mode: email shows, and a cleared show bit or QR_NONE removes the field / the QR. */
+static void test_lost_fields_follow_show_bits(void)
+{
+    static owner_info_t o;
+    owner_defaults(&o);
+    strcpy(o.name, "Alex Morgan"); strcpy(o.email, "alex@example.com");
+    post_owner(&o);
+    post_lost(1);
+    check_inside("lost (email)");
+    lv_obj_t *scr = lv_screen_active();
+    CHECK(shows_text(scr, "alex@example.com") && shows_text(scr, o.phone) && shows_text(scr, "Alex Morgan"));
+    o.show &= (uint8_t)~(OWNER_SHOW_PHONE | OWNER_SHOW_EMAIL);
+    post_owner(&o);
+    sim_step(100);
+    CHECK(!shows_text(scr, "alex@example.com") && !shows_text(scr, o.phone) && shows_text(scr, o.telegram));
+    post_lost(0);
+}
+
 static void test_max_length(void)
 {
     static owner_info_t o;
@@ -180,10 +228,13 @@ static void test_max_length(void)
     fill_w(o.qr_url, sizeof o.qr_url);
     fill_w(o.message, sizeof o.message);
     fill_w(o.med_note, sizeof o.med_note);
+    fill_w(o.email, sizeof o.email);
     for (int i = 0; i < 2; i++) {
         fill_w(o.ice_name[i], sizeof o.ice_name[i]);
+        fill_w(o.ice_rel[i], sizeof o.ice_rel[i]);
         fill_w(o.ice_phone[i], sizeof o.ice_phone[i]);
     }
+    o.show = 0x3F; /* everything visible */
     post_owner(&o);
 
     check_inside("home");
@@ -206,6 +257,8 @@ int main(void)
     test_wifi_status();
     test_short_data();
     test_ice_defaults();
+    test_ice_relation_and_show_bits();
+    test_lost_fields_follow_show_bits();
     test_max_length();
     return g_failed ? 1 : 0;
 }

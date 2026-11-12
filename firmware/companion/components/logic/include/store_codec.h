@@ -7,11 +7,10 @@
 #include "owner.h"
 
 #define WIFI_MAX 5
-#define STORE_VERSION 1
+#define STORE_VERSION 2 /* v2: owner_info_t gained email, ice_rel, show, qr. v1 blobs only held factory data and are dropped. */
 
 typedef struct { char ssid[33]; char pass[65]; } wifi_cred_t;
 typedef struct { uint8_t n; wifi_cred_t net[WIFI_MAX]; } wifi_list_t;
-typedef struct { bool on; owner_info_t shown; } lost_state_t;
 
 /* Blob sizes (version + struct + crc), for sizing NVS buffers. */
 #define STORE_OWNER_BLOB (1 + sizeof(owner_info_t) + 4)

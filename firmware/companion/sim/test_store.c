@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <string.h>
 #include "check.h"
 #include "store_codec.h"
@@ -10,6 +11,10 @@ static void fill_owner(owner_info_t *o)
     strcpy(o->message, "If found, please contact"); strcpy(o->med_note, "Allergy: penicillin");
     strcpy(o->ice_name[0], "Mom");        strcpy(o->ice_phone[0], "+7 701 000 00 01");
     strcpy(o->ice_name[1], "Dad");        strcpy(o->ice_phone[1], "+7 701 000 00 02");
+    strcpy(o->email, "aigerim@example.com");
+    strcpy(o->ice_rel[0], "Mother");      strcpy(o->ice_rel[1], "Father");
+    o->show = OWNER_SHOW_NAME | OWNER_SHOW_MED | OWNER_SHOW_EMAIL;
+    o->qr = QR_PHONE;
 }
 
 /* recompute the trailing CRC after tampering with the payload */
@@ -64,6 +69,38 @@ static void test_owner_overlong_field_truncated(void)
     CHECK(memchr(out.name, 0, sizeof out.name) != NULL);
     CHECK(memchr(out.phone, 0, sizeof out.phone) != NULL);
     CHECK_EQ(strlen(out.name), sizeof out.name - 1);
+}
+
+/* v1 blobs only ever held factory data, so a version mismatch falls back to defaults (never a misread layout) */
+static void test_v1_blob_falls_back_to_defaults(void)
+{
+    owner_info_t in, out; uint8_t buf[STORE_OWNER_BLOB];
+    fill_owner(&in);
+    size_t n = store_encode_owner(&in, buf, sizeof buf);
+    CHECK_EQ(buf[0], 2);
+    buf[0] = 1; reseal(buf, n);                        /* valid CRC, old version */
+    CHECK(!store_decode_owner(buf, n, &out));
+    uint8_t old[1 + 33 + 24 + 33 + 97 + 65 + 97 + 2 * 33 + 2 * 24 + 4] = { 1 }; /* the v1 owner layout, exact size */
+    reseal(old, sizeof old);
+    CHECK(!store_decode_owner(old, sizeof old, &out));
+    lost_state_t lin, lout; uint8_t lb[STORE_LOST_BLOB];
+    memset(&lin, 0, sizeof lin);
+    size_t ln = store_encode_lost(&lin, lb, sizeof lb);
+    lb[0] = 1; reseal(lb, ln);
+    CHECK(!store_decode_lost(lb, ln, &lout));
+}
+
+static void test_owner_v2_fields_terminated(void)
+{
+    owner_info_t in, out; uint8_t buf[STORE_OWNER_BLOB];
+    fill_owner(&in);
+    size_t n = store_encode_owner(&in, buf, sizeof buf);
+    memset(buf + 1 + offsetof(owner_info_t, email), 'W', sizeof in.email + sizeof in.ice_rel); /* spill over */
+    reseal(buf, n);
+    CHECK(store_decode_owner(buf, n, &out));
+    CHECK(memchr(out.email, 0, sizeof out.email) != NULL);
+    CHECK(memchr(out.ice_rel[0], 0, sizeof out.ice_rel[0]) != NULL);
+    CHECK(memchr(out.ice_rel[1], 0, sizeof out.ice_rel[1]) != NULL);
 }
 
 static void test_wifi_roundtrip_and_overlong(void)
@@ -151,6 +188,8 @@ int main(void)
     test_store_roundtrip_owner();
     test_store_corrupt_blob_falls_back();
     test_owner_overlong_field_truncated();
+    test_v1_blob_falls_back_to_defaults();
+    test_owner_v2_fields_terminated();
     test_wifi_roundtrip_and_overlong();
     test_wifi_upsert_replaces_same_ssid();
     test_wifi_upsert_drops_oldest_when_full();

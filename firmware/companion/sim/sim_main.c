@@ -31,6 +31,9 @@ static void demo_owner(owner_info_t *o)
     strcpy(o->ice_phone[0], "+0 000 000 00 01");
     strcpy(o->ice_name[1], "Sam Rivera");
     strcpy(o->ice_phone[1], "+0 000 000 00 02");
+    strcpy(o->email, "alex@example.com");
+    strcpy(o->ice_rel[0], "Sister");
+    strcpy(o->ice_rel[1], "Doctor");
     strcpy(o->med_note, "Allergy: penicillin \xC2\xB7 Blood type O+");
 }
 
@@ -39,11 +42,13 @@ static void max_owner(owner_info_t *o)
 {
     memset(o, 0, sizeof *o);
     char *f[] = { o->name, o->phone, o->telegram, o->qr_url, o->message, o->med_note, o->ice_name[0],
-                  o->ice_name[1], o->ice_phone[0], o->ice_phone[1] };
+                  o->ice_name[1], o->ice_phone[0], o->ice_phone[1], o->email, o->ice_rel[0], o->ice_rel[1] };
     const size_t cap[] = { sizeof o->name, sizeof o->phone, sizeof o->telegram, sizeof o->qr_url,
                            sizeof o->message, sizeof o->med_note, sizeof o->ice_name[0], sizeof o->ice_name[1],
-                           sizeof o->ice_phone[0], sizeof o->ice_phone[1] };
+                           sizeof o->ice_phone[0], sizeof o->ice_phone[1], sizeof o->email, sizeof o->ice_rel[0],
+                           sizeof o->ice_rel[1] };
     for (unsigned i = 0; i < sizeof f / sizeof *f; i++) memset(f[i], 'W', cap[i] - 1);
+    o->show = 0x3F;
 }
 
 static int screen_shot(const char *shot)
