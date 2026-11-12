@@ -18,6 +18,7 @@ from .ai.memory_api import router as memory_router
 from .automation.api import router as automation_router
 from .automation.hooks import wait_for_automations
 from .companion.api import router as companion_router
+from .companion.hub import install_change_listeners
 from .core import models  # noqa: F401 - register domain metadata
 from .core.api import router as core_router
 from .core.browser_auth import router as browser_auth_router
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
     with suppress(Exception):  # a missing schema must not stop startup; the console token is a convenience
         await announce_first_run_token()
     from .english.reminders import reminder_loop
+    install_change_listeners()
     worker = asyncio.create_task(connector_loop(), name="telegram-business")
     reminders = asyncio.create_task(reminder_loop(), name="english-reminders")
     try:
