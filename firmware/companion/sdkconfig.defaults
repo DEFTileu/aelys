@@ -115,3 +115,6 @@ CONFIG_LV_USE_WIN=n
 # no LVGL examples or demos in the image
 CONFIG_LV_BUILD_EXAMPLES=n
 CONFIG_LV_BUILD_DEMOS=n
+
+# Release log level: runtime metrics are WARN so they still show; INFO lines are off
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y

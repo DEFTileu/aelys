@@ -4,8 +4,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_psram.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "metrics.h"
 #include "net.h"
 #include "owner.h"
 #include "store_nvs.h"
@@ -61,11 +60,5 @@ void app_main(void)
     ESP_LOGW(TAG, "wifi started: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 #endif
 
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(5000));
-        uint32_t fps_x10, worst_us;
-        lv_port_frame_stats(&fps_x10, &worst_us);
-        ESP_LOGI(TAG, "fps_x10=%u worst_us=%u free_internal=%u", (unsigned)fps_x10, (unsigned)worst_us,
-                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    }
+    metrics_start(CONFIG_AELYS_METRICS_PERIOD_S);
 }

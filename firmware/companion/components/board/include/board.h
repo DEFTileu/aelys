@@ -25,6 +25,9 @@ void lv_port_set_handler(void (*fn)(const ui_event_t *));
 /* esp_timer microseconds (low 32 bits) when the last refresh that drew something finished. */
 uint32_t lv_port_last_flush_end_us(void);
 
+/* Same clock, for the first refresh that drew something after boot (0 until then): boot_ms. */
+uint32_t lv_port_first_flush_end_us(void);
+
 /* Touch (CST9217), BOOT key and the AXP2101 PWR key, polled every 10 ms in the `input` task. Posts
  * UI_EV_TOUCH (data = x, y as two uint16, little-endian), UI_EV_COMBO_PROGRESS (percent, 0 on
  * release) and UI_EV_COMBO_FIRE (BOOT + PWR held 2 s). Call after board_init(). Returns the first
