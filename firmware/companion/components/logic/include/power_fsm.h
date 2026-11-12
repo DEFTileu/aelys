@@ -11,5 +11,6 @@ typedef enum {
 typedef struct { pwr_state_t state; bool face_down; uint32_t last_activity_ms, dim_ms, off_ms; } power_t;
 
 void        power_init(power_t *p, uint32_t dim_ms, uint32_t off_ms, uint32_t now_ms);
-/* Face-down: TOUCH and HOLD (a notification animating) never wake; BUTTON, LIFT and FACE_UP do. */
+/* Face-down: TOUCH and HOLD (a notification animating) never wake; BUTTON wakes (then dims/offs on the
+ * normal timers, still face-down); LIFT and FACE_UP wake and end face-down. */
 pwr_state_t power_update(power_t *p, pwr_in_t in, uint32_t now_ms);

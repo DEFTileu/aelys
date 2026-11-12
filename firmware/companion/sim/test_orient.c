@@ -51,8 +51,23 @@ static void test_face_up_after_down(void)
     orient_t o; uint32_t t = 0;
     orient_init(&o, -1);
     CHECK_EQ(feed(&o, &t, 1200, 0, 0, -1000), ORIENT_FACE_DOWN);
-    CHECK_EQ(feed(&o, &t, 100, 0, 0, 1000), ORIENT_FACE_UP);
+    CHECK_EQ(feed(&o, &t, 180, 0, 0, 1000), ORIENT_NONE); /* flip must hold 200 ms */
+    CHECK_EQ(feed(&o, &t, 60, 0, 0, 1000), ORIENT_FACE_UP);
     CHECK_EQ(feed(&o, &t, 5000, 0, 0, 1000), ORIENT_NONE); /* no LIFT from a stale rest */
+}
+
+static void test_tap_is_not_face_up(void)
+{
+    orient_t o; uint32_t t = 0;
+    orient_init(&o, -1);
+    CHECK_EQ(feed(&o, &t, 1200, 0, 0, -1000), ORIENT_FACE_DOWN);
+    CHECK_EQ(feed(&o, &t, 20, 0, 0, -500), ORIENT_NONE);   /* one transient sample */
+    CHECK_EQ(feed(&o, &t, 2000, 0, 0, -1000), ORIENT_NONE);
+    CHECK_EQ(feed(&o, &t, 20, 400, 0, -1000), ORIENT_NONE);
+    CHECK_EQ(feed(&o, &t, 2000, 0, 0, -1000), ORIENT_NONE);
+    CHECK_EQ(feed(&o, &t, 180, 400, 0, -1000), ORIENT_NONE); /* just under 200 ms, then back */
+    CHECK_EQ(feed(&o, &t, 2000, 0, 0, -1000), ORIENT_NONE);
+    CHECK_EQ(feed(&o, &t, 240, 0, 0, 1000), ORIENT_FACE_UP);  /* a real flip still reports */
 }
 
 static void test_tilt_from_rest_is_lift(void)
@@ -107,6 +122,7 @@ int main(void)
     test_face_down_interrupted_restarts();
     test_face_down_ignores_steep_tilt();
     test_face_up_after_down();
+    test_tap_is_not_face_up();
     test_tilt_from_rest_is_lift();
     test_small_tilt_is_not_lift();
     test_flip_over_is_lift();

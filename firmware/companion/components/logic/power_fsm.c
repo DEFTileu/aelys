@@ -26,14 +26,15 @@ pwr_state_t power_update(power_t *p, pwr_in_t in, uint32_t now_ms)
     case PWR_IN_HOLD:
         if (!p->face_down) wake(p, now_ms);
         break;
-    case PWR_IN_BUTTON: /* the owner wants the screen even while lying face-down */
+    case PWR_IN_BUTTON: /* wakes a face-down screen, but the board still lies face-down: keep the latch */
+        wake(p, now_ms);
+        break;
     case PWR_IN_LIFT:
     case PWR_IN_FACE_UP:
         p->face_down = false;
         wake(p, now_ms);
         break;
     case PWR_IN_TICK:
-        if (p->face_down) break;
         if ((int32_t)(now_ms - p->last_activity_ms) >= (int32_t)p->off_ms) p->state = PWR_OFF;
         else if ((int32_t)(now_ms - p->last_activity_ms) >= (int32_t)p->dim_ms && p->state == PWR_ACTIVE)
             p->state = PWR_DIM;
