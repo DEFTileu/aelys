@@ -1,0 +1,8 @@
+menu "Aelys board"
+    config AELYS_INPUT_SELFTEST
+        bool "Input self-test (touch latency, combo, ring fps; logs only)"
+        default n
+        help
+            Runs a synthetic touch/button session once after boot and logs the results.
+            Leave off in release builds.
+endmenu

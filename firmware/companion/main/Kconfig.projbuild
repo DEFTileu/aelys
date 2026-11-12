@@ -1,0 +1,19 @@
+menu "Aelys companion"
+    config AELYS_TZ
+        string "POSIX time zone"
+        default "<+05>-5"
+        help
+            TZ string for local time on the clock (default: UTC+5).
+
+    config AELYS_NO_WIFI
+        bool "Do not start Wi-Fi, SNTP and Improv"
+        default n
+        help
+            Keeps the radio off (heap and power measurements, bench work).
+    config AELYS_METRICS_PERIOD_S
+        int "Metrics log period, seconds"
+        range 5 3600
+        default 60
+        help
+            One WARN line with heap, frame, stack and boot figures every period.
+endmenu
