@@ -118,3 +118,6 @@ CONFIG_LV_BUILD_DEMOS=n
 
 # Release log level: runtime metrics are WARN so they still show; INFO lines are off
 CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+
+# Bootloader: warnings only (saves boot time)
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
