@@ -1,0 +1,43 @@
+cmake_minimum_required(VERSION 3.20)
+project(companion_sim C)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+
+# Same LVGL version and config as the firmware (sim/lv_conf.h is the reference).
+set(LV_BUILD_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h CACHE STRING "" FORCE)
+set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+set(CONFIG_LV_USE_THORVG OFF CACHE BOOL "" FORCE)           # C-only build, no vector graphics
+set(CONFIG_LV_USE_THORVG_INTERNAL OFF CACHE BOOL "" FORCE)
+set(LV_BUILD_INSTALL OFF CACHE BOOL "" FORCE)
+set(LV_USE_FIND_PACKAGE OFF CACHE BOOL "" FORCE)
+set(LV_USE_PKG_CONFIG OFF CACHE BOOL "" FORCE)
+include(FetchContent)
+FetchContent_Declare(lvgl
+    GIT_REPOSITORY https://github.com/lvgl/lvgl.git
+    GIT_TAG v9.6.0
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(lvgl)
+# lv_conf.h pulls in ui_lv_font.h (default font), so every LVGL file needs the ui include dir
+target_include_directories(lvgl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../components/ui/include)
+
+add_subdirectory(../components/ui ui) # plain-library branch of the component CMakeLists
+target_compile_options(ui PRIVATE -Wall -Wextra)
+
+add_library(simlib STATIC sim_display.c bmp.c)
+target_compile_options(simlib PRIVATE -Wall -Wextra)
+target_include_directories(simlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(simlib PUBLIC ui lvgl)
+
+add_executable(companion_sim sim_main.c)
+target_link_libraries(companion_sim PRIVATE simlib)
+
+enable_testing()
+foreach(t test_face_moods test_face_geometry test_bmp)
+    add_executable(${t} ${t}.c)
+    target_link_libraries(${t} PRIVATE simlib)
+    add_test(NAME ${t} COMMAND ${t})
+endforeach()
+add_test(NAME sim_shot_smoke COMMAND companion_sim --shot face:happy --out ${CMAKE_BINARY_DIR}/smoke.bmp)
