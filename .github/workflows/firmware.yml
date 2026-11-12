@@ -1,0 +1,40 @@
+name: Firmware
+on:
+  push:
+    paths: ['firmware/companion/**', '.github/workflows/firmware.yml']
+  pull_request:
+    paths: ['firmware/companion/**', '.github/workflows/firmware.yml']
+permissions:
+  contents: read
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S firmware/companion/sim -B build
+      - run: cmake --build build -j
+      - run: ctest --test-dir build --output-on-failure
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # CI never holds owner contacts (repo is public); the example header stands in.
+      - run: cp firmware/companion/main/owner_contact.example.h firmware/companion/main/owner_contact.local.h
+      # v1.2.0
+      - uses: espressif/esp-idf-ci-action@e6f5c74232b1ccd4c97ed641f1e48553853f1fd5
+        with:
+          esp_idf_version: v6.1
+          target: esp32s3
+          path: firmware/companion
+      - name: Size gate (2 MiB spec budget)
+        run: |
+          size=$(stat -c%s firmware/companion/build/companion.bin)
+          echo "companion.bin is $size bytes"
+          test "$size" -le 2097152
+      - uses: actions/upload-artifact@v4
+        with:
+          name: companion-firmware
+          retention-days: 7
+          path: |
+            firmware/companion/build/companion.bin
+            firmware/companion/build/companion.elf
