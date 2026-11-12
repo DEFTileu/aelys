@@ -32,6 +32,8 @@ target_compile_options(logic PRIVATE -Wall -Wextra)
 target_compile_definitions(logic PRIVATE OWNER_CONTACT_HEADER="owner_contact.example.h")
 target_include_directories(logic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main)
 
+target_link_libraries(ui PUBLIC logic) # screens use owner.h, screen_fsm.h, ui_events.h
+
 add_library(simlib STATIC sim_display.c bmp.c)
 target_compile_options(simlib PRIVATE -Wall -Wextra)
 target_include_directories(simlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -41,7 +43,7 @@ add_executable(companion_sim sim_main.c)
 target_link_libraries(companion_sim PRIVATE simlib)
 
 enable_testing()
-foreach(t test_face_moods test_face_geometry test_bmp)
+foreach(t test_face_moods test_face_geometry test_bmp test_screens)
     add_executable(${t} ${t}.c)
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})

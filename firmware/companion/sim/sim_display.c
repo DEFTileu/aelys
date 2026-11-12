@@ -1,4 +1,6 @@
 #include "sim_display.h"
+#include <string.h>
+#include "ui.h"
 #include "ui_theme.h"
 
 static uint16_t g_fb[SIM_W * SIM_H];
@@ -31,3 +33,13 @@ void sim_step(uint32_t ms)
 }
 
 const uint16_t *sim_fb(void) { return g_fb; }
+
+void sim_post(uint8_t type, const void *data, uint8_t len)
+{
+    ui_event_t ev;
+    memset(&ev, 0, sizeof ev);
+    ev.type = type;
+    ev.len = len;
+    memcpy(ev.data, data, len);
+    ui_handle_event(&ev);
+}

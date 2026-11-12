@@ -13,7 +13,9 @@ Inter, rendered by `lv_font_conv` into LVGL bitmap fonts with 8 bits per pixel
 
 | Font | Face | Size | Glyphs | Used for |
 |---|---|---|---|---|
+| `inter_16` | Regular | 16 | same | secondary lines on the lost-mode and ICE screens |
 | `inter_20` | Regular | 20 | ASCII 0x20-0x7E, `·` `…` `—` | body text, LVGL default font |
+| `inter_24` | Regular | 24 | same | screen titles |
 | `inter_28` | Regular | 28 | same | titles |
 | `inter_40` | Regular | 40 | same | big numbers |
 | `inter_clock_96` | Regular | 96 | `0`-`9`, `:`, space | clock digits |
@@ -36,7 +38,9 @@ ln -sfn "$REPO/firmware/companion/components/ui/fonts" out   # so -o stays a rel
 
 C="npx --yes lv_font_conv@1.5.2 --bpp 8 --no-compress --format lvgl --lv-include lvgl.h"
 TXT='0x20-0x7E,0xB7,0x2026,0x2014'
+$C --font Inter-Regular.ttf --size 16 -r "$TXT" -o out/inter_16.c
 $C --font Inter-Regular.ttf --size 20 -r "$TXT" -o out/inter_20.c
+$C --font Inter-Regular.ttf --size 24 -r "$TXT" -o out/inter_24.c
 $C --font Inter-Regular.ttf --size 28 -r "$TXT" -o out/inter_28.c
 $C --font Inter-Regular.ttf --size 40 -r "$TXT" -o out/inter_40.c
 $C --font Inter-Regular.ttf --size 96 -r '0x30-0x3A,0x20' -o out/inter_clock_96.c
