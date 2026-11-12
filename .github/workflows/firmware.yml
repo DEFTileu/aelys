@@ -9,6 +9,7 @@ permissions:
 jobs:
   sim:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - run: cmake -S firmware/companion/sim -B build
@@ -16,6 +17,7 @@ jobs:
       - run: ctest --test-dir build --output-on-failure
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       # CI never holds owner contacts (repo is public); the example header stands in.
@@ -40,6 +42,7 @@ jobs:
             firmware/companion/build/companion.elf
   qemu:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: cp firmware/companion/main/owner_contact.example.h firmware/companion/main/owner_contact.local.h
@@ -49,9 +52,4 @@ jobs:
           esp_idf_version: v6.1
           target: esp32s3
           path: firmware/companion
-          command: >-
-            apt-get update
-            && apt-get install -y --no-install-recommends libgcrypt20 libglib2.0-0 libpixman-1-0 libsdl2-2.0-0 libslirp0
-            && python $IDF_PATH/tools/idf_tools.py install qemu-xtensa
-            && . $IDF_PATH/export.sh
-            && tools/qemu_smoke.sh
+          command: tools/qemu_smoke.sh
