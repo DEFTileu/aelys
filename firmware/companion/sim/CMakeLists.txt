@@ -46,7 +46,7 @@ foreach(t test_face_moods test_face_geometry test_bmp)
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
-foreach(t test_combo test_screen_fsm)
+foreach(t test_combo test_screen_fsm test_store)
     add_executable(${t} ${t}.c)
     target_compile_options(${t} PRIVATE -Wall -Wextra)
     target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main) # example owner contacts
