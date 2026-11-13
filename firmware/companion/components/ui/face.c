@@ -451,11 +451,13 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
         f->ring[i] = box(root, 0);
         lv_obj_set_style_bg_opa(f->ring[i], LV_OPA_TRANSP, 0);
         lv_obj_add_event_cb(f->ring[i], ring_draw, LV_EVENT_DRAW_MAIN, f);
+        lv_obj_set_user_flag(f->ring[i], 1, true);
     }
     for (int i = 0; i < 2; i++) {
         f->lid[i] = box(root, UI_COLOR_BG);
         lv_obj_set_style_bg_opa(f->lid[i], LV_OPA_TRANSP, 0);
         lv_obj_add_event_cb(f->lid[i], lid_draw, LV_EVENT_DRAW_MAIN, f);
+        lv_obj_set_user_flag(f->lid[i], 1, true);
     }
     for (int i = 0; i < 2; i++) {
         f->dome[i] = box(root, UI_COLOR_BG);
@@ -474,6 +476,7 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
         f->line[i] = box(root, 0);
         lv_obj_set_style_bg_opa(f->line[i], LV_OPA_TRANSP, 0);
         lv_obj_add_event_cb(f->line[i], line_draw, LV_EVENT_DRAW_MAIN, f);
+        lv_obj_set_user_flag(f->line[i], 1, true);
         f->spark[i] = image(root, COLOR_SPARK);
     }
     f->drop = image(root, COLOR_DROP);

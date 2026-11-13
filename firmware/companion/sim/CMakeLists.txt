@@ -20,12 +20,14 @@ FetchContent_Declare(lvgl
     GIT_TAG v9.6.0
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(lvgl)
+target_compile_definitions(lvgl PUBLIC LV_INV_BUF_SIZE=64)
 # lv_conf.h pulls in ui_lv_font.h (default font), so every LVGL file needs the ui include dir
 target_include_directories(lvgl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../components/ui/include)
 
 add_subdirectory(../components/ui ui) # plain-library branch of the component CMakeLists
 target_compile_options(ui PRIVATE -Wall -Wextra)
 target_compile_definitions(ui PUBLIC CONFIG_AELYS_PERF_PROBE=1) # host exercises the bench-only safe UI entry point
+target_compile_definitions(ui PUBLIC CONFIG_AELYS_SPARSE_SCREEN_SWITCH=1)
 
 # Pure-C logic (no LVGL, no IDF); owner.c reads the example contacts, never the git-ignored local header.
 add_subdirectory(../components/logic logic)
@@ -44,7 +46,7 @@ add_executable(companion_sim sim_main.c)
 target_link_libraries(companion_sim PRIVATE simlib)
 
 enable_testing()
-foreach(t test_face_moods test_face_geometry test_bmp test_mood_rules test_screens)
+foreach(t test_face_moods test_face_geometry test_bmp test_mood_rules test_screens test_screen_damage)
     add_executable(${t} ${t}.c)
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})

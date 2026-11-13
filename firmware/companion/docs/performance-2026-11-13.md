@@ -161,3 +161,26 @@ derived size. The 20 host tests pass (9.37 s), `git diff --check` passes, and an
 independent review found no material config/report issue. These checks do not
 replace the remaining hardware gates above. Push/deployment and OTA/power work
 are outside this slice; no irreversible board operation was performed.
+
+## Home/Today invalidation experiment (hardware result pending)
+
+The visibility switch previously queued the full 466×466 screen (217156
+pixels). `CONFIG_AELYS_SPARSE_SCREEN_SWITCH`, disabled by default, instead queues
+painted regions on the old and new Home/Today views, while suppressing the
+transparent roots' visibility/layout invalidations. The known 12 px progress
+ring uses 30 conservative rectangles covering 42801 pixels before rounding;
+other custom paints are tagged to retain their complete bounds. Other screen
+transitions and the shared Focus/Today ring-update setter retain their normal
+invalidation path. LVGL's invalidation list grows from 32 to 64 slots, adding
+544 B to its PSRAM-allocated display (no internal DMA-buffer change).
+
+The host regression first failed on full-screen traffic, then passed with
+155556–155764 transferred pixels in its fixed navigation fixture (about 28%
+fewer). A separate PARTIAL-mode pixel oracle uses the board's 32-row strips,
+even-pixel windows and 5 ms refresh timer; it drains queued dirty regions at a
+frozen animation clock before comparing with an explicitly full redraw. Cases
+include all 14 face moods, 101 ring percentages, changing row visibility,
+coalesced navigation, offline and toast overlay/removal. It does not model
+DMA/TE timing. These host checks establish image equivalence for the fixtures,
+not ESP32 latency or sustained frame rate. Keep the experiment off until a
+same-configuration on/off board comparison establishes its actual cost.

@@ -1,4 +1,10 @@
 menu "Aelys companion"
+    config AELYS_SPARSE_SCREEN_SWITCH
+        bool "Invalidate painted regions for Home/Today navigation (experimental)"
+        default n
+        help
+            Keep normal screen rendering as the fallback until the same-workload
+            probe validates the smaller dirty regions on the board.
     config AELYS_TZ
         string "POSIX time zone"
         default "<+05>-5"
