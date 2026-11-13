@@ -25,7 +25,10 @@
 #define COLOR_DROP 0x7FA8F5
 #define COLOR_DOT_OFF 0x4A4554
 #define DROOP_TRAVEL 250 /* sleepy lid: bottom edge moves 25 px (tenths) between -56 % and -30 % of 96 px */
-#define FRAME_MS 15      /* the anim timer runs at the LVGL refresh rate (5 ms on the board): draw at ~60 fps */
+/* The anim timer ticks every LV_DEF_REFR_PERIOD (5 ms on the board) while the panel flushes at 60 Hz (16.67 ms, TE).
+ * A fixed minimum gap would quantise to that 5 ms grid (15 ms: a state is skipped now and then; 16 ms: 20 ms, a state
+ * is shown twice). So frames are scheduled on a 16.67 ms clock kept in 1/3 ms: gaps of 15, 15 and 20 ms, average 60 Hz. */
+#define FRAME_THIRDS 50
 
 typedef struct { int16_t w, h, yl, yr; } cut_t; /* lid object size, cut height at its left and right edge */
 
@@ -39,7 +42,7 @@ typedef struct {
     int16_t dot_mix[3];
     int32_t s;           /* scale_x100 */
     const face_mood_t *m;
-    uint32_t t0, last;   /* start of the mood's loops, last frame (ms) */
+    uint32_t t0, due3;   /* start of the mood's loops (ms), next frame due (1/3 ms) */
 } face_t;
 
 /* face px * 100 -> device px */
@@ -339,9 +342,11 @@ static void tick(void *var, int32_t unused)
     face_t *f = var;
     (void)unused;
     uint32_t now = lv_tick_get();
-    if (f->last && now - f->last < FRAME_MS) return;
+    uint32_t now3 = now * 3;
+    if ((int32_t)(now3 - f->due3) < 0) return;
     if (!lv_obj_is_visible(f->root)) return;
-    f->last = now ? now : 1;
+    f->due3 += FRAME_THIRDS;
+    if ((int32_t)(now3 - f->due3) >= 0) f->due3 = now3 + FRAME_THIRDS; /* far behind (hidden, stalled): do not catch up */
     layout_eyes(f, now - f->t0);
     layout_fx(f, now - f->t0);
 }
@@ -488,7 +493,7 @@ void face_set_mood(lv_obj_t *face, mood_t m)
     if (!f || !face_mood_def(m)) return;
     f->m = face_mood_def(m);
     f->t0 = lv_tick_get();
-    f->last = 0;
+    f->due3 = f->t0 * 3;
     apply_mood(f);
     layout_eyes(f, 0);
     layout_fx(f, 0);

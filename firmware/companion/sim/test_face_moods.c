@@ -129,6 +129,30 @@ static void on_invalidate(lv_event_t *e)
     if (a->y2 > g_inv.y2) g_inv.y2 = a->y2;
 }
 
+/* Partial redraws must equal a full redraw: snapshot the frame, poison the buffer, redraw the whole screen with the
+ * animation clock frozen, compare. A missed or wrongly clipped invalidation leaves a stale pixel behind. */
+static uint16_t g_snap[SIM_W * SIM_H];
+
+static int pixel_exact(void)
+{
+    lv_refr_now(NULL); /* the animation ran after the last refresh: draw its partial update first */
+    memcpy(g_snap, sim_fb(), sizeof g_snap);
+    memset((void *)sim_fb(), 0xAA, sizeof g_snap);
+    lv_area_t keep = g_inv; /* the full-screen invalidation below is not the face's */
+    bool kept = g_inv_set;
+    lv_obj_invalidate(lv_screen_active());
+    lv_refr_now(NULL);      /* redraw now, the animation clock does not move */
+    g_inv = keep;
+    g_inv_set = kept;
+    int diff = 0;
+    for (int i = 0; i < SIM_W * SIM_H; i++)
+        if (g_snap[i] != sim_fb()[i]) {
+            if (!diff) fprintf(stderr, "first difference at %d,%d: %04x vs %04x\n", i % SIM_W, i / SIM_W, g_snap[i], sim_fb()[i]);
+            diff++;
+        }
+    return diff;
+}
+
 static void test_inside_screen_and_own_area(void)
 {
     lv_display_add_event_cb(lv_display_get_default(), on_invalidate, LV_EVENT_INVALIDATE_AREA, NULL);
@@ -138,6 +162,11 @@ static void test_inside_screen_and_own_area(void)
         int outside = 0, lit_px = 0;
         for (uint32_t t = 0; t < 12000; t += 100) {                /* longer than every loop (the look loop is 9 s) */
             sim_step(100);
+            if (t == 400 || t == 1000 || t == 2800 || t == 4800 || t == 5700 || t == 7700 || t == 11000) {
+                int diff = pixel_exact();
+                if (diff) fprintf(stderr, "%s at %u ms: %d pixels differ\n", mood_name((mood_t)m), t + 100, diff);
+                CHECK_EQ(diff, 0);
+            }
             for (int y = HY - 40; y < HY + FACE_H + 40; y++)
                 for (int x = HX - 40; x < HX + 300 + 40; x++) {
                     if (!lit(x, y)) continue;

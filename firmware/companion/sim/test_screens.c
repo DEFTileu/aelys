@@ -42,15 +42,18 @@ static void count_lit(int *outside, int *inside)
         }
 }
 
-static void check_inside(const char *what)
+/* min_lit: something was drawn. The offline view is two dim 28 px dots and some text, so it asks for less. */
+static void check_inside_min(const char *what, int min_lit)
 {
     int out, in;
     sim_step(100);
     count_lit(&out, &in);
     if (out) fprintf(stderr, "%s: %d lit pixels outside radius %d\n", what, out, R);
     CHECK_EQ(out, 0);
-    CHECK(in > 1000); /* something was drawn (the offline view is two dim 28 px dots and some text) */
+    CHECK(in > min_lit);
 }
+
+static void check_inside(const char *what) { check_inside_min(what, 2000); }
 
 static void test_flow(void)
 {
@@ -657,7 +660,7 @@ static void test_offline_shot(void)
     post_fx();
     link_state(LINK_UI_OFFLINE);
     sim_step(100);
-    check_inside("offline (no data)");
+    check_inside_min("offline (no data)", 1000);
     CHECK(shows_text(scr, "Offline") && !shows_text(scr, "Showing data from --:--"));
     link_state(LINK_UI_ONLINE);
     fresh_fx();
