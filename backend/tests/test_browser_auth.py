@@ -188,3 +188,16 @@ async def test_local_one_one_respects_operator_password_switches(client, monkeyp
         response = await local.post(f'{PREFIX}/login', json=credentials)
         assert response.status_code == 403
         assert response.json()['detail']['code'] == 'PASSWORD_LOGIN_DISABLED'
+
+
+@pytest.mark.asyncio
+async def test_companion_session_cannot_use_browser_refresh(client):
+    created = await client.post(f'{PREFIX}/bootstrap', json=CREDENTIALS)
+    assert created.status_code == 200, created.text
+    async with db.SessionLocal() as session:
+        # Turn the browser's own device into a companion, as if a board's session had been given the cookie.
+        device = await session.get(Device, created.json()['device_id'])
+        device.platform = 'companion'
+        await session.commit()
+    denied = await client.post(f'{PREFIX}/refresh')
+    assert denied.status_code == 403 and denied.json()['detail']['code'] == 'DEVICE_SCOPE_DENIED'

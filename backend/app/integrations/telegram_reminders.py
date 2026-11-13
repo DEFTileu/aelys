@@ -16,6 +16,7 @@ from app.ai.crypto import decrypt_secret
 from app.ai.errors import PolicyDenied
 from app.ai.models import PermissionContext, ToolCall
 from app.ai.policy import ServerPolicyEngine
+from app.companion.hub import mark_dirty
 from app.core import db as database
 from app.core.models import (
     CalendarEvent,
@@ -154,7 +155,10 @@ async def _notification(db: AsyncSession, item: TelegramIntegration,
         kind='telegram.reminder', title='Scheduled reminder', body=None, dedup_key=key,
         data_json={f'{kind}_id': resource_id, 'reminder_id': reminder.id},
     ).on_conflict_do_nothing(index_elements=['dedup_key']).returning(Notification.id))
-    return result.scalar_one_or_none() is not None
+    inserted = result.scalar_one_or_none() is not None
+    if inserted:
+        mark_dirty(db, item.owner_id)  # Core INSERT: no mapper event fires
+    return inserted
 
 
 async def _claim_due(db: AsyncSession, item: TelegramIntegration, at: datetime) -> list[str]:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC
 
+from app.companion.hub import hub
 from app.sync.change_log import lock_owner, record_domain_change
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select, text, update
@@ -65,6 +66,9 @@ async def refresh(body: dict, request: Request, db: AsyncSession = Depends(get_d
     enforce(request, "refresh", (300, 600))
     claims = decode_refresh_token(body.get("refresh_token", "")); user = await db.get(User, claims["sub"])
     if not user: raise HTTPException(401, detail={"code":"UNAUTHORIZED","message":"Unknown owner"})
+    # Companion boards never refresh (they re-sign with their key), so any refresh token naming one is refused outright.
+    if claims.get("device_id") and getattr(await db.get(Device, claims["device_id"]), "platform", None) == "companion":
+        raise HTTPException(403, detail={"code":"DEVICE_SCOPE_DENIED","message":"This device may not use this endpoint"})
     raw_refresh=body.get("refresh_token",""); session_query=select(AuthSession).where(AuthSession.owner_id==user.id,AuthSession.refresh_token_hash==token_hash(raw_refresh),AuthSession.revoked_at.is_(None))
     if claims.get("sid"): session_query=session_query.where(AuthSession.id==claims["sid"])
     session=(await db.execute(session_query)).scalar_one_or_none()
@@ -132,7 +136,9 @@ async def revoke(device_id: str, principal=Depends(current_principal), db: Async
     from .models import now
     device.revoked_at = now(); device.credential_version += 1
     db.add(AuditLog(owner_id=user.id,action="device.revoke",actor="owner",scope=f"device:{device_id}",decision="allow",outcome="revoked",correlation_id=device_id,redacted_metadata={}))
-    await db.commit(); return {"revoked": True}
+    await db.commit()
+    await hub.close_device(device_id, 4403)  # an open board socket must not outlive its revocation
+    return {"revoked": True}
 
 @router.get("/projects", response_model=list[ProjectResponse])
 async def list_projects(principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):

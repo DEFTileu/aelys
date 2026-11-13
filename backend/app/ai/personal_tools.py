@@ -19,11 +19,13 @@ from app.core.models import (
     Task,
     TaskReminder,
 )
+from app.domains import task_service
 from app.domains.api import EventIn, TaskPatchIn, owned_ref, owner_obj
 from app.domains.google_calendar_projection import project_google_calendar_events
 from app.domains.recurrence import utc
 from app.domains.reminders import authorize_reminder_write
 from app.sync.change_log import FIELDS, lock_owner, record_domain_change
+from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from pydantic import (
     AwareDatetime,
@@ -165,7 +167,15 @@ def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, so
                 'event_id': event_id, 'untrusted': True}
 
     async def complete_task(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
-        return await mutate_task({**arguments, 'status': 'completed'})
+        args = _TaskIdentity.model_validate(arguments)
+        try:
+            item = await task_service.complete_task(db, owner_id, args.task_id, args.version)
+        except HTTPException as exc:
+            if isinstance(exc.detail, dict) and exc.detail.get('code') == 'VERSION_CONFLICT':
+                raise ValueError(f"VERSION_CONFLICT: {exc.detail['message']}") from exc
+            raise
+        return {'kind': 'task', 'id': item.id, 'version': item.version, 'status': item.status,
+                'event_id': event_id, 'untrusted': True}
 
     async def read_note(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
         args = _NoteRead.model_validate(arguments)

@@ -780,3 +780,60 @@ imports retain text and/or HTML and preserve owner/content digest deduplication.
 Details use owner-partitioned device caching invalidated after mail writes.
 The renderer sanitizes and isolates formatted content, blocks remote images by
 default and offers a per-message image-load action and plaintext fallback.
+
+## Companion (ESP32 desk device, 2026-11-13)
+
+Decision: ADR-029. Board channel messages, close codes, snapshot schema, action
+kinds and `rev` rules are defined once in [companion-protocol.md](companion-protocol.md);
+this section lists only the HTTP routes and the auth model.
+
+### Auth model
+
+- A board pairs through the normal request/approve/finish flow with
+  `platform: "companion"` and logs in with `/auth/device/challenge` and
+  `/auth/device/login`. It never receives a refresh token; it logs in again by
+  device signature.
+- `current_principal` is fail-closed for a companion: only the routes in
+  `app/companion/access.py` `COMPANION_ALLOWED` (`GET /companion/snapshot`,
+  `POST /companion/actions`) and the WebSocket channel are reachable. Every other
+  route answers `403 DEVICE_SCOPE_DENIED`.
+- Owner-device routes below reject a companion caller with `403 DEVICE_SCOPE_DENIED`.
+- Errors use `{"detail": {"code": "...", "message": "..."}}`, not the envelope in section 1.
+
+### Board routes (companion access token)
+
+```http
+WS   /api/v1/devices/channel            # Authorization header only; see companion-protocol.md
+GET  /api/v1/companion/snapshot         -> CompanionSnapshot
+POST /api/v1/companion/actions          -> ActionResult  (ActionIn: id UUID v4, kind, payload)
+```
+
+`COMPANION_ONLY` (403): a non-companion device called a board route.
+
+### Owner routes (owner device session; `{id}` is the board's device id)
+
+```http
+GET  /api/v1/companion/devices/{id}             -> DeviceStateOut (online, last_seen_at, fw_version, public_key, lost_mode, ice, last_metrics, last_wifi_scan)
+PUT  /api/v1/companion/devices/{id}/lost-mode   -> CommandOut {id, delivered}
+PUT  /api/v1/companion/devices/{id}/ice         -> CommandOut
+POST /api/v1/companion/devices/{id}/find        -> CommandOut   (play_sound)
+POST /api/v1/companion/devices/{id}/wifi        -> CommandOut   (wifi_add, opaque base64url blob, <= 512 bytes decoded)
+POST /api/v1/companion/devices/{id}/wifi-scan   -> CommandOut
+POST /api/v1/devices/{id}/revoke                # closes the open socket with 4403
+```
+
+- `lost-mode` and `ice` store the new value, queue the command until the board
+  acks it, and also push it at once when the board is online
+  (`delivered` is true only when it went out now). Each carries a per-device `rev`.
+- Turning lost mode off (`on: false`) needs `reauth`: `{challenge_id, signature}`
+  from `/auth/device/challenge`, signed by the calling device over
+  `aelys-companion-lost-off-v1\n{board id}\n{nonce}`. The challenge is single use.
+- `find`, `wifi` and `wifi-scan` are never queued: `409 DEVICE_OFFLINE` if the board is offline.
+- Limits: lost-mode message 64 chars; ICE max 2 contacts, name 32, phone 23, note 96.
+
+### Error codes
+
+`DEVICE_SCOPE_DENIED` (403), `COMPANION_ONLY` (403), `REAUTH_REQUIRED` (403),
+`NOT_FOUND` (404, board unknown, revoked, or another owner's), `DEVICE_OFFLINE` (409),
+`UNAUTHORIZED` (401, revoked or unknown device at challenge), `VALIDATION_ERROR` (422).
+Action failures are reported in `action_result.error_code`, not as HTTP errors.

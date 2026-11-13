@@ -31,8 +31,10 @@ from app.core.models import (
     TaskReminder,
 )
 from app.core.security import current_principal
-from app.domains import capture
+from app.domains import capture, focus_service
 from app.domains.finance_summary import summarize_ledger
+from app.domains.focus_service import focus_elapsed
+from app.domains.ownership import owner_obj
 from app.domains.recurrence import parse_rule, utc
 from app.domains.reminders import authorize_reminder_write
 from app.sync.change_log import lock_owner, record_domain_change
@@ -283,9 +285,6 @@ class MailMessageOut(MessageIn):
         return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 class MailMessageDetailOut(MailMessageOut):
     body_html: str | None = None
-def focus_elapsed(started_at: datetime, paused_seconds: int, until: datetime) -> int:
-    """Focused seconds: wall time minus accumulated pauses."""
-    return max(0, int((until - started_at).total_seconds()) - paused_seconds)
 class FocusIn(BaseModel):
     task_id: str | None = None
     project_id: str | None = None
@@ -337,11 +336,6 @@ class CalendarReminderOut(CalendarReminderIn):
     @classmethod
     def reminder_utc(cls, value: datetime) -> datetime:
         return utc(value)
-
-async def owner_obj(model: type[Any], item_id: str, owner_id: str, db: AsyncSession):
-    item = await db.get(model, item_id)
-    if not item or item.owner_id != owner_id or item.deleted_at is not None: raise HTTPException(404, detail={"code":"NOT_FOUND","message":"Resource not found"})
-    return item
 
 async def owned_ref(model: type[Any], item_id: str | None, owner_id: str, db: AsyncSession, *, required: bool = False):
     """Resolve a foreign reference inside the authenticated owner's scope."""
@@ -854,59 +848,17 @@ async def finance_summary(principal=Depends(current_principal), db:AsyncSession=
 @router.post("/focus/sessions", response_model=FocusOut)
 async def start_focus(body:FocusIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db), idempotency_key: str | None = Header(default=None, max_length=150)):
     user,_=principal; await owned_ref(Project, body.project_id, user.id, db); await owned_ref(Task, body.task_id, user.id, db)
-    item_id = str(uuid5(NAMESPACE_URL, f"aelys:focus:{user.id}:{idempotency_key}")) if idempotency_key else str(uuid4())
-    existing = await db.get(FocusSession, item_id)
-    if existing:
-        if existing.task_id != body.task_id or existing.project_id != body.project_id or existing.mode != body.mode or utc(existing.started_at) != body.started_at:
-            raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Focus start key is bound to another request"})
-        return existing
-    active=(await db.execute(select(FocusSession).where(FocusSession.owner_id==user.id,FocusSession.status.in_(("active","paused"))))).scalar_one_or_none()
-    if active: raise HTTPException(409,detail={"code":"TIMER_ACTIVE","message":"Only one active focus session is allowed"})
-    item=FocusSession(id=item_id,owner_id=user.id,**body.model_dump()); db.add(item)
-    try:
-        await db.commit()
-    except IntegrityError as exc:
-        await db.rollback()
-        existing = await db.get(FocusSession, item_id)
-        if existing:
-            return existing
-        raise HTTPException(409, detail={"code": "TIMER_ACTIVE", "message": "Another device started a focus session. Reload to see it."}) from exc
-    await db.refresh(item); return item
+    item = await focus_service.start_focus(db, user.id, started_at=body.started_at, mode=body.mode, task_id=body.task_id, project_id=body.project_id, idempotency_key=idempotency_key)
+    await db.commit(); await db.refresh(item); return item
 @router.get("/focus/sessions", response_model=list[FocusOut])
 async def focus_sessions(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
     user,_=principal; return list((await db.execute(select(FocusSession).where(FocusSession.owner_id==user.id).order_by(FocusSession.started_at.desc()))).scalars())
 @router.post("/focus/sessions/{item_id}/stop", response_model=FocusOut)
 async def stop_focus(item_id:str,version:int | None=Query(default=None,ge=1),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(FocusSession,item_id,user.id,db)
-    if item.status == "completed":
-        return item
-    if version is not None and item.version != version:
-        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Focus session changed. Reload before stopping."})
-    ended_at = datetime.now(UTC)
-    paused_seconds = item.paused_seconds + (int((ended_at - utc(item.paused_at)).total_seconds()) if item.status == "paused" and item.paused_at else 0)
-    result = await db.execute(update(FocusSession).where(FocusSession.id == item_id, FocusSession.owner_id == user.id, FocusSession.version == item.version, FocusSession.status.in_(("active", "paused"))).values(ended_at=ended_at, paused_at=None, paused_seconds=paused_seconds, elapsed_seconds=focus_elapsed(utc(item.started_at), paused_seconds, ended_at), status="completed", version=item.version + 1))
-    if int(getattr(result, "rowcount", 0) or 0) != 1:
-        await db.rollback()
-        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
+    item = await focus_service.stop_focus(db, principal[0].id, item_id, version)
     await db.commit(); await db.refresh(item); return item
 async def _toggle_focus_pause(item_id: str, version: int | None, pausing: bool, user_id: str, db: AsyncSession):
-    item = await owner_obj(FocusSession, item_id, user_id, db)
-    source, target = ("active", "paused") if pausing else ("paused", "active")
-    if item.status == target:
-        return item  # idempotent repeat
-    if item.status != source:
-        raise HTTPException(409, detail={"code": "INVALID_STATE", "message": f"Focus session is {item.status}"})
-    if version is not None and item.version != version:
-        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Focus session changed. Reload."})
-    now = datetime.now(UTC)
-    if pausing:
-        values = {"paused_at": now, "elapsed_seconds": focus_elapsed(utc(item.started_at), item.paused_seconds, now)}
-    else:
-        values = {"paused_at": None, "paused_seconds": item.paused_seconds + (max(0, int((now - utc(item.paused_at)).total_seconds())) if item.paused_at else 0)}
-    result = await db.execute(update(FocusSession).where(FocusSession.id == item_id, FocusSession.owner_id == user_id, FocusSession.version == item.version, FocusSession.status == source).values(status=target, version=item.version + 1, **values))
-    if int(getattr(result, "rowcount", 0) or 0) != 1:
-        await db.rollback()
-        raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
+    item = await focus_service.set_focus_paused(db, user_id, item_id, pausing, version)
     await db.commit(); await db.refresh(item); return item
 @router.post("/focus/sessions/{item_id}/pause", response_model=FocusOut)
 async def pause_focus(item_id:str,version:int | None=Query(default=None,ge=1),principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):
@@ -1026,6 +978,9 @@ async def notifications(principal=Depends(current_principal), db:AsyncSession=De
 @router.post("/notifications")
 async def create_notification(body:NotificationIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; item=Notification(owner_id=user.id,kind=body.kind,title=body.title,body=body.body,data_json=body.data,dedup_key=body.dedup_key); db.add(item); await db.commit(); await db.refresh(item); return item
+async def set_notification_read(item_id:str, owner_id:str, db:AsyncSession):
+    """Mark an owner's notification read without committing; shared with the companion action."""
+    item=await owner_obj(Notification,item_id,owner_id,db); item.read_at=datetime.now(UTC); return item
 @router.post("/notifications/{item_id}/read")
 async def mark_notification_read(item_id:str, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
-    user,_=principal; item=await owner_obj(Notification,item_id,user.id,db); item.read_at=datetime.now(UTC); await db.commit(); return item
+    user,_=principal; item=await set_notification_read(item_id,user.id,db); await db.commit(); return item

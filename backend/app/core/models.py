@@ -400,5 +400,6 @@ class EnglishMock(Owned):
 
 # Register integration tables in the shared metadata for migrations and tests.
 import app.ai.memory_models
+import app.companion.models
 import app.domains.google_calendar_models
 import app.integrations.telegram_models  # noqa: F401 - register integration tables
