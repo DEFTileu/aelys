@@ -320,10 +320,16 @@ and `ice_update`. New commands (`name`, `args`):
 | `wifi_remove` | `{"ssid": str (1..32)}` | Never queued. |
 | `wifi_order` | `{"ssids": [str (1..32)] (max 5)}` | Never queued. |
 | `restart` | `{}` | Never queued. |
-| `unpair` | `{}` | Never queued. The board wipes its pairing and shows the pairing screen. The server revokes the board right after sending it, so the socket closes with `4403`. |
+| `unpair` | `{}` | Never queued. The board erases its pairing, its saved Wi-Fi list, the owner overrides (ICE data), lost mode, its settings and the cached snapshot, then restarts and shows the first-boot welcome screen. The server revokes the board right after sending it, so the socket closes with `4403`. |
 
 All are answered with `command_ack` (`BAD_ARGS` for invalid args). The board
 sends a fresh `wifi_state` after `wifi_remove` and `wifi_order`.
+
+`wifi_remove` never strands the board: if `ssid` is the network the board is
+connected to, or the last saved network, it acks `ok: false` with
+`error_code: "IN_USE"`, the saved list is unchanged and no `wifi_state` follows.
+Removing a name that is not saved is `ok: true` (nothing to change). `IN_USE`
+is final (not retried, unlike `BUSY`).
 ```json
 {"type": "command", "id": "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", "name": "settings", "args": {"brightness": 60, "rev": 2}}
 ```
