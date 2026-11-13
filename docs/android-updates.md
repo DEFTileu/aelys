@@ -4,8 +4,9 @@ The owner approved the Android Installer in-app update approach. This document
 covers its release manifest tooling, not publication or proof that the update
 flow works on a device. ADR-006 (the final Android wrapper decision) remains
 PROPOSED; background sync, notifications, and secure-storage acceptance remain
-open. There is currently no connected test device and no real published update
-channel. No release is published by the generator.
+open. The initial installer-enabled development APK was installed and launched
+on the owner's Samsung SM-S721B (Android 16 / API 36) on 2026-11-13. There is no
+published update channel yet. No release is published by the generator.
 
 ## Channel and trust
 
@@ -89,7 +90,7 @@ Use an actual Android arm64 device, a separately authorized test channel, and
 signed test builds using the same existing key and app ID. Record device/Android
 version, build versions, and results without collecting secrets or personal data.
 
-- [ ] Install the initial installer-enabled APK once; open Aelys and confirm its version.
+- [x] Install the initial installer-enabled APK once; open Aelys and confirm its version. Owner device, 2026-11-13: `adb install -r` succeeded, `am start -W` returned `Status: ok`, and package metadata reports version `0.1.0` / code `1000`. No uninstall or data-clear command was used.
 - [ ] Publish or serve a newer manifest and APK only with authorization; confirm the update is offered from the configured channel, and choose Update.
 - [ ] Confirm Android's installer appears, approve it, restart the app, and independently verify the newer installed version and retained local data.
 - [ ] Deny unknown-app installation permission or cancel the system installer; confirm no success is claimed and retry works after permission is granted.
@@ -97,5 +98,7 @@ version, build versions, and results without collecting secrets or personal data
 - [ ] Disconnect the device and attempt an update check; confirm normal offline use remains available and checking can be retried when online.
 - [ ] Check an equal or older version and a wrongly signed or wrong-package APK; confirm they are rejected before the system installer is opened.
 
-These are manual gates; running the manifest generator or unit tests does not
-establish device acceptance or a working published release channel.
+The remaining checks are manual gates; initial installation/launch, manifest
+generation and unit tests do not establish end-to-end update acceptance or a
+working published release channel. Existing user-data retention across a future
+update has not been independently inspected.
