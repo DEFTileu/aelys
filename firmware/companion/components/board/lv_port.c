@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #include "board.h"
 #include "board_pins.h"
@@ -11,6 +12,7 @@
 #include "driver/gpio.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -33,7 +35,7 @@ static TaskHandle_t starter;
 static lv_display_t *disp;
 
 static SemaphoreHandle_t te_sem, dma_sem;
-static volatile bool dma_busy;
+static _Atomic bool dma_busy;
 static bool need_te;       /* the next flush is the first of a frame */
 static bool frame_flushed; /* this refresh sent something to the panel */
 
@@ -87,7 +89,7 @@ static void IRAM_ATTR te_isr(void *arg)
 static bool IRAM_ATTR color_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *ev, void *ctx)
 {
     BaseType_t woken = pdFALSE;
-    dma_busy = false;
+    atomic_store_explicit(&dma_busy, false, memory_order_release);
     xSemaphoreGiveFromISR(dma_sem, &woken);
     return woken == pdTRUE;
 }
@@ -106,25 +108,32 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 #endif
     }
     frame_flushed = true;
-    dma_busy = true;
+    atomic_store_explicit(&dma_busy, true, memory_order_release);
     if (esp_lcd_panel_draw_bitmap(board_panel(), a->x1, a->y1, a->x2 + 1, a->y2 + 1, px) != ESP_OK) {
 #ifdef CONFIG_AELYS_PERF_PROBE
         pr_transfer_failed = true;
 #endif
-        dma_busy = false; /* a lost strip beats a frozen UI */
+        /* A failed submission need not prove that no DMA references remain.
+         * Do not return a buffer of uncertain ownership to LVGL. */
+        ESP_LOGW(TAG, "display submission failed; restarting");
+        esp_restart();
     }
 }
 
 /* LVGL clears its own "flushing" flag once this returns. Loop: dma_sem may hold a stale give. */
 static void flush_wait(lv_display_t *d)
 {
-    while (dma_busy) {
+    while (atomic_load_explicit(&dma_busy, memory_order_acquire)) {
         if (xSemaphoreTake(dma_sem, pdMS_TO_TICKS(100)) != pdTRUE) {
+            /* Completion can race the semaphore timeout. */
+            if (!atomic_load_explicit(&dma_busy, memory_order_acquire)) break;
 #ifdef CONFIG_AELYS_PERF_PROBE
             pr_transfer_failed = true;
 #endif
-            ESP_LOGW(TAG, "flush wait timeout");
-            break;
+            /* Once this deadline check sees an active transfer, restart even
+             * if the completion arrives during logging: recovery is committed. */
+            ESP_LOGW(TAG, "flush wait timeout; restarting");
+            esp_restart(); /* never release an in-flight DMA buffer to LVGL */
         }
     }
 }

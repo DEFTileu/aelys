@@ -252,3 +252,23 @@ these are not an exhaustive DMA-complete worst-frame check. The Mac app's fresh
 device list confirmed **Online**, ordinary firmware `3f33073-dirty` and two saved
 Wi-Fi profiles. No profile priority, account state or audible output was changed
 in this experiment. The board is left on the ordinary image.
+
+## DMA buffer ownership follow-up, 2026-11-14
+
+Source review found that the 100 ms display wait could return while a transfer
+was still active, after which LVGL considers its buffer available for reuse.
+The port now restarts on a submission error or on a wait timeout that still
+observes an active transfer. If completion races the timeout before that
+check, it returns normally; after the check decides to restart, a later
+completion does not cancel recovery. This trades a possible restart at the
+deadline for not knowingly returning an in-flight buffer. The ISR/task flag
+uses C atomics; the current ESP32-S3 build emits the ISR store inline.
+
+A host test compiles the port itself against fake platform APIs and exercises
+completion, stale semaphore signals, deadline races, submission error, and
+timeout recovery with and without the performance probe. It cannot establish
+physical DMA behaviour or restart timing. The board was absent: no firmware was
+flashed and device memory, FPS and fault injection remain pending. In
+particular, SPI submission can block inside ESP-IDF before the wait begins,
+and `esp_restart()` invokes shutdown handlers before reset; this change does
+not establish a bounded recovery for those paths. The S1 gates remain open.
