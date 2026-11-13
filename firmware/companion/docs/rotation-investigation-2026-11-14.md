@@ -96,6 +96,23 @@ use this API. The caller must validate all eyes before relying on a sequence
 of individual draws as an atomic frame, and must derive the actual transformed
 bounds and cut geometry. This does not establish transition or visual parity.
 
+In a separate synthetic overlap spike at 130% scale, composing each whole
+eye in sequence instead of using global passes changed 29 ARGB pixels. Against
+a more generously padded raster surface, a 390 × 221 surface lost 2,399–4,530
+nontransparent pixels outside the destination and differed at 93–1,440 pixels
+inside it at four rotations. These counts include black mask pixels; the
+intended clipping of those pixels has not been established. Comparing the
+software rotation to LVGL rotating the same raster source gave 5–17 silhouette
+differences and 2,260–2,534 RGB565 differences. That is not an independent
+reference for eye shapes and does not establish visual equivalence. On pixels
+lit in both images, the maximum per-channel difference was 4 RGB565 code
+values; mean absolute differences were at most 0.071 red, 0.152 green and
+0.041 blue codes across these cases. An opaque flat-colour control matched
+exactly away from edges. These measurements do not isolate sampling from alpha
+blending or quantization. The
+reproducible host spike is in the ignored ledger (`layered-spike/`); its images
+are static and its existing partial-redraw suite exercises the unchanged UI.
+
 ## Software rotation and image drawing experiment
 
 The experimental module also rotates one caller-owned ARGB8888 surface into
@@ -158,6 +175,29 @@ hide, widget deletion and recreation; an illustrative guard rejected writes
 during rendering. This does not prove safe asynchronous mutation, owner
 destruction during drawing, cache hits after address reuse, or hardware DMA
 behaviour. Commands and captured output are in `decoder-spike/`.
+
+A separate host experiment reserved the pinned LVGL decoder-node allocation
+before registration. A failed reserve skipped registration; a successful one
+was consumed and later freed once. Wrong-size allocation or reallocation while
+the handoff was armed deliberately fail-stopped in isolated test processes.
+An unrelated allocation of the same size consumed the reserve, demonstrating
+that a size check alone cannot establish ownership. This experiment depends on
+private allocation details and is not enabled in the firmware. The one-shot
+handoff, task ownership, target allocation and all drawing allocations still
+need validation; it does not make LVGL startup or rendering OOM-safe.
+
+Another host spike called the pinned LVGL software transform directly with
+caller-owned straight-ARGB8888 source and destination buffers. At four tested
+angles (3.5°, 9°, −9° and −3.7°), whole-frame and 32-row clipped calls were
+byte-identical, and the RGB565 framebuffer matched LVGL's transformed-image
+draw. No LVGL allocation or free calls occurred during those transform calls,
+including with allocation rejection armed; guard bytes remained intact. This
+internal, version-specific API still requires validated bounds, strides,
+nonoverlapping storage and lifetime, and it does not present the result or
+eliminate decoder and draw-task allocations. Target linking, other alpha and
+configuration cases, transitions and board performance remain unverified. The
+host source and runner are in `decoder-spike/sw-transform.c` and
+`decoder-spike/run-sw-transform.sh` in the ignored ledger.
 
 In the current single UI task and software renderer, source inspection shows
 that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
