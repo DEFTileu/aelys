@@ -1,229 +1,94 @@
-# Aelys Personal Harness: shared task proposals — Implementation Plan
+# Telegram task suggestions — короткий Implementation Plan v2
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** единый проверяемый путь предложения и подтверждения задачи для Web AI
-и явного owner-запроса по Business-сообщению, как первый срез личного harness.
-
-**Architecture:** расширить существующие AIAction/ToolRegistry/Policy Engine,
-вынести proposal/execution в общий сервис и оставить доставку в channel adapters.
-Доменное создание задачи, receipt и sync-log выполняются одной DB-транзакцией.
-Общее ядро не объединяет права/истории каналов.
-
-**Tech Stack:** существующие FastAPI/Python, Pydantic, SQLAlchemy/Alembic,
-PostgreSQL + SQLite tests, React/TypeScript для совместимости текущих DTO.
-Без новых SDK, queue vendors и UI redesign.
-
-**Spec:** [Design brief](../specs/2026-11-13-aelys-personal-harness-design.md).
-Исследование и H0–H7 roadmap: [Personal harness research](../../research/2026-11-13-aelys-personal-harness.md).
-
-Статус: **PROPOSED / NOT IMPLEMENTED**. Авторизованы исследование и планирование.
-План не запускает миграции, новые права, создание задач или production rollout.
-Детальный план покрывает **ровно Phase 4 / task 3**, а не H0–H7 целиком.
+**Goal:** секретарь предлагает задачу из одного opt-in Business-чата; владелец
+подтверждает inline-кнопкой в личке бота. **Статус: PROPOSED, код не начат.**
+**Architecture:** существующие AIAction, общий generic approve/reject, registry,
+connector queue и capture/sync. **Tech Stack:** текущий FastAPI/Python/PostgreSQL.
+**Spec:** [сценарий и точные границы](../specs/2026-11-13-aelys-personal-harness-design.md).
+**Roadmap anchor:** предлагаемое расширение Phase 4 / task 3, не rewrite harness.
 
 ## Global Constraints
 
-- Full CLI session transcripts + embeddings stay on Mac, never in cloud DB,
-  logs, telemetry, attachments or client sync.
-- Automation always passes through Policy Engine; agent instructions or
-  retrieved text never grant permissions.
-- BYOK: encrypted secret store, never expose keys to frontend/logs or send to
-  LLM as tool content.
-- Offline first: client mutations durable in local store before sync; server
-  writes versioned/idempotent.
-- No UI design or VPS provider selection without explicit instruction.
-- Any decision marked OPEN or PROPOSED remains so until owner approval /
-  evidence-based spike.
-- Сохранить действующие личные owner-команды и Business same-message edit /
-  session/retention guards. Не выдавать Business `tasks.write`.
+Policy Engine исполняется перед mutation; контактный текст не выдаёт прав.
+Личные /task-команды, Web actions и Business /ask/search остаются рабочими.
+BYOK secrets и raw CLI transcripts не попадают в prompts/logs/cloud sync.
+Нет новых SDK, очередей/vendor, экранов, digest и receipt-таблиц.
 
 ## Review Focus
 
-1. Повтор/конкуренция approve, crash и DB rollback: одна задача и один receipt.
-2. Подмена источника/проекта/параметров после preview: запрет исполнения.
-3. Source delete/revoke/retention между предложением и исполнением: stale.
-4. Поддельный owner/source в тексте или tool output: не меняет server context.
-5. Private preview/task details случайно попадают в contact reply, SSE replay,
-   debug log или legacy export: запрещено, synthetic sentinel regression.
+Повтор approve → та же задача; чужой callback → отказ; edit/delete/off/expiry →
+stale; injection → никакого нового scope; предложение/результат → только owner.
 
-## Предлагаемые интерфейсы первого среза
+## Task 1 — выделить существующий action service без нового task-only пути
 
-Создать `backend/app/ai/action_contracts.py`:
+**Files:** `ai/api.py`, новый `ai/actions.py`, `core/models.py`, следующая
+`alembic/versions/*_action_source.py`; tests в `ai_automation/test_ai_chat_design.py`
+и новом `test_action_sources.py`. Пути Python относительны `backend/app`.
 
-- `ProposalSource(kind: Literal['web','telegram_business'], id: str, version: int)`:
-  только opaque ID/version; фактические owner/chat/project получают из DB.
-- `TaskProposalArgs`: использовать существующий `CreateTaskToolArgs` с
-  `extra='forbid'`, timezone-aware `due_at`, существующими лимитами title/description;
-  не вводить произвольные table/tool/SQL поля.
-- `VerifiedActionContext`: immutable серверные owner_id, actor_id, channel,
-  audience='owner', source, policy_id, operation_id. Не принимать его как trusted
-  JSON от модели/контакта.
-- `ActionPreview`: action_id, tool='create_task', typed arguments, payload_digest,
-  source label, expires_at, status. Сырой чат в preview не требуется.
-- `ActionOutcome`: action_id, status, result kind/id либо stable error code.
+- [ ] Baseline: проверить текущие pending/approve/reject тесты для create_note,
+  create_task, complete/update/reminder. Не подменять общий approve на approve_task.
+- [ ] Перенести тело approve/reject и owner lookup как есть в сервис; endpoints
+  делегируют туда. Сохранить CAS, registry/policy, commit и формат _action_out.
+- [ ] Добавить nullable source_kind/source_id/source_version/expires_at в AIAction;
+  source guard только для source-bound actions, legacy NULL остаётся рабочим.
+  Новые ошибки — ACTION_EXPIRED/ACTION_SOURCE_STALE; ACTION_NOT_PENDING уже есть.
+- [ ] Args immutable после preview; approve принимает action ID без клиентского
+  payload. Receipt — AIAction.status/result_json, новую таблицу не создавать.
+- [ ] RED/GREEN: nullable migration compatibility, owner/source/expiry checks,
+  repeat approval, failed handler rollback; regression всех старых write tools.
+  Отдельно concurrent approve и approve/reject на disposable PostgreSQL.
+- [ ] Commit: `refactor(ai): share action approval and source checks`.
 
-Создать `backend/app/ai/actions.py`:
+## Task 2 — замкнуть trigger → proposal → private buttons → task
 
-```python
-async def propose_task(db: AsyncSession, ctx: VerifiedActionContext,
-                       args: TaskProposalArgs) -> ActionPreview: ...
-async def approve_task(db: AsyncSession, owner_id: str, action_id: str,
-                       expected_digest: str | None = None) -> ActionOutcome: ...
-async def reject_task(db: AsyncSession, owner_id: str,
-                      action_id: str) -> ActionOutcome: ...
-```
+**Files:** `integrations/telegram_{personal,service,transport,models}.py`, новый
+`telegram_task_suggestions.py`, миграция connector-полей; `docs/TELEGRAM_BUSINESS.md`.
+Tests: новый `backend/tests/test_telegram_task_suggestions.py`, transport tests.
 
-`expected_digest` optional только для совместимости старых Web карточек;
-новые source-bound proposals требуют его. Сервер во всех случаях пересчитывает
-и проверяет digest собственного immutable payload перед вызовом handler.
-Доступная клиенту история ответа не считается источником прав.
+- [ ] Зафиксировать UX из spec: private `/task_suggestions` (список/статус),
+  `on <chat_id>` / `off`, `pending`; один активный чат, только новые сообщения.
+  Новые настройки — nullable chat_id и enabled_at; нет historical backlog scan.
+- [ ] Добавить content_version источника: worker draft/status его не меняет,
+  remote edit/delete меняет. Action.source_version ссылается на эту ревизию.
+- [ ] В ingestion транзакционно поставить kind=task_suggestion в существующую
+  Business command queue. Исключить kind из owner-command selector/recovery.
+  Новый supervised worker claims по DB, обрабатывает source один раз; no-candidate
+  terminal. Уже существующая очередь сохраняет trigger через restart.
+- [ ] Extractor использует текущий provider/budget/timeout, tools=(), strict
+  CreateTaskToolArgs|null. Проверить source/allowlist до и после модели; неясный
+  срок оставить пустым. Создать приватные AIConversation/AIRun и pending AIAction
+  с минимальными metadata, без полной копии чата; закрепить источник/TTL.
+- [ ] Persist proposal до I/O; private sendMessage получает reply_markup с
+  «Создать задачу»/«Отклонить». Queue delivery claim сохранять до отправки;
+  timeout/unknown не повторять автоматически. pending-команда — явное восстановление.
+- [ ] Добавить callback_query в allowed_updates, безопасный parser,
+  answerCallbackQuery и private editMessageReplyMarkup для закрытия кнопок; callback data = operation + opaque action ID (<=64 bytes).
+  Проверить bound owner, private chat и bot identity; args/permissions только из DB.
+- [ ] Callback вызывает общий service Task 1; commit результата до answer/edit
+  клавиатуры. Успех показывает task ID; stale/expiry/reject — понятный terminal ответ.
+  Контакту ничего не отправлять. Удаление source/revoke/off инвалидирует pending.
+- [ ] RED/GREEN: 10 кейсов ниже, source/key rotation/retention и миграция; обновить
+  документацию. Не добавлять общий framework/corpus ради этого среза.
+- [ ] Commit: `feat(telegram): suggest tasks with private owner approval`.
 
-Предлагаемые новые error codes: `ACTION_EXPIRED`, `ACTION_SOURCE_STALE`,
-`ACTION_PAYLOAD_CHANGED`, `ACTION_NOT_PENDING`. Existing `NOT_FOUND`,
-`POLICY_DENIED`, `IDEMPOTENCY_CONFLICT` и `ACTION_REJECTED` сохраняются.
-Предлагаемый TTL: min(24h, expiry применимого grant/source); default подлежит
-утверждению. Отсутствие новых полей у legacy actions не выдаёт новый scope.
+## 10 детерминированных кейсов, внутри Task 1/2
 
-## Task 1 — общий proposal/approval service и совместимость Web
+1. Opt-in одного известного чата → кандидат → private preview, Tasks count=0.
+2. Approve → одна Task + result_json + sync; повтор/конкуренция не дублируют.
+3. Reject и approve/reject race не создают задачу после подтверждённого reject.
+4. Off/чужой чат/старое сообщение/no-candidate не создают preview; /task не меняется.
+5. Source edit/delete/revoke между extraction/preview/approve → отказ, не stale task.
+6. Чужой sender/group/forged callback или source ID → нет provider/mutation.
+7. Expiry/недоступный проект/policy denial → нет записи, legacy Web approvals работают.
+8. Injection в RU/KK/EN не выдаёт tools/scopes и не публикует private данные контакту.
+9. Restart/replayed update не дублирует analysis/action; unknown private send не replay.
+10. Content version переживает обычный draft/send; неясный срок не угадывается;
+    source wipe/rotation покрывают новые connector поля.
 
-**Files:**
-
-- Create: `backend/app/ai/action_contracts.py`, `backend/app/ai/actions.py`.
-- Modify: `backend/app/core/models.py` (`AIAction`), `backend/app/ai/chat_support.py`
-  (`gate_writes`), `backend/app/ai/api.py` (approve/reject and output DTO).
-- Create: следующая миграция `backend/alembic/versions/*_action_provenance.py`.
-  Номер определить после проверки актуальной migration head.
-- Test: `backend/tests/ai_automation/test_action_service.py`,
-  `backend/tests/ai_automation/test_ai_chat_design.py`,
-  `backend/tests/ai_automation/test_ai_event_commit.py`.
-- Docs/types if wire shape changes: `docs/API_CONTRACTS.md`, `docs/openapi.json`,
-  generated/shared AI DTO в `packages/shared` согласно текущему generator.
-
-**Consumes:** существующие `AIAction`, typed create validators, registry,
-`domains/capture.py:create_task`, `sync/change_log.py` owner locks.
-**Produces:** три сервиса выше; совместимый Web action API.
-
-- [ ] Зафиксировать baseline текущих Web pending/approve/reject тестов и
-  существующей личной Telegram task-команды; составить матрицу каналов/прав.
-- [ ] RED: `test_proposal_has_no_task_side_effect`, `test_repeat_intent_returns_same_preview`,
-  `test_changed_payload_same_operation_conflicts`, `test_parallel_approvals_create_one_task`,
-  `test_rollback_keeps_task_receipt_and_sync_atomic`, `test_foreign_owner_cannot_approve`.
-  Проверять Task/receipt/sync rows, а не только строку ответа модели.
-- [ ] RED: expiry, changed digest/source/project, expired/revoked policy и reject
-  не создают задачу. Test 1 успешного approve → repeat возвращает тот же task ID.
-- [ ] Добавить backward-compatible AIAction provenance/digest/expiry/result binding.
-  Legacy Web карточки остаются рабочими без выдуманного Business origin.
-  Не копировать plaintext переписку в action payload; новые sensitive storage
-  поля включить в encrypt/rotation/retention path. Если нужны новые поля, описать
-  миграцию и проверить downgrade/data preservation.
-- [ ] Реализовать normalise/validate → policy → source check → pending preview;
-  при approve owner-lock/CAS pending → domain call → receipt/result/sync → commit.
-  Не держать DB write transaction во время LLM/network I/O. Existing `gate_writes`
-  вызывает сервис, endpoint больше не дублирует выполнение.
-- [ ] GREEN: весь `test_ai_chat_design.py` и новая action-service suite; SQLite
-  + disposable PostgreSQL concurrent claim/rollback. Без PostgreSQL не заявлять
-  concurrency acceptance; зафиксировать skip и выполнить перед выпуском.
-- [ ] Атомарный commit: `feat(ai): centralize task proposals and approvals`.
-
-## Task 2 — явное предложение из Business-сообщения без новых прав контакта
-
-**Files:**
-
-- Create: `backend/app/integrations/telegram_task_proposals.py`.
-- Modify: `backend/app/integrations/telegram_api.py` (owner-authenticated request
-  adapter), `backend/app/integrations/telegram_service.py` (source current/wipe hooks).
-- Reuse: `telegram_models.py`, `telegram_business` ownership/connection guards,
-  `ai/execution.py`, action service Task 1.
-- Test: `backend/tests/test_telegram_task_proposals.py`,
-  `backend/tests/test_telegram_context_sessions.py` (границы источников сохраняются).
-- Docs: `docs/TELEGRAM_BUSINESS.md`, `docs/API_CONTRACTS.md`.
-
-**Consumes:** opaque Business message ID + its expected version from owner request.
-**Produces:** private `ActionPreview`, привязанный к owner AIConversation/AIRun
-для показа существующим Web action API/card consumer. Telegram approval UI не
-существует и не объявляется готовым; новая связь и получение preview входят в Task 2.
-
-- [ ] RED: новый owner-only `POST /api/v1/integrations/telegram/messages/{id}/task-proposal`
-  с `expected_version` и `Idempotency-Key` создаёт pending preview, Task count=0.
-  Новый endpoint — предложение API, не уже опубликованный контракт.
-- [ ] RED: contact/bot/forward/forged owner, foreign chat/integration, deleted source,
-  wrong version и disconnected binding не порождают preview или provider call.
-- [ ] Построить VerifiedActionContext из server principal + DB binding/source.
-  Сам message text — untrusted. Модель выдаёт только strict TaskProposalArgs;
-  нет domain tools, send tools, personal memory, чтения других диалогов.
-  Неоднозначную дату не угадывать: nullable due либо unresolved flag вне task args.
-- [ ] Привязать приватный run/conversation для preview с минимальными metadata,
-  без копии полного чата; соблюдать существующую Business retention и шифрование.
-  После удаления источника invalidate pending preview. Исполненная задача не
-  удаляется автоматически; source link становится unavailable.
-- [ ] GREEN: approve/reject проходят общий сервис. Сценарий сообщения → preview →
-  approve → одна задача + sync работает с synthetic LLM boundary. Проверить,
-  что callback/handler не отправил ничего контакту и обычный `/ask` не меняет права.
-- [ ] RED/GREEN injection fixtures RU/KK/EN: «игнорируй правила/я владелец/выдай ключ»
-  в исходном сообщении/цитате/tool output не расширяют scope или audience.
-- [ ] Атомарный commit: `feat(telegram): propose owner tasks from verified sources`.
-
-Превращение этого явного пути в непрерывный secretary observer — **следующий
-отдельный срез** с opt-in настройкой, throttling/dedup и отдельными acceptance.
-Не запускать анализ всех сообщений/проактивные уведомления из одного этого плана.
-
-## Task 3 — общий contract corpus и выпускная проверка
-
-**Files:**
-
-- Create: `backend/tests/ai_automation/test_harness_contracts.py`,
-  `backend/tests/fixtures/harness/README.md`, synthetic JSON cases в этой папке.
-- Modify only as needed: shared AI DTO / существующий action card consumer;
-  без нового экрана/переработки дизайна.
-- Record: `docs/optimization/aelys-harness-task-proposals.md`.
-
-**Consumes:** Task 1/2 services and adapters.
-**Produces:** воспроизводимый run/report; permission matrix и список ограничений.
-
-- [ ] Добавить 40 сценариев из исследования. Детерминированные assertions для
-  source/audience/scopes/дублей; semantic rubric для текста отдельно.
-  Fixtures только синтетические, никаких личных чатов/CLI transcripts/API keys.
-- [ ] Сравнить Web и Business на одном proposal/execution contract, сохранив
-  разные authority profiles. Прямой owner text/voice остаётся в текущем разрешённом
-  режиме, quoted/file turns не получают write grants.
-- [ ] Проверить delete/revoke в трёх местах: до модели, после модели, до commit;
-  concurrent approve/reject, restart с pending proposal, source version change,
-  refusal/timeout, отсутствие sentiment-only «успеха» без domain result.
-- [ ] Проверить sentinel отсутствие в contact replies, logs/SSE/general sync/export;
-  в sync разрешена только новая явно подтверждённая Task, не connector payload.
-- [ ] Выполнить проверки ниже, сохранить точные counts/skips/errors и миграции.
-  Не выдавать отсутствие тестового PostgreSQL/Mac за успешную проверку.
-- [ ] Независимый review; находки подтверждать RED/GREEN regression, затем relevant
-  suite. Release выполняется только в отдельно разрешённом rollout.
-- [ ] Commit tests/docs отдельно либо вместе с соответствующим логическим fix.
-
-## Команды проверки (из корня репозитория)
-
-Создать/использовать полное согласованное окружение `backend[test,quality]`.
-Если `.venv` лежит в другом checkout, задать путь интерпретатора, не секреты.
-
-```sh
-.venv/bin/python -m pytest backend/tests/ai_automation/test_action_service.py backend/tests/ai_automation/test_ai_chat_design.py backend/tests/test_telegram_task_proposals.py -q --tb=short
-.venv/bin/python -m pytest backend/tests -q --tb=short
-.venv/bin/ruff check backend/app backend/tests
-.venv/bin/mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs
-.venv/bin/bandit -q -r backend/app -ll
-pnpm --dir apps/web typecheck
-git diff --check
-```
-
-После wire/consumer changes — релевантные Vitest action-card/API tests, full Web
-checks по CI. `alembic upgrade head`/`alembic check`/downgrade только на disposable
-SQLite/PostgreSQL, не на личной production DB для тестов. OpenAPI генерировать и
-проверить по действующему CI. Неприменимые UI/Mac проверки не придумывать.
-
-## Definition of done и handoff
-
-Рабочий source → private preview → owner approval → Task + sync с реальным
-смонтированным API/domain/service и synthetic external model I/O; PostgreSQL
-concurrency проверен; нет изменений чужих scopes, секретов или contact effects.
-Выпускной отчёт отделяет automated tests от permitted live acceptance.
-
-Проверить план и утвердить предложенные новые API/TTL/явный trigger перед кодом.
-Владелец может выбрать любой один следующий этап; общий roadmap не даёт
-разрешения выполнять все H0–H7, создавать новые grants или менять production.
+Run relevant pytest, full backend, Ruff/mypy/Bandit и migration checks; точные
+команды взять из действующего CI. PostgreSQL race обязателен до выпуска, skip не
+считать acceptance. Реальный Telegram smoke — только с разрешённым чатом владельца.
+UI design, автоматическое создание без approve и production rollout не разрешены
+одним этим документом. Task 3 и несвязанные continuity/retrieval fixtures удалены.

@@ -37,7 +37,7 @@ services»). Это не заявление о выполнении этой з�
 | Роутинг/цена | `router.py:ModelRouter`, `usage.py`, Decimal-оценки, бюджеты | Доказанный оптимальный выбор модели на реальных задачах |
 | Agent loop | `turn.py:run_tool_turn`, до 8 completions, cancellation, tool-result boundary | Возобновляемый durable workflow на часы и дни |
 | Инструменты/политика | `tools.py:ToolRegistry`, `policy.py:ServerPolicyEngine`, typed validators | Единый явный контракт audience/effects/approval для всех каналов |
-| Записи в Web AI | `chat_support.py:gate_writes`, `AIAction`, approve/reject API | Общий сервис подтверждения для Business/автоматизаций |
+| Записи в Web AI | `gate_writes`, `AIAction`, общий по инструментам approve/reject API; CAS pending и результат с domain mutation одним commit | Перенос этого существующего механизма в сервис и Telegram callback adapter |
 | Личный Telegram | `telegram_personal_dialogue.py`, `personal_tools.py`, durable personal queue | Те же права, что у Business-секретаря: у них разные полномочия намеренно |
 | Business | секретарь; `/ask`/`/search`; `telegram_context.py`, encrypted queue/session | Создание личных задач из чужой переписки сейчас не подключено |
 | Сессии | Business idle 60 минут, `/new`, bounded history; личный бот имеет conversation и `/new` | Универсальные sessions/checkpoints, архивный поиск и резюме во всех каналах |
@@ -143,20 +143,25 @@ vector/hybrid и embeddings остаются PROPOSED до полезного и
 
 ## 6. Инструменты, действия и автономность
 
-Разделить три операции: чтение разрешённых данных, создание предложения,
-выполнение конкретного действия. Новое `propose_task` **не** получает `tasks.write`.
-Оно формирует ограниченную структуру для приватного просмотра владельцем.
-После подтверждения executor использует существующий domain capture/sync writer.
+Различать чтение, предложение и выполнение. Для следующего среза достаточно
+существующего AIAction и CreateTaskToolArgs: extractor выдаёт кандидат задачи
+без tools, а tasks.write используется только общим approve service после owner
+callback. Новый task-only executor, набор DTO и payload_digest здесь не нужны.
+Аргументы серверные и immutable после preview; callback передаёт только action ID.
 
 Пример следующего полезного сценария:
 
-1. Контакт пишет «пришли документ завтра до 18:00».
+1. Владелец один раз включает предложения для конкретного чата командой
+   `/task_suggestions on <chat_id>` в личке бота. Контакт пишет
+   «пришли документ завтра до 18:00».
 2. Секретарь выделяет кандидата задачи; текст контакта остаётся недоверенным.
-3. Владелец получает приватное предложение с источником, датой/таймзоной и проектом.
+3. Бот присылает в личку владельца предложение с источником, датой/таймзоной
+   и кнопками «Создать задачу»/«Отклонить». Переход в Web не нужен.
    Если дата неоднозначна, срок отсутствует либо нужна явная правка владельца.
 4. Владелец подтверждает **показанный payload**, а не свободный дальнейший план.
-5. Executor проверяет owner, project, source version/consent, expiry, payload hash,
-   current policy и receipt; создаёт задачу, запись sync и результат одной транзакцией.
+5. Общий существующий approve проверяет owner, project, source version/consent,
+   expiry, current policy и pending; создаёт задачу, sync и result_json одной
+   транзакцией. AIAction.status/result_json — receipt этого среза, без новой таблицы.
 6. Контакту не пишут «задача создана» или «документ отправлен» без отдельного права
    и реального результата. Отклонение не запускает никаких доменных действий.
 
@@ -169,7 +174,9 @@ vector/hybrid и embeddings остаются PROPOSED до полезного и
 
 Нужны отдельно session ID, run ID, step/action ID, delivery receipt и command ID.
 Один и тот же provider call ID нельзя считать универсальной бизнес-идемпотентностью.
-Ключ действия выводится из нормализованного payload, source identity и owner/grant.
+В следующем срезе ключ исполнения — AIAction.id, результат — его result_json;
+Business proposal дедуплицируется по проверенному источнику/ревизии. Для будущих
+внешних операций receipt нужно определять отдельно, не заимствовать слово без схемы.
 
 Предлагаемый run lifecycle: queued → running → waiting_approval/waiting_device →
 completed/failed/cancelled/expired. Delivery имеет свой sent/failed/unknown status.
@@ -215,9 +222,10 @@ completed/failed/cancelled/expired. Delivery имеет свой sent/failed/unk
 
 ## 10. Как измерять результат
 
-Предлагаемый начальный corpus — 40 синтетических RU/KK/EN сценариев:
-10 continuity/identity, 10 retrieval/source revocation, 10 task proposal/execution,
-10 injection/audience/permission. Это наш размер пилота, не отраслевой стандарт.
+Для текущего среза — 10 сгруппированных детерминированных кейсов из плана:
+proposal/approve/reject, owner-only callback, source invalidation, concurrency,
+restart и injection RU/KK/EN. Существующие continuity/retrieval тесты запускаются
+как регрессии, а новый общий corpus не требуется для одной функции.
 
 Проверять фактическую БД/receipts/sync и сетевые вызовы, а не только текст ответа:
 нет дубля после replay/restart; чужой текст не даёт прав; правильный читатель;
@@ -236,27 +244,32 @@ codes. Нет chain-of-thought, ключей, полного чужого чат
 Контентный debug export — отдельный разрешённый owner-путь, никогда включённый
 по умолчанию vendor tracing. Полные CLI-сессии/embeddings остаются только на Mac.
 
-## 11. Порядок развития
+## 11. Ближайшие изменения и необязательная карта будущего
 
-| Этап | Сквозной результат | Gate / зависимость |
+| Приоритет | Конкретный результат | Граница |
 |---|---|---|
-| H0: контракты + baseline | Явные channel/audience profiles и corpus текущего поведения | Не менять существующие разрешения; относится Phase4/task3 |
-| H1: shared proposals | Web и Business создают одинаково проверяемое предложение задачи | Exact payload binding, owner approval, same transaction sync/receipt |
-| H2: context service | Общая сборка контекста, sessions/summaries/provenance | Revocation через производные источники, migration compatibility |
-| H3: research capability | Разрешённый поиск доступен координатору как typed tool | Evidence validation, egress, реальные provider smoke tests |
-| H4: durable workflows | Рестарт/ожидание approval/device не теряет прогресс | Claims/checkpoints; unknown effects не повторяются |
-| H5: automation | Проверенная цепочка событие → правило → действие → уведомление | Durable outbox: закрыть after-commit loss window; opt-in rules |
-| H6: Mac delegate | Owner запускает разрешённую coding-задачу через harness | Только пройденные isolation/credential/device acceptance gates |
-| H7: extension/evaluation | Узкие субагенты/MCP/skills улучшают нужные сценарии | Measured gain, narrowed capabilities, export privacy review |
+| 1 — отдельный bugfix | Durable outbox для domain → automation events | `hooks.py` после commit хранит событие только в RAM; crash может потерять dispatch. Сначала regression crash-after-commit, затем transactional outbox и replay через существующий dispatcher/receipts |
+| 2 — следующий feature-срез | Один opt-in чат: секретарь → private inline preview → owner approve → Task | Два task плана; reuse generic AIAction approve/result_json, source/expiry guards; без SDK и UI framework |
+| 3 — только после измерений | Устранить конкретный повторяющийся сбой контекста/поиска/выполнения | Выбрать реальный сценарий и baseline, а не заранее строить восемь слоёв harness |
 
-Качество/безопасность проверяются с H0 и на каждом этапе, а не только в H7.
-Для каждого этапа нужен отдельный утверждённый срез; подробный следующий план:
-[Shared task proposals](../superpowers/plans/2026-11-13-aelys-personal-harness.md).
+Outbox bugfix и Telegram feature — разные PR: новая suggestion queue привязывается
+к ingestion transaction напрямую и не зависит от RAM hooks. Не расширять
+feature до общего workflow engine. В этой работе ни исправление, ни feature не
+реализуются: планирование не даёт production permissions.
+
+Общий context service нужен, если один и тот же context bug приходится чинить в
+нескольких каналах. Durable workflow abstraction — если появляется реальная
+задача, переживающая рестарт/ожидание устройства и нескольких approval. До этих
+сценариев нет обязательных этапов H2/H4. Research helpers, Mac delegation и MCP
+остаются возможными направлениями; включать их по потребности с текущими gates.
+
+Подробный следующий план:
+[Telegram task suggestions v2](../superpowers/plans/2026-11-13-aelys-personal-harness.md).
 
 ## 12. Что остаётся OPEN
 
 - Правила автоматического создания задач по чужой переписке и допустимые чаты.
-- Точные новые capability grants и UX утверждения, за пределами существующей карточки.
+- Предложенный Telegram opt-in/callback UX и TTL требуют утверждения; реализационная схема уже описана в v2, пустого backend endpoint больше нет.
 - Retention новых workflow/proposal данных, связь удаления с уже созданной задачей.
 - Архивный поиск, размер summary/token budgets, embeddings и место их исполнения.
 - Выбор SDK/нового search backend/моделей после сравнительных проверок.
@@ -265,3 +278,23 @@ codes. Нет chain-of-thought, ключей, полного чужого чат
 Планирование авторизовано, автоматические actions/delegation grants — нет.
 Продуктовый код, зависимости, настройки production и данные пользователя этим
 исследованием не меняются. Тесты runtime в этой работе не запускались.
+
+
+## 13. Проверка замечаний ревью (2026-11-13)
+
+Перепроверены ai/api.py approve/reject, core/models.py AIAction,
+automation/hooks.py, Telegram transport/poller и личные task-команды. CAS,
+результат одного commit, generic write-tools и ACTION_NOT_PENDING уже есть.
+callback_query в allowed_updates отсутствует, reply_markup/answerCallbackQuery
+в транспорте не реализованы: в v2 они явная часть feature, а не допущение.
+Существующий PermissionContext не заменяется набором похожих DTO.
+
+Проверка ссылок выполнена HTTP открытием обеих форм URL Anthropic:
+`/engineering/effective-harnesses-for-long-running-agents` и
+`/engineering/effective-context-engineering-for-ai-agents` перенаправляют на
+использованные выше `/research/...`. Ссылки рабочие, старые адреса не подставлялись.
+[Telegram InlineKeyboardButton](https://core.telegram.org/bots/api#inlinekeyboardbutton),
+[CallbackQuery](https://core.telegram.org/bots/api#callbackquery) и
+[answerCallbackQuery](https://core.telegram.org/bots/api#answercallbackquery)
+проверены: callback_data ограничена 1–64 bytes; callback sender/DB authorisation
+нельзя заменять доверием к тексту кнопки. Это проверка документации, не live smoke.

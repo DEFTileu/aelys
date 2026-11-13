@@ -1,103 +1,74 @@
-# Aelys Personal Harness — design brief
+# Aelys harness — один полезный срез после ревью
 
-Статус: **PROPOSED**, 2026-11-13. Владелец попросил исследование и план, не
-реализацию или расширение разрешений. Основание:
-[исследование](../../research/2026-11-13-aelys-personal-harness.md).
-Рабочий следующий срез: `IMPLEMENTATION_PLAN` Phase 4 / task 3.
+Статус: **PROPOSED / НЕ РЕАЛИЗОВАНО**, редакция 2, 2026-11-13.
+[Исследование](../../research/2026-11-13-aelys-personal-harness.md) и
+[короткий план](../plans/2026-11-13-aelys-personal-harness.md).
+Работа остаётся планированием расширения Phase 4 / task 3; новые grants не выданы.
 
-## Цель и границы
+## Сценарий, trigger и подтверждение
 
-Сделать Aelys единым owner-controlled harness поверх существующих моделей,
-инструментов, приложения и Mac Runtime. Сохранить modular monolith, BYOK,
-offline-first, privacy/Policy Engine, существующие каналы и незакрытые решения.
+Владелец в личке бота вызывает `/task_suggestions`: бот показывает известные
+разрешённые Business-чаты с ID и текущую настройку. `/task_suggestions on <chat_id>`
+включает **один** проверенный чат с текущего момента; `off` выключает. Команды
+принимаются только от уже привязанного owner в его private bot chat.
+Новая реплика контакта в выбранном чате попадает в durable connector queue.
+Секретарь выделяет ноль или одно предложение задачи. При кандидате бот присылает
+в личку владельца название, срок/таймзону (либо «не указан») и чат-источник,
+с кнопками **«Создать задачу» / «Отклонить»**. Подтверждение выполняется там же;
+переход в Web не нужен. `/task_suggestions pending` повторно показывает pending
+предложения по явному запросу, если уведомление потерялось.
 
-Предлагаемая ближайшая функция: один общий путь **предложение задачи → показ
-владельцу → подтверждение точного payload → domain capture + sync + receipt**.
-Web AI использует его вместо собственного исполнения approve. Business
-получает только право предложить, а не создать задачу. В первом срезе чтение
-переписки для предложения запускается явным owner-запросом к конкретному
-сообщению; непрерывный observer и автоматические задачи — отдельный opt-in.
+Никакой `/task-proposal` REST endpoint без вызывающего клиента, reply-команды
+для каждой задачи или нового экрана. Существующие `/task` и личный AI-диалог
+продолжают создавать задачи по действующим правам без лишнего approval.
+Suggestions не зависят от переключателя `auto_reply`: opt-in разрешает отдельный
+ограниченный анализ, но не отправку ответа контакту и не создание задачи.
+Это предложенный UX для утверждения перед реализацией, не уже включённый режим.
 
-### Приёмочные примеры
+## Переиспользование кода
 
-- В Web текущая карточка создания задачи работает как раньше, включая отказ.
-- Владелец выбирает Business-сообщение «документ завтра к 18:00» как источник
-  предложения. Агент подготавливает задачу, но в Tasks ничего не появляется.
-- После owner approve появляется ровно одна задача и соответствующая запись
-  sync. Повторный approve возвращает тот же результат, не создавая вторую задачу.
-- Изменившееся/удалённое сообщение, отозванные права, истёкшее предложение или
-  изменённый payload останавливают исполнение. Неоднозначный срок не угадывается.
-- Никакая задача/приватная карточка не отправляется контакту; автоответчик
-  не утверждает, что документ уже отправлен или человек лично принял обязательство.
+- `approve_action` / `reject_action` выносятся из `ai/api.py` в общий сервис для
+  **всех** существующих write tools. `PermissionContext`, `CreateTaskToolArgs`,
+  `_action_out`, статусы и `AIAction.result_json` остаются. Новые DTO не нужны.
+- У Web approve уже есть CAS pending → approved и commit вместе с domain result.
+  Это сохранить и проверить regression, а не обещать построить заново.
+- Receipt этого среза — сам `AIAction`: status + `result_json` с kind/id либо
+  error; отдельной receipt-таблицы/automation receipt и payload digest нет.
+  Аргументы серверные, после preview не редактируются. Любая будущая правка
+  создаёт новое предложение; она не подменяет существующий pending payload.
+- В AIAction нужны **четыре** nullable-поля: `source_kind`, `source_id`,
+  `source_version`, `expires_at`. Legacy Web actions имеют NULL source.
+  Proposed TTL — 24 часа, не позднее source retention; это default для утверждения.
+- Source version должна означать изменение содержимого, а не draft/send state.
+  В Business `Owned.version` меняется и worker-ом: для нового пути добавить
+  `content_version` (default 1), увеличивать при remote content edit/delete.
+  Связь source_id → owner/integration/connection/chat проверяется сервером.
 
-## Контракты будущего общего ядра
+## Доставка и безопасность
 
-`VerifiedInput` содержит owner, проверенного actor/device, channel, audience,
-source refs/version, текст и operation ID. Эти поля создаёт серверный адаптер,
-модель не может записать в них «я владелец» или добавить scopes.
+Queue опирается на существующий `TelegramBusinessCommand`, новый kind
+`task_suggestion` без session/answer; selector owner `/ask`-worker его исключает.
+Кандидат AIAction и смена queue state сохраняются до отправки preview. Queue
+claim/state также фиксирует попытку уведомления; ambiguous send — unknown без
+автоматического повтора. Нулевой кандидат тоже terminal, чтобы не читать его снова.
 
-`AgentProfile` задаёт доступные context selectors, capabilities, policy ID,
-пределы steps/time/cost и допустимого читателя результата. Личный бот, Business,
-Research и Coding получают разные профили. Существующие owner task-команды
-сохраняют разрешённый режим; новые approvals не насаждаются на все старые записи.
+`callback_query` пока не запрашивается и не обрабатывается; это новая работа.
+В callback передаётся только action ID и approve/reject (до 64 байт), не args/scopes.
+Проверить owner sender, private chat, bot identity и источник действия; затем
+общий сервис проверяет pending/expiry/live source/current policy и вызывает registry.
+Результат задачи и sync сохраняются существующей транзакцией; answerCallbackQuery
+и изменение кнопок идут после commit. Повтор callback не повторяет mutation.
 
-`ContextPack` содержит только релевантные сообщения/evidence и серверные refs.
-`ActionProposal` содержит нормализованное типизированное действие, digest,
-источник/версию, срок действия, audience и состояние. `ActionReceipt` связывает
-подтверждённый payload с domain result/идемпотентностью. Исходники/CLI-сессии
-через эти общие DTO автоматически не проходят.
+Контакт/цитата не получает `tasks.write`. Extractor имеет tools=(), strict
+CreateTaskToolArgs либо null, без личной памяти/базы и без выдуманного срока.
+Относительные даты считаются от source.sent_at в owner timezone, не от времени
+позднего запуска worker. Неоднозначную дату оставлять пустой.
+До модели/preview/approve проверяются source и включённый чат. Edit/delete/revoke/off
+делают pending stale; уже созданная задача не удаляется вместе с источником.
+В action/уведомлении нет копии полной переписки. Существующие encryption,
+rotation и retention новых connector-полей сохраняются.
 
-Все эти названия — предлагаемые интерфейсы. Подробные typed API для первого
-среза заданы в [плане](../plans/2026-11-13-aelys-personal-harness.md).
-
-## Подходы
-
-1. **Рекомендуется:** расширять собственное ядро вокруг существующих `run_tool_turn`,
-   `ToolRegistry`, `ServerPolicyEngine`, `AIAction` и domain services; переносить
-   общие операции постепенно за interface, сохраняя конкретные delivery guards.
-2. Agents SDK за orchestration boundary — отдельный spike с одинаковыми fixtures:
-   выигрыш loop/handoff должен оправдать provider/state/tracing migration.
-3. LangGraph — отдельный кандидат при доказанной потребности в graph checkpoint /
-   long-running resume. Без измерений не заменяет DB receipts, sync и policy.
-
-Никакой поставщик/SDK не выбирается этим документом. Closed hosted harness,
-новый shell на backend, общая бесконечная история и автоматическое обучение
-по всем сообщениям не соответствуют этому срезу.
-
-## Обязательные свойства первого среза
-
-- Proposal не получает `tasks.write`. Только authenticated owner execution
-  после подтверждения вызывает существующий capture/domain writer.
-- Approval связан с canonical payload, owner, tool, target, source/version,
-  expiry и текущей политикой. Изменение требует нового preview/approval.
-- Claim, DB domain mutation, result receipt и sync-log фиксируются транзакционно.
-  Внешних отправок в транзакции исполнения задачи нет.
-- Повторный intent/approve не дублирует Task; одинаковый ключ с другим payload
-  выдаёт conflict. Другой owner не читает/подтверждает proposal.
-- Source deletion/revoke/retention делает неисполненное предложение stale.
-  Уже созданная задача не удаляется молча вместе с исходным сообщением.
-- Метаданные источника хранятся по минимуму; текст переписки не копируется в
-  plaintext action/event/debug logs. Новые чувствительные поля шифруются и
-  включаются в retention/rotation; Mac transcripts и embeddings остаются на Mac.
-- UI design не делается. Используется существующая Web action-card/API поверхность; адаптер создаёт
-  приватную owner AIConversation/AIRun связь, чтобы preview мог быть показан
-  владельцу в Web. Готовой Telegram approval-поверхности пока нет;
-  новая Telegram callback-поверхность отложена до отдельного контракта.
-- Миграции backward-compatible; старые карточки Web и публичные типы проверяются.
-
-## Что исполнитель решает сам
-
-Номер следующей миграции берётся по актуальной голове. Повторно использовать
-существующие owner locks/receipts и capture; не добавлять SDK/очередь или новую
-Tasks table. Canonical JSON, hash и error codes реализуются типизированно.
-Конкретный срок жизни предложения остаётся продуктовым default-кандидатом;
-в плане для первого запуска предлагается 24 часа и более короткий срок по
-источнику/гранту, если он раньше истекает. Это не уже подтверждённая настройка.
-
-## OPEN / не делать без дальнейшего решения
-
-Автоматический Business observer; автосоздание задач без approval; новые чат-
-пермишены/публикация приватных данных; архивный поиск/embeddings; выбор SDK;
-MCP установки; новые действия Mail/Finance/CLI; внешний telemetry export.
-Этот документ и план могут быть просмотрены и скорректированы владельцем перед
-реализацией. Никаких новых runtime grants из их текста не возникает.
+Отдельный ближайший bugfix: durable outbox для `automation/hooks.py` — сейчас
+после commit событие живёт только в RAM. Это не часть данной feature и не
+основание строить общий workflow engine. Унификация context, summaries, SDK,
+новые инструменты и автоматическое создание без подтверждения — за границами.
