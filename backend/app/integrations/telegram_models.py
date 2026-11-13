@@ -62,6 +62,8 @@ class TelegramIntegration(Owned):
     provider_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_providers.id"))
     model: Mapped[str | None] = mapped_column(String(200))
     owner_telegram_id: Mapped[int | None] = mapped_column(BigInteger)
+    task_suggestions_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    task_suggestions_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     binding_code_hash: Mapped[str | None] = mapped_column(String(64))
     binding_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     personal_conversation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_conversations.id"))
@@ -111,6 +113,7 @@ class TelegramBusinessMessage(Owned):
     reply_to_telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     media_metadata: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
     draft_sticker: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    task_suggestion_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
 
     @property
     def media(self) -> dict | None:

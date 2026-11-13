@@ -74,6 +74,6 @@ def test_clean_upgrade_includes_command_session_schema(tmp_path):
         assert not columns["knowledge_refs"]["nullable"]
         assert any(index["name"] == "ix_telegram_business_commands_session_id" for index in inspector.get_indexes("telegram_business_commands"))
         with engine.connect() as db:
-            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0055_ai_action_sources"
+            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0056_telegram_task_suggestions"
     finally:
         engine.dispose()

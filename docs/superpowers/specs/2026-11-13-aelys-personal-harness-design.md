@@ -1,10 +1,10 @@
 # Aelys harness — один полезный срез после ревью
 
-Статус: **Task 1 реализован; Task 2 не реализован**, редакция 4, 2026-11-13.
+Статус: **Task 1 принят; Task 2 реализован, локальные проверки пройдены**, редакция 5, 2026-11-14.
 [Исследование](../../research/2026-11-13-aelys-personal-harness.md) и
 [короткий план](../plans/2026-11-13-aelys-personal-harness.md).
-Task 1 расширяет Phase 4 / task 3 общим action service; сценарий Task 2 остаётся
-планом. Новые grants не выданы.
+Task 1 расширяет Phase 4 / task 3 общим action service. Владелец утвердил Task 2;
+реальные чаты ещё не включены. Новые execution grants не выданы.
 
 ## Сценарий, trigger и подтверждение
 
@@ -25,7 +25,7 @@ TelegramBusinessMessage; отдельный worker анализирует её �
 продолжают создавать задачи по действующим правам без лишнего approval.
 Suggestions не зависят от переключателя `auto_reply`: opt-in разрешает отдельный
 ограниченный анализ, но не отправку ответа контакту и не создание задачи.
-Это предложенный UX для утверждения перед реализацией, не уже включённый режим.
+Это утверждённый UX; режим включается владельцем явно и не активируется миграцией.
 
 ## Переиспользование кода
 
@@ -53,7 +53,7 @@ Suggestions не зависят от переключателя `auto_reply`: op
 NULL → queued → generating → ready → sending → sent; no-candidate/skipped_limit/
 failed/unknown — terminal. Существующая message row даёт durable trigger;
 claim — UPDATE WHERE state='queued' RETURNING id. Все обновления suggestion-state
-сохраняют message.version: CAS draft-воркера не должен видеть их как правку source. Никаких строк kind=task_suggestion
+сохраняют message.version и updated_at: CAS draft-воркера не должен видеть их как правку source. Никаких строк kind=task_suggestion
 в TelegramBusinessCommand, фильтров в command_iteration или разделяемого recovery.
 Зависший generating после restart становится failed, sending — unknown, без
 автоматической новой генерации/отправки. No-candidate не анализируется снова.

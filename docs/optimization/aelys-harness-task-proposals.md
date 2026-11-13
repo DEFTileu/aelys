@@ -1,73 +1,33 @@
-# Shared action service — Task 1 work notes, 2026-11-13
+# Shared approvals and Telegram task suggestions
 
-Task: IMPLEMENTATION_PLAN Phase4/task3 extension, approved by owner after planv3 review.
-Task1 only: generic action approval/rejection service, nullable source metadata,
-atomic expiry enforcement and backwards-compatible API. Task2 worker/buttons not implemented.
+Scope: Phase 4 / task 3 extension. Task 1 accepted at `41bb72f` (2026-11-13):
+generic approve/reject, nullable source metadata and expiry. Task 2 approved on
+2026-11-14: one opt-in Business chat, private suggestions and owner buttons.
+[Plan](../superpowers/plans/2026-11-13-aelys-personal-harness.md),
+[spec](../superpowers/specs/2026-11-13-aelys-personal-harness-design.md),
+[operator behavior](../TELEGRAM_BUSINESS.md).
 
-Ruling: approve never reads or locks source/integration rows. Invalidation and
-approval race through conditional pending updates on the same action row; the
-Task2 invalidator stores failed/ACTION_SOURCE_STALE. This keeps actions.py
-independent from Telegram and avoids source/action lock-order coupling.
-Ruling: new suggestion TTL24hours (bounded earlier by source retention); legacy
-NULL expires_at has no automatic expiry. Task1 stores nullable metadata only.
-Ruling: future task_suggestion_state writes never increment message.version.
+Task 1 evidence: backend 1511 passed / 147 skipped; final opted-in PostgreSQL
+and API/migration focused checks 49 passed / 4 SQLite-only race skips. Ruff,
+mypy, Bandit, compileall and OpenAPI comparison passed; independent review found
+no important defects. The expiry-while-waiting regression failed before the fix.
 
-Validation results are recorded below. No production migration/deployment or real messages in scope.
+Task 2 validation (2026-11-14; Python from the shared virtualenv):
 
-Implementation: endpoints delegate to ai/actions.py for all six write tools;
-nullable metadata migrates via 0055. Source-less legacy actions retain unlimited
-expiry. The service serializes pending transitions using only the AIAction row,
-executes through the existing registry/Policy Engine, and commits domain change,
-sync and receipt together. Failure rolls back partial domain/sync writes before
-recording a conditional failed receipt. Public response shape is unchanged.
+- `cd backend && python -m pytest -q --tb=short`: 1580 passed, 153 skipped, one existing StarletteDeprecationWarning (360.98s). Optional external/native/PostgreSQL checks skip without their own opt-in; PostgreSQL races were run separately below.
+- `python -m pytest -q backend/tests/test_telegram_task_suggestions.py backend/tests/test_telegram_task_controls.py backend/tests/test_telegram_transport.py --tb=short`: 87 passed.
+- With `AELYS_TEST_AI_POSTGRES_ADMIN_URL=postgresql+asyncpg://postgres@127.0.0.1:55439/postgres`, `python -m pytest -q backend/tests/ai_automation/test_telegram_task_suggestions_postgres.py backend/tests/ai_automation/test_action_sources.py --tb=short`: 36 passed, 6 skipped (SQLite-only variants of PostgreSQL contention tests; every PostgreSQL variant ran). A disposable `postgres:16` container bound to loopback was used; the same tests are opted in by CI.
+- Migration focused regression: 18 passed. PostgreSQL `test_clean_and_incremental_upgrade[postgresql]`: 1 passed on an empty temporary DB; 0056 upgrade/repeat/downgrade/re-upgrade and `alembic check` passed. Legacy versions/data retained, temporary databases dropped.
+- `ruff check backend/app backend/tests`, `mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs` (131 files), `bandit -q -r backend/app -ll`, compileall, OpenAPI comparison and diff whitespace checks passed.
+- Independent read-only review covered worker/invalidation and callback/transport fixes. Regressions for daily backlog, read-permission revocation, pending expiry and callback notification policy failed before their fixes, then passed.
 
-Expiry regression: a PostgreSQL approval blocked beyond expires_at initially
-returned approved (RED); checking the clock after CAS acquires the row lock now
-returns failed/ACTION_EXPIRED without executing the handler (GREEN). The claimed
-approved state is not visible outside its transaction before the expiry check.
+No production rollout or real chat opt-in.
+Decisions: approve never reads Telegram tables; suggestion state preserves
+message version/updated_at; TTL 24 hours bounded by source retention; expire
+pending proposals during connector iteration as well as button handling.
 
-Validation (2026-11-13; shared Python virtualenv, commands from repo root unless
-stated otherwise):
-
-- Baseline `python -m pytest -q backend/tests/ai_automation/test_ai_chat_design.py
-  backend/tests/test_telegram_personal.py`: 38 passed.
-- `cd backend && python -m pytest -q --tb=short`: 1511 passed, 147 skipped,
-  one existing StarletteDeprecationWarning (174.85s). Optional PostgreSQL,
-  native/runtime and external-service fixtures skip without explicit opt-in.
-- Final focused `AELYS_TEST_AI_POSTGRES_ADMIN_URL=postgresql+asyncpg://postgres@127.0.0.1:55439/postgres
-  python -m pytest -q backend/tests/ai_automation/test_action_sources.py
-  backend/tests/ai_automation/test_ai_chat_design.py
-  backend/tests/test_ai_action_source_migration.py --tb=short`:
-  49 passed, 4 skipped. These four skips are SQLite variants of PostgreSQL-only
-  contention tests; all PostgreSQL race variants ran. Includes the final added
-  create_event and unavailable-project coverage after the full-suite collection.
-- PostgreSQL API/event/action regression: `python -m pytest
-  tests/ai_automation/test_action_sources.py tests/ai_automation/test_ai_api.py
-  tests/ai_automation/test_ai_event_commit.py -q --tb=short` from backend with
-  the same admin opt-in: 40 passed, 4 skipped (before the last two added cases).
-- Migration/connector regression and PostgreSQL clean-chain/check: 18 passed;
-  `python -m pytest -q backend/tests/test_ai_action_source_migration.py
-  backend/tests/test_telegram_command_migration.py
-  backend/tests/test_telegram_chat_migration.py
-  backend/tests/test_telegram_knowledge_merge_migration.py
-  backend/tests/test_telegram_owner_identity.py
-  backend/tests/test_telegram_session_migration.py
-  'backend/tests/test_clean_migrations.py::test_clean_and_incremental_upgrade[postgresql]'`,
-  with `AELYS_TEST_POSTGRES_MIGRATION_URL` pointing at the disposable local cluster.
-  No production database was touched.
-- `ruff check backend/app backend/tests`: passed.
-- `mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs`:
-  passed, 129 source files.
-- `bandit -q -r backend/app -ll`: passed.
-- `python -m compileall -q backend/app`, generated OpenAPI comparison against
-  docs/openapi.json, and `git diff --check`: passed.
-
-CI now explicitly includes action source/expiry race tests in the opted-in
-PostgreSQL job. Task 2 worker, source invalidation hooks, callbacks and Telegram
-private buttons remain unimplemented; their absence prevents releasing suggestions.
-Next task: Task 2 only after its own end-to-end implementation and verification.
-
-Final independent read-only review found no important defects in Task 1.
-Ruling: review of extraction/invalidation/callback owner binding is deferred to
-Task 2 because these paths do not exist yet; no suggestion release is claimed.
-No other deviations or deferred review findings.
+Delivery boundary: a card already handed off by the sending CAS can arrive after
+concurrent off/edit/purge. Keeping locks out of network I/O requires this honest
+at-most-once handoff. Its action is already stale; callback cannot create a task.
+This behavior is documented and tested. Remaining live acceptance: migrate/deploy,
+then opt in one owner-selected chat and check real private callbacks/model quality.

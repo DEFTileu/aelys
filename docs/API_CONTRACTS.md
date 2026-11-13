@@ -845,3 +845,11 @@ POST /api/v1/devices/{id}/revoke                # closes the open socket with 44
 `NOT_FOUND` (404, board unknown, revoked, or another owner's), `DEVICE_OFFLINE` (409),
 `UNAUTHORIZED` (401, revoked or unknown device at challenge), `VALIDATION_ERROR` (422).
 Action failures are reported in `action_result.error_code`, not as HTTP errors.
+
+Telegram private `/task_suggestions [status|on <chat_id>|off]` uses the verified
+owner command channel; no new REST endpoint or public StatusOut fields.
+Opt-in and callbacks are Telegram-only. Inline callback data is `ats:a:<UUID>`
+or `ats:r:<UUID>` (approve/reject), with identity and server-stored provenance
+checks; common action-service HTTP 404/409 errors become terminal private texts.
+The owner task result is committed before callback acknowledgement and keyboard
+removal. No callback arguments or scopes are accepted from the client.

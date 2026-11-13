@@ -1,9 +1,9 @@
 # Telegram task suggestions — короткий Implementation Plan v3
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [x]`) syntax.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** секретарь предлагает задачу из одного opt-in Business-чата; владелец
-подтверждает inline-кнопкой в личке бота. **Статус: Task 1 реализован и проверен; Task 2 не начат.**
+подтверждает inline-кнопкой в личке бота. **Статус: Task 1 принят владельцем; Task 2 реализован и локально проверен; production rollout не выполнен.**
 **Architecture:** существующие AIAction, общий generic approve/reject, registry,
 отдельное состояние сообщения и capture/sync. **Tech Stack:** текущий FastAPI/Python/PostgreSQL.
 **Spec:** [сценарий и точные границы](../specs/2026-11-13-aelys-personal-harness-design.md).
@@ -48,38 +48,38 @@ stale; injection → никакого нового scope; предложение
 `telegram_task_suggestions.py`, миграция connector-полей; `docs/TELEGRAM_BUSINESS.md`.
 Tests: новый `backend/tests/test_telegram_task_suggestions.py`, transport tests.
 
-- [ ] Зафиксировать UX из spec: private `/task_suggestions` (список/статус),
+- [x] Зафиксировать UX из spec: private `/task_suggestions` (список/статус),
   `on <chat_id>` / `off`; один активный чат, только новые сообщения.
   Новые настройки — nullable chat_id и enabled_at; нет historical backlog scan.
-- [ ] Добавить только nullable `TelegramBusinessMessage.task_suggestion_state`;
+- [x] Добавить только nullable `TelegramBusinessMessage.task_suggestion_state`;
   ingestion ставит queued для нового подходящего inbound. Новый worker claims
-  через UPDATE WHERE state='queued', без увеличения message.version.
+  через UPDATE WHERE state='queued', без изменения message.version/updated_at.
   TelegramBusinessCommand и его worker не менять.
   Interrupted generating → failed без автоповтора; no-candidate тоже terminal.
-- [ ] Перед моделью сохранить edited_at; после модели взять источник FOR UPDATE
+- [x] Перед моделью сохранить edited_at; после модели взять источник FOR UPDATE
   и сравнить edited_at/deleted_at. Pending-actions инвалидировать при remote edit,
   delete, clear/purge, retention и off. Ни content_version, ни action.source_version.
   Worker/invalidation: integration → source → action. Approve — только CAS action.
-- [ ] Extractor использует текущий provider/budget/timeout, tools=(), strict
+- [x] Extractor использует текущий provider/budget/timeout, tools=(), strict
   CreateTaskToolArgs|null. Проверить source/allowlist до и после модели; неясный
   срок оставить пустым. Создать приватные AIConversation/AIRun и pending AIAction
   с минимальными metadata, без полной копии чата; expires_at = created_at + 24 часа
   (либо раньше, если source retention заканчивается раньше).
-- [ ] Лимит v1: 20 попыток модели на integration за UTC-день + текущий monthly
+- [x] Лимит v1: 20 попыток модели на integration за UTC-день + текущий monthly
   budget; резервировать попытку durable AIRun до I/O под integration lock,
   учитывать ошибки/рестарты. Лимит исчерпан → skipped_limit, без backlog на завтра.
-- [ ] Persist proposal и state=ready до I/O; private sendMessage с кнопками
+- [x] Persist proposal и state=ready до I/O; private sendMessage с кнопками
   «Создать задачу»/«Отклонить». CAS ready→sending до отправки, затем sent/unknown;
   неизвестная отправка не повторяется. Без pending-команды: предложение истечёт по TTL.
-- [ ] Добавить callback_query в allowed_updates, безопасный parser,
+- [x] Добавить callback_query в allowed_updates, безопасный parser,
   answerCallbackQuery и private editMessageReplyMarkup для закрытия кнопок; callback data = operation + opaque action ID (<=64 bytes).
   Проверить bound owner, private chat и bot identity; args/permissions только из DB.
-- [ ] Callback вызывает общий service Task 1; commit результата до answer/edit
+- [x] Callback вызывает общий service Task 1; commit результата до answer/edit
   клавиатуры. Успех показывает task ID; stale/expiry/reject — понятный terminal ответ.
   Контакту ничего не отправлять. Удаление source/revoke/off инвалидирует pending.
-- [ ] RED/GREEN: 10 кейсов ниже, source/key rotation/retention и миграция; обновить
+- [x] RED/GREEN: 10 кейсов ниже, source/key rotation/retention и миграция; обновить
   документацию. Не добавлять общий framework/corpus ради этого среза.
-- [ ] Commit: `feat(telegram): suggest tasks with private owner approval`.
+- [x] Commit: `feat(telegram): suggest tasks with private owner approval`.
 
 ## 10 детерминированных кейсов, внутри Task 1/2
 

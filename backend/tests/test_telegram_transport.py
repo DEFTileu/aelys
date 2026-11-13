@@ -28,7 +28,7 @@ async def test_methods_and_payloads(caplog):
     assert all(r.method == "POST" and r.url.host == "api.telegram.org" and r.url.scheme == "https" for r in requests)
     bodies = [json.loads(r.content) for r in requests]
     assert bodies[:2] == [{}, {}]
-    assert bodies[2] == {"offset": 42, "timeout": 20, "allowed_updates": ["message", "business_connection", "business_message", "edited_business_message", "deleted_business_messages"]}
+    assert bodies[2] == {"offset": 42, "timeout": 20, "allowed_updates": ["message", "business_connection", "business_message", "edited_business_message", "deleted_business_messages", "callback_query"]}
     assert bodies[3] == {"business_connection_id": "bc"}
     assert bodies[4] == {"chat_id": 7, "text": "hello", "business_connection_id": "bc", "reply_parameters": {"message_id": 9}, "link_preview_options": {"is_disabled": True}}
     assert TOKEN not in caplog.text
@@ -188,3 +188,52 @@ async def test_unexpected_transport_error_is_sanitized():
     assert exc.value.code == "network_error"
     assert TOKEN not in str(exc.value)
     assert exc.value.__suppress_context__
+
+
+@pytest.mark.asyncio
+async def test_private_suggestion_keyboard_and_callback_methods_payloads():
+    requests = []
+
+    def handler(request):
+        method = request.url.path.rsplit('/', 1)[-1]
+        requests.append((method, json.loads(request.content)))
+        return httpx.Response(200, json={"ok": True, "result": True if method == "answerCallbackQuery" else {"message_id": 7}})
+
+    keyboard = {"inline_keyboard": [[
+        {"text": "Create", "callback_data": "ats:a:123"},
+        {"text": "Reject", "callback_data": "ats:r:123"},
+    ]]}
+    async with TelegramClient(TOKEN, httpx.MockTransport(handler)) as client:
+        await client.send_message(111, "Proposal", reply_markup=keyboard)
+        await client.answer_callback_query("query-1", "Created task 7")
+        await client.edit_message_reply_markup(111, 7, {"inline_keyboard": []})
+
+    assert requests == [
+        ("sendMessage", {"chat_id": 111, "text": "Proposal", "link_preview_options": {"is_disabled": True}, "reply_markup": keyboard}),
+        ("answerCallbackQuery", {"callback_query_id": "query-1", "text": "Created task 7"}),
+        ("editMessageReplyMarkup", {"chat_id": 111, "message_id": 7, "reply_markup": {"inline_keyboard": []}}),
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("keyboard", [
+    {"inline_keyboard": [[{"text": "x", "callback_data": "x" * 65}]]},
+    {"inline_keyboard": [[{"text": "x", "url": "https://example.com"}]]},
+    {"inline_keyboard": []},
+    {"inline_keyboard": [[{"text": "", "callback_data": "x"}]]},
+])
+async def test_send_message_rejects_unsafe_or_invalid_inline_keyboard(keyboard):
+    async with TelegramClient(TOKEN, httpx.MockTransport(lambda _: pytest.fail("request must not be sent"))) as client:
+        with pytest.raises(ValueError):
+            await client.send_message(111, "Proposal", reply_markup=keyboard)
+
+
+@pytest.mark.asyncio
+async def test_callback_methods_reject_values_outside_telegram_bounds():
+    async with TelegramClient(TOKEN, httpx.MockTransport(lambda _: pytest.fail("request must not be sent"))) as client:
+        with pytest.raises(ValueError):
+            await client.answer_callback_query("q", "x" * 201)
+        with pytest.raises(ValueError):
+            await client.answer_callback_query("" * 257, "ok")
+        with pytest.raises(ValueError):
+            await client.edit_message_reply_markup(111, True, {"inline_keyboard": []})

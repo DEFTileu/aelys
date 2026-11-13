@@ -209,6 +209,6 @@ def test_0052_migration_preserves_existing_integrations(tmp_path):
         with engine.connect() as connection:
             row = connection.execute(sa.text("SELECT instructions, last_update_id, version, owner_name FROM telegram_integrations WHERE id='preserved-integration'")).one()
             assert tuple(row) == ("encrypted-existing-instructions", 41, 6, None)
-            assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0055_ai_action_sources"
+            assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0056_telegram_task_suggestions"
     finally:
         engine.dispose()

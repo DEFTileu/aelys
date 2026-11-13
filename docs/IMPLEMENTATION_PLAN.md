@@ -68,7 +68,8 @@ Tasks:
 3. Read and create_task tools via domain services.
    Owner-approved shared action-service extension (2026-11-13), Task 1 only:
    [task notes and validation](optimization/aelys-harness-task-proposals.md).
-   Telegram suggestions and private confirmation buttons remain Task 2.
+   Task 2 implements opt-in Telegram suggestions and private owner buttons;
+   live Telegram acceptance and rollout remain separate from local validation.
 4. Search + provenance + redaction.
 5. Prompt-injection evaluation and cancellation.
 

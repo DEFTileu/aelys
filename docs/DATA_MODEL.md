@@ -222,3 +222,12 @@ Mail formatting (2026-11-04): migration `0042_mail_html_body` adds nullable
 means legacy/not yet imported; empty string means imported with no usable HTML.
 The existing plaintext body, read flag, identity and versions remain. HTML is
 exposed only by owner-scoped detail reads, not list/page payloads.
+
+Telegram task suggestions (migration 0056): nullable integration-level
+`task_suggestions_chat_id BIGINT` and `task_suggestions_enabled_at TIMESTAMPTZ`
+select one chat and the opt-in boundary; nullable message-level
+`task_suggestion_state VARCHAR(24)` is an independent durable work claim. State
+writes preserve both message.version and updated_at. No source version, new
+queue/receipt table, message copy or sync/export resource is introduced.
+`AIRun.tool_scope_json` stores feature/integration/source IDs for daily attempt
+accounting; run audits survive restart without persisting the source text.

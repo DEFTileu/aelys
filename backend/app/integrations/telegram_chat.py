@@ -376,7 +376,7 @@ async def send_chat(
                 await db.commit()
                 raise
         try:
-            reply_arguments={"reply_to_message_id":reply_to_message_id} if reply_to_message_id is not None else {}
+            reply_arguments: dict[str, Any] = {"reply_to_message_id":reply_to_message_id} if reply_to_message_id is not None else {}
             if edit_message_id is not None:
                 sent = await client.edit_message_text(chat_id, edit_message_id, body, business_connection_id=connection_id)
             else:

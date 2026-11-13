@@ -27,8 +27,8 @@ def test_ai_action_source_columns_upgrade_downgrade_preserve_legacy_action(tmp_p
                         'pending', '{}')
             """))
 
-        run_alembic(url, "upgrade", "0055_ai_action_sources")
-        run_alembic(url, "upgrade", "0055_ai_action_sources")
+        run_alembic(url, "upgrade", "head")
+        run_alembic(url, "upgrade", "head")
         run_alembic(url, "check")
         inspector = sa.inspect(engine)
         assert set(inspector.get_table_names()) == tables_before
@@ -42,7 +42,7 @@ def test_ai_action_source_columns_upgrade_downgrade_preserve_legacy_action(tmp_p
                 FROM ai_actions WHERE id='legacy-action'
             """)).one()
             assert tuple(row) == ("legacy-action", 7, "Legacy", "preserve me", None, None, None)
-            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0055_ai_action_sources"
+            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0056_telegram_task_suggestions"
 
         run_alembic(url, "downgrade", "0054_telegram_command_sessions")
         columns = {column["name"] for column in sa.inspect(engine).get_columns("ai_actions")}
