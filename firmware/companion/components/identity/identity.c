@@ -350,6 +350,14 @@ esp_err_t identity_wipe(void)
     return r;
 }
 
+esp_err_t identity_wipe_if(const char *device_id)
+{
+    lock();
+    esp_err_t r = !key ? ESP_ERR_INVALID_STATE : strcmp(dev_id, device_id ? device_id : "") != 0 ? ESP_ERR_NOT_FOUND : wipe_();
+    unlock();
+    return r;
+}
+
 esp_err_t identity_ids(char device_id[40], char url[129])
 {
     lock();

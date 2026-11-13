@@ -28,7 +28,10 @@ static bool lost_is_on(void) { return lost.on; }
 /* Link hooks. The command handlers are Task F9: until then every valid command is answered UNSUPPORTED. */
 static void on_command(const proto_msg_t *m) { link_send_ack(m->id, false, "UNSUPPORTED"); }
 static bool load_snap(snap_t *s) { return !lost.on && store_load_snap(s); } /* lost mode shows no cached data */
-static void erase_snap(void) { store_erase_snap(); }
+static void erase_snap(void)
+{
+    if (store_erase_snap() != ESP_OK) ESP_LOGW(TAG, "cached snapshot not erased"); /* flash may keep the old owner's data */
+}
 static void save_snap(const snap_t *s) { store_save_snap(s); }
 static const char *contact_phone(void) { return owner.phone; }
 static const char *contact_telegram(void) { return owner.telegram; }

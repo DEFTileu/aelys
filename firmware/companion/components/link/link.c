@@ -266,34 +266,33 @@ static bool do_connect(void)
     return gen != 0;
 }
 
-/* Forget the pairing, but only the one the server just disowned: a pairing committed meanwhile (new identity) stays.
- * Returns false when the NVS erase failed and has to be retried. */
-static bool try_wipe(void)
+/* What a wipe leaves behind for the next owner: revisions, cached snapshot (flash and screen). */
+static void after_wipe(void)
 {
-    char dev[40], url[129];
-    if (identity_ids(dev, url) != ESP_OK) return true;           /* already unpaired */
-    if (strcmp(dev, ctx.dev) != 0) {
-        ESP_LOGW(TAG, "wipe skipped: the board was paired again meanwhile");
-        return true;
-    }
-    esp_err_t e = identity_wipe();
-    if (e != ESP_OK) ESP_LOGE(TAG, "wiping the pairing failed: %s (retrying)", esp_err_to_name(e));
-    return e == ESP_OK;
+    ESP_LOGW(TAG, "pairing wiped: the server does not know this device");
+    if (link_deps.reset_revs) link_deps.reset_revs();
+    if (link_deps.erase_snap) link_deps.erase_snap();
+    memset(&link_mem->snap, 0, sizeof link_mem->snap);
+    link_mem->snap.other_unread = link_mem->snap.today_done = link_mem->snap.today_total = -1;
+    snap_dirty = false;
+    publish_snapshot(&link_mem->snap, false);
+}
+
+/* Forget the pairing, but only the one the server just disowned: a pairing committed meanwhile stays (identity checks the
+ * id and wipes under one lock). Sets wipe_retry when the NVS erase failed; the retry in tick() ends here too. */
+static void try_wipe(void)
+{
+    esp_err_t e = identity_wipe_if(ctx.dev);
+    wipe_retry = e != ESP_OK && e != ESP_ERR_INVALID_STATE && e != ESP_ERR_NOT_FOUND;
+    if (e == ESP_ERR_NOT_FOUND) ESP_LOGW(TAG, "wipe skipped: the board was paired again meanwhile");
+    else if (wipe_retry) ESP_LOGE(TAG, "wiping the pairing failed: %s (retrying)", esp_err_to_name(e));
+    else if (!identity_paired()) after_wipe();
 }
 
 static void do_wipe(void)
 {
     link_ws_close();
-    wipe_retry = !try_wipe();
-    if (wipe_retry) return;
-    if (identity_paired()) return; /* skipped: a new pairing is in charge */
-    ESP_LOGW(TAG, "pairing wiped: the server does not know this device");
-    if (link_deps.reset_revs) link_deps.reset_revs();
-    if (link_deps.erase_snap) link_deps.erase_snap(); /* the next owner must not see this one's tasks */
-    memset(&link_mem->snap, 0, sizeof link_mem->snap);
-    link_mem->snap.other_unread = link_mem->snap.today_done = link_mem->snap.today_total = -1;
-    snap_dirty = false;
-    publish_snapshot(&link_mem->snap, false);
+    try_wipe();
 }
 
 static void on_online(void)
@@ -498,7 +497,7 @@ static void tick(void)
         last_snap_save = ms() | 1u; /* 0 means never */
         link_deps.save_snap(&link_mem->snap);
     }
-    if (wipe_retry) wipe_retry = !try_wipe();
+    if (wipe_retry) try_wipe();
     sync_ui();
 }
 

@@ -40,7 +40,8 @@ static bool post(const char *api_url, const char *path, const char *body, int *s
     if (err == ESP_OK) {
         *status = esp_http_client_get_status_code(c);
         n = (size_t)esp_http_client_read_response(c, link_mem->http, LINK_HTTP_MAX - 1);
-        ok = n < LINK_HTTP_MAX - 1 || esp_http_client_is_complete_data_received(c); /* a longer body is not one of ours */
+        /* read_response hides read errors and stops at the buffer end: only a body the client saw complete is ours */
+        ok = esp_http_client_is_complete_data_received(c);
     } else {
         int tls = 0, flags = 0;
         esp_err_t last = esp_http_client_get_and_clear_last_tls_error(c, &tls, &flags);

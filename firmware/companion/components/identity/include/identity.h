@@ -40,6 +40,10 @@ esp_err_t identity_sign(const char *msg, char sig_b64[87]);
 esp_err_t identity_wifi_decrypt(const uint8_t *blob, size_t n, char ssid[33], char pass[65]);
 /* Erase the record and destroy the key; unpaired afterwards. */
 esp_err_t identity_wipe(void);
+/* identity_wipe only if the stored device id is still device_id, checked and done under one lock (a pairing committed in
+ * between is never wiped). ESP_OK wiped, ESP_ERR_INVALID_STATE already unpaired, ESP_ERR_NOT_FOUND paired with another id
+ * (nothing done), otherwise the erase error (the record is kept). */
+esp_err_t identity_wipe_if(const char *device_id);
 
 #ifdef CONFIG_AELYS_IDENTITY_SELFTEST
 /* Board check against the generated vectors, RAM only (never touches NVS). Logs "identity selftest PASS|FAIL". */
