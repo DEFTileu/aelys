@@ -89,9 +89,14 @@ def should_offer(fw_version: str | None, release: CompanionFirmware) -> bool:
 
 
 async def offer_on_hello(owner_id: str, fw_version: str, reply: Callable[[dict], Awaitable[None]]) -> None:
-    async with core_db.SessionLocal() as db:
-        release = await latest_release(db, owner_id)
-    if release and should_offer(fw_version, release):
+    try:  # an optional offer must not cost the connection: a failure here would end the handler and loop the board's reconnects
+        async with core_db.SessionLocal() as db:
+            release = await latest_release(db, owner_id)
+        offer = release is not None and should_offer(fw_version, release)
+    except Exception:  # noqa: BLE001
+        logger.warning("companion firmware offer lookup failed owner=%s", owner_id)
+        return
+    if release and offer:
         await reply({"type": "ota_available", "version": release.version})
 
 

@@ -4,9 +4,11 @@ from contextlib import contextmanager
 
 import pytest
 import pytest_asyncio
+from app.companion import firmware as firmware_module
 from app.companion.hub import hub, install_change_listeners
 from app.companion.models import CompanionState
 from app.core import db
+from app.core.models import Device, User
 from app.main import app
 from companion_helpers import B, bearer, companion_token, pair_companion
 from firmware_fixtures import make_image, sha256
@@ -140,3 +142,71 @@ async def test_metrics_power_fields_stored(paired):
         assert row.last_metrics_json['light_sleep_pct'] == 42 and row.last_metrics_json['ui_wakes_per_s'] == 3
         socket.send_json({**base, 'light_sleep_pct': 101})  # out of range is rejected
         assert recv(socket)['type'] == 'error'
+
+
+@pytest.mark.asyncio
+async def test_failed_offer_lookup_keeps_the_channel_open(paired, monkeypatch):
+    _, _, token = paired
+
+    async def boom(*_):
+        raise RuntimeError('db down')
+
+    monkeypatch.setattr(firmware_module, 'latest_release', boom)
+    with TestClient(app) as client, connect(client, token) as socket:
+        assert hello(socket, '0.2.0') == []  # the heartbeat ack arrives: the handler survived
+
+
+async def fake_online_board(owner_id, fw_version, *, platform='companion'):
+    """A board in the hub that is not the test's real one; returns what it was sent."""
+    async with db.SessionLocal() as session:
+        if not await session.get(User, owner_id):
+            session.add(User(id=owner_id))
+        device = Device(owner_id=owner_id, platform=platform, display_name='Other', credential_hash='x')
+        session.add(device)
+        await session.flush()
+        session.add(CompanionState(device_id=device.id, owner_id=owner_id, fw_version=fw_version, pending_commands_json=[]))
+        await session.commit()
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    hub.register(device.id, owner_id, send)
+    return device.id, sent
+
+
+@pytest.mark.asyncio
+async def test_upload_does_not_reach_another_owners_board(paired):
+    owner, _, _ = paired
+    _, other_sent = await fake_online_board('00000000-0000-0000-0000-000000000002', '0.1.0')
+    with TestClient(app) as client:
+        assert upload(client, owner, '0.3.0').status_code == 201
+    assert other_sent == []
+
+
+@pytest.mark.asyncio
+async def test_upload_does_not_reach_a_revoked_board(paired):
+    owner, device_id, token = paired
+    with TestClient(app) as client:
+        with connect(client, token) as socket:
+            assert hello(socket, '0.1.0') == []
+            assert client.post(f'{B}/devices/{device_id}/revoke', headers=bearer(owner)).status_code == 200
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        hub.register(device_id, 'ignored-by-push', send)  # a socket that outlived the revoke: only the revoked_at filter stops the offer
+        assert upload(client, owner, '0.3.0').status_code == 201
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_upload_does_not_reach_a_non_companion_device(paired):
+    owner, _, _ = paired
+    async with db.SessionLocal() as session:
+        owner_id = (await session.execute(select(Device.owner_id))).scalars().first()
+    _, sent = await fake_online_board(owner_id, '0.1.0', platform='macos')
+    with TestClient(app) as client:
+        assert upload(client, owner, '0.3.0').status_code == 201
+    assert sent == []
