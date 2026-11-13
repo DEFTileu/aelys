@@ -5,6 +5,8 @@
 #include "sim_display.h"
 #include "ui.h"
 #include "ui_face_priv.h"
+#include "src/core/lv_obj_private.h"
+#include "src/core/lv_obj_style_private.h"
 
 typedef struct { int r, g, b; } rgb_t;
 
@@ -259,6 +261,52 @@ static void test_long_hidden_resume(void)
     check_long_hidden_resume();
 }
 
+/* A local style gains storage when its property count grows. Inspect each face object,
+ * not LVGL's draw-task allocations, during mood changes and subsequent animation. */
+static unsigned local_props(const lv_obj_t *obj)
+{
+    unsigned n = 0;
+    for (unsigned i = 0; i < obj->style_cnt; i++)
+        if (obj->styles[i].is_local) n += obj->styles[i].style->prop_cnt;
+    return n;
+}
+
+static void test_animation_style_footprint(void)
+{
+    lv_timer_t *anim = lv_anim_get_timer();
+    lv_timer_t *refresh = lv_display_get_refr_timer(lv_display_get_default());
+    lv_timer_set_period(anim, 5);
+    lv_timer_set_period(refresh, 5);
+    for (int m = 0; m < MOOD_COUNT; m++) {
+        lv_obj_t *face = face_create(lv_screen_active(), 100);
+        lv_obj_set_pos(face, HX, HY);
+        lv_obj_update_layout(face);
+        unsigned n = lv_obj_get_child_count(face);
+        unsigned before[64];
+        CHECK(n <= 64);
+        if (n > 64) { gone(face); continue; }
+        for (unsigned i = 0; i < n; i++) before[i] = local_props(lv_obj_get_child(face, i));
+        face_set_mood(face, (mood_t)m);
+        bool grew = false;
+        for (uint32_t t = 0; t <= 12000 && !grew; t += 5) {
+            if (t) sim_step(5);
+            for (unsigned i = 0; i < n; i++) {
+                unsigned after = local_props(lv_obj_get_child(face, i));
+                if (after > before[i]) {
+                    fprintf(stderr, "%s at %u ms: child %u local properties grew %u -> %u\n",
+                            mood_name((mood_t)m), t, i, before[i], after);
+                    grew = true;
+                    break;
+                }
+            }
+        }
+        CHECK(!grew);
+        gone(face);
+    }
+    lv_timer_set_period(anim, LV_DEF_REFR_PERIOD);
+    lv_timer_set_period(refresh, LV_DEF_REFR_PERIOD);
+}
+
 static void test_scales_and_api(void)
 {
     CHECK_EQ(MOOD_COUNT, 14);
@@ -296,6 +344,7 @@ int main(void)
     test_inside_screen_and_own_area();
     test_partial_redraw_each_frame();
     test_rest_is_free();
+    test_animation_style_footprint();
     test_scales_and_api();
     test_long_hidden_resume();
     return g_failed ? 1 : 0;

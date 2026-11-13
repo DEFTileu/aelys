@@ -205,4 +205,3 @@ static const lv_image_dsc_t zed_i[] = {
 };
 static const uint8_t zed_k[] = { 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 };
 const lv_image_dsc_t *face_img_z(int32_t key) { return img_pick(zed_i, zed_k, 15, key); }
-

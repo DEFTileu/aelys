@@ -62,6 +62,9 @@ static lv_obj_t *box(lv_obj_t *parent, uint32_t color)
     lv_obj_set_style_border_width(o, 0, 0);
     lv_obj_set_style_pad_all(o, 0, 0);
     lv_obj_set_style_radius(o, 0, 0);
+    /* Reserve geometry style slots before any mood or animation lays this out. */
+    lv_obj_set_pos(o, 0, 0);
+    lv_obj_set_size(o, 1, 1);
     return o;
 }
 
@@ -71,6 +74,9 @@ static lv_obj_t *image(lv_obj_t *parent, uint32_t color)
     lv_obj_set_clickable(o, false);
     lv_obj_set_style_image_recolor(o, lv_color_hex(color), 0);
     lv_obj_set_style_image_recolor_opa(o, LV_OPA_COVER, 0);
+    /* Effects first become visible during animation: do not add style slots then. */
+    lv_obj_set_pos(o, 0, 0);
+    lv_obj_set_style_image_opa(o, LV_OPA_COVER, 0);
     return o;
 }
 
@@ -438,6 +444,7 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
     for (int i = 0; i < 2; i++) {
         f->eye[i] = box(root, 0);
         lv_obj_set_style_radius(f->eye[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_color(f->eye[i], lv_color_black(), 0);
     }
     for (int i = 0; i < 2; i++) f->star[i] = image(root, 0xFFFFFF);
     for (int i = 0; i < 2; i++) {
