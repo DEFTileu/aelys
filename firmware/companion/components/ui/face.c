@@ -363,12 +363,18 @@ static void layout_eyes(face_t *f, uint32_t t)
         } else if (m->lid == LID_SLANT || m->lid == LID_DROOP) {
             int32_t cut10 = e->lid_y10;
             if (m->lid == LID_DROOP) cut10 += DROOP_TRAVEL * g.ty / 600; /* same timing as the sink */
-            int32_t ax = e->x * 100 + e->w * 50, ay = e->y * 100 + cut10 * 10;
+            /* The lid belongs to the eye: blink scales its cut and slope
+             * around the same 60% vertical origin as the pill. */
+            int32_t pivot = e->y * 100 + e->h * 60;
+            int32_t ax = e->x * 100 + e->w * 50;
+            int32_t ay = pivot + (e->y * 100 + cut10 * 10 - pivot) * blink / 1000;
             group_pt(&g, sn, cs, &ax, &ay);
             int32_t half = (e->w * 50 + 200) * g.sc / 1000; /* eye plus 2 px, scaled with group */
             int32_t xl = ax - half, xr = ax + half;
-            int32_t yl = ay + e->lid_slope * (xl - ax) / 1000, yr = ay + e->lid_slope * (xr - ax) / 1000;
-            int32_t top = d(f, ay - cut10 * 10 - 600);
+            int32_t slope = e->lid_slope * blink / 1000;
+            int32_t yl = ay + slope * (xl - ax) / 1000, yr = ay + slope * (xr - ax) / 1000;
+            int32_t lid_height = (cut10 * 10 + 600) * blink / 1000 * g.sc / 1000;
+            int32_t top = d(f, ay - lid_height);
             lid_set(f, side, d(f, xl), top, d(f, xr), d(f, yl) - top, d(f, yr) - top);
         } else if (m->lid == LID_DOME) {
             /* left -14, right -14, top 52, 96 tall: an ellipse 98 x 96 */

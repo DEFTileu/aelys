@@ -106,11 +106,14 @@ int main(void)
     }
     /* Include an entire ordinary blink at Home scale, including the short
      * closing and reopening phases. */
-    scr_home_set_snap(&snap, FX_NOW, MOOD_CALM, false);
-    for (int frame = 0; frame < 160; ++frame) {
-        scr_home_set_snap(&snap, FX_NOW, MOOD_CALM, false);
-        sim_step(34);
-        exact_frame();
+    const mood_t blinking[] = {MOOD_CALM, MOOD_WORRIED};
+    for (unsigned m = 0; m < sizeof blinking / sizeof *blinking; ++m) {
+        scr_home_set_snap(&snap, FX_NOW, blinking[m], false);
+        for (int frame = 0; frame < 160; ++frame) {
+            scr_home_set_snap(&snap, FX_NOW, blinking[m], false);
+            sim_step(34);
+            exact_frame();
+        }
     }
     /* Every percent and text-width change, empty rows and the offline variant. */
     snap.today_total = 100;

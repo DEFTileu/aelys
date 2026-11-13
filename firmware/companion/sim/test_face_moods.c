@@ -455,6 +455,25 @@ static void test_highlight_compresses_with_blink(void)
     gone(f);
 }
 
+static void test_worried_lid_follows_blink(void)
+{
+    lv_obj_t *f = show(MOOD_WORRIED, 100, HX, HY, 100);
+    sim_step(4630); /* during closing, eye and lid should both compress */
+    lv_refr_now(NULL);
+    lv_obj_update_layout(f);
+    lv_area_t eye; lv_obj_get_coords(lv_obj_get_child(f, 0), &eye);
+    int cx = (eye.x1 + eye.x2) / 2;
+    CHECK(dark(cx, eye.y1 + 4));
+    CHECK(lit(cx, eye.y1 + 22));
+    CHECK(dark(cx - 18, eye.y1 + 9));
+    CHECK(lit(cx + 18, eye.y1 + 9));
+    lv_obj_get_coords(lv_obj_get_child(f, 1), &eye);
+    cx = (eye.x1 + eye.x2) / 2;
+    CHECK(lit(cx - 18, eye.y1 + 9));
+    CHECK(dark(cx + 18, eye.y1 + 9));
+    gone(f);
+}
+
 static void test_asymmetric_wink_and_wake(void)
 {
     lv_obj_t *f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
@@ -519,5 +538,6 @@ int main(void)
     test_scales_and_api();
     test_long_hidden_resume();
     test_highlight_compresses_with_blink();
+    test_worried_lid_follows_blink();
     return g_failed ? 1 : 0;
 }
