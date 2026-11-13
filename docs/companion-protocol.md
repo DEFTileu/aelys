@@ -248,8 +248,12 @@ reported as `ACTION_FAILED`; the real cause is logged on the server only.
 
 ## Version 2 additions (OTA)
 
+Status: PROPOSED until ADR-030 is approved by the owner.
+
 This section extends v1 additively: nothing above changes, and a v1 board keeps
-working. It supersedes the note "Firmware OTA is not part of v1 (plan 4)".
+working. It supersedes the note "Firmware OTA is not part of v1 (plan 4)". A
+board ignores server message `type`s it does not know, so a v1 board receiving
+`ota_available` is defined behaviour.
 
 ### `ota_available` (server to board)
 Sent after `hello` when a newer release exists and the board's `fw_version` is
@@ -266,11 +270,12 @@ Two optional fields; old boards may omit them.
 
 ### HTTP endpoints
 - `GET /api/v1/devices/{device_id}/firmware` returns
-  `{version, url, sha256, size, min_version}`. `url` is a path starting with
+  `{version, url, sha256, size, min_version}` (`size` ≤ 4 194 304 bytes, the
+  OTA slot size). `url` is a path starting with
   `/api/v1/companion/firmware/`, joined by the board with its own API base; it
   is never an absolute URL. The board reads only its own device's firmware.
 - `GET {url}` returns `application/octet-stream`.
-- `POST /api/v1/companion/coredumps` takes a raw body (at most 64 KB) with
+- `POST /api/v1/companion/coredumps` takes a raw body (at most 64 KB (65 536 bytes)) with
   header `X-Fw-Version` and optional `X-Elf-Sha256`, and returns `{id}`.
 
 ### Rollback rule
