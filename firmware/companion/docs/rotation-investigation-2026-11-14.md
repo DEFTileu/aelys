@@ -37,3 +37,30 @@ lifetime, transparency, clipping, memory use, and redraw behaviour first;
 `LV_USE_SNAPSHOT` is currently disabled. Any solution must pass both the
 partial-buffer pixel oracle and the face-only damage bound, and needs actual
 board measurements before making claims about the 30 fps face or internal RAM.
+
+## Reusable snapshot experiment
+
+A second host-only prototype rendered the hidden eye group into a reusable
+ARGB8888 buffer, drew that image with a rotation, and invalidated conservative
+old/new eye bounds. It passed 32-row partial-buffer comparisons during
+90-frame loops exercising curious, dizzy, love and mischief; the periodic UI
+timer could also retarget the mood within each loop. Disabling both old and new
+invalidation made the oracle fail, confirming that it exercises this path.
+The same 100-step curious host scenario sent 3,176,864 pixels over 66 refreshes,
+versus 1,281,536 over 62 for the current unrotated implementation. These are
+host pixel counts, not physical display timing.
+
+The experiment was not retained in the product. At the 130% Home scale the
+snapshot pixel buffer alone requires approximately 344,760 bytes of PSRAM,
+before alignment and other allocations. Independent review found that even
+when the application's own buffer allocation is checked, LVGL allocates draw
+tasks and gradient data inside `lv_snapshot_take_to_draw_buf()`. With the
+firmware's `CONFIG_LV_USE_ASSERT_MALLOC=y`, failure can stop the UI before the
+caller receives an error. Ordinary LVGL rendering also has this assertion
+behaviour; the snapshot adds memory pressure and a further rendering path. A
+free-memory check would reduce risk but cannot guarantee recovery from a
+concurrent allocation or fragmentation. No global LVGL assertions were
+disabled. The diagnostic patch and test are retained in the ignored S2 ledger,
+not enabled in the firmware. The remaining question is how to render a stable,
+rotated image without adding this failure mode, while meeting the existing
+partial-redraw and memory constraints.

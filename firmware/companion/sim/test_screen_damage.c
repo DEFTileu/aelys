@@ -93,6 +93,17 @@ int main(void)
             exact_frame();
         }
     }
+    /* At Home scale, follow these motions through real partial buffers; the
+     * periodic UI timer can also retarget the mood during each loop. */
+    const mood_t rotating[] = {MOOD_CURIOUS, MOOD_DIZZY, MOOD_LOVE, MOOD_MISCHIEF};
+    for (unsigned m = 0; m < sizeof rotating / sizeof *rotating; ++m) {
+        scr_home_set_snap(&snap, FX_NOW, rotating[m], false);
+        for (int frame = 0; frame < 90; ++frame) {
+            scr_home_set_snap(&snap, FX_NOW, rotating[m], false);
+            sim_step(34);
+            exact_frame();
+        }
+    }
     /* Every percent and text-width change, empty rows and the offline variant. */
     snap.today_total = 100;
     for (int pct = 0; pct <= 100; pct++) {
