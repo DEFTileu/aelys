@@ -95,7 +95,7 @@ int main(void)
     }
     /* At Home scale, follow these motions through real partial buffers; the
      * periodic UI timer can also retarget the mood during each loop. */
-    const mood_t animated[] = {MOOD_CURIOUS, MOOD_DIZZY, MOOD_LOVE, MOOD_MISCHIEF, MOOD_CHARGING};
+    const mood_t animated[] = {MOOD_CURIOUS, MOOD_DIZZY, MOOD_LOVE, MOOD_ELATION, MOOD_MISCHIEF, MOOD_CHARGING};
     for (unsigned m = 0; m < sizeof animated / sizeof *animated; ++m) {
         scr_home_set_snap(&snap, FX_NOW, animated[m], false);
         for (int frame = 0; frame < 90; ++frame) {
@@ -113,6 +113,21 @@ int main(void)
             scr_home_set_snap(&snap, FX_NOW, blinking[m], false);
             sim_step(34);
             exact_frame();
+        }
+    }
+    /* Retarget repeatedly before the spring has settled. These cover each
+     * rotating mood against every other mood at the 130% Home scale. */
+    const mood_t rotating[] = {MOOD_CURIOUS, MOOD_DIZZY, MOOD_LOVE, MOOD_ELATION, MOOD_MISCHIEF};
+    for (unsigned m = 0; m < sizeof rotating / sizeof *rotating; ++m) {
+        for (int next = 0; next < MOOD_COUNT; ++next) {
+            const mood_t pair[] = {rotating[m], (mood_t)next, rotating[m]};
+            for (unsigned p = 0; p < sizeof pair / sizeof *pair; ++p) {
+                for (int frame = 0; frame < 3; ++frame) {
+                    scr_home_set_snap(&snap, FX_NOW, pair[p], false);
+                    sim_step(34);
+                    exact_frame();
+                }
+            }
         }
     }
     /* Every percent and text-width change, empty rows and the offline variant. */
