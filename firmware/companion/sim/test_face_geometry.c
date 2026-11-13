@@ -27,6 +27,12 @@ static void test_character_motion_design(void)
         NEAR(g.tx, cases[i].tx, 10); NEAR(g.ty, cases[i].ty, 10);
         NEAR(g.rot, cases[i].rot, 10); NEAR(g.sc, cases[i].scale, 2);
     }
+    CHECK(face_mood_def(MOOD_ELATION)->confetti);
+    face_confetti_state_t cf = face_confetti_at(0, 400);
+    CHECK_EQ(cf.opacity, 255); CHECK_EQ(cf.dy100, 0);
+    cf = face_confetti_at(400, 400); CHECK_EQ(cf.opacity, 0); CHECK_EQ(cf.dy100, -2000);
+    cf = face_confetti_at(670, 400); CHECK_EQ(cf.opacity, 255); CHECK_EQ(cf.dy100, 100); CHECK_EQ(cf.angle, 45);
+    cf = face_confetti_at(2200, 400); CHECK_EQ(cf.opacity, 0); CHECK_EQ(cf.dy100, -2000);
     CHECK_EQ(face_mood_def(MOOD_FLOW)->glow_width, 22);
     CHECK_EQ(face_mood_def(MOOD_RELIEF)->lid, LID_RELAX);
     CHECK_EQ(face_relax_lid_y100(0), 0);

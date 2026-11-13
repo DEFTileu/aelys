@@ -54,8 +54,7 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
     [MOOD_FLOW] = { .eye = { E(58,63,70,44,22,40,8,14), E(172,63,70,44,22,40,8,14) },
         .kind = EYE_PILL, .motion = MOT_BREATHE_SLOW, .blink_ms = 9000, .glow_width = 22 },
     [MOOD_ELATION] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
-        .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_PARTY,
-        .n_spark = 3, .spark = { {14,18,26,0}, {262,4,26,600}, {268,118,20,1200} } },
+        .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_PARTY, .confetti = true },
     [MOOD_RELIEF] = { .eye = { EL(58,45,70,90,35,STD,320,0), EL(172,45,70,90,35,STD,320,0) },
         .kind = EYE_PILL, .lid = LID_RELAX, .motion = MOT_SINK_RELIEF },
     [MOOD_PANIC] = { .eye = { E(63,26,60,118,30,28,12,20), E(177,26,60,118,30,28,12,20) },
@@ -244,6 +243,18 @@ int32_t face_relax_lid_y100(uint32_t t_ms)
     int32_t phase = (int32_t)(t_ms % 3200u * 1000u / 3200u);
     int32_t progress = phase <= 500 ? phase * 2 : (1000 - phase) * 2;
     return 800 * ease(progress) / 1000;
+}
+
+face_confetti_state_t face_confetti_at(uint32_t t_ms, uint32_t delay_ms)
+{
+    /* Before CSS animation-delay elapses, the particle is at its base style. */
+    if (t_ms < delay_ms) return (face_confetti_state_t){0, 0, 255};
+    uint32_t phase = (t_ms - delay_ms) % 1800u;
+    face_confetti_state_t state;
+    state.dy100 = (int16_t)(-2000 + (int32_t)(phase * 14000u / 1800u));
+    state.angle = (int16_t)(phase * 300u / 1800u);
+    state.opacity = (uint8_t)(phase < 270u ? phase * 255u / 270u : (1800u - phase) * 255u / 1530u);
+    return state;
 }
 
 /* ---- effect loops ---- */

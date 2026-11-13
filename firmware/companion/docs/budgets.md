@@ -84,3 +84,9 @@ correctness and no added local style properties during animation. This does
 not measure draw-task allocation or render time on the device. Flow's frame
 latency and internal heap impact remain **PENDING board**; the 30 fps face
 budget must be checked with the glow visible.
+
+Celebration adds one reusable LVGL drawing object and six small animation
+states per face. Confetti uses bounded dirty regions and allocates no new local
+style properties during the host animation test; the existing LVGL allocator
+is configured for PSRAM on the board. Actual allocation totals, internal heap
+and frame time during celebration remain **PENDING board**.

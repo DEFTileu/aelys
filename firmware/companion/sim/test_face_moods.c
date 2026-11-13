@@ -190,8 +190,9 @@ static void test_inside_screen_and_own_area(void)
         else CHECK(g_inv_set);
         /* A moving face only redraws its box plus 30 px of overhang. */
         if (g_inv_set) {
-            CHECK(g_inv.x1 >= HX - 30 && g_inv.y1 >= HY - 30);
-            CHECK(g_inv.x2 <= HX + 300 + 30 && g_inv.y2 <= HY + FACE_H + 30);
+            int margin = m == MOOD_ELATION ? 40 : 30;
+            CHECK(g_inv.x1 >= HX - margin && g_inv.y1 >= HY - margin);
+            CHECK(g_inv.x2 <= HX + 300 + margin && g_inv.y2 <= HY + FACE_H + margin);
         }
         gone(f);
     }
@@ -369,6 +370,14 @@ static void test_scales_and_api(void)
     lv_obj_delete(face);
 }
 
+static void test_elation_confetti(void)
+{
+    lv_obj_t *f = show(MOOD_ELATION, 100, HX, HY, 100);
+    rgb_t yellow = at(HX + 74, HY - 3);
+    CHECK(yellow.r > 150 && yellow.g > 120 && yellow.b < 160);
+    gone(f);
+}
+
 static void test_relief_lid_moves(void)
 {
     lv_obj_t *f = show(MOOD_RELIEF, 100, HX, HY, 100);
@@ -418,6 +427,7 @@ int main(void)
 {
     sim_init();
     sim_direct(); /* redraw only what was invalidated, as the board does: stale pixels would show up */
+    test_elation_confetti();
     test_relief_lid_moves();
     test_asymmetric_wink_and_wake();
     test_smooth_eye_transition();

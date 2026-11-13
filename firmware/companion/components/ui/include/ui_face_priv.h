@@ -45,7 +45,7 @@ typedef struct {
     uint8_t star_opacity;         /* 0 = default full opacity */
     uint8_t glow_width;           /* shadow width in face pixels; 0 = no glow */
     uint8_t n_spark, n_zz, n_heart, n_line;
-    bool drop, cheeks, dots;
+    bool drop, cheeks, dots, confetti;
     uint16_t drop_ms;             /* drip period */
     face_fx_t spark[3], drop_at, zz[2], heart[2], line[3]; /* line: size = rotation in degrees */
 } face_mood_t;
@@ -61,6 +61,8 @@ uint32_t face_motion_period(face_motion_t m);
 int32_t face_blink_x1000(uint32_t period_ms, uint32_t t_ms);
 int32_t face_eye_openness(const face_mood_t *m, int side, uint32_t t_ms);
 int32_t face_relax_lid_y100(uint32_t t_ms);
+typedef struct { int16_t dy100, angle; uint8_t opacity; } face_confetti_state_t;
+face_confetti_state_t face_confetti_at(uint32_t t_ms, uint32_t delay_ms);
 
 /* Effect loops. op = opacity 0..255; dx, dy = offset px*100; k = size permille. */
 typedef struct { int32_t op, dx, dy, k; } face_fx_state_t;

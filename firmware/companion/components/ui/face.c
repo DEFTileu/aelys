@@ -36,6 +36,8 @@ typedef struct {
     lv_obj_t *root;
     lv_obj_t *eye[2], *star[2], *ring[2], *lid[2], *dome[2];
     lv_obj_t *cheek[2], *dot[3], *line[3], *spark[3], *drop, *zz[2], *heart[2];
+    lv_obj_t *confetti_layer;
+    face_confetti_state_t confetti_state[6];
     cut_t cut[2];
     int16_t ring_a[2];
     int16_t line_k[3], line_op[3];
@@ -152,6 +154,48 @@ static void group_pt(const face_group_t *g, int32_t sn, int32_t cs, int32_t *x, 
     int32_t rx = (dx * cs - dy * sn) >> 15, ry = (dx * sn + dy * cs) >> 15;
     *x = FACE_W * 50 + rx * g->sc / 1000 + g->tx;
     *y = FACE_H * 50 + ry * g->sc / 1000 + g->ty;
+}
+
+/* Confetti geometry and colors from the celebration state; the layer draws
+ * all pieces and invalidates only their old/new bounds during animation. */
+typedef struct { int16_t x, y; uint16_t delay_ms; uint32_t color; } confetti_spec_t;
+static const confetti_spec_t CONFETTI[6] = {
+    {20,0,0,0xB9A8FF}, {70,-10,400,0xF4C46B}, {232,-6,200,0x5FD7A8},
+    {270,4,800,0xF6907F}, {150,-14,1100,0x7FA8F5}, {110,0,600,0xE6DCFF},
+};
+static void confetti_center(const face_t *f, int i, face_confetti_state_t state, int32_t *x, int32_t *y)
+{
+    lv_area_t root;
+    lv_obj_get_coords(f->root, &root);
+    *x = root.x1 + d(f, (CONFETTI[i].x + 4) * 100);
+    *y = root.y1 + d(f, (CONFETTI[i].y + 7) * 100 + state.dy100);
+}
+static void confetti_invalidate(face_t *f, int i, face_confetti_state_t state)
+{
+    if (!state.opacity) return;
+    int32_t x, y, radius = d(f, 1200) + 2;
+    confetti_center(f, i, state, &x, &y);
+    lv_area_t area = {x - radius, y - radius, x + radius, y + radius};
+    lv_obj_invalidate_area(f->confetti_layer, &area);
+}
+static void confetti_draw(lv_event_t *e)
+{
+    const face_t *f = lv_event_get_user_data(e);
+    for (int i = 0; i < 6; i++) {
+        face_confetti_state_t state = f->confetti_state[i];
+        if (!state.opacity) continue;
+        int32_t x, y; confetti_center(f, i, state, &x, &y);
+        int32_t half = d(f, 700);
+        int32_t dx = lv_trigo_sin(state.angle) * half / 32768;
+        int32_t dy = lv_trigo_cos(state.angle) * half / 32768;
+        lv_draw_line_dsc_t line; lv_draw_line_dsc_init(&line);
+        line.color = lv_color_hex(CONFETTI[i].color); line.opa = state.opacity;
+        line.width = d(f, 800); if (line.width < 1) line.width = 1;
+        line.round_start = line.round_end = 1;
+        line.p1.x = x - dx; line.p1.y = y - dy;
+        line.p2.x = x + dx; line.p2.y = y + dy;
+        lv_draw_line(lv_event_get_layer(e), &line);
+    }
 }
 
 /* ---- drawing callbacks ---- */
@@ -339,6 +383,17 @@ static void layout_eyes(face_t *f, uint32_t t)
 static void layout_fx(face_t *f, uint32_t t)
 {
     const face_mood_t *m = f->m;
+    if (m->confetti) {
+        for (int i = 0; i < 6; i++) {
+            face_confetti_state_t next = face_confetti_at(t, CONFETTI[i].delay_ms);
+            face_confetti_state_t old = f->confetti_state[i];
+            if (old.dy100 != next.dy100 || old.angle != next.angle || old.opacity != next.opacity) {
+                confetti_invalidate(f, i, old);
+                f->confetti_state[i] = next;
+                confetti_invalidate(f, i, next);
+            }
+        }
+    }
     for (int i = 0; i < m->n_spark; i++) {
         const face_fx_t *p = &m->spark[i];
         face_fx_state_t st = face_fx_twinkle(t, p->delay_ms);
@@ -434,6 +489,8 @@ static void apply_mood(face_t *f)
         show(f->cheek[side], m->cheeks);
     }
     show(f->drop, false);
+    show(f->confetti_layer, m->confetti);
+    for (int i = 0; i < 6; i++) f->confetti_state[i] = (face_confetti_state_t){0};
     for (int i = 0; i < 3; i++) {
         show(f->spark[i], false);
         show(f->line[i], false);
@@ -455,11 +512,11 @@ static void apply_mood(face_t *f)
     for (int i = 0; i < 3; i++) place(f->dot[i], d(f, (123 + 22 * i) * 100), d(f, 11800), d(f, 1000), d(f, 1000));
 }
 
-/* LVGL clips invalidation to the parent plus its ext draw size: lids, drops, hearts and z reach up to 30 px out. */
+/* Confetti can start 34 px above the face; allow 40 px of overhang. */
 static void face_ext_size(lv_event_t *e)
 {
     const face_t *f = lv_event_get_user_data(e);
-    lv_event_set_ext_draw_size(e, d(f, 3000));
+    lv_event_set_ext_draw_size(e, d(f, 4000));
 }
 
 static void face_deleted(lv_event_t *e)
@@ -536,6 +593,14 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
         f->zz[i] = image(root, UI_COLOR_MUTED);
         f->heart[i] = image(root, UI_COLOR_CHEEK);
     }
+
+    f->confetti_layer = box(root, UI_COLOR_BG);
+    lv_obj_set_style_bg_opa(f->confetti_layer, LV_OPA_TRANSP, 0);
+    lv_obj_set_size(f->confetti_layer, d(f, FACE_W * 100), d(f, (FACE_H + 80) * 100));
+    lv_obj_set_pos(f->confetti_layer, 0, -d(f, 4000));
+    lv_obj_add_event_cb(f->confetti_layer, confetti_draw, LV_EVENT_DRAW_MAIN, f);
+    lv_obj_set_user_flag(f->confetti_layer, 1, true);
+    lv_obj_set_hidden(f->confetti_layer, true);
 
     lv_obj_set_user_data(root, f);
     face_set_mood(root, MOOD_CALM);
