@@ -130,6 +130,14 @@ async function deviceRequest<T>(path: string, body: unknown): Promise<T> {
   return value as T
 }
 
+/** Signs `{context}\n{targetId}\n{nonce}` with this browser's device key over a fresh challenge for its own device_id. */
+export async function signWithThisDevice(context: string, targetId: string): Promise<{ challenge_id: string; signature: string }> {
+  const identity = await currentIdentity()
+  if (!identity) throw new SharedApiError(400, 'DEVICE_KEY_UNAVAILABLE', 'This browser has no device key.')
+  const challenge = await deviceRequest<{ challenge_id: string; nonce: string }>('auth/device/challenge', { device_id: identity.deviceId })
+  return { challenge_id: challenge.challenge_id, signature: await signWithDeviceKey(identity.privateKey, `${context}\n${targetId}\n${challenge.nonce}`) }
+}
+
 /** Registers this browser as a key-bound device with a one-time setup token; no password is involved. */
 export async function claimSetupToken(token: string, displayName: string): Promise<void> {
   if (isNativeHost() || !webCryptoAvailable()) throw new SharedApiError(400, 'DEVICE_KEY_UNAVAILABLE', 'This browser cannot store the device key.')
