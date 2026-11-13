@@ -19,6 +19,7 @@ from starlette.testclient import TestClient
 
 CHANNEL = f'{B}/devices/channel'
 LOST_ON = {'on': True, 'message': 'Call me', 'show_phone': True, 'show_telegram': False}
+LOST_V11 = {'show_email': False, 'email': None, 'qr': 'telegram'}  # defaults v1.1 adds to a v1 request
 HELLO = {'type': 'hello', 'fw_version': '0.4.1', 'board': 'esp32', 'features': []}
 BLOB = 'q2V5ZGF0YS1lbmNyeXB0ZWQ' + 'ZZtopSecretBlobPart'
 
@@ -83,7 +84,8 @@ async def test_lost_mode_on_while_offline_is_delivered_on_connect(paired):
         with board(client, token) as socket:
             socket.send_json(HELLO)
             command = socket.receive_json()
-            assert command == {'type': 'command', 'id': newer.json()['id'], 'name': 'lost_mode', 'args': {**LOST_ON, 'message': 'Newer', 'rev': 2}}
+            assert command['args'].pop('since')  # server-set, v1.1
+            assert command == {'type': 'command', 'id': newer.json()['id'], 'name': 'lost_mode', 'args': {**LOST_ON, **LOST_V11, 'message': 'Newer', 'rev': 2}}
             socket.send_json({'type': 'command_ack', 'id': command['id'], 'ok': True})
             socket.send_json({'type': 'heartbeat'})
             assert socket.receive_json() == {'type': 'heartbeat_ack'}
@@ -97,12 +99,14 @@ async def test_online_lost_mode_and_ice_go_out_at_once_and_stay_pending_until_ac
     with TestClient(app) as client, board(client, token) as socket:
         assert client.put(url(device_id, '/lost-mode'), json=LOST_ON, headers=bearer(owner)).json()['delivered'] is True
         lost = socket.receive_json()
-        assert (lost['name'], lost['args']) == ('lost_mode', {**LOST_ON, 'rev': 1})
+        assert lost['args'].pop('since')
+        assert (lost['name'], lost['args']) == ('lost_mode', {**LOST_ON, **LOST_V11, 'rev': 1})
         assert socket.receive_json()['type'] == 'snapshot'  # the gate changed, so the board is re-pushed
         assert client.put(url(device_id, '/ice'), json=ice, headers=bearer(owner)).status_code == 200
         assert (socket.receive_json()['name'], ) == ('ice_update',)
     row = await state_of(device_id)
-    assert row.ice_json == {**ice, 'rev': 1} and sorted(c['name'] for c in row.pending_commands_json) == ['ice_update', 'lost_mode']
+    v11 = {'owner_name': '', 'show_contacts': True, 'show_med': True, 'contacts': [{'name': 'Mom', 'relation': '', 'phone': '+7 700 000 00 00'}]}
+    assert row.ice_json == {**ice, **v11, 'rev': 1} and sorted(c['name'] for c in row.pending_commands_json) == ['ice_update', 'lost_mode']
 
 
 @pytest.mark.asyncio

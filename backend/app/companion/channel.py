@@ -15,11 +15,11 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 
 from app.companion.actions import ActionIn, run_action
 from app.companion.hub import hub
-from app.companion.state import locked_state, valid_command
+from app.companion.state import locked_state, record_ack, valid_command
 from app.core import db as core_db
 from app.core.models import AuthSession, Device
 from app.core.security import decode_token
@@ -38,9 +38,15 @@ DEVICE_CLOSE_CODE = 4403
 ERROR_CLOSE_CODE = 1011
 
 
+class HelloContacts(BaseModel):
+    phone: str = Field(default="", max_length=23)
+    telegram: str = Field(default="", max_length=32)
+
+
 class HelloIn(BaseModel):
     fw_version: str = Field(max_length=40)
     board: str = Field(max_length=60)
+    contacts: HelloContacts | None = None  # v1.1; personal data: stored for the owner, never logged
 
 
 class MetricsIn(BaseModel):
@@ -49,6 +55,9 @@ class MetricsIn(BaseModel):
     psram_free: int = Field(ge=0)
     wifi_reconnects: int = Field(ge=0)
     uptime_s: int = Field(ge=0)
+    battery_pct: int | None = Field(default=None, ge=0, le=100)  # v1.1, optional
+    charging: bool | None = None
+    heap_at_connect_min: int | None = Field(default=None, ge=0)
 
 
 class CommandAckIn(BaseModel):
@@ -68,6 +77,11 @@ class WifiScanResultIn(BaseModel):
     networks: list[Network] = Field(max_length=64)
 
 
+class WifiStateIn(BaseModel):
+    saved: list[Annotated[str, Field(max_length=32)]] = Field(max_length=5)
+    current: str | None = Field(default=None, max_length=32)
+
+
 @dataclass
 class _Link:
     device_id: str
@@ -81,6 +95,8 @@ async def _hello(link: _Link, message: dict) -> None:
     async with core_db.SessionLocal() as db:
         row = await locked_state(db, link.device_id, link.owner_id)
         row.fw_version, row.board, row.last_hello_at = body.fw_version, body.board, datetime.now(UTC)
+        if body.contacts is not None:  # a v1 hello keeps what is stored
+            row.contacts_json = body.contacts.model_dump()
         pending = list(row.pending_commands_json or [])
         await db.commit()
     for command in pending:  # kept until the board acks them
@@ -100,7 +116,7 @@ async def _heartbeat(link: _Link, message: dict) -> None:
 async def _metrics(link: _Link, message: dict) -> None:
     body = MetricsIn.model_validate(message)
     async with core_db.SessionLocal() as db:
-        (await locked_state(db, link.device_id, link.owner_id)).last_metrics_json = body.model_dump()
+        (await locked_state(db, link.device_id, link.owner_id)).last_metrics_json = body.model_dump(exclude_none=True)
         await db.commit()
 
 
@@ -112,6 +128,7 @@ async def _command_ack(link: _Link, message: dict) -> None:
         # BUSY keeps the command for the next hello. Malformed leftovers always go: they could never be delivered.
         retry = not body.ok and body.error_code == "BUSY"
         row.pending_commands_json = [c for c in row.pending_commands_json or [] if valid_command(c) and (retry or c["id"] != body.id)]
+        record_ack(row, body.id, body.ok, body.error_code)  # also for commands that were never queued, and for late acks
         await db.commit()
 
 
@@ -119,7 +136,16 @@ async def _wifi_scan_result(link: _Link, message: dict) -> None:
     body = WifiScanResultIn.model_validate(message)
     async with core_db.SessionLocal() as db:
         # The result is the wifi_scan command's ack; wifi_scan is never queued, so nothing is left to drop.
-        (await locked_state(db, link.device_id, link.owner_id)).last_wifi_scan_json = {**body.model_dump(), "received_at": datetime.now(UTC).isoformat()}
+        row = await locked_state(db, link.device_id, link.owner_id)
+        row.last_wifi_scan_json = {**body.model_dump(), "received_at": datetime.now(UTC).isoformat()}
+        record_ack(row, body.id, True, None)
+        await db.commit()
+
+
+async def _wifi_state(link: _Link, message: dict) -> None:
+    body = WifiStateIn.model_validate(message)
+    async with core_db.SessionLocal() as db:
+        (await locked_state(db, link.device_id, link.owner_id)).wifi_json = body.model_dump()
         await db.commit()
 
 
@@ -136,7 +162,7 @@ async def _action(link: _Link, message: dict) -> None:
 
 HANDLERS: dict[str, Callable[[_Link, dict], Awaitable[None]]] = {
     "hello": _hello, "heartbeat": _heartbeat, "metrics": _metrics, "action": _action,
-    "command_ack": _command_ack, "wifi_scan_result": _wifi_scan_result}
+    "command_ack": _command_ack, "wifi_scan_result": _wifi_scan_result, "wifi_state": _wifi_state}
 
 
 def _error(code: str, message: str) -> dict:

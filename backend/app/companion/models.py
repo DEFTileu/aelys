@@ -32,4 +32,9 @@ class CompanionState(Base):
     ice_json: Mapped[dict | None] = mapped_column(JSON)
     pending_commands_json: Mapped[list] = mapped_column(JSON, default=list)
     last_wifi_scan_json: Mapped[dict | None] = mapped_column(JSON)
+    # v1.1: board contacts and Wi-Fi names are personal data: never logged, shown only to the owner.
+    contacts_json: Mapped[dict | None] = mapped_column(JSON)
+    wifi_json: Mapped[dict | None] = mapped_column(JSON)
+    settings_json: Mapped[dict | None] = mapped_column(JSON)
+    command_log_json: Mapped[list | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

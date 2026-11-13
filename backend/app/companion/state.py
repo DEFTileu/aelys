@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.companion.models import CompanionState
@@ -10,7 +11,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-COMMAND_NAMES = frozenset({"lost_mode", "play_sound", "ice_update", "wifi_add", "wifi_scan"})
+COMMAND_NAMES = frozenset({"lost_mode", "play_sound", "ice_update", "wifi_add", "wifi_scan",
+                           "settings", "wifi_remove", "wifi_order", "restart", "unpair"})
+COMMAND_LOG_SIZE = 10
+COMMAND_LOG_TTL = timedelta(hours=24)
 
 
 def valid_command(entry: Any) -> bool:
@@ -58,3 +62,22 @@ async def lost_mode_on(db: AsyncSession, device_id: str) -> bool:
     """Whether the owner has put this board in lost mode; the server then hides data from it and refuses its actions."""
     lost = (await db.execute(select(CompanionState.lost_mode_json).where(CompanionState.device_id == device_id))).scalar_one_or_none()
     return bool(lost and lost.get("on"))
+
+
+def log_command(row: CompanionState, command_id: str, name: str) -> None:
+    """Remember a sent command (the last 10) so an ack that arrives later, even after a reconnect, can be recorded."""
+    entry = {"id": command_id, "name": name, "sent_at": datetime.now(UTC).isoformat(), "ok": None, "error_code": None}
+    row.command_log_json = [*(row.command_log_json or []), entry][-COMMAND_LOG_SIZE:]
+
+
+def record_ack(row: CompanionState, command_id: str, ok: bool, error_code: str | None) -> None:
+    """Set the outcome of a logged command sent within the last 24 h; any other id is ignored."""
+    cutoff = datetime.now(UTC) - COMMAND_LOG_TTL
+
+    def fresh(entry: dict) -> bool:
+        try:
+            return datetime.fromisoformat(entry["sent_at"]) > cutoff
+        except (KeyError, TypeError, ValueError):
+            return False
+    row.command_log_json = [{**e, "ok": ok, "error_code": None if ok else error_code} if e.get("id") == command_id and fresh(e) else e
+                            for e in row.command_log_json or []]

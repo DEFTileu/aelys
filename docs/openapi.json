@@ -929,6 +929,36 @@
         }
       }
     },
+    "/api/v1/companion/devices": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "List Devices",
+        "operationId": "list_devices_api_v1_companion_devices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceListItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Devices Api V1 Companion Devices Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/companion/devices/{device_id}": {
       "get": {
         "tags": [
@@ -1217,6 +1247,282 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/settings": {
+      "put": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Put Settings",
+        "operationId": "put_settings_api_v1_companion_devices__device_id__settings_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompanionSettingsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/wifi/remove": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Remove Wifi",
+        "operationId": "remove_wifi_api_v1_companion_devices__device_id__wifi_remove_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiRemoveIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/wifi/order": {
+      "put": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Order Wifi",
+        "operationId": "order_wifi_api_v1_companion_devices__device_id__wifi_order_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiOrderIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/restart": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Restart Device",
+        "operationId": "restart_device_api_v1_companion_devices__device_id__restart_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/unpair": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Unpair Device",
+        "description": "Tell an online board to wipe its pairing, then revoke it either way; an offline board just loses its access.",
+        "operationId": "unpair_device_api_v1_companion_devices__device_id__unpair_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnpairIn"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -9750,6 +10056,21 @@
         ],
         "title": "CommandOut"
       },
+      "CompanionSettingsIn": {
+        "properties": {
+          "brightness": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 5.0,
+            "title": "Brightness"
+          }
+        },
+        "type": "object",
+        "required": [
+          "brightness"
+        ],
+        "title": "CompanionSettingsIn"
+      },
       "CompanionSnapshot": {
         "properties": {
           "generated_at": {
@@ -9801,6 +10122,18 @@
                 "type": "null"
               }
             ]
+          },
+          "today_done": {
+            "type": "integer",
+            "title": "Today Done"
+          },
+          "today_total": {
+            "type": "integer",
+            "title": "Today Total"
+          },
+          "other_unread_count": {
+            "type": "integer",
+            "title": "Other Unread Count"
           }
         },
         "type": "object",
@@ -9811,7 +10144,10 @@
           "next_event",
           "unread_count",
           "notices",
-          "focus"
+          "focus",
+          "today_done",
+          "today_total",
+          "other_unread_count"
         ],
         "title": "CompanionSnapshot"
       },
@@ -9867,6 +10203,12 @@
             "type": "string",
             "maxLength": 32,
             "title": "Name"
+          },
+          "relation": {
+            "type": "string",
+            "maxLength": 16,
+            "title": "Relation",
+            "default": ""
           },
           "phone": {
             "type": "string",
@@ -10304,6 +10646,66 @@
         ],
         "title": "DeviceEnroll"
       },
+      "DeviceListItem": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "wifi_current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wifi Current"
+          },
+          "battery_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "display_name",
+          "online",
+          "last_seen_at",
+          "wifi_current",
+          "battery_pct"
+        ],
+        "title": "DeviceListItem"
+      },
       "DeviceLogin": {
         "properties": {
           "challenge_id": {
@@ -10489,6 +10891,63 @@
               }
             ],
             "title": "Last Wifi Scan"
+          },
+          "contacts": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contacts"
+          },
+          "wifi": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wifi"
+          },
+          "battery": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settings"
+          },
+          "command_log": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Command Log",
+            "default": []
           }
         },
         "type": "object",
@@ -11907,6 +12366,12 @@
       },
       "IceIn": {
         "properties": {
+          "owner_name": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Owner Name",
+            "default": ""
+          },
           "contacts": {
             "items": {
               "$ref": "#/components/schemas/Contact"
@@ -11925,6 +12390,16 @@
             "type": "boolean",
             "title": "Show Name",
             "default": false
+          },
+          "show_contacts": {
+            "type": "boolean",
+            "title": "Show Contacts",
+            "default": true
+          },
+          "show_med": {
+            "type": "boolean",
+            "title": "Show Med",
+            "default": true
           }
         },
         "type": "object",
@@ -12212,6 +12687,33 @@
             "type": "boolean",
             "title": "Show Telegram",
             "default": false
+          },
+          "show_email": {
+            "type": "boolean",
+            "title": "Show Email",
+            "default": false
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 48
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "qr": {
+            "type": "string",
+            "enum": [
+              "telegram",
+              "phone",
+              "none"
+            ],
+            "title": "Qr",
+            "default": "telegram"
           },
           "reauth": {
             "anyOf": [
@@ -16105,6 +16607,22 @@
         ],
         "title": "TransferOut"
       },
+      "UnpairIn": {
+        "properties": {
+          "reauth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reauth"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "UnpairIn"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -16195,6 +16713,40 @@
           "blob"
         ],
         "title": "WifiIn"
+      },
+      "WifiOrderIn": {
+        "properties": {
+          "ssids": {
+            "items": {
+              "type": "string",
+              "maxLength": 32,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Ssids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ssids"
+        ],
+        "title": "WifiOrderIn"
+      },
+      "WifiRemoveIn": {
+        "properties": {
+          "ssid": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Ssid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ssid"
+        ],
+        "title": "WifiRemoveIn"
       },
       "app__agents__api__RunIn": {
         "properties": {
