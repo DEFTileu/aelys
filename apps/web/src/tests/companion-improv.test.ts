@@ -124,4 +124,43 @@ describe('CompanionSerial', () => {
     await Promise.all([c.pairCode('a'), c.pairCommit('b'.repeat(36))])
     expect(order).toEqual([0xa1, 0xa2])
   })
+
+  it('an oversized request fails alone and does not kill the next one', async () => {
+    vi.useFakeTimers()
+    const f = fakePort(() => [])
+    const c = await CompanionSerial.fromPort(f.port)
+    await expect(c.pairBegin('x'.repeat(300), 'u')).rejects.toMatchObject({ code: 'BAD_ARGS' })
+    const wifi = c.sendWifi('home', 'pw')
+    await vi.advanceTimersByTimeAsync(6000) // past the failed call's would-be 5 s timer
+    f.push(concat(clear, frame(1, 4), result(1, [])))
+    await expect(wifi).resolves.toBe('ok')
+  })
+
+  it('sendWifi consumes its trailing frame so state() is not answered by it', async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 0))
+    const cases: [Uint8Array[], Uint8Array, string][] = [
+      [[clear, frame(2, 3)], frame(1, 2), 'bad_password'], // ERROR 0x03, then STATE 0x02 in its own chunk
+      [[clear, frame(1, 4)], result(1, []), 'ok'], // STATE 0x04, then RESULT in its own chunk
+    ]
+    for (const [first, trailing, want] of cases) {
+      const f = fakePort(() => [])
+      const c = await CompanionSerial.fromPort(f.port)
+      const wifi = c.sendWifi('home', 'pw')
+      const state = c.state() // queued right behind it
+      await tick()
+      for (const chunk of first) f.push(chunk)
+      await tick()
+      f.push(trailing)
+      expect(await wifi).toBe(want)
+      await tick()
+      f.push(frame(1, 4)) // the board's answer to state()
+      expect(await state).toBe('provisioned')
+    }
+  })
+
+  it('state() rejects an unknown STATE byte', async () => {
+    const f = fakePort(() => [clear, frame(1, 9)])
+    const c = await CompanionSerial.fromPort(f.port)
+    await expect(c.state()).rejects.toMatchObject({ code: 'BAD_ARGS' })
+  })
 })
