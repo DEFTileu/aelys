@@ -269,14 +269,53 @@ Two optional fields; old boards may omit them.
 - `ui_wakes_per_s` — int, UI wakes per second.
 
 ### HTTP endpoints
-- `GET /api/v1/devices/{device_id}/firmware` returns
-  `{version, url, sha256, size, min_version}` (`size` ≤ 4 194 304 bytes, the
-  OTA slot size). `url` is a path starting with
-  `/api/v1/companion/firmware/`, joined by the board with its own API base; it
-  is never an absolute URL. The board reads only its own device's firmware.
-- `GET {url}` returns `application/octet-stream`.
-- `POST /api/v1/companion/coredumps` takes a raw body (at most 64 KB (65 536 bytes)) with
-  header `X-Fw-Version` and optional `X-Elf-Sha256`, and returns `{id}`.
+Errors are `{"detail": {"code", "message"}}`. Every endpoint needs a valid
+bearer token (401 otherwise); the firmware endpoints and the owner crash-dump
+endpoints also need a device that holds a registered key (403
+`TRUSTED_DEVICE_REQUIRED`).
+
+**Version format.** A version is `MAJOR.MINOR.PATCH`, regex
+`[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}` (full match, no `v` prefix, no suffix).
+A board whose `fw_version` is outside it gets no `ota_available` and no
+firmware offer, and its crash dumps are rejected with 422. Releases compare by
+numeric version, not upload time; the server keeps the 3 highest versions per
+owner.
+
+- `PUT /api/v1/companion/firmware/{version}?min_version=` (owner only; a
+  board gets 403 `DEVICE_SCOPE_DENIED`). Raw body is the signed app image, with
+  header `X-Content-Sha256` (hex SHA-256 of the body). Returns
+  `{version, sha256, size, min_version}`: 201 for a new release, 200 when the
+  same version with the same contents already exists. Errors: 422
+  `FIRMWARE_INVALID` (bad `version` or `min_version`, `min_version` above
+  `version`, or an image that is not an ESP-IDF app image for project
+  `companion` with this version), 422 `FIRMWARE_UNSIGNED` (no signature block),
+  422 `FIRMWARE_HASH_MISMATCH` (`X-Content-Sha256` is not the body's hash), 413
+  `FIRMWARE_TOO_LARGE` (body over 4 194 304 bytes), 409 `FIRMWARE_EXISTS`
+  (this version is already released with other contents).
+- `GET /api/v1/devices/{device_id}/firmware` (owner, or the board itself)
+  returns 200 `{version, url, sha256, size, min_version}` (`size` ≤ 4 194 304
+  bytes, the OTA slot size) for the highest release. `url` is a path starting
+  with `/api/v1/companion/firmware/`, joined by the board with its own API
+  base; it is never an absolute URL. Errors: 404 `FIRMWARE_NONE` (nothing
+  released), 403 `DEVICE_SCOPE_DENIED` (a board asked for another device), 404
+  `NOT_FOUND` (owner caller: not their companion, or revoked).
+- `GET {url}` (the owner or any of the owner's trusted devices) returns 200
+  `application/octet-stream`; 404 `FIRMWARE_NONE` when that version is not
+  released.
+- `POST /api/v1/companion/coredumps` (paired board only; anyone else gets 403
+  `COMPANION_ONLY`). Raw body of at most 64 KB (65 536 bytes), header
+  `X-Fw-Version` (version format above) and optional `X-Elf-Sha256` (64 hex
+  digits). Returns `{id}`: 201 for a new dump, 200 with the existing id when
+  the same body (SHA-256) was already stored for this board. Errors: 422
+  `VALIDATION_ERROR` (bad or missing `X-Fw-Version`, bad `X-Elf-Sha256`, or an
+  empty body), 413 `COREDUMP_TOO_LARGE`. The server keeps the 5 newest dumps
+  per board.
+- `GET /api/v1/companion/devices/{device_id}/coredumps` (owner only) returns
+  200 `[{id, fw_version, elf_sha256, size, created_at}]`, newest first.
+  `GET /api/v1/companion/devices/{device_id}/coredumps/{dump_id}` (owner only)
+  returns 200 `application/octet-stream`. A board gets 403
+  `DEVICE_SCOPE_DENIED`; a device that is not the owner's live companion gets
+  404 `NOT_FOUND`, and so does an unknown `dump_id`.
 
 ### Rollback rule
 The board marks a new app valid only after `ready` and `snapshot` were received
