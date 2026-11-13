@@ -328,3 +328,13 @@ async def test_slow_older_build_is_sent_before_newer_snapshot(setup, monkeypatch
     release.set()
     await hub.wait_idle()
     assert [m['snapshot']['unread_count'] for m in setup] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_wait_idle_with_timeout_cancels_leftover_tasks(setup, monkeypatch):
+    monkeypatch.setattr(hub, 'debounce', 60)
+    hub.mark_owner_dirty(OWNER)
+    assert hub._background
+    await asyncio.wait_for(hub.wait_idle(timeout=0.05), 2)
+    assert not hub._background and not hub._pending
+    assert setup == []

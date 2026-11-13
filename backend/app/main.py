@@ -19,7 +19,7 @@ from .automation.api import router as automation_router
 from .automation.hooks import wait_for_automations
 from .companion.api import router as companion_router
 from .companion.channel import router as companion_channel_router
-from .companion.hub import install_change_listeners
+from .companion.hub import hub, install_change_listeners
 from .core import models  # noqa: F401 - register domain metadata
 from .core.api import router as core_router
 from .core.browser_auth import router as browser_auth_router
@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await hub.wait_idle(timeout=5)  # board pushes in flight must not outlive the loop
         await wait_for_automations()
         for task in (worker, reminders):
             task.cancel()

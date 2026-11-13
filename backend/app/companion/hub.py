@@ -87,7 +87,16 @@ class CompanionHub:
         self._pending[owner_id] = task
         self._track(task)
 
-    async def wait_idle(self) -> None:
+    async def wait_idle(self, timeout: float | None = None) -> None:
+        """Wait for background pushes and closes; with a timeout, whatever is still running then is cancelled."""
+        try:
+            await asyncio.wait_for(self._drain(), timeout)
+        except TimeoutError:
+            for task in list(self._background):
+                task.cancel()
+            await self._drain()
+
+    async def _drain(self) -> None:
         while self._background:
             await asyncio.gather(*self._background, return_exceptions=True)
 
