@@ -74,6 +74,16 @@ If Gmail OAuth is not in MVP, mail records may come from import; do not invent p
 `ai_runs(id,conversation_id,provider,model,status,token_counts,cost_estimate,started_at,completed_at,...)`.
 **Rule:** raw local agent session excerpt (if retrieved) must not be persisted in AI chat transcript unless user explicitly chose to retain it. Store redacted citation refs and response as allowed; audit content retention setting.
 
+### Implemented ai_actions — migration 0055
+
+Existing owner-scoped action proposals keep their tool arguments, preview,
+status and result in one row. Migration `0055_ai_action_sources` adds nullable
+`source_kind VARCHAR(40)`, `source_id VARCHAR(36)` and `expires_at TIMESTAMPTZ`.
+Legacy rows retain their payload/version with NULL metadata and no expiry.
+Source references are opaque application IDs, not a copy of the source message.
+No source-version, digest or separate receipt table is introduced. Expiry is
+enforced by shared approval; future connectors own eager source invalidation.
+
 ### agent_session_index (CLOUD ONLY)
 `id PK`, `owner_id`, `device_id`, `project_id NULL`, `adapter ENUM(claude_code,codex_cli)`, `opaque_local_session_ref`, `started_at`, `last_activity_at`, `message_count NULL`, `state`, `last_indexed_at`.
 No `prompt`, `messages`, `summary`, `embedding`, source code, absolute path, command history, transcript titles by default. Keep minimal cloud-safe metadata; encrypt/ref HMAC any local identifiers if linkable.

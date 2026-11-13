@@ -1,9 +1,10 @@
 # Aelys harness — один полезный срез после ревью
 
-Статус: **PROPOSED / НЕ РЕАЛИЗОВАНО**, редакция 3, 2026-11-13.
+Статус: **Task 1 реализован; Task 2 не реализован**, редакция 4, 2026-11-13.
 [Исследование](../../research/2026-11-13-aelys-personal-harness.md) и
 [короткий план](../plans/2026-11-13-aelys-personal-harness.md).
-Работа остаётся планированием расширения Phase 4 / task 3; новые grants не выданы.
+Task 1 расширяет Phase 4 / task 3 общим action service; сценарий Task 2 остаётся
+планом. Новые grants не выданы.
 
 ## Сценарий, trigger и подтверждение
 
@@ -39,18 +40,20 @@ Suggestions не зависят от переключателя `auto_reply`: op
   создаёт новое предложение; она не подменяет существующий pending payload.
 - В AIAction нужны **три** nullable-поля: `source_kind`, `source_id`,
   `expires_at`. Legacy Web actions имеют NULL source.
-  Proposed TTL — 24 часа, не позднее source retention; это default для утверждения.
+  TTL новых suggestions — 24 часа, не позднее source retention. Legacy NULL expiry
+  не получает нового срока автоматически.
 - Новой ревизии источника нет: запомнить edited_at до модели; после неё взять
   исходную inbound-строку FOR UPDATE, проверить тот же edited_at и отсутствие
-  deleted_at. Изменения draft/send не считают remote content edit. При approve
-  повторно проверить live source/права; source_id разрешается только сервером.
+  deleted_at. Изменения draft/send не считают remote content edit. Approve
+  не читает source: eager invalidation и CAS action сериализуют его с edit/delete.
 
 ## Доставка и безопасность
 
 Одна nullable-колонка task_suggestion_state на TelegramBusinessMessage:
 NULL → queued → generating → ready → sending → sent; no-candidate/skipped_limit/
 failed/unknown — terminal. Существующая message row даёт durable trigger;
-claim — UPDATE WHERE state='queued' RETURNING id. Никаких строк kind=task_suggestion
+claim — UPDATE WHERE state='queued' RETURNING id. Все обновления suggestion-state
+сохраняют message.version: CAS draft-воркера не должен видеть их как правку source. Никаких строк kind=task_suggestion
 в TelegramBusinessCommand, фильтров в command_iteration или разделяемого recovery.
 Зависший generating после restart становится failed, sending — unknown, без
 автоматической новой генерации/отправки. No-candidate не анализируется снова.
@@ -67,16 +70,18 @@ Edit/delete/clear_messages/purge/retention/off атомарно инвалиди
 AIAction со status=pending (failed, ACTION_SOURCE_STALE) и незавершённый suggestion
 state. Такой UPDATE добавляется рядом с существующими eager stale/wipe путями,
 а не через изменение command worker. Выполненная задача не удаляется.
-Во всех конкурирующих путях порядок lock одинаковый: integration → source →
-action. После LLM I/O source проверяется и action вставляется в одной короткой
-транзакции; approve держит эти locks до task+result commit. Поэтому edit/delete
-либо делает pending stale первым, либо идёт после уже завершённого approve;
-не держать DB locks во время model или Telegram network I/O.
+Worker и инвалидатор соблюдают integration → source → action. После LLM I/O
+source проверяется и action вставляется в короткой транзакции. Approve вообще
+не читает/блокирует Telegram source: его CAS pending → approved и инвалидаторский
+UPDATE WHERE pending сериализуются на одной строке AIAction. Кто первым меняет
+status, тот выигрывает; второе действие видит terminal status. Task и result
+фиксируются тем же commit. DB locks не удерживаются во время network I/O.
 
 `callback_query` пока не запрашивается и не обрабатывается; это новая работа.
 В callback передаётся только action ID и approve/reject (до 64 байт), не args/scopes.
 Проверить owner sender, private chat, bot identity и источник действия; затем
-общий сервис проверяет pending/expiry/live source/current policy и вызывает registry.
+общий сервис проверяет action status/expiry/current policy и вызывает registry.
+Инвалидатор ставит status=failed/result error ACTION_SOURCE_STALE, сервис его не исполняет.
 Результат задачи и sync сохраняются существующей транзакцией; answerCallbackQuery
 и изменение кнопок идут после commit. Повтор callback не повторяет mutation.
 
@@ -84,7 +89,7 @@ action. После LLM I/O source проверяется и action вставл�
 CreateTaskToolArgs либо null, без личной памяти/базы и без выдуманного срока.
 Относительные даты считаются от source.sent_at в owner timezone, не от времени
 позднего запуска worker. Неоднозначную дату оставлять пустой.
-До модели/preview/approve проверяются source и включённый чат. Edit/delete/revoke/off
+До модели/preview проверяются source и включённый чат; approve доверяет action state. Edit/delete/revoke/off
 делают pending stale; уже созданная задача не удаляется вместе с источником.
 В action/уведомлении нет копии полной переписки. Существующие encryption,
 rotation и retention новых connector-полей сохраняются.

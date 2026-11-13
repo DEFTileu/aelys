@@ -66,6 +66,9 @@ Tasks:
 1. Provider connectivity health/probe.
 2. Run orchestration and limits (steps, time, tokens/cost).
 3. Read and create_task tools via domain services.
+   Owner-approved shared action-service extension (2026-11-13), Task 1 only:
+   [task notes and validation](optimization/aelys-harness-task-proposals.md).
+   Telegram suggestions and private confirmation buttons remain Task 2.
 4. Search + provenance + redaction.
 5. Prompt-injection evaluation and cancellation.
 

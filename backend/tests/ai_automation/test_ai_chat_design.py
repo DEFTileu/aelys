@@ -354,3 +354,29 @@ async def test_tool_error_goes_back_to_the_model(tmp_path, monkeypatch):
         assert events[-1][0] == "ai.run.completed"
         assert "You are Aelys" in script.requests[0]["system"] and "search_notes" in script.requests[0]["system"]
         assert '"error"' in str(script.requests[1]["messages"][-1]["content"])
+
+
+async def test_expired_action_api_preserves_receipt_contract(tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.models import AIAction
+    replies = [[tool_use('create_task', 'expired-task', title='Expired proposal')], []]
+    async with chat(tmp_path, monkeypatch, replies) as (client, _, factory):
+        conversation = (await client.post('/api/v1/ai/conversations', json={})).json()
+        await run(client, conversation['id'], 'Prepare a task', 'expired-action')
+        actions_url = f"/api/v1/ai/conversations/{conversation['id']}/actions"
+        action = (await client.get(actions_url)).json()[0]
+        async with factory() as session:
+            row = await session.get(AIAction, action['id'])
+            row.expires_at = datetime.now(UTC)-timedelta(seconds=1)
+            await session.commit()
+        approve_url = f"/api/v1/ai/actions/{action['id']}/approve"
+        result = await client.post(approve_url)
+        assert result.status_code == 200
+        receipt = result.json()
+        assert receipt['status'] == 'failed' and receipt['result']['error']['code'] == 'ACTION_EXPIRED'
+        assert set(receipt) == set(action)
+        assert (await client.post(approve_url)).json()['result'] == receipt['result']
+        assert (await client.get(actions_url)).json()[0]['result'] == receipt['result']
+        async with factory() as session:
+            assert not (await session.execute(select(Task))).scalars().all()

@@ -1,9 +1,9 @@
 # Telegram task suggestions — короткий Implementation Plan v3
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [x]`) syntax.
 
 **Goal:** секретарь предлагает задачу из одного opt-in Business-чата; владелец
-подтверждает inline-кнопкой в личке бота. **Статус: PROPOSED, код не начат.**
+подтверждает inline-кнопкой в личке бота. **Статус: Task 1 реализован и проверен; Task 2 не начат.**
 **Architecture:** существующие AIAction, общий generic approve/reject, registry,
 отдельное состояние сообщения и capture/sync. **Tech Stack:** текущий FastAPI/Python/PostgreSQL.
 **Spec:** [сценарий и точные границы](../specs/2026-11-13-aelys-personal-harness-design.md).
@@ -27,19 +27,20 @@ stale; injection → никакого нового scope; предложение
 `alembic/versions/*_action_source.py`; tests в `ai_automation/test_ai_chat_design.py`
 и новом `test_action_sources.py`. Пути Python относительны `backend/app`.
 
-- [ ] Baseline: проверить текущие pending/approve/reject тесты для create_note,
+- [x] Baseline: проверить текущие pending/approve/reject тесты для create_note,
   create_task, complete/update/reminder. Не подменять общий approve на approve_task.
-- [ ] Перенести тело approve/reject и owner lookup как есть в сервис; endpoints
+- [x] Перенести тело approve/reject и owner lookup как есть в сервис; endpoints
   делегируют туда. Сохранить CAS, registry/policy, commit и формат _action_out.
-- [ ] Добавить nullable source_kind/source_id/expires_at в AIAction;
-  source guard только для source-bound actions, legacy NULL остаётся рабочим.
-  Новые ошибки — ACTION_EXPIRED/ACTION_SOURCE_STALE; ACTION_NOT_PENDING уже есть.
-- [ ] Args immutable после preview; approve принимает action ID без клиентского
+- [x] Добавить nullable source_kind/source_id/expires_at в AIAction;
+  approve не читает source: только action CAS/status и expires_at; legacy NULL работает.
+  ACTION_EXPIRED ставит сервис; ACTION_SOURCE_STALE — инвалидатор в result_json
+  при status=failed. ACTION_NOT_PENDING уже есть. TTL новых suggestions: 24 часа.
+- [x] Args immutable после preview; approve принимает action ID без клиентского
   payload. Receipt — AIAction.status/result_json, новую таблицу не создавать.
-- [ ] RED/GREEN: nullable migration compatibility, owner/source/expiry checks,
+- [x] RED/GREEN: nullable migration compatibility, owner/source/expiry checks,
   repeat approval, failed handler rollback; regression всех старых write tools.
   Отдельно concurrent approve и approve/reject на disposable PostgreSQL.
-- [ ] Commit: `refactor(ai): share action approval and source checks`.
+- [x] Commit: `refactor(ai): share action approval and source checks`.
 
 ## Task 2 — замкнуть trigger → proposal → private buttons → task
 
@@ -52,16 +53,18 @@ Tests: новый `backend/tests/test_telegram_task_suggestions.py`, transport t
   Новые настройки — nullable chat_id и enabled_at; нет historical backlog scan.
 - [ ] Добавить только nullable `TelegramBusinessMessage.task_suggestion_state`;
   ingestion ставит queued для нового подходящего inbound. Новый worker claims
-  через UPDATE WHERE state='queued'. TelegramBusinessCommand и его worker не менять.
+  через UPDATE WHERE state='queued', без увеличения message.version.
+  TelegramBusinessCommand и его worker не менять.
   Interrupted generating → failed без автоповтора; no-candidate тоже terminal.
 - [ ] Перед моделью сохранить edited_at; после модели взять источник FOR UPDATE
   и сравнить edited_at/deleted_at. Pending-actions инвалидировать при remote edit,
   delete, clear/purge, retention и off. Ни content_version, ни action.source_version.
-  Порядок блокировок в worker/approve/invalidation: integration → source → action.
+  Worker/invalidation: integration → source → action. Approve — только CAS action.
 - [ ] Extractor использует текущий provider/budget/timeout, tools=(), strict
   CreateTaskToolArgs|null. Проверить source/allowlist до и после модели; неясный
   срок оставить пустым. Создать приватные AIConversation/AIRun и pending AIAction
-  с минимальными metadata, без полной копии чата; закрепить источник/TTL.
+  с минимальными metadata, без полной копии чата; expires_at = created_at + 24 часа
+  (либо раньше, если source retention заканчивается раньше).
 - [ ] Лимит v1: 20 попыток модели на integration за UTC-день + текущий monthly
   budget; резервировать попытку durable AIRun до I/O под integration lock,
   учитывать ошибки/рестарты. Лимит исчерпан → skipped_limit, без backlog на завтра.
@@ -89,7 +92,7 @@ Tests: новый `backend/tests/test_telegram_task_suggestions.py`, transport t
 7. Expiry/недоступный проект/policy denial → нет записи, legacy Web approvals работают.
 8. Injection в RU/KK/EN не выдаёт tools/scopes и не публикует private данные контакту.
 9. Restart/replayed update не дублирует analysis/action; unknown private send не replay.
-10. Draft/send не инвалидирует source; неясный срок не угадывается; дневной лимит
+10. Suggestion-state не меняет message.version и не ломает draft CAS; неясный срок не угадывается; дневной лимит
     (включая concurrent workers и restart) не превышается; cleanup покрывает новое state.
 
 Run relevant pytest, full backend, Ruff/mypy/Bandit и migration checks; точные

@@ -32,7 +32,6 @@ from app.core.models import (
 from app.core.security import bearer_scheme, current_principal, decode_token
 from app.domains import capture
 from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -649,11 +648,6 @@ def _action_out(action: AIAction) -> dict[str, Any]:
     return {"id": action.id, "conversation_id": action.conversation_id, "run_id": action.run_id, "tool": action.tool,
             "title": action.title, "summary": action.summary, "items": action.items_json, "status": action.status,
             "result": action.result_json, "message_id": action.message_id, "created_at": action.created_at, "updated_at": action.updated_at}
-async def _owned_action(db: AsyncSession, owner_id: str, action_id: str) -> AIAction:
-    action = await db.get(AIAction, action_id)
-    if not action or action.owner_id != owner_id:
-        raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "Action not found"})
-    return action
 @router.get("/ai/conversations/{conversation_id}/actions")
 async def conversation_actions(conversation_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     user, _ = principal
@@ -661,45 +655,15 @@ async def conversation_actions(conversation_id: str, principal=Depends(current_p
     return [_action_out(a) for a in (await db.execute(select(AIAction).where(AIAction.owner_id == user.id, AIAction.conversation_id == conversation_id).order_by(AIAction.created_at, AIAction.id))).scalars()]
 @router.post("/ai/actions/{action_id}/approve")
 async def approve_action(action_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    from .actions import approve_action as approve
     user, _ = principal
-    action = await _owned_action(db, user.id, action_id)
-    if action.status == "rejected":
-        raise HTTPException(409, detail={"code": "ACTION_REJECTED", "message": "This action was rejected"})
-    if action.status != "pending":
-        return _action_out(action)  # approved or failed: second call returns the stored result
-    from .personal_tools import personal_tool_registry
-    claimed = await db.execute(update(AIAction).where(AIAction.id == action_id, AIAction.owner_id == user.id, AIAction.status == "pending").values(status="approved"))
-    if int(getattr(claimed, "rowcount", 0) or 0) != 1:
-        await db.rollback()
-        await db.refresh(action)
-        return _action_out(action)
-    registry = personal_tool_registry(db, user.id, action.id)
-    call = ToolCall(action.tool, action.arguments_json or {}, action.id)
-    project_id = (action.arguments_json or {}).get("project_id")
-    try:
-        context = PermissionContext(actor=f"owner:{user.id}", scopes=frozenset({registry.descriptor(action.tool).required_scope}),
-                                    project_ids=frozenset({str(project_id)}) if project_id is not None else frozenset(), policy_id="ai-action-approval")
-        result = dict(await registry.invoke(call, context))
-        await db.execute(update(AIAction).where(AIAction.id == action_id).values(result_json=jsonable_encoder(result)))
-        await db.commit()
-    except (PolicyDenied, ToolValidationError, RuntimeError) as error:
-        await db.rollback()
-        code = "POLICY_DENIED" if isinstance(error, PolicyDenied) else "VALIDATION_ERROR" if isinstance(error, ToolValidationError) else "TOOL_ERROR"
-        await db.execute(update(AIAction).where(AIAction.id == action_id, AIAction.status == "pending").values(status="failed", result_json={"error": {"code": code, "message": redact_error(error)}}))
-        await db.commit()
-    await db.refresh(action)
-    return _action_out(action)
+    return _action_out(await approve(db, user.id, action_id))
+
 @router.post("/ai/actions/{action_id}/reject")
 async def reject_action(action_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    from .actions import reject_action as reject
     user, _ = principal
-    action = await _owned_action(db, user.id, action_id)
-    if action.status == "pending":
-        await db.execute(update(AIAction).where(AIAction.id == action_id, AIAction.owner_id == user.id, AIAction.status == "pending").values(status="rejected"))
-        await db.commit()
-        await db.refresh(action)
-    if action.status != "rejected":
-        raise HTTPException(409, detail={"code": "ACTION_NOT_PENDING", "message": f"This action is already {action.status}"})
-    return _action_out(action)
+    return _action_out(await reject(db, user.id, action_id))
 
 @router.get("/ai/runs/{run_id}", response_model=RunOut)
 async def get_run(run_id:str,principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):

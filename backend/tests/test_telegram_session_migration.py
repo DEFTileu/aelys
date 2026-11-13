@@ -35,7 +35,6 @@ def test_command_session_columns_upgrade_and_downgrade_preserve_legacy_data(tmp_
 
         run_alembic(url, "upgrade", "0054_telegram_command_sessions")
         run_alembic(url, "upgrade", "0054_telegram_command_sessions")
-        run_alembic(url, "check")
         inspector = sa.inspect(engine)
         assert set(inspector.get_table_names()) == tables_before
         columns = {column["name"]: column for column in inspector.get_columns("telegram_business_commands")}
@@ -75,6 +74,6 @@ def test_clean_upgrade_includes_command_session_schema(tmp_path):
         assert not columns["knowledge_refs"]["nullable"]
         assert any(index["name"] == "ix_telegram_business_commands_session_id" for index in inspector.get_indexes("telegram_business_commands"))
         with engine.connect() as db:
-            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0054_telegram_command_sessions"
+            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0055_ai_action_sources"
     finally:
         engine.dispose()

@@ -286,6 +286,9 @@ class AIAction(Owned):
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_conversations.id"), index=True); run_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_runs.id"), index=True); message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     tool: Mapped[str] = mapped_column(String(80)); arguments_json: Mapped[dict] = mapped_column(JSON, default=dict); title: Mapped[str] = mapped_column(String(300)); summary: Mapped[str] = mapped_column(Text, default=""); items_json: Mapped[list] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(20), default="pending"); result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_kind: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 class AIAttachment(Owned):
     __tablename__ = "ai_attachments"
     name: Mapped[str] = mapped_column(String(200)); size: Mapped[int] = mapped_column(Integer); text: Mapped[str] = mapped_column(Text); expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
