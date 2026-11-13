@@ -5,6 +5,16 @@ Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line p
 
 Status: **PASS**, **FAIL** (reported, not tuned away), **PENDING** (needs a measurement not yet taken).
 
+**Latest paired-board checkpoint:** [2026-11-13 measurements](performance-2026-11-13.md).
+The historical baseline rows below do not close current acceptance: instrumented
+screen changes reached 40.390 ms per refresh and 50.109 ms post-to-DMA with the
+32 KB cache (**FAIL** against 25/50 ms). The 32 KB probe's minimum since boot was
+50472 B, versus 18348 B with 64 KB. A normal 32 KB image is checked separately;
+it reported 96095 B free internal heap and 62828 B minimum since boot after
+channel establishment (four once-per-minute records). `boot_ms=1774` is a
+current **FAIL** against 1500 ms. Day-long online heap and 30-minute reconnect
+acceptance remain pending.
+
 | Budget (§4.6) | Target | Measured | Status | How measured |
 |---|---|---|---|---|
 | Animations | 60 fps, synced with TE; worst frame <= 25 ms | Bouncing-circle bench (display bring-up): 59.9 fps, worst 16.7-16.9 ms. Two-button hold ring: ~48 fps, worst 35-42 ms (accepted for v1). Idle home: fps 2.7-5.4, worst 15.5-18.9 ms | PASS (hold ring excepted) | Bench numbers from the display bring-up; the hold-ring miss is a recorded v1 exception. |

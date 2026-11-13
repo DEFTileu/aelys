@@ -1,5 +1,10 @@
 # P1 measurement probe audit — 2026-11-13
 
+Subsequent real-board captures and the 32 KB cache comparison are recorded in
+[Paired-board performance](performance-2026-11-13.md). The pending-board statements
+below describe the audit/build checkpoint before those captures; DMA/queue fault
+injection, long-duration acceptance and total instrumentation cost remain open.
+
 Scope: the seven-file `CONFIG_AELYS_PERF_PROBE` prototype left in
 `feat/companion-face-perf`, and its P1 replacement. The original findings below
 are retained as the audit record. The replacement is host-tested and builds in
