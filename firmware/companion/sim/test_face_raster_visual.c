@@ -8,6 +8,7 @@
 #include "ui_face_priv.h"
 
 static uint32_t image_data[390*221];
+static uint32_t rotated_data[390*221];
 static uint16_t reference[SIM_W*SIM_H];
 static int scaled(int value, int scale) { return (value*scale + 50)/100; }
 static void compare(mood_t mood, face_raster_eye_t eye, int scale)
@@ -98,6 +99,34 @@ static void compare_ring(int phase)
     CHECK(diff<500);
     lv_obj_delete(image); sim_step(20);
 }
+static void compare_software_rotation(int degrees)
+{
+    memset(image_data,0,sizeof image_data); memset(rotated_data,0,sizeof rotated_data);
+    face_raster_surface_t src={.pixels=image_data,.width=300,.height=170,.stride=300,.capacity=390*221};
+    face_raster_surface_t dst={.pixels=rotated_data,.width=300,.height=170,.stride=300,.capacity=390*221};
+    face_raster_eye_t eye={.x=58,.y=35,.width=70,.height=100,.radius=35,.top_rgb=0xcdbfff,.bottom_rgb=0x7c58f4};
+    CHECK(face_raster_eye(&src,&eye)); eye.x=172; CHECK(face_raster_eye(&src,&eye));
+    lv_draw_buf_t sb,db;
+    CHECK_EQ(lv_draw_buf_init(&sb,300,170,LV_COLOR_FORMAT_ARGB8888,0,image_data,sizeof image_data),LV_RESULT_OK);
+    CHECK_EQ(lv_draw_buf_init(&db,300,170,LV_COLOR_FORMAT_ARGB8888,0,rotated_data,sizeof rotated_data),LV_RESULT_OK);
+    lv_draw_buf_set_flag(&sb,LV_IMAGE_FLAGS_MODIFIABLE); lv_draw_buf_set_flag(&db,LV_IMAGE_FLAGS_MODIFIABLE);
+    lv_obj_t *image=lv_image_create(lv_screen_active()); lv_image_set_src(image,&sb); lv_obj_set_pos(image,80,140);
+    lv_image_set_pivot(image,150,85); lv_image_set_rotation(image,degrees*10);
+    sim_step(20); lv_refr_now(NULL); memcpy(reference,sim_fb(),sizeof reference);
+    lv_obj_delete(image); sim_step(20);
+    CHECK(face_raster_rotate(&src,&dst,150,85,lv_trigo_cos((int16_t)degrees),lv_trigo_sin((int16_t)degrees)));
+    image=lv_image_create(lv_screen_active()); lv_image_set_src(image,&db); lv_obj_set_pos(image,80,140);
+    sim_step(20); lv_refr_now(NULL);
+    unsigned ref_lit=0,out_lit=0,overlap=0,mismatch=0;
+    for (int y=120;y<330;y++) for (int x=60;x<400;x++) {
+        bool a=reference[y*SIM_W+x]!=0,b=sim_fb()[y*SIM_W+x]!=0;
+        ref_lit+=a;out_lit+=b;overlap+=a&&b;mismatch+=a!=b;
+    }
+    fprintf(stderr,"rotation %d: reference=%u raster=%u overlap=%u silhouette=%u\n",degrees,ref_lit,out_lit,overlap,mismatch);
+    CHECK(ref_lit>10000 && out_lit>10000);
+    CHECK(mismatch<100);
+    lv_obj_delete(image); sim_step(20);
+}
 int main(void)
 {
     sim_init(); sim_direct();
@@ -114,5 +143,7 @@ int main(void)
     compare(MOOD_WORRIED,eye,130);
     const int phases[] = {0,45,90,135,180,225,270,315};
     for (unsigned i=0;i<sizeof phases/sizeof *phases;++i) compare_ring(phases[i]);
+    const int angles[] = {-9,-7,-4,4,6,9};
+    for (unsigned i=0;i<sizeof angles/sizeof *angles;++i) compare_software_rotation(angles[i]);
     return g_failed ? 1 : 0;
 }

@@ -71,7 +71,7 @@ The experimental `face_raster` module draws into caller-owned ARGB8888 storage
 without allocating: gradient pills, A8 highlights, opaque slanted or dome lids,
 and open rings with a caller-provided Q15 opening direction. It validates the
 surface capacity and clips writes; it is **not connected to the UI** and does
-not rotate or animate the face yet. Its visual comparison with the existing
+not animate or display the face. Its visual comparison with the existing
 LVGL renderer covers selected still poses and ring phases, not the design's
 complete motion or spring transitions. At 100% scale the comparison found 64,
 48 and 44 silhouette pixels different for calm, happy and worried respectively;
@@ -86,3 +86,29 @@ masks and highlights during spring retargets and blinking, rotate the composite
 with correct old/new invalidation, bound its PSRAM storage and fallback, and
 measure device CPU, heap and frame times. The renderer is a building block,
 not completion of S2.
+
+## Software rotation and image drawing experiment
+
+The experimental module also rotates one caller-owned ARGB8888 surface into
+another, with capacity and overlap checks and premultiplied bilinear sampling.
+Host tests check identity, quarter turns, rejected buffers, fractional alpha and
+colour, and transparent coloured neighbours. Six fractional angles from -9 to
+9 degrees differed from LVGL's transformed silhouette by 12–25 pixels per
+comparison; this does not establish exact colour or animation equivalence.
+
+A separate, unretained UI prototype rasterized the eyes, rotated the bitmap,
+and displayed it using `lv_draw_image`. It passed the host partial-buffer
+oracle for the exercised mood loops. At 130% scale its two 442 × 273 ARGB8888
+buffers require 965,328 bytes before alignment. Over 100 host animation steps,
+curious flushed 3,176,864 pixels in 66 refreshes versus 1,281,536 in 62 for
+the existing implementation; mischief flushed 1,129,944 in 23 versus 169,148
+in 23. These are not device performance measurements.
+
+Independent review found that each clipped image draw can open LVGL's built-in
+image decoder, which allocates and asserts on allocation failure. The checked
+bitmap allocations and their tested retry therefore do not make the complete
+path recoverable. Ordinary LVGL draws also have allocation assertions, but
+this path adds decoder allocations and substantial memory pressure. The UI
+prototype is not enabled; its diagnostic patch and allocator-fault test are in
+the ignored S2 ledger. No assertion was disabled. A recoverable drawing path,
+transition and draw-order fidelity, and board measurements remain open.

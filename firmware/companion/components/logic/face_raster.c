@@ -130,3 +130,46 @@ bool face_raster_eye(face_raster_surface_t *s, const face_raster_eye_t *e)
     }
     return true;
 }
+
+static bool surface_valid(const face_raster_surface_t *s)
+{
+    return s && s->pixels && s->width && s->height && s->width <= RASTER_LIMIT && s->height <= RASTER_LIMIT &&
+           s->stride >= s->width && (uint64_t)(s->height-1)*s->stride+s->width <= s->capacity;
+}
+
+bool face_raster_rotate(const face_raster_surface_t *src, face_raster_surface_t *dst,
+                        int32_t pivot_x, int32_t pivot_y, int32_t cos_q15, int32_t sin_q15)
+{
+    if (!surface_valid(src) || !surface_valid(dst) || src->width != dst->width || src->height != dst->height ||
+        pivot_x < -RASTER_LIMIT || pivot_x > RASTER_LIMIT*2 || pivot_y < -RASTER_LIMIT || pivot_y > RASTER_LIMIT*2 ||
+        cos_q15 < -32768 || cos_q15 > 32768 || sin_q15 < -32768 || sin_q15 > 32768 || (!cos_q15 && !sin_q15)) return false;
+    uint64_t sn=((uint64_t)(src->height-1)*src->stride+src->width)*sizeof(uint32_t);
+    uint64_t dn=((uint64_t)(dst->height-1)*dst->stride+dst->width)*sizeof(uint32_t);
+    uintptr_t sp=(uintptr_t)src->pixels, dp=(uintptr_t)dst->pixels;
+    if (sn > UINTPTR_MAX-sp || dn > UINTPTR_MAX-dp || (sp < dp+dn && dp < sp+sn)) return false;
+    for (uint32_t y=0; y<dst->height; ++y) for (uint32_t x=0; x<dst->width; ++x) {
+        int64_t dx=(int64_t)x-pivot_x, dy=(int64_t)y-pivot_y;
+        int64_t sx=(int64_t)pivot_x*256 + (dx*256*cos_q15 + dy*256*sin_q15)/32768;
+        int64_t sy=(int64_t)pivot_y*256 + (-dx*256*sin_q15 + dy*256*cos_q15)/32768;
+        int64_t ix=sx/256, iy=sy/256, fx=sx%256, fy=sy%256;
+        if (fx<0) { fx+=256; ix--; }
+        if (fy<0) { fy+=256; iy--; }
+        uint64_t alpha=0, red=0, green=0, blue=0;
+        for (int j=0;j<2;++j) for (int i=0;i<2;++i) {
+            int64_t px=ix+i, py=iy+j;
+            if (px<0 || py<0 || px>=src->width || py>=src->height) continue;
+            uint32_t color=src->pixels[(size_t)py*src->stride+(size_t)px];
+            uint64_t weight=(uint64_t)(i ? fx : 256-fx)*(uint64_t)(j ? fy : 256-fy);
+            uint64_t a=(color>>24)*weight;
+            alpha+=a; red+=((color>>16)&255u)*a; green+=((color>>8)&255u)*a; blue+=(color&255u)*a;
+        }
+        uint32_t out=0;
+        if (alpha) {
+            uint32_t a=(uint32_t)((alpha+32768)/65536);
+            if (a) out=(a<<24)|((uint32_t)((red+alpha/2)/alpha)<<16)|
+                       ((uint32_t)((green+alpha/2)/alpha)<<8)|(uint32_t)((blue+alpha/2)/alpha);
+        }
+        dst->pixels[(size_t)y*dst->stride+x]=out;
+    }
+    return true;
+}

@@ -31,3 +31,9 @@ typedef struct {
 /* Composites the eye, highlight and opaque lid in order, clipping every write.
  * Clear the caller-owned surface before a new frame. False leaves it untouched. */
 bool face_raster_eye(face_raster_surface_t *surface, const face_raster_eye_t *eye);
+
+/* Rotate between disjoint, equally sized caller-owned surfaces around an
+ * integer pixel pivot. cos/sin are Q15. Transparent edges are interpolated in
+ * premultiplied space, then stored as straight-alpha ARGB8888. No allocation. */
+bool face_raster_rotate(const face_raster_surface_t *src, face_raster_surface_t *dst,
+                        int32_t pivot_x, int32_t pivot_y, int32_t cos_q15, int32_t sin_q15);

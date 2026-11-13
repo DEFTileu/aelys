@@ -108,6 +108,46 @@ static void test_low_alpha_white_stays_white(void)
     CHECK_EQ(pixel,0x16ffffffu);
 }
 
+static void test_allocation_free_bitmap_rotation(void)
+{
+    uint32_t source[25] = {0}, target[25];
+    source[2*5+3]=0xffff0000u; source[1*5+2]=0x8000ff00u;
+    face_raster_surface_t a={.pixels=source,.width=5,.height=5,.stride=5,.capacity=25};
+    face_raster_surface_t b={.pixels=target,.width=5,.height=5,.stride=5,.capacity=25};
+    CHECK(face_raster_rotate(&a,&b,2,2,32768,0));
+    CHECK(!memcmp(source,target,sizeof source));
+    CHECK(face_raster_rotate(&a,&b,2,2,0,32768));
+    CHECK_EQ(target[3*5+2],0xffff0000u);
+    CHECK_EQ(target[2*5+3],0x8000ff00u);
+    uint32_t saved[25]; memcpy(saved,target,sizeof saved);
+    CHECK(!face_raster_rotate(&a,&a,2,2,32768,0));
+    b.capacity=24; CHECK(!face_raster_rotate(&a,&b,2,2,32768,0));
+    CHECK(!memcmp(saved,target,sizeof saved));
+    b.capacity=25; memset(source,0,sizeof source); source[2*5+3]=0x80ffffffu;
+    CHECK(face_raster_rotate(&a,&b,2,2,23170,23170));
+    for (unsigned i=0;i<25;++i) if (target[i]>>24) CHECK_EQ(target[i]&0xffffffu,0xffffffu);
+    uint32_t overlap[26]={0}; face_raster_surface_t c={.pixels=overlap,.width=5,.height=5,.stride=5,.capacity=25};
+    face_raster_surface_t d={.pixels=overlap+1,.width=5,.height=5,.stride=5,.capacity=25};
+    CHECK(!face_raster_rotate(&c,&d,2,2,32768,0));
+}
+
+static void test_rotation_interpolates_alpha_and_color(void)
+{
+    /* At 45 degrees, destination (2,1) samples (1.707,0.293).
+       Transparent blue and white must not contaminate the red/green blend. */
+    uint32_t src[9]={0,0xffff0000u,0x8000ff00u,0,0x000000ffu,0x00ffffffu,0,0,0};
+    uint32_t dst[9]={0};
+    face_raster_surface_t a={.pixels=src,.width=3,.height=3,.stride=3,.capacity=9};
+    face_raster_surface_t b={.pixels=dst,.width=3,.height=3,.stride=3,.capacity=9};
+    CHECK(face_raster_rotate(&a,&b,1,1,23170,23170));
+    CHECK_EQ(dst[5],0x75738c00u);
+    /* Composited over opaque blue, the sample remains partly transparent. */
+    unsigned alpha=dst[5]>>24;
+    CHECK_EQ((((dst[5]>>16)&255u)*alpha+127)/255,53);
+    CHECK_EQ((((dst[5]>>8)&255u)*alpha+127)/255,64);
+    CHECK_EQ(255-alpha,138);
+}
+
 static uint32_t random_word(uint32_t *state)
 {
     *state = *state * 1664525u + 1013904223u;
@@ -144,5 +184,7 @@ int main(void)
     test_star_overhang_and_opaque_lid();
     test_clipped_random_frames_keep_guards();
     test_low_alpha_white_stays_white();
+    test_allocation_free_bitmap_rotation();
+    test_rotation_interpolates_alpha_and_color();
     return g_failed ? 1 : 0;
 }
