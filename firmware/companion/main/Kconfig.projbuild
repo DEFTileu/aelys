@@ -16,6 +16,13 @@ menu "Aelys companion"
         default 60
         help
             One WARN line with heap, frame, stack and boot figures every period.
+    config AELYS_LINK_CHAOS_S
+        int "Link chaos: forced reconnect period, seconds (dev only)"
+        range 0 3600
+        default 0
+        help
+            0 = off. Otherwise the link closes its socket and signs in again after this many seconds online,
+            to measure heap at reconnect. Never set it in a release build.
     config AELYS_IDENTITY_SELFTEST
         bool "Run the identity self-test at boot (bench only)"
         default n
