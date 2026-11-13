@@ -21,7 +21,7 @@ typedef enum {
     UI_EV_ACTION,       /* [0] = act_kind_t, [1] = ok, [2..25] = error code (NUL-terminated, "OFFLINE" when not sent) */
     UI_EV_FIND,         /* [0] = 1 show the "Here I am!" overlay (the board is beeping) / 0 hide it (the sound ended). Not a screen change; any touch, key or both-buttons hold in the ui task hides it by itself and stops the sound */
     UI_EV_WIFI_ADD,     /* [0] = 0 connecting / 1 connected / 2 failed / 3 take the card off (the attempt never ran), [1..33] = SSID, [34..59] = previous SSID (25 bytes, UTF-8 safe) */
-    UI_EV_RELEASE,      /* the finger lifted, or moved 20 px or more (no payload): posted after the UI_EV_TAP / SWIPE of that touch, or alone when the touch was neither; may come twice per touch */
+    UI_EV_RELEASE,      /* hold cancelled: optional [0]=1 finger moved but remains down, [0]=0 physical lift (legacy no payload also lift). After TAP/SWIPE at lift, or alone; may come twice per touch. */
     UI_EV_BRIGHTNESS,   /* [0] = percent 5..100. Handled by main (the panel's SPI device belongs to the ui task), never reaches ui_handle_event */
 } ui_event_type_t;
 

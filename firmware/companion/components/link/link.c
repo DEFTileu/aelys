@@ -3,6 +3,7 @@
  * generation, so events of a dead one are dropped. A pairing is wiped only on LE_CHALLENGE_UNKNOWN while checking
  * (a 401 UNAUTHORIZED from /auth/device/challenge); every other failure only backs off. */
 #include <stdio.h>
+#include <stdatomic.h>
 #include <string.h>
 #include <time.h>
 #include "board.h"
@@ -50,6 +51,9 @@ static QueueHandle_t q;
 static SemaphoreHandle_t act_mu;
 static link_acts_t acts;
 static link_fsm_t fsm;
+#ifdef CONFIG_AELYS_PERF_PROBE
+static atomic_int probe_state = ATOMIC_VAR_INIT(-1);
+#endif
 static volatile bool ws_online;
 static volatile uint32_t paired_seq;  /* bumped by the net task on every PAIR_COMMIT */
 static volatile bool act_queued;
@@ -347,6 +351,9 @@ static void dispatch(link_event_t ev, int code)
         link_state_t before = fsm.st;
         uint32_t wait = 0;
         link_action_t a = link_next(&fsm, ev, code, esp_random(), &wait);
+#ifdef CONFIG_AELYS_PERF_PROBE
+        atomic_store_explicit(&probe_state, (int)fsm.st, memory_order_relaxed);
+#endif
         if (wait) backoff_deadline = ms() + wait;
         if (before != fsm.st) ESP_LOGI(TAG, "state %d -> %d", (int)before, (int)fsm.st);
         if (before == LS_ONLINE && fsm.st != LS_ONLINE) on_offline();
@@ -545,6 +552,9 @@ static void link_task(void *arg)
     seen_seq = paired_seq; /* a pairing before this point is already in identity_paired() */
     bool paired = identity_paired();
     link_fsm_init(&fsm, paired);
+#ifdef CONFIG_AELYS_PERF_PROBE
+    atomic_store_explicit(&probe_state, (int)fsm.st, memory_order_relaxed);
+#endif
     ui_posted = paired ? LINK_UI_OFFLINE : LINK_UI_UNPAIRED; /* what app_main already showed at boot */
     if (link_deps.load_snap && link_deps.load_snap(&link_mem->snap)) publish_snapshot(&link_mem->snap, false);
     ESP_LOGW(TAG, "link started: paired=%d", paired);
@@ -576,3 +586,7 @@ esp_err_t link_start(const link_deps_t *d)
     }
     return ESP_OK;
 }
+
+#ifdef CONFIG_AELYS_PERF_PROBE
+int link_probe_state(void) { return atomic_load_explicit(&probe_state, memory_order_relaxed); }
+#endif

@@ -63,3 +63,7 @@ bool link_send_raw(const char *json, size_t n);
 uint32_t link_heap_at_connect_min(void);  /* min free internal heap seen right before a TLS connect, 0 = none yet */
 uint32_t link_tls_failures(void);         /* TLS handshakes that failed (mbedTLS error or out of memory) */
 uint32_t link_ws_stack_free_min(void);    /* smallest free stack the websocket task ever showed, 0 = unknown */
+
+#ifdef CONFIG_AELYS_PERF_PROBE
+int link_probe_state(void); /* link_state_t, or -1 before initialization; bench probe only */
+#endif

@@ -8,6 +8,11 @@
 
 #define UI_SCREEN_SIZE 466
 
+#ifdef CONFIG_AELYS_PERF_PROBE
+/* UI task only. A bench screen change, never a gesture/action/hold. False under overlays or real input. */
+bool ui_probe_swipe(void);
+#endif
+
 /* screens.c: helpers */
 lv_obj_t *ui_plain(lv_obj_t *parent, int32_t w, int32_t h);      /* transparent, no border/pad, inert */
 /* Circle outline `inset` px inside the display. */
