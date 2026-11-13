@@ -131,6 +131,18 @@ also need explicit bounds. This is an untested possibility, not an enabled or
 proven recovery mechanism. A prototype would require allocation-fault and
 queued-task lifetime tests in addition to the partial-buffer oracle.
 
+An isolated host spike subsequently exercised that decoder with an 8 × 8
+caller-owned buffer: decoder registration made one LVGL allocation, the
+built-in open made one allocation per open, and the custom open made none,
+including with an allocator that rejected allocations during that open. An
+existing A8 image continued to use the built-in decoder, and both appeared in
+32-row partial-buffer output. A sequential source change plus invalidation
+redrew correctly. Runtime image and header caches did not create an entry for
+the custom source in this probe. The spike and exact commands are in the
+ignored S2 ledger (`decoder-spike/`). It did not test allocation failure during
+registration or rendering, concurrent mutation, delayed flush, cache eviction,
+rotation, or device performance; it is not connected to the firmware.
+
 In the current single UI task and software renderer, source inspection shows
 that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
 Updating the source later from the serialized UI task, outside refresh, then
