@@ -388,6 +388,27 @@ static void test_relief_lid_moves(void)
     gone(f);
 }
 
+static void test_charging_lid_scales_with_eyes(void)
+{
+    lv_obj_t *f = show(MOOD_CHARGING, 130, HX, HY, 100);
+    sim_step(2380); /* 2.5 s: breathing group at 105% */
+    lv_obj_update_layout(f);
+    lv_obj_t *eye = lv_obj_get_child(f, 0);
+    lv_obj_t *lid = lv_obj_get_child(f, 6);
+    /* A 74 px mask and its 34 px cut both follow the 105% group scale,
+       then the 130% face scale. */
+    CHECK(abs(lv_obj_get_width(lid) - 101) <= 1);
+    int cut = lv_obj_get_y(lid) + lv_obj_get_height(lid) - 1 - lv_obj_get_y(eye);
+    CHECK(abs(cut - 46) <= 1);
+    sim_step(20); /* render the animation step */
+    lv_obj_update_layout(f);
+    lv_area_t bounds; lv_obj_get_coords(eye, &bounds);
+    int cx = (bounds.x1 + bounds.x2) / 2;
+    CHECK(dark(cx, bounds.y1 + 25));
+    CHECK(lit(cx, bounds.y1 + 55));
+    gone(f);
+}
+
 static void test_asymmetric_wink_and_wake(void)
 {
     lv_obj_t *f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
@@ -439,6 +460,7 @@ int main(void)
     sim_direct(); /* redraw only what was invalidated, as the board does: stale pixels would show up */
     test_elation_confetti();
     test_relief_lid_moves();
+    test_charging_lid_scales_with_eyes();
     test_asymmetric_wink_and_wake();
     test_star_disappears_after_transition_to_no_star();
     test_smooth_eye_transition();

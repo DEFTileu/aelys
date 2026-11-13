@@ -95,11 +95,11 @@ int main(void)
     }
     /* At Home scale, follow these motions through real partial buffers; the
      * periodic UI timer can also retarget the mood during each loop. */
-    const mood_t rotating[] = {MOOD_CURIOUS, MOOD_DIZZY, MOOD_LOVE, MOOD_MISCHIEF};
-    for (unsigned m = 0; m < sizeof rotating / sizeof *rotating; ++m) {
-        scr_home_set_snap(&snap, FX_NOW, rotating[m], false);
+    const mood_t animated[] = {MOOD_CURIOUS, MOOD_DIZZY, MOOD_LOVE, MOOD_MISCHIEF, MOOD_CHARGING};
+    for (unsigned m = 0; m < sizeof animated / sizeof *animated; ++m) {
+        scr_home_set_snap(&snap, FX_NOW, animated[m], false);
         for (int frame = 0; frame < 90; ++frame) {
-            scr_home_set_snap(&snap, FX_NOW, rotating[m], false);
+            scr_home_set_snap(&snap, FX_NOW, animated[m], false);
             sim_step(34);
             exact_frame();
         }

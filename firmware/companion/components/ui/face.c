@@ -366,7 +366,8 @@ static void layout_eyes(face_t *f, uint32_t t)
             if (m->lid == LID_DROOP) cut10 += DROOP_TRAVEL * g.ty / 600; /* same timing as the sink */
             int32_t ax = e->x * 100 + e->w * 50, ay = e->y * 100 + cut10 * 10;
             group_pt(&g, sn, cs, &ax, &ay);
-            int32_t xl = ax - e->w * 50 - 200, xr = ax + e->w * 50 + 200; /* the eye plus 2 px */
+            int32_t half = (e->w * 50 + 200) * g.sc / 1000; /* eye plus 2 px, scaled with group */
+            int32_t xl = ax - half, xr = ax + half;
             int32_t yl = ay + e->lid_slope * (xl - ax) / 1000, yr = ay + e->lid_slope * (xr - ax) / 1000;
             int32_t top = d(f, ay - cut10 * 10 - 600);
             lid_set(f, side, d(f, xl), top, d(f, xr), d(f, yl) - top, d(f, yr) - top);
