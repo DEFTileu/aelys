@@ -62,3 +62,19 @@
 ## Stage gate
 
 All 32 emotion rows plus level behavior, all seven priority steps and 20 input categories must be represented and tested; trace which producers are unavailable until S3/S4/S7/S9. All host tests and IDF build pass; shots exist. Explicitly mark S1 timing/heap and S2 face fps/internal heap pending board, and do not claim a complete hardware stage or 60 fps from host timing. No merge, push or PR.
+
+## Task 4: Owner-visible character reason
+
+The existing metrics interval is 300 s and the app polls every 5 s, so it cannot carry 3 s reactions faithfully. Add a small, owner-only character-status channel: one current mood/reason plus the most recent transient reaction and server-received time. Keep only these two records, no free text, task titles, audio or sensor samples. This is derived ephemeral status; the board coalesces it and resends its latest value on reconnect, with no durable user mutation or command queue.
+
+**Ordering:** Each authenticated WebSocket connection gets a new monotonically increasing server-side epoch under the existing per-device state row lock. Device messages carry a strictly increasing per-connection `seq`; accept only the current epoch and a greater sequence, making duplicates and stale/replaced sockets no-ops. A fresh connection resets the sequence and sends the current state. On reboot the connection gets another epoch. Retain the last reaction with its server timestamp so the 5 s app poll can show it as recent instead of claiming it is current. Status received on an old or revoked device session is never accepted as a newer report. Do not send status while lost mode is active. Each report also carries the board’s applied `lost_rev`; the server rejects reports whose revision differs from its current lost-mode revision, including delayed pre-loss frames after restoration.
+
+**Files:** `backend/app/companion/{models,channel,commands}.py`, new Alembic migration after current branch head, backend companion tests, `firmware/companion/components/{logic,link,ui}`, simulator tests, `apps/web/src/lib/companion/types.ts`, existing device overview and its tests, `docs/companion-protocol.md`.
+
+- [ ] Add backend RED→GREEN tests for strict allowlisted mood/reason values, owner-only reads, duplicate/out-of-order sequence, replaced connection fencing, reconnect/reboot epoch, recent-reaction retention, lost-mode privacy and backwards-compatible absent status. Use row locking and a reversible migration; no log of character data.
+- [ ] Add a portable bounded C status publisher with coherent one-writer/one-reader transfer, per-connection sequence, unchanged-value coalescing, resend on reconnect, bounded non-blocking behavior, and no frontend secrets; test clock wrap, races, reconnect, queue pressure, and failed sends. Encode only allowlisted stable string IDs, no arbitrary text.
+- [ ] Connect the link task, preserving loss/reconnect behavior and user action priority; UI records changes even when Home is hidden. Board output remains silent.
+- [ ] Add the existing owner device overview's current reason and time-limited recent reaction using typed response data. Treat offline/lost/stale status honestly and handle absent/unknown values. Test owner page rendering, stale data and backwards compatibility.
+- [ ] Run host ctest, IDF build, backend companion tests including migration checks, web tests/typecheck and branch review; document any unavailable Postgres or board evidence. No deploy, push, PR or merge.
+
+**Progress:** Backend persistence and owner read are implemented as an intermediate slice; firmware publication, app rendering, protocol documentation and end-to-end verification remain open. SQLite migration is tested; PostgreSQL and concurrent live reconnect stress remain pending. Do not deploy this slice alone.

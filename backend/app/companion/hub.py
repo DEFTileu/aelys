@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from weakref import WeakValueDictionary
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -45,9 +46,17 @@ class CompanionHub:
     def __init__(self) -> None:
         self.debounce = DEBOUNCE_SECONDS  # tests shrink this
         self._connections: dict[str, _Connection] = {}
+        self._connection_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
         self._pending: dict[str, asyncio.Task[None]] = {}  # owners inside their debounce window
         self._background: set[asyncio.Task[None]] = set()
         self._owner_locks: dict[str, asyncio.Lock] = {}  # build + send as one unit keeps an older snapshot from landing last
+
+    def connection_lock(self, device_id: str) -> asyncio.Lock:
+        lock = self._connection_locks.get(device_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._connection_locks[device_id] = lock
+        return lock
 
     def register(self, device_id: str, owner_id: str, send: Send, close: Close | None = None) -> Callable[[], None]:
         connection = _Connection(device_id, owner_id, send, close)
