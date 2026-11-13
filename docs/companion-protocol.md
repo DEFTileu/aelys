@@ -20,6 +20,12 @@ name, code or close code requires a new version of this file.
 - Heartbeat: the board sends `heartbeat` every 30 s; the server answers
   `heartbeat_ack`. The server re-checks the device and session every 60 s and
   closes the socket if they are no longer valid.
+- WebSocket pings: the server (uvicorn/websockets) pings every 20 s. The board
+  must answer pings (pongs), or the connection is closed with `1011`.
+- Maximum server to board frame: 4096 bytes (UTF-8). The server keeps a
+  `snapshot` under it by cutting every title to 80 characters (the last one
+  becomes `…` when cut). Worst case (five 80-character Cyrillic notices with
+  long kinds, plus task, event and focus) is about 2.9 KB.
 - Ids: `id` fields are opaque strings. The receiver echoes them back unchanged
   and compares them only for equality. Examples use UUIDs. The server requires
   an action `id` to be a UUID v4 chosen by the board.
@@ -37,10 +43,15 @@ name, code or close code requires a new version of this file.
 
 | Code | Meaning | Board behaviour |
 |---|---|---|
-| `4401` | Auth: token or session invalid or expired | Re-login by device signature, then reconnect. |
-| `4403` | Device revoked, missing, or not a companion | Re-check with `/auth/device/challenge`. Wipe pairing only if that response says the device is unknown or revoked. |
+| `4401` | Auth: token or session invalid or expired | Re-login by device signature, then reconnect. Expected roughly every 15 min (the access-token lifetime), so it is normal, not an error. |
+| `4403` | Device revoked, missing, or not a companion | Call `/auth/device/challenge`. Wipe pairing ONLY if it answers `401 UNAUTHORIZED`. A `429`, a `5xx` or a network error never wipes pairing: back off and retry. |
 | `1011` | Server error or failed send (for example the first snapshot could not be built or sent) | Back off and reconnect with the same token; a fresh snapshot follows. |
 | `4000` | Replaced by a newer connection of the same device | This socket is closed and must not reconnect; the newer connection is live. |
+| any other code (for example `1000`, `1009`, `1012` during a server deploy) or a network drop | The connection is gone | Back off 1 to 60 s with jitter and reconnect. |
+
+Lost mode survives a pairing wipe: after a wipe the board keeps showing the
+lost screen until the owner turns lost mode off through the app. The board
+never clears lost mode locally.
 
 ## Board to server
 
@@ -65,6 +76,10 @@ name, code or close code requires a new version of this file.
 `kind` is one of the action kinds listed below. Repeating an `id` returns the
 stored `action_result` without a second effect. A non-UUID `id` or a non-object
 `payload` gets `error` with `code: "VALIDATION_ERROR"`, not `action_result`.
+That `error` carries no `id`, so the board cannot match it to the action: if no
+`action_result` arrives within 10 s, the board resends the action with a NEW
+`id`. While the board is in lost mode every action, whatever its `kind`, gets
+`action_result` with `ok: false` and `error_code: "POLICY_DENIED"`.
 ```json
 {"type": "action", "id": "5f0c2a7e-3b1d-4c8e-9a6f-2d7b1e4c9a10", "kind": "focus.start", "payload": {"mode": "pomodoro"}}
 ```
@@ -114,6 +129,16 @@ Full replacement of the board's state. No partial patches in v1.
 {"type": "snapshot", "snapshot": {"generated_at": "2026-11-13T09:30:00Z", "next_task": {"id": "t-101", "title": "Submit report", "due_at": "2026-11-13T12:00:00Z"}, "overdue_count": 1, "next_event": {"id": "e-22", "title": "Standup", "starts_at": "2026-11-13T10:00:00Z", "ends_at": "2026-11-13T10:15:00Z", "all_day": false}, "unread_count": 5, "notices": [{"id": "n-9", "kind": "task.reminder", "title": "Submit report soon", "created_at": "2026-11-13T09:00:00Z"}], "focus": {"id": "f-3", "status": "active", "mode": "pomodoro", "started_at": "2026-11-13T09:10:00Z", "elapsed_seconds": 1200}}}
 ```
 
+Lost mode: while the owner's lost mode is on for this board, every snapshot
+sent to it (the first one after `ready`, pushes, and `GET
+/api/v1/companion/snapshot`) has `next_task`, `next_event` and `focus` null,
+`notices` empty and `overdue_count` 0. Only `generated_at` and `unread_count`
+keep their values. When lost mode is turned off a normal snapshot is pushed
+right away.
+
+Time: the server does not push when a task or event time passes (v1). The board
+hides `next_task` and `next_event` locally once their time has passed.
+
 Snapshot schema (`CompanionSnapshot`):
 
 | Field | Type | Notes |
@@ -126,6 +151,7 @@ Snapshot schema (`CompanionSnapshot`):
 | `notices` | `SnapNotice[]` | Max 5, newest first. Only kinds `task.*`, `calendar.*`, `focus.*`. |
 | `focus` | `SnapFocus \| null` | Only when status is `active` or `paused`. |
 
+- Every `title` is at most 80 characters (cut with a trailing `…`).
 - `SnapTask`: `id` str, `title` str, `due_at` datetime.
 - `SnapEvent`: `id` str, `title` str, `starts_at` datetime, `ends_at` datetime or null, `all_day` bool.
 - `SnapNotice`: `id` str, `kind` str, `title` str, `created_at` datetime. No body and no data.
@@ -203,7 +229,7 @@ Result error codes (`action_result.error_code`):
 - `NO_ACTIVE_FOCUS`: a `focus.pause`, `focus.resume` or `focus.stop` found no active session.
 - `NOT_FOUND`: the notification or task does not exist or belongs to another owner.
 - `VALIDATION_ERROR`: the payload is invalid (for example a `focus.start` `mode` other than `pomodoro` or `stopwatch`).
-- `POLICY_DENIED`: the Policy Engine denied the action.
+- `POLICY_DENIED`: the Policy Engine denied the action, or the board is in lost mode.
 - `ACTION_FAILED`: the action failed for a reason the board cannot act on.
 
 Errors from the shared services pass through as-is only for `TIMER_ACTIVE`
