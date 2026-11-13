@@ -11,6 +11,7 @@ COMPANION_ALLOWED: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/v1/companion/actions"),
     ("GET", "/api/v1/devices/{device_id}/firmware"),
     ("GET", "/api/v1/companion/firmware/{version}/image"),
+    ("POST", "/api/v1/companion/coredumps"),
 })
 
 

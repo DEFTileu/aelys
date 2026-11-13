@@ -1471,6 +1471,175 @@
         }
       }
     },
+    "/api/v1/companion/coredumps": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Upload Coredump",
+        "operationId": "upload_coredump_api_v1_companion_coredumps_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Fw-Version",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Fw-Version"
+            }
+          },
+          {
+            "name": "X-Elf-Sha256",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Elf-Sha256"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DumpId"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/coredumps": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "List Coredumps",
+        "operationId": "list_coredumps_api_v1_companion_devices__device_id__coredumps_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DumpOut"
+                  },
+                  "title": "Response List Coredumps Api V1 Companion Devices  Device Id  Coredumps Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/coredumps/{dump_id}": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Download Coredump",
+        "operationId": "download_coredump_api_v1_companion_devices__device_id__coredumps__dump_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dump_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dump Id"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/browser/status": {
       "get": {
         "tags": [
@@ -10763,6 +10932,60 @@
           "version"
         ],
         "title": "DraftPatch"
+      },
+      "DumpId": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "DumpId"
+      },
+      "DumpOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "fw_version": {
+            "type": "string",
+            "title": "Fw Version"
+          },
+          "elf_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elf Sha256"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "fw_version",
+          "elf_sha256",
+          "size",
+          "created_at"
+        ],
+        "title": "DumpOut"
       },
       "EnglishCourse": {
         "properties": {
