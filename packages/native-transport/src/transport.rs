@@ -2126,6 +2126,14 @@ fn reauth_prefix(purpose: &str) -> Result<&'static str, String> {
         _ => Err(err("INVALID_REQUEST")),
     }
 }
+/// What the Touch ID prompt says: the owner must see which action they are approving.
+fn reauth_reason(purpose: &str) -> Result<&'static str, String> {
+    match purpose {
+        "lost_off" => Ok("Turn off lost mode on Aelys"),
+        "unpair" => Ok("Unpair Aelys"),
+        _ => Err(err("INVALID_REQUEST")),
+    }
+}
 async fn reauth_challenge(
     client: &Client,
     origin: &str,
@@ -2154,6 +2162,7 @@ pub async fn native_device_reauth(
     check_window(&window)?;
     let origin = origin_fn(&origin)?;
     let prefix = reauth_prefix(&purpose)?;
+    let reason = reauth_reason(&purpose)?;
     if !valid_id(&target_device_id) {
         return Err(err("INVALID_REQUEST"));
     }
@@ -2171,9 +2180,9 @@ pub async fn native_device_reauth(
             .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
         (session.record.device_id.clone(), key)
     };
-    tauri::async_runtime::spawn_blocking(|| {
+    tauri::async_runtime::spawn_blocking(move || {
         if crate::biometric::available() {
-            crate::biometric::authenticate()?;
+            crate::biometric::authenticate_for(reason)?;
         }
         Ok::<(), String>(())
     })
@@ -5160,6 +5169,19 @@ mod tests {
                 &signature,
             )
             .unwrap();
+    }
+    #[test]
+    fn reauth_prompt_names_the_action() {
+        assert_eq!(
+            reauth_reason("lost_off").unwrap(),
+            "Turn off lost mode on Aelys"
+        );
+        assert_eq!(reauth_reason("unpair").unwrap(), "Unpair Aelys");
+        assert_eq!(reauth_reason("login").unwrap_err(), "INVALID_REQUEST");
+        assert_eq!(
+            crate::biometric::DEFAULT_REASON,
+            "Разблокировать сохранённую сессию"
+        );
     }
     #[test]
     fn reauth_rejects_unknown_purposes() {
