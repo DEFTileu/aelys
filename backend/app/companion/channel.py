@@ -193,6 +193,12 @@ async def _supervise(link: _Link, session_id: str, token_exp: int) -> None:
             return
 
 
+async def _reject(websocket: WebSocket, code: int) -> None:
+    """Accept, then close: a close before the handshake becomes a bare HTTP 403 under uvicorn and the board never sees the code."""
+    await websocket.accept()
+    await websocket.close(code=code)
+
+
 @router.websocket("/devices/channel")
 async def device_channel(websocket: WebSocket) -> None:
     authorization = websocket.headers.get("authorization")
@@ -203,10 +209,10 @@ async def device_channel(websocket: WebSocket) -> None:
         if claims.get("typ") != "access" or not owner_id or not device_id or not session_id:
             raise ValueError("device session access token required")
     except Exception:  # noqa: BLE001 - untrusted credentials fail closed
-        await websocket.close(code=AUTH_CLOSE_CODE)
+        await _reject(websocket, AUTH_CLOSE_CODE)
         return
     if (code := await _validate(owner_id, device_id, session_id)) is not None:
-        await websocket.close(code=code)
+        await _reject(websocket, code)
         return
 
     await websocket.accept()
@@ -240,9 +246,9 @@ async def device_channel(websocket: WebSocket) -> None:
                 message, sent = await outbox.get()
                 try:
                     await websocket.send_json(message)
-                except Exception as exc:
+                except BaseException as exc:  # cancellation too: the hub must not wait out its send timeout under the owner lock
                     if sent and not sent.done():
-                        sent.set_exception(exc)
+                        sent.set_exception(exc if isinstance(exc, Exception) else ConnectionError("channel closed"))
                     raise
                 if sent and not sent.done():
                     sent.set_result(None)
@@ -266,7 +272,13 @@ async def device_channel(websocket: WebSocket) -> None:
     try:
         await reply({"type": "ready", "device_id": device_id})
         unregister = hub.register(device_id, owner_id, push, close)
-        await hub.push_snapshot(device_id)  # after register, under the owner's lock: a concurrent push can't land after it
+        if (code := await _validate(owner_id, device_id, session_id)) is not None:  # a revoke between the first check and register
+            await close(code)
+            return
+        # After register and under the owner's lock: a concurrent push can't land after it. No snapshot, no session.
+        if not await hub.push_snapshot(device_id):
+            await close(ERROR_CLOSE_CODE)
+            return
         tasks += [asyncio.create_task(reader()), asyncio.create_task(gone.wait()),
                   asyncio.create_task(_supervise(link, session_id, int(claims["exp"])))]
         done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)

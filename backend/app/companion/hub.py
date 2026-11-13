@@ -103,11 +103,10 @@ class CompanionHub:
         if not task.cancelled() and (error := task.exception()):
             logger.warning("companion hub task failed reason=%s", type(error).__name__)
 
-    async def push_snapshot(self, device_id: str) -> None:
-        """Send one board a fresh snapshot, ordered against the owner's other pushes."""
+    async def push_snapshot(self, device_id: str) -> bool:
+        """Send one board a fresh snapshot, ordered against the owner's other pushes; False if it did not go out."""
         connection = self._connections.get(device_id)
-        if connection:
-            await self._push(connection.owner_id, device_id)
+        return connection is not None and await self._push(connection.owner_id, device_id)
 
     async def _flush(self, owner_id: str) -> None:
         try:
@@ -117,11 +116,11 @@ class CompanionHub:
                 del self._pending[owner_id]
         await self._push(owner_id, None)
 
-    async def _push(self, owner_id: str, device_id: str | None) -> None:
+    async def _push(self, owner_id: str, device_id: str | None) -> bool:
         async with self._owner_locks.setdefault(owner_id, asyncio.Lock()):
             targets = [c for c in self._connections.values() if c.owner_id == owner_id and device_id in (None, c.device_id)]
             if not targets:
-                return
+                return False
             # lazy: snapshot imports domains, which import this hub
             from app.companion.snapshot import build_snapshot
 
@@ -130,9 +129,9 @@ class CompanionHub:
                     snapshot = await asyncio.wait_for(build_snapshot(db, owner_id, datetime.now(UTC)), BUILD_TIMEOUT_SECONDS)
             except Exception as exc:  # noqa: BLE001 - a failed or hung rebuild must not kill the hub
                 logger.warning("companion snapshot rebuild failed owner=%s reason=%s", owner_id, type(exc).__name__)
-                return
+                return False
             message = {"type": "snapshot", "snapshot": snapshot.model_dump(mode="json")}
-            await asyncio.gather(*(self._send(c, message) for c in targets))
+            return all(await asyncio.gather(*(self._send(c, message) for c in targets)))
 
     async def _send(self, connection: _Connection, message: dict) -> bool:
         try:

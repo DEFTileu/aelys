@@ -284,3 +284,98 @@ async def test_hung_snapshot_build_releases_the_owner_lock(engine, monkeypatch):
     local.mark_owner_dirty('o')
     await asyncio.wait_for(local.wait_idle(), 2)
     assert sent == [] and not local._owner_locks['o'].locked()
+
+
+@pytest.mark.asyncio
+async def test_revoke_between_auth_and_register_is_caught(paired, monkeypatch):
+    _, _, token = paired
+    calls = []
+
+    async def late_revoke(*args):
+        calls.append(1)
+        return None if len(calls) == 1 else 4403  # the second check (right after register) sees the revoke
+    monkeypatch.setattr(channel_module, '_validate', late_revoke)
+    with TestClient(app) as client, client.websocket_connect(CHANNEL, headers=headers(token)) as socket:
+        with pytest.raises(WebSocketDisconnect) as info:
+            while True:  # `ready` may or may not get out before the close
+                socket.receive_json()
+        assert info.value.code == 4403
+
+
+@pytest.mark.asyncio
+async def test_failed_first_snapshot_closes_with_1011(paired, monkeypatch):
+    _, _, token = paired
+
+    async def failing(device_id):
+        return False
+    monkeypatch.setattr(hub, 'push_snapshot', failing)
+    with TestClient(app) as client, client.websocket_connect(CHANNEL, headers=headers(token)) as socket:
+        assert socket.receive_json()['type'] == 'ready'
+        with pytest.raises(WebSocketDisconnect) as info:
+            socket.receive_json()
+        assert info.value.code == 1011
+
+
+@pytest.mark.asyncio
+async def test_push_snapshot_reports_failure(engine, monkeypatch):
+    from app.companion import hub as hub_module
+    from app.companion import snapshot as snapshot_module
+    local = hub_module.CompanionHub()
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    async def broken(*_):
+        raise RuntimeError('db down')
+    assert await local.push_snapshot('nobody') is False
+    local.register('d', 'o', send)
+    monkeypatch.setattr(snapshot_module, 'build_snapshot', broken)
+    assert await local.push_snapshot('d') is False and sent == []
+
+
+class _Server:
+    """A real uvicorn on an ephemeral port: TestClient cannot show what the handshake really does."""
+
+    def __enter__(self):
+        import threading
+
+        import uvicorn
+        self.server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=0, lifespan='off', log_level='warning'))
+        self.thread = threading.Thread(target=lambda: asyncio.run(self.server.serve()), daemon=True)
+        self.thread.start()
+        deadline = time.monotonic() + 10
+        while not self.server.started and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert self.server.started
+        self.port = self.server.servers[0].sockets[0].getsockname()[1]
+        return self
+
+    def __exit__(self, *_):
+        self.server.should_exit = True
+        self.thread.join(10)
+
+
+async def real_close_code(port, token):
+    import websockets
+    headers = {'Authorization': f'Bearer {token}'} if token else {}
+    async with websockets.connect(f'ws://127.0.0.1:{port}{CHANNEL}', additional_headers=headers) as socket:  # raises if the handshake is rejected
+        with pytest.raises(websockets.ConnectionClosed) as info:
+            await asyncio.wait_for(socket.recv(), 5)
+    return info.value.rcvd.code
+
+
+@pytest.mark.asyncio
+async def test_real_server_delivers_close_codes_after_the_handshake(paired):
+    owner, device_id, token = paired
+    async with db.SessionLocal() as session:
+        sid = (await session.execute(select(AuthSession.id).where(AuthSession.device_id == device_id))).scalars().first()
+        owner_id = (await session.get(Device, device_id)).owner_id
+    expired = create_token(owner_id, 'access', -10, device_id, sid)
+    with _Server() as server:
+        assert await real_close_code(server.port, 'garbage') == 4401
+        assert await real_close_code(server.port, '') == 4401
+        assert await real_close_code(server.port, token[:-2] + 'xx') == 4401
+        assert await real_close_code(server.port, owner['access_token']) == 4403  # a macOS device, not a companion
+        # An expired token is rejected by decode_token, so exp=-10 never reaches the session lookup.
+        assert await real_close_code(server.port, expired) == 4401
