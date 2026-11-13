@@ -30,6 +30,7 @@ Tick each box as you go. "Agent" steps are run by the coding agent on the board;
 
 - [ ] **Compare the pairing code.** During pairing the 6 digits on the round screen equal the 6 digits in the web page and the line `improv_pair.py` prints.
 - [ ] **Pair.** The board must be unpaired (Check 2 leaves it so), then in the web app: Settings, Devices, Add companion, plug the board in over USB, type the code. The board shows "Paired" and is online within 10 s (the overview shows Wi-Fi, battery, firmware).
+- [ ] **Pair from the Mac app.** Same steps in the Mac app (it has no Web Serial, so it talks to the board through its own USB bridge): Settings, Devices, Add companion, "Connect Aelys" (no port chooser; with several boards plugged in it takes the first), type the code. Unplug the cable mid-pairing: the page shows an error and a replug followed by "Connect Aelys" starts over. The Android app keeps the "connect it by USB to Aelys on your Mac or on the web" hint.
 - [ ] **Today / Aelys / Focus live.** The app and the board agree after each action: complete a task, start / pause / stop Focus, mark a notice read.
 - [ ] **Lost mode on and off.** On from the web and from the Mac app (or Android). Off asks for your fingerprint where the device has one. Check the QR / contact toggles on the lost screen.
 - [ ] **ICE with Cyrillic names.** Save an emergency contact with a Cyrillic (and Kazakh) name and relation; the ICE card and lost screen show them without missing letters or cut-off bytes.
