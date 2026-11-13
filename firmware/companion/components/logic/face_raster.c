@@ -45,9 +45,9 @@ static uint32_t over(uint32_t dst, uint32_t rgb, unsigned alpha)
     return out;
 }
 
-bool face_raster_eye(face_raster_surface_t *s, const face_raster_eye_t *e)
+bool face_raster_eye_parts(face_raster_surface_t *s, const face_raster_eye_t *e, unsigned parts)
 {
-    if (!s || !e || !s->pixels || !s->width || !s->height || s->width > RASTER_LIMIT || s->height > RASTER_LIMIT ||
+    if (!parts || (parts & ~FACE_RASTER_ALL) || !s || !e || !s->pixels || !s->width || !s->height || s->width > RASTER_LIMIT || s->height > RASTER_LIMIT ||
         s->stride < s->width || (uint64_t)(s->height-1)*s->stride+s->width > s->capacity ||
         e->width <= 0 || e->height <= 0 || e->width > RASTER_LIMIT || e->height > RASTER_LIMIT || e->radius < 0 ||
         (e->kind != FACE_RASTER_PILL && e->kind != FACE_RASTER_RING) ||
@@ -56,33 +56,37 @@ bool face_raster_eye(face_raster_surface_t *s, const face_raster_eye_t *e)
         e->lid_slope < -RASTER_LIMIT || e->lid_slope > RASTER_LIMIT) return false;
     if (e->lid == FACE_RASTER_LID_DOME && (e->dome_rx <= 0 || e->dome_ry <= 0 ||
         e->dome_rx > RASTER_LIMIT || e->dome_ry > RASTER_LIMIT)) return false;
+    if (e->lid_bounds_set && (e->lid != FACE_RASTER_LID_SLANT || e->lid_width <= 0 || e->lid_height <= 0 ||
+        e->lid_width > RASTER_LIMIT || e->lid_height > RASTER_LIMIT)) return false;
     if (e->kind == FACE_RASTER_RING && (e->border <= 0 || e->border > e->width/2 ||
         e->ring_cos < -32768 || e->ring_cos > 32768 || e->ring_sin < -32768 || e->ring_sin > 32768 ||
         (!e->ring_cos && !e->ring_sin))) return false;
     if ((e->star_w || e->star_h) && (!e->star_data || !e->star_w || !e->star_h || e->star_stride < e->star_w ||
         e->star_w > RASTER_LIMIT || e->star_h > RASTER_LIMIT ||
         (uint64_t)(e->star_h-1)*e->star_stride+e->star_w > e->star_size)) return false;
-    int32_t radius = e->radius;
-    if (radius > e->width/2) radius = e->width/2;
-    if (radius > e->height/2) radius = e->height/2;
-    int64_t x0=e->x, y0=e->y, x1=x0+e->width, y1=y0+e->height;
-    if (x0 < 0) x0=0;
-    if (y0 < 0) y0=0;
-    if (x1 > s->width) x1=s->width;
-    if (y1 > s->height) y1=s->height;
-    for (int64_t y=y0; y<y1; ++y) for (int64_t x=x0; x<x1; ++x) {
-        int64_t px=x-e->x, py=y-e->y;
-        unsigned cover=0;
-        for (int j=1; j<=3; j+=2) for (int i=1; i<=3; i+=2)
-            cover += inside(e,px*4+i,py*4+j,radius);
-        if (!cover) continue;
-        unsigned r=gradient((e->top_rgb>>16)&255,(e->bottom_rgb>>16)&255,(int32_t)py,e->height);
-        unsigned g=gradient((e->top_rgb>>8)&255,(e->bottom_rgb>>8)&255,(int32_t)py,e->height);
-        unsigned b=gradient(e->top_rgb&255,e->bottom_rgb&255,(int32_t)py,e->height);
-        size_t index=(size_t)y*s->stride+(size_t)x;
-        s->pixels[index]=over(s->pixels[index],(r<<16)|(g<<8)|b,(cover*255u+2)/4);
+    if (parts & FACE_RASTER_BODY) {
+        int32_t radius = e->radius;
+        if (radius > e->width/2) radius = e->width/2;
+        if (radius > e->height/2) radius = e->height/2;
+        int64_t x0=e->x, y0=e->y, x1=x0+e->width, y1=y0+e->height;
+        if (x0 < 0) x0=0;
+        if (y0 < 0) y0=0;
+        if (x1 > s->width) x1=s->width;
+        if (y1 > s->height) y1=s->height;
+        for (int64_t y=y0; y<y1; ++y) for (int64_t x=x0; x<x1; ++x) {
+            int64_t px=x-e->x, py=y-e->y;
+            unsigned cover=0;
+            for (int j=1; j<=3; j+=2) for (int i=1; i<=3; i+=2)
+                cover += inside(e,px*4+i,py*4+j,radius);
+            if (!cover) continue;
+            unsigned r=gradient((e->top_rgb>>16)&255,(e->bottom_rgb>>16)&255,(int32_t)py,e->height);
+            unsigned g=gradient((e->top_rgb>>8)&255,(e->bottom_rgb>>8)&255,(int32_t)py,e->height);
+            unsigned b=gradient(e->top_rgb&255,e->bottom_rgb&255,(int32_t)py,e->height);
+            size_t index=(size_t)y*s->stride+(size_t)x;
+            s->pixels[index]=over(s->pixels[index],(r<<16)|(g<<8)|b,(cover*255u+2)/4);
+        }
     }
-    if (e->star_data && e->star_w && e->star_h) {
+    if ((parts & FACE_RASTER_HIGHLIGHT) && e->star_data && e->star_w && e->star_h) {
         int64_t left=(int64_t)e->x+e->star_x, top=(int64_t)e->y+e->star_y;
         int64_t xa=left < 0 ? 0 : left, ya=top < 0 ? 0 : top;
         int64_t xb=left+e->star_w, yb=top+e->star_h;
@@ -95,11 +99,14 @@ bool face_raster_eye(face_raster_surface_t *s, const face_raster_eye_t *e)
             s->pixels[di]=over(s->pixels[di],0xffffffu,alpha);
         }
     }
-    if (e->lid != FACE_RASTER_LID_NONE) {
+    if ((parts & FACE_RASTER_MASK) && e->lid != FACE_RASTER_LID_NONE) {
         int64_t left, top, right, bottom;
         if (e->lid == FACE_RASTER_LID_DOME) {
             left=(int64_t)e->dome_cx-e->dome_rx; right=(int64_t)e->dome_cx+e->dome_rx;
             top=(int64_t)e->dome_cy-e->dome_ry; bottom=(int64_t)e->dome_cy+e->dome_ry;
+        } else if (e->lid_bounds_set) {
+            left=e->lid_x; right=left+e->lid_width;
+            top=e->lid_y; bottom=top+e->lid_height;
         } else {
             left=(int64_t)e->x-2; right=(int64_t)e->x+e->width+2;
             top=(int64_t)e->y-6;
@@ -129,6 +136,11 @@ bool face_raster_eye(face_raster_surface_t *s, const face_raster_eye_t *e)
         }
     }
     return true;
+}
+
+bool face_raster_eye(face_raster_surface_t *s, const face_raster_eye_t *e)
+{
+    return face_raster_eye_parts(s, e, FACE_RASTER_ALL);
 }
 
 static bool surface_valid(const face_raster_surface_t *s)

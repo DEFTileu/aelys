@@ -87,6 +87,15 @@ with correct old/new invalidation, bound its PSRAM storage and fallback, and
 measure device CPU, heap and frame times. The renderer is a building block,
 not completion of S2.
 
+The raster API can draw bodies, highlights and masks in separate passes so
+two eyes retain the existing global stacking order, including overlapping
+geometry. Slanted masks can also receive explicit absolute rectangle bounds
+instead of assuming fixed unscaled margins. Tests exercise overlapping eyes,
+invalid flags, mask clipping and guarded random frames; the UI still does not
+use this API. The caller must validate all eyes before relying on a sequence
+of individual draws as an atomic frame, and must derive the actual transformed
+bounds and cut geometry. This does not establish transition or visual parity.
+
 ## Software rotation and image drawing experiment
 
 The experimental module also rotates one caller-owned ARGB8888 surface into
@@ -142,6 +151,13 @@ the custom source in this probe. The spike and exact commands are in the
 ignored S2 ledger (`decoder-spike/`). It did not test allocation failure during
 registration or rendering, concurrent mutation, delayed flush, cache eviction,
 rotation, or device performance; it is not connected to the firmware.
+
+A second host-only spike used two independently owned buffers over six refreshes
+and 90 partial strips. Both remained independent through serialized updates,
+hide, widget deletion and recreation; an illustrative guard rejected writes
+during rendering. This does not prove safe asynchronous mutation, owner
+destruction during drawing, cache hits after address reuse, or hardware DMA
+behaviour. Commands and captured output are in `decoder-spike/`.
 
 In the current single UI task and software renderer, source inspection shows
 that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
