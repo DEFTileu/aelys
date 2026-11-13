@@ -1219,6 +1219,7 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "resources"),
     ("POST", "resource-links"),
     ("DELETE", "resource-links/*"),
+    ("GET", "companion/devices/*/coredumps"),
 ];
 /// English AI routes that run a model server-side for up to ~60-90 s; every
 /// other API route keeps the 15 s `client()` timeout.
@@ -4762,6 +4763,19 @@ mod tests {
             "/api/v1/companion/devices/dev-1/coredumps/dump_2"
         ));
         assert!(!binary_allowed("/api/v1/companion/devices/dev-1/coredumps"));
+        // The list is JSON (`api`); a single dump is raw bytes (`api_binary` only).
+        assert!(api_allowed(
+            "GET",
+            "/api/v1/companion/devices/dev-1/coredumps"
+        ));
+        assert!(!api_allowed(
+            "POST",
+            "/api/v1/companion/devices/dev-1/coredumps"
+        ));
+        assert!(!api_allowed(
+            "GET",
+            "/api/v1/companion/devices/dev-1/coredumps/dump_2"
+        ));
         assert!(!binary_allowed(
             "/api/v1/companion/devices/dev-1/coredumps/a/b"
         ));
