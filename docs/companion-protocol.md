@@ -245,3 +245,34 @@ reported as `ACTION_FAILED`; the real cause is logged on the server only.
 - The board never receives a refresh token, a notification body, or `data_json`.
 - `reauth` is HTTP-only and never forwarded to the board.
 - Firmware OTA is not part of v1 (plan 4).
+
+## Version 2 additions (OTA)
+
+This section extends v1 additively: nothing above changes, and a v1 board keeps
+working. It supersedes the note "Firmware OTA is not part of v1 (plan 4)".
+
+### `ota_available` (server to board)
+Sent after `hello` when a newer release exists and the board's `fw_version` is
+at least the release's `min_version`, and to online boards right after an
+upload. The board then calls `GET /api/v1/devices/{device_id}/firmware`.
+```json
+{"type": "ota_available", "version": "0.3.0"}
+```
+
+### `metrics` additions (board to server)
+Two optional fields; old boards may omit them.
+- `light_sleep_pct` — int 0–100, share of the last period spent in light sleep.
+- `ui_wakes_per_s` — int, UI wakes per second.
+
+### HTTP endpoints
+- `GET /api/v1/devices/{device_id}/firmware` returns
+  `{version, url, sha256, size, min_version}`. `url` is a path starting with
+  `/api/v1/companion/firmware/`, joined by the board with its own API base; it
+  is never an absolute URL. The board reads only its own device's firmware.
+- `GET {url}` returns `application/octet-stream`.
+- `POST /api/v1/companion/coredumps` takes a raw body (at most 64 KB) with
+  header `X-Fw-Version` and optional `X-Elf-Sha256`, and returns `{id}`.
+
+### Rollback rule
+The board marks a new app valid only after `ready` and `snapshot` were received
+and `hello` was sent; otherwise it rolls back after 10 minutes of uptime.
