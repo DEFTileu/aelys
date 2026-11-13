@@ -120,3 +120,13 @@ internal state. The event's layer can also be an intermediate layer rather than
 the display strip. The current synchronous software configuration is therefore
 not sufficient evidence that direct buffer writes preserve clipping and draw
 order. This approach was not enabled.
+
+Source review identified a narrower decoder experiment: a custom decoder could
+return a persistent, caller-owned `lv_draw_buf_t` for one explicitly recognized
+source, avoiding the built-in decoder's per-open allocation. It requires LVGL's
+private decoder descriptor API; registration itself allocates and asserts,
+normal draw tasks still allocate, and queued tasks must finish before the
+buffer changes or is released. Cache behaviour and software draw arguments
+also need explicit bounds. This is an untested possibility, not an enabled or
+proven recovery mechanism. A prototype would require allocation-fault and
+queued-task lifetime tests in addition to the partial-buffer oracle.
