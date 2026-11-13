@@ -41,7 +41,7 @@ lv_obj_t *scr_pair_create(lv_obj_t *parent)
 {
     h.root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
     h.face = face_create(h.root, 50);
-    h.code = ui_label(h.root, &inter_clock_96, UI_COLOR_ACCENT, 360, 1, LV_TEXT_ALIGN_CENTER);
+    h.code = ui_label(h.root, &inter_clock_96, UI_COLOR_ACCENT, 400, 1, LV_TEXT_ALIGN_CENTER); /* six digits + spacing are up to 392 px; narrower clips to "..." */
     lv_obj_set_style_text_letter_space(h.code, 4, 0);
     h.title = ui_label(h.root, &inter_20, UI_COLOR_TEXT, 330, 1, LV_TEXT_ALIGN_CENTER);
     h.sub = ui_label(h.root, &inter_16, UI_COLOR_SUBTLE, 300, 1, LV_TEXT_ALIGN_CENTER);
