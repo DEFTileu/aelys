@@ -2044,8 +2044,25 @@ async fn establish_login(
 ) -> Result<Session, String> {
     let action = if bootstrap { "bootstrap" } else { "login" };
     let token: Tokens = request(client, Method::POST, &format!("{origin}/api/v1/auth/native/{action}"), Some(json!({"email":email,"password":password,"platform":native_platform(),"display_name":native_display_name()})), None).await?;
-    let session = persist_or_revoke(client, store, session_from(origin, token)?).await?;
-    upgrade_to_device_key(client, store, session).await
+    let session = session_from(origin, token)?;
+    // A password sign-in replaces the stored record. If that held a device key
+    // (e.g. a key resume failed), its device would stay a dead "trusted" row.
+    // Best-effort read: an unreadable record just means nothing to revoke.
+    let replaced = store
+        .read(origin)
+        .await
+        .ok()
+        .flatten()
+        .filter(|r| r.device_key.is_some())
+        .map(|r| r.device_id);
+    let session = persist_or_revoke(client, store, session).await?;
+    let session = upgrade_to_device_key(client, store, session).await?;
+    if let Some(device_id) = replaced.filter(|id| *id != session.record.device_id) {
+        if session.record.device_key.is_some() {
+            revoke_device(client, origin, &session.access, &device_id).await;
+        }
+    }
+    Ok(session)
 }
 /// Registers a fresh device key for an email session so it passes `trusted_device`
 /// and can sign re-auth challenges. Any failure keeps the password session as is
@@ -5627,6 +5644,44 @@ mod tests {
             assert_eq!(count(&seen, "POST /api/v1/devices/new-device/revoke"), 1);
             assert_eq!(count(&seen, REVOKE_OLD), 0);
         });
+    }
+    #[test]
+    fn password_sign_in_revokes_the_replaced_key_bound_device_after_upgrade() {
+        let prior = |device_key| Record {
+            origin: String::new(),
+            owner_id: "owner-1".into(),
+            device_id: "prior-device".into(),
+            refresh_token: String::new(),
+            device_key,
+        };
+        let revoke_prior = "POST /api/v1/devices/prior-device/revoke";
+        // (register status, prior record keyed, expected prior-device revokes)
+        for (register, keyed, revokes) in [(200, true, 1), (500, true, 0), (200, false, 0)] {
+            let (origin, seen) = mock_backend(upgrade_routes(register, 200));
+            tauri::async_runtime::block_on(async {
+                let store = empty_store();
+                let mut record =
+                    prior(keyed.then(|| crate::device_key::DeviceKey::generate().unwrap()));
+                record.origin = origin.clone();
+                store.write(&origin, &record).await.unwrap();
+                establish_login(
+                    &client().unwrap(),
+                    &store,
+                    &origin,
+                    "o@example.test",
+                    "password-1",
+                    false,
+                )
+                .await
+                .unwrap();
+                assert_eq!(count(&seen, revoke_prior), revokes);
+                if revokes == 1 {
+                    let log = seen.lock().unwrap();
+                    let (_, auth, _) = log.iter().find(|r| r.0 == revoke_prior).unwrap();
+                    assert_eq!(auth, "Bearer new-access");
+                }
+            });
+        }
     }
     #[test]
     fn keyed_session_is_not_upgraded_again() {

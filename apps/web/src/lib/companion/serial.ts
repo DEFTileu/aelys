@@ -39,8 +39,8 @@ export class CompanionSerial {
     await port.open({ baudRate: 115200 })
     // RTS first, then DTR: the other order pulses a chip reset (opening leaves both asserted, so closing would drop DTR under RTS).
     if (port.setSignals) {
-      await port.setSignals({ requestToSend: false }).catch(() => undefined)
-      await port.setSignals({ dataTerminalReady: false }).catch(() => undefined)
+      // DTR only after RTS succeeded: lowering DTR under a still-asserted RTS pulses the reset.
+      await port.setSignals({ requestToSend: false }).then(() => port.setSignals!({ dataTerminalReady: false })).catch(() => undefined)
     }
     try { return new CompanionSerial(port) } catch (e) { await port.close().catch(() => undefined); throw e }
   }

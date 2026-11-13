@@ -63,6 +63,17 @@ describe('native serial bridge', () => {
     expect(order).toEqual(['open', '{"requestToSend":false}', '{"dataTerminalReady":false}'])
   })
 
+  it('does not lower DTR when lowering RTS failed', async () => {
+    const calls: string[] = []
+    const port = {
+      readable: new ReadableStream<Uint8Array>(), writable: new WritableStream<Uint8Array>(),
+      open: vi.fn(async () => undefined), close: vi.fn(async () => undefined),
+      setSignals: vi.fn(async (s: object) => { calls.push(JSON.stringify(s)); throw new Error('no RTS') }),
+    }
+    await CompanionSerial.fromPort(port)
+    expect(calls).toEqual(['{"requestToSend":false}'])
+  })
+
   it('treats a refused frame as BAD_ARGS, not as an unplug', async () => {
     const serial = await CompanionSerial.request()
     const base = b.invoke.getMockImplementation()!
