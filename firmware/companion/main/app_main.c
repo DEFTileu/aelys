@@ -27,7 +27,13 @@ static bool lost_is_on(void) { return lost.on; }
 #ifndef CONFIG_AELYS_NO_WIFI
 /* Link hooks. The command handlers are Task F9: until then every valid command is answered UNSUPPORTED. */
 static void on_command(const proto_msg_t *m) { link_send_ack(m->id, false, "UNSUPPORTED"); }
-static bool load_snap(snap_t *s) { return !lost.on && store_load_snap(s); } /* lost mode shows no cached data */
+/* Lost mode shows no cached data. A session that was running before the power cut is not running now: drop it. */
+static bool load_snap(snap_t *s)
+{
+    if (lost.on || !store_load_snap(s)) return false;
+    s->focus.status = FOCUS_NONE;
+    return true;
+}
 static void erase_snap(void)
 {
     if (store_erase_snap() != ESP_OK) ESP_LOGW(TAG, "cached snapshot not erased"); /* flash may keep the old owner's data */

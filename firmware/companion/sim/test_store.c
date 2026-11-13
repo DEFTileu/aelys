@@ -246,6 +246,73 @@ static void test_pair_roundtrip_and_corrupt(void)
     CHECK(memchr(out.api_url, 0, sizeof out.api_url) != NULL);
 }
 
+static void fill_snap(snap_t *s)
+{
+    memset(s, 0, sizeof *s);
+    s->generated = 1794493920;
+    s->has_task = s->has_event = true;
+    strcpy(s->task.id, "t-101"); strcpy(s->task.title, "Ship pairing ADR"); s->task.due = 1794506400;
+    strcpy(s->event.id, "e-22"); strcpy(s->event.title, "Design review"); s->event.starts = 1794499200; s->event.has_end = true;
+    s->overdue = 1; s->unread = 3; s->other_unread = -1; s->today_done = 5; s->today_total = 8;
+    s->n_notices = 2;
+    strcpy(s->notices[1].id, "n-2"); strcpy(s->notices[1].kind, "calendar.reminder"); strcpy(s->notices[1].title, "Design review");
+    s->notices[1].created = 1794493000;
+    s->focus.status = FOCUS_PAUSED; strcpy(s->focus.id, "f-3"); strcpy(s->focus.mode, "pomodoro"); s->focus.elapsed_s = 1072;
+}
+
+static void test_snap_roundtrip(void)
+{
+    snap_t in, out;
+    uint8_t buf[STORE_SNAP_BLOB];
+    fill_snap(&in);
+    size_t n = store_encode_snap(&in, buf, sizeof buf);
+    CHECK_EQ(n, sizeof buf);
+    CHECK_EQ(buf[0], STORE_SNAP_VERSION);
+    CHECK_EQ(store_encode_snap(&in, buf, n - 1), 0);
+    memset(&out, 0xAA, sizeof out);
+    CHECK(store_decode_snap(buf, n, &out));
+    CHECK_EQ(out.generated, in.generated);
+    CHECK(strcmp(out.task.title, "Ship pairing ADR") == 0 && out.task.due == in.task.due);
+    CHECK(strcmp(out.event.title, "Design review") == 0 && out.event.has_end);
+    CHECK_EQ(out.other_unread, -1);
+    CHECK_EQ(out.today_total, 8);
+    CHECK_EQ(out.n_notices, 2);
+    CHECK(strcmp(out.notices[1].kind, "calendar.reminder") == 0);
+    CHECK_EQ(out.focus.status, FOCUS_PAUSED);
+    CHECK_EQ(out.focus.elapsed_s, 1072);
+
+    memset(&out, 0xAA, sizeof out);                    /* failures leave *out alone */
+    buf[10] ^= 1;                                      /* CRC */
+    CHECK(!store_decode_snap(buf, n, &out));
+    CHECK_EQ(((uint8_t *)&out)[0], 0xAA);
+    buf[10] ^= 1;
+    CHECK(!store_decode_snap(buf, n - 1, &out));       /* length of another layout */
+    buf[0] = STORE_SNAP_VERSION + 1;
+    reseal(buf, n);
+    CHECK(!store_decode_snap(buf, n, &out));           /* another version */
+    CHECK(!store_decode_owner(buf, n, (owner_info_t[1]){0})); /* and never mistaken for another blob */
+}
+
+static void test_snap_overlong_and_bad_counts_are_made_safe(void)
+{
+    snap_t in, out;
+    uint8_t buf[STORE_SNAP_BLOB];
+    fill_snap(&in);
+    store_encode_snap(&in, buf, sizeof buf);
+    memset(buf + 1 + offsetof(snap_t, task.title), 'W', sizeof in.task.title + 5); /* spills into due: the strings must still end */
+    reseal(buf, sizeof buf);
+    CHECK(store_decode_snap(buf, sizeof buf, &out));
+    CHECK(memchr(out.task.title, 0, sizeof out.task.title) != NULL);
+    store_encode_snap(&in, buf, sizeof buf);
+    buf[1 + offsetof(snap_t, n_notices)] = 9;          /* more notices than the array holds */
+    reseal(buf, sizeof buf);
+    CHECK(!store_decode_snap(buf, sizeof buf, &out));
+    store_encode_snap(&in, buf, sizeof buf);
+    buf[1 + offsetof(snap_t, focus.status)] = 7;
+    reseal(buf, sizeof buf);
+    CHECK(!store_decode_snap(buf, sizeof buf, &out));
+}
+
 int main(void)
 {
     test_crc32_known_vector();
@@ -262,5 +329,7 @@ int main(void)
     test_lost_roundtrip();
     test_ice_rev_survives_the_owner_blob();
     test_pair_roundtrip_and_corrupt();
+    test_snap_roundtrip();
+    test_snap_overlong_and_bad_counts_are_made_safe();
     return g_failed ? 1 : 0;
 }

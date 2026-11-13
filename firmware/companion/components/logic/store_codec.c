@@ -5,6 +5,7 @@
 _Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 49 + 97 + 65 + 97 + 2 * 33 + 2 * 17 + 2 * 24 + 2 + 4, "owner layout");
 _Static_assert(sizeof(wifi_list_t) == 1 + WIFI_MAX * (33 + 65), "wifi layout");
 _Static_assert(sizeof(pair_rec_t) == 40 + 129 + 32, "pair layout");
+_Static_assert(sizeof(snap_t) == 1088, "snap layout changed: bump STORE_SNAP_VERSION, then this number");
 
 uint32_t store_crc32(const uint8_t *p, size_t n)
 {
@@ -128,5 +129,24 @@ bool wifi_list_upsert(wifi_list_t *l, const char *ssid, const char *pass)
     memset(slot, 0, sizeof *slot);
     strcpy(slot->ssid, ssid);
     strcpy(slot->pass, pass);
+    return true;
+}
+
+size_t store_encode_snap(const snap_t *in, uint8_t *buf, size_t cap)
+{
+    return seal(STORE_SNAP_VERSION, in, sizeof *in, buf, cap);
+}
+
+bool store_decode_snap(const uint8_t *buf, size_t len, snap_t *out)
+{
+    const uint8_t *p = unseal(STORE_SNAP_VERSION, buf, len, sizeof *out);
+    if (!p) return false;
+    snap_t s;
+    memcpy(&s, p, sizeof s);
+    if (s.n_notices > 5 || s.focus.status > FOCUS_PAUSED) return false;
+    TERM(s.task.id); TERM(s.task.title); TERM(s.event.id); TERM(s.event.title);
+    TERM(s.focus.id); TERM(s.focus.mode);
+    for (int i = 0; i < 5; i++) { TERM(s.notices[i].id); TERM(s.notices[i].kind); TERM(s.notices[i].title); }
+    *out = s;
     return true;
 }

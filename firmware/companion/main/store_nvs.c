@@ -122,30 +122,21 @@ esp_err_t store_erase_pair(void)
     return err;
 }
 
-#define SNAP_VERSION 1
-#define SNAP_BLOB (1 + sizeof(snap_t) + 4)
-
 bool store_load_snap(snap_t *s)
 {
-    uint8_t *b = malloc(SNAP_BLOB); /* ~1.1 KB, only while reading */
+    uint8_t *b = malloc(STORE_SNAP_BLOB); /* ~1.1 KB, only while reading */
     if (!b) return false;
-    size_t n = read_blob("snap", b, SNAP_BLOB);
-    uint32_t crc = n == SNAP_BLOB ? b[n - 4] | b[n - 3] << 8 | b[n - 2] << 16 | (uint32_t)b[n - 1] << 24 : 0;
-    bool ok = n == SNAP_BLOB && b[0] == SNAP_VERSION && crc == store_crc32(b, n - 4);
-    if (ok) memcpy(s, b + 1, sizeof *s);
+    bool ok = read_blob("snap", b, STORE_SNAP_BLOB) == STORE_SNAP_BLOB && store_decode_snap(b, STORE_SNAP_BLOB, s);
     free(b);
     return ok;
 }
 
 esp_err_t store_save_snap(const snap_t *s)
 {
-    uint8_t *b = malloc(SNAP_BLOB);
+    uint8_t *b = malloc(STORE_SNAP_BLOB);
     if (!b) return ESP_ERR_NO_MEM;
-    b[0] = SNAP_VERSION;
-    memcpy(b + 1, s, sizeof *s);
-    uint32_t crc = store_crc32(b, SNAP_BLOB - 4);
-    for (int i = 0; i < 4; i++) b[SNAP_BLOB - 4 + i] = (uint8_t)(crc >> (8 * i));
-    esp_err_t err = write_blob("snap", b, SNAP_BLOB);
+    size_t n = store_encode_snap(s, b, STORE_SNAP_BLOB);
+    esp_err_t err = n ? write_blob("snap", b, n) : ESP_ERR_INVALID_SIZE;
     free(b);
     return err;
 }
