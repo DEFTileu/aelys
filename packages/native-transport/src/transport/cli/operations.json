@@ -662,6 +662,14 @@
     {
       "type": "google_connect",
       "provider": "calendar"
+    },
+    {
+      "type": "companion_firmware_upload",
+      "file": "companion.bin",
+      "version": "0.3.0",
+      "min_version": "0.2.0",
+      "size": 1048576,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   ]
 }

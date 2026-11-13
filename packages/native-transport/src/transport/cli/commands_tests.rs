@@ -338,3 +338,223 @@ fn knowledge_search_shortcut_does_not_send_an_unsupported_pagination_field() {
     assert_eq!(body.unwrap(), json!({"query":"Example query"}));
     assert!(!invocation.preview);
 }
+
+const FIRMWARE_MAX: u64 = 4_194_304;
+fn s(args: &[&str]) -> Vec<String> {
+    args.iter().map(|v| v.to_string()).collect()
+}
+fn upload_args(file: &Path, version: &str, min: &str, tail: &[&str]) -> Vec<String> {
+    let mut args = s(&["companion", "firmware-upload", &file.to_string_lossy()]);
+    args.extend(s(&["--version", version, "--min-version", min]));
+    args.extend(s(tail));
+    args
+}
+fn firmware_file(directory: &Directory, bytes: &[u8]) -> PathBuf {
+    let path = directory.0.join("companion.bin");
+    fs::write(&path, bytes).unwrap();
+    path
+}
+#[test]
+fn firmware_upload_preview_reports_hash_and_size_without_receipt_or_request() {
+    let directory = Directory::new();
+    let file = firmware_file(&directory, b"signed-image-bytes");
+    let invocation = parse(&upload_args(&file, "0.3.0", "0.2.0", &[]))
+        .unwrap()
+        .unwrap();
+    assert!(invocation.preview);
+    let preview = invocation.preview_value();
+    let entry = &preview["operations"][0];
+    assert_eq!(entry["method"], "PUT");
+    assert_eq!(entry["mutation"], true);
+    assert_eq!(entry["version"], "0.3.0");
+    assert_eq!(entry["min_version"], "0.2.0");
+    assert_eq!(entry["size"], 18);
+    assert_eq!(entry["sha256"], hash(b"signed-image-bytes"));
+    assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
+}
+#[test]
+fn firmware_upload_rejects_bad_versions_before_reading_the_file() {
+    let missing = Path::new("/nonexistent/companion.bin");
+    for bad in [
+        "1.2",
+        "1.2.3.4",
+        "1234.0.0",
+        "a.b.c",
+        "1.2.3\n",
+        " 1.2.3",
+        "-1.0.0",
+        "1..3",
+        "",
+        "٣.1.1",
+        "1.2.3-rc1",
+    ] {
+        for args in [
+            upload_args(missing, bad, "0.1.0", &[]),
+            upload_args(missing, "0.1.0", bad, &[]),
+        ] {
+            assert_eq!(parse(&args).err().unwrap(), "VALIDATION_ERROR", "{bad:?}");
+        }
+    }
+}
+#[test]
+fn firmware_upload_enforces_the_size_cap_and_missing_flags() {
+    let directory = Directory::new();
+    let file = directory.0.join("big.bin");
+    let handle = File::create(&file).unwrap();
+    handle.set_len(FIRMWARE_MAX + 1).unwrap();
+    assert_eq!(
+        parse(&upload_args(&file, "0.3.0", "0.2.0", &[]))
+            .err()
+            .unwrap(),
+        "VALIDATION_ERROR"
+    );
+    handle.set_len(FIRMWARE_MAX).unwrap();
+    assert!(parse(&upload_args(&file, "0.3.0", "0.2.0", &[])).is_ok());
+    handle.set_len(0).unwrap();
+    assert_eq!(
+        parse(&upload_args(&file, "0.3.0", "0.2.0", &[]))
+            .err()
+            .unwrap(),
+        "VALIDATION_ERROR"
+    );
+    let args = s(&["companion", "firmware-upload", &file.to_string_lossy()]);
+    assert_eq!(parse(&args).err().unwrap(), "USAGE_ERROR");
+    let mut args = upload_args(&file, "0.3.0", "0.2.0", &[]);
+    args.truncate(5);
+    assert_eq!(parse(&args).err().unwrap(), "USAGE_ERROR");
+}
+#[test]
+fn version_flags_belong_to_firmware_upload_only() {
+    let args = s(&["tasks", "list", "--version", "1.0.0"]);
+    assert_eq!(parse(&args).err().unwrap(), "USAGE_ERROR");
+    let args = s(&["companion", "other", "x", "--version", "1.0.0"]);
+    assert!(parse(&args).is_err());
+}
+#[test]
+fn firmware_upload_sends_one_put_with_hash_and_checkpoints_the_receipt() {
+    let directory = Directory::new();
+    let file = firmware_file(&directory, b"signed-image-bytes");
+    let args = upload_args(&file, "0.3.0", "0.2.0", &["--apply"]);
+    let reply = json!({"version":"0.3.0","sha256":hash(b"signed-image-bytes"),"size":18,"min_version":"0.2.0"});
+    let (origin, server) = server(vec![reply]);
+    tauri::async_runtime::block_on(async {
+        let session = session(origin);
+        let invocation = parse(&args).unwrap().unwrap();
+        assert!(!invocation.preview);
+        let first = execute(&session, invocation).await.unwrap();
+        assert_eq!(first["results"][0]["result"]["version"], "0.3.0");
+        // A rerun reuses the checkpoint instead of uploading again.
+        let second = execute(&session, parse(&args).unwrap().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(second["results"][0]["reused"], true);
+    });
+    let requests = server.join().unwrap();
+    assert_eq!(requests.len(), 1);
+    let request = &requests[0];
+    assert!(request.starts_with("PUT /api/v1/companion/firmware/0.3.0?min_version=0.2.0 "));
+    let lower = request.to_ascii_lowercase();
+    assert!(lower.contains("content-type: application/octet-stream"));
+    assert!(lower.contains(&format!(
+        "x-content-sha256: {}",
+        hash(b"signed-image-bytes")
+    )));
+    assert!(request.ends_with("\r\n\r\nsigned-image-bytes"));
+    let receipt =
+        fs::read_to_string(directory.0.join("companion.bin.aelys-operations.json")).unwrap();
+    assert!(!receipt.contains("cli-private-access") && !receipt.contains("signed-image-bytes"));
+}
+#[test]
+fn firmware_upload_refuses_a_file_that_changed_after_the_preview() {
+    let directory = Directory::new();
+    let file = firmware_file(&directory, b"signed-image-bytes");
+    let invocation = parse(&upload_args(&file, "0.3.0", "0.2.0", &["--apply"]))
+        .unwrap()
+        .unwrap();
+    fs::write(&file, b"tampered-image-bytes").unwrap();
+    let (origin, server) = server(vec![]);
+    let error = tauri::async_runtime::block_on(execute(&session(origin), invocation)).unwrap_err();
+    assert!(error.contains("INPUT_CHANGED"), "{error}");
+    assert!(server.join().unwrap().is_empty());
+}
+#[test]
+fn firmware_route_is_unreachable_through_generic_commands() {
+    let route = "/api/v1/companion/firmware/0.3.0";
+    for operation in [
+        json!({"type":"api","method":"PUT","path":route}),
+        json!({"type":"api","method":"PUT","path":format!("{route}?min_version=0.2.0")}),
+        json!({"type":"api","method":"PUT","path":route,"upload":{"content_type":"application/octet-stream","data":"AAAA"}}),
+        json!({"type":"api","method":"POST","path":"/api/v1/english/speech/transcribe","upload":{"content_type":"audio/wav","data":"AAAA"}}),
+        json!({"type":"api_binary","path":route}),
+        json!({"type":"companion_firmware_upload","file":"x.bin","version":"1.2","min_version":"0.1.0","size":1,"sha256":hash(b"x")}),
+        json!({"type":"companion_firmware_upload","file":"x.bin","version":"1.2.3","min_version":"0.1.0","size":FIRMWARE_MAX + 1,"sha256":hash(b"x")}),
+        json!({"type":"companion_firmware_upload","file":"x.bin","version":"1.2.3","min_version":"0.1.0","size":1,"sha256":"ABC"}),
+        json!({"type":"companion_firmware_upload","file":"x.bin","version":"1.2.3","min_version":"0.1.0","size":1,"sha256":hash(b"x"),"path":"/api/v1/me"}),
+    ] {
+        assert!(describe(&operation).is_err(), "{operation}");
+    }
+    let good = json!({"type":"companion_firmware_upload","file":"x.bin","version":"1.2.3","min_version":"0.1.0","size":1,"sha256":hash(b"x")});
+    let (method, path, _) = describe(&good).unwrap();
+    assert_eq!(method, Method::PUT);
+    assert_eq!(path, "/api/v1/companion/firmware/1.2.3?min_version=0.1.0");
+}
+#[test]
+fn only_the_owner_crash_dump_path_joins_the_binary_allowlist() {
+    let binary = |path: &str| describe(&json!({"type":"api_binary","path":path})).is_ok();
+    assert!(binary("/api/v1/companion/devices/dev-1/coredumps/dump_2"));
+    assert!(binary("/api/v1/integrations/telegram/chats/1234567/avatar"));
+    for path in [
+        "/api/v1/companion/devices/dev-1/coredumps",
+        "/api/v1/companion/devices/dev-1/coredumps/a/b",
+        "/api/v1/companion/devices/../coredumps/x",
+        "/api/v1/companion/devices/dev-1/coredumps/..",
+        "/api/v1/companion/devices/dev-1/firmware",
+        "/api/v1/companion/coredumps",
+        "/api/v1/companion/devices/dev-1/coredumps/x?token=1",
+    ] {
+        assert!(!binary(path), "{path}");
+    }
+}
+fn octet_server(body: &'static [u8]) -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0; 4096];
+        let _ = stream.read(&mut buf);
+        let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+        stream.write_all(head.as_bytes()).unwrap();
+        stream.write_all(body).unwrap();
+    });
+    origin
+}
+#[test]
+fn crash_dump_download_accepts_octet_stream_but_telegram_media_stays_strict() {
+    let dump = "/api/v1/companion/devices/dev-1/coredumps/dump_2";
+    // `api` stays JSON-only; the typed binary operation is what carries dumps.
+    assert!(parse(&s(&["api", "GET", dump])).is_err());
+    let operation = |path: &str| Invocation {
+        operations: vec![json!({"type":"api_binary","path":path})],
+        receipt: None,
+        digest: String::new(),
+        preview: false,
+        unlock_keychain: false,
+    };
+    let result = tauri::async_runtime::block_on(execute(
+        &session(octet_server(b"\x7fELF")),
+        operation(dump),
+    ))
+    .unwrap();
+    assert_eq!(
+        result["results"][0]["result"]["content_type"],
+        "application/octet-stream"
+    );
+    assert_eq!(result["results"][0]["result"]["data"], "f0VMRg==");
+    let telegram = "/api/v1/integrations/telegram/chats/1234567/avatar";
+    let error = tauri::async_runtime::block_on(execute(
+        &session(octet_server(b"\x7fELF")),
+        operation(telegram),
+    ))
+    .unwrap_err();
+    assert!(error.contains("415:TELEGRAM_MEDIA_UNSUPPORTED"), "{error}");
+}
