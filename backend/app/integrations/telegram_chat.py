@@ -31,10 +31,11 @@ from .telegram_models import (
 from .telegram_transport import TelegramError
 
 
-def authorize(item: TelegramIntegration) -> None:
+def authorize(item: TelegramIntegration, *, editing: bool = False) -> None:
+    name = "telegram.chat.edit" if editing else "telegram.chat.send"
     descriptor = ToolDescriptor(
-        "telegram.chat.send",
-        "Send an owner message to a verified chat",
+        name,
+        "Edit an owner command in a verified chat" if editing else "Send an owner message to a verified chat",
         "telegram.reply",
         lambda arguments: arguments,
         lambda arguments: asyncio.sleep(0, result={}),
@@ -43,7 +44,7 @@ def authorize(item: TelegramIntegration) -> None:
     try:
         ServerPolicyEngine().authorize(
             descriptor,
-            ToolCall("telegram.chat.send", {}),
+            ToolCall(name, {}),
             PermissionContext(
                 actor=f"owner:{item.owner_id}",
                 scopes=frozenset({"telegram.reply"}),
@@ -230,9 +231,14 @@ async def send_chat(
     reply_to_message_id: int | None = None,
     *, before_send: Callable[[], Awaitable[None]] | None = None,
     direction: Literal["owner", "outbound"] = "owner",
+    edit_message_id: int | None = None,
+    edit_source_version: int | None = None,
 ) -> TelegramBusinessMessage:
-    authorize(item)
+    editing = edit_message_id is not None
+    authorize(item, editing=editing)
     digest = fingerprint(connection_id, chat_id, body, reply_to_message_id)
+    if editing:
+        digest = fingerprint(connection_id, chat_id, "edit:" + digest, edit_message_id)
     old = (
         await db.execute(
             select(TelegramChatSend).where(
@@ -243,6 +249,23 @@ async def send_chat(
     ).scalar_one_or_none()
     if old:
         return await replay(db, old, digest)
+    async def edit_target() -> TelegramBusinessMessage:
+        target = (await db.execute(select(TelegramBusinessMessage).where(
+            TelegramBusinessMessage.owner_id == item.owner_id,
+            TelegramBusinessMessage.integration_id == item.id,
+            TelegramBusinessMessage.business_connection_id == connection_id,
+            TelegramBusinessMessage.chat_id == chat_id,
+            TelegramBusinessMessage.telegram_message_id == edit_message_id,
+        ).execution_options(populate_existing=True))).scalar_one_or_none()
+        if (not target or target.deleted_at or target.direction != "owner"
+                or target.sender_id != item.owner_telegram_id or target.media_metadata
+                or edit_source_version is None or target.version != edit_source_version
+                or service.utc(target.sent_at) + timedelta(hours=48) <= now()):
+            raise service.error(409, "COMMAND_STALE", "Command cannot be edited")
+        return target
+
+    if editing:
+        await edit_target()
     connection = await db.get(TelegramBusinessConnection, connection_id)
     incoming = await _latest(db, item, connection_id, chat_id)
     if (
@@ -291,7 +314,7 @@ async def send_chat(
                 state["send_disabled_code"] or "TELEGRAM_NOT_CONFIGURED",
                 "Отправка в этот чат сейчас недоступна.",
             )
-        authorize(item)
+        authorize(item, editing=editing)
         receipt = TelegramChatSend(
             owner_id=item.owner_id,
             integration_id=item.id,
@@ -341,20 +364,27 @@ async def send_chat(
             raise service.error(
                 409, receipt.error_code, "Подключение или доступность чата изменились."
             )
-        authorize(item)
-        if before_send:
+        authorize(item, editing=editing)
+        if before_send or editing:
             try:
-                await before_send()
+                if before_send:
+                    await before_send()
+                if editing:
+                    await edit_target()
             except Exception:  # Source changed before I/O: this is a known unsent receipt.
                 await db.execute(update(TelegramChatSend).where(TelegramChatSend.id == receipt_id).values(send_status="failed", error_code="COMMAND_STALE", version=TelegramChatSend.version + 1))
                 await db.commit()
                 raise
         try:
             reply_arguments={"reply_to_message_id":reply_to_message_id} if reply_to_message_id is not None else {}
-            sent = await client.send_message(chat_id, body, business_connection_id=connection_id, **reply_arguments)
+            if edit_message_id is not None:
+                sent = await client.edit_message_text(chat_id, edit_message_id, body, business_connection_id=connection_id)
+            else:
+                sent = await client.send_message(chat_id, body, business_connection_id=connection_id, **reply_arguments)
             if (
                 not service.integer(sent.get("message_id"))
                 or sent["message_id"] <= 0
+                or (editing and sent["message_id"] != edit_message_id)
                 or (
                     isinstance(sent.get("chat"), dict)
                     and sent["chat"].get("id") != chat_id
@@ -375,7 +405,7 @@ async def send_chat(
                 item.lease_expires_at = now() + timedelta(
                     seconds=min(max(exc.retry_after or 30, 1), 86400)
                 )
-            authorize(item)
+            authorize(item, editing=editing)
             await db.execute(
                 update(TelegramChatSend)
                 .where(
@@ -405,7 +435,12 @@ async def send_chat(
             raise service.error(
                 503, "TELEGRAM_DELIVERY_UNKNOWN", "Проверьте переписку Telegram."
             )
-        authorize(item)
+        if editing:
+            connection = await db.get(TelegramBusinessConnection, connection_id, populate_existing=True)
+            incoming = await _latest(db, item, connection_id, chat_id)
+            if not availability(item, connection, incoming.sent_at if incoming else None)["can_send"]:
+                raise service.error(503, "TELEGRAM_DELIVERY_UNKNOWN", "Chat permissions changed")
+        authorize(item, editing=editing)
         # A poll can observe the owner echo before sendMessage returns. Adopt its
         # canonical remote identity instead of inserting a duplicate conversation line.
         conditions = (
@@ -416,8 +451,10 @@ async def send_chat(
             TelegramBusinessMessage.telegram_message_id == sent["message_id"],
         )
         outgoing = (
-            await db.execute(select(TelegramBusinessMessage).where(*conditions))
+            await db.execute(select(TelegramBusinessMessage).where(*conditions).execution_options(populate_existing=editing))
         ).scalar_one_or_none()
+        if outgoing is None and editing:
+            raise service.error(503, "TELEGRAM_DELIVERY_UNKNOWN", "Command disappeared")
         if outgoing is None:
             outgoing = TelegramBusinessMessage(
                 owner_id=owner_id,
@@ -439,9 +476,24 @@ async def send_chat(
                     await db.flush()
             except IntegrityError:
                 outgoing = (
-                    await db.execute(select(TelegramBusinessMessage).where(*conditions))
+                    await db.execute(select(TelegramBusinessMessage).where(*conditions).execution_options(populate_existing=editing))
                 ).scalar_one()
-        if direction == "outbound":
+        if editing:
+            if outgoing is None or outgoing.deleted_at:
+                raise service.error(503, "TELEGRAM_DELIVERY_UNKNOWN", "Command disappeared")
+            # Never overwrite an owner edit/deletion observed during remote I/O.
+            if outgoing.version != edit_source_version and outgoing.text != body:
+                raise service.error(503, "TELEGRAM_DELIVERY_UNKNOWN", "Command changed")
+            changed = await db.execute(update(TelegramBusinessMessage).where(
+                TelegramBusinessMessage.id == outgoing.id,
+                TelegramBusinessMessage.version == outgoing.version,
+                TelegramBusinessMessage.deleted_at.is_(None),
+            ).values(text=body, edited_at=now(), direction="outbound",
+                     version=TelegramBusinessMessage.version + 1)
+                .returning(TelegramBusinessMessage.id).execution_options(synchronize_session=False))
+            if changed.scalar_one_or_none() is None:
+                raise service.error(503, "TELEGRAM_DELIVERY_UNKNOWN", "Command changed")
+        if direction == "outbound" and not editing:
             outgoing.direction = "outbound"
         if reply_to_message_id is not None and outgoing.reply_to_telegram_message_id is None:
             outgoing.reply_to_telegram_message_id = reply_to_message_id
