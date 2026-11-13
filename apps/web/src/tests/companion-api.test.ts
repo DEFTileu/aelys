@@ -78,7 +78,7 @@ describe('companion client', () => {
 
   it('setLost does not queue offline', async () => {
     const request = spy()
-    const body = { on: true, message: 'call me', show_phone: true, show_telegram: false }
+    const body = { on: true as const, message: 'call me', show_phone: true, show_telegram: false }
     await companion.setLost('dev 1', body)
     expect(request.mock.calls[0]).toEqual(['/api/v1/companion/devices/dev%201/lost-mode', { method: 'PUT', body, queueOnOffline: false }])
   })

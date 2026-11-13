@@ -45,7 +45,7 @@ export function SettingsDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
       {panel === 'telegram' && <TelegramSettings />}
       {panel === 'accounts' && <AccountsPanel apiStatus={apiStatus} onGo={go} />}
       {panel === 'connection' && <ConnectionPanel apiStatus={apiStatus} owner={owner} />}
-      {panel === 'devices' && <DevicesPanel />}
+      {panel === 'devices' && <DevicesPanel owner={owner} />}
       {panel === 'security' && <SecurityPanel />}
       {panel === 'about' && <AboutPanel />}
       {(panel === 'memory' || panel === 'calendar') && <div className="st-legacy actual-settings-content">{panel === 'memory' ? <MemorySettings /> : <GoogleCalendarSettings />}</div>}

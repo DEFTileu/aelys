@@ -75,6 +75,8 @@ export interface CompanionState {
   command_log: CompanionCommandLogEntry[]
 }
 
-export type LostBody = Omit<LostMode, 'since'> & { reauth?: CompanionReauth }
+type LostFields = Omit<LostMode, 'since' | 'on'>
+/** Turning lost mode off needs a fresh re-auth proof; turning it on does not. */
+export type LostBody = (LostFields & { on: true; reauth?: undefined }) | (LostFields & { on: false; reauth: CompanionReauth })
 export type IceBody = Ice
 export interface CommandResult { command_id: string }

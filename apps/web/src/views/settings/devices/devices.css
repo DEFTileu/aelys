@@ -11,3 +11,69 @@
 .dv-actions { display: flex; gap: 10px; }
 .dv-actions .st-btn--primary { width: auto; }
 .dv-form { display: flex; flex-direction: column; gap: 10px; }
+
+/* Devices list, Aelys overview and lost mode, from design frames "1 · Устройство" and "2 · Режим потери". */
+.dv-wide { width: 100%; }
+.dv-center { justify-content: center; }
+.dv-bar { display: flex; align-items: center; gap: 10px; }
+.dv-back { display: flex !important; align-items: center; justify-content: center; flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--st-card) !important; }
+.dv-bar-title { margin: 0; flex: 1; min-width: 0; overflow: hidden; font-size: 18px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.dv-nav { width: 100%; }
+.dv-nav .st-label, .dv-nav .st-hint { display: block; }
+.dv-status { display: flex !important; align-items: center; gap: 6px; }
+.dv-status[data-online='false'] .st-dot { background: var(--st-off); }
+.dv-it { display: flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; border-radius: 10px; }
+.dv-it--violet { background: var(--st-violet-bg); color: var(--st-violet); }
+.dv-it--green { background: var(--st-green-bg); color: var(--st-green); }
+.dv-it--blue { background: var(--st-blue-bg); color: var(--st-blue); }
+.dv-it--red { background: var(--st-red-bg); color: var(--st-red); }
+.dv-it--amber { background: var(--dv-amber-bg); color: var(--dv-amber-ink); }
+.st { --dv-amber-bg: #FDF1D9; --dv-amber-ink: #8A5A00; }
+:root[data-theme='dark'] .st { --dv-amber-bg: rgba(244, 196, 107, .16); --dv-amber-ink: #F4C46B; }
+.dv-online { display: flex; align-items: center; gap: 6px; color: var(--st-green-ink); font-size: 13px; font-weight: 600; }
+.dv-online[data-online='false'] { color: var(--st-mute); }
+.dv-online[data-online='false'] .st-dot { background: var(--st-off); }
+.dv-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px 18px; }
+.dv-stat { display: flex; flex-direction: column; min-width: 0; }
+.dv-stat b { overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.dv-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.dv-tile { display: flex !important; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; padding: 14px 12px !important; border: 1px solid var(--st-line) !important; border-radius: 16px; background: var(--st-card) !important; }
+.dv-tile b { font-weight: 600; }
+.dv-lostbar { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 16px; background: var(--dv-amber-bg); color: var(--dv-amber-ink); }
+.dv-lostbar b { flex: 1; font-weight: 600; }
+.dv-lostbar span { font-size: 13px; }
+.dv-preview { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+.dv-preview--row { flex-direction: row; gap: 16px; padding: 14px 18px; }
+.dv-pick { cursor: pointer; }
+.dv-pick input { flex: none; width: 20px; height: 20px; accent-color: var(--accent, #6A4CF2); }
+.dv-pick svg { color: var(--st-mute); }
+
+/* Round preview: the 466-px device screen (colors fixed, as on the device), scaled by inline transform. */
+.dv-mini { position: relative; flex: none; overflow: hidden; border-radius: 50%; background: #000; box-shadow: 0 0 0 6px #1E1C24, 0 0 0 7px #3A3640; }
+.dv-screen { position: absolute; top: 0; left: 0; width: 466px; height: 466px; transform-origin: 0 0; border-radius: 50%; overflow: hidden; background: #000; color: #F1EEF6; text-align: center; }
+.dv-ring { position: absolute; inset: 10px; border-radius: 50%; background: #F4C46B; -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); }
+.dv-face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.dv-eyes { position: relative; width: 108px; height: 61px; margin-bottom: 4px; }
+.dv-eyes i { position: absolute; top: 20px; width: 25px; height: 29px; overflow: hidden; border-radius: 13px; background: linear-gradient(180deg, #CDBFFF, #7C58F4); }
+.dv-eyes i:first-child { left: 21px; }
+.dv-eyes i:last-child { left: 62px; }
+.dv-eyes i::before { content: ''; position: absolute; left: -9px; right: -9px; top: -11px; height: 19px; background: #000; transform: rotate(-16deg); }
+.dv-eyes i:last-child::before { transform: rotate(16deg); }
+.dv-h2 { font-size: 24px; line-height: 30px; font-weight: 600; }
+.dv-mt { font-size: 15px; line-height: 22px; color: #A6A0B2; }
+.dv-msg { width: 290px; }
+.dv-who { display: flex; align-items: center; gap: 16px; margin: 10px 0 6px; text-align: left; }
+.dv-who svg { flex: none; border-radius: 10px; background: #F1EEF6; }
+.dv-contact { display: flex; flex-direction: column; gap: 6px; }
+.dv-name { font-size: 19px; line-height: 24px; font-weight: 600; }
+.dv-line { display: flex; align-items: center; gap: 8px; color: #CBC6D5; font-size: 16px; line-height: 22px; white-space: nowrap; }
+.dv-line svg { color: #F4C46B; }
+
+/* "Confirm it's you" sheet, pinned to the bottom of the viewport. */
+.dv-dim { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgba(20, 10, 30, .38); }
+.dv-sheet { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 480px; padding: 10px 16px 28px; border-radius: 24px 24px 0 0; background: var(--st-solid); color: var(--st-ink); box-shadow: 0 -18px 50px rgba(20, 10, 30, .22); }
+.dv-grab { align-self: center; width: 40px; height: 4px; border-radius: 2px; background: var(--st-line); }
+.dv-sheet-head { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 4px; text-align: center; }
+.dv-sheet-head .st-hint { max-width: 300px; font-size: 14px; }
+.dv-sheet-title { font-size: 18px; font-weight: 600; }
+.dv-fp { display: flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 50%; background: var(--st-violet-bg); color: var(--st-acc); }
