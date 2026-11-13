@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 
+from app.companion.commands import owner_caller
 from app.companion.hub import hub
 from app.companion.models import CompanionState
 from app.companion.ota_models import CompanionFirmware
@@ -125,16 +126,10 @@ def _out(row: CompanionFirmware) -> ReleaseOut:
     return ReleaseOut(version=row.version, sha256=row.sha256, size=row.size, min_version=row.min_version)
 
 
-async def owner_uploader(principal: tuple[User, Device] = Depends(trusted_device)) -> tuple[User, Device]:
-    if principal[1].platform == "companion":
-        raise _error(403, "DEVICE_SCOPE_DENIED", "This device may not use this endpoint")
-    return principal
-
-
 @router.put("/companion/firmware/{version}", response_model=ReleaseOut, status_code=201)
 async def upload_firmware(version: str, request: Request, response: Response, min_version: str = Query(),
                           sha256: str = Header(default="", alias="X-Content-Sha256"),
-                          principal: tuple[User, Device] = Depends(owner_uploader), db: AsyncSession = Depends(get_db)):
+                          principal: tuple[User, Device] = Depends(owner_caller), db: AsyncSession = Depends(get_db)):
     user, _ = principal
     if parse_semver(min_version) > parse_semver(version):
         raise _error(422, "FIRMWARE_INVALID", "min_version is above version")
