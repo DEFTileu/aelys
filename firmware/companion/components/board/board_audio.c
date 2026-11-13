@@ -15,6 +15,7 @@
 #include "esp_codec_dev_defaults.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_private/esp_gpio_reserve.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -29,13 +30,17 @@ static const char *TAG = "audio";
 
 typedef struct {
     i2s_chan_handle_t tx;
-    const audio_codec_ctrl_if_t *ctrl;
     const audio_codec_gpio_if_t *gpio;
     const audio_codec_data_if_t *data;
     const audio_codec_if_t *codec;
     esp_codec_dev_handle_t dev;
     bool opened; /* esp_codec_dev_open succeeded: its close stops the I2S channel */
 } audio_t;
+
+/* The codec's I2C control interface (one device on the shared bus) is created at the first sound and kept: removing it after every sound
+ * collides now and then with a touch / battery transaction of another task ("Wrong I2C status, cannot delete device"), which also leaks the
+ * device. Cost: one i2c device + 32 B of heap after the first sound. Only the audio task touches it, and one audio task runs at a time. */
+static const audio_codec_ctrl_if_t *ctrl;
 
 static StaticSemaphore_t lock_buf;
 static SemaphoreHandle_t lock;       /* created by the first board_audio_beep() */
@@ -48,13 +53,13 @@ static void audio_close(audio_t *a)
 {
     if (a->dev) { esp_codec_dev_close(a->dev); esp_codec_dev_delete(a->dev); } /* switches the amplifier off, stops the I2S channel */
     if (a->codec) audio_codec_delete_codec_if(a->codec);
-    if (a->ctrl) audio_codec_delete_ctrl_if(a->ctrl);                          /* removes the codec's device from the shared I2C bus */
     if (a->gpio) audio_codec_delete_gpio_if(a->gpio);
     if (a->data) audio_codec_delete_data_if(a->data);
     if (a->tx) {
         if (!a->opened) i2s_channel_disable(a->tx); /* never opened: the channel is still running (close stops it otherwise) */
         i2s_del_channel(a->tx);
     }
+    esp_gpio_revoke(1ULL << PIN_PA_EN); /* the codec's gpio_config reserved the pin; without this the next setup logs "conflict found" */
     *a = (audio_t){0};
 }
 
@@ -78,10 +83,10 @@ static esp_err_t audio_open(audio_t *a)
     a->gpio = audio_codec_new_gpio();
     audio_codec_i2c_cfg_t cfg_i2c = { .port = I2C_NUM_0, .addr = I2C_ADDR_ES8311 << 1, .bus_handle = board_i2c_bus(),
                                       .clock_speed_hz = 400000 }; /* like the other devices on the bus */
-    a->ctrl = audio_codec_new_i2c_ctrl(&cfg_i2c);
-    if (!a->data || !a->gpio || !a->ctrl) return ESP_ERR_NO_MEM;
+    if (!ctrl) ctrl = audio_codec_new_i2c_ctrl(&cfg_i2c);
+    if (!a->data || !a->gpio || !ctrl) return ESP_ERR_NO_MEM;
     es8311_codec_cfg_t ec = {
-        .ctrl_if = a->ctrl, .gpio_if = a->gpio, .codec_mode = ESP_CODEC_DEV_WORK_MODE_DAC,
+        .ctrl_if = ctrl, .gpio_if = a->gpio, .codec_mode = ESP_CODEC_DEV_WORK_MODE_DAC,
         .pa_pin = PIN_PA_EN, .pa_reverted = false, .master_mode = false, .use_mclk = true,
         .hw_gain = { .pa_voltage = 5.0f, .codec_dac_voltage = 3.3f }, /* as the BSP */
     };
