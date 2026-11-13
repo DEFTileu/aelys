@@ -199,6 +199,19 @@ configuration cases, transitions and board performance remain unverified. The
 host source and runner are in `decoder-spike/sw-transform.c` and
 `decoder-spike/run-sw-transform.sh` in the ignored ledger.
 
+The experimental `face_lvgl_rotate_region` adapter now validates disjoint,
+aligned ARGB surfaces and renders into an explicit output rectangle, so its
+caller can request padding rather than silently crop to the source dimensions.
+It is limited to 512 pixels per dimension and returns false for unsupported
+LVGL versions/configurations or invalid inputs. The convenience same-size
+variant intentionally clips. Host tests compare framebuffer pixels with LVGL,
+including fractional and quarter turns, a padded source and an expanded output;
+they also check invalid inputs and guards at the maximum dimensions. The ESP-IDF
+build compiles the adapter, and a relocatable target link resolves its transform
+symbol. Since the UI does not call it, the normal firmware link may discard it;
+this is not an execution or performance test on the device. Full eye bounds,
+presentation, allocation recovery and lifecycle remain open.
+
 In the current single UI task and software renderer, source inspection shows
 that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
 Updating the source later from the serialized UI task, outside refresh, then
