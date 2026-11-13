@@ -137,6 +137,17 @@ static void test_owner_defaults(void)
     }
 }
 
+/* The find overlay is not a screen: UI_EV_FIND never moves the current one, least of all out of lost mode or the emergency card. */
+static void test_find_overlay_does_not_leave_lost(void)
+{
+    for (int s = 0; s < SCR_COUNT; s++) {
+        CHECK_EQ(screen_next((scr_t)s, false, UI_EV_FIND), (scr_t)s);
+        CHECK_EQ(screen_next((scr_t)s, true, UI_EV_FIND), (scr_t)s);
+    }
+    CHECK_EQ(screen_next(SCR_LOST, true, UI_EV_FIND), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_ICE, true, UI_EV_FIND), SCR_ICE);
+}
+
 int main(void)
 {
     test_combo_opens_ice_from_home();
@@ -153,5 +164,6 @@ int main(void)
     test_inbox_back();
     test_swipes_ignored_in_lost_mode();
     test_owner_defaults();
+    test_find_overlay_does_not_leave_lost();
     return g_failed ? 1 : 0;
 }

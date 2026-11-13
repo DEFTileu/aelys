@@ -42,6 +42,9 @@ extern tribuf_t ui_snap_tb; /* snap_t */
 void ui_handle_event(const ui_event_t *ev);
 /* The action hook (main passes link_post_action): false = refused, and the UI shows "No connection". */
 void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
+/* While the find overlay is up, any touch, key or both-buttons hold hides it and calls this (main passes board_audio_stop); the touch or key
+ * is used up and does nothing else. Called in the ui task. FIND(0) from the audio task (the sound ended) does not call it. */
+void ui_set_find_stop(void (*stop)(void));
 /* Wall clock for "today", relative times and the mood (default: time(); returns 0 while the clock is not set). Host tests set it. */
 void ui_set_clock(int64_t (*now)(void));
 

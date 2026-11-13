@@ -23,7 +23,7 @@ static const snap_t empty_snap; /* before the first publish, or when the buffer 
 
 static struct {
     scr_t cur, down_scr; /* down_scr: the screen showing when the current touch began */
-    bool lost, happy, have_time;
+    bool lost, happy, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
     lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *happy_timer, *tick_timer;
@@ -33,6 +33,7 @@ static struct {
     char read_id[5][40];
     char pend_read[5][40]; /* ids of notification.read still unanswered, oldest first: UI_EV_ACTION carries no target */
     bool (*sink)(act_kind_t, const char *);
+    void (*find_stop)(void);
     int64_t (*clock)(void);
 } g;
 
@@ -118,6 +119,7 @@ void ui_text_color(lv_obj_t *o, uint32_t c)
 
 void ui_set_action_sink(bool (*sink)(act_kind_t, const char *)) { g.sink = sink; }
 void ui_set_clock(int64_t (*now)(void)) { g.clock = now; }
+void ui_set_find_stop(void (*stop)(void)) { g.find_stop = stop; }
 
 int64_t ui_now(void)
 {
@@ -227,18 +229,17 @@ void ui_check_set(lv_obj_t *c, bool on, uint32_t fill)
     lv_obj_set_hidden(tick, !on);
 }
 
+static void show(scr_t s);
+
 static void ice_timeout(lv_timer_t *t)
 {
     (void)t;
     g.ice_timer = NULL; /* one-shot: LVGL deletes it after this call */
-    ui_event_t ev = { .type = UI_EV_TOUCH };
-    ui_handle_event(&ev); /* a tap on the card: back to home or lost mode */
+    show(screen_next(g.cur, g.lost, UI_EV_TOUCH)); /* as a tap on the card: back to home or lost mode (not a real touch: it must not stop a find) */
 }
 
-static void show(scr_t s);
-
 /* A toast belongs to the everyday screens: never over lost mode, the ICE card or the pairing screen. */
-static bool toast_ok(void) { return g.cur != SCR_LOST && g.cur != SCR_ICE && g.cur != SCR_PAIR && !g.lost; }
+static bool toast_ok(void) { return g.cur != SCR_LOST && g.cur != SCR_ICE && g.cur != SCR_PAIR && !g.lost && !g.find; }
 static void toast(const char *txt)
 {
     if (toast_ok()) scr_toast_show(txt);
@@ -394,12 +395,14 @@ void ui_setup(void)
     g.scr[SCR_PAIR] = scr_pair_create(root);
     scr_hold_create(root);
     scr_toast_create(root);
+    scr_find_create(root); /* last: on top of the toast and every screen */
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
     tribuf_init(&ui_owner_tb, &owner_buf[0], &owner_buf[1], &owner_buf[2]);
     snap_buf = lv_malloc_zeroed(3 * sizeof *snap_buf); /* zeroed: no snapshot yet */
     if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
-    g.lost = g.happy = g.have_time = false;
+    g.lost = g.happy = g.have_time = g.find = false;
+    scr_find_show(false);
     g.link = LINK_UI_UNPAIRED;
     g.snap = snap_buf ? tribuf_latest(&ui_snap_tb, NULL) : NULL;
     g.done_id[0] = 0;
@@ -449,9 +452,23 @@ static void on_action_result(const ui_event_t *ev)
     toast(!strncmp(err, "OFFLINE", 8) ? "No connection" : "Didn't work \xE2\x80\x94 try again");
 }
 
+/* Input that ends a find: a touch, a key click, both buttons held (not the 0 % of letting go). */
+static bool ends_find(const ui_event_t *ev)
+{
+    return ev->type == UI_EV_TOUCH || ev->type == UI_EV_BTN || ev->type == UI_EV_COMBO_FIRE ||
+           (ev->type == UI_EV_COMBO_PROGRESS && ev->len >= 1 && ev->data[0] > 0);
+}
+
 void ui_handle_event(const ui_event_t *ev)
 {
     scr_t next = g.cur;
+    if (g.find && ends_find(ev)) {
+        g.find = false;
+        scr_find_show(false);
+        if (g.find_stop) g.find_stop();
+        if (ev->type == UI_EV_TOUCH) g.down_scr = SCR_COUNT; /* the tap, swipe and release of this touch are not for the screen below */
+        if (ev->type == UI_EV_TOUCH || ev->type == UI_EV_BTN) return;
+    }
     switch (ev->type) {
     case UI_EV_TIME:
         if (ev->len >= 2) {
@@ -520,6 +537,11 @@ void ui_handle_event(const ui_event_t *ev)
         }
         break;
     }
+    case UI_EV_FIND:
+        if (ev->len < 1) return;
+        g.find = ev->data[0] != 0;
+        scr_find_show(g.find);
+        return;
     case UI_EV_COMBO_PROGRESS:
         /* the overlay is for opening the card: not while it is already open */
         scr_hold_set(g.cur == SCR_ICE || ev->len < 1 ? 0 : ev->data[0]);

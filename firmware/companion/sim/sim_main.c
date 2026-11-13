@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -139,6 +139,8 @@ static int screen_shot(const char *shot)
         sim_post(UI_EV_WIFI_ADD, d, sizeof d);
         return 0;
     }
+    if (!strcmp(shot, "find")) { const uint8_t d = 1; sim_post(UI_EV_FIND, &d, 1); return 0; }
+    if (!strcmp(shot, "find_lost")) { const uint8_t d = 1; sim_post(UI_EV_LOST, &on, 1); sim_post(UI_EV_FIND, &d, 1); return 0; }
     if (!strcmp(shot, "ice_progress")) { sim_post(UI_EV_COMBO_PROGRESS, &pct, 1); return 0; }
     return -1;
 }
@@ -154,7 +156,7 @@ int main(int argc, char **argv)
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>]\n",
                 argv[0]);
         return 2;
     }

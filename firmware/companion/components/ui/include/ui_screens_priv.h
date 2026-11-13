@@ -48,6 +48,9 @@ void scr_toast_hide(void);                                 /* at once, timers st
 /* The Wi-Fi card: state as UI_EV_WIFI_ADD data[0] (0 connecting, 1 connected, 2 failed); prev "" = no network to name. False for an unknown state. */
 bool scr_wifi_card_show(uint8_t state, const char *ssid, const char *prev);
 void scr_wifi_card_hide(void);                             /* at once, timer stopped */
+/* The find overlay ("Here I am!"): full screen, on top of everything incl. lost mode and the ICE card; its own timer runs only while shown. */
+lv_obj_t *scr_find_create(lv_obj_t *parent);
+void scr_find_show(bool on);                               /* idempotent: showing it again does not restart the animation */
 
 /* scr_today.c (design "Today · обзор") */
 lv_obj_t *scr_today_create(lv_obj_t *parent);

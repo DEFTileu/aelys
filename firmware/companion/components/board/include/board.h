@@ -45,6 +45,17 @@ uint32_t lv_port_first_flush_end_us(void);
  * init error but starts the task anyway with whatever worked. */
 esp_err_t board_input_start(void);
 
+/* "Find Aelys": plays the 2 kHz beep pattern (200 ms on / 200 ms off, beep.h) through the ES8311 and the speaker for duration_ms, at most 60 s.
+ * Returns at once: an `audio` task (priority 3) is created for it and deleted when the sound ends; the codec, the I2S channel and the amplifier
+ * exist only while it plays, so nothing is held at idle. When the sound ends for any reason (time, board_audio_stop, an init error) the task posts
+ * UI_EV_FIND with data[0] = 0. Called while it plays, it restarts the clock (the sound goes on for another duration_ms).
+ * Call it from ONE task (the link task): it may wait a few tens of ms while the previous sound is torn down. ESP_ERR_NO_MEM when the task
+ * cannot be created; ESP_ERR_INVALID_ARG for 0. */
+esp_err_t board_audio_beep(uint32_t duration_ms);
+/* Ends the sound within about 10 ms. Non-blocking, safe from any task (the ui task calls it on a tap) while the audio task runs; a no-op when
+ * nothing plays. */
+void board_audio_stop(void);
+
 /* Rolling 5 s window: frames per second x10 and the longest single refresh in microseconds. */
 void lv_port_frame_stats(uint32_t *fps_x10, uint32_t *worst_us);
 

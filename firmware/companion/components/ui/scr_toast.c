@@ -2,7 +2,11 @@
  * No design frame; colours from the tokens (a RULE-grey pill with TEXT letters).
  * Wi-Fi card (designs "Wi-Fi с телефона" and "Wi-Fi · неверный пароль"): a rounded card in the middle of the display for a network
  * the owner sent from the phone: connecting (until the answer), connected (2 s), wrong password (5 s, to be read). No icons: the
- * firmware has no icon font. */
+ * firmware has no icon font.
+ * Find overlay (design "Найти Элис"): while the board beeps, a full-screen element of its own on top of everything: the ring flashes
+ * (250 ms lit / 250 ms dim), three ripples spread from the middle, a surprised Aelys, "Here I am!" and "Playing sound · tap to stop".
+ * Not a screen (screens.c keeps the one below). Deviations: no volume icon (no icon font), the ripples and the flash step every 125 ms
+ * (one timer, border opacity instead of opacity layers). */
 #include <stdio.h>
 #include <string.h>
 #include "ui_screens_priv.h"
@@ -23,6 +27,14 @@
 
 static struct { lv_obj_t *box, *label; lv_timer_t *timer; } h;
 static struct { lv_obj_t *box, *eyebrow, *name, *sub, *fix; lv_timer_t *timer; } w;
+
+#define FIND_TICK_MS 125
+#define FIND_RING_DIM 0x1B1926 /* UI_COLOR_ACCENT at 15 %: the design's flash */
+#define FIND_RIPPLES 3
+#define FIND_RIPPLE_D 300      /* design: 300 px, scale .4 -> 1.3 over the first 40 % of 1.8 s, three of them 0.6 s apart */
+#define FIND_RIPPLE_MS 1800
+#define FIND_RIPPLE_LIFE_MS 720
+static struct { lv_obj_t *root, *ring, *rip[FIND_RIPPLES]; lv_timer_t *timer; uint32_t t0, ms; bool lit; } f;
 
 static void toast_hide(lv_timer_t *t)
 {
@@ -125,4 +137,75 @@ lv_obj_t *scr_toast_create(lv_obj_t *parent)
     lv_obj_set_hidden(w.box, true);
     w.timer = NULL;
     return h.box;
+}
+
+static void find_draw(void)
+{
+    bool lit = f.ms % 500 < 250;
+    if (lit != f.lit) {
+        f.lit = lit;
+        lv_obj_set_style_border_color(f.ring, lv_color_hex(lit ? UI_COLOR_ACCENT : FIND_RING_DIM), 0);
+    }
+    for (int i = 0; i < FIND_RIPPLES; i++) {
+        int32_t t = (int32_t)f.ms - i * 600; /* ripple i starts i x 0.6 s in */
+        if (t < 0) t = FIND_RIPPLE_MS; /* not started: hidden */
+        t %= FIND_RIPPLE_MS;
+        bool on = t < FIND_RIPPLE_LIFE_MS;
+        lv_obj_set_hidden(f.rip[i], !on);
+        if (!on) continue;
+        int32_t d = FIND_RIPPLE_D * 4 / 10 + FIND_RIPPLE_D * 9 / 10 * t / FIND_RIPPLE_LIFE_MS;
+        lv_obj_set_size(f.rip[i], d, d);
+        lv_obj_set_pos(f.rip[i], (UI_SCREEN_SIZE - d) / 2, (UI_SCREEN_SIZE - d) / 2);
+        lv_obj_set_style_border_opa(f.rip[i], (lv_opa_t)(230 - 230 * t / FIND_RIPPLE_LIFE_MS), 0);
+    }
+}
+
+static void find_tick(lv_timer_t *t)
+{
+    (void)t;
+    f.ms = lv_tick_elaps(f.t0); /* wall time, not a tick count: a late frame must not slow the flash */
+    find_draw();
+}
+
+void scr_find_show(bool on)
+{
+    if (on == !lv_obj_is_hidden(f.root)) return;
+    if (!on) {
+        if (f.timer) { lv_timer_delete(f.timer); f.timer = NULL; }
+        lv_obj_set_hidden(f.root, true);
+        return;
+    }
+    f.t0 = lv_tick_get();
+    f.ms = 0;
+    f.lit = false; /* find_draw() lights it */
+    find_draw();
+    lv_obj_set_hidden(f.root, false);
+    lv_obj_move_foreground(f.root);
+    f.timer = lv_timer_create(find_tick, FIND_TICK_MS, NULL);
+}
+
+lv_obj_t *scr_find_create(lv_obj_t *parent)
+{
+    f.root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
+    lv_obj_set_style_bg_color(f.root, lv_color_hex(UI_COLOR_BG), 0);
+    lv_obj_set_style_bg_opa(f.root, LV_OPA_COVER, 0); /* covers whatever screen is up */
+    f.ring = ui_ring(f.root, 8, 12, UI_COLOR_ACCENT);
+    for (int i = 0; i < FIND_RIPPLES; i++) {
+        f.rip[i] = ui_plain(f.root, FIND_RIPPLE_D, FIND_RIPPLE_D);
+        lv_obj_set_style_radius(f.rip[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(f.rip[i], 3, 0);
+        lv_obj_set_style_border_color(f.rip[i], lv_color_hex(UI_COLOR_ACCENT), 0);
+    }
+    lv_obj_t *face = face_create(f.root, 70);
+    face_set_mood(face, MOOD_SURPRISED);
+    lv_obj_t *title = ui_label(f.root, &inter_28, UI_COLOR_TEXT, 300, 1, LV_TEXT_ALIGN_CENTER);
+    lv_label_set_text(title, "Here I am!");
+    lv_obj_t *sub = ui_label(f.root, &inter_16, UI_COLOR_SUBTLE, 300, 1, LV_TEXT_ALIGN_CENTER);
+    lv_label_set_text(sub, "Playing sound \xC2\xB7 tap to stop");
+    lv_obj_t *col[] = { face, title, sub };
+    const uint8_t gap[] = { 0, 8, 8 };
+    ui_stack(col, gap, 3, 0, UI_SCREEN_SIZE, -1);
+    f.timer = NULL;
+    lv_obj_set_hidden(f.root, true);
+    return f.root;
 }

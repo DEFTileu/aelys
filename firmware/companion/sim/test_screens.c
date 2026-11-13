@@ -1018,6 +1018,154 @@ static void test_wifi_toast_shots(void)
     CHECK_EQ(ui_current_screen(), SCR_HOME);
 }
 
+/* UI_EV_FIND ([0] = 1 start / 0 stop): design "Найти Элис". An overlay of its own on top of any screen, never a screen change. */
+static void find_ev(int on) { uint8_t v = (uint8_t)on; sim_post(UI_EV_FIND, &v, 1); }
+static int find_stops;
+static void count_find_stop(void) { find_stops++; }
+
+static int ring_red(void) { return (sim_fb()[13 * SIM_W + 233] >> 11) & 31; } /* the ring's top, 5-bit red */
+
+static void test_find_overlay_shot(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    const char *title = "Here I am!", *sub = "Playing sound \xC2\xB7 tap to stop";
+    ui_set_find_stop(count_find_stop);
+    fresh_fx();
+    swipe(UI_EV_SWIPE_RIGHT);                         /* Today: the one screen with no animation of its own */
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    CHECK(!shows_text(scr, title));
+
+    find_ev(1);
+    sim_step(100);
+    CHECK(shows_text(scr, title) && shows_text(scr, sub));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    check_inside("find overlay");
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);          /* not a screen: the one below stays */
+    CHECK(ring_red() > 20);                           /* the lit ring ... */
+    sim_step(200);
+    CHECK(ring_red() < 8);                            /* ... flashes dim after 250 ms ... */
+    sim_step(300);
+    CHECK(ring_red() > 20);                           /* ... and back every 500 ms */
+    uint32_t n = sim_flushes();
+    sim_step(1000);
+    CHECK(sim_flushes() > n);                         /* the ripples and the ring keep moving */
+    check_inside("find overlay (ripples)");
+
+    /* a toast or the Wi-Fi card does not show through it, and does not come back afterwards */
+    action_result(ACT_FOCUS_START, false, "TIMEOUT");
+    wifi_add_ev(0, "Office", "Home");
+    sim_step(100);
+    CHECK(!shows_text(scr, "Office") && !shows_text(scr, "Didn't work \xE2\x80\x94 try again"));
+
+    /* the end of the sound (60 s cap, or an error) comes as FIND(0) and does not call the stop hook */
+    find_ev(0);
+    sim_step(100);
+    CHECK(!shows_text(scr, title) && !shows_text(scr, sub));
+    CHECK(!shows_text(scr, "Office") && !shows_text(scr, "Didn't work \xE2\x80\x94 try again")); /* and neither waited behind it */
+    CHECK_EQ(find_stops, 0);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    sim_step(1000);
+    uint32_t idle = sim_flushes();
+    sim_step(1000); sim_step(1000); sim_step(1000);
+    CHECK_EQ(sim_flushes(), idle);                    /* nothing keeps animating once it is gone */
+
+    /* a tap stops it, calls the stop hook once, and does nothing else: on Today the "3 new" row would open the inbox */
+    sink.accept = true;
+    sink.n = 0;
+    tap_at(233, 440);                                 /* an earlier touch on Today, so the swallowing below is the code's, not luck */
+    find_ev(1);
+    sim_step(100);
+    CHECK(shows_text(scr, title));
+    tap_label("3 new");
+    sim_step(100);
+    CHECK(!shows_text(scr, title));
+    CHECK_EQ(find_stops, 1);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    CHECK_EQ(sink.n, 0);
+    tap_label("3 new");                               /* the next tap is an ordinary one again */
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    btn(BTN_LOW);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* a key stops it and is not a key press for the screen below (BTN_LOW on Today would go home) */
+    swipe(UI_EV_SWIPE_RIGHT);
+    find_ev(1);
+    sim_step(100);
+    btn(BTN_LOW);
+    sim_step(100);
+    CHECK(!shows_text(scr, title));
+    CHECK_EQ(find_stops, 2);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* a second FIND(1) while it plays changes nothing; a stray both-buttons release (0 %) does not stop it */
+    find_ev(1);
+    find_ev(1);
+    post_progress(0);
+    sim_step(100);
+    CHECK(shows_text(scr, title));
+    CHECK_EQ(find_stops, 2);
+
+    /* both buttons held: the overlay gives way to the progress ring, then the ICE card, and the sound stops */
+    post_progress(30);
+    sim_step(100);
+    CHECK(!shows_text(scr, title));
+    CHECK_EQ(find_stops, 3);
+    post_progress(0);
+    find_ev(1);
+    post(UI_EV_COMBO_FIRE);
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_ICE);
+    CHECK(!shows_text(scr, title));
+    CHECK_EQ(find_stops, 4);
+    post(UI_EV_TOUCH);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* the ICE card's own 15 s timeout is not a touch: it must not stop a sound that plays over it */
+    post(UI_EV_COMBO_FIRE);
+    find_ev(1);
+    sim_step(15100);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK(shows_text(scr, title));
+    CHECK_EQ(find_stops, 4);
+    find_ev(0);
+    sim_step(100);
+    CHECK(!shows_text(scr, title));
+    sink.accept = false;
+}
+
+/* Works in lost mode and does not leave it: the sound is found by the finder, not turned off by whoever has it. */
+static void test_find_overlay_in_lost_mode(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    const char *title = "Here I am!";
+    int stops = find_stops;
+    post_lost(1);
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    find_ev(1);
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    CHECK(shows_text(scr, title));
+    check_inside("find overlay over lost");
+    tap_at(233, 237);                                 /* stops the sound, no hint, still lost */
+    sim_step(100);
+    CHECK(!shows_text(scr, title));
+    CHECK(!shows_text(scr, "Only the owner can turn this off"));
+    CHECK_EQ(find_stops, stops + 1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    find_ev(1);
+    post_lost(0);                                     /* lost mode ending does not end the sound either */
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK(shows_text(scr, title));
+    find_ev(0);
+    sim_step(100);
+    CHECK(!shows_text(scr, title));
+}
+
 int main(void)
 {
     sim_init();
@@ -1045,5 +1193,7 @@ int main(void)
     test_gestures_and_lost_mode();
     test_lost_hint_toast_shot();
     test_wifi_toast_shots();
+    test_find_overlay_shot();
+    test_find_overlay_in_lost_mode();
     return g_failed ? 1 : 0;
 }

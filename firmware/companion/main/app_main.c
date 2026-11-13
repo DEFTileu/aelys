@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "beep.h"
 #include "board.h"
 #include "codec_util.h"
 #include "esp_heap_caps.h"
@@ -190,7 +191,15 @@ static void on_command(const proto_msg_t *m)
     case CMD_WIFI_ORDER:
         wifi_changed(id, net_wifi_reorder((const char(*)[33])m->u.cmd.a.order.ssid, m->u.cmd.a.order.n));
         break;
-    default: /* play_sound: a later task */
+    case CMD_PLAY_SOUND: /* find: ack first, then the overlay and the beeps (60 s, a tap or key stops them); works on every screen */
+        link_send_ack(id, true, NULL);
+        post_ui((ui_event_t){.type = UI_EV_FIND, .len = 1, .data = {1}});
+        if (board_audio_beep(BEEP_MAX_MS) != ESP_OK) {
+            ESP_LOGW(TAG, "play_sound: the sound did not start");
+            post_ui((ui_event_t){.type = UI_EV_FIND, .len = 1, .data = {0}});
+        }
+        break;
+    default:
         link_send_ack(id, false, "UNSUPPORTED");
         break;
     }
@@ -232,6 +241,7 @@ static void on_ui_event(const ui_event_t *ev)
 static void boot_ui_setup(void)
 {
     ui_setup();
+    ui_set_find_stop(board_audio_stop); /* a tap or key while "Here I am!" shows ends the beeps */
 #ifndef CONFIG_AELYS_NO_WIFI
     ui_set_action_sink(link_post_action); /* taps and keys on Today, Focus and Inbox become actions for the server */
 #endif
