@@ -16,3 +16,10 @@ gesture_t gesture_feed(gesture_ctx_t *g, bool touched, int16_t x, int16_t y, uin
  * two-key combo never started) is a click: returns BTN_TOP / BTN_LOW at the release, else 0. */
 typedef struct { bool top, low, tainted; uint32_t t0; } btn_ctx_t;
 ui_btn_t btn_feed(btn_ctx_t *b, bool top, bool low, uint32_t now_ms);
+
+/* The finger is down and has moved 20 px or more from where it landed: not a tap, and not a hold either. */
+bool gesture_moved(const gesture_ctx_t *g);
+
+/* Switch debounce: the returned level changes only after 3 polls in a row that disagree with it. */
+typedef struct { bool level; uint8_t n; } debounce_t;
+bool debounce_feed(debounce_t *d, bool raw);

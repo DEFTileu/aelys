@@ -16,6 +16,12 @@ static void toast_hide(lv_timer_t *t)
     lv_obj_set_hidden(h.box, true);
 }
 
+void scr_toast_hide(void)
+{
+    if (h.timer) { lv_timer_delete(h.timer); h.timer = NULL; }
+    lv_obj_set_hidden(h.box, true);
+}
+
 void scr_toast_show(const char *txt)
 {
     ui_set_text(h.label, txt);

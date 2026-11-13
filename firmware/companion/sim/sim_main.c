@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out file.bmp [--scale 100]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -85,7 +85,12 @@ static int companion_shot(const char *shot)
         s.focus.elapsed_s = !strcmp(shot, "focus_paused") ? 17 * 60 + 52 : !strcmp(shot, "focus_done") ? 25 * 60 : 9 * 60 + 5;
         strcpy(s.focus.id, "f-3");
     }
-    if (!strcmp(shot, "aelys_offline")) { post_ev(UI_EV_LINK, LINK_UI_OFFLINE); fx_post(&s, 0); return 0; }
+    if (!strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi")) {
+        if (!strcmp(shot, "aelys_offline_wifi")) post_ev(UI_EV_WIFI, UI_WIFI_BAD_PASSWORD); /* the usual reason */
+        post_ev(UI_EV_LINK, LINK_UI_OFFLINE);
+        fx_post(&s, 0);
+        return 0;
+    }
     fx_post(&s, 1);
     if (!strcmp(shot, "today")) sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
     else if (!strcmp(shot, "inbox")) {
@@ -101,7 +106,7 @@ static int companion_shot(const char *shot)
 
 static int screen_shot(const char *shot)
 {
-    if (!strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "inbox") ||
+    if (!strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
         !strncmp(shot, "focus_", 6))
         return companion_shot(shot);
     static owner_info_t owner;
@@ -135,7 +140,7 @@ int main(int argc, char **argv)
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out <file.bmp> [--scale <percent>]\n",
                 argv[0]);
         return 2;
     }

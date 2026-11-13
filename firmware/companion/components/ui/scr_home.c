@@ -11,6 +11,7 @@ static struct {
     lv_obj_t *off_face, *off_title, *off_since, *off_tasks;
     int done, total;
     bool welcome, paired, offline;
+    uint8_t wifi_state; /* ui_wifi_state_t */
     mood_t mood;
 } h;
 
@@ -21,11 +22,21 @@ void scr_home_set_time(uint8_t hour, uint8_t minute)
     lv_label_set_text(h.clock, t);
 }
 
+/* The Wi-Fi line stays on the Offline view when it says something the view does not: "Connecting..." or "Wrong Wi-Fi password".
+ * "Offline" / "Online" there would only repeat or contradict the title. */
+static void wifi_show(void)
+{
+    bool useful = h.wifi_state == UI_WIFI_CONNECTING || h.wifi_state == UI_WIFI_BAD_PASSWORD;
+    lv_obj_set_hidden(h.wifi, h.offline && !useful);
+}
+
 void scr_home_set_wifi(uint8_t state)
 {
     static const char *const txt[] = { "Offline", "Connecting...", "Online", "Wrong Wi-Fi password" };
     if (state > UI_WIFI_BAD_PASSWORD) return;
+    h.wifi_state = state;
     lv_label_set_text(h.wifi, txt[state]);
+    wifi_show();
     lv_obj_set_style_text_color(h.wifi, lv_color_hex(state == UI_WIFI_BAD_PASSWORD ? UI_COLOR_AMBER : UI_COLOR_MUTED), 0);
 }
 
@@ -77,10 +88,11 @@ void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline)
     offline = offline && h.paired && !h.welcome;
     if (offline != h.offline) {
         h.offline = offline;
-        lv_obj_t *normal[] = { h.orbit, h.clock, h.face, h.agenda, h.wifi };
+        lv_obj_t *normal[] = { h.orbit, h.clock, h.face, h.agenda };
         for (unsigned i = 0; i < sizeof normal / sizeof *normal; i++) lv_obj_set_hidden(normal[i], offline);
         lv_obj_t *off[] = { h.off_face, h.off_title, h.off_since, h.off_tasks };
         for (unsigned i = 0; i < sizeof off / sizeof *off; i++) lv_obj_set_hidden(off[i], !offline);
+        wifi_show();
         if (!offline) restack();
     }
     if (!offline) return;

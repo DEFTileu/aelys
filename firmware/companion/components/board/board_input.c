@@ -177,6 +177,8 @@ static void input_task(void *arg)
     pwrkey_reset(&pwrkey);
     gesture_ctx_t gctx = {0};
     btn_ctx_t bctx = {0};
+    debounce_t boot_deb = {0}; /* for the click only: the combo has its own 2 s timing */
+    bool moved_sent = false;   /* UI_EV_RELEASE already sent for this touch because the finger moved */
     gesture_t pend_gest = GEST_NONE; /* a tap or swipe the ui queue had no room for yet */
     bool was_touched = false, fire_pending = false, release_pending = false;
     int shown = 0; /* the last progress percent the ui was told about */
@@ -195,6 +197,9 @@ static void input_task(void *arg)
             bool down = touch_down(&x, &y);
             gesture_t gs = gesture_feed(&gctx, down, (int16_t)x, (int16_t)y, (uint32_t)(esp_timer_get_time() / 1000));
             if (gs != GEST_NONE) pend_gest = gs;
+            /* a finger that moved 20 px is no hold: tell the ui as if it had lifted (the real lift sends one more, harmless) */
+            if (down && !moved_sent && gesture_moved(&gctx)) moved_sent = post(UI_EV_RELEASE, -1);
+            if (!down) moved_sent = false;
             if (!down) {
                 release_pending = release_pending || was_touched; /* the ui hears the lift after the gesture */
                 was_touched = false;
@@ -235,7 +240,7 @@ static void input_task(void *arg)
         boot = boot || st_boot;
         pwr = pwr || st_pwr;
 #endif
-        ui_btn_t click = btn_feed(&bctx, pwr, boot, (uint32_t)(esp_timer_get_time() / 1000)); /* top = PWR: see the top of this file */
+        ui_btn_t click = btn_feed(&bctx, pwr, debounce_feed(&boot_deb, boot), (uint32_t)(esp_timer_get_time() / 1000)); /* top = PWR: see the top of this file */
         if (click) post(UI_EV_BTN, click);
         int pct = combo_update(&combo, boot, pwr, (uint32_t)(esp_timer_get_time() / 1000));
         if (pct == 100) {

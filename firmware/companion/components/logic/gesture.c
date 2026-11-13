@@ -38,3 +38,16 @@ ui_btn_t btn_feed(btn_ctx_t *b, bool top, bool low, uint32_t now_ms)
     b->low = low;
     return out;
 }
+
+bool gesture_moved(const gesture_ctx_t *g)
+{
+    int dx = g->x - g->x0, dy = g->y - g->y0;
+    return g->down && dx * dx + dy * dy >= TAP_MOVE_PX * TAP_MOVE_PX;
+}
+
+bool debounce_feed(debounce_t *d, bool raw)
+{
+    if (raw == d->level) d->n = 0;
+    else if (++d->n >= 3) { d->level = raw; d->n = 0; }
+    return d->level;
+}

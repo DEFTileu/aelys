@@ -65,6 +65,42 @@ static void test_buttons(void)
     CHECK_EQ(btn_feed(&b, false, false, 4100), BTN_TOP);        /* and it re-arms */
 }
 
+/* A key level counts only after 3 equal polls in a row: a bounce cannot make a second click. */
+static void test_debounce(void)
+{
+    debounce_t d = {0};
+    CHECK(!debounce_feed(&d, true));
+    CHECK(!debounce_feed(&d, true));
+    CHECK(debounce_feed(&d, true));                    /* 3rd poll */
+    CHECK(debounce_feed(&d, false));                   /* a glitch ... */
+    CHECK(debounce_feed(&d, true));                    /* ... is gone before it counts */
+    CHECK(debounce_feed(&d, false));
+    CHECK(debounce_feed(&d, false));
+    CHECK(!debounce_feed(&d, false));                  /* released for 3 polls */
+
+    /* a bouncing release gives one click, not two */
+    btn_ctx_t b = {0};
+    debounce_t k = {0};
+    const bool raw[] = { 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0 }; /* press, bounce on release, then silence */
+    int clicks = 0;
+    for (unsigned i = 0; i < sizeof raw / sizeof *raw; i++)
+        clicks += btn_feed(&b, false, debounce_feed(&k, raw[i]), 10 + 4 * i) != 0;
+    CHECK_EQ(clicks, 1);
+}
+
+static void test_moved(void)
+{
+    gesture_ctx_t g = {0};
+    CHECK(!gesture_moved(&g));                         /* no finger */
+    gesture_feed(&g, true, 100, 100, 0);
+    gesture_feed(&g, true, 110, 112, 10);
+    CHECK(!gesture_moved(&g));                         /* 15.6 px */
+    gesture_feed(&g, true, 115, 115, 20);
+    CHECK(gesture_moved(&g));                          /* 21.2 px: no longer a tap or a hold */
+    gesture_feed(&g, false, 0, 0, 30);
+    CHECK(!gesture_moved(&g));
+}
+
 int main(void)
 {
     test_tap();
@@ -73,5 +109,7 @@ int main(void)
     test_vertical_drag_is_none();
     test_one_event_per_touch();
     test_buttons();
+    test_debounce();
+    test_moved();
     return g_failed ? 1 : 0;
 }

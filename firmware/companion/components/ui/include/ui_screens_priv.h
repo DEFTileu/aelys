@@ -44,6 +44,7 @@ mood_t ui_mood_for(const snap_t *s, int64_t now, bool online, bool just_complete
 /* scr_toast.c: one short message on top of everything, gone after 2 s. */
 lv_obj_t *scr_toast_create(lv_obj_t *parent);
 void scr_toast_show(const char *txt);
+void scr_toast_hide(void);                                 /* at once, timer stopped */
 
 /* scr_today.c (design "Today · обзор") */
 lv_obj_t *scr_today_create(lv_obj_t *parent);

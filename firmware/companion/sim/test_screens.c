@@ -574,6 +574,7 @@ static void test_inbox_shot(void)
     CHECK(!strcmp(sink.id, "n-2"));
     tap_label("Design review");
     CHECK_EQ(sink.n, 1);                             /* ticked: once */
+    action_result(ACT_NOTIFICATION_READ, true, NULL);
     CHECK_EQ(ui_current_screen(), SCR_INBOX);
     swipe(UI_EV_SWIPE_RIGHT);
     CHECK_EQ(ui_current_screen(), SCR_INBOX);        /* swipes do nothing here */
@@ -584,6 +585,7 @@ static void test_inbox_shot(void)
     sim_step(14000);
     CHECK_EQ(ui_current_screen(), SCR_INBOX);
     tap_label("Session done");                       /* a touch restarts the 15 s */
+    action_result(ACT_NOTIFICATION_READ, true, NULL);
     sim_step(14000);
     CHECK_EQ(ui_current_screen(), SCR_INBOX);
     sim_step(1100);
@@ -623,9 +625,32 @@ static void test_offline_shot(void)
     CHECK(shows_text(scr, "5 / 8 tasks \xC2\xB7 next at 16:00"));
     CHECK(!shows_text(scr, "3 left today"));
     CHECK_EQ(missing_glyphs(scr), 0);
+    /* the Wi-Fi line is not lost on this view: a failing Wi-Fi is exactly when the board is offline */
+    uint8_t w = UI_WIFI_BAD_PASSWORD;
+    sim_post(UI_EV_WIFI, &w, 1);
+    sim_step(100);
+    check_inside("offline (bad password)");
+    CHECK(shows_text(scr, "Wrong Wi-Fi password") && shows_text(scr, "Offline") && shows_text(scr, "Showing data from 14:05"));
+    w = UI_WIFI_CONNECTING;
+    sim_post(UI_EV_WIFI, &w, 1);
+    sim_step(100);
+    check_inside("offline (connecting)");
+    CHECK(shows_text(scr, "Connecting..."));
+    w = UI_WIFI_ONLINE;                              /* "Online" under "Offline" would only confuse */
+    sim_post(UI_EV_WIFI, &w, 1);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Online"));
+    w = UI_WIFI_OFFLINE;
+    sim_post(UI_EV_WIFI, &w, 1);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Connecting...") && !shows_text(scr, "Wrong Wi-Fi password"));
+    w = UI_WIFI_BAD_PASSWORD;                        /* and it is back on the normal home */
+    sim_post(UI_EV_WIFI, &w, 1);
     link_state(LINK_UI_CONNECTING);
     sim_step(100);
-    CHECK(!shows_text(scr, "Offline") || !shows_text(scr, "Showing data from 14:05")); /* the normal home is back */
+    CHECK(shows_text(scr, "Wrong Wi-Fi password") && shows_text(scr, "3 left today") && !shows_text(scr, "Showing data from 14:05"));
+    w = UI_WIFI_OFFLINE;
+    sim_post(UI_EV_WIFI, &w, 1);
     CHECK(shows_text(scr, "3 left today"));
     memset(&fx, 0, sizeof fx);                       /* offline with nothing cached: just "Offline" */
     fx.today_total = -1;
@@ -723,6 +748,46 @@ static void test_focus_shots(void)
     fresh_fx();
 }
 
+static void test_failed_read_clears_only_that_notice(void)
+{
+    fx_snap(&fx);                                    /* drops the ticks left by earlier tests */
+    fx.n_notices = 0;
+    post_fx();
+    fresh_fx();
+    swipe(UI_EV_SWIPE_RIGHT);
+    tap_label("3 new");
+    sink.n = 0;
+    tap_label("Ship pairing ADR");
+    tap_label("Design review");
+    CHECK_EQ(sink.n, 2);
+    action_result(ACT_NOTIFICATION_READ, false, "TIMEOUT");   /* the answer to the first read */
+    sim_step(100);
+    tap_label("Design review");
+    CHECK_EQ(sink.n, 2);                             /* still ticked */
+    tap_label("Ship pairing ADR");
+    CHECK_EQ(sink.n, 3);                             /* its tick was taken back: sent again */
+    CHECK(!strcmp(sink.id, "n-1"));
+    action_result(ACT_NOTIFICATION_READ, true, NULL);
+    action_result(ACT_NOTIFICATION_READ, true, NULL);
+    btn(BTN_LOW);
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
+/* "Session done" closes the ring: no gap at 12 o'clock (it was a 1 degree notch) */
+static void test_done_ring_is_closed(void)
+{
+    const uint16_t *fb = sim_fb();
+    swipe(UI_EV_SWIPE_LEFT);
+    focus_snap(FOCUS_ACTIVE, "pomodoro", 1500);
+    sim_step(1100);
+    CHECK(shows_text(lv_screen_active(), "Session done"));
+    for (int x = 229; x <= 237; x++) CHECK(((fb[14 * SIM_W + x] >> 11) & 31) > 20); /* coral across the top */
+    fresh_fx();
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
 /* The once-a-second refresh must not redraw anything while nothing changes (idle fps stays as it was). */
 static void test_idle_screens_do_not_redraw(void)
 {
@@ -745,8 +810,14 @@ static void test_gestures_and_lost_mode(void)
 {
     swipe(UI_EV_SWIPE_RIGHT);
     CHECK_EQ(ui_current_screen(), SCR_TODAY);
-    post_lost(1);
+    const char *oops = "Didn't work \xE2\x80\x94 try again";
+    action_result(ACT_FOCUS_START, false, "TIMEOUT");
+    sim_step(100);
+    CHECK(shows_text(lv_screen_active(), oops));
+    post_lost(1);                                    /* a toast already up goes at once ... */
+    sim_step(100);
     CHECK_EQ(ui_current_screen(), SCR_LOST);
+    CHECK(!shows_text(lv_screen_active(), oops));
     sink.n = 0;
     swipe(UI_EV_SWIPE_RIGHT);
     swipe(UI_EV_SWIPE_LEFT);
@@ -760,6 +831,25 @@ static void test_gestures_and_lost_mode(void)
     CHECK(!shows_text(lv_screen_active(), "Didn't work \xE2\x80\x94 try again"));
     post_lost(0);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* ... and none starts over the ICE card or the pairing screen */
+    action_result(ACT_FOCUS_START, false, "TIMEOUT");
+    post(UI_EV_COMBO_FIRE);
+    sim_step(100);
+    CHECK(!shows_text(lv_screen_active(), oops));
+    action_result(ACT_FOCUS_START, false, "TIMEOUT");
+    sim_step(100);
+    CHECK(!shows_text(lv_screen_active(), oops));
+    post(UI_EV_TOUCH);
+    post_pair(PAIR_UI_CODE, "123456");
+    action_result(ACT_FOCUS_START, false, "OFFLINE");
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_PAIR);
+    CHECK(!shows_text(lv_screen_active(), oops) && !shows_text(lv_screen_active(), "No connection"));
+    post_pair(PAIR_UI_HIDE, NULL);
+    sim_step(2100);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK(!shows_text(lv_screen_active(), oops));    /* nothing comes back when the screen does */
 
     post(UI_EV_COMBO_FIRE);                          /* the touch that closes the ICE card is not a swipe on home */
     touch_at(233, 233);
@@ -794,6 +884,8 @@ int main(void)
     test_inbox_shot();
     test_offline_shot();
     test_focus_shots();
+    test_failed_read_clears_only_that_notice();
+    test_done_ring_is_closed();
     test_idle_screens_do_not_redraw();
     test_gestures_and_lost_mode();
     return g_failed ? 1 : 0;

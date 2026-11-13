@@ -31,6 +31,7 @@ static struct {
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
     char done_id[40];    /* optimistic marks: task.complete / notification.read sent for these ids */
     char read_id[5][40];
+    char pend_read[5][40]; /* ids of notification.read still unanswered, oldest first: UI_EV_ACTION carries no target */
     bool (*sink)(act_kind_t, const char *);
     int64_t (*clock)(void);
 } g;
@@ -159,8 +160,13 @@ static void arc_draw(lv_event_t *e)
     lv_draw_arc(lv_event_get_layer(e), &d);
     if (a->pct <= 0) return;
     d.color = lv_color_hex(a->fg);
-    d.start_angle = 270; /* 12 o'clock; LVGL angles run clockwise from 3 o'clock */
-    d.end_angle = a->pct >= 100 ? 270 + 359 : 270 + 360 * a->pct / 100;
+    if (a->pct >= 100) { /* a closed ring: one full circle, no notch at 12 o'clock */
+        d.start_angle = 0;
+        d.end_angle = 360;
+    } else {
+        d.start_angle = 270; /* 12 o'clock; LVGL angles run clockwise from 3 o'clock */
+        d.end_angle = 270 + 360 * a->pct / 100;
+    }
     lv_draw_arc(lv_event_get_layer(e), &d);
 }
 
@@ -231,6 +237,12 @@ static void ice_timeout(lv_timer_t *t)
 
 static void show(scr_t s);
 
+/* A toast belongs to the everyday screens: never over lost mode, the ICE card or the pairing screen. */
+static void toast(const char *txt)
+{
+    if (g.cur != SCR_LOST && g.cur != SCR_ICE && g.cur != SCR_PAIR && !g.lost) scr_toast_show(txt);
+}
+
 static void paired_timeout(lv_timer_t *t)
 {
     (void)t;
@@ -272,6 +284,7 @@ static void show(scr_t s)
     g.cur = s;
     scr_hold_set(0);
     stop_timer(&g.hold_timer);
+    if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) scr_toast_hide();
     if (s == SCR_ICE) arm_timer(&g.ice_timer, ice_timeout, ICE_TIMEOUT_MS);
     else stop_timer(&g.ice_timer);
     if (s == SCR_INBOX) arm_timer(&g.inbox_timer, inbox_timeout, INBOX_TIMEOUT_MS);
@@ -315,7 +328,7 @@ static void happy_timeout(lv_timer_t *t)
 static bool act(act_kind_t k, const char *target)
 {
     if (g.sink && g.sink(k, target)) return true;
-    scr_toast_show("No connection");
+    toast("No connection");
     return false;
 }
 
@@ -329,7 +342,22 @@ static void hold_timeout(lv_timer_t *t)
 static void mark_read(const char *id)
 {
     for (int i = 0; i < 5; i++)
-        if (!g.read_id[i][0]) { snprintf(g.read_id[i], sizeof g.read_id[i], "%s", id); return; }
+        if (!g.read_id[i][0]) { snprintf(g.read_id[i], sizeof g.read_id[i], "%s", id); break; }
+    for (int i = 0; i < 5; i++)
+        if (!g.pend_read[i][0]) { snprintf(g.pend_read[i], sizeof g.pend_read[i], "%s", id); return; }
+}
+
+/* An answer to the oldest open notification.read; on failure only that notice loses its tick.
+ * shortcut: assumes answers come in the order the reads were sent; upgrade by carrying the target id in UI_EV_ACTION. */
+static void read_answered(bool ok)
+{
+    char id[40];
+    snprintf(id, sizeof id, "%s", g.pend_read[0]);
+    memmove(g.pend_read[0], g.pend_read[1], sizeof g.pend_read - sizeof g.pend_read[0]);
+    memset(g.pend_read[4], 0, sizeof g.pend_read[4]);
+    if (ok) return;
+    for (int i = 0; i < 5; i++)
+        if (id[0] && !strcmp(g.read_id[i], id)) g.read_id[i][0] = 0;
 }
 
 /* A fresh snapshot: marks for things the server no longer lists are dropped. */
@@ -366,6 +394,7 @@ void ui_setup(void)
     g.snap = snap_buf ? tribuf_latest(&ui_snap_tb, NULL) : NULL;
     g.done_id[0] = 0;
     memset(g.read_id, 0, sizeof g.read_id);
+    memset(g.pend_read, 0, sizeof g.pend_read);
     if (!g.tick_timer) g.tick_timer = lv_timer_create(tick_timer_cb, 1000, NULL);
     render();
     show(SCR_HOME);
@@ -397,6 +426,7 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
 static void on_action_result(const ui_event_t *ev)
 {
     if (ev->len < 2) return;
+    if (ev->data[0] == ACT_NOTIFICATION_READ) read_answered(ev->data[1] != 0);
     if (ev->data[1]) {
         if (ev->data[0] == ACT_TASK_COMPLETE) { /* Aelys cheers for 3 s */
             g.happy = true;
@@ -405,9 +435,8 @@ static void on_action_result(const ui_event_t *ev)
         return;
     }
     if (ev->data[0] == ACT_TASK_COMPLETE) g.done_id[0] = 0; /* the tick was optimistic: take it back */
-    if (ev->data[0] == ACT_NOTIFICATION_READ) memset(g.read_id, 0, sizeof g.read_id);
     const char *err = ev->len >= 3 ? (const char *)&ev->data[2] : "";
-    scr_toast_show(!strncmp(err, "OFFLINE", 8) ? "No connection" : "Didn't work \xE2\x80\x94 try again");
+    toast(!strncmp(err, "OFFLINE", 8) ? "No connection" : "Didn't work \xE2\x80\x94 try again");
 }
 
 void ui_handle_event(const ui_event_t *ev)
