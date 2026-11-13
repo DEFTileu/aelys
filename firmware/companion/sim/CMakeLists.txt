@@ -37,16 +37,16 @@ target_include_directories(logic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main)
 
 target_link_libraries(ui PUBLIC logic) # screens use owner.h, screen_fsm.h, ui_events.h
 
-add_library(simlib STATIC sim_display.c bmp.c)
+add_library(simlib STATIC sim_display.c bmp.c sim_cues.c)
 target_compile_options(simlib PRIVATE -Wall -Wextra)
 target_include_directories(simlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(simlib PUBLIC ui lvgl)
+target_link_libraries(simlib PUBLIC ui lvgl m)
 
 add_executable(companion_sim sim_main.c)
 target_link_libraries(companion_sim PRIVATE simlib)
 
 enable_testing()
-foreach(t test_face_moods test_face_geometry test_bmp test_mood_rules test_screens test_screen_damage)
+foreach(t test_face_moods test_face_geometry test_bmp test_mood_rules test_screens test_screen_damage test_cue)
     add_executable(${t} ${t}.c)
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})
@@ -63,3 +63,7 @@ find_package(Threads REQUIRED)
 target_link_libraries(test_tribuf PRIVATE Threads::Threads)
 target_link_libraries(test_perf_probe PRIVATE Threads::Threads)
 add_test(NAME sim_shot_smoke COMMAND companion_sim --shot face:happy --out ${CMAKE_BINARY_DIR}/smoke.bmp)
+
+add_test(NAME sim_cue_smoke COMMAND companion_sim --cue joy --out ${CMAKE_BINARY_DIR}/joy.wav)
+add_test(NAME sim_event_cue_smoke COMMAND companion_sim --event-cue task-complete --out ${CMAKE_BINARY_DIR}/event-joy.wav)
+add_test(NAME sim_event_cue_night COMMAND ${CMAKE_COMMAND} -DSIM_EXE=$<TARGET_FILE:companion_sim> -P ${CMAKE_CURRENT_SOURCE_DIR}/test_cue_silence.cmake)

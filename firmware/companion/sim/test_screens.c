@@ -525,6 +525,27 @@ static void test_all_large_home_moods(void)
     fresh_fx();
 }
 
+static int cue_count;
+static character_cue_t last_cue;
+static void capture_cue(character_cue_t cue) { cue_count++; last_cue = cue; }
+static void test_character_cue_delivery(void)
+{
+    ui_set_character_cue_sink(capture_cue); cue_count = 0;
+    fresh_fx(); action_result(ACT_TASK_COMPLETE, true, NULL);
+    CHECK_EQ(cue_count, 1); CHECK_EQ(last_cue, CUE_JOY);
+    post_fx(); sim_step(3100); CHECK_EQ(cue_count, 1);
+    fx.focus.status = FOCUS_ACTIVE; post_fx();
+    action_result(ACT_TASK_COMPLETE, true, NULL); CHECK_EQ(cue_count, 1);
+    sim_step(3100); fx.focus.status = FOCUS_NONE; post_fx();
+    uint8_t night[] = {23, 0}; sim_post(UI_EV_TIME, night, 2);
+    action_result(ACT_TASK_COMPLETE, true, NULL); CHECK_EQ(cue_count, 1);
+    sim_step(3100); uint8_t day[] = {14, 32}; sim_post(UI_EV_TIME, day, 2);
+    swipe(UI_EV_SWIPE_RIGHT);
+    action_result(ACT_TASK_COMPLETE, true, NULL); CHECK_EQ(cue_count, 2);
+    swipe(UI_EV_SWIPE_LEFT); CHECK_EQ(cue_count, 2);
+    sim_step(3100); ui_set_character_cue_sink(NULL); fresh_fx();
+}
+
 static void test_character_home_integration(void)
 {
     CHECK_EQ(ui_current_screen(), SCR_HOME);
@@ -1408,6 +1429,7 @@ int main(void)
     test_companion_setup();
     test_home_larger_face();
     test_all_large_home_moods();
+    test_character_cue_delivery();
     test_character_home_integration();
     test_last_task_reaction();
     test_today_shot();

@@ -125,6 +125,10 @@ void ui_text_color(lv_obj_t *o, uint32_t c)
 }
 
 void ui_set_action_sink(bool (*sink)(act_kind_t, const char *)) { g.sink = sink; }
+#ifndef ESP_PLATFORM
+static void (*character_cue_sink)(character_cue_t cue);
+void ui_set_character_cue_sink(void (*sink)(character_cue_t cue)) { character_cue_sink = sink; }
+#endif
 void ui_set_clock(int64_t (*now)(void)) { g.clock = now; }
 void ui_set_find_stop(void (*stop)(void)) { g.find_stop = stop; }
 
@@ -409,6 +413,18 @@ bool ui_probe_swipe(void)
 }
 #endif
 
+static void update_character(void)
+{
+    bool link_known = g.link == LINK_UI_ONLINE || g.link == LINK_UI_OFFLINE;
+    uint32_t now_ms = lv_tick_get();
+    character_inputs_t inputs = ui_character_inputs(g.snap_valid ? g.snap : NULL, ui_now(), g.have_time, g.hh,
+                                                    link_known, g.link == LINK_UI_ONLINE, g.snap_ms, now_ms);
+    g.character_result = character_select(&g.character, &inputs, now_ms);
+#ifndef ESP_PLATFORM
+    if (character_cue_sink && g.character_result.cue != CUE_NONE) character_cue_sink(g.character_result.cue);
+#endif
+}
+
 /* Only the visible screen needs labels and layout. The snapshot itself stays current even while a card hides it. */
 static void render(void)
 {
@@ -417,11 +433,7 @@ static void render(void)
     bool offline = g.link == LINK_UI_OFFLINE;
     switch (g.cur) {
     case SCR_HOME: {
-        bool link_known = g.link == LINK_UI_ONLINE || g.link == LINK_UI_OFFLINE;
-        character_inputs_t inputs = ui_character_inputs(g.snap_valid ? s : NULL, now, g.have_time, g.hh,
-                                                        link_known, g.link == LINK_UI_ONLINE,
-                                                        g.snap_ms, lv_tick_get());
-        g.character_result = character_select(&g.character, &inputs, lv_tick_get());
+        update_character();
         scr_home_set_snap(s, now, mood_from_character(g.character_result.mood), offline);
         break;
     }
@@ -559,6 +571,7 @@ static void on_action_result(const ui_event_t *ev)
                          (g.snap->today_done >= 0 && g.snap->today_done + 1 == g.snap->today_total &&
                           g.snap->has_task && g.done_id[0] && !strcmp(g.done_id, g.snap->task.id)));
             character_event(&g.character, last ? CHAR_EVENT_LAST_TASK : CHAR_EVENT_TASK_DONE, lv_tick_get());
+            update_character(); /* deliver a host cue at the event, even off Home */
             arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
         }
         return;

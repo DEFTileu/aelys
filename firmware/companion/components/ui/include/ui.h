@@ -47,6 +47,10 @@ extern tribuf_t ui_snap_tb; /* snap_t */
 void ui_handle_event(const ui_event_t *ev);
 /* The action hook (main passes link_post_action): false = refused, and the UI shows "No connection". */
 void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
+#ifndef ESP_PLATFORM
+/* Simulator only: the firmware cannot register a character-audio sink. */
+void ui_set_character_cue_sink(void (*sink)(character_cue_t cue));
+#endif
 /* While the find overlay is up, any touch, key or both-buttons hold hides it and calls this (main passes board_audio_stop); the touch or key
  * is used up and does nothing else. Called in the ui task. FIND(0) from the audio task (the sound ended) does not call it. */
 void ui_set_find_stop(void (*stop)(void));

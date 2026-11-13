@@ -7,6 +7,7 @@
 #include <time.h>
 #include "bmp.h"
 #include "sim_display.h"
+#include "sim_cues.h"
 #include "owner.h"
 #include "snap_fixture.h"
 #include "ui.h"
@@ -145,21 +146,69 @@ static int screen_shot(const char *shot)
     return -1;
 }
 
+static character_cue_t cue_name(const char *name)
+{
+    if (!strcmp(name, "joy")) return CUE_JOY;
+    if (!strcmp(name, "elation")) return CUE_ELATION;
+    if (!strcmp(name, "surprise")) return CUE_SURPRISE;
+    if (!strcmp(name, "fright")) return CUE_FRIGHT;
+    if (!strcmp(name, "tender")) return CUE_TENDER;
+    return CUE_NONE;
+}
+static const char *cue_output;
+static int cue_written;
+static void write_event_cue(character_cue_t cue)
+{
+    FILE *f = fopen(cue_output, "wb");
+    if (!f) { cue_written = -1; return; }
+    int error = sim_cue_write_wav(f, cue);
+    if (fclose(f)) error = -1;
+    cue_written = error ? -1 : 1;
+}
+
 int main(int argc, char **argv)
 {
-    const char *shot = NULL, *out = NULL;
+    const char *shot = NULL, *out = NULL, *cue = NULL, *event_cue = NULL;
+    int hour = 14;
     int scale = 100, at = 100; /* at: ms of animation before the shot */
     for (int i = 1; i + 1 < argc; i += 2) {
         if (!strcmp(argv[i], "--shot")) shot = argv[i + 1];
         else if (!strcmp(argv[i], "--out")) out = argv[i + 1];
         else if (!strcmp(argv[i], "--scale")) scale = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "--at")) at = atoi(argv[i + 1]);
-        else shot = NULL;
+        else if (!strcmp(argv[i], "--cue")) cue = argv[i + 1];
+        else if (!strcmp(argv[i], "--event-cue")) event_cue = argv[i + 1];
+        else if (!strcmp(argv[i], "--hour")) hour = atoi(argv[i + 1]);
+        else return 2;
     }
-    if (!shot || !out || scale <= 0) {
+    if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
         fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
+        fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
+                        "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);
         return 2;
+    }
+    if (cue) {
+        character_cue_t kind = cue_name(cue);
+        if (kind == CUE_NONE) return 2;
+        FILE *f = fopen(out, "wb");
+        if (!f) return 1;
+        int result = sim_cue_write_wav(f, kind);
+        if (fclose(f)) result = -1;
+        return result ? 1 : 0;
+    }
+    if (event_cue) {
+        if (strcmp(event_cue, "task-complete")) return 2;
+        sim_init(); ui_setup(); ui_set_clock(fx_clock);
+        uint8_t hm[] = {(uint8_t)hour, 0}, online = LINK_UI_ONLINE;
+        sim_post(UI_EV_TIME, hm, 2); sim_post(UI_EV_LINK, &online, 1);
+        snap_t snap; fx_snap(&snap); fx_post(&snap, 1);
+        cue_output = out; cue_written = 0; ui_set_character_cue_sink(write_event_cue);
+        const uint8_t action[] = {ACT_TASK_COMPLETE, 1};
+        sim_post(UI_EV_ACTION, action, sizeof action);
+        ui_set_character_cue_sink(NULL);
+        if (cue_written == 0) { fprintf(stderr, "cue suppressed\n"); return 3; }
+        return cue_written < 0 ? 1 : 0;
     }
 
     sim_init();
