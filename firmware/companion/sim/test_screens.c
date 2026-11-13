@@ -1259,6 +1259,49 @@ static void test_find_overlay_in_lost_mode(void)
     CHECK(!shows_text(scr, title));
 }
 
+static void test_probe_never_sends_actions(void)
+{
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+    post(UI_EV_RELEASE);
+    sink.n = 0;
+    CHECK(ui_probe_swipe());
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    CHECK(ui_probe_swipe());
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    post_progress(50);
+    CHECK(!ui_probe_swipe()); /* never move the screen under the two-button hold ring */
+    post_progress(0);
+    touch_at(233, 233);
+    CHECK(!ui_probe_swipe());
+    uint8_t still_down = 1;
+    sim_post(UI_EV_RELEASE, &still_down, 1); /* movement cancels a hold, but is not a physical lift */
+    CHECK(!ui_probe_swipe());
+    post(UI_EV_RELEASE);
+    swipe(UI_EV_SWIPE_LEFT);
+    focus_snap(FOCUS_PAUSED, "pomodoro", 1072);
+    CHECK(!ui_probe_swipe());
+    sim_step(900);
+    CHECK_EQ(sink.n, 0); /* a refused probe never arms hold-to-stop */
+    swipe(UI_EV_SWIPE_RIGHT);
+    post(UI_EV_COMBO_FIRE);
+    CHECK(!ui_probe_swipe());
+    post(UI_EV_TOUCH);
+    post(UI_EV_RELEASE);
+    post_lost(1);
+    CHECK(!ui_probe_swipe());
+    post_lost(0);
+    post_pair(PAIR_UI_CODE, "482913");
+    CHECK(!ui_probe_swipe());
+    post_pair(PAIR_UI_HIDE, NULL);
+    uint8_t on = 1, off = 0;
+    sim_post(UI_EV_FIND, &on, 1);
+    CHECK(!ui_probe_swipe());
+    sim_post(UI_EV_FIND, &off, 1);
+    CHECK_EQ(sink.n, 0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    fresh_fx();
+}
+
 int main(void)
 {
     sim_init();
@@ -1290,5 +1333,6 @@ int main(void)
     test_wifi_toast_shots();
     test_find_overlay_shot();
     test_find_overlay_in_lost_mode();
+    test_probe_never_sends_actions();
     return g_failed ? 1 : 0;
 }

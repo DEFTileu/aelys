@@ -2,6 +2,7 @@
  * the callback below: it only assembles frames into a free PSRAM slot and posts to the link task; it never waits for it
  * (the client holds its lock while a callback runs, so waiting on a task that wants to send would deadlock). */
 #include <stdio.h>
+#include <stdatomic.h>
 #include <string.h>
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -34,8 +35,9 @@ static struct {
     uint32_t closed_gen;
     /* shared */
     volatile bool busy[LINK_RX_SLOTS];
-    uint32_t stack_min;
 } ws = { .slot = -1 };
+
+static atomic_uint stack_min = ATOMIC_VAR_INIT(UINT32_MAX);
 
 static SemaphoreHandle_t mu; /* the client pointer vs send/close */
 
@@ -44,7 +46,11 @@ static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 uint32_t link_ws_gen(void) { return ws.gen; }
 uint32_t link_ws_last_rx_ms(void) { return ws.last_rx_ms; }
 bool link_ws_lost_frame(void) { return ws.gen && ws.lost_frame; }
-uint32_t link_ws_stack_free_min(void) { return ws.stack_min; }
+uint32_t link_ws_stack_free_min(void)
+{
+    unsigned value = atomic_load_explicit(&stack_min, memory_order_relaxed);
+    return value == UINT32_MAX ? 0 : value;
+}
 void link_ws_slot_free(int slot) { if (slot >= 0 && slot < LINK_RX_SLOTS) ws.busy[slot] = false; }
 
 static int claim_slot(void)
@@ -105,6 +111,27 @@ static void closed(uint32_t gen, int code)
 static void on_ws(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)base;
+#ifdef CONFIG_AELYS_PERF_PROBE
+    static uint32_t sampled_ms; /* only the current ws task enters this block */
+    uint32_t sample_ms = now_ms();
+#endif
+    /* Send failures can dispatch callbacks on the sender; only count the WS task. */
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    bool sample = id == WEBSOCKET_EVENT_CONNECTED || id == WEBSOCKET_EVENT_DISCONNECTED || id == WEBSOCKET_EVENT_ERROR;
+#ifdef CONFIG_AELYS_PERF_PROBE
+    sample = sample || atomic_load_explicit(&stack_min, memory_order_relaxed) == UINT32_MAX || sample_ms - sampled_ms >= 1000;
+#endif
+    if (strcmp(pcTaskGetName(current), WS_TASK_NAME) == 0 &&
+        sample) {
+#ifdef CONFIG_AELYS_PERF_PROBE
+        sampled_ms = sample_ms;
+#endif
+        unsigned free_bytes = uxTaskGetStackHighWaterMark(current);
+        unsigned previous = atomic_load_explicit(&stack_min, memory_order_relaxed);
+        while (free_bytes < previous &&
+               !atomic_compare_exchange_weak_explicit(&stack_min, &previous, free_bytes,
+                                                      memory_order_relaxed, memory_order_relaxed)) { }
+    }
     uint32_t gen = (uint32_t)(uintptr_t)arg;
     if (gen != ws.gen) return; /* an older socket, already torn down */
     const esp_websocket_event_data_t *e = data;
@@ -184,11 +211,6 @@ void link_ws_close(void)
     ws.lost_frame = false;
     xSemaphoreGive(mu);
     if (!c) return;
-    TaskHandle_t t = xTaskGetHandle(WS_TASK_NAME);
-    if (t) {
-        uint32_t f = uxTaskGetStackHighWaterMark(t);
-        if (ws.stack_min == 0 || f < ws.stack_min) ws.stack_min = f;
-    }
     esp_websocket_client_destroy(c); /* stops its task (up to a network timeout while a connect is running) */
     for (int i = 0; i < LINK_RX_SLOTS; i++) ws.busy[i] = false; /* frames of the dead socket are dropped by their generation */
     ws.slot = -1;

@@ -23,6 +23,9 @@ static const snap_t empty_snap; /* before the first publish, or when the buffer 
 
 static struct {
     scr_t cur, down_scr; /* down_scr: the screen showing when the current touch began */
+#ifdef CONFIG_AELYS_PERF_PROBE
+    bool probe_touch_active, probe_combo_active;
+#endif
     bool lost, happy, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
@@ -310,6 +313,15 @@ static void set_owner(const owner_info_t *o)
     scr_ice_set_owner(o);
 }
 
+#ifdef CONFIG_AELYS_PERF_PROBE
+bool ui_probe_swipe(void)
+{
+    if (g.lost || g.find || g.probe_touch_active || g.probe_combo_active || (g.cur != SCR_HOME && g.cur != SCR_TODAY)) return false;
+    show(g.cur == SCR_HOME ? SCR_TODAY : SCR_HOME);
+    return true;
+}
+#endif
+
 /* Only the visible screen needs labels and layout. The snapshot itself stays current even while a card hides it. */
 static void render(void)
 {
@@ -466,6 +478,12 @@ static bool ends_find(const ui_event_t *ev)
 
 void ui_handle_event(const ui_event_t *ev)
 {
+#ifdef CONFIG_AELYS_PERF_PROBE
+    if (ev->type == UI_EV_TOUCH) g.probe_touch_active = true;
+    if (ev->type == UI_EV_RELEASE && (!ev->len || !ev->data[0])) g.probe_touch_active = false;
+    if (ev->type == UI_EV_COMBO_PROGRESS) g.probe_combo_active = ev->len && ev->data[0];
+    if (ev->type == UI_EV_COMBO_FIRE) g.probe_combo_active = false;
+#endif
     scr_t next = g.cur;
     if (g.find && ends_find(ev)) {
         g.find = false;

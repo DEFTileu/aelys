@@ -61,6 +61,18 @@ void board_audio_stop(void);
 /* Rolling 5 s window: frames per second x10 and the longest single refresh in microseconds. */
 void lv_port_frame_stats(uint32_t *fps_x10, uint32_t *worst_us);
 
+#ifdef CONFIG_AELYS_PERF_PROBE
+#include "perf_probe.h"
+#define BOARD_UI_EV_PERF 254u /* internal bench request; never forwarded to ui_handle_event */
+typedef perf_probe_stats_t lv_port_probe_t;
+/* Call in UI setup. Both callbacks run only in the UI task. */
+void lv_port_probe_set_ui(bool (*swipe)(void), uint32_t (*screen)(void));
+/* One metrics reader: gets a coherent cumulative snapshot, or false if no new publish. */
+bool lv_port_probe_read(lv_port_probe_t *out);
+/* Physical input and queued real gestures take precedence, even if TOUCH could not be enqueued. */
+bool board_probe_input_busy(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

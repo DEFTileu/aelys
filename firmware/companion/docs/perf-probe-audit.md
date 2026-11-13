@@ -1,12 +1,12 @@
 # P1 measurement probe audit — 2026-11-13
 
-Scope: the seven uncommitted `CONFIG_AELYS_PERF_PROBE` files left in
-`feat/companion-face-perf`. This is an audit of a prototype, not board evidence.
-The prototype remains disabled and must not be used to accept performance budgets
-until the items below are fixed and verified. No device settings or app defaults
-are changed by this document.
+Scope: the seven-file `CONFIG_AELYS_PERF_PROBE` prototype left in
+`feat/companion-face-perf`, and its P1 replacement. The original findings below
+are retained as the audit record. The replacement is host-tested and builds in
+both configurations; **board validation remains pending**. The probe defaults
+off and no device setting or production memory/cache/stack budget has changed.
 
-## Findings before a board run
+## Original findings before a board run
 
 | Finding | Source | Required correction / verification |
 |---|---|---|
@@ -69,5 +69,67 @@ Fresh host verification passed:
 No firmware was built for the owner's board in this continuation: that follows
 the approved integration into fresh `main`. The 1541262 B image figure in the
 earlier `budgets.md` checkpoint belongs to `2597b72`, before this style fix.
-The seven-file probe is excluded from the committed face changes and from these
-host claims; it still needs the corrections listed above.
+The seven-file prototype was excluded from those face changes and host claims.
+
+## P1 replacement and verification
+
+- The UI task now owns all frame/input counters and publishes cumulative snapshots
+  through the existing C11 triple buffer. The metrics reader never clears a UI
+  structure. Sequence gaps are reported; cumulative maxima and failures survive
+  skipped publications. A 100000-publication two-thread host test checks coherence.
+- Input posts one internal diagnostic event, without TOUCH/TAP/RELEASE. The UI
+  callback can only switch Home/Today, refuses lost/ICE/Find/Focus/Inbox/pairing
+  and real touch/combo activity, and cannot call an account action. A physical
+  input flag also blocks requests while real events await queue space; a dropped
+  request is counted. A movement cancellation is distinguished from physical lift
+  in the optional RELEASE payload. Queue pressure on actual FreeRTOS/hardware is
+  still an acceptance check, not claimed from the host UI tests.
+- Requests older than one second are rejected before calling the UI callback.
+  Refusal, interrupted measurement, timeout, queue drop and transfer failure have
+  separate counters; only successful samples enter the 5 ms histogram (bin 20 is
+  >=100 ms). Unsigned-clock wrap, late frames, failures and skipped publications
+  have pure-C regression coverage.
+- Probe builds wait for the last display DMA before counting a successful frame;
+  failed submissions/timeouts are excluded. This wait changes probe scheduling,
+  so compare configurations with identical instrumentation. Normal builds retain
+  their existing display scheduling. Hardware DMA/TE fault injection is pending.
+- The tick-hook CPU sampler and local-heap-minimum override were removed. Runtime
+  snapshots report their own duration, task identity, priority and affinity every
+  10 s; affinity is not actual per-core execution for unpinned tasks. Boot heap
+  minimum and once-per-second sampled minimum are explicitly different fields.
+- Link diagnostic state is atomic. The WS task publishes its own stack watermark
+  on connection/error/disconnection, with additional samples at most once per
+  second in probe builds. No stack scan runs on every normal data callback and
+  no deleted task handle is used at teardown.
+
+Validation of the replacement: all 20 host tests passed (19.04 s), including the
+new pure-C probe suite and UI action-safety checks; normal and enabled ESP-IDF
+`build size` passed, as did `git diff --check`. The movement-release regression
+failed before its guard fix. The enabled image is 1548046 B; normal is 1541230 B.
+Enabled DIRAM is 164206 B versus 158714 B normal (+5492 B static code/data), plus
+the 4096-byte probe task stack and FreeRTOS trace/runtime overhead. These linked
+sizes are not a measurement of free internal heap or the total runtime cost.
+
+For a measurement build from **fresh main**, use a separate build/configuration
+with these scratch defaults in addition to `sdkconfig.defaults`:
+
+```text
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_FREERTOS_RUN_TIME_COUNTER_TYPE_U64=y
+CONFIG_FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER=y
+CONFIG_AELYS_PERF_PROBE=y
+CONFIG_AELYS_METRICS_PERIOD_S=10
+CONFIG_AELYS_LINK_CHAOS_S=60
+```
+
+Verify the resulting configuration actually enables the probe, then app-flash
+only to a port verified as Espressif 303A:1001. Never guess from the first USB
+serial path (a phone can expose one too). Restore a normal fresh-main app image
+after the capture. Do not erase/re-pair/re-provision or run audible checks.
+
+Remaining measurement limits: cumulative worst frame includes boot and screen
+switches; the histogram excludes interrupted swipes and is therefore biased
+toward quiet periods. Report failure/interruption counts alongside it. The
+per-task/serial logging cost, TLS/snapshot correlation, paired-board heap dip,
+memory experiments and all original board budget gates remain open. No new
+measurements were possible while the board was absent from the Mac USB inventory.
