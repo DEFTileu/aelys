@@ -130,3 +130,11 @@ buffer changes or is released. Cache behaviour and software draw arguments
 also need explicit bounds. This is an untested possibility, not an enabled or
 proven recovery mechanism. A prototype would require allocation-fault and
 queued-task lifetime tests in addition to the partial-buffer oracle.
+
+In the current single UI task and software renderer, source inspection shows
+that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
+Updating the source later from the serialized UI task, outside refresh, then
+invalidating the image is a candidate lifetime protocol; changing it from a draw
+or flush callback is not. The panel's last DMA transfer can outlive this event,
+but reads a separate display buffer. This reasoning is configuration-specific
+and has not yet been validated with delayed-flush and deletion tests.
