@@ -331,23 +331,56 @@ describe('Wi-Fi add network', () => {
     expect(byLabel<HTMLInputElement>('Network name').value).toBe('Office')
     expect(byLabel<HTMLInputElement>('Password').value).toBe('')
   })
-  it('wrong password: Remove (after a confirmation) only for a network that is not saved', async () => {
+  it('wrong password: a saved network has no Dismiss; an unsaved one is only dismissed locally', async () => {
     vi.useFakeTimers()
     await open(); await fill('Office', 'pw')
     await sendIt()
     m.state.mockResolvedValue(baseState({ command_log: [entry({ ok: false, error_code: 'WIFI_FAILED' })] }))
     await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
     expect(host.textContent).toContain('Wrong password for Office')
-    expect([...host.querySelectorAll('button')].some((b) => b.textContent === 'Remove')).toBe(false) // Office is already saved
+    expect(button('Dismiss')).toBeUndefined(); expect(button('Remove')).toBeUndefined() // Office is already saved
     await click(button('Try again')); await fill('Brand New', 'pw')
     await sendIt()
     m.state.mockResolvedValue(baseState({ command_log: [entry({ ok: false, error_code: 'WIFI_FAILED' })] }))
     await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
-    await click([...host.querySelectorAll('button')].find((b) => b.textContent === 'Remove')!)
-    expect(m.removeWifi).not.toHaveBeenCalled(); expect(host.textContent).toContain('Remove Brand New?')
-    await click(button('Remove'))
-    expect(m.removeWifi).toHaveBeenCalledWith(ID, 'Brand New')
-    expect(host.textContent).not.toContain('Wrong password')
+    expect(host.textContent).toContain('Wrong password for Brand New')
+    await click(button('Dismiss'))
+    expect(m.removeWifi).not.toHaveBeenCalled(); expect(host.textContent).not.toContain('Remove Brand New?'); expect(host.textContent).not.toContain('Wrong password')
+  })
+  describe('with five networks saved', () => {
+    const four = baseState({ wifi: { saved: ['Home', 'Office', 'Cafe', 'Lab'], current: 'Home' } })
+    const five = (over: Partial<CompanionState> = {}) => baseState({ wifi: { saved: ['Home', 'Office', 'Cafe', 'Lab', 'Gym'], current: 'Home' }, ...over })
+    const failAndFill = async (ssid: string) => {
+      vi.useFakeTimers()
+      m.state.mockResolvedValue(four)
+      await open(); await fill(ssid, 'pw')
+      await sendIt()
+      m.state.mockResolvedValue(five({ command_log: [entry({ ok: false, error_code: 'WIFI_FAILED' })] }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000) }) // the page's own poll brings in the fifth network
+      expect(host.querySelectorAll('[data-testid="wifi-row"]')).toHaveLength(5)
+    }
+    it('Try again for a saved name opens the sheet with the name locked', async () => {
+      await failAndFill('Office')
+      await click(button('Try again'))
+      const name = byLabel<HTMLInputElement>('Network name')
+      expect(name.value).toBe('Office'); expect(name.readOnly).toBe(true)
+    })
+    it('a send that raced past the cap is refused before anything goes out', async () => {
+      vi.useFakeTimers()
+      m.state.mockResolvedValue(four)
+      await open(); await fill('Brand New', 'pw')
+      m.state.mockResolvedValue(five())
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000) }) // a fifth network appears while the sheet is open
+      await click(button('Send to Aelys')); await flush()
+      expect(m.addWifi).not.toHaveBeenCalled()
+      expect(host.querySelector('.st-error')?.textContent).toBe('Aelys keeps up to 5 networks. Remove one to add another.')
+    })
+    it('a name that is not saved gets no Try again, only Dismiss', async () => {
+      await failAndFill('Brand New')
+      expect(button('Try again')).toBeUndefined()
+      await click(button('Dismiss'))
+      expect(host.textContent).not.toContain('Wrong password'); expect(m.removeWifi).not.toHaveBeenCalled()
+    })
   })
   it('DECRYPT_FAILED and a timeout are a generic failure, not a wrong password', async () => {
     vi.useFakeTimers()

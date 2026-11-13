@@ -13,6 +13,7 @@ const SCAN_WAIT_MS = 20_000
 const MAX_SSID = 32, MAX_PASSWORD = 64 // bytes
 const MAX_NETWORKS = 5 // the board's list; one more would push the oldest out
 const IN_USE = 'Aelys is using this network. Switch first.'
+const CAP_HINT = `Aelys keeps up to ${MAX_NETWORKS} networks. Remove one to add another.`
 const errorText = (e: unknown) => (e instanceof ApiError && e.code === 'DEVICE_OFFLINE' ? 'Aelys is offline' : FAILED)
 
 /** Polls the command log every 2 s until the board answered the command (null: no answer in time, or the page was left). */
@@ -101,8 +102,11 @@ export function WifiPage({ state, refresh }: Props) {
   useEffect(() => () => stopDrag.current?.(), [])
 
   // The sheet hands over the encryption already under way: the password never reaches this component.
+  const full = saved.length >= MAX_NETWORKS
   const send = async (ssid: string, blob: Promise<string>) => {
-    setSheet(null); setJob({ ssid, stage: 'sending' }); setError('')
+    setSheet(null)
+    if (full && !latest.current.includes(ssid)) { setJob(null); setError(CAP_HINT); void blob.catch(() => {}); return } // the cap holds on every path that sends wifi_add
+    setJob({ ssid, stage: 'sending' }); setError('')
     try {
       const { command_id } = await companion.addWifi(id, await blob)
       if (!alive.current) return
@@ -119,6 +123,7 @@ export function WifiPage({ state, refresh }: Props) {
     }
   }
 
+  const canRetry = job?.stage !== 'failed' || !full || saved.includes(job.ssid) // with 5 saved, a retry may only resend a saved name (the sheet then locks it)
   const working = job?.stage === 'sending' || job?.stage === 'connecting'
   return <>
     <div className="st-sub">Networks Aelys can join · 2.4 GHz</div>
@@ -132,8 +137,8 @@ export function WifiPage({ state, refresh }: Props) {
         </div>
       </div>
       <div className="dv-actions">
-        <button type="button" className="st-btn st-btn--primary dv-grow" onClick={() => { setSheet({ ssid: job.ssid }); setJob(null) }}>Try again</button>
-        {job.kind === 'wrong' && !saved.includes(job.ssid) && <button type="button" className="st-btn st-btn--danger" onClick={() => { setConfirm(job.ssid); setJob(null) }}>Remove</button>}
+        {canRetry && <button type="button" className="st-btn st-btn--primary dv-grow" onClick={() => { setSheet({ ssid: job.ssid }); setJob(null) }}>Try again</button>}
+        {!saved.includes(job.ssid) && (job.kind === 'wrong' || !canRetry) && <button type="button" className="st-btn dv-grow" onClick={() => setJob(null)}>Dismiss</button>}
       </div>
     </div>}
     {confirm && <div className="dv-fail" role="alertdialog" aria-label={`Remove ${confirm}?`}>
@@ -171,9 +176,9 @@ export function WifiPage({ state, refresh }: Props) {
     <div className="st-hint dv-pad">Aelys joins the first network in range. Drag to change the order.</div>
     {saved.length < MAX_NETWORKS
       ? <button type="button" className="st-btn st-btn--ghost dv-wide" disabled={working} onClick={() => setSheet({ ssid: '' })}><Plus size={16} aria-hidden="true" />Add network</button>
-      : <div className="st-hint dv-pad">Aelys keeps up to {MAX_NETWORKS} networks. Remove one to add another.</div>}
+      : <div className="st-hint dv-pad">{CAP_HINT}</div>}
     <div className="st-note"><Lock size={16} aria-hidden="true" /><span>Passwords are encrypted on this phone for Aelys only. Aelys servers never see them.</span></div>
-    {sheet && <AddNetworkSheet state={state} refresh={refresh} initialSsid={sheet.ssid} onClose={() => setSheet(null)} onSend={(ssid, blob) => void send(ssid, blob)} />}
+    {sheet && <AddNetworkSheet state={state} refresh={refresh} initialSsid={sheet.ssid} lockName={full} onClose={() => setSheet(null)} onSend={(ssid, blob) => void send(ssid, blob)} />}
   </>
 }
 
@@ -195,7 +200,7 @@ function JobCard({ job }: { job: Extract<Job, { stage: 'sending' | 'connecting' 
 
 const strength = (n: WifiScanNetwork) => (n.rssi >= -67 ? 'Strong' : 'Weak')
 
-function AddNetworkSheet({ state, refresh, initialSsid, onClose, onSend }: { state: CompanionState; refresh: () => Promise<void>; initialSsid: string; onClose: () => void; onSend: (ssid: string, blob: Promise<string>) => void }) {
+function AddNetworkSheet({ state, refresh, initialSsid, lockName, onClose, onSend }: { state: CompanionState; refresh: () => Promise<void>; initialSsid: string; lockName: boolean; onClose: () => void; onSend: (ssid: string, blob: Promise<string>) => void }) {
   const id = state.device_id
   const [ssid, setSsid] = useState(initialSsid)
   const [reveal, setReveal] = useState(false)
@@ -242,7 +247,7 @@ function AddNetworkSheet({ state, refresh, initialSsid, onClose, onSend }: { sta
       <div className="st-group-title dv-nearby-title">{scanning && <RefreshCw size={14} className="dv-spin" aria-hidden="true" />}Nearby · seen by Aelys</div>
       {scanError && <div className="st-error" role="alert">{scanError}</div>}
       <div className="dv-nearby">
-        {nearby.map((n) => <button key={n.ssid} type="button" className="dv-net" data-testid="nearby" onClick={() => setSsid(n.ssid)}>
+        {nearby.map((n) => <button key={n.ssid} type="button" className="dv-net" data-testid="nearby" disabled={lockName} onClick={() => setSsid(n.ssid)}>
           <Wifi size={18} aria-hidden="true" />
           <span className="st-grow"><span className="st-label">{n.ssid}</span><span className="st-hint">{strength(n)}</span></span>
           {n.secure && <Lock size={14} aria-hidden="true" />}
@@ -250,7 +255,7 @@ function AddNetworkSheet({ state, refresh, initialSsid, onClose, onSend }: { sta
         </button>)}
       </div>
       <label className="st-label" htmlFor="dv-ssid">Network name</label>
-      <input id="dv-ssid" className="st-input dv-tight" aria-label="Network name" maxLength={32} autoComplete="off" autoCapitalize="none" spellCheck={false} value={ssid} onChange={(e) => { setSsid(clampBytes(e.target.value, MAX_SSID)); setFieldError('') }} />
+      <input id="dv-ssid" className="st-input dv-tight" aria-label="Network name" maxLength={32} readOnly={lockName} autoComplete="off" autoCapitalize="none" spellCheck={false} value={ssid} onChange={(e) => { setSsid(clampBytes(e.target.value, MAX_SSID)); setFieldError('') }} />
       <label className="st-label" htmlFor="dv-pw">Password</label>
       <div className="dv-pw">
         <input id="dv-pw" ref={password} className="st-input dv-tight" aria-label="Password" type={reveal ? 'text' : 'password'} maxLength={MAX_PASSWORD} autoComplete="new-password" onInput={(e) => { const f = e.currentTarget; const cut = clampBytes(f.value, MAX_PASSWORD); if (cut !== f.value) f.value = cut; setFieldError('') }} autoCapitalize="none" spellCheck={false} />
