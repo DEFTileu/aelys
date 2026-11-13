@@ -68,11 +68,27 @@ async def daily_attempts(db: AsyncSession, integration_id: str, at: datetime) ->
     )) or 0)
 
 
+async def daily_outcomes(db: AsyncSession, integration_id: str, at: datetime) -> dict[str, int]:
+    """Current states of messages ingested today (UTC), including pre-model failures."""
+    counts = dict.fromkeys(('sent', 'no_candidate', 'failed', 'unknown', 'skipped_limit'), 0)
+    start = utc(at).replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = await db.execute(select(TelegramBusinessMessage.task_suggestion_state, func.count()).where(
+        TelegramBusinessMessage.integration_id == integration_id,
+        TelegramBusinessMessage.created_at >= start,
+        TelegramBusinessMessage.created_at < start+timedelta(days=1),
+        TelegramBusinessMessage.task_suggestion_state.in_(counts),
+    ).group_by(TelegramBusinessMessage.task_suggestion_state))
+    for state, count in rows:
+        if state is not None:
+            counts[state] = count
+    return counts
+
+
 async def invalidate_suggestions(db: AsyncSession, *, integration_id: str, at: datetime,
                                  source_ids: list[str] | None = None,
                                  connection_id: str | None = None,
                                  before: datetime | None = None) -> None:
-    """Caller commits with source edit/deletion/off; order integration → source → action."""
+    """Caller commits with source change/off; integration lock serializes workers."""
     await lock_integration(db, integration_id)
     filters = [TelegramBusinessMessage.integration_id == integration_id]
     if source_ids is not None:
@@ -81,16 +97,13 @@ async def invalidate_suggestions(db: AsyncSession, *, integration_id: str, at: d
         filters.append(TelegramBusinessMessage.business_connection_id == connection_id)
     if before is not None:
         filters.append(TelegramBusinessMessage.sent_at < before)
-    ids = list((await db.scalars(select(TelegramBusinessMessage.id).where(*filters)
-                                .order_by(TelegramBusinessMessage.id).with_for_update())).all())
-    if not ids:
-        return
-    await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id.in_(ids),
+    sources = select(TelegramBusinessMessage.id).where(*filters)
+    await db.execute(update(TelegramBusinessMessage).where(*filters,
         TelegramBusinessMessage.task_suggestion_state.in_(['queued', 'generating', 'ready', 'sending']))
         .values(task_suggestion_state='failed', updated_at=TelegramBusinessMessage.updated_at)
         .execution_options(synchronize_session=False))
     await db.execute(update(AIAction).where(AIAction.source_kind == FEATURE,
-        AIAction.source_id.in_(ids), AIAction.status == 'pending').values(status='failed',
+        AIAction.source_id.in_(sources), AIAction.status == 'pending').values(status='failed',
         result_json={'error': {'code': 'ACTION_SOURCE_STALE', 'message': 'Source no longer available'}},
         arguments_json={}, title='Task suggestion', summary='', items_json=[])
         .execution_options(synchronize_session=False))
@@ -216,6 +229,8 @@ async def _reserve(integration_id: str) -> tuple[str, str, Any, tuple[ChatMessag
 
 
 def _candidate(text: str, timezone: str) -> dict | None:
+    from .telegram_json import unwrap_json_fence
+    text = unwrap_json_fence(text)
     value = json.loads(text)
     if value is None:
         return None
@@ -308,6 +323,14 @@ async def _deliver(integration_id: str) -> None:
 async def suggestion_iteration(integration_id: str) -> None:
     reserved = None
     try:
+        # Off is the default. Avoid writes and history scans on every connector
+        # cycle; _reserve rechecks settings under the integration lock if enabled.
+        async with database.SessionLocal() as db:
+            item = await db.get(TelegramIntegration, integration_id)
+            if (not item or not item.enabled or item.deleted_at or not item.encrypted_token
+                    or not item.owner_telegram_id or item.task_suggestions_chat_id is None
+                    or item.task_suggestions_enabled_at is None):
+                return
         reserved = await _reserve(integration_id)
         if reserved:
             source_id, run_id, runtime, messages, routing, snapshot = reserved

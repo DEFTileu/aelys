@@ -24,6 +24,7 @@ from .telegram_task_suggestions import (
     FEATURE,
     _expire,
     daily_attempts,
+    daily_outcomes,
     invalidate_suggestions,
     lock_integration,
 )
@@ -41,6 +42,7 @@ async def handle_task_suggestions(db: AsyncSession, item: TelegramIntegration, b
         await _expire(db, item.id, at)
         used = await daily_attempts(db, item.id, at)
         known_chats = await _known_chats(db, item)
+        outcomes = await daily_outcomes(db, item.id, at)
         enabled_at = item.task_suggestions_enabled_at
         enabled_chat = item.task_suggestions_chat_id
         if enabled_chat is None or enabled_at is None:
@@ -51,7 +53,8 @@ async def handle_task_suggestions(db: AsyncSession, item: TelegramIntegration, b
                      f"{enabled:%Y-%m-%d %H:%M UTC}.")
         listing = ', '.join(map(str, known_chats)) if known_chats else 'нет'
         return (f"{state}\nИзвестные доступные личные чаты: {listing}.\n"
-                f"Осталось попыток сегодня: {max(0, DAILY_LIMIT-used)} из {DAILY_LIMIT}.")
+                f"Осталось попыток сегодня: {max(0, DAILY_LIMIT-used)} из {DAILY_LIMIT}.\n"
+                'Сообщения за сегодня (UTC): ' + ', '.join(f'{key}: {value}' for key, value in outcomes.items()))
     if mode == 'on' and len(parts) == 2 and re.fullmatch(r'[0-9]{1,16}', parts[1]):
         authorize(item, 'telegram.task_suggestions')
         locked_item = await lock_integration(db, item.id)

@@ -150,3 +150,56 @@ async def test_postgres_off_during_model_prevents_proposal(ai_test_engine, monke
         assert await db.scalar(select(func.count()).select_from(AIAction)) == 0
         assert await db.scalar(select(func.count()).select_from(Task)) == 0
         assert (await db.execute(select(AIRun))).scalar_one().cost_estimate == Decimal('0.01')
+
+
+async def test_retention_invalidation_handles_more_than_asyncpg_bind_limit(ai_test_engine, monkeypatch):
+    from app.core.models import AIConversation
+    from app.integrations.telegram_task_suggestions import FEATURE
+    from sqlalchemy import text, update
+    sessions, _ = await seed(ai_test_engine, monkeypatch, count=2)
+    at = now()
+    async with sessions() as db:
+        sources = (await db.scalars(select(TelegramBusinessMessage).order_by(
+            TelegramBusinessMessage.telegram_message_id))).all()
+        first_id, active_id = sources[0].id, sources[1].id
+        await db.execute(update(TelegramBusinessMessage).values(sent_at=at-timedelta(days=8)))
+        sources[0].task_suggestion_state = 'sent'
+        sources[0].text = ''
+        sources[0].chat_title = ''
+        conversation = AIConversation(owner_id='owner', title='Synthetic suggestion', deleted_at=at)
+        db.add(conversation)
+        await db.flush()
+        run = AIRun(owner_id='owner', conversation_id=conversation.id, provider='claude', model='test',
+                    status='completed', tool_scope_json={'feature': FEATURE, 'integration_id': 'integration', 'source_id': first_id})
+        db.add(run)
+        await db.flush()
+        action = AIAction(owner_id='owner', conversation_id=conversation.id, run_id=run.id,
+            source_kind=FEATURE, source_id=first_id, tool='create_task', title='Synthetic',
+            arguments_json={'title': 'Synthetic task'})
+        db.add(action)
+        await db.flush()
+        action_id = action.id
+        # Server-side fixture generation avoids introducing a client parameter
+        # explosion in setup. These are already-wiped retained history rows.
+        await db.execute(text('''
+            INSERT INTO telegram_business_messages
+              (id, owner_id, version, created_at, updated_at, deleted_at, integration_id,
+               business_connection_id, chat_id, telegram_message_id, sender_id, chat_title,
+               text, sent_at, direction, draft_status, task_suggestion_state)
+            SELECT 'retained-' || n, owner_id, 1, created_at, updated_at, sent_at,
+                   integration_id, business_connection_id, chat_id, n + 100,
+                   sender_id, chat_title, text, sent_at, direction, 'none', 'sent'
+              FROM telegram_business_messages CROSS JOIN generate_series(1, 33000) AS n
+             WHERE id = :source_id
+        '''), {'source_id': first_id})
+        await db.commit()
+    async with sessions() as db:
+        await invalidate_suggestions(db, integration_id='integration', at=at, before=at-timedelta(days=7))
+        await db.commit()
+        assert (await db.get(AIAction, action_id)).result_json['error']['code'] == 'ACTION_SOURCE_STALE'
+        assert (await db.get(TelegramBusinessMessage, active_id)).task_suggestion_state == 'failed'
+        assert await db.scalar(select(func.count()).select_from(TelegramBusinessMessage).where(
+            TelegramBusinessMessage.id.like('retained-%'), TelegramBusinessMessage.task_suggestion_state == 'sent')) == 33000
+        # Repeating the retention cycle must stay safe with the same retained rows.
+        await invalidate_suggestions(db, integration_id='integration', at=at, before=at-timedelta(days=7))
+        await db.commit()

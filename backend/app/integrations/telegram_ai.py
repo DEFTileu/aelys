@@ -261,10 +261,8 @@ async def generate_business_draft(
             raise TelegramAIError("AI_UNAVAILABLE")
         # Accept exactly one outer Markdown code fence, never surrounding prose
         # or multiple blocks. The JSON schema and audience checks stay strict.
-        text = text.strip()
-        fenced = re.fullmatch(r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n```", text, re.DOTALL)
-        if fenced:
-            text = fenced.group(1)
+        from .telegram_json import unwrap_json_fence
+        text = unwrap_json_fence(text)
         parsed = _DecisionPayload.model_validate_json(text)
         try:
             validate_reply_audience(parsed.text, integration.owner_name)

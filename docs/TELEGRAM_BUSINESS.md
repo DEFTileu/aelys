@@ -362,7 +362,9 @@ video and other unsupported types remain outside this viewing slice.
 ## Opt-in task suggestions — Task 2, 2026-11-14
 
 In the bound owner's private bot chat, `/task_suggestions` shows known Business
-chats and the selected chat, plus remaining extraction attempts today.
+chats and the selected chat, plus remaining extraction attempts today. It also
+shows current sent/no_candidate/failed/unknown/skipped_limit counts for messages
+ingested today (UTC), without source text or exception details.
 `/task_suggestions on <chat_id>` enables one known chat from this instant;
 `/task_suggestions off` disables extraction and invalidates pending proposals.
 Existing `/task` and Business `/ask`/`/search` keep their existing behavior.
@@ -407,3 +409,11 @@ another model call. A card arriving after off is harmless: its pending action
 has already been invalidated. No production migration, live Telegram messages
 or opt-in settings are changed by automated validation. Live owner acceptance
 in one expressly selected chat remains separate from local deterministic tests.
+
+Task 2 review fixes (2026-11-14): retention/off/clear invalidation uses direct SQL
+state updates and an action-source subquery, with the integration lock retaining
+worker serialization. It does not materialize retained history IDs or lock
+already terminal message rows. A single standalone JSON code fence is accepted
+through the same normalizer as secretary drafts; strict schema checks still
+reject prose, multiple blocks and extra arguments. Disabled suggestions return
+before worker write locks or run-history scans. No schema migration was added.

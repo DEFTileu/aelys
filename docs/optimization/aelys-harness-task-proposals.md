@@ -31,3 +31,20 @@ concurrent off/edit/purge. Keeping locks out of network I/O requires this honest
 at-most-once handoff. Its action is already stale; callback cannot create a task.
 This behavior is documented and tested. Remaining live acceptance: migrate/deploy,
 then opt in one owner-selected chat and check real private callbacks/model quality.
+
+
+Task 2 review follow-up (2026-11-14, after b3661a0): reproduced asyncpg's 32767
+argument ceiling on 33000 retained message rows. SQL-only source invalidation now
+passes that regression without materializing IDs; source state and pending-action
+filters remain separate, so already-sent cards are invalidated correctly.
+Standalone JSON fences reuse the secretary's normalizer, with strict validation
+unchanged. Status shows today's message outcomes (UTC ingestion cohort), and off
+returns before worker writes/history scans. No new migration or deployment.
+Validation: `cd backend && python -m pytest -q --tb=short` → 1588 passed,
+155 skipped, one existing StarletteDeprecationWarning (210.25s).
+`python -m pytest -q backend/tests/test_telegram_task_suggestions.py backend/tests/test_telegram_task_controls.py backend/tests/test_telegram_ai.py --tb=short` → 111 passed.
+The PostgreSQL command above now returns 37 passed / 7 SQLite-only case skips,
+including the 33000-row regression; all PostgreSQL variants ran. Final fixture
+with erased retained content also passed separately. Ruff, mypy (132 source
+files), Bandit, compileall, unchanged OpenAPI comparison and independent
+read-only review passed. The temporary cluster was stopped after validation.

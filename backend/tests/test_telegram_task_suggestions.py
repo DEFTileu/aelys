@@ -680,3 +680,75 @@ async def test_callback_notification_policy_denial_prevents_external_effects(set
     assert not answers
     async with sessions() as db:
         assert await db.scalar(select(func.count()).select_from(Task)) == 0
+
+
+@pytest.mark.parametrize('answer,expected', [
+    ('```json\n{"title":"Send fenced report"}\n```', 'sent'),
+    ('```\n{"title":"Send fenced report"}\n```', 'sent'),
+    ('```json\nnull\n```', 'no_candidate'),
+    ('Text before\n```json\n{"title":"Not standalone"}\n```', 'failed'),
+    ('```json\n{"title":"One"}\n```\n```json\n{"title":"Two"}\n```', 'failed'),
+    ('```json\n{"title":"Invalid scope","scopes":["tasks.write"]}\n```', 'failed'),
+])
+async def test_fenced_json_extraction_keeps_schema_and_single_block_boundary(setup, monkeypatch, answer, expected):
+    _, sessions, fake, integration_id, calls, result = await enabled(setup, monkeypatch)
+    result.response.text = answer
+    source = await queued(sessions, integration_id, fake)
+    await iteration(integration_id)
+    async with sessions() as db:
+        assert (await db.get(TelegramBusinessMessage, source.id)).task_suggestion_state == expected
+        assert await db.scalar(select(func.count()).select_from(Task)) == 0
+        assert await db.scalar(select(func.count()).select_from(AIRun)) == 1
+    assert len(calls) == 1
+    assert len(fake.sent) == (1 if expected == 'sent' else 0)
+
+
+async def test_status_reports_today_outcomes_including_failures_without_content(setup, monkeypatch):
+    _, sessions, fake, integration_id, calls, result = await enabled(setup, monkeypatch)
+    await queued(sessions, integration_id, fake, update_id=700)
+    await iteration(integration_id)
+    result.response.text = 'null'
+    await queued(sessions, integration_id, fake, update_id=701)
+    await iteration(integration_id)
+    result.response.text = '{invalid'
+    await queued(sessions, integration_id, fake, update_id=702, content='Private diagnostic sentinel')
+    await iteration(integration_id)
+    prior_source = await queued(sessions, integration_id, fake, update_id=703)
+    async with sessions() as db:
+        old = await db.get(TelegramBusinessMessage, prior_source.id)
+        old.task_suggestion_state = 'failed'
+        old.created_at = now().replace(hour=0, minute=0, second=0, microsecond=0)-timedelta(days=1)
+        await db.commit()
+    fake.updates = [{'update_id': 800, 'message': {'text': '/task_suggestions',
+        'from': {'id': OWNER, 'is_bot': False}, 'chat': {'type': 'private', 'id': OWNER}}}]
+    await service.poll_once(integration_id, timeout=0)
+    status = fake.sent[-1][1]
+    assert 'sent: 1' in status and 'no_candidate: 1' in status and 'failed: 1' in status
+    assert 'UTC' in status and 'Private diagnostic sentinel' not in status
+    assert len(calls) == 3
+
+
+async def test_disabled_worker_does_not_write_or_query_run_history(setup, monkeypatch):
+    from sqlalchemy import event
+    _, sessions, fake, integration_id, calls, _ = await enabled(setup, monkeypatch)
+    async with sessions() as db:
+        item = await db.get(TelegramIntegration, integration_id)
+        item.task_suggestions_chat_id = None
+        item.task_suggestions_enabled_at = None
+        await db.commit()
+    statements = []
+    engine = sessions.kw['bind'].sync_engine
+
+    def executed(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    event.listen(engine, 'before_cursor_execute', executed)
+    try:
+        await iteration(integration_id)
+    finally:
+        event.remove(engine, 'before_cursor_execute', executed)
+    assert not calls and not fake.sent
+    # Operational contract: disabled polling must not acquire write/row locks
+    # or scan run history, independent of the number of retained runs.
+    assert all(statement.lstrip().upper().startswith('SELECT') for statement in statements)
+    assert not any('ai_runs' in statement.lower() for statement in statements)
