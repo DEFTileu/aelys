@@ -14,6 +14,13 @@ in [Android updates](../../docs/android-updates.md). It uses an HTTPS release
 channel and the system installer; publication and physical-device acceptance
 remain separate gates.
 
+`tauri:android:build` includes the same hosted HTTPS backend as the Mac build:
+`https://api-production-1cea.up.railway.app/api/v1`. For a self-hosted APK, set
+`VITE_API_BASE_URL=https://your-server.example/api/v1` when building. Relative
+and HTTP addresses are rejected for Android builds. An address already saved
+on the device takes precedence; it can be changed on the entry screen using
+Server address. Running `tauri android build` directly bypasses this wrapper.
+
 For a local arm64 build, select an installed JDK 21, SDK and NDK for this shell
 only (the paths below describe this validation machine):
 
