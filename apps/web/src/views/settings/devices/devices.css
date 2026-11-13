@@ -78,3 +78,48 @@
 .dv-sheet-head .st-hint { max-width: 300px; font-size: 14px; }
 .dv-sheet-title { font-size: 18px; font-weight: 600; }
 .dv-fp { display: flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 50%; background: var(--st-violet-bg); color: var(--st-acc); }
+
+/* Emergency, Wi-Fi networks and Device settings, from design frames "3 · Экстренная карта", "4 · Wi-Fi" and "5 · Настройки устройства". */
+.dv-grow { flex: 1; }
+.dv-pad { padding: 0 4px; }
+.dv-av { display: flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--st-red-bg); color: var(--st-red); font-weight: 600; }
+.dv-av--blue { background: var(--st-blue-bg); color: var(--st-blue); }
+.dv-add { color: var(--st-acc); font-weight: 600; }
+.dv-edit { display: flex; flex-direction: column; gap: 8px; padding: 0 18px 14px; }
+.dv-edit .st-input { margin-top: 0; }
+.dv-edit .st-btn { align-self: flex-start; }
+.dv-med { min-height: 72px; margin-top: 4px; resize: none; }
+.dv-wifi { min-height: 64px; }
+.dv-grip { display: flex; touch-action: none; flex: none; padding: 6px 0 !important; color: var(--st-mute); cursor: grab; }
+.dv-num { display: flex; align-items: center; justify-content: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--st-badge); color: var(--st-mute); font-size: 12px; font-weight: 600; }
+.dv-ssid { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-ok { color: var(--st-green-ink) !important; }
+.dv-move { display: flex; flex: none; flex-direction: column; }
+.dv-move button { display: flex; align-items: center; justify-content: center; width: 28px; height: 22px; color: var(--st-mute); }
+.dv-del { display: flex; flex: none; padding: 6px !important; color: var(--st-red); }
+.dv-job { display: flex; flex-direction: column; gap: 6px; padding-bottom: 14px; }
+.dv-steps { display: flex; flex-direction: column; padding: 0 18px 0 30px; }
+.dv-steps > div { display: flex; align-items: center; gap: 12px; min-height: 34px; }
+.dv-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--st-off); }
+.dv-dot[data-on='true'] { background: var(--st-violet); }
+.dv-fail { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px; border-radius: 16px; background: var(--st-red-bg); color: var(--st-red); }
+.dv-fail-head { display: flex; align-items: center; gap: 12px; }
+.dv-fail-title { font-weight: 600; }
+.dv-fail-text { color: var(--st-ink); font-size: 13px; line-height: 18px; }
+.dv-sheet--tall { max-height: 90vh; overflow-y: auto; }
+.dv-sheet-bar { display: flex; align-items: center; gap: 10px; }
+.dv-nearby-title { display: flex; align-items: center; gap: 8px; }
+.dv-spin { animation: dv-spin 1.6s linear infinite; }
+@keyframes dv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .dv-spin { animation: none; } }
+.dv-nearby { display: flex; flex-direction: column; }
+.dv-net { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 4px !important; color: var(--st-mute); }
+.dv-net .st-label { display: block; color: var(--st-ink); }
+.dv-net .st-hint { display: block; }
+.dv-picked { color: var(--st-violet); }
+.dv-tight { margin-top: -6px; }
+.dv-pw { display: flex; gap: 8px; }
+.dv-pw .st-input { flex: 1; min-width: 0; }
+.dv-split { display: flex; align-items: center; gap: 12px; }
+.dv-range { width: 100%; accent-color: var(--accent, #6A4CF2); }
+.dv-lockicon { color: var(--st-mute); }

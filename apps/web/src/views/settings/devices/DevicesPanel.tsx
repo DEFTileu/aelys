@@ -6,12 +6,16 @@ import { CompanionSerial } from '../../../lib/companion/serial'
 import type { CompanionDevice, CompanionState } from '../../../lib/companion/types'
 import { Card } from '../ui'
 import { AddCompanion, AddHint } from './AddCompanion'
+import { DeviceSettingsPage } from './DeviceSettingsPage'
+import { EmergencyPage } from './EmergencyPage'
+import { WifiPage } from './WifiPage'
 import { CompanionOverview, type FindControl, type Page } from './CompanionOverview'
 import { LostModePage } from './LostModePage'
 import './devices.css'
 
 const POLL_MS = 5000
 const PAGES: readonly Page[] = ['overview', 'lost', 'emergency', 'wifi', 'settings']
+const TITLES: Partial<Record<Page, string>> = { lost: 'Lost mode', emergency: 'Emergency', wifi: 'Wi-Fi networks', settings: 'Device settings' }
 const FAILED = 'Something went wrong. Check the connection and try again.'
 
 // The sub-page lives in the URL: ?section=devices&device=<id>&page=overview|lost|emergency|wifi|settings
@@ -110,20 +114,21 @@ function DevicePage({ id, page, owner }: { id: string; page: Page; owner: { name
       companion.find(id).catch((e) => setError(e instanceof ApiError && e.code === 'DEVICE_OFFLINE' ? 'Aelys is offline' : FAILED)).finally(() => setBusy(false))
     },
   }
-  const lost = page === 'lost'
+  const sub = page !== 'overview'
   return <>
     <div className="dv-bar">
-      <button type="button" className="dv-back" aria-label="Back" onClick={() => navigate(lost ? id : undefined, lost ? 'overview' : undefined)}><ArrowLeft size={20} aria-hidden="true" /></button>
-      <h3 className="dv-bar-title">{lost ? 'Lost mode' : state?.display_name || 'Aelys'}</h3>
+      <button type="button" className="dv-back" aria-label="Back" onClick={() => navigate(sub ? id : undefined, sub ? 'overview' : undefined)}><ArrowLeft size={20} aria-hidden="true" /></button>
+      <h3 className="dv-bar-title">{TITLES[page] ?? (state?.display_name || 'Aelys')}</h3>
     </div>
     {!state && failed && <div className="st-error" role="alert">Couldn't reach Aelys. Check the connection; this page keeps trying.</div>}
-    {state && (lost
-      ? <LostModePage state={state} owner={owner} find={find} refresh={refresh} />
+    {state && (page === 'lost' ? <LostModePage state={state} owner={owner} find={find} refresh={refresh} />
+      : page === 'emergency' ? <EmergencyPage state={state} ownerName={owner?.name} refresh={refresh} />
+      : page === 'wifi' ? <WifiPage state={state} refresh={refresh} />
+      : page === 'settings' ? <DeviceSettingsPage state={state} onUnpaired={() => navigate()} />
       : <CompanionOverview state={state} find={find} onGo={(next) => navigate(id, next)} />)}
   </>
 }
 
-// shortcut: the Wi-Fi, Emergency and Device settings pages are separate tasks; until they land those rows open the overview.
 export function DevicesPanel({ owner }: { owner?: { name: string | null; email: string | null } }) {
   const { device, page } = useRoute()
   return device ? <DevicePage key={device} id={device} page={page} owner={owner} /> : <DeviceList />

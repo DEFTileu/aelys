@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Lock } from '../../../icons'
 
-/** "Confirm it's you" sheet over the lost-mode page; the fingerprint itself is asked by the native host while this is open. */
-export function ReauthSheet({ error, onCancel }: { error: string; onCancel: () => void }) {
+/** "Confirm it's you" sheet over the page that asked; the fingerprint itself is asked by the native host while this is open. */
+export function ReauthSheet({ error, onCancel, hint = 'Turning off lost mode shows your tasks and notifications on Aelys again' }: { error: string; onCancel: () => void; hint?: string }) {
   const sheet = useRef<HTMLDivElement>(null)
   const cancel = useRef(onCancel)
   cancel.current = onCancel
@@ -20,7 +20,7 @@ export function ReauthSheet({ error, onCancel }: { error: string; onCancel: () =
       <div className="dv-sheet-head">
         <span className="dv-fp"><Lock size={30} aria-hidden="true" /></span>
         <div className="dv-sheet-title" id="dv-reauth-title">Confirm it's you</div>
-        <div className="st-hint">Turning off lost mode shows your tasks and notifications on Aelys again</div>
+        <div className="st-hint">{hint}</div>
       </div>
       {error && <div className="st-error" role="alert">{error}</div>}
       <button type="button" className="st-btn st-btn--ghost dv-wide" onClick={onCancel}>Cancel</button>
