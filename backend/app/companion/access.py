@@ -9,6 +9,8 @@ from starlette.routing import replace_params
 COMPANION_ALLOWED: frozenset[tuple[str, str]] = frozenset({
     ("GET", "/api/v1/companion/snapshot"),
     ("POST", "/api/v1/companion/actions"),
+    ("GET", "/api/v1/devices/{device_id}/firmware"),
+    ("GET", "/api/v1/companion/firmware/{version}/image"),
 })
 
 
