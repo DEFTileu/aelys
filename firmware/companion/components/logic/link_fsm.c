@@ -47,7 +47,9 @@ link_action_t link_next(link_fsm_t *f, link_event_t ev, int close_code, uint32_t
     case LE_CHALLENGE_UNKNOWN: /* the only server verdict that wipes, and only for a challenge we asked for */
         return s == LS_CHECK ? go(f, LS_UNPAIRED, LA_WIPE_PAIRING) : LA_NONE;
     case LE_PAIRED:
-        return s == LS_UNPAIRED ? go(f, LS_LOGIN, LA_LOGIN) : LA_NONE;
+        f->backoff_ms = 0;
+        f->login_rejects = 0;
+        return go(f, LS_LOGIN, (s == LS_CONNECT || s == LS_ONLINE) ? LA_CLOSE_LOGIN : LA_LOGIN);
     case LE_NET_DOWN:
         if (s == LS_UNPAIRED || s == LS_WAIT_NET) return LA_NONE;
         f->st = LS_WAIT_NET;

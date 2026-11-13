@@ -22,7 +22,8 @@ typedef enum {
     LE_UNPAIR              /* owner removed the pairing on the board */
 } link_event_t;
 
-typedef enum { LA_NONE, LA_LOGIN, LA_CONNECT, LA_CHECK, LA_WIPE_PAIRING, LA_CLOSE } link_action_t;
+typedef enum { LA_NONE, LA_LOGIN, LA_CONNECT, LA_CHECK, LA_WIPE_PAIRING, LA_CLOSE,
+                   LA_CLOSE_LOGIN /* close the open socket, then log in (new identity) */ } link_action_t;
 
 typedef struct {
     link_state_t st;
@@ -39,6 +40,7 @@ void link_fsm_init(link_fsm_t *f, bool paired);
  * rnd = esp_random() for jitter. Events that make no sense in the current state are ignored (LA_NONE).
  * Caller contract: drop events from stale socket/request generations (tag every attempt with an id);
  * own the request timeouts and emit LE_LOGIN_FAIL / LE_CHALLENGE_FAIL / LE_WS_CLOSED(0) on a hang;
- * LE_PAIRED is ignored unless LS_UNPAIRED, so send LE_UNPAIR first when re-pairing replaces a pairing.
+ * LE_PAIRED works from every state: the new identity replaces the old one, so a live socket is closed and the board
+ * logs in again (LA_CLOSE_LOGIN when LS_CONNECT/LS_ONLINE, else LA_LOGIN); backoff and reject counters restart.
  * LA_WIPE_PAIRING is returned ONLY for LE_UNPAIR, or LE_CHALLENGE_UNKNOWN while in LS_CHECK. */
 link_action_t link_next(link_fsm_t *f, link_event_t ev, int close_code, uint32_t rnd, uint32_t *wait_ms);

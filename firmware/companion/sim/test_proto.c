@@ -92,6 +92,7 @@ static void test_parses_every_contract_example(void)
     CHECK(l->on && l->show_phone && !l->show_telegram && !l->show_email);
     CHECK(strcmp(l->message, "If found, call the owner") == 0 && l->email[0] == '\0');
     CHECK_EQ(l->qr, QR_TELEGRAM); /* v1: no qr key */
+    CHECK_EQ(l->rev, 3);
 
     CHECK(parse_file("cmd_wifi_add"));
     CHECK_EQ(g_m.u.cmd.name, CMD_WIFI_ADD);
@@ -111,6 +112,7 @@ static void test_parses_every_contract_example(void)
     CHECK(ic->rel[0][0] == '\0' && ic->rel[1][0] == '\0' && ic->owner_name[0] == '\0');
     CHECK(strcmp(ic->med_note, "Allergy: penicillin") == 0);
     CHECK(ic->show_name && ic->show_contacts && ic->show_med); /* v1 defaults */
+    CHECK_EQ(ic->rev, 4);
 }
 
 static void test_parses_v11_examples(void)
@@ -130,6 +132,7 @@ static void test_parses_v11_examples(void)
     CHECK(l->on && !l->show_phone && !l->show_telegram && l->show_email);
     CHECK(strcmp(l->email, "owner@example.com") == 0);
     CHECK_EQ(l->qr, QR_PHONE);
+    CHECK_EQ(l->rev, 7);
 
     CHECK(parse_file("cmd_ice_v11"));
     const ice_cmd_t *ic = &g_m.u.cmd.a.ice;
@@ -137,6 +140,7 @@ static void test_parses_v11_examples(void)
     CHECK_EQ(ic->n, 1);
     CHECK(strcmp(ic->rel[0], "Mother") == 0);
     CHECK(ic->show_name && !ic->show_contacts && ic->show_med);
+    CHECK_EQ(ic->rev, 8);
 
     CHECK(parse_file("cmd_settings"));
     CHECK_EQ(g_m.u.cmd.name, CMD_SETTINGS);
@@ -309,6 +313,24 @@ static void test_long_free_text_is_cut_not_rejected(void)
     CHECK(!proto_parse(j, strlen(j), &g_m));
 }
 
+static void test_command_rev(void)
+{
+    const char *none = "{\"type\":\"command\",\"id\":\"c\",\"name\":\"lost_mode\",\"args\":{\"on\":false}}";
+    CHECK(proto_parse(none, strlen(none), &g_m));
+    CHECK_EQ(g_m.u.cmd.a.lost.rev, 0);                  /* missing rev = unversioned */
+    const char *big = "{\"type\":\"command\",\"id\":\"c\",\"name\":\"ice_update\",\"args\":{\"contacts\":[],\"rev\":4294967295}}";
+    CHECK(proto_parse(big, strlen(big), &g_m));
+    CHECK_EQ(g_m.u.cmd.a.ice.rev, 4294967295u);
+    const char *bad[] = {
+        "{\"type\":\"command\",\"id\":\"c\",\"name\":\"lost_mode\",\"args\":{\"on\":true,\"rev\":-1}}",
+        "{\"type\":\"command\",\"id\":\"c\",\"name\":\"lost_mode\",\"args\":{\"on\":true,\"rev\":4294967296}}",
+        "{\"type\":\"command\",\"id\":\"c\",\"name\":\"ice_update\",\"args\":{\"contacts\":[],\"rev\":\"3\"}}" };
+    for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        CHECK(!proto_parse(bad[i], strlen(bad[i]), &g_m));  /* out of range or not a number: BAD_ARGS, never a clamped rev */
+        CHECK_EQ(g_m.type, MSG_COMMAND);
+    }
+}
+
 static void test_command_bad_args_still_reports_id(void)
 {
     const char *j = "{\"type\":\"command\",\"id\":\"cid\",\"name\":\"settings\",\"args\":{\"brightness\":200}}";
@@ -472,6 +494,7 @@ int main(void)
     test_command_unknown_name_is_not_rejected();
     test_snapshot_nulls_and_missing_optional();
     test_more_than_5_notices_keeps_first_5();
+    test_command_rev();
     test_titles_cut_on_utf8_boundary();
     test_string_escapes_are_decoded();
     test_rejects();

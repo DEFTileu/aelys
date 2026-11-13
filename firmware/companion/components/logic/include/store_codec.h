@@ -9,7 +9,8 @@
 #define WIFI_MAX 5
 /* Each blob type has its own version byte, so changing one layout never invalidates another.
  * Wi-Fi stays at 1 exactly as plan 1 wrote it (a board must never forget its networks). Owner and lost
- * are 2: owner_info_t gained email, ice_rel, show, qr; their v1 blobs only held factory data and are dropped. */
+ * are 2: owner_info_t gained email, ice_rel, show, qr, ice_rev and lost_state_t gained rev (no v2 blob had been
+ * written with app data yet, so the v2 layout was extended in place); their v1 blobs only held factory data and are dropped. */
 #define STORE_WIFI_VERSION  1
 #define STORE_OWNER_VERSION 2
 #define STORE_LOST_VERSION  2
@@ -24,7 +25,8 @@ typedef struct { char device_id[40]; char api_url[129]; uint8_t priv[32]; } pair
 /* Blob sizes (version + struct + crc), for sizing NVS buffers. */
 #define STORE_OWNER_BLOB (1 + sizeof(owner_info_t) + 4)
 #define STORE_WIFI_BLOB  (1 + sizeof(wifi_list_t) + 4)
-#define STORE_LOST_BLOB  (1 + sizeof(lost_state_t) + 4)
+#define STORE_LOST_PAYLOAD (1 + sizeof(uint32_t) + sizeof(owner_info_t)) /* on, rev, shown */
+#define STORE_LOST_BLOB  (1 + STORE_LOST_PAYLOAD + 4)
 #define STORE_PAIR_BLOB  (1 + sizeof(pair_rec_t) + 4)
 
 uint32_t store_crc32(const uint8_t *p, size_t n); /* IEEE 802.3, crc32("123456789") = 0xCBF43926 */

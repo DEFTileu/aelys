@@ -39,15 +39,22 @@ static void put_ice(owner_info_t *o, const ice_cmd_t *c)
                         (c->show_contacts ? OWNER_SHOW_CONTACTS : 0) | (c->show_med ? OWNER_SHOW_MED : 0));
 }
 
-void owner_apply_ice(owner_info_t *owner, lost_state_t *lost, const ice_cmd_t *c)
+static bool stale(uint32_t cmd_rev, uint32_t applied) { return cmd_rev != 0 && cmd_rev <= applied; }
+
+bool owner_apply_ice(owner_info_t *owner, lost_state_t *lost, const ice_cmd_t *c)
 {
+    if (stale(c->rev, owner->ice_rev)) return false;
     put_ice(owner, c);
     if (lost->on) put_ice(&lost->shown, c);
+    if (c->rev) owner->ice_rev = c->rev;
+    return true;
 }
 
-void owner_apply_lost(lost_state_t *lost, const owner_info_t *owner, const lost_cmd_t *c)
+bool owner_apply_lost(lost_state_t *lost, const owner_info_t *owner, const lost_cmd_t *c)
 {
-    if (!c->on) { lost->on = false; return; }
+    if (stale(c->rev, lost->rev)) return false;
+    if (c->rev) lost->rev = c->rev;
+    if (!c->on) { lost->on = false; return true; }
     owner_info_t f, *s = &lost->shown;
     owner_defaults(&f); /* lost mode shows the factory contacts, never fields the app did not choose */
     *s = *owner;        /* keeps the ICE fields */
@@ -70,4 +77,5 @@ void owner_apply_lost(lost_state_t *lost, const owner_info_t *owner, const lost_
     s->show = (uint8_t)((owner->show & OWNER_SHOW_ICE) | (c->show_phone ? OWNER_SHOW_PHONE : 0) |
                         (c->show_telegram ? OWNER_SHOW_TELEGRAM : 0) | (c->show_email ? OWNER_SHOW_EMAIL : 0));
     lost->on = true;
+    return true;
 }

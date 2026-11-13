@@ -187,21 +187,33 @@ static void test_lost_roundtrip(void)
 {
     lost_state_t in, out; uint8_t buf[STORE_LOST_BLOB];
     memset(&in, 0, sizeof in);
-    in.on = true; fill_owner(&in.shown);
+    in.on = true; in.rev = 0x01020304u; fill_owner(&in.shown);
     size_t n = store_encode_lost(&in, buf, sizeof buf);
     CHECK_EQ(n, sizeof buf);
     CHECK(store_decode_lost(buf, n, &out));
-    CHECK(out.on && memcmp(&in.shown, &out.shown, sizeof in.shown) == 0);
+    CHECK(out.on && out.rev == 0x01020304u && memcmp(&in.shown, &out.shown, sizeof in.shown) == 0);
     buf[3] ^= 1;
     CHECK(!store_decode_lost(buf, n, &out));
     buf[3] ^= 1;
     buf[1] = 7; reseal(buf, n);                        /* bool must stay 0/1 */
     CHECK(store_decode_lost(buf, n, &out));
     CHECK_EQ(out.on, 1);
-    memset(buf + 2, 'W', sizeof in.shown.name + 5);    /* over-long name in the lost snapshot */
+    memset(buf + 1 + 1 + 4 + offsetof(owner_info_t, name), 'W', sizeof in.shown.name + 5); /* over-long name in the lost snapshot */
     reseal(buf, n);
     CHECK(store_decode_lost(buf, n, &out));
     CHECK(memchr(out.shown.name, 0, sizeof out.shown.name) != NULL);
+}
+
+static void test_ice_rev_survives_the_owner_blob(void)
+{
+    owner_info_t in, out; uint8_t buf[STORE_OWNER_BLOB];
+    fill_owner(&in);
+    in.ice_rev = 0xA1B2C3D4u;
+    size_t n = store_encode_owner(&in, buf, sizeof buf);
+    CHECK_EQ(n, sizeof buf);
+    CHECK_EQ(buf[0], 2);
+    CHECK(store_decode_owner(buf, n, &out));
+    CHECK_EQ(out.ice_rev, 0xA1B2C3D4u);
 }
 
 static void test_pair_roundtrip_and_corrupt(void)
@@ -248,6 +260,7 @@ int main(void)
     test_wifi_upsert_drops_oldest_when_full();
     test_wifi_upsert_rejects_bad_input();
     test_lost_roundtrip();
+    test_ice_rev_survives_the_owner_blob();
     test_pair_roundtrip_and_corrupt();
     return g_failed ? 1 : 0;
 }

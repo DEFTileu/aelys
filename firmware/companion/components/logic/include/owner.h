@@ -28,10 +28,15 @@ typedef struct {
     char ice_phone[2][24];
     uint8_t show;  /* OWNER_SHOW_* */
     uint8_t qr;    /* QR_* */
+    uint32_t ice_rev; /* rev of the last applied ice_update, 0 = none; last member so the struct has no padding */
 } owner_info_t;
 
 /* What the device shows while lost mode is on: shown is what the lost and ICE screens display. */
-typedef struct { bool on; owner_info_t shown; } lost_state_t;
+typedef struct {
+    bool on;
+    uint32_t rev; /* rev of the last applied lost_mode, 0 = none */
+    owner_info_t shown;
+} lost_state_t; /* has padding: the store codec serialises it field by field */
 
 /* App commands, already decoded and bounded (every string NUL-terminated). */
 typedef struct {
@@ -40,6 +45,7 @@ typedef struct {
     bool show_phone, show_telegram, show_email;
     char email[49];
     uint8_t qr; /* QR_* */
+    uint32_t rev; /* monotonic per device and command; 0 = unversioned (missing from the frame) */
 } lost_cmd_t;
 
 typedef struct {
@@ -48,15 +54,20 @@ typedef struct {
     char name[2][33], rel[2][17], phone[2][24];
     char med_note[97];
     bool show_name, show_contacts, show_med;
+    uint32_t rev; /* as lost_cmd_t.rev */
 } ice_cmd_t;
 
 /* Zeroes *o, then fills phone/telegram/qr_url from the owner contact header (truncating safely),
  * message = "If found, please contact", show = everything, qr = QR_TELEGRAM. */
 void owner_defaults(owner_info_t *o);
 
-/* Writes the ICE fields (name, med_note, ice_*, the OWNER_SHOW_ICE bits) to *owner, and also to
+/* Both apply functions return false and change nothing when c->rev is nonzero and not newer than the last applied
+ * rev (owner->ice_rev / lost->rev): at-least-once delivery can redeliver or reorder commands. The caller still acks
+ * them and persists only when true. A rev of 0 means unversioned: it always applies and leaves the stored rev alone.
+ *
+ * Writes the ICE fields (name, med_note, ice_*, the OWNER_SHOW_ICE bits) to *owner, and also to
  * lost->shown while lost->on, so the lost screen and the ICE card never disagree. */
-void owner_apply_ice(owner_info_t *owner, lost_state_t *lost, const ice_cmd_t *c);
+bool owner_apply_ice(owner_info_t *owner, lost_state_t *lost, const ice_cmd_t *c);
 /* on: shown = owner's ICE fields + the factory phone/telegram that the show_* flags allow + message,
  * email, qr (a QR whose target is hidden is dropped, so it cannot leak it). off: only lost->on = false. */
-void owner_apply_lost(lost_state_t *lost, const owner_info_t *owner, const lost_cmd_t *c);
+bool owner_apply_lost(lost_state_t *lost, const owner_info_t *owner, const lost_cmd_t *c);

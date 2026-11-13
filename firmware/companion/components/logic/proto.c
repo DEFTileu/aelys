@@ -166,6 +166,15 @@ static bool get_count(const P *p, int obj, const char *key, int16_t *dst) /* cla
     return true;
 }
 
+/* rev: absent or null -> 0 (unversioned); must fit uint32_t, never clamped (a clamped rev would block every later command) */
+static bool get_rev(const P *p, int obj, uint32_t *dst)
+{
+    int64_t v = 0;
+    if (!get_int(p, obj, "rev", &v, 0) || v < 0 || v > UINT32_MAX) return false;
+    *dst = (uint32_t)v;
+    return true;
+}
+
 static bool get_time(const P *p, int obj, const char *key, int64_t *dst, int fl)
 {
     int v = find(p, obj, key);
@@ -260,7 +269,7 @@ static bool parse_lost(const P *p, int a, lost_cmd_t *l)
     if (!get_bool(p, a, "on", &l->on, S_REQ) || !get_str(p, a, "message", l->message, sizeof l->message, S_TRUNC) ||
         !get_bool(p, a, "show_phone", &l->show_phone, 0) || !get_bool(p, a, "show_telegram", &l->show_telegram, 0) ||
         !get_bool(p, a, "show_email", &l->show_email, 0) || !get_str(p, a, "email", l->email, sizeof l->email, S_TRUNC) ||
-        !get_str(p, a, "qr", qr, sizeof qr, 0)) return false;
+        !get_str(p, a, "qr", qr, sizeof qr, 0) || !get_rev(p, a, &l->rev)) return false;
     if (qr[0] == '\0' || strcmp(qr, "telegram") == 0) l->qr = QR_TELEGRAM;
     else if (strcmp(qr, "phone") == 0) l->qr = QR_PHONE;
     else if (strcmp(qr, "none") == 0) l->qr = QR_NONE;
@@ -275,7 +284,8 @@ static bool parse_ice(const P *p, int a, ice_cmd_t *c)
     if (v < 0 || p->t[v].type != JSMN_ARRAY || p->t[v].size > 2) return false;
     if (!get_str(p, a, "owner_name", c->owner_name, sizeof c->owner_name, S_TRUNC) ||
         !get_str(p, a, "med_note", c->med_note, sizeof c->med_note, S_TRUNC) || !get_bool(p, a, "show_name", &c->show_name, 0) ||
-        !get_bool(p, a, "show_contacts", &c->show_contacts, 0) || !get_bool(p, a, "show_med", &c->show_med, 0)) return false;
+        !get_bool(p, a, "show_contacts", &c->show_contacts, 0) || !get_bool(p, a, "show_med", &c->show_med, 0) ||
+        !get_rev(p, a, &c->rev)) return false;
     int i = v + 1;
     for (int k = 0; k < p->t[v].size; k++, i = skip(p, i)) {
         if (i >= p->n || p->t[i].type != JSMN_OBJECT || !get_str(p, i, "name", c->name[k], sizeof c->name[k], S_REQ | S_TRUNC) ||

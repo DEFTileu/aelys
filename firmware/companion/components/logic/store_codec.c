@@ -2,7 +2,7 @@
 #include "store_codec.h"
 
 /* No padding anywhere, so the in-memory layout is the blob layout. */
-_Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 49 + 97 + 65 + 97 + 2 * 33 + 2 * 17 + 2 * 24 + 2, "owner layout");
+_Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 49 + 97 + 65 + 97 + 2 * 33 + 2 * 17 + 2 * 24 + 2 + 4, "owner layout");
 _Static_assert(sizeof(wifi_list_t) == 1 + WIFI_MAX * (33 + 65), "wifi layout");
 _Static_assert(sizeof(pair_rec_t) == 40 + 129 + 32, "pair layout");
 
@@ -78,18 +78,20 @@ bool store_decode_wifi(const uint8_t *buf, size_t len, wifi_list_t *out)
 
 size_t store_encode_lost(const lost_state_t *in, uint8_t *buf, size_t cap)
 {
-    uint8_t p[1 + sizeof(owner_info_t)];
+    uint8_t p[STORE_LOST_PAYLOAD];
     p[0] = in->on ? 1 : 0;
-    memcpy(p + 1, &in->shown, sizeof in->shown);
+    memcpy(p + 1, &in->rev, sizeof in->rev);
+    memcpy(p + 1 + sizeof in->rev, &in->shown, sizeof in->shown);
     return seal(STORE_LOST_VERSION, p, sizeof p, buf, cap);
 }
 
 bool store_decode_lost(const uint8_t *buf, size_t len, lost_state_t *out)
 {
-    const uint8_t *p = unseal(STORE_LOST_VERSION, buf, len, 1 + sizeof(owner_info_t));
+    const uint8_t *p = unseal(STORE_LOST_VERSION, buf, len, STORE_LOST_PAYLOAD);
     if (!p) return false;
     out->on = p[0] != 0;
-    memcpy(&out->shown, p + 1, sizeof out->shown);
+    memcpy(&out->rev, p + 1, sizeof out->rev);
+    memcpy(&out->shown, p + 1 + sizeof out->rev, sizeof out->shown);
     term_owner(&out->shown);
     return true;
 }

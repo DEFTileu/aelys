@@ -153,7 +153,7 @@ static void test_4000_stays_replaced_until_net_cycles(void)
     CHECK_EQ(step(&f, LE_WS_CLOSED, 4000, &w), LA_NONE);
     CHECK_EQ(f.st, LS_REPLACED);
     CHECK_EQ(w, 0);
-    link_event_t noisy[] = { LE_TIMER, LE_NET_UP, LE_LOGIN_OK, LE_WS_OPEN, LE_WS_CLOSED, LE_LOGIN_FAIL, LE_PAIRED };
+    link_event_t noisy[] = { LE_TIMER, LE_NET_UP, LE_LOGIN_OK, LE_WS_OPEN, LE_WS_CLOSED, LE_LOGIN_FAIL };
     for (unsigned i = 0; i < sizeof noisy / sizeof noisy[0]; i++) {
         CHECK_EQ(step(&f, noisy[i], 1006, NULL), LA_NONE);
         CHECK_EQ(f.st, LS_REPLACED);
@@ -184,6 +184,21 @@ static void test_net_down_from_any_state_waits(void)
     CHECK_EQ(u.st, LS_UNPAIRED);
 }
 
+static void test_paired_from_any_state_logs_in_with_the_new_identity(void)
+{
+    for (int st = LS_UNPAIRED; st <= LS_REPLACED; st++) {
+        link_fsm_t f = { (link_state_t)st, 8000, 2 };
+        uint32_t w = 5;
+        link_action_t a = link_next(&f, LE_PAIRED, 0, 1, &w);
+        CHECK_EQ(a, (st == LS_CONNECT || st == LS_ONLINE) ? LA_CLOSE_LOGIN : LA_LOGIN);
+        CHECK_EQ(f.st, LS_LOGIN);
+        CHECK_EQ(f.backoff_ms, 0);
+        CHECK_EQ(f.login_rejects, 0);
+        CHECK_EQ(w, 0);
+        CHECK_EQ(link_next(&f, LE_TIMER, 0, 1, &w), LA_NONE); /* a stale backoff timer is ignored */
+    }
+}
+
 int main(void)
 {
     test_paired_boot_waits_for_net_then_logs_in();
@@ -194,5 +209,6 @@ int main(void)
     test_open_resets_backoff();
     test_4000_stays_replaced_until_net_cycles();
     test_net_down_from_any_state_waits();
+    test_paired_from_any_state_logs_in_with_the_new_identity();
     return g_failed ? 1 : 0;
 }

@@ -1,7 +1,9 @@
 #pragma once
 /* The board's identity towards the Aelys backend: one P-256 key (PSA volatile key, imported from the pair
  * record), the pairing SAS code and Wi-Fi ECIES decryption. Persistence is injected, like net_store_t.
- * Single-threaded: call from one task (the link task) only. */
+ * NOT thread-safe (no lock around the key, the pending key or the pair record). Today only the net task (USB
+ * pairing in net_improv.c) calls it. When the link task (F7) signs, decrypts or reads the device id, it must either
+ * take a mutex shared with every identity_* caller or have pairing routed through the link task. */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

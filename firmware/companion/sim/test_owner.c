@@ -130,6 +130,56 @@ static void test_long_fields_stay_terminated(void)
     CHECK_EQ(strlen(o.ice_rel[0]), sizeof o.ice_rel[0] - 1);
 }
 
+static void test_stale_ice_rev_changes_nothing(void)
+{
+    owner_info_t o; lost_state_t l = { 0 }; ice_cmd_t c;
+    owner_defaults(&o);
+    ice_fixture(&c);
+    c.rev = 5;
+    CHECK(owner_apply_ice(&o, &l, &c));
+    CHECK_EQ(o.ice_rev, 5);
+    strcpy(c.med_note, "stale");
+    for (uint32_t r = 1; r <= 5; r++) {                  /* older and equal (a redelivery) are both refused */
+        c.rev = r;
+        CHECK(!owner_apply_ice(&o, &l, &c));
+        CHECK(!strcmp(o.med_note, "Allergy: penicillin"));
+        CHECK_EQ(o.ice_rev, 5);
+    }
+    c.rev = 6;
+    CHECK(owner_apply_ice(&o, &l, &c));
+    CHECK(!strcmp(o.med_note, "stale"));
+    CHECK_EQ(o.ice_rev, 6);
+    c.rev = 0; strcpy(c.med_note, "unversioned");        /* rev 0 always applies and never lowers the stored rev */
+    CHECK(owner_apply_ice(&o, &l, &c));
+    CHECK(!strcmp(o.med_note, "unversioned"));
+    CHECK_EQ(o.ice_rev, 6);
+}
+
+static void test_stale_lost_rev_changes_nothing(void)
+{
+    owner_info_t o; lost_state_t l = { 0 }; lost_cmd_t c;
+    with_ice(&o);
+    lost_fixture(&c);
+    c.rev = 3;
+    CHECK(owner_apply_lost(&l, &o, &c));
+    CHECK(l.on);
+    CHECK_EQ(l.rev, 3);
+    c.on = false; c.rev = 2;                             /* an older "off" arriving late must not end lost mode */
+    CHECK(!owner_apply_lost(&l, &o, &c));
+    CHECK(l.on);
+    c.rev = 3;
+    CHECK(!owner_apply_lost(&l, &o, &c));
+    CHECK(l.on);
+    c.rev = 4;
+    CHECK(owner_apply_lost(&l, &o, &c));
+    CHECK(!l.on);
+    CHECK_EQ(l.rev, 4);
+    c.on = true; c.rev = 0;                              /* unversioned applies, rev stays */
+    CHECK(owner_apply_lost(&l, &o, &c));
+    CHECK(l.on);
+    CHECK_EQ(l.rev, 4);
+}
+
 int main(void)
 {
     test_ice_fields_land_in_owner();
@@ -139,5 +189,7 @@ int main(void)
     test_lost_hides_unselected_contacts();
     test_lost_off_clears_flag_only();
     test_long_fields_stay_terminated();
+    test_stale_ice_rev_changes_nothing();
+    test_stale_lost_rev_changes_nothing();
     return g_failed ? 1 : 0;
 }

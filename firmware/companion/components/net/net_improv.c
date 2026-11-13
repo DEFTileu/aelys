@@ -27,7 +27,8 @@ static bool provisioning;
  * net task runs it next. Wiped as soon as it is taken. */
 static struct { bool set; char ssid[33], pass[65]; } pending;
 
-/* USB pairing, RAM only. The identity API is single-threaded: only this (net) task calls it. */
+/* USB pairing, RAM only. The identity API is not thread-safe: today only this (net) task calls it; F7 must add a
+ * mutex (see identity.h) or route pairing through the link task before the link task touches identity. */
 static struct { bool active, coded; int64_t deadline_us; char secret[129]; } pair; /* secret is "" once the SAS was computed */
 
 static void send(uint8_t type, const uint8_t *data, size_t len)
