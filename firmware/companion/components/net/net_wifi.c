@@ -42,7 +42,14 @@ static int64_t next_try_us;
 static uint32_t backoff_ms = BACKOFF_MIN_MS;
 static bool attempting, abort_req;
 static uint8_t want_state = UI_WIFI_OFFLINE, posted_state = 0xFF;
-static char cur_ssid[33];               /* the network in use ("" offline); written by the net task, read via net_wifi_current_ssid */
+static char cur_buf[2][33];             /* the network in use ("" offline): the net task fills the idle slot, then flips cur_i (readers: other tasks) */
+static atomic_int cur_i;
+static void set_cur(const char *ssid)
+{
+    int j = 1 - atomic_load(&cur_i);
+    strlcpy(cur_buf[j], ssid, sizeof cur_buf[j]);
+    atomic_store(&cur_i, j);
+}
 
 /* Requests from other tasks (the link task). The net task owns Wi-Fi, so a scan, a connection attempt or a list edit is handed over
  * here and run in the net task's own loop, one at a time; the caller blocks until it is done. */
@@ -60,7 +67,7 @@ static atomic_bool rq_pending;          /* set by the caller once rq is filled; 
 
 void net_set_wifi_state(uint8_t s) { want_state = s; }
 bool net_wifi_online(void) { return online; }
-const char *net_wifi_current_ssid(void) { return cur_ssid; }
+const char *net_wifi_current_ssid(void) { return cur_buf[atomic_load(&cur_i)]; }
 bool net_lost_on(void) { return !store.lost_on || store.lost_on(); }
 bool net_wifi_busy(void) { return attempting; }
 void net_wifi_abort(void) { abort_req = true; }
@@ -157,21 +164,22 @@ static result_t attempt_inner(const char *ssid, const char *pass)
 
 static void went_online(const char *ssid)
 {
-    strlcpy(cur_ssid, ssid, sizeof cur_ssid);
+    set_cur(ssid);
     online = true;
     backoff_ms = BACKOFF_MIN_MS;
     net_time_start();
     ESP_LOGI(TAG, "online (network %u)", (unsigned)idx);
 }
 
-bool net_wifi_provision(const char *ssid, const char *pass)
+static net_try_t provision(const char *ssid, const char *pass)
 {
     online = false;
-    cur_ssid[0] = '\0';
-    if (attempt(ssid, pass) != R_OK) {
+    set_cur("");
+    result_t r = attempt(ssid, pass);
+    if (r != R_OK) {
         next_try_us = esp_timer_get_time(); /* back to the saved networks right away */
         backoff_ms = BACKOFF_MIN_MS;
-        return false;
+        return r == R_ABORT ? NET_TRY_NOT_RUN : NET_TRY_FAILED; /* aborted: an Improv request replaced it, the network was never judged */
     }
     /* Only a network that connected is ever stored. It becomes the active one in RAM even if the
      * NVS write fails, so the reported success and the reconnect target agree. */
@@ -184,8 +192,10 @@ bool net_wifi_provision(const char *ssid, const char *pass)
         ESP_LOGE(TAG, "network not added to the saved list");
     }
     went_online(ssid);
-    return true;
+    return NET_TRY_OK;
 }
+
+bool net_wifi_provision(const char *ssid, const char *pass) { return provision(ssid, pass) == NET_TRY_OK; }
 
 /* ---- requests (net task side) ---- */
 
@@ -253,7 +263,7 @@ static void rq_run(void)
     if (!atomic_compare_exchange_strong(&rq_pending, &expected, false)) return; /* nothing, or the caller withdrew it */
     switch (rq.kind) {
     case RQ_SCAN: rq.result = run_scan(rq.out, rq.n); break;
-    case RQ_TRY: rq.result = net_wifi_provision(rq.ssid, rq.pass) ? 1 : -1; break;
+    case RQ_TRY: rq.result = provision(rq.ssid, rq.pass); break;
     case RQ_REMOVE: rq.result = run_edit(true); break;
     case RQ_ORDER: rq.result = run_edit(false); break;
     }
@@ -269,8 +279,8 @@ static bool rq_begin(void)
     return rq_mu && evg && xSemaphoreTake(rq_mu, pdMS_TO_TICKS(100)) == pdTRUE;
 }
 
-/* -2: the net task never picked it up (nothing ran). Otherwise rq.result. Wipes the password and releases the slot. */
-static int rq_finish(uint32_t run_ms)
+/* -2: the net task never picked it up (nothing ran). Otherwise rq.result, after the request has finished. Wipes the password and releases the slot. */
+static int rq_finish(void)
 {
     xSemaphoreTake(rq_done, 0);
     rq.result = -2;
@@ -282,7 +292,9 @@ static int rq_finish(uint32_t run_ms)
             xSemaphoreGive(rq_mu);
             return -2;
         }
-        xSemaphoreTake(rq_done, pdMS_TO_TICKS(run_ms)); /* it is running: bounded by its own timeouts */
+        /* The net task took it: rq and the caller's buffers are in use until it finishes. Every operation has its own time limit, so wait
+         * for it however long that is; releasing early would let a try save an empty password or a scan write into a dead stack array. */
+        xSemaphoreTake(rq_done, portMAX_DELAY);
     }
     int r = rq.result;
     explicit_bzero(rq.pass, sizeof rq.pass);
@@ -296,17 +308,18 @@ int net_wifi_scan(wifi_seen_t *out, int max)
     rq.kind = RQ_SCAN;
     rq.out = out;
     rq.n = max;
-    int r = rq_finish(SCAN_MAX_MS + 1000);
+    int r = rq_finish();
     return r < 0 ? -1 : r;
 }
 
-bool net_wifi_try(const char *ssid, const char *pass)
+net_try_t net_wifi_try(const char *ssid, const char *pass)
 {
-    if (!ssid || !pass || !*ssid || strlen(ssid) > 32 || strlen(pass) > 64 || !rq_begin()) return false;
+    if (!ssid || !pass || !*ssid || strlen(ssid) > 32 || strlen(pass) > 64 || !rq_begin()) return NET_TRY_NOT_RUN;
     rq.kind = RQ_TRY;
     strlcpy(rq.ssid, ssid, sizeof rq.ssid);
     strlcpy(rq.pass, pass, sizeof rq.pass);
-    return rq_finish(ATTEMPT_TIMEOUT_MS + 3000) == 1;
+    int r = rq_finish();
+    return r == NET_TRY_OK || r == NET_TRY_FAILED ? (net_try_t)r : NET_TRY_NOT_RUN;
 }
 
 bool net_wifi_remove(const char *ssid)
@@ -314,7 +327,7 @@ bool net_wifi_remove(const char *ssid)
     if (!ssid || !*ssid || strlen(ssid) > 32 || !rq_begin()) return false;
     rq.kind = RQ_REMOVE;
     strlcpy(rq.ssid, ssid, sizeof rq.ssid);
-    return rq_finish(2000) >= 0;
+    return rq_finish() >= 0;
 }
 
 bool net_wifi_reorder(const char ssids[][33], int n)
@@ -324,7 +337,7 @@ bool net_wifi_reorder(const char ssids[][33], int n)
     memset(rq.order, 0, sizeof rq.order);
     for (int i = 0; i < n; i++) strlcpy(rq.order[i], ssids[i], sizeof rq.order[i]);
     rq.n = n;
-    return rq_finish(2000) >= 0;
+    return rq_finish() >= 0;
 }
 
 static void net_task(void *arg)
@@ -337,7 +350,7 @@ static void net_task(void *arg)
             if (!link_up) { /* dropped: retry the same network at once, then back off */
                 ESP_LOGW(TAG, "link lost, reason %u", disc_reason);
                 online = false;
-                cur_ssid[0] = '\0';
+                set_cur("");
                 net_set_wifi_state(UI_WIFI_OFFLINE);
                 next_try_us = now;
             }

@@ -27,9 +27,12 @@ int net_wifi_scan(wifi_seen_t *out, int max);
 /* The network in use, "" when offline. Written by the net task: copy it right away, from a task that is not racing a Wi-Fi change
  * (the command handler, before it calls net_wifi_try). */
 const char *net_wifi_current_ssid(void);
-/* Tries the network now (the provisioning path Improv uses): blocks up to ~18 s. The old link is dropped. True: connected and saved. False: the attempt failed (wrong password, not found, timed out) or could not start; nothing was saved and the
- * saved networks reconnect at once. Zero the password after the call. */
-bool net_wifi_try(const char *ssid, const char *pass);
+typedef enum { NET_TRY_OK, NET_TRY_FAILED, NET_TRY_NOT_RUN } net_try_t;
+/* Tries the network now (the provisioning path Improv uses): blocks up to ~18 s. The old link is dropped. NET_TRY_OK: connected and saved. NET_TRY_FAILED: the
+ * attempt failed (wrong password, not found, timed out); nothing was saved and the saved networks reconnect at once. NET_TRY_NOT_RUN: it
+ * never ran or was replaced by an Improv request (bad arguments, the hand-over slot busy or not picked up, aborted): the network was not
+ * judged and the old link was not necessarily touched. Zero the password after the call. */
+net_try_t net_wifi_try(const char *ssid, const char *pass);
 /* Edits of the saved list (persisted, then adopted; the current connection is left alone). True: the list now is what was asked for
  * (also when there was nothing to change); false: the edit could not be saved or run. */
 bool net_wifi_remove(const char *ssid);

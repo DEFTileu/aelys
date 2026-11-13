@@ -474,6 +474,11 @@ static void test_wifi_seen_merge(void)
     CHECK(!strcmp(v[0].ssid, "Home") && v[0].rssi == -40 && v[0].secure);
     CHECK(!strcmp(v[1].ssid, "Cafe") && v[1].rssi == -50 && !v[1].secure);
     CHECK(!strcmp(v[2].ssid, "Guest") && v[2].rssi == -80);
+    wifi_seen_t u[8] = { { "ok\xC3\xA9", -10, true }, { "s\xED\xA0\x80", -11, true }, { "f5\xF5\x80\x80\x80", -12, true },
+                         { "ov\xE0\x80\x80", -13, true }, { "hi\xF4\x90\x80\x80", -14, true }, { "em\xF0\x9F\x98\x80", -15, true },
+                         { "c0\xC0\xAF", -16, true }, { "cut\xE2\x82", -17, true } };
+    CHECK_EQ(wifi_seen_merge(u, 8, 10), 2);              /* only the valid two-byte and four-byte names stay */
+    CHECK(!strncmp(u[0].ssid, "ok", 2) && !strncmp(u[1].ssid, "em", 2));
     wifi_seen_t many[16];
     for (int i = 0; i < 16; i++) { snprintf(many[i].ssid, sizeof many[i].ssid, "n%d", i); many[i].rssi = (int8_t)(-90 + i); many[i].secure = true; }
     n = wifi_seen_merge(many, 16, 10);                   /* cut at max, strongest first */

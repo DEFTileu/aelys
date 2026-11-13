@@ -465,6 +465,7 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->len >= 1) scr_home_set_wifi(ev->data[0]);
         return;
     case UI_EV_WIFI_ADD: {
+        if (ev->len >= 1 && ev->data[0] == 3) { scr_wifi_card_hide(); return; } /* the attempt never ran */
         if (ev->len < 2 || !toast_ok()) return; /* lost mode, ICE card, pairing: nothing (the command still runs on the board) */
         char ssid[33], prev[26];
         ev_str(ssid, sizeof ssid, ev, 1);

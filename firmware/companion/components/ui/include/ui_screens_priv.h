@@ -47,6 +47,7 @@ void scr_toast_show(const char *txt);
 void scr_toast_hide(void);                                 /* at once, timers stopped; also takes the Wi-Fi card off */
 /* The Wi-Fi card: state as UI_EV_WIFI_ADD data[0] (0 connecting, 1 connected, 2 failed); prev "" = no network to name. False for an unknown state. */
 bool scr_wifi_card_show(uint8_t state, const char *ssid, const char *prev);
+void scr_wifi_card_hide(void);                             /* at once, timer stopped */
 
 /* scr_today.c (design "Today · обзор") */
 lv_obj_t *scr_today_create(lv_obj_t *parent);

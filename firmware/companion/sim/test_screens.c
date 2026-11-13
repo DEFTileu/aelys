@@ -969,6 +969,12 @@ static void test_wifi_toast_shots(void)
     sim_post(UI_EV_WIFI_ADD, short_ev, 2);
     sim_step(100);
     check_inside("wifi short event");
+    wifi_add_ev(3, "", "");                                      /* "never ran": the card goes at once */
+    sim_step(100);
+    CHECK(!shows_text(scr, "Cafe") && !shows_text(scr, "Connecting\xE2\x80\xA6"));
+    wifi_add_ev(0, "Cafe", "");
+    sim_step(100);
+    CHECK(shows_text(scr, "Cafe"));
     uint8_t bad[60] = { 9, 'Z' };                                /* unknown state: ignored */
     sim_post(UI_EV_WIFI_ADD, bad, sizeof bad);
     sim_step(2200);

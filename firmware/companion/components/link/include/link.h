@@ -21,6 +21,7 @@ typedef struct {
     bool (*lost_on)(void);                /* a snapshot that arrives in lost mode is saved at once, not throttled */
     const char *(*contact_phone)(void);   /* may return NULL or "": left out of `hello` */
     const char *(*contact_telegram)(void);
+    const char *(*current_ssid)(void);    /* the network in use, "" offline: for `wifi_state` (the net task is the only one that calls esp_wifi) */
     void (*load_wifi)(wifi_list_t *l);    /* saved networks, for `wifi_state` (only the SSIDs leave the board) */
     void (*reset_revs)(void);             /* lost.rev and owner.ice_rev back to 0, persisted: a re-paired board must not drop
                                            * the new account's lost_mode / ice_update as stale */

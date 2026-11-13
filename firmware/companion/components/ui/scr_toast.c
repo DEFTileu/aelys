@@ -46,6 +46,12 @@ void scr_toast_hide(void)
     lv_obj_set_hidden(w.box, true);
 }
 
+void scr_wifi_card_hide(void)
+{
+    if (w.timer) { lv_timer_delete(w.timer); w.timer = NULL; }
+    lv_obj_set_hidden(w.box, true);
+}
+
 bool scr_wifi_card_show(uint8_t state, const char *ssid, const char *prev)
 {
     if (state > 2) return false;

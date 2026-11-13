@@ -188,8 +188,7 @@ void link_send_wifi_state(void)
     memset(l, 0, sizeof *l);
     if (link_deps.load_wifi) link_deps.load_wifi(l);
     char cur[33] = "";
-    wifi_ap_record_t ap;
-    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) strlcpy(cur, (const char *)ap.ssid, sizeof cur);
+    if (link_deps.current_ssid) strlcpy(cur, link_deps.current_ssid(), sizeof cur);
     size_t n = proto_wifi_state(link_mem->tx, sizeof link_mem->tx, l, cur[0] ? cur : NULL);
     explicit_bzero(link_mem->http, LINK_HTTP_MAX);
     link_send_raw(link_mem->tx, n);

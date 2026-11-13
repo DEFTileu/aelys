@@ -102,8 +102,16 @@ static void wifi_add(const char *id, const char *blob_b64)
     }
     strlcpy(wa.prev, net_wifi_current_ssid(), sizeof wa.prev); /* the net task is idle here: no Wi-Fi change is racing this read */
     post_wifi_add(0, wa.ssid, wa.prev);
-    bool ok = net_wifi_try(wa.ssid, wa.pass);
+    net_try_t t = net_wifi_try(wa.ssid, wa.pass);
     explicit_bzero(wa.pass, sizeof wa.pass);
+    if (t == NET_TRY_NOT_RUN) { /* never judged and the link was not touched: no card, the healthy socket stays */
+        ESP_LOGW(TAG, "wifi_add: not run (busy)");
+        post_wifi_add(3, "", "");
+        explicit_bzero(&wa, sizeof wa);
+        if (!link_send_ack(id, false, "BUSY")) link_queue_ack(id, false, "BUSY");
+        return;
+    }
+    bool ok = t == NET_TRY_OK;
     ESP_LOGW(TAG, "wifi_add: %s", ok ? "connected and saved" : "could not connect");
     post_wifi_add(ok ? 1 : 2, wa.ssid, wa.prev);
     explicit_bzero(&wa, sizeof wa);
@@ -115,10 +123,7 @@ static void wifi_scan(const char *id)
 {
     wifi_seen_t v[10];
     int n = net_wifi_scan(v, 10);
-    if (n < 0) {
-        link_send_ack(id, false, "BUSY"); /* never queued by the server: the app asks again */
-        return;
-    }
+    if (n < 0) n = 0; /* a failed scan still answers with wifi_scan_result (an empty list): that is the only answer wifi_scan has */
     link_send_raw(scan_buf, proto_wifi_scan_result(scan_buf, sizeof scan_buf, id, v, n)); /* this IS the ack of wifi_scan */
 }
 
@@ -299,7 +304,7 @@ void app_main(void)
     /* after the ui task ran ui_setup (the snapshot buffer exists) and after net_start (Wi-Fi is up or coming up) */
     static const link_deps_t ldeps = {.on_command = on_command, .save_snap = save_snap, .load_snap = load_snap,
                                       .erase_snap = erase_snap, .lost_on = lost_is_on, .contact_phone = contact_phone, .contact_telegram = contact_telegram,
-                                      .load_wifi = store_load_wifi, .reset_revs = reset_revs};
+                                      .current_ssid = net_wifi_current_ssid, .load_wifi = store_load_wifi, .reset_revs = reset_revs};
     err = link_start(&ldeps);
     if (err != ESP_OK) ESP_LOGE(TAG, "link start: %s", esp_err_to_name(err));
 #endif

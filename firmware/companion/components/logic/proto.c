@@ -541,10 +541,17 @@ static bool utf8_ok(const char *s)
 {
     const uint8_t *p = (const uint8_t *)s;
     while (*p) {
-        int extra = *p < 0x80 ? 0 : (*p >> 5) == 6 ? 1 : (*p >> 4) == 14 ? 2 : (*p >> 3) == 30 ? 3 : -1;
-        if (extra < 0 || (*p < 0xC2 && *p >= 0x80)) return false;
+        uint8_t lead = *p;
+        int extra = lead < 0x80 ? 0 : lead < 0xC2 ? -1 : lead < 0xE0 ? 1 : lead < 0xF0 ? 2 : lead <= 0xF4 ? 3 : -1; /* C0 C1 F5.. never start a character */
+        if (extra < 0) return false;
         p++;
-        while (extra--) { if ((*p & 0xC0) != 0x80) return false; p++; }
+        uint8_t lo = 0x80, hi = 0xBF; /* the second byte is narrower after E0 (overlong), ED (UTF-16 surrogates), F0, F4 */
+        if (lead == 0xE0) lo = 0xA0;
+        else if (lead == 0xED) hi = 0x9F;
+        else if (lead == 0xF0) lo = 0x90;
+        else if (lead == 0xF4) hi = 0x8F;
+        for (int i = 0; i < extra; i++, p++, lo = 0x80, hi = 0xBF)
+            if (*p < lo || *p > hi) return false;
     }
     return true;
 }
