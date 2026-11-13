@@ -22,7 +22,7 @@ python3 tools/improv_send.py --state               # or --info: ask the board, n
 
 ## Pairing over USB
 
-The board pairs through four Improv vendor RPCs (0xA0 PAIR_BEGIN, 0xA1 PAIR_CODE, 0xA2 PAIR_COMMIT, 0xA3 PAIR_STATUS). The web app drives them over Web Serial (Settings, Devices, Add companion); `tools/improv_pair.py` does the same from the Mac and prints the 6-digit code to compare with the round screen:
+The board pairs through four Improv vendor RPCs (0xA0 PAIR_BEGIN, 0xA1 PAIR_CODE, 0xA2 PAIR_COMMIT, 0xA3 PAIR_STATUS). The web app drives them over Web Serial (Settings, Devices, Add companion); `tools/improv_pair.py` does the same from the Mac and prints the 6-digit code to compare with the round screen. Run the tools with the python of the repository's `.venv` in the main checkout (it needs pyserial and the backend dependencies):
 
 ```sh
 .venv/bin/python firmware/companion/tools/improv_pair.py --secret-gen    # begin, code, print the digits
