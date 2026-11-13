@@ -214,6 +214,24 @@ class TelegramClient:
             payload["reply_parameters"] = {"message_id": reply_to_message_id}
         return await self._object("sendMessage", payload)
 
+    async def edit_message_text(
+        self, chat_id: int, message_id: int, text: str, *, business_connection_id: str
+    ) -> dict[str, Any]:
+        if type(message_id) is not int or message_id <= 0:
+            raise ValueError("message_id must be a positive integer")
+        if not isinstance(text, str) or not 1 <= len(text) <= 4096:
+            raise ValueError("message text must contain 1 to 4096 characters")
+        return await self._object(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "business_connection_id": business_connection_id,
+                "link_preview_options": {"is_disabled": True},
+            },
+        )
+
     async def send_sticker(self, chat_id: int, file_id: str, *, business_connection_id: str) -> dict[str, Any]:
         return await self._object("sendSticker", {"chat_id": chat_id, "sticker": file_id, "business_connection_id": business_connection_id})
 

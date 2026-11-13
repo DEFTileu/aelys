@@ -137,6 +137,27 @@ static void test_confirm_rolls_back_after_window(void)
     CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, 0x000002E8u), CONFIRM_ROLLBACK);
 }
 
+/* The final success event cannot rescue a release at/after its deadline. */
+static void test_confirm_deadline_precedes_late_success(void)
+{
+    const uint32_t starts[] = {1000u, UINT32_MAX - 500u};
+    const uint8_t events[] = {OTA_EV_READY, OTA_EV_SNAPSHOT, OTA_EV_HELLO_SENT};
+    for (unsigned start = 0; start < 2; start++) {
+        for (unsigned last = 0; last < 3; last++) {
+            for (uint32_t elapsed = 999; elapsed <= 1001; elapsed++) {
+                ota_confirm_t c;
+                ota_confirm_start(&c, true, starts[start], 1000);
+                CHECK_EQ(ota_confirm_update(&c, events[(last + 1) % 3], starts[start] + 10), CONFIRM_WAIT);
+                CHECK_EQ(ota_confirm_update(&c, events[(last + 2) % 3], starts[start] + 20), CONFIRM_WAIT);
+                CHECK_EQ(ota_confirm_update(&c, events[last], starts[start] + elapsed),
+                         elapsed < 1000 ? CONFIRM_VALID : CONFIRM_ROLLBACK);
+                if (elapsed < 1000)
+                    CHECK_EQ(ota_confirm_update(&c, OTA_EV_TICK, starts[start] + 2000), CONFIRM_VALID);
+            }
+        }
+    }
+}
+
 static void test_not_pending_never_rolls_back(void)
 {
     ota_confirm_t c;
@@ -157,6 +178,7 @@ int main(void)
     test_size_limits();
     test_confirm_needs_all_three_events();
     test_confirm_rolls_back_after_window();
+    test_confirm_deadline_precedes_late_success();
     test_not_pending_never_rolls_back();
     return g_failed ? 1 : 0;
 }

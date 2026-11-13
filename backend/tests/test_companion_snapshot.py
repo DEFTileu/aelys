@@ -129,7 +129,7 @@ async def test_snapshot_route_companion_only(client):
     token = await companion_token(client, key, device_id)
     ok = await client.get(f'{B}/companion/snapshot', headers={'Authorization': f'Bearer {token}'})
     assert ok.status_code == 200, ok.text
-    assert set(ok.json()) == {'generated_at', 'next_task', 'overdue_count', 'next_event', 'unread_count', 'notices', 'focus'}
+    assert set(ok.json()) == {'generated_at', 'next_task', 'overdue_count', 'next_event', 'unread_count', 'notices', 'focus', 'today_done', 'today_total', 'other_unread_count'}
 
 
 @pytest.mark.asyncio

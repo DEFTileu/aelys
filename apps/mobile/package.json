@@ -6,7 +6,7 @@
     "test": "node --test scripts/*.test.mjs",
     "android:prepare": "node scripts/prepare-android.mjs",
     "tauri:android:dev": "tauri android dev",
-    "tauri:android:build": "tauri android build",
+    "tauri:android:build": "node scripts/build-android.mjs",
     "tauri:android:check": "cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {

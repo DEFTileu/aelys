@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
+from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from .egress import ensure_safe_payload
 from .errors import ProviderError, RunCancelled, redact_error
@@ -35,7 +38,80 @@ class ProviderAdapter(Protocol):
 
 def _usage(body: Mapping[str, Any]) -> Usage:
     u = body.get("usage") or {}
-    return Usage(int(u.get("input_tokens", u.get("prompt_tokens", 0)) or 0), int(u.get("output_tokens", u.get("completion_tokens", 0)) or 0))
+    search_requests = (u.get("server_tool_use") or {}).get("web_search_requests", 0)
+    try:
+        search_requests = min(max(int(search_requests or 0), 0), 2)
+    except (TypeError, ValueError):
+        search_requests = 0
+    try:
+        reported_cost = Decimal(str(u["cost"])) if u.get("cost") is not None else None
+        if reported_cost is not None and (not reported_cost.is_finite() or reported_cost < 0):
+            reported_cost = None
+    except (InvalidOperation, ValueError):
+        reported_cost = None
+    return Usage(int(u.get("input_tokens", u.get("prompt_tokens", 0)) or 0), int(u.get("output_tokens", u.get("completion_tokens", 0)) or 0), Decimal("0.01") * search_requests, reported_cost)
+
+
+def _safe_source_url(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        if len(value.encode("utf-8")) > 2048:
+            return None
+        if any(character.isspace() or ord(character) < 0x20 or ord(character) == 0x7F for character in value):
+            return None
+        parsed = urlsplit(value)
+        host = parsed.hostname
+        if parsed.scheme.lower() not in {"http", "https"} or not host or parsed.username is not None or parsed.password is not None:
+            return None
+        host = host.rstrip(".").lower()
+        if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+            return None
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            address = None
+        if address is not None and not address.is_global:
+            return None
+        return value
+    except (ValueError, UnicodeError):
+        return None
+
+
+def _bounded_sources(urls: list[Any]) -> tuple[str, ...]:
+    result: list[str] = []
+    total = 0
+    for value in urls:
+        url = _safe_source_url(value)
+        if url is None or url in result:
+            continue
+        size = len(url.encode("utf-8"))
+        if total + size > 2048:
+            continue
+        result.append(url)
+        total += size
+        if len(result) == 2:
+            break
+    return tuple(result)
+
+
+def _claude_sources(content: Any) -> tuple[str, ...]:
+    urls: list[Any] = []
+    for part in content if isinstance(content, list) else ():
+        if not isinstance(part, Mapping):
+            continue
+        if part.get("type") == "web_search_tool_result" and isinstance(part.get("content"), list):
+            urls.extend(item.get("url") for item in part["content"] if isinstance(item, Mapping) and item.get("type") == "web_search_result")
+        citations = part.get("citations")
+        if isinstance(citations, list):
+            urls.extend(item.get("url") for item in citations if isinstance(item, Mapping) and item.get("type") == "web_search_result_location")
+    return _bounded_sources(urls)
+
+
+def _openrouter_sources(message: Mapping[str, Any]) -> tuple[str, ...]:
+    annotations = message.get("annotations")
+    urls = [item["url_citation"].get("url") for item in annotations if isinstance(item, Mapping) and item.get("type") == "url_citation" and isinstance(item.get("url_citation"), Mapping)] if isinstance(annotations, list) else []
+    return _bounded_sources(urls)
 
 
 def _streamed_usage(request: ProviderRequest, usage: Usage, output: str) -> Usage:
@@ -43,7 +119,8 @@ def _streamed_usage(request: ProviderRequest, usage: Usage, output: str) -> Usag
     if usage.input_tokens and usage.output_tokens:
         return usage
     return Usage(usage.input_tokens or sum(len(m.content) for m in request.messages) // 4,
-                 usage.output_tokens or len(output) // 4)
+                 usage.output_tokens or len(output) // 4,
+                 usage.extra_cost, usage.reported_cost)
 
 
 def _arguments(raw: str) -> Mapping[str, Any]:
@@ -166,7 +243,9 @@ class ClaudeAdapter(_BaseAdapter):
         messages = _claude_messages(request.messages)
         # Current Claude models reject sampling params and thinking budgets with 400; effort is the only control.
         # Thinking is on by default and counts against max_tokens, so leave it room.
-        payload = {"model": request.model, "max_tokens": max(request.max_tokens, CLAUDE_MIN_MAX_TOKENS), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": list(request.tools)} if request.tools else {})}
+        tools = ([{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}]
+                 if request.web_search else list(request.tools))
+        payload: dict[str, Any] = {"model": request.model, "max_tokens": max(request.max_tokens, CLAUDE_MIN_MAX_TOKENS), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": tools} if tools else {})}
         # Caches the prompt up to the last block, so the next tool step or chat turn skips re-reading it (from 512 tokens).
         payload["cache_control"] = {"type": "ephemeral"}
         if request.effort:
@@ -180,7 +259,9 @@ class ClaudeAdapter(_BaseAdapter):
         content = response.body.get("content", [])
         text = "".join(str(part.get("text", "")) for part in content if isinstance(part, Mapping) and part.get("type") == "text")
         calls = tuple(part for part in content if isinstance(part, Mapping) and part.get("type") == "tool_use")
-        return ProviderResponse(text, _usage(response.body), response.body.get("id"), calls)
+        usage = _usage(response.body)
+        sources = _claude_sources(content) if request.web_search else ()
+        return ProviderResponse(text, usage, response.body.get("id"), calls, sources, bool(sources))
 
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:
         self.last_usage = Usage()
@@ -208,7 +289,10 @@ class ClaudeAdapter(_BaseAdapter):
                 request_id, usage = message.get("id"), _usage(message)
             elif kind == "message_delta" and item.get("usage"):
                 delta_usage = _usage(item)
-                usage = Usage(max(usage.input_tokens, delta_usage.input_tokens), max(usage.output_tokens, delta_usage.output_tokens))
+                usage = Usage(max(usage.input_tokens, delta_usage.input_tokens),
+                              max(usage.output_tokens, delta_usage.output_tokens),
+                              max(usage.extra_cost, delta_usage.extra_cost),
+                              delta_usage.reported_cost if delta_usage.reported_cost is not None else usage.reported_cost)
             elif kind == "content_block_start":
                 block = item.get("content_block") or {}
                 if block.get("type") == "tool_use":
@@ -234,15 +318,20 @@ class OpenRouterAdapter(_BaseAdapter):
     kind = ProviderKind.OPENROUTER
 
     def _payload(self, request: ProviderRequest) -> dict[str, Any]:
-        tools = [{"type": "function", "function": {"name": str(tool["name"]), "description": str(tool.get("description", "")), "parameters": tool.get("input_schema") or {"type": "object"}}} for tool in request.tools]
-        return {"model": request.model, "messages": _openai_messages(request.messages), "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {}), **({"reasoning": {"effort": request.effort}} if request.effort else {})}
+        tools = ([] if request.web_search else [{"type": "function", "function": {"name": str(tool["name"]), "description": str(tool.get("description", "")), "parameters": tool.get("input_schema") or {"type": "object"}}} for tool in request.tools])
+        payload: dict[str, Any] = {"model": request.model, "messages": _openai_messages(request.messages), "max_tokens": request.max_tokens, "temperature": float(request.temperature), "stream": request.stream, **({"tools": tools} if tools else {}), **({"reasoning": {"effort": request.effort}} if request.effort else {}), **({"plugins": [{"id": "web", "engine": "exa", "max_results": 3}]} if request.web_search else {})}
+        return payload
 
     async def complete(self, request: ProviderRequest) -> ProviderResponse:
         response = await self._post("/api/v1/chat/completions", self._payload(request), media=any(m.media for m in request.messages))
-        self.last_usage = _usage(response.body)
+        usage = _usage(response.body)
+        if request.web_search and usage.reported_cost is None:
+            usage = replace(usage, extra_cost=Decimal("0.007"))
+        self.last_usage = usage
         choices = response.body.get("choices", [])
         message = choices[0].get("message", {}) if choices else {}
-        return ProviderResponse(str(message.get("content", "")), _usage(response.body), response.body.get("id"), tuple(message.get("tool_calls", ())))
+        sources = _openrouter_sources(message) if request.web_search else ()
+        return ProviderResponse(str(message.get("content", "")), usage, response.body.get("id"), tuple(message.get("tool_calls", ())), sources, bool(sources))
 
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:
         self.last_usage = Usage()

@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.companion.state import lost_mode_on
 from app.core.models import CalendarEvent, FocusSession, Notification, Task
@@ -11,6 +12,7 @@ from app.domains.api import focus_elapsed
 from app.domains.briefings import TERMINAL_TASK_STATUSES
 from app.domains.google_calendar_projection import project_google_calendar_events
 from app.domains.recurrence import utc
+from app.integrations.telegram_models import TelegramIntegration
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,13 +83,35 @@ class CompanionSnapshot(_Utc):
     unread_count: int
     notices: list[SnapNotice]  # max 5, newest first
     focus: SnapFocus | None
+    today_done: int  # v1.1: tasks due in the owner's day that are completed ...
+    today_total: int  # ... out of those completed plus still open (cancelled and deleted ones count in neither)
+    other_unread_count: int  # unread notifications of kinds the board may not name
+
+
+DONE_STATUSES = ("done", "completed", "complete")
+
+
+async def _today_counts(db: AsyncSession, owner_id: str, now: datetime) -> tuple[int, int]:
+    """The owner's local day is cut like briefings.build_agenda cuts it, in the Telegram integration's time zone (UTC if none)."""
+    name = (await db.execute(select(TelegramIntegration.timezone).where(TelegramIntegration.owner_id == owner_id))).scalar_one_or_none()
+    try:
+        tz = ZoneInfo(name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("UTC")
+    day = now.astimezone(tz).date()
+    lower, upper = (datetime.combine(day + timedelta(days=n), time.min, tz).astimezone(UTC) for n in (0, 1))
+    status = func.lower(Task.status)
+    done, total = (await db.execute(select(func.count().filter(status.in_(DONE_STATUSES)), func.count()).where(
+        Task.owner_id == owner_id, Task.deleted_at.is_(None), Task.due_at >= lower, Task.due_at < upper,
+        or_(status.in_(DONE_STATUSES), status.not_in(TERMINAL_TASK_STATUSES))))).one()
+    return done, total
 
 
 async def for_device(db: AsyncSession, snapshot: CompanionSnapshot, device_id: str) -> CompanionSnapshot:
     """What this board may see: while its lost mode is on, only the unread count and the timestamp."""
     if not await lost_mode_on(db, device_id):
         return snapshot
-    return snapshot.model_copy(update={"next_task": None, "next_event": None, "notices": [], "focus": None, "overdue_count": 0})
+    return snapshot.model_copy(update={"next_task": None, "next_event": None, "notices": [], "focus": None, "overdue_count": 0, "today_done": 0, "today_total": 0})
 
 
 async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> CompanionSnapshot:
@@ -117,6 +141,9 @@ async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> Comp
 
     unread = (Notification.owner_id == owner_id, Notification.deleted_at.is_(None), Notification.read_at.is_(None))
     unread_count = (await db.execute(select(func.count()).select_from(Notification).where(*unread))).scalar_one()
+    other_unread = (await db.execute(select(func.count()).select_from(Notification).where(
+        *unread, *(func.substr(Notification.kind, 1, len(p)) != p for p in ALLOWED_NOTICE_PREFIXES)))).scalar_one()
+    today_done, today_total = await _today_counts(db, owner_id, now)
     # substr == p, not LIKE: LIKE is case-insensitive on SQLite and would admit kinds such as 'Task.x'.
     notices = (await db.execute(select(Notification).where(*unread, or_(*(func.substr(Notification.kind, 1, len(p)) == p for p in ALLOWED_NOTICE_PREFIXES)))
                                 .order_by(Notification.created_at.desc(), Notification.id).limit(MAX_NOTICES))).scalars()
@@ -131,4 +158,5 @@ async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> Comp
 
     return CompanionSnapshot(
         generated_at=now, next_task=SnapTask.model_validate(next_task) if next_task else None, overdue_count=overdue,
-        next_event=next_event, unread_count=unread_count, notices=[SnapNotice.model_validate(n) for n in notices if n.kind.startswith(ALLOWED_NOTICE_PREFIXES)], focus=focus)
+        next_event=next_event, unread_count=unread_count, notices=[SnapNotice.model_validate(n) for n in notices if n.kind.startswith(ALLOWED_NOTICE_PREFIXES)], focus=focus,
+        today_done=today_done, today_total=today_total, other_unread_count=other_unread)

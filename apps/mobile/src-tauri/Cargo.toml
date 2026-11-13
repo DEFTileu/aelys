@@ -22,6 +22,12 @@ aelys-native-transport = { path = "../../../packages/native-transport" }
 tauri-plugin-aelys-session-store = { path = "../../../packages/android-session-store" }
 tauri-plugin-aelys-notification-log = { path = "../../../packages/android-notification-log" }
 tauri-plugin-notification = "2"
+aelys-android-updater = { path = "../../../packages/android-updater" }
+tokio = { version = "1", features = ["sync"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-android-installer = "=0.1.0"
+tauri-plugin-aelys-update-verifier = { path = "../../../packages/android-update-verifier" }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

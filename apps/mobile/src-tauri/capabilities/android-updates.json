@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "android-updates",
+  "description": "Bounded owner-initiated Aelys updates; no arbitrary installer paths or URLs",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "permissions": ["allow-android-update-check", "allow-android-update-download", "allow-android-update-install"]
+}

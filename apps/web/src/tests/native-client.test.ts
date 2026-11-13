@@ -269,11 +269,23 @@ describe('native shared-client bridge', () => {
     expect(new TextDecoder().decode(await response.arrayBuffer())).toBe('abc')
   })
 
+  it('carries companion pairing to the bridge, where Rust narrows it', async () => {
+    const invoke = vi.fn(async () => ({ pairing_id: 'p1' })) as NativeInvoke
+    const fetchNative = createNativeFetchFromInvoke(invoke, 'http://127.0.0.1:8000')
+    await fetchNative('http://127.0.0.1:8000/api/v1/pairing/request', { method: 'POST', body: '{"platform":"companion"}' })
+    await fetchNative('http://127.0.0.1:8000/api/v1/pairing/p1/approve', { method: 'POST', body: '{"sas":"123456"}' })
+    expect(invoke).toHaveBeenNthCalledWith(1, 'native_operation', { origin: 'http://127.0.0.1:8000', operation: { type: 'api', method: 'POST', path: '/api/v1/pairing/request', body: { platform: 'companion' } } })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'native_operation', { origin: 'http://127.0.0.1:8000', operation: { type: 'api', method: 'POST', path: '/api/v1/pairing/p1/approve', body: { sas: '123456' } } })
+  })
+
   it('fails closed for unsupported modules and transport errors', async () => {
     const unsupported = createNativeFetchFromInvoke(vi.fn() as NativeInvoke, 'http://127.0.0.1:8000')
     const response = await unsupported('http://127.0.0.1:8000/api/v1/auth/login', { method: 'POST', body: '{}' })
     expect(response.status).toBe(501)
     expect(await response.json()).toMatchObject({ detail: { code: 'NATIVE_OPERATION_UNSUPPORTED' } })
+    for (const path of ['pairing/invite', 'pairing/p1/claim', 'pairing/p1/finish']) {
+      expect((await unsupported(`http://127.0.0.1:8000/api/v1/${path}`, { method: 'POST', body: '{}' })).status).toBe(501)
+    }
 
     const invoke = vi.fn(async () => { throw 'NATIVE_TRANSPORT_ERROR' }) as NativeInvoke
     const failed = createNativeFetchFromInvoke(invoke, 'http://127.0.0.1:8000')

@@ -1,0 +1,1 @@
+{"type": "snapshot", "snapshot": {"generated_at": "2026-11-13T09:30:00.123456+00:00", "next_task": null, "overdue_count": 0, "next_event": {"id": "e-23", "title": "Holiday", "starts_at": "2026-11-13T00:00:00Z", "ends_at": null, "all_day": true}, "unread_count": 2, "notices": [], "focus": null, "today_done": 3, "today_total": 7, "other_unread_count": 4}}

@@ -74,16 +74,24 @@ class AIExecutionService:
     def select(self, request: RoutingRequest):
         return self.router.choose(request)
 
-    async def complete(self, run_id: UUID, request: RoutingRequest, messages: tuple[ChatMessage, ...], *, max_tokens: int = 1024, tools: tuple[Mapping[str, object], ...] = (), cancel: asyncio.Event | None = None, on_text: Callable[[str], Awaitable[None]] | None = None) -> ExecutionResult:
+    async def complete(self, run_id: UUID, request: RoutingRequest, messages: tuple[ChatMessage, ...], *, max_tokens: int = 1024, tools: tuple[Mapping[str, object], ...] = (), cancel: asyncio.Event | None = None, on_text: Callable[[str], Awaitable[None]] | None = None, web_search: bool = False) -> ExecutionResult:
         decision = self.select(request)
+        if web_search:
+            search_fee = {
+                ProviderKind.CLAUDE: Decimal("0.02"),
+                ProviderKind.OPENROUTER: Decimal("0.007"),
+            }[decision.provider]
+            if (decision.estimated_cost + search_fee > request.request_budget
+                    or decision.estimated_cost + search_fee > self.router.monthly_remaining):
+                raise BudgetExceeded("web search worst-case cost exceeds the available budget")
         adapter = self.adapters.get(decision.provider)
         if adapter is None:
             raise ProviderError("configured provider adapter is unavailable")
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
         # Inspect original messages before UntrustedData can redact token-like text.
-        ensure_safe_request(ProviderRequest(decision.model, messages, max_tokens=max_tokens, tools=tools, effort=request.effort))
-        provider_request = ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, tools=tools, effort=request.effort)
+        ensure_safe_request(ProviderRequest(decision.model, messages, max_tokens=max_tokens, tools=tools, effort=request.effort, web_search=web_search))
+        provider_request = ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, tools=tools, effort=request.effort, web_search=web_search)
         streaming = getattr(adapter, "complete_streaming", None) if on_text else None
         if streaming:
             response = await streaming(provider_request, on_text)

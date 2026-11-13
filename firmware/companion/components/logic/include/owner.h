@@ -1,16 +1,94 @@
 #pragma once
 /* Owner / emergency contact data shown on the lost-mode and ICE screens. Pure C. */
+#include <stdbool.h>
+#include <stdint.h>
+
+/* owner_info_t.show: what the screens may display. */
+#define OWNER_SHOW_NAME     1
+#define OWNER_SHOW_CONTACTS 2  /* ICE contacts */
+#define OWNER_SHOW_MED      4
+#define OWNER_SHOW_PHONE    8
+#define OWNER_SHOW_TELEGRAM 16
+#define OWNER_SHOW_EMAIL    32
+#define OWNER_SHOW_ICE      (OWNER_SHOW_NAME | OWNER_SHOW_CONTACTS | OWNER_SHOW_MED) /* the bits owner_apply_ice() sets */
+
+/* owner_info_t.qr: what the lost-mode QR code points at. */
+enum { QR_TELEGRAM = 0, QR_PHONE = 1, QR_NONE = 2 };
+
 typedef struct {
     char name[33];
     char phone[24];
     char telegram[33];
+    char email[49];
     char qr_url[97];
     char message[65];
     char med_note[97];
     char ice_name[2][33];
+    char ice_rel[2][17];
     char ice_phone[2][24];
+    uint8_t show;  /* OWNER_SHOW_* */
+    uint8_t qr;    /* QR_* */
+    uint32_t ice_rev; /* rev of the last applied ice_update, 0 = none; last member so the struct has no padding */
 } owner_info_t;
 
-/* Zeroes *o, then fills phone/telegram/qr_url from the owner contact header
- * (truncating safely) and message = "If found, please contact". */
+/* What the device shows while lost mode is on: shown is what the lost and ICE screens display. */
+typedef struct {
+    bool on;
+    uint32_t rev; /* rev of the last applied lost_mode, 0 = none */
+    owner_info_t shown;
+} lost_state_t; /* has padding: the store codec serialises it field by field */
+
+/* App commands, already decoded and bounded (every string NUL-terminated). */
+typedef struct {
+    bool on;
+    char message[65];
+    bool show_phone, show_telegram, show_email;
+    char email[49];
+    uint8_t qr; /* QR_* */
+    uint32_t rev; /* monotonic per device and command; 0 = unversioned (missing from the frame) */
+} lost_cmd_t;
+
+typedef struct {
+    char owner_name[33];
+    uint8_t n; /* contacts in use, 0..2 */
+    char name[2][33], rel[2][17], phone[2][24];
+    char med_note[97];
+    bool show_name, show_contacts, show_med;
+    uint32_t rev; /* as lost_cmd_t.rev */
+} ice_cmd_t;
+
+/* Zeroes *o, then fills phone/telegram/qr_url from the owner contact header (truncating safely),
+ * message = "If found, please contact", show = everything, qr = QR_TELEGRAM. */
 void owner_defaults(owner_info_t *o);
+
+/* Both apply functions return false and change nothing when c->rev is nonzero and not newer than the last applied
+ * rev (owner->ice_rev / lost->rev): at-least-once delivery can redeliver or reorder commands. The caller still acks
+ * them and persists only when true. A rev of 0 means unversioned: it always applies and leaves the stored rev alone.
+ *
+ * Writes the ICE fields (name, med_note, ice_*, the OWNER_SHOW_ICE bits) to *owner, and also to
+ * lost->shown while lost->on, so the lost screen and the ICE card never disagree. */
+bool owner_apply_ice(owner_info_t *owner, lost_state_t *lost, const ice_cmd_t *c);
+/* on: shown = owner's ICE fields + the factory phone/telegram that the show_* flags allow + message,
+ * email, qr (a QR whose target is hidden is dropped, so it cannot leak it). off: only lost->on = false. */
+bool owner_apply_lost(lost_state_t *lost, const owner_info_t *owner, const lost_cmd_t *c);
+
+/* Device settings from the app. brightness is a percent, 5..100; rev works like lost_cmd_t.rev. */
+typedef struct {
+    uint8_t brightness;
+    uint32_t rev; /* rev of the last applied settings command, 0 = none */
+} settings_t;
+#define BRIGHTNESS_MIN 5
+#define BRIGHTNESS_MAX 100
+
+void settings_defaults(settings_t *s); /* 100 %, rev 0 */
+/* Clamps pct to 5..100. False and nothing changed when rev is nonzero and not newer than s->rev (as owner_apply_*). */
+bool settings_apply(settings_t *s, uint8_t pct, uint32_t rev);
+/* Panel brightness register (CO5300 0x51) for a percent: clamped to 5..100, then 13..255. */
+uint8_t brightness_raw(uint8_t pct);
+
+/* The ack for a versioned command (lost_mode, ice_update, settings) after "apply, then save". applied = the apply function
+ * returned true, saved = every save of it succeeded. A stale command (not applied) and a saved one get CMD_ACK_OK. An applied
+ * one that could not be saved keeps its live state, but *rev (the stored rev it moved) goes back to prev_rev and the ack is
+ * CMD_ACK_BUSY: the server keeps the command and resends it after the next hello, when it is not stale and the save is retried. */
+typedef enum { CMD_ACK_OK, CMD_ACK_BUSY } cmd_ack_t;
+cmd_ack_t cmd_settle(bool applied, bool saved, uint32_t *rev, uint32_t prev_rev);

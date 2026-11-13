@@ -28,5 +28,6 @@ typedef struct { bool pending; bool got_ready, got_snapshot, sent_hello; uint32_
 
 void ota_confirm_start(ota_confirm_t *c, bool pending_verify, uint32_t now_ms, uint32_t window_ms);
 enum { OTA_EV_TICK = 0, OTA_EV_READY = 1, OTA_EV_SNAPSHOT = 2, OTA_EV_HELLO_SENT = 3 };
-/* channel_event: an OTA_EV_* value. VALID once ready, snapshot and hello-sent all happened. */
+/* channel_event: an OTA_EV_* value. VALID once all three happened before the
+ * deadline; at/after it a still-pending release must ROLLBACK, even on success. */
 confirm_t ota_confirm_update(ota_confirm_t *c, uint8_t channel_event, uint32_t now_ms);

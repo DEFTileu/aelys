@@ -36,6 +36,84 @@ async def test_methods_and_payloads(caplog):
 
 
 @pytest.mark.asyncio
+async def test_edit_message_text_sends_plain_business_message_edit_payload():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 17}})
+
+    async with TelegramClient(TOKEN, httpx.MockTransport(handler)) as client:
+        result = await client.edit_message_text(
+            -100123, 17, "Updated https://example.com", business_connection_id="business-7"
+        )
+
+    assert result == {"message_id": 17}
+    assert len(requests) == 1
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == f"/bot{TOKEN}/editMessageText"
+    assert json.loads(requests[0].content) == {
+        "chat_id": -100123,
+        "message_id": 17,
+        "text": "Updated https://example.com",
+        "business_connection_id": "business-7",
+        "link_preview_options": {"is_disabled": True},
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message_id", [0, -1, True, 1.5])
+async def test_edit_message_text_rejects_invalid_message_ids(message_id):
+    async with TelegramClient(TOKEN, httpx.MockTransport(lambda _: pytest.fail("request must not be sent"))) as client:
+        with pytest.raises(ValueError):
+            await client.edit_message_text(7, message_id, "edit", business_connection_id="bc")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["", "x" * 4097])
+async def test_edit_message_text_rejects_text_outside_telegram_bounds(text):
+    async with TelegramClient(TOKEN, httpx.MockTransport(lambda _: pytest.fail("request must not be sent"))) as client:
+        with pytest.raises(ValueError):
+            await client.edit_message_text(7, 1, text, business_connection_id="bc")
+
+
+@pytest.mark.asyncio
+async def test_edit_message_text_accepts_text_at_both_length_bounds():
+    requests = []
+
+    def handler(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
+
+    async with TelegramClient(TOKEN, httpx.MockTransport(handler)) as client:
+        await client.edit_message_text(7, 1, "x", business_connection_id="bc")
+        await client.edit_message_text(7, 1, "x" * 4096, business_connection_id="bc")
+
+    assert [len(request["text"]) for request in requests] == [1, 4096]
+
+
+@pytest.mark.asyncio
+async def test_edit_message_text_keeps_timeout_and_invalid_response_errors_sanitized():
+    def timeout(request):
+        raise httpx.ReadTimeout(f"failure {TOKEN}", request=request)
+
+    async with TelegramClient(TOKEN, httpx.MockTransport(timeout)) as client:
+        with pytest.raises(TelegramError) as exc:
+            await client.edit_message_text(7, 1, "edit", business_connection_id="bc")
+    assert exc.value.code == "timeout"
+    assert TOKEN not in str(exc.value)
+    assert exc.value.__suppress_context__
+
+    async with TelegramClient(
+        TOKEN,
+        httpx.MockTransport(lambda _: httpx.Response(200, json={"ok": True, "result": []})),
+    ) as client:
+        with pytest.raises(TelegramError) as exc:
+            await client.edit_message_text(7, 1, "edit", business_connection_id="bc")
+    assert exc.value.code == "invalid_response"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("status,body,code", [
     (200, b"not-json", "invalid_response"),
     (200, b"[]", "invalid_response"),

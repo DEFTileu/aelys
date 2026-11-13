@@ -236,6 +236,26 @@ async def test_new_customer_audio_on_fast_poll_suppresses_stale_text_reply_witho
     assert any(row["media"] and row["media"]["kind"] == "voice" for row in rows)
 
 
+async def test_photo_draft_uses_existing_permission_checked_generation(setup, monkeypatch):
+    from app.integrations import telegram_ai
+    from app.integrations.telegram_ai import BusinessDecision
+
+    client, sessions, fake, integration_id = await ready(setup, monkeypatch)
+    await ingest(sessions, integration_id, media_update(), fake)
+    media = next(row for row in (await client.get(PREFIX + '/messages')).json() if row['telegram_message_id'] == 20)
+    calls = []
+
+    async def generate(db, integration, message):
+        calls.append(message.id)
+        return BusinessDecision('reply', 'Скриншоттағы қатені көріп тұрмын.', None)
+
+    monkeypatch.setattr(telegram_ai, 'generate_business_draft', generate)
+    response = await client.post(PREFIX + f"/messages/{media['id']}/draft", json={'version': media['version']})
+    assert response.status_code == 200, response.text
+    assert response.json()['draft_status'] == 'ready' and calls == [media['id']]
+    assert not fake.sent
+
+
 @pytest.mark.parametrize("mutation", ["delete", "disconnect", "replace_media"])
 async def test_download_rechecks_current_authority_and_message_after_io(
     setup, monkeypatch, mutation

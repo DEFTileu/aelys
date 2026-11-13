@@ -17,6 +17,7 @@
     "allow-native-status",
     "allow-native-health",
     "allow-native-biometric-status",
+    "allow-native-device-reauth",
     "allow-native-login",
     "allow-native-enroll",
     "allow-native-resume",

@@ -75,3 +75,27 @@ bool improv_parse_wifi(const improv_frame_t *f, char ssid[33], char pass[65])
     memcpy(pass, &f->data[4 + sl], pl); pass[pl] = '\0';
     return true;
 }
+
+int improv_rpc_strings(const improv_frame_t *f, char out[][129], int max)
+{
+    if (f->type != IMPROV_TYPE_RPC || f->len < 2 || f->data[1] != f->len - 2) return -1;
+    int n = 0;
+    for (size_t i = 2; i < f->len;) {
+        size_t l = f->data[i];
+        if (l > 128 || i + 1 + l > f->len || n >= max) return -1;
+        memcpy(out[n], &f->data[i + 1], l);
+        out[n++][l] = '\0';
+        i += 1 + l;
+    }
+    return n;
+}
+
+bool improv_is_uuid(const char *s)
+{
+    for (int i = 0; i < 36; i++) {
+        char c = s[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23 ? c != '-' : !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+            return false; /* a NUL fails both tests, so a short string stops here */
+    }
+    return s[36] == '\0';
+}

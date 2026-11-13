@@ -149,7 +149,9 @@ read-only restrictions and policy. CLI access grants no extra server permissions
 Use `api METHOD /api/v1/PATH --body FILE --query FILE` for the catalogue's generic
 API routes. Query JSON is a string-to-string object. Paths must exactly match the
 allowlist, with valid IDs; full URLs, path traversal, auth/enrollment/pairing/sync
-and credential-lease endpoints are refused. Credential query parameters are
+and credential-lease endpoints are refused. The one pairing exception is companion
+pairing: `pairing/request` only with `"platform": "companion"`, and
+`pairing/{id}/approve` only for a pairing the same process requested. Credential query parameters are
 refused. Explicit reads return domain data as JSON, including requested mail,
 notes and search results: treat redirected output as personal data.
 

@@ -99,8 +99,8 @@ export function draftOf(chat: Chat): TelegramBusinessMessage | null {
   return t && draftable(t) && chat.needsReply && t.draft_status === 'ready' && (t.draft_text?.trim() || typeof t.draft_sticker_emoji === 'string') ? t : null
 }
 
-/** Media messages are only previewed, except stickers, which Aelys may answer with a sticker. */
-export const draftable = (m: TelegramBusinessMessage) => !m.media || m.media.kind === 'sticker'
+/** Text, photo, and sticker messages can have drafts; audio remains preview-only. */
+export const draftable = (m: TelegramBusinessMessage) => !m.media || m.media.kind === 'photo' || m.media.kind === 'sticker'
 
 /** Text shown after a draft's reply text, e.g. "+ sticker 😂". */
 export function draftStickerNote(m: TelegramBusinessMessage): string {

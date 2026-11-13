@@ -45,7 +45,7 @@ mod macos {
             crate::keychain::delete(SERVICE, origin)
         }
     }
-    pub fn authenticate() -> Result<(), String> {
+    pub fn authenticate_for(reason: &str) -> Result<(), String> {
         let context = context();
         if !can_evaluate(&context) {
             return Err("BIOMETRIC_UNAVAILABLE".into());
@@ -57,7 +57,7 @@ mod macos {
         unsafe {
             let _: () = msg_send![&*context, setLocalizedFallbackTitle: &*NSString::from_str("")];
             let _: () = msg_send![&*context, evaluatePolicy: BIOMETRICS,
-                localizedReason: &*NSString::from_str("Разблокировать сохранённую сессию"), reply: &*reply];
+                localizedReason: &*NSString::from_str(reason), reply: &*reply];
         }
         let success = receiver
             .recv_timeout(Duration::from_secs(120))
@@ -88,8 +88,13 @@ pub fn set_enabled(_: &str, _: bool) -> Result<(), String> {
     Err("BIOMETRIC_UNSUPPORTED".into())
 }
 #[cfg(not(target_os = "macos"))]
-pub fn authenticate() -> Result<(), String> {
+pub fn authenticate_for(_: &str) -> Result<(), String> {
     Err("BIOMETRIC_UNSUPPORTED".into())
+}
+/// The prompt text for session unlock; actions that need their own wording call `authenticate_for`.
+pub const DEFAULT_REASON: &str = "Разблокировать сохранённую сессию";
+pub fn authenticate() -> Result<(), String> {
+    authenticate_for(DEFAULT_REASON)
 }
 
 #[cfg(all(test, target_os = "macos"))]

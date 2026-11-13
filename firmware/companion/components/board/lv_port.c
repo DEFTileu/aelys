@@ -2,6 +2,7 @@
  * go out over QSPI by DMA while LVGL draws the next one, and the first strip of every frame waits for
  * the panel's TE pulse so the write always runs ahead of the scan (no tearing). */
 #include <limits.h>
+#include <string.h>
 #include <stdbool.h>
 
 #include "board.h"
@@ -40,6 +41,18 @@ static bool frame_flushed; /* this refresh sent something to the panel */
 static int64_t win_start, refr_start;
 static uint32_t win_frames, win_worst;
 static volatile uint32_t out_fps_x10, out_worst_us, last_flush_end_us, first_flush_end_us;
+
+#ifdef CONFIG_AELYS_PERF_PROBE
+static int64_t pr_te_us;
+static bool pr_transfer_failed;
+static perf_probe_t pr;
+static perf_probe_mailbox_t pr_mail;
+static _Atomic uint32_t pr_dropped;
+static uint32_t pr_published_ms;
+static bool (*pr_swipe)(void);
+static uint32_t (*pr_screen)(void);
+static uint32_t probe_screen(void) { return pr_screen ? pr_screen() : UINT32_MAX; }
+#endif
 
 /* ---- LVGL heap in PSRAM (LV_USE_CUSTOM_MALLOC). The draw buffers below stay in internal RAM. ---- */
 void lv_mem_init(void) {}
@@ -84,11 +97,20 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
     if (need_te) {
         need_te = false;
         xSemaphoreTake(te_sem, 0); /* an old pulse does not count */
+#ifdef CONFIG_AELYS_PERF_PROBE
+        int64_t t0 = esp_timer_get_time();
+#endif
         xSemaphoreTake(te_sem, pdMS_TO_TICKS(TE_TIMEOUT_MS));
+#ifdef CONFIG_AELYS_PERF_PROBE
+        pr_te_us = esp_timer_get_time() - t0;
+#endif
     }
     frame_flushed = true;
     dma_busy = true;
     if (esp_lcd_panel_draw_bitmap(board_panel(), a->x1, a->y1, a->x2 + 1, a->y2 + 1, px) != ESP_OK) {
+#ifdef CONFIG_AELYS_PERF_PROBE
+        pr_transfer_failed = true;
+#endif
         dma_busy = false; /* a lost strip beats a frozen UI */
     }
 }
@@ -98,6 +120,9 @@ static void flush_wait(lv_display_t *d)
 {
     while (dma_busy) {
         if (xSemaphoreTake(dma_sem, pdMS_TO_TICKS(100)) != pdTRUE) {
+#ifdef CONFIG_AELYS_PERF_PROBE
+            pr_transfer_failed = true;
+#endif
             ESP_LOGW(TAG, "flush wait timeout");
             break;
         }
@@ -131,15 +156,32 @@ static void disp_event(lv_event_t *e)
     switch (lv_event_get_code(e)) {
     case LV_EVENT_REFR_START:
         refr_start = now;
+#ifdef CONFIG_AELYS_PERF_PROBE
+        pr_te_us = 0;
+        pr_transfer_failed = false;
+#endif
         need_te = true;
         frame_flushed = false;
         break;
     case LV_EVENT_REFR_READY:
         if (!frame_flushed) break; /* nothing was invalid: not a frame */
+#ifdef CONFIG_AELYS_PERF_PROBE
+        /* LVGL can emit REFR_READY with the last async transfer still in flight.
+         * Bench-only: wait for its ISR completion, and never count a failed strip as success. */
+        flush_wait(disp);
+        now = esp_timer_get_time();
+        if (pr_transfer_failed || dma_busy) {
+            perf_probe_transfer_failed(&pr);
+            break;
+        }
+#endif
         last_flush_end_us = (uint32_t)now;
         if (!first_flush_end_us) first_flush_end_us = (uint32_t)now;
         win_frames++;
         if ((uint32_t)(now - refr_start) > win_worst) win_worst = (uint32_t)(now - refr_start);
+#ifdef CONFIG_AELYS_PERF_PROBE
+        perf_probe_frame(&pr, (uint32_t)refr_start, (uint32_t)now, (uint32_t)pr_te_us, probe_screen());
+#endif
         stats_tick(now);
         break;
     default:
@@ -195,7 +237,21 @@ static void ui_task(void *arg)
 
     win_start = esp_timer_get_time();
     for (;;) {
+#ifdef CONFIG_AELYS_PERF_PROBE
+        int64_t h0 = esp_timer_get_time();
+#endif
         uint32_t wait = lv_timer_handler();
+#ifdef CONFIG_AELYS_PERF_PROBE
+        uint32_t hd = (uint32_t)(esp_timer_get_time() - h0);
+        if (hd > pr.stats.handler_max_us) pr.stats.handler_max_us = hd;
+        perf_probe_expire(&pr, (uint32_t)esp_timer_get_time());
+        uint32_t sample_ms = tick_ms();
+        if (sample_ms - pr_published_ms >= 1000) {
+            pr_published_ms = sample_ms;
+            pr.stats.sw_dropped += atomic_exchange(&pr_dropped, 0);
+            perf_probe_publish(&pr_mail, &pr, sample_ms, probe_screen());
+        }
+#endif
         stats_tick(esp_timer_get_time()); /* also publishes while the screen is idle */
         if (wait < 1) wait = 1;
         if (wait > 16) wait = 16;
@@ -203,7 +259,25 @@ static void ui_task(void *arg)
         /* sleeps until the next LVGL timer, or until an event arrives */
         for (BaseType_t got = xQueueReceive(ev_queue, &ev, pdMS_TO_TICKS(wait)); got == pdTRUE;
              got = xQueueReceive(ev_queue, &ev, 0)) {
+#ifdef CONFIG_AELYS_PERF_PROBE
+            int64_t e0 = esp_timer_get_time();
+            if (ev.type == BOARD_UI_EV_PERF) {
+                uint32_t posted_us = (uint32_t)e0;
+                if (ev.len == sizeof posted_us) memcpy(&posted_us, ev.data, sizeof posted_us);
+                bool accepted = ev.len == sizeof posted_us && perf_probe_request_fresh(posted_us, (uint32_t)e0) &&
+                                !board_probe_input_busy() && pr_swipe && pr_swipe();
+                perf_probe_swipe_begin(&pr, posted_us, (uint32_t)esp_timer_get_time(), accepted, probe_screen());
+                continue; /* no gesture, hold, account action or audible output */
+            }
+            /* Any other event can change/cover the requested frame. Do not attribute it to the probe. */
+            perf_probe_interrupt(&pr);
+#endif
             if (ev_handler) ev_handler(&ev);
+#ifdef CONFIG_AELYS_PERF_PROBE
+            uint32_t ed = (uint32_t)(esp_timer_get_time() - e0);
+            if (ev.type == UI_EV_SNAPSHOT) { pr.stats.snaps++; if (ed > pr.stats.snap_max_us) pr.stats.snap_max_us = ed; }
+            if (ed > pr.stats.ev_max_us) { pr.stats.ev_max_us = ed; pr.stats.ev_max_type = ev.type; }
+#endif
         }
     }
 }
@@ -211,6 +285,11 @@ static void ui_task(void *arg)
 esp_err_t lv_port_start(void (*ui_setup)(void))
 {
     setup_cb = ui_setup;
+#ifdef CONFIG_AELYS_PERF_PROBE
+    perf_probe_init(&pr);
+    perf_probe_mailbox_init(&pr_mail);
+    atomic_init(&pr_dropped, 0);
+#endif
     ev_queue = xQueueCreate(EV_QUEUE_DEPTH, sizeof(ui_event_t));
     if (!ev_queue) return ESP_ERR_NO_MEM;
     starter = xTaskGetCurrentTaskHandle();
@@ -222,7 +301,11 @@ esp_err_t lv_port_start(void (*ui_setup)(void))
 
 bool lv_port_post(const ui_event_t *ev)
 {
-    return ev_queue && xQueueSend(ev_queue, ev, 0) == pdTRUE;
+    bool ok = ev_queue && xQueueSend(ev_queue, ev, 0) == pdTRUE;
+#ifdef CONFIG_AELYS_PERF_PROBE
+    if (!ok && ev->type == BOARD_UI_EV_PERF) atomic_fetch_add(&pr_dropped, 1);
+#endif
+    return ok;
 }
 
 uint32_t lv_port_last_flush_end_us(void) { return last_flush_end_us; }
@@ -236,3 +319,12 @@ void lv_port_frame_stats(uint32_t *fps_x10, uint32_t *worst_us)
     if (fps_x10) *fps_x10 = out_fps_x10;
     if (worst_us) *worst_us = out_worst_us;
 }
+
+#ifdef CONFIG_AELYS_PERF_PROBE
+void lv_port_probe_set_ui(bool (*swipe)(void), uint32_t (*screen)(void))
+{
+    pr_swipe = swipe;
+    pr_screen = screen;
+}
+bool lv_port_probe_read(lv_port_probe_t *out) { return perf_probe_read(&pr_mail, out); }
+#endif

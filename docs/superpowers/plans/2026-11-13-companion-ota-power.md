@@ -21,12 +21,38 @@
 - Board: one USB port, shared with plan 3. Tasks marked **board: yes** run strictly one at a time across both plans; if `/dev/cu.usbmodem*` is missing, stop and ask the owner to plug it in. Serial via `tools/serlog.py` (env `PORT`, default `/dev/cu.usbmodem1101`).
 - Repo is PUBLIC: owner contacts only in git-ignored `main/owner_contact.local.h`; CI copies `owner_contact.example.h` instead.
 - Backend: every route under `/api/v1`; errors `HTTPException(status, detail={"code","message"})`; no new services, vendors or buckets. New codes: `FIRMWARE_INVALID` (422), `FIRMWARE_UNSIGNED` (422), `FIRMWARE_HASH_MISMATCH` (422), `FIRMWARE_EXISTS` (409), `FIRMWARE_TOO_LARGE` (413), `FIRMWARE_NONE` (404), `COREDUMP_TOO_LARGE` (413); reused from plan 2 / existing code: `DEVICE_SCOPE_DENIED` (403), `COMPANION_ONLY` (403), `NOT_FOUND` (404), `VALIDATION_ERROR` (422).
-- Migration `backend/alembic/versions/0051_companion_firmware.py`, `down_revision = "0050_companion"`, inspector-guarded like `0024_device_pairing.py`.
+- Migration `backend/alembic/versions/0055_companion_firmware.py`, `down_revision = "0054_telegram_command_sessions"`, inspector-guarded like `0024_device_pairing.py`.
 - Size limits: image ≤ 4 194 304 B (`ota_0`/`ota_1` are 0x400000); core dump ≤ 65 536 B (`coredump` partition 0x10000). Bodies are read with a running cap, never `await request.body()` unbounded.
 - Versions are `MAJOR.MINOR.PATCH` integers (regex `^\d{1,3}\.\d{1,3}\.\d{1,3}$`), set once in `firmware/companion/CMakeLists.txt` as `PROJECT_VER`; the board reads `esp_app_get_description()->version`.
 - One TLS session at a time on the board (internal heap dips to 62 KB, `budgets.md`): OTA download and core-dump upload never run while the channel socket is open.
 - Backend validation before each commit: `PYTHONPATH=backend .venv/bin/python -m pytest -q backend/tests/<file>`; `.venv/bin/ruff check backend/app backend/tests`; `.venv/bin/mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs`; `.venv/bin/bandit -q -r backend/app -ll`; schema: `cd backend && PYTHONPATH=. ../.venv/bin/alembic upgrade head && PYTHONPATH=. ../.venv/bin/alembic check`; routes: `make openapi`, commit `docs/openapi.json`. Firmware before each commit: `idf.py build` in `firmware/companion` and `cmake -S firmware/companion/sim -B firmware/companion/sim/build && cmake --build firmware/companion/sim/build && ctest --test-dir firmware/companion/sim/build`.
 - Git: branch `feat/companion-ota-power` in a worktree (`.worktrees/companion-ota-power`), copy the git-ignored `owner_contact.local.h` in; Conventional Commits; stage explicit paths only. Merge to `main` before any release build — releases are built only from fresh `main`.
+
+## Integration checkpoint (2026-11-14)
+
+Main now includes `0051_companion_v11` and Telegram migrations 0052–0054.
+OTA uses the next free revision `0055_companion_firmware`, after
+`0054_telegram_command_sessions`; the handoff's suggested 0052 is stale.
+ADR-030 remains PROPOSED. Signing, board OTA integration and owner-held key
+setup require the owner's decision/presence; this integration does not enable
+signed-app checks or modify the installed board image.
+
+Integration validation on `codex/companion-ota-sync`: full backend 1535 passed,
+127 skipped; explicit PostgreSQL 16 clean and paired-state migration tests
+2 passed; host simulator 24/24; native transport 119 passed, 2 ignored;
+ruff, mypy (131 source files), bandit and actionlint passed. OpenAPI regenerated.
+Normal ESP-IDF build passed: 1541546 B image, 158714 B linked DIRAM.
+The migration regression covers the real pre-OTA schema, retained key/settings,
+binary storage, guarded replay and downgrade/re-upgrade on SQLite and PostgreSQL.
+
+A confirmation deadline bug found during integration is fixed: a still-pending
+release rolls back when its last success event arrives at or after the deadline.
+The regression checks all three possible last events before/at/after the limit,
+including 32-bit clock wrap; already-valid firmware remains valid. Both the
+whole-branch review and scoped deadline-fix review found no remaining blocker.
+This is integration readiness, **not** completed OTA/power acceptance: tasks
+8–12 and 15 still require board integration/checks; no OTA deployment or signing
+configuration was performed. Preserve this worktree until those tasks are done.
 
 ## Review Focus
 
@@ -63,7 +89,7 @@
 ### Task 2: Firmware releases in the backend — model: **sonnet** · board: no · after Task 1
 
 **Files:**
-- Create: `backend/app/companion/firmware.py`, `backend/alembic/versions/0051_companion_firmware.py`, `backend/tests/test_companion_firmware.py`, `backend/tests/firmware_fixtures.py`
+- Create: `backend/app/companion/firmware.py`, `backend/alembic/versions/0055_companion_firmware.py`, `backend/tests/test_companion_firmware.py`, `backend/tests/firmware_fixtures.py`
 - Modify: `backend/app/companion/models.py`, `backend/app/companion/access.py` (`COMPANION_ALLOWED`), `backend/app/main.py` (router)
 
 **Interfaces:**
@@ -134,7 +160,7 @@ typedef struct { bool pending; bool got_ready, got_snapshot, sent_hello; uint32_
 void      ota_confirm_start(ota_confirm_t *c, bool pending_verify, uint32_t now_ms, uint32_t window_ms);
 confirm_t ota_confirm_update(ota_confirm_t *c, uint8_t channel_event /* 1 ready, 2 snapshot, 3 hello sent, 0 tick */, uint32_t now_ms);
 ```
-`ota_decide` order: bad meta (unparsable versions, sha256 not 64 hex) → `OTA_BAD_META`; `url` must start with `/api/v1/companion/firmware/`, contain no `..`, `//` or `://` → else `OTA_BAD_URL`; `size == 0 || size > slot_size` → `OTA_BAD_SIZE`; `version <= running` → `OTA_UP_TO_DATE`; `running < min_version` → `OTA_TOO_OLD`; `version == bad_version` → `OTA_KNOWN_BAD`; else `OTA_INSTALL`. `ota_confirm_update` returns `CONFIRM_VALID` once all three events have happened (any order), `CONFIRM_ROLLBACK` once `now_ms ≥ deadline_ms` while still pending, `CONFIRM_WAIT` otherwise; a non-pending start always returns `CONFIRM_VALID` and never `ROLLBACK`.
+`ota_decide` order: bad meta (unparsable versions, sha256 not 64 hex) → `OTA_BAD_META`; `url` must start with `/api/v1/companion/firmware/`, contain no `..`, `//` or `://` → else `OTA_BAD_URL`; `size == 0 || size > slot_size` → `OTA_BAD_SIZE`; `version <= running` → `OTA_UP_TO_DATE`; `running < min_version` → `OTA_TOO_OLD`; `version == bad_version` → `OTA_KNOWN_BAD`; else `OTA_INSTALL`. `ota_confirm_update` returns `CONFIRM_VALID` once all three events have happened before the deadline (any order), `CONFIRM_ROLLBACK` once `now_ms ≥ deadline_ms` while still pending, `CONFIRM_WAIT` otherwise; a non-pending start always returns `CONFIRM_VALID` and never `ROLLBACK`.
 
 - [ ] **Step 1: Failing tests** (`test_ota_logic.c`): `test_semver_orders_numerically` (`0.10.0 > 0.9.9`; `"1.2"`, `"a.b.c"`, `"1.2.3.4"`, `"1000.0.0"` → parse −1); `test_install_newer`; `test_up_to_date_and_older`; `test_too_old_for_min_version`; `test_bad_version_never_retried` (Review Focus 1: running 0.2.0, bad 0.3.0, offer 0.3.0 → `OTA_KNOWN_BAD`; offer 0.3.1 → `OTA_INSTALL`); `test_url_must_be_own_api_path` (`https://evil/x`, `http://…`, `//host/x`, `/api/v1/companion/firmware/../../x`, `/other` → `OTA_BAD_URL`); `test_size_limits` (0, slot+1 → `OTA_BAD_SIZE`); `test_confirm_needs_all_three_events`; `test_confirm_rolls_back_after_window`; `test_not_pending_never_rolls_back`.
 - [ ] **Step 2:** Run `ctest -R ota_logic` → FAIL. **Step 3:** Implement. **Step 4:** PASS; `idf.py build` passes and the boot log shows `0.2.0`.

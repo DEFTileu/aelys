@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 from app.ai.crypto import encrypt_secret
-from app.ai.models import PrivacyClass, TaskKind
+from app.ai.models import Capability, ModelSpec, PrivacyClass, ProviderKind, TaskKind
+from app.ai.router import ModelRouter
 from app.core.db import Base
 from app.core.models import (
     AIConversation,
@@ -51,6 +52,11 @@ async def state(tmp_path, monkeypatch):
         calls = []
         result = SimpleNamespace(provider=SimpleNamespace(value="claude"), model="model-x", response=SimpleNamespace(text='{"action":"reply","text":"A helpful reply","owner_note":null}', tool_calls=()), usage=SimpleNamespace(usage=SimpleNamespace(input_tokens=10, output_tokens=4), estimated_cost=Decimal("0.012")))
         class FakeService:
+            models = (ModelSpec(ProviderKind.CLAUDE, 'model-x', frozenset({Capability.IMAGES}), 100000, Decimal(0), Decimal(0)),)
+
+            def select(self, request):
+                return ModelRouter(self.models).choose(request)
+
             async def complete(self, run_id, request, messages, **kwargs):
                 calls.append((run_id, request, messages, kwargs))
                 return result
@@ -78,10 +84,7 @@ async def test_context_isolation_policy_and_usage(state, monkeypatch):
     assert kwargs == {"max_tokens": 800, "tools": ()}
     assert len(messages) == 13 and messages[-1].content == "customer question"
     system = messages[0].content
-    assert "Never invent facts, plans, prices, schedules" in system
-    assert "short clarifying question" in system and "owner will follow up" in system
-    assert "in the first person" in system and "in the language the other person uses" in system
-    assert "Identify yourself as an assistant" not in system
+    assert 'OWNER_IDENTITY' in system
     assert messages[-2].role == "assistant" and messages[-1].untrusted
     contents = repr(messages)
     for forbidden in ("private other chat", "private other owner", "deleted secret", "provider-key-secret", "bot-token-secret", "history-0"):
@@ -177,7 +180,7 @@ async def test_sent_draft_history_future_exclusion_and_context_limit(state):
     await telegram_ai.generate_business_draft(db, integration, target)
     turns = [(m.role, m.content) for m in calls[-1][2]]
     index = turns.index(("user", "Earlier customer"))
-    assert turns[index + 1] == ("assistant", "Earlier sent reply")
+    assert turns[index + 1][0] == 'assistant' and turns[index + 1][1].endswith('Earlier sent reply')
     assert "Reply sent after target" not in repr(turns)
     assert "future secret" not in repr(turns)
 
@@ -295,3 +298,128 @@ async def test_sticker_history_is_untrusted_text_without_file_id(state):
     await telegram_ai.generate_business_draft(db, integration, target)
     assert any(turn.content == "[sticker 😂]" and turn.untrusted for turn in calls[-1][2])
     assert "file-secret-h" not in repr(calls[-1][2])
+
+
+@pytest.mark.asyncio
+async def test_photo_then_error_then_owner_name_keeps_image_context(state, monkeypatch):
+    db, integration, target, calls, _ = state
+    photo = await db.get(TelegramBusinessMessage, 'history-12')
+    photo.text = ''
+    photo.media_metadata = json.dumps({'kind': 'photo', 'file_id': 'private-photo-id', 'file_size': 16})
+    error = await db.get(TelegramBusinessMessage, 'history-13')
+    error.direction = 'inbound'
+    error.text = 'ошибка деп тұр ғой'
+    target.text = 'Тілеужан'
+    downloads = []
+    image = b'\x89PNG\r\n\x1a\nprivate image bytes'
+
+    async def preview(db_arg, integration_arg, message):
+        downloads.append(message.id)
+        return image, 'image/png'
+
+    monkeypatch.setattr('app.integrations.telegram_business_media.preview_media', preview)
+    await db.flush()
+    await telegram_ai.generate_business_draft(db, integration, target)
+    assert downloads == ['history-12']
+    messages = calls[-1][2]
+    image_turn = next(m for m in messages if m.media)
+    assert image_turn.role == 'user' and image_turn.untrusted
+    assert image_turn.media[0].data == image
+    assert messages[-1].content == 'Тілеужан'
+    assert Capability.IMAGES in calls[-1][1].required_capabilities
+    assert 'private-photo-id' not in repr(messages) and 'private image bytes' not in repr(messages)
+    assert (await db.execute(select(AIMessage))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('unavailable', ['model', 'download', 'audio', 'too_many_photos'])
+async def test_unreadable_attachment_hands_off_instead_of_answering_blindly(state, monkeypatch, unavailable):
+    from app.integrations import telegram_business_media
+    from fastapi import HTTPException
+
+    db, integration, target, calls, _ = state
+    previous = await db.get(TelegramBusinessMessage, 'history-13')
+    previous.direction = 'inbound'
+    previous.text = ''
+    previous.media_metadata = json.dumps({'kind': 'voice' if unavailable == 'audio' else 'photo', 'file_id': 'private-id'})
+    if unavailable == 'too_many_photos':
+        for number in (11, 12):
+            row = await db.get(TelegramBusinessMessage, f'history-{number}')
+            row.media_metadata = previous.media_metadata
+    if unavailable == 'model':
+        original = telegram_ai.ai_api._service
+
+        def text_only(*args):
+            service = original(*args)
+            service.models = []
+            return service
+
+        monkeypatch.setattr(telegram_ai.ai_api, '_service', text_only)
+    downloads = []
+
+    async def preview(*args):
+        downloads.append(True)
+        raise HTTPException(422, detail={'code': 'TELEGRAM_MEDIA_UNAVAILABLE'})
+
+    monkeypatch.setattr(telegram_business_media, 'preview_media', preview)
+    await db.flush()
+    decision = await telegram_ai.generate_business_draft(db, integration, target)
+    assert decision.action == 'handoff' and decision.text is None and decision.owner_note
+    assert not calls
+    assert bool(downloads) == (unavailable == 'download')
+
+
+@pytest.mark.asyncio
+async def test_previous_photo_already_answered_is_not_downloaded_again(state, monkeypatch):
+    db, integration, target, calls, _ = state
+    photo = await db.get(TelegramBusinessMessage, 'history-12')
+    photo.text = ''
+    photo.media_metadata = json.dumps({'kind': 'photo', 'file_id': 'private-id'})
+
+    async def unexpected(*args):
+        pytest.fail('An older answered photo must not be downloaded')
+
+    monkeypatch.setattr('app.integrations.telegram_business_media.preview_media', unexpected)
+    await db.flush()
+    await telegram_ai.generate_business_draft(db, integration, target)
+    assert any('photo' in m.content for m in calls[-1][2])
+    assert not any(m.media for m in calls[-1][2])
+
+
+@pytest.mark.asyncio
+async def test_reply_to_reference_is_bounded_conversation_data(state):
+    db, integration, target, calls, _ = state
+    target.reply_to_telegram_message_id = 13
+    await db.flush()
+    await telegram_ai.generate_business_draft(db, integration, target)
+    assert 'reply_to_message_id=13' in calls[-1][2][-1].content
+
+
+@pytest.mark.asyncio
+async def test_manual_and_automatic_replies_are_distinguished(state):
+    db, integration, target, calls, _ = state
+    manual = await db.get(TelegramBusinessMessage, 'history-13')
+    manual.direction = 'owner'
+    manual.text = 'Мен қараймын'
+    prior = await db.get(TelegramBusinessMessage, 'history-12')
+    prior.draft_status = 'sent'
+    prior.draft_text = 'Тілеужан, тексеремін'
+    await db.flush()
+    prior.updated_at = target.sent_at - timedelta(seconds=1)
+    await telegram_ai.generate_business_draft(db, integration, target)
+    messages = calls[-1][2]
+    assert any(m.role == 'assistant' and m.content.startswith('[owner manual reply]') and 'Мен қараймын' in m.content for m in messages)
+    assert any(m.role == 'assistant' and m.content.startswith('[previous automatic reply') and 'Тілеужан' in m.content for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_reply_addressed_to_owner_is_handoff_and_usage_is_recorded(state):
+    db, integration, target, calls, result = state
+    integration.owner_name = 'Тілеужан Sairanbek'
+    target.text = 'Тілеужан'
+    result.response.text = json.dumps({'action': 'reply', 'text': 'Тілеужан, скриншот жіберіңізші.', 'owner_note': None})
+    decision = await telegram_ai.generate_business_draft(db, integration, target)
+    assert decision.action == 'handoff' and decision.text is None and decision.owner_note
+    assert 'Тілеужан Sairanbek' in calls[-1][2][0].content
+    assert (await db.execute(select(AIRun))).scalar_one().cost_estimate == Decimal('0.012')
+    assert (await db.execute(select(AIMessage))).scalars().all() == []

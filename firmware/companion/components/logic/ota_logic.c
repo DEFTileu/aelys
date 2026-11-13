@@ -76,10 +76,11 @@ void ota_confirm_start(ota_confirm_t *c, bool pending_verify, uint32_t now_ms, u
 confirm_t ota_confirm_update(ota_confirm_t *c, uint8_t channel_event, uint32_t now_ms)
 {
     if (!c->pending) return CONFIRM_VALID;
+    /* Expiry wins over a last success event; signed difference handles wrap. */
+    if ((int32_t)(now_ms - c->deadline_ms) >= 0) return CONFIRM_ROLLBACK;
     if (channel_event == OTA_EV_READY) c->got_ready = true;
     else if (channel_event == OTA_EV_SNAPSHOT) c->got_snapshot = true;
     else if (channel_event == OTA_EV_HELLO_SENT) c->sent_hello = true;
     if (c->got_ready && c->got_snapshot && c->sent_hello) { c->pending = false; return CONFIRM_VALID; }
-    /* signed difference keeps the deadline correct across the 32-bit ms wrap */
-    return (int32_t)(now_ms - c->deadline_ms) >= 0 ? CONFIRM_ROLLBACK : CONFIRM_WAIT;
+    return CONFIRM_WAIT;
 }

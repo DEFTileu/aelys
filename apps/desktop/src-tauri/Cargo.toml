@@ -22,6 +22,7 @@ aelys-native-transport = { path = "../../../packages/native-transport" }
 aelys-runtime = { path = "../../runtime" }
 uuid = { version = "1", features = ["serde", "v4"] }
 tauri-plugin-notification = "2"
+serialport = { version = "=4.10.1", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

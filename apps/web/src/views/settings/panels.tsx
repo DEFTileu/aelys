@@ -12,6 +12,7 @@ import type { ApiStatus } from '../../types'
 import pkg from '../../../package.json'
 import { Lock } from '../../icons'
 import { Card, Group, Row, Segmented, SelectChip, SwitchRow } from './ui'
+import { AndroidUpdatesPanel } from './AndroidUpdatesPanel'
 
 export function ProfilePanel({ owner }: { owner: Owner }) {
   const { name, greeting } = usePrefs()
@@ -148,5 +149,6 @@ export function SecurityPanel() {
 export function AboutPanel() {
   return <Card>
     <div className="st-row st-row--14 st-row--wrap"><AelysMark size={36} /><div className="st-grow"><div className="st-label">Aelys {pkg.version}</div><div className="st-hint">Mac, Android and web share one backend</div></div></div>
+    <AndroidUpdatesPanel />
   </Card>
 }

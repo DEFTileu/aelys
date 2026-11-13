@@ -8,6 +8,7 @@
 void net_set_wifi_state(uint8_t state); /* ui_wifi_state_t; posted to the ui by the net task, once per change */
 void net_housekeeping(void);  /* clock tick and pending UI posts; cheap, call from any wait loop in the net task */
 bool net_wifi_online(void);
+bool net_lost_on(void);     /* lost mode, via net_store_t.lost_on; true when unknown (fail closed) */
 bool net_wifi_busy(void);   /* a connection attempt is running (the net task is inside attempt()) */
 void net_wifi_abort(void);  /* ends the running attempt early (a new provisioning request replaces it) */
 /* Blocks up to ~15 s. Pauses the automatic reconnect while it runs. True once an IP is held. */

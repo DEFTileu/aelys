@@ -38,6 +38,13 @@ describe('settings navigation', () => {
     mocks.native = native; await mount(); await click('Security')
     expect(host.textContent).toContain(native ? 'Biometric controls' : 'available in the Aelys Mac app')
   })
+  it('opens Devices between Connection and Security, with the USB hint where Web Serial is missing', async () => {
+    await mount()
+    const titles = [...host.querySelectorAll('.st-nav-item')].map((item) => item.querySelector('.st-nav-text > span')?.textContent)
+    expect(titles.slice(titles.indexOf('Connection'), titles.indexOf('Security') + 1)).toEqual(['Connection', 'Devices', 'Security'])
+    await click('Devices'); expect(host.querySelector('.st-title')?.textContent).toBe('Devices')
+    expect(host.textContent).toContain('To add a companion, connect it by USB')
+  })
   it('filters section names and descriptions, and navigates real panels', async () => {
     await mount(); await search('models')
     expect(host.querySelector('nav')?.textContent).toContain('AI & models')

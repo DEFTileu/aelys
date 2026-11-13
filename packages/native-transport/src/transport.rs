@@ -1220,7 +1220,58 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "resource-links"),
     ("DELETE", "resource-links/*"),
     ("GET", "companion/devices/*/coredumps"),
+    ("GET", "companion/devices"),
+    ("GET", "companion/devices/*"),
+    ("PUT", "companion/devices/*/lost-mode"),
+    ("PUT", "companion/devices/*/ice"),
+    ("POST", "companion/devices/*/find"),
+    ("POST", "companion/devices/*/wifi"),
+    ("POST", "companion/devices/*/wifi-scan"),
+    ("POST", "companion/devices/*/wifi/remove"),
+    ("PUT", "companion/devices/*/wifi/order"),
+    ("PUT", "companion/devices/*/settings"),
+    ("POST", "companion/devices/*/restart"),
+    ("POST", "companion/devices/*/unpair"),
+    // Companion pairing only: `api_route` pins the request to platform "companion" and
+    // lets approve through only for a pairing this process requested.
+    ("POST", "pairing/request"),
+    ("POST", "pairing/*/approve"),
 ];
+const PAIRING_REQUEST: &str = "/api/v1/pairing/request";
+/// Pairing ids this process created through `PAIRING_REQUEST`; nothing else may be approved.
+static COMPANION_PAIRINGS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(Default::default);
+fn approve_target(path: &str) -> Option<&str> {
+    path.strip_prefix("/api/v1/pairing/")?
+        .strip_suffix("/approve")
+}
+fn companion_pairing_allowed(path: &str, body: Option<&Value>) -> bool {
+    if path == PAIRING_REQUEST {
+        return body.and_then(|b| b.get("platform")).and_then(Value::as_str) == Some("companion");
+    }
+    approve_target(path)
+        .is_none_or(|id| COMPANION_PAIRINGS.lock().is_ok_and(|set| set.contains(id)))
+}
+fn remember_pairing(path: &str, value: &Value) {
+    let Ok(mut set) = COMPANION_PAIRINGS.lock() else {
+        return;
+    };
+    if path == PAIRING_REQUEST {
+        if let Some(id) = value
+            .get("pairing_id")
+            .and_then(Value::as_str)
+            .filter(|id| valid_id(id))
+        {
+            if set.len() >= 8 {
+                set.clear(); // pairings expire within minutes; a handful is plenty
+            }
+            set.insert(id.to_owned());
+        }
+    } else if let Some(id) = approve_target(path) {
+        set.remove(id);
+    }
+}
 /// English AI routes that run a model server-side for up to ~60-90 s; every
 /// other API route keeps the 15 s `client()` timeout.
 const SLOW_API: &[(&str, &str)] = &[
@@ -1465,7 +1516,10 @@ fn api_route(
     query: Option<std::collections::BTreeMap<String, String>>,
     body: Option<Value>,
 ) -> Result<(Method, String, Option<Value>), String> {
-    if path.len() > 512 || !api_allowed(&method, &path) {
+    if path.len() > 512
+        || !api_allowed(&method, &path)
+        || !companion_pairing_allowed(&path, body.as_ref())
+    {
         return Err(err("VALIDATION_ERROR"));
     }
     let http = Method::from_bytes(method.as_bytes()).map_err(|_| err("VALIDATION_ERROR"))?;
@@ -2019,7 +2073,108 @@ async fn establish_login(
 ) -> Result<Session, String> {
     let action = if bootstrap { "bootstrap" } else { "login" };
     let token: Tokens = request(client, Method::POST, &format!("{origin}/api/v1/auth/native/{action}"), Some(json!({"email":email,"password":password,"platform":native_platform(),"display_name":native_display_name()})), None).await?;
-    persist_or_revoke(client, store, session_from(origin, token)?).await
+    let session = session_from(origin, token)?;
+    // A password sign-in replaces the stored record. If that held a device key
+    // (e.g. a key resume failed), its device would stay a dead "trusted" row.
+    // Best-effort read: an unreadable record just means nothing to revoke.
+    let replaced = store
+        .read(origin)
+        .await
+        .ok()
+        .flatten()
+        .filter(|r| r.device_key.is_some())
+        .map(|r| r.device_id);
+    let session = persist_or_revoke(client, store, session).await?;
+    let session = upgrade_to_device_key(client, store, session).await?;
+    if let Some(device_id) = replaced.filter(|id| *id != session.record.device_id) {
+        if session.record.device_key.is_some() {
+            revoke_device(client, origin, &session.access, &device_id).await;
+        }
+    }
+    Ok(session)
+}
+/// Registers a fresh device key for an email session so it passes `trusted_device`
+/// and can sign re-auth challenges. Any failure keeps the password session as is
+/// (the next start retries); only the failure code is logged.
+async fn upgrade_to_device_key(
+    client: &Client,
+    store: &impl Store,
+    session: Session,
+) -> Result<Session, String> {
+    if session.record.device_key.is_some() {
+        return Ok(session);
+    }
+    let upgraded = match register_device_key(client, &session).await {
+        Ok(upgraded) => upgraded,
+        Err(code) => {
+            eprintln!("device key upgrade skipped: {code}");
+            return Ok(session);
+        }
+    };
+    // Plain `persist`, not persist_or_revoke: a failed write must keep the
+    // password session usable, so drop only the device just registered.
+    if let Err(code) = persist(store, &upgraded).await {
+        eprintln!("device key upgrade skipped: {code}");
+        revoke_device(
+            client,
+            &upgraded.origin,
+            &upgraded.access,
+            &upgraded.record.device_id,
+        )
+        .await;
+        return Ok(session);
+    }
+    revoke_device(
+        client,
+        &upgraded.origin,
+        &upgraded.access,
+        &session.record.device_id,
+    )
+    .await;
+    Ok(upgraded)
+}
+async fn register_device_key(client: &Client, old: &Session) -> Result<Session, String> {
+    let key = crate::device_key::DeviceKey::generate()?;
+    let public_key = key.public_key()?;
+    let proof = key.sign(
+        format!(
+            "aelys-device-register-v1\n{}\n{public_key}",
+            old.record.owner_id
+        )
+        .as_bytes(),
+    )?;
+    let tokens: DeviceTokens = request(
+        client,
+        Method::POST,
+        &format!("{}/api/v1/devices/register-key", old.origin),
+        Some(json!({"public_key":public_key,"platform":native_platform(),"display_name":native_display_name(),"proof":proof})),
+        Some(&old.access),
+    )
+    .await?;
+    let (access, device_id) = (tokens.access_token.clone(), tokens.device_id.clone());
+    let new = device_session(client, &old.origin, tokens, key).await;
+    if new
+        .as_ref()
+        .is_ok_and(|n| n.record.owner_id == old.record.owner_id)
+    {
+        return new;
+    }
+    // Registered but unusable: don't leave a dead row in the owner's device list.
+    if valid_id(&device_id) {
+        revoke_device(client, &old.origin, &access, &device_id).await;
+    }
+    Err(new.err().unwrap_or_else(|| err("INVALID_RESPONSE")))
+}
+/// Best-effort: a failed revoke only leaves an extra row for the owner to remove.
+async fn revoke_device(client: &Client, origin: &str, access: &str, device_id: &str) {
+    let _: Result<Value, _> = request(
+        client,
+        Method::POST,
+        &format!("{origin}/api/v1/devices/{device_id}/revoke"),
+        None,
+        Some(access),
+    )
+    .await;
 }
 #[derive(Deserialize)]
 struct DeviceTokens {
@@ -2092,21 +2247,25 @@ async fn establish_device(
     )
     .await
 }
-async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Session, String> {
+struct DeviceChallenge {
+    challenge_id: String,
+    nonce: String,
+}
+async fn device_challenge(
+    client: &Client,
+    origin: &str,
+    device_id: &str,
+) -> Result<DeviceChallenge, String> {
     #[derive(Deserialize)]
     struct Challenge {
         challenge_id: String,
         nonce: String,
     }
-    let key = old
-        .device_key
-        .as_ref()
-        .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
     let challenge: Challenge = request(
         client,
         Method::POST,
         &format!("{origin}/api/v1/auth/device/challenge"),
-        Some(json!({"device_id":old.device_id})),
+        Some(json!({"device_id":device_id})),
         None,
     )
     .await?;
@@ -2116,6 +2275,17 @@ async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Se
     {
         return Err(err("INVALID_RESPONSE"));
     }
+    Ok(DeviceChallenge {
+        challenge_id: challenge.challenge_id,
+        nonce: challenge.nonce,
+    })
+}
+async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Session, String> {
+    let key = old
+        .device_key
+        .as_ref()
+        .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
+    let challenge = device_challenge(client, origin, &old.device_id).await?;
     let message = format!(
         "aelys-device-login-v1\n{}\n{}",
         old.device_id, challenge.nonce
@@ -2127,6 +2297,90 @@ async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Se
         return Err(err("INVALID_RESPONSE"));
     }
     Ok(session)
+}
+#[derive(Serialize, Debug)]
+pub struct ReauthProof {
+    challenge_id: String,
+    signature: String,
+}
+fn reauth_prefix(purpose: &str) -> Result<&'static str, String> {
+    match purpose {
+        "lost_off" => Ok("aelys-companion-lost-off-v1"),
+        "unpair" => Ok("aelys-companion-unpair-v1"),
+        _ => Err(err("INVALID_REQUEST")),
+    }
+}
+/// What the Touch ID prompt says: the owner must see which action they are approving.
+fn reauth_reason(purpose: &str) -> Result<&'static str, String> {
+    match purpose {
+        "lost_off" => Ok("Turn off lost mode on Aelys"),
+        "unpair" => Ok("Unpair Aelys"),
+        _ => Err(err("INVALID_REQUEST")),
+    }
+}
+async fn reauth_challenge(
+    client: &Client,
+    origin: &str,
+    device_id: &str,
+    key: &crate::device_key::DeviceKey,
+    prefix: &str,
+    target: &str,
+) -> Result<ReauthProof, String> {
+    let challenge = device_challenge(client, origin, device_id).await?;
+    let message = format!("{prefix}\n{target}\n{}", challenge.nonce);
+    Ok(ReauthProof {
+        signature: key.sign(message.as_bytes())?,
+        challenge_id: challenge.challenge_id,
+    })
+}
+/// Fresh biometric-gated signature from this device's own key, proving the
+/// owner is present for a companion lost-mode-off or unpair of `target_device_id`.
+#[tauri::command]
+pub async fn native_device_reauth(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    origin: String,
+    purpose: String,
+    target_device_id: String,
+) -> Result<ReauthProof, String> {
+    check_window(&window)?;
+    let origin = origin_fn(&origin)?;
+    let prefix = reauth_prefix(&purpose)?;
+    let reason = reauth_reason(&purpose)?;
+    if !valid_id(&target_device_id) {
+        return Err(err("INVALID_REQUEST"));
+    }
+    // Copy the key out so the session lock is not held across the biometric prompt.
+    let (device_id, key) = {
+        let guard = state.0.lock().await;
+        let session = guard
+            .as_ref()
+            .filter(|s| s.origin == origin)
+            .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
+        let key = session
+            .record
+            .device_key
+            .clone()
+            .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
+        (session.record.device_id.clone(), key)
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        if crate::biometric::available() {
+            crate::biometric::authenticate_for(reason)?;
+        }
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|_| err("BIOMETRIC_UNAVAILABLE"))??;
+    reauth_challenge(
+        &client()?,
+        &origin,
+        &device_id,
+        &key,
+        prefix,
+        &target_device_id,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn native_enroll(
@@ -2190,6 +2444,28 @@ pub async fn native_login(
     *guard = Some(session);
     Ok(status(guard.as_ref(), &origin, Some(true), None))
 }
+async fn resume_keyless(
+    client: &Client,
+    store: &impl Store,
+    origin: &str,
+    old: &Record,
+) -> Result<Session, String> {
+    let tokens: Tokens = request(
+        client,
+        Method::POST,
+        &format!("{origin}/api/v1/auth/native/refresh"),
+        Some(json!({"refresh_token":old.refresh_token})),
+        None,
+    )
+    .await
+    .map_err(|_| err("SIGN_IN_REQUIRED"))?;
+    let session = session_from(origin, tokens)?;
+    if session.record.owner_id != old.owner_id || session.record.device_id != old.device_id {
+        return Err(err("INVALID_RESPONSE"));
+    }
+    let session = persist_or_revoke(client, store, session).await?;
+    upgrade_to_device_key(client, store, session).await
+}
 #[tauri::command]
 pub async fn native_resume(
     window: WebviewWindow,
@@ -2236,20 +2512,7 @@ pub async fn native_resume(
         *guard = Some(persist_or_revoke(&client, storage.inner(), session).await?);
         return Ok(status(guard.as_ref(), &origin, Some(true), None));
     }
-    let tokens: Tokens = request(
-        &client,
-        Method::POST,
-        &format!("{origin}/api/v1/auth/native/refresh"),
-        Some(json!({"refresh_token":old.refresh_token})),
-        None,
-    )
-    .await
-    .map_err(|_| err("SIGN_IN_REQUIRED"))?;
-    let session = session_from(&origin, tokens)?;
-    if session.record.owner_id != old.owner_id || session.record.device_id != old.device_id {
-        return Err(err("INVALID_RESPONSE"));
-    }
-    *guard = Some(persist_or_revoke(&client, storage.inner(), session).await?);
+    *guard = Some(resume_keyless(&client, storage.inner(), &origin, &old).await?);
     Ok(status(guard.as_ref(), &origin, Some(true), None))
 }
 #[tauri::command]
@@ -2682,6 +2945,9 @@ async fn execute_operation_inner(
             }
         })?;
     ensure_operation_session(state, origin, &access, is_mutation).await?;
+    if is_api {
+        remember_pairing(&path, &value);
+    }
     sanitize_response(kind, value).map_err(|e| {
         if is_mutation {
             err("MUTATION_OUTCOME_UNKNOWN")
@@ -4786,6 +5052,71 @@ mod tests {
     }
 
     #[test]
+    fn companion_routes_and_pairing_are_narrow() {
+        let api = |method: &str, path: &str, body: Option<Value>| {
+            route(Operation::Api {
+                method: method.into(),
+                path: path.into(),
+                query: None,
+                body,
+                idempotency_key: None,
+                upload: None,
+            })
+        };
+        assert!(api("GET", "/api/v1/companion/devices", None).is_ok());
+        assert!(api(
+            "PUT",
+            "/api/v1/companion/devices/d-1/lost-mode",
+            Some(json!({"on": true}))
+        )
+        .is_ok());
+        assert!(api(
+            "POST",
+            "/api/v1/companion/devices/d-1/unpair",
+            Some(json!({}))
+        )
+        .is_ok());
+        assert!(api(
+            "POST",
+            "/api/v1/companion/devices/../unpair",
+            Some(json!({}))
+        )
+        .is_err());
+        // pairing: only a companion request, and only approving what this process requested
+        assert!(api(
+            "POST",
+            PAIRING_REQUEST,
+            Some(json!({"platform": "companion"}))
+        )
+        .is_ok());
+        assert!(api(
+            "POST",
+            PAIRING_REQUEST,
+            Some(json!({"platform": "desktop"}))
+        )
+        .is_err());
+        assert!(api("POST", PAIRING_REQUEST, None).is_err());
+        let approve = "/api/v1/pairing/pz-1/approve";
+        let code = || Some(json!({"secret": "s", "sas": "123456"}));
+        assert!(api("POST", approve, code()).is_err());
+        remember_pairing(PAIRING_REQUEST, &json!({"pairing_id": "pz-1"}));
+        assert!(api("POST", approve, code()).is_ok());
+        assert!(api("POST", "/api/v1/pairing/other/approve", code()).is_err());
+        remember_pairing(approve, &json!({"device_id": "d-2"}));
+        assert!(api("POST", approve, code()).is_err());
+        for path in [
+            "/api/v1/pairing/invite",
+            "/api/v1/pairing/pz-1/claim",
+            "/api/v1/pairing/pz-1/finish",
+            "/api/v1/devices/channel",
+        ] {
+            assert!(
+                api("POST", path, Some(json!({"platform": "companion"}))).is_err(),
+                "{path}"
+            );
+        }
+    }
+    #[test]
     fn ai_chat_routes_are_allowlisted_and_typed_fields_survive() {
         assert!(api_allowed("PATCH", "/api/v1/ai/conversations/abc123"));
         assert!(api_allowed(
@@ -5066,5 +5397,375 @@ mod tests {
         assert!(decode_upload(&op("POST", UPLOAD_PATH, "audio/wav", max, Value::Null)).is_ok());
         let over = STANDARD.encode(vec![0u8; MAX_UPLOAD + 1]);
         bad(op("POST", UPLOAD_PATH, "audio/wav", over, Value::Null));
+    }
+    #[test]
+    fn reauth_signs_the_purpose_message_for_the_own_device_challenge() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 4096];
+            let n = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..n]).into_owned();
+            let body = r#"{"challenge_id":"chal-1","nonce":"nonce-abc"}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+            request
+        });
+        let key = crate::device_key::DeviceKey::generate().unwrap();
+        for (purpose, prefix) in [("lost_off", "lost-off"), ("unpair", "unpair")] {
+            assert_eq!(
+                reauth_prefix(purpose).unwrap(),
+                format!("aelys-companion-{prefix}-v1")
+            );
+        }
+        let proof = tauri::async_runtime::block_on(reauth_challenge(
+            &client().unwrap(),
+            &url,
+            "own-device",
+            &key,
+            "aelys-companion-lost-off-v1",
+            "target-dev",
+        ))
+        .unwrap();
+        let request = server.join().unwrap();
+        assert!(request.starts_with("POST /api/v1/auth/device/challenge "));
+        assert!(request.contains(r#""device_id":"own-device""#));
+        assert_eq!(proof.challenge_id, "chal-1");
+        let verifier = ring::signature::UnparsedPublicKey::new(
+            &ring::signature::ECDSA_P256_SHA256_FIXED,
+            URL_SAFE_NO_PAD.decode(key.public_key().unwrap()).unwrap(),
+        );
+        let signature = URL_SAFE_NO_PAD.decode(&proof.signature).unwrap();
+        verifier
+            .verify(
+                b"aelys-companion-lost-off-v1\ntarget-dev\nnonce-abc",
+                &signature,
+            )
+            .unwrap();
+    }
+    #[test]
+    fn reauth_prompt_names_the_action() {
+        assert_eq!(
+            reauth_reason("lost_off").unwrap(),
+            "Turn off lost mode on Aelys"
+        );
+        assert_eq!(reauth_reason("unpair").unwrap(), "Unpair Aelys");
+        assert_eq!(reauth_reason("login").unwrap_err(), "INVALID_REQUEST");
+        assert_eq!(
+            crate::biometric::DEFAULT_REASON,
+            "Разблокировать сохранённую сессию"
+        );
+    }
+    #[test]
+    fn reauth_rejects_unknown_purposes() {
+        assert_eq!(reauth_prefix("login").unwrap_err(), "INVALID_REQUEST");
+        assert_eq!(reauth_prefix("").unwrap_err(), "INVALID_REQUEST");
+        assert_eq!(reauth_prefix("lost-off").unwrap_err(), "INVALID_REQUEST");
+    }
+
+    type Seen = std::sync::Arc<std::sync::Mutex<Vec<(String, String, String)>>>;
+    /// Loopback backend: answers `routes` ("METHOD /path" -> status, body), 404 otherwise,
+    /// and records (request line, authorization header, body) of every request.
+    fn mock_backend(routes: Vec<(&'static str, u16, String)>) -> (String, Seen) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let seen: Seen = Default::default();
+        let log = seen.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let mut raw = Vec::new();
+                let mut buf = [0; 4096];
+                let (head, body) = loop {
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    raw.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&raw).into_owned();
+                    if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                        let len = head
+                            .lines()
+                            .find_map(|l| {
+                                l.to_lowercase()
+                                    .strip_prefix("content-length: ")
+                                    .map(str::to_owned)
+                            })
+                            .map_or(0, |v| v.trim().parse::<usize>().unwrap());
+                        if body.len() >= len || n == 0 {
+                            break (head.to_owned(), body.to_owned());
+                        }
+                    }
+                    if n == 0 {
+                        return;
+                    }
+                };
+                let line = head.lines().next().unwrap().to_owned();
+                let auth = head
+                    .lines()
+                    .find_map(|l| {
+                        l.to_lowercase()
+                            .starts_with("authorization:")
+                            .then(|| l[14..].trim().to_owned())
+                    })
+                    .unwrap_or_default();
+                let key = line.rsplit_once(' ').unwrap().0.to_owned();
+                log.lock().unwrap().push((key.clone(), auth, body));
+                let (status, body) = routes
+                    .iter()
+                    .find(|(route, _, _)| *route == key)
+                    .map_or((404, "{}".to_owned()), |(_, status, body)| {
+                        (*status, body.clone())
+                    });
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        (origin, seen)
+    }
+    fn count(seen: &Seen, route: &str) -> usize {
+        seen.lock().unwrap().iter().filter(|r| r.0 == route).count()
+    }
+    const REGISTER: &str = "POST /api/v1/devices/register-key";
+    const REVOKE_OLD: &str = "POST /api/v1/devices/old-device/revoke";
+    fn upgrade_routes(
+        register_status: u16,
+        revoke_status: u16,
+    ) -> Vec<(&'static str, u16, String)> {
+        let old = json!({"access_token":"old-access","refresh_token":"old-refresh","owner_id":"owner-1","device_id":"old-device","token_type":"bearer","expires_in":60}).to_string();
+        let new = json!({"access_token":"new-access","refresh_token":"new-refresh","device_id":"new-device","token_type":"bearer"}).to_string();
+        vec![
+            ("POST /api/v1/auth/native/login", 200, old.clone()),
+            ("POST /api/v1/auth/native/bootstrap", 200, old.clone()),
+            ("POST /api/v1/auth/native/refresh", 200, old),
+            (REGISTER, register_status, new),
+            (
+                "GET /api/v1/me",
+                200,
+                json!({"id":"owner-1","device_id":"new-device"}).to_string(),
+            ),
+            (
+                REVOKE_OLD,
+                revoke_status,
+                json!({"revoked":true}).to_string(),
+            ),
+        ]
+    }
+    fn stored(store: &FakeStore) -> Record {
+        serde_json::from_str(store.value.borrow().as_ref().unwrap()).unwrap()
+    }
+    fn empty_store() -> FakeStore {
+        FakeStore {
+            value: RefCell::new(None),
+            fail: false,
+        }
+    }
+    #[test]
+    fn login_upgrades_to_a_key_bound_device() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        for bootstrap in [false, true] {
+            let (origin, seen) = mock_backend(upgrade_routes(200, 200));
+            tauri::async_runtime::block_on(async {
+                let store = empty_store();
+                let session = establish_login(
+                    &client().unwrap(),
+                    &store,
+                    &origin,
+                    "o@example.test",
+                    "password-1",
+                    bootstrap,
+                )
+                .await
+                .unwrap();
+                assert_eq!(session.record.device_id, "new-device");
+                assert_eq!(session.access, "new-access");
+                let record = stored(&store);
+                assert_eq!(record.device_id, "new-device");
+                assert_eq!(record.refresh_token, "new-refresh");
+                let key = record.device_key.expect("stored record is key-bound");
+                assert_eq!(count(&seen, REGISTER), 1);
+                let log = seen.lock().unwrap();
+                let (_, auth, body) = log.iter().find(|r| r.0 == REGISTER).unwrap();
+                assert_eq!(auth, "Bearer old-access");
+                let body: Value = serde_json::from_str(body).unwrap();
+                assert_eq!(body["public_key"], key.public_key().unwrap());
+                assert_eq!(body["platform"], native_platform());
+                assert_eq!(body["display_name"], native_display_name());
+                let public = URL_SAFE_NO_PAD
+                    .decode(body["public_key"].as_str().unwrap())
+                    .unwrap();
+                let proof = URL_SAFE_NO_PAD
+                    .decode(body["proof"].as_str().unwrap())
+                    .unwrap();
+                let message = format!(
+                    "aelys-device-register-v1\nowner-1\n{}",
+                    body["public_key"].as_str().unwrap()
+                );
+                ring::signature::UnparsedPublicKey::new(
+                    &ring::signature::ECDSA_P256_SHA256_FIXED,
+                    public,
+                )
+                .verify(message.as_bytes(), &proof)
+                .unwrap();
+                let (_, auth, _) = log
+                    .iter()
+                    .find(|r| r.0 == REVOKE_OLD)
+                    .expect("old device revoked");
+                assert_eq!(auth, "Bearer new-access");
+            });
+        }
+    }
+    #[test]
+    fn resume_upgrades_a_keyless_record() {
+        let (origin, seen) = mock_backend(upgrade_routes(200, 200));
+        tauri::async_runtime::block_on(async {
+            let store = empty_store();
+            let old = Record {
+                origin: origin.clone(),
+                owner_id: "owner-1".into(),
+                device_id: "old-device".into(),
+                refresh_token: "old-refresh".into(),
+                device_key: None,
+            };
+            let session = resume_keyless(&client().unwrap(), &store, &origin, &old)
+                .await
+                .unwrap();
+            assert_eq!(session.record.device_id, "new-device");
+            let record = stored(&store);
+            assert_eq!(record.device_id, "new-device");
+            assert!(record.device_key.is_some());
+            assert_eq!(count(&seen, REGISTER), 1);
+            assert_eq!(count(&seen, REVOKE_OLD), 1);
+        });
+    }
+    #[test]
+    fn upgrade_failure_keeps_the_password_session() {
+        let (origin, seen) = mock_backend(upgrade_routes(500, 200));
+        tauri::async_runtime::block_on(async {
+            let store = empty_store();
+            let session = establish_login(
+                &client().unwrap(),
+                &store,
+                &origin,
+                "o@example.test",
+                "password-1",
+                false,
+            )
+            .await
+            .unwrap();
+            assert_eq!(session.record.device_id, "old-device");
+            assert_eq!(session.access, "old-access");
+            let record = stored(&store);
+            assert_eq!(record.device_id, "old-device");
+            assert_eq!(record.refresh_token, "old-refresh");
+            assert!(record.device_key.is_none());
+            assert_eq!(count(&seen, REVOKE_OLD), 0);
+        });
+    }
+    #[test]
+    fn failed_key_write_keeps_the_password_session_and_drops_the_new_device() {
+        let (origin, seen) = mock_backend(upgrade_routes(200, 200));
+        tauri::async_runtime::block_on(async {
+            let mut session = session_from(&origin, tokens("old-refresh")).unwrap();
+            session.record.device_id = "old-device".into();
+            session.access = "old-access".into();
+            let failing = FakeStore {
+                value: RefCell::new(None),
+                fail: true,
+            };
+            let kept = upgrade_to_device_key(&client().unwrap(), &failing, session)
+                .await
+                .unwrap();
+            assert_eq!(kept.record.device_id, "old-device");
+            assert!(failing.value.borrow().is_none());
+            assert_eq!(count(&seen, "POST /api/v1/devices/new-device/revoke"), 1);
+            assert_eq!(count(&seen, REVOKE_OLD), 0);
+        });
+    }
+    #[test]
+    fn password_sign_in_revokes_the_replaced_key_bound_device_after_upgrade() {
+        let prior = |device_key| Record {
+            origin: String::new(),
+            owner_id: "owner-1".into(),
+            device_id: "prior-device".into(),
+            refresh_token: String::new(),
+            device_key,
+        };
+        let revoke_prior = "POST /api/v1/devices/prior-device/revoke";
+        // (register status, prior record keyed, expected prior-device revokes)
+        for (register, keyed, revokes) in [(200, true, 1), (500, true, 0), (200, false, 0)] {
+            let (origin, seen) = mock_backend(upgrade_routes(register, 200));
+            tauri::async_runtime::block_on(async {
+                let store = empty_store();
+                let mut record =
+                    prior(keyed.then(|| crate::device_key::DeviceKey::generate().unwrap()));
+                record.origin = origin.clone();
+                store.write(&origin, &record).await.unwrap();
+                establish_login(
+                    &client().unwrap(),
+                    &store,
+                    &origin,
+                    "o@example.test",
+                    "password-1",
+                    false,
+                )
+                .await
+                .unwrap();
+                assert_eq!(count(&seen, revoke_prior), revokes);
+                if revokes == 1 {
+                    let log = seen.lock().unwrap();
+                    let (_, auth, _) = log.iter().find(|r| r.0 == revoke_prior).unwrap();
+                    assert_eq!(auth, "Bearer new-access");
+                }
+            });
+        }
+    }
+    #[test]
+    fn keyed_session_is_not_upgraded_again() {
+        let (origin, seen) = mock_backend(upgrade_routes(200, 200));
+        tauri::async_runtime::block_on(async {
+            let store = empty_store();
+            let mut session = session_from(&origin, tokens("r")).unwrap();
+            session.record.device_key = Some(crate::device_key::DeviceKey::generate().unwrap());
+            let same = upgrade_to_device_key(&client().unwrap(), &store, session)
+                .await
+                .unwrap();
+            assert_eq!(same.record.device_id, "device-1");
+            assert!(seen.lock().unwrap().is_empty());
+            assert!(store.value.borrow().is_none());
+        });
+    }
+    #[test]
+    fn revoke_failure_after_switch_is_ignored() {
+        let (origin, seen) = mock_backend(upgrade_routes(200, 500));
+        tauri::async_runtime::block_on(async {
+            let store = empty_store();
+            let session = establish_login(
+                &client().unwrap(),
+                &store,
+                &origin,
+                "o@example.test",
+                "password-1",
+                false,
+            )
+            .await
+            .unwrap();
+            assert_eq!(count(&seen, REVOKE_OLD), 1);
+            assert_eq!(session.record.device_id, "new-device");
+            assert!(stored(&store).device_key.is_some());
+        });
     }
 }

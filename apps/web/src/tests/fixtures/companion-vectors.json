@@ -1,0 +1,22 @@
+{
+  "_generated": "by firmware/companion/tools/companion_vectors.py; do not edit",
+  "device_id": "7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a64",
+  "device_pub_b64": "BPNKThFl6a3_SvYCLqvSx68wnKdIMuRE0i0u2wBd9jHWhf2WKk8E_GeuWx2ULz1qDf4iPIW_o2-s2LbS3tbaitA",
+  "secret": "test-pairing-secret-0123456789abcdef-not-real",
+  "pairing_id": "9f2c4e6a-1b3d-4857-a0c2-e4f6a8b0d2c4",
+  "sas": "327341",
+  "ssid": "Café Ж\"\\",
+  "password": "p@ss word 12345",
+  "eph_jwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "d": "XzyaHXsuTGqNDxs-WnydL0tuigwdP1t-mhw9X3udHiI",
+    "x": "4eNAh7EhG1Cy67onLNNoz2gKVqfTGAsX0l5sjSKlLRU",
+    "y": "93R7yTY4zU-dmuGfrFv2ww8YKmBRB6fUp8lOPMNseFg"
+  },
+  "nonce_b64": "obLD1OX2BxgpOktc",
+  "blob_b64": "AQTh40CHsSEbULLruics02jPaApWp9MYCxfSXmyNIqUtFfd0e8k2OM1PnZrhn6xb9sMPGCpgUQen1KfJTjzDbHhYobLD1OX2BxgpOktc8_C2n_8s5MqYvC69bTsP_YDVuGZFNKJ8dD_gCT3sgfvy5HfkuJp2naoz3g",
+  "wrong_aad_device_id": "00000000-0000-4000-8000-000000000000",
+  "wrong_aad_blob_b64": "AQTh40CHsSEbULLruics02jPaApWp9MYCxfSXmyNIqUtFfd0e8k2OM1PnZrhn6xb9sMPGCpgUQen1KfJTjzDbHhYobLD1OX2BxgpOktc8_C2n_8s5MqYvC69bTsP_YDVuGZFNKJ8dD_gJCK4mxoKKxVigbcWTpoRWg",
+  "login_message": "aelys-device-login-v1\n7b0e5c3a-4d21-4f6b-9a38-2c1d5e8f0a64\ndGVzdC1sb2dpbi1ub25jZS0wMTIzNDU2Nzg5"
+}
