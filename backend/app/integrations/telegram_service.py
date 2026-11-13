@@ -119,7 +119,7 @@ async def clear_messages(db: AsyncSession, integration_id: str, connection_id: s
     commands = [TelegramBusinessCommand.integration_id == integration_id]
     if connection_id is not None:
         commands.append(TelegramBusinessCommand.business_connection_id == connection_id)
-    await db.execute(update(TelegramBusinessCommand).where(*commands).values(query="", quote=None, state="failed", error_code="COMMAND_STALE", finished_at=now(), version=TelegramBusinessCommand.version + 1))
+    await db.execute(update(TelegramBusinessCommand).where(*commands).values(query="", quote=None, answer=None, knowledge_refs=[], state="failed", error_code="COMMAND_STALE", finished_at=now(), version=TelegramBusinessCommand.version + 1))
     filters = [TelegramBusinessMessage.integration_id == integration_id]
     if connection_id is not None:
         filters.append(TelegramBusinessMessage.business_connection_id == connection_id)
@@ -233,7 +233,7 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
                 TelegramBusinessCommand.chat_id == chat["id"],
                 or_(TelegramBusinessCommand.telegram_message_id.in_([value for value in ids[:1000] if integer(value)]),
                     TelegramBusinessCommand.reply_to_message_id.in_([value for value in ids[:1000] if integer(value)])),
-            ).values(query="", quote=None, state="failed", error_code="COMMAND_STALE", finished_at=now(), version=TelegramBusinessCommand.version + 1))
+            ).values(query="", quote=None, answer=None, knowledge_refs=[], state="failed", error_code="COMMAND_STALE", finished_at=now(), version=TelegramBusinessCommand.version + 1))
             await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id, TelegramBusinessMessage.business_connection_id == connection_id, TelegramBusinessMessage.chat_id == chat["id"], TelegramBusinessMessage.telegram_message_id.in_([value for value in ids[:1000] if integer(value)])).values(text="", chat_title="", draft_text=None, draft_sticker=None, owner_note=None, media_metadata=None, reply_to_telegram_message_id=None, deleted_at=now(), draft_status="none", version=TelegramBusinessMessage.version + 1))
         return None
     sender = mapping(raw.get("from"))
@@ -271,8 +271,9 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
         if direction == "owner" and payload.get("edited_business_message"):
             await db.execute(update(TelegramBusinessCommand).where(
                 TelegramBusinessCommand.source_message_id == stored.id,
-                TelegramBusinessCommand.state.in_(["queued", "running"]),
-            ).values(query="", quote=None, state="failed", error_code="COMMAND_STALE", finished_at=now(), version=TelegramBusinessCommand.version + 1))
+                or_(TelegramBusinessCommand.state.in_(["queued", "running"]),
+                    (TelegramBusinessCommand.state == "sent") & (stored.text != text)),
+            ).values(query="", quote=None, answer=None, knowledge_refs=[], state="failed", error_code="COMMAND_STALE", finished_at=now(), version=TelegramBusinessCommand.version + 1))
         if reply_id is None:
             reply_id = stored.reply_to_telegram_message_id
         if stored.deleted_at or (stored.text == text and stored.media_metadata == media_metadata and stored.reply_to_telegram_message_id == reply_id):

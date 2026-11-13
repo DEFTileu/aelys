@@ -179,7 +179,7 @@ class TelegramChatSend(Owned):
 
 
 class TelegramBusinessCommand(Owned):
-    """At-most-once owner request; quote/query encrypted, never raw Telegram updates."""
+    """At-most-once owner request; generated answer stored only after successful publish."""
     __tablename__ = "telegram_business_commands"
     __table_args__ = (UniqueConstraint("integration_id", "business_connection_id", "chat_id", "telegram_message_id", name="uq_telegram_business_command_message"),)
     integration_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_integrations.id"))
@@ -191,6 +191,9 @@ class TelegramBusinessCommand(Owned):
     kind: Mapped[str] = mapped_column(String(16))
     query: Mapped[str] = mapped_column(EncryptedText(), default="")
     quote: Mapped[str | None] = mapped_column(EncryptedText())
+    session_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    answer: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    knowledge_refs: Mapped[list] = mapped_column(JSON, default=list, server_default="[]", nullable=False)
     reply_to_message_id: Mapped[int] = mapped_column(BigInteger)
     state: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     run_id: Mapped[str | None] = mapped_column(String(36))

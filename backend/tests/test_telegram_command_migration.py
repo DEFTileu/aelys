@@ -18,9 +18,12 @@ def test_commands_upgrade_downgrade_preserves_identity(tmp_path):
         assert sa.inspect(engine).has_table('telegram_business_commands')
         columns = {column['name']: column for column in sa.inspect(engine).get_columns('telegram_business_commands')}
         assert columns['quote']['nullable'] and not columns['query']['nullable']
+        assert columns['session_id']['nullable'] and columns['answer']['nullable']
+        assert not columns['knowledge_refs']['nullable']
+        assert any(index['name'] == 'ix_telegram_business_commands_session_id' for index in sa.inspect(engine).get_indexes('telegram_business_commands'))
         with engine.connect() as db:
             assert db.scalar(sa.text('SELECT id FROM users')) == 'retained'
-            assert db.scalar(sa.text('SELECT version_num FROM alembic_version')) == '0053_telegram_business_commands'
+            assert db.scalar(sa.text('SELECT version_num FROM alembic_version')) == '0054_telegram_command_sessions'
         run_alembic(url, 'downgrade', '0052_telegram_owner_identity')
         assert not sa.inspect(engine).has_table('telegram_business_commands')
         run_alembic(url, 'upgrade', 'head')

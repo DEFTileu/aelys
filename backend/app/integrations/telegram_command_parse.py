@@ -5,13 +5,13 @@ from typing import Literal
 
 @dataclass(frozen=True)
 class ChatCommand:
-    kind: Literal["ask", "search"]
+    kind: Literal["ask", "search", "new"]
     query: str
     quote: str | None
 
 
 _COMMAND = re.compile(
-    r"^\s*(?:/\s*(?P<slash_kind>ask|search)|(?P<plain_kind>ask|search))"
+    r"^\s*(?:/\s*(?P<slash_kind>ask|search|new)|(?P<plain_kind>ask|search))"
     r"(?:@(?P<bot>[A-Za-z0-9_]+))?(?=$|\s)",
     re.IGNORECASE,
 )
@@ -31,8 +31,12 @@ def parse_chat_command(
         raise ValueError("command text exceeds 4096 characters")
 
     rawcase = (match.group("slash_kind") or match.group("plain_kind")).casefold()
-    kind: Literal["ask", "search"] = "ask" if rawcase == "ask" else "search"
+    kind: Literal["ask", "search", "new"] = "new" if rawcase == "new" else "ask" if rawcase == "ask" else "search"
     query = text[match.end() :].strip()
+    if kind == "new":
+        if query:
+            raise ValueError("new command does not accept arguments")
+        return ChatCommand(kind="new", query="", quote=None)
     usable_quote = quote if quote is not None and quote.strip() else None
     if not query:
         if usable_quote is None:

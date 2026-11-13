@@ -6,7 +6,7 @@ from app.core.config import get_settings
 from app.core.db import Base
 from app.core.models import User
 from cryptography.exceptions import InvalidTag
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from scripts import rotate_provider_secrets
@@ -20,6 +20,15 @@ async def rotation_db(tmp_path, monkeypatch):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'telegram-command-rotation.db'}")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+    # Keep this rotation fixture useful for schema snapshots made before answer.
+    async with engine.begin() as connection:
+        columns = await connection.run_sync(lambda sync_connection: {
+            column["name"] for column in inspect(sync_connection).get_columns(
+                "telegram_business_commands"
+            )
+        })
+        if "answer" not in columns:
+            await connection.execute(text("ALTER TABLE telegram_business_commands ADD COLUMN answer TEXT"))
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(rotate_provider_secrets, "SessionLocal", sessions)
     monkeypatch.setenv("AELYS_PROVIDER_ENCRYPTION_KEY_OLD", OLD_KEY)
@@ -67,15 +76,16 @@ async def rotation_db(tmp_path, monkeypatch):
             INSERT INTO telegram_business_commands
                 (id, owner_id, integration_id, source_message_id, source_version,
                  telegram_message_id, business_connection_id, chat_id, kind, query, quote,
-                 reply_to_message_id, state, version, created_at, updated_at)
+                 answer, reply_to_message_id, state, version, created_at, updated_at)
             VALUES
                 ('command-with-quote', 'owner', 'integration', 'source', 1, 10,
-                 'connection', 2, 'ask', :query, :quote, 3, 'queued', 1, :now, :now),
+                 'connection', 2, 'ask', :query, :quote, :answer, 3, 'queued', 1, :now, :now),
                 ('command-without-quote', 'owner', 'integration', 'source', 1, 11,
-                 'connection', 2, 'search', :second_query, NULL, 3, 'queued', 1, :now, :now)
+                 'connection', 2, 'search', :second_query, NULL, NULL, 3, 'queued', 1, :now, :now)
         """), {
             "query": encrypt_secret("Private query", OLD_KEY),
             "quote": encrypt_secret("Untrusted quote", OLD_KEY),
+            "answer": encrypt_secret("Published answer", OLD_KEY),
             "second_query": encrypt_secret("Another query", OLD_KEY),
             "now": now,
         })
@@ -96,7 +106,7 @@ async def test_rotates_owner_name_and_business_command_fields(rotation_db):
             "SELECT owner_name FROM telegram_integrations WHERE id = 'integration'"
         ))).scalar_one()
         commands = (await db.execute(text(
-            "SELECT id, query, quote FROM telegram_business_commands ORDER BY id"
+            "SELECT id, query, quote, answer FROM telegram_business_commands ORDER BY id"
         ))).mappings().all()
 
     assert decrypt_secret(integration, NEW_KEY) == "Private Owner"
@@ -107,12 +117,16 @@ async def test_rotates_owner_name_and_business_command_fields(rotation_db):
         ("command-without-quote", "Another query"),
     ]
     assert decrypt_secret(commands[0]["quote"], NEW_KEY) == "Untrusted quote"
+    assert decrypt_secret(commands[0]["answer"], NEW_KEY) == "Published answer"
+    assert commands[1]["answer"] is None
     assert commands[1]["quote"] is None
     for row in commands:
         with pytest.raises(InvalidTag):
             decrypt_secret(row["query"], OLD_KEY)
     with pytest.raises(InvalidTag):
         decrypt_secret(commands[0]["quote"], OLD_KEY)
+    with pytest.raises(InvalidTag):
+        decrypt_secret(commands[0]["answer"], OLD_KEY)
 
 
 @pytest.mark.asyncio

@@ -103,3 +103,12 @@ def test_explicit_query_retains_supplied_whitespace_quote():
     command = parse_chat_command("/ask explain", bot_username="aelysbot", quote="  ")
 
     assert command == ChatCommand(kind="ask", query="explain", quote="  ")
+
+
+@pytest.mark.parametrize('text', ['/new', '/ new', '/NEW@AelysBot'])
+def test_new_resets_only_explicit_slash_command(text):
+    assert parse_chat_command(text, bot_username='aelysbot') == ChatCommand(kind='new', query='', quote=None)
+
+
+def test_plain_new_is_not_a_command():
+    assert parse_chat_command('new', bot_username='aelysbot') is None

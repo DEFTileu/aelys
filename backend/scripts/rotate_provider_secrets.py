@@ -88,16 +88,18 @@ async def rotate() -> int:
                 'media': encrypt_secret(decrypt_secret(job['media_metadata'], old_key), new_key) if job['media_metadata'] is not None else None,
             })
         commands = (await db.execute(text(
-            "SELECT id, query, quote FROM telegram_business_commands"
+            "SELECT id, query, quote, answer FROM telegram_business_commands"
         ))).mappings().all()
         for command in commands:
             await db.execute(text(
-                "UPDATE telegram_business_commands SET query = :query, quote = :quote WHERE id = :id"
+                "UPDATE telegram_business_commands SET query = :query, quote = :quote, answer = :answer WHERE id = :id"
             ), {
                 "id": command["id"],
                 "query": encrypt_secret(decrypt_secret(command["query"], old_key), new_key),
                 "quote": (encrypt_secret(decrypt_secret(command["quote"], old_key), new_key)
                           if command["quote"] is not None else None),
+                "answer": (encrypt_secret(decrypt_secret(command["answer"], old_key), new_key)
+                           if command["answer"] is not None else None),
             })
         # Memory uses EncryptedText too. Never instantiate its ORM model under
         # the new configured key before old ciphertext has been re-encrypted.
