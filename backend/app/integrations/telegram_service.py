@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import unicodedata
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -47,6 +48,25 @@ def integer(value: Any) -> bool:
 
 def mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def owner_profile_name(user: dict[str, Any]) -> str | None:
+    """Build a bounded display name from verified Telegram profile fields only."""
+    parts: list[str] = []
+    for key in ("first_name", "last_name"):
+        value = user.get(key)
+        if not isinstance(value, str):
+            continue
+        normalized = unicodedata.normalize("NFKC", value)
+        normalized = "".join(
+            character for character in normalized
+            if not unicodedata.category(character).startswith("C") or character.isspace()
+        )
+        normalized = " ".join(normalized.split())
+        if normalized:
+            parts.append(normalized)
+    name = " ".join(parts)[:160].strip()
+    return name or None
 
 
 def remote_code(exc: TelegramError) -> str:
@@ -104,6 +124,7 @@ async def clear_messages(db: AsyncSession, integration_id: str, connection_id: s
 async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None:
     from .telegram_avatar import forget
     forget(item.id)
+    item.owner_name = None
     await db.execute(delete(TelegramChatSend).where(TelegramChatSend.integration_id == item.id))
     await db.execute(delete(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id))
     await db.execute(delete(TelegramBusinessConnection).where(TelegramBusinessConnection.integration_id == item.id))
@@ -129,6 +150,9 @@ async def accept_connection(db: AsyncSession, item: TelegramIntegration, raw: di
         db.add(connection)
     else:
         connection.enabled = enabled; connection.rights = rights; connection.updated_at = now()
+    owner_name = owner_profile_name(user) if enabled else None
+    if owner_name:
+        item.owner_name = owner_name
     if not enabled:
         await clear_messages(db, item.id, connection_id)
     await db.flush()
@@ -163,7 +187,14 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
         if isinstance(text, str) and text.startswith("/start aelys_") and chat.get("type") == "private" and integer(sender.get("id")) and chat.get("id") == sender["id"] and not sender.get("is_bot"):
             code = text[len("/start aelys_"):].strip()
             if 20 <= len(code) <= 64:
-                await db.execute(update(TelegramIntegration).where(TelegramIntegration.id == item.id, TelegramIntegration.enabled.is_(True), TelegramIntegration.binding_code_hash == token_hash(code), TelegramIntegration.binding_expires_at > now(), or_(TelegramIntegration.owner_telegram_id.is_(None), TelegramIntegration.owner_telegram_id == sender["id"])).values(owner_telegram_id=sender["id"], binding_code_hash=None, binding_expires_at=None, version=TelegramIntegration.version + 1).execution_options(synchronize_session=False))
+                values: dict[str, Any] = {
+                    "owner_telegram_id": sender["id"], "binding_code_hash": None,
+                    "binding_expires_at": None, "version": TelegramIntegration.version + 1,
+                }
+                owner_name = owner_profile_name(sender)
+                if owner_name:
+                    values["owner_name"] = owner_name
+                await db.execute(update(TelegramIntegration).where(TelegramIntegration.id == item.id, TelegramIntegration.enabled.is_(True), TelegramIntegration.binding_code_hash == token_hash(code), TelegramIntegration.binding_expires_at > now(), or_(TelegramIntegration.owner_telegram_id.is_(None), TelegramIntegration.owner_telegram_id == sender["id"])).values(**values).execution_options(synchronize_session=False))
                 await db.refresh(item)
             return None
         if (isinstance(text, str) and chat.get("type") == "private" and integer(sender.get("id"))
@@ -342,7 +373,7 @@ async def check_automatic_reply_current(db: AsyncSession, item: TelegramIntegrat
 
 
 async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: TelegramBusinessMessage, version: int, *, automatic: bool = False) -> TelegramBusinessMessage:
-    if message.media_metadata and (message.media or {}).get("kind") != "sticker":
+    if message.media_metadata and (message.media or {}).get("kind") not in {"sticker", "photo"}:
         raise error(409, "TELEGRAM_MEDIA_PREVIEW_ONLY", "Медиа доступно для просмотра владельцу; ответьте вручную.")
     from .telegram_ai import TelegramAIError, generate_business_draft
     if not item.enabled or not item.encrypted_token or message.deleted_at or message.direction != "inbound":

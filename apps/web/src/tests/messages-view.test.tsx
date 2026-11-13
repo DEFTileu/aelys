@@ -195,10 +195,15 @@ describe('manual chat composer', () => {
     await act(async()=>host.querySelector<HTMLButtonElement>('.msg__send')!.click())
     expect(client.sendTelegramChatMessage).toHaveBeenCalledWith({business_connection_id:'c',chat_id:1,text:'Plain text'},expect.anything())
   })
-  it('shows received photo and audio controls without sending them to AI',async()=>{
-    client.telegramMessages.mockResolvedValue([msg({media:{kind:'photo',file_size:32},text:'Photo caption'}),msg({id:'voice',telegram_message_id:2,media:{kind:'voice',file_size:32},text:''})])
+  it('shows photo draft handoff while keeping audio preview-only',async()=>{
+    client.telegramMessages.mockResolvedValue([
+      msg({media:{kind:'photo',file_size:32},text:'Photo caption',draft_status:'handoff',owner_note:'Please review the attached photo and reply manually.'}),
+      msg({id:'voice',telegram_message_id:0,sent_at:iso(2),media:{kind:'voice',file_size:32},text:''}),
+    ])
     await mount();expect(host.textContent).toContain('View photo');expect(host.textContent).toContain('Load voice message')
-    expect(host.querySelector('.msg__draft')).toBeNull();expect(client.draftTelegramMessage).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('Please review the attached photo and reply manually.')
+    expect(button('Draft a reply')).toBeTruthy()
+    expect(host.querySelector('.msg__draft')).not.toBeNull();expect(client.draftTelegramMessage).not.toHaveBeenCalled()
   })
 
 })

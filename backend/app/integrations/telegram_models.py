@@ -57,6 +57,7 @@ class TelegramIntegration(Owned):
     reply_delay_seconds: Mapped[int] = mapped_column(Integer, default=90, server_default="90")
     status_text: Mapped[str | None] = mapped_column(EncryptedText())
     status_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owner_name: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
     instructions: Mapped[str] = mapped_column(EncryptedText(), default="")
     provider_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_providers.id"))
     model: Mapped[str | None] = mapped_column(String(200))
