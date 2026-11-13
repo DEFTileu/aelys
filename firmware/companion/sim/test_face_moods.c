@@ -474,6 +474,30 @@ static void test_worried_lid_follows_blink(void)
     gone(f);
 }
 
+static void test_worried_lids_close_and_reopen_at_home_scale(void)
+{
+    lv_obj_t *f = show(MOOD_WORRIED, 130, HX, HY, 100);
+    sim_step(4680); /* 4.8 s: minimum openness */
+    lv_refr_now(NULL);
+    lv_obj_update_layout(f);
+    for (int side = 0; side < 2; ++side) {
+        lv_area_t a; lv_obj_get_coords(lv_obj_get_child(f, side), &a);
+        int cx = (a.x1 + a.x2) / 2;
+        CHECK(dark(cx, a.y1 + 1));
+        CHECK(lit(cx, a.y1 + 6));
+    }
+    sim_step(100); /* reopening */
+    lv_refr_now(NULL);
+    lv_obj_update_layout(f);
+    for (int side = 0; side < 2; ++side) {
+        lv_area_t a; lv_obj_get_coords(lv_obj_get_child(f, side), &a);
+        int cx = (a.x1 + a.x2) / 2;
+        CHECK(dark(cx, a.y1 + 5));
+        CHECK(lit(cx, a.y1 + 25));
+    }
+    gone(f);
+}
+
 static void test_asymmetric_wink_and_wake(void)
 {
     lv_obj_t *f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
@@ -539,5 +563,6 @@ int main(void)
     test_long_hidden_resume();
     test_highlight_compresses_with_blink();
     test_worried_lid_follows_blink();
+    test_worried_lids_close_and_reopen_at_home_scale();
     return g_failed ? 1 : 0;
 }
