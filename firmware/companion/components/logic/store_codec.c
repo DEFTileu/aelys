@@ -97,6 +97,23 @@ bool store_decode_lost(const uint8_t *buf, size_t len, lost_state_t *out)
     return true;
 }
 
+size_t store_encode_settings(const settings_t *in, uint8_t *buf, size_t cap)
+{
+    uint8_t p[STORE_SETTINGS_PAYLOAD];
+    p[0] = in->brightness;
+    memcpy(p + 1, &in->rev, sizeof in->rev);
+    return seal(STORE_SETTINGS_VERSION, p, sizeof p, buf, cap);
+}
+
+bool store_decode_settings(const uint8_t *buf, size_t len, settings_t *out)
+{
+    const uint8_t *p = unseal(STORE_SETTINGS_VERSION, buf, len, STORE_SETTINGS_PAYLOAD);
+    if (!p || p[0] < BRIGHTNESS_MIN || p[0] > BRIGHTNESS_MAX) return false;
+    out->brightness = p[0];
+    memcpy(&out->rev, p + 1, sizeof out->rev);
+    return true;
+}
+
 size_t store_encode_pair(const pair_rec_t *in, uint8_t *buf, size_t cap)
 {
     return seal(STORE_PAIR_VERSION, in, sizeof *in, buf, cap);

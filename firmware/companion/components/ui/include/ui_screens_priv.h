@@ -79,6 +79,8 @@ void scr_home_set_welcome(bool on);   /* first boot: "Hi, I'm Aelys / Connect me
 
 lv_obj_t *scr_lost_create(lv_obj_t *parent);
 void scr_lost_set_owner(const owner_info_t *o);
+void scr_lost_show_hint(void); /* "Only the owner can turn this off" for 2 s; a second call restarts it */
+void scr_lost_hide_hint(void);
 
 lv_obj_t *scr_ice_create(lv_obj_t *parent);
 void scr_ice_set_owner(const owner_info_t *o);

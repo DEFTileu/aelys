@@ -91,6 +91,22 @@ esp_err_t store_save_lost(const lost_state_t *s)
     return n ? write_blob("lost", b, n) : ESP_ERR_INVALID_SIZE;
 }
 
+void store_load_settings(settings_t *s)
+{
+    uint8_t b[STORE_SETTINGS_BLOB];
+    size_t n = read_blob("settings", b, sizeof b);
+    if (n && store_decode_settings(b, n, s)) return;
+    if (n) ESP_LOGW(TAG, "settings blob corrupt, using defaults");
+    settings_defaults(s);
+}
+
+esp_err_t store_save_settings(const settings_t *s)
+{
+    uint8_t b[STORE_SETTINGS_BLOB];
+    size_t n = store_encode_settings(s, b, sizeof b);
+    return n ? write_blob("settings", b, n) : ESP_ERR_INVALID_SIZE;
+}
+
 bool store_load_pair(pair_rec_t *p)
 {
     uint8_t b[STORE_PAIR_BLOB];
@@ -110,17 +126,20 @@ esp_err_t store_save_pair(const pair_rec_t *p)
     return err;
 }
 
-esp_err_t store_erase_pair(void)
+/* ESP_OK also when the key does not exist */
+static esp_err_t erase_key(const char *key)
 {
     nvs_handle_t h;
     esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
     if (err != ESP_OK) return err;
-    err = nvs_erase_key(h, "pair");
+    err = nvs_erase_key(h, key);
     if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     return err;
 }
+
+esp_err_t store_erase_pair(void) { return erase_key("pair"); }
 
 bool store_load_snap(snap_t *s)
 {
@@ -141,14 +160,16 @@ esp_err_t store_save_snap(const snap_t *s)
     return err;
 }
 
-esp_err_t store_erase_snap(void)
+esp_err_t store_erase_snap(void) { return erase_key("snap"); }
+
+esp_err_t store_erase_device_data(void)
 {
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
-    if (err != ESP_OK) return err;
-    err = nvs_erase_key(h, "snap");
-    if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
-    if (err == ESP_OK) err = nvs_commit(h);
-    nvs_close(h);
-    return err;
+    esp_err_t first = ESP_OK;
+    static const char *const keys[] = {"wifi", "owner", "lost", "settings", "snap"};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+        esp_err_t e = erase_key(keys[i]);
+        if (e != ESP_OK) ESP_LOGE(TAG, "erase %s: %s", keys[i], esp_err_to_name(e));
+        if (first == ESP_OK) first = e;
+    }
+    return first;
 }

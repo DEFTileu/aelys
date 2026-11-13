@@ -349,6 +349,8 @@ static void dispatch(link_event_t ev, int code)
     }
 }
 
+void link_unpair(void) { dispatch(LE_UNPAIR, 0); } /* LA_WIPE_PAIRING: do_wipe -> try_wipe -> after_wipe */
+
 /* ------------------------------------------------------------------ frames */
 
 static void handle_frame(int slot, int len)

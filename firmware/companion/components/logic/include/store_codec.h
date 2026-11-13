@@ -16,6 +16,7 @@
 #define STORE_OWNER_VERSION 2
 #define STORE_LOST_VERSION  2
 #define STORE_PAIR_VERSION  1
+#define STORE_SETTINGS_VERSION 1
 #define STORE_SNAP_VERSION  1 /* bump with any change to snap_t: a raw struct dump, so the layout is the format */
 
 typedef struct { char ssid[33]; char pass[65]; } wifi_cred_t;
@@ -29,6 +30,8 @@ typedef struct { char device_id[40]; char api_url[129]; uint8_t priv[32]; } pair
 #define STORE_WIFI_BLOB  (1 + sizeof(wifi_list_t) + 4)
 #define STORE_LOST_PAYLOAD (1 + sizeof(uint32_t) + sizeof(owner_info_t)) /* on, rev, shown */
 #define STORE_LOST_BLOB  (1 + STORE_LOST_PAYLOAD + 4)
+#define STORE_SETTINGS_PAYLOAD (1 + sizeof(uint32_t)) /* brightness, rev */
+#define STORE_SETTINGS_BLOB (1 + STORE_SETTINGS_PAYLOAD + 4)
 #define STORE_PAIR_BLOB  (1 + sizeof(pair_rec_t) + 4)
 #define STORE_SNAP_BLOB  (1 + sizeof(snap_t) + 4)
 
@@ -41,6 +44,8 @@ size_t store_encode_wifi(const wifi_list_t *in, uint8_t *buf, size_t cap);
 bool   store_decode_wifi(const uint8_t *buf, size_t len, wifi_list_t *out); /* also false if n > WIFI_MAX */
 size_t store_encode_lost(const lost_state_t *in, uint8_t *buf, size_t cap);
 bool   store_decode_lost(const uint8_t *buf, size_t len, lost_state_t *out);
+size_t store_encode_settings(const settings_t *in, uint8_t *buf, size_t cap);
+bool   store_decode_settings(const uint8_t *buf, size_t len, settings_t *out); /* also false if brightness is outside 5..100 */
 size_t store_encode_pair(const pair_rec_t *in, uint8_t *buf, size_t cap);
 bool   store_decode_pair(const uint8_t *buf, size_t len, pair_rec_t *out);
 size_t store_encode_snap(const snap_t *in, uint8_t *buf, size_t cap);

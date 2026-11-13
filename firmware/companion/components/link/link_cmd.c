@@ -1,5 +1,5 @@
 /* Commands from the server. The link answers the two failures it can judge by itself (bad args, unknown name); a
- * valid known command goes to link_deps.on_command (Task F9 handlers). */
+ * valid known command goes to link_deps.on_command (main/app_main.c). */
 #include "esp_log.h"
 #include "link_priv.h"
 

@@ -71,3 +71,17 @@ bool owner_apply_ice(owner_info_t *owner, lost_state_t *lost, const ice_cmd_t *c
 /* on: shown = owner's ICE fields + the factory phone/telegram that the show_* flags allow + message,
  * email, qr (a QR whose target is hidden is dropped, so it cannot leak it). off: only lost->on = false. */
 bool owner_apply_lost(lost_state_t *lost, const owner_info_t *owner, const lost_cmd_t *c);
+
+/* Device settings from the app. brightness is a percent, 5..100; rev works like lost_cmd_t.rev. */
+typedef struct {
+    uint8_t brightness;
+    uint32_t rev; /* rev of the last applied settings command, 0 = none */
+} settings_t;
+#define BRIGHTNESS_MIN 5
+#define BRIGHTNESS_MAX 100
+
+void settings_defaults(settings_t *s); /* 100 %, rev 0 */
+/* Clamps pct to 5..100. False and nothing changed when rev is nonzero and not newer than s->rev (as owner_apply_*). */
+bool settings_apply(settings_t *s, uint8_t pct, uint32_t rev);
+/* Panel brightness register (CO5300 0x51) for a percent: clamped to 5..100, then 13..255. */
+uint8_t brightness_raw(uint8_t pct);

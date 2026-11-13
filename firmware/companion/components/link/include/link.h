@@ -12,8 +12,8 @@
 
 typedef struct {
     /* Runs in the link task. m is valid only during the call. Must answer with link_send_ack (wifi_scan with a
-     * wifi_scan_result built by proto_wifi_scan_result and link_send_raw). BAD_ARGS and UNSUPPORTED acks are sent by
-     * the link itself and never reach this hook. */
+     * wifi_scan_result built by proto_wifi_scan_result and link_send_raw). BAD_ARGS acks and acks of unknown names are
+     * sent by the link itself and never reach this hook. */
     void (*on_command)(const proto_msg_t *m);
     void (*save_snap)(const snap_t *s);   /* flash, at most every 300 s (at once in lost mode) */
     bool (*load_snap)(snap_t *s);         /* false: none saved (or lost mode is on: nothing may show) */
@@ -37,6 +37,11 @@ void link_notify_paired(void);
 /* ui task: queue an action for the server. False when the board is not online (the UI shows "No connection") or four
  * actions are already waiting. The answer arrives as UI_EV_ACTION. target_id: notification or task id, NULL for focus.* */
 bool link_post_action(act_kind_t k, const char *target_id);
+
+/* Unpair command, link task only (an on_command handler), after the ack went out: closes the socket, wipes the pairing
+ * unconditionally and runs the same clean-up as a server-side wipe (reset_revs, erase_snap, empty snapshot on screen), then
+ * the state machine waits unpaired. Other stored data is the caller's to erase. */
+void link_unpair(void);
 
 /* From the link task (command handlers) or any task: false when the socket is not open or the send failed. */
 bool link_send_ack(const char *cmd_id, bool ok, const char *error_code);

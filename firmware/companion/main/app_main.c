@@ -4,6 +4,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_psram.h"
+#include "esp_system.h"
 #include "identity.h"
 #include "link.h"
 #include "metrics.h"
@@ -20,13 +21,88 @@ static const char *TAG = "companion";
 
 static owner_info_t owner;
 static lost_state_t lost;
+static settings_t settings;
 static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi, home shows the welcome */
 
 static bool lost_is_on(void) { return lost.on; }
 
 #ifndef CONFIG_AELYS_NO_WIFI
-/* Link hooks. The command handlers are Task F9: until then every valid command is answered UNSUPPORTED. */
-static void on_command(const proto_msg_t *m) { link_send_ack(m->id, false, "UNSUPPORTED"); }
+/* Command handlers (link task, the only writer of owner/lost/settings once the link runs). Never call LVGL from here: owner data goes
+ * through ui_owner_tb, the rest as UI events. Every command is acked, a stale rev too; a state is saved exactly when its apply
+ * function returns true. */
+static void post_ui(ui_event_t ev)
+{
+    for (int i = 0; i < 10 && !lv_port_post(&ev); i++) vTaskDelay(pdMS_TO_TICKS(10)); /* queue of 16 is full: the ui task is busy */
+}
+
+static void publish_owner(void) /* what the lost and ICE screens show: lost.shown while lost, else the owner's data */
+{
+    *(owner_info_t *)tribuf_back(&ui_owner_tb) = lost.on ? lost.shown : owner;
+    tribuf_publish(&ui_owner_tb);
+    post_ui((ui_event_t){.type = UI_EV_OWNER});
+}
+
+static void warn_save(const char *what, esp_err_t e)
+{
+    if (e != ESP_OK) ESP_LOGW(TAG, "%s not saved: %s", what, esp_err_to_name(e)); /* the change stays live until the next reboot */
+}
+
+static void restart_soon(void)
+{
+    vTaskDelay(pdMS_TO_TICKS(500)); /* the ack (already sent) and the logs get out */
+    esp_restart();
+}
+
+static void unpair_board(void)
+{
+    link_unpair(); /* pairing, revs, cached snapshot */
+    warn_save("unpair wipe", store_erase_device_data()); /* Wi-Fi list, owner, lost, settings, snap */
+    owner_defaults(&owner);
+    memset(&lost, 0, sizeof lost);
+    settings_defaults(&settings);
+}
+
+static void on_command(const proto_msg_t *m)
+{
+    const char *id = m->id;
+    switch (m->u.cmd.name) {
+    case CMD_LOST_MODE:
+        if (owner_apply_lost(&lost, &owner, &m->u.cmd.a.lost)) {
+            warn_save("lost", store_save_lost(&lost));
+            publish_owner();
+            post_ui((ui_event_t){.type = UI_EV_LOST, .len = 1, .data = {lost.on}});
+        }
+        link_send_ack(id, true, NULL);
+        break;
+    case CMD_ICE_UPDATE:
+        if (owner_apply_ice(&owner, &lost, &m->u.cmd.a.ice)) {
+            warn_save("owner", store_save_owner(&owner)); /* owner first, then lost */
+            if (lost.on) warn_save("lost", store_save_lost(&lost));
+            publish_owner();
+        }
+        link_send_ack(id, true, NULL);
+        break;
+    case CMD_SETTINGS:
+        if (settings_apply(&settings, m->u.cmd.a.settings.brightness, m->u.cmd.a.settings.rev)) {
+            warn_save("settings", store_save_settings(&settings));
+            warn_save("brightness", board_display_set_brightness(settings.brightness));
+        }
+        link_send_ack(id, true, NULL);
+        break;
+    case CMD_RESTART:
+        link_send_ack(id, true, NULL);
+        restart_soon();
+        break;
+    case CMD_UNPAIR:
+        link_send_ack(id, true, NULL); /* before the wipe: the server revokes the board right after sending the command */
+        unpair_board();
+        restart_soon(); /* first boot: no pairing, no Wi-Fi, the welcome screen */
+        break;
+    default: /* play_sound, wifi_*: later tasks */
+        link_send_ack(id, false, "UNSUPPORTED");
+        break;
+    }
+}
 /* Lost mode shows no cached data. A session that was running before the power cut is not running now: drop it. */
 static bool load_snap(snap_t *s)
 {
@@ -46,8 +122,10 @@ static void reset_revs(void)
 {
     owner.ice_rev = 0;
     lost.rev = 0;
+    settings.rev = 0;
     store_save_owner(&owner);
     store_save_lost(&lost);
+    store_save_settings(&settings);
 }
 #endif
 
@@ -94,6 +172,8 @@ void app_main(void)
     if (nerr != ESP_OK) ESP_LOGE(TAG, "nvs: %s (running on defaults)", esp_err_to_name(nerr));
     store_load_owner(&owner);
     store_load_lost(&lost);
+    store_load_settings(&settings);
+    if (board_display_set_brightness(settings.brightness) != ESP_OK) ESP_LOGW(TAG, "brightness %d%% not applied", settings.brightness);
 #ifdef CONFIG_AELYS_IDENTITY_SELFTEST
     identity_selftest();
 #else

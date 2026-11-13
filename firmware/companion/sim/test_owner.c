@@ -180,6 +180,72 @@ static void test_stale_lost_rev_changes_nothing(void)
     CHECK_EQ(l.rev, 4);
 }
 
+static void test_lost_command_roundtrip_through_store(void)
+{
+    owner_info_t o, o2; lost_state_t l = { 0 }, l2 = { 0 }; lost_cmd_t c;
+    uint8_t ob[STORE_OWNER_BLOB], lb[STORE_LOST_BLOB];
+    with_ice(&o);
+    lost_fixture(&c);
+    c.rev = 9;
+    CHECK(owner_apply_lost(&l, &o, &c));
+    CHECK_EQ(store_encode_owner(&o, ob, sizeof ob), sizeof ob);
+    CHECK_EQ(store_encode_lost(&l, lb, sizeof lb), sizeof lb);
+    CHECK(store_decode_owner(ob, sizeof ob, &o2));
+    CHECK(store_decode_lost(lb, sizeof lb, &l2));
+    CHECK(!memcmp(&o, &o2, sizeof o));
+    CHECK(l2.on && l2.rev == 9 && !memcmp(&l.shown, &l2.shown, sizeof l.shown));
+    c.on = false; c.rev = 10;                            /* a reboot after "off" stays off, rev kept */
+    CHECK(owner_apply_lost(&l, &o, &c));
+    CHECK_EQ(store_encode_lost(&l, lb, sizeof lb), sizeof lb);
+    CHECK(store_decode_lost(lb, sizeof lb, &l2));
+    CHECK(!l2.on && l2.rev == 10);
+}
+
+/* ice_update while lost: the owner blob and the lost blob both carry the new data (the board saves both) */
+static void test_ice_while_lost_roundtrips_both_blobs(void)
+{
+    owner_info_t o, o2; lost_state_t l = { 0 }, l2 = { 0 }; lost_cmd_t lc; ice_cmd_t ic;
+    uint8_t ob[STORE_OWNER_BLOB], lb[STORE_LOST_BLOB];
+    with_ice(&o);
+    lost_fixture(&lc);
+    owner_apply_lost(&l, &o, &lc);
+    ice_fixture(&ic);
+    strcpy(ic.med_note, "Asthma");
+    ic.rev = 4;
+    CHECK(owner_apply_ice(&o, &l, &ic));
+    store_encode_owner(&o, ob, sizeof ob);
+    store_encode_lost(&l, lb, sizeof lb);
+    CHECK(store_decode_owner(ob, sizeof ob, &o2) && store_decode_lost(lb, sizeof lb, &l2));
+    CHECK(!strcmp(o2.med_note, "Asthma") && !strcmp(l2.shown.med_note, "Asthma"));
+    CHECK_EQ(o2.ice_rev, 4);
+    CHECK(!strcmp(l2.shown.message, "Please call me"));
+}
+
+static void test_settings_apply_and_brightness_map(void)
+{
+    settings_t s;
+    settings_defaults(&s);
+    CHECK_EQ(s.brightness, 100);
+    CHECK_EQ(s.rev, 0);
+    CHECK(settings_apply(&s, 40, 3));
+    CHECK_EQ(s.brightness, 40);
+    CHECK_EQ(s.rev, 3);
+    CHECK(!settings_apply(&s, 80, 3));                   /* a redelivery */
+    CHECK(!settings_apply(&s, 80, 2));                   /* an older one arriving late */
+    CHECK_EQ(s.brightness, 40);
+    CHECK(settings_apply(&s, 1, 4));                     /* out of range is clamped, never stored as is */
+    CHECK_EQ(s.brightness, 5);
+    CHECK(settings_apply(&s, 250, 0));                   /* unversioned applies, rev stays */
+    CHECK_EQ(s.brightness, 100);
+    CHECK_EQ(s.rev, 4);
+
+    CHECK_EQ(brightness_raw(5), 13);                     /* 5..100 % -> 13..255 */
+    CHECK_EQ(brightness_raw(100), 255);
+    CHECK_EQ(brightness_raw(50), 128);
+    CHECK_EQ(brightness_raw(0), 13);
+    CHECK_EQ(brightness_raw(200), 255);
+}
+
 int main(void)
 {
     test_ice_fields_land_in_owner();
@@ -191,5 +257,8 @@ int main(void)
     test_long_fields_stay_terminated();
     test_stale_ice_rev_changes_nothing();
     test_stale_lost_rev_changes_nothing();
+    test_lost_command_roundtrip_through_store();
+    test_ice_while_lost_roundtrips_both_blobs();
+    test_settings_apply_and_brightness_map();
     return g_failed ? 1 : 0;
 }

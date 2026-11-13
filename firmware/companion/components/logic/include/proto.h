@@ -28,7 +28,7 @@ typedef struct {
                 lost_cmd_t lost;
                 ice_cmd_t ice;
                 char blob[704]; /* wifi_add: the base64url string, NUL-terminated */
-                struct { uint8_t brightness; } settings;
+                struct { uint8_t brightness; uint32_t rev; } settings; /* rev 0 = missing */
                 char ssid[33];  /* wifi_remove */
                 struct { uint8_t n; char ssid[5][33]; } order;
             } a;

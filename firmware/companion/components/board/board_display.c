@@ -1,6 +1,7 @@
 #include "board.h"
 #include "board_pins.h"
 #include "board_priv.h"
+#include "owner.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_lcd_co5300.h"
@@ -59,6 +60,14 @@ esp_err_t board_display_init(void)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(panel), "board", "reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), "board", "init");
     return ESP_OK; /* 0x29 (display on) is the last init command */
+}
+
+esp_err_t board_display_set_brightness(uint8_t pct)
+{
+    if (!io) return ESP_ERR_INVALID_STATE;
+    uint8_t raw = brightness_raw(pct);
+    /* QSPI framing, as the CO5300 driver does it for its own commands: write opcode 0x02, then the command byte */
+    return esp_lcd_panel_io_tx_param(io, (0x02 << 24) | (0x51 << 8), &raw, 1);
 }
 
 esp_lcd_panel_handle_t board_panel(void) { return panel; }

@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out file.bmp [--scale 100]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -121,6 +121,12 @@ static int screen_shot(const char *shot)
     sim_post(UI_EV_TIME, time_hm, sizeof time_hm);
     if (!strcmp(shot, "home")) return 0;
     if (!strcmp(shot, "lost") || !strcmp(shot, "lost_max") || !strcmp(shot, "lost_cyr")) { sim_post(UI_EV_LOST, &on, 1); return 0; }
+    if (!strcmp(shot, "lost_hint")) { /* a key pressed on the lost screen */
+        const uint8_t key = BTN_LOW;
+        sim_post(UI_EV_LOST, &on, 1);
+        sim_post(UI_EV_BTN, &key, 1);
+        return 0;
+    }
     if (!strcmp(shot, "ice") || !strcmp(shot, "ice_max") || !strcmp(shot, "ice_defaults") || !strcmp(shot, "ice_cyr")) { sim_post(UI_EV_COMBO_FIRE, NULL, 0); return 0; }
     if (!strcmp(shot, "pair")) { const uint8_t d[7] = { PAIR_UI_CODE, '4', '8', '2', '9', '1', '3' }; sim_post(UI_EV_PAIR, d, sizeof d); return 0; }
     if (!strcmp(shot, "pair_done")) { const uint8_t d = PAIR_UI_DONE; sim_post(UI_EV_PAIR, &d, 1); return 0; }
@@ -140,7 +146,7 @@ int main(int argc, char **argv)
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out <file.bmp> [--scale <percent>]\n",
                 argv[0]);
         return 2;
     }

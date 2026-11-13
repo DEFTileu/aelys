@@ -1,8 +1,10 @@
 /* Lost mode (design "10 · Safety", "Lost mode"): amber ring, sad Aelys, "This Aelys is lost", the owner's
  * message, QR to the contact link and name / phone / Telegram / email. Empty fields and fields whose
  * owner->show bit is clear are left out.
- * Deviations: no phone/send icons (no icon font), no pulsing ring (no opacity layers), no second quote line
- * (owner_info_t has one message). */
+ * Design "Режим потери · нажата кнопка": a key or a touch shows a hint pill for 2 s (scr_lost_show_hint); it is part of this
+ * screen, not the generic toast (which never appears over lost mode).
+ * Deviations: no phone/send icons and no lock icon in the hint (no icon font), no pulsing ring (no opacity layers),
+ * no second quote line (owner_info_t has one message). */
 #include <string.h>
 #include "ui_screens_priv.h"
 
@@ -10,8 +12,11 @@
 #define COL_W 190
 #define COL_X (QR_SIZE + 16)
 #define MSG_W 300
+#define HINT_MS 2000
+#define HINT_W 280
+#define HINT_PAD 18
 
-static struct { lv_obj_t *root, *face, *title, *msg, *row, *qr, *name, *phone, *tg, *email; } h;
+static struct { lv_obj_t *root, *face, *title, *msg, *row, *qr, *name, *phone, *tg, *email, *hint; lv_timer_t *hint_timer; } h;
 
 void scr_lost_set_owner(const owner_info_t *o)
 {
@@ -42,6 +47,30 @@ void scr_lost_set_owner(const owner_info_t *o)
     ui_stack(stack, gap, 4, 0, UI_SCREEN_SIZE, -1);
 }
 
+static void hint_timeout(lv_timer_t *t)
+{
+    (void)t;
+    h.hint_timer = NULL; /* one-shot */
+    lv_obj_set_hidden(h.hint, true);
+}
+
+void scr_lost_hide_hint(void)
+{
+    if (h.hint_timer) { lv_timer_delete(h.hint_timer); h.hint_timer = NULL; }
+    lv_obj_set_hidden(h.hint, true);
+}
+
+void scr_lost_show_hint(void)
+{
+    lv_obj_set_hidden(h.hint, false);
+    if (h.hint_timer) {
+        lv_timer_reset(h.hint_timer);
+    } else {
+        h.hint_timer = lv_timer_create(hint_timeout, HINT_MS, NULL);
+        lv_timer_set_repeat_count(h.hint_timer, 1);
+    }
+}
+
 lv_obj_t *scr_lost_create(lv_obj_t *parent)
 {
     h.root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
@@ -63,5 +92,19 @@ lv_obj_t *scr_lost_create(lv_obj_t *parent)
     h.phone = ui_label(h.row, &inter_16, UI_COLOR_TEXT2, COL_W, 1, LV_TEXT_ALIGN_LEFT);
     h.tg = ui_label(h.row, &inter_16, UI_COLOR_TEXT2, COL_W, 1, LV_TEXT_ALIGN_LEFT);
     h.email = ui_label(h.row, &inter_16, UI_COLOR_TEXT2, COL_W, 1, LV_TEXT_ALIGN_LEFT);
+
+    const char *txt = "Only the owner can turn this off";
+    int32_t th = ui_text_height(txt, &inter_16, HINT_W - 2 * HINT_PAD, 2);
+    h.hint = ui_plain(h.root, HINT_W, th + 28);
+    lv_obj_set_pos(h.hint, (UI_SCREEN_SIZE - HINT_W) / 2, 58);
+    lv_obj_set_style_radius(h.hint, 24, 0);
+    lv_obj_set_style_bg_color(h.hint, lv_color_hex(0x1C1A24), 0);
+    lv_obj_set_style_bg_opa(h.hint, LV_OPA_COVER, 0);
+    lv_obj_t *l = ui_label(h.hint, &inter_16, UI_COLOR_TEXT, HINT_W - 2 * HINT_PAD, 2, LV_TEXT_ALIGN_CENTER);
+    lv_label_set_text(l, txt);
+    lv_obj_set_height(l, th);
+    lv_obj_center(l);
+    lv_obj_set_hidden(h.hint, true);
+    h.hint_timer = NULL;
     return h.root;
 }

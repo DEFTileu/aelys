@@ -145,6 +145,13 @@ static void test_parses_v11_examples(void)
     CHECK(parse_file("cmd_settings"));
     CHECK_EQ(g_m.u.cmd.name, CMD_SETTINGS);
     CHECK_EQ(g_m.u.cmd.a.settings.brightness, 40);
+    CHECK_EQ(g_m.u.cmd.a.settings.rev, 2);
+    const char *norev = "{\"type\":\"command\",\"id\":\"c\",\"name\":\"settings\",\"args\":{\"brightness\":60}}";
+    CHECK(proto_parse(norev, strlen(norev), &g_m));       /* v1.1 server without a rev: unversioned */
+    CHECK_EQ(g_m.u.cmd.a.settings.rev, 0);
+    const char *badrev = "{\"type\":\"command\",\"id\":\"c\",\"name\":\"settings\",\"args\":{\"brightness\":60,\"rev\":-1}}";
+    CHECK(!proto_parse(badrev, strlen(badrev), &g_m));
+    CHECK_EQ(g_m.type, MSG_COMMAND);
 
     CHECK(parse_file("cmd_wifi_remove"));
     CHECK_EQ(g_m.u.cmd.name, CMD_WIFI_REMOVE);

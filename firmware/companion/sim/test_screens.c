@@ -863,6 +863,53 @@ static void test_gestures_and_lost_mode(void)
     CHECK_EQ(ui_current_screen(), SCR_HOME);
 }
 
+/* Design "Режим потери · нажата кнопка": a key or a touch on the lost screen leaves lost mode alone and shows the hint for 2 s. */
+static void test_lost_hint_toast_shot(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    const char *hint = "Only the owner can turn this off";
+    post_lost(1);
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    CHECK(!shows_text(scr, hint));
+    btn(BTN_LOW);
+    sim_step(100);
+    CHECK(shows_text(scr, hint));
+    check_inside("lost hint");
+    CHECK_EQ(missing_glyphs(scr), 0);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    sim_step(1700);
+    CHECK(shows_text(scr, hint));                    /* 1.9 s */
+    sim_step(300);
+    CHECK(!shows_text(scr, hint));                   /* gone after 2 s */
+
+    tap_at(233, 237);                                /* a tap, then a swipe, then the top key each bring it back */
+    sim_step(100);
+    CHECK(shows_text(scr, hint));
+    sim_step(1500);
+    swipe(UI_EV_SWIPE_LEFT);                         /* restarts the 2 s */
+    sim_step(1500);
+    CHECK(shows_text(scr, hint));
+    sim_step(600);
+    CHECK(!shows_text(scr, hint));
+    btn(BTN_TOP);
+    sim_step(100);
+    CHECK(shows_text(scr, hint));
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+
+    post(UI_EV_COMBO_FIRE);                          /* the ICE card is not lost mode's to guard: no hint over it, */
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_ICE);
+    CHECK(!shows_text(scr, hint));
+    tap_at(233, 233);                                /* and the touch that closes it is not a tap on the lost screen */
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    CHECK(!shows_text(scr, hint));
+    post_lost(0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK(!shows_text(scr, hint));
+}
+
 int main(void)
 {
     sim_init();
@@ -888,5 +935,6 @@ int main(void)
     test_done_ring_is_closed();
     test_idle_screens_do_not_redraw();
     test_gestures_and_lost_mode();
+    test_lost_hint_toast_shot();
     return g_failed ? 1 : 0;
 }

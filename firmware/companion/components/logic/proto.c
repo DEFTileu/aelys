@@ -320,7 +320,7 @@ static bool parse_args(const P *p, int a, cmd_name_t name, proto_msg_t *out)
     case CMD_SETTINGS:
         if (!get_int(p, a, "brightness", &b, S_REQ) || b < 5 || b > 100) return false;
         x->settings.brightness = (uint8_t)b;
-        return true;
+        return get_rev(p, a, &x->settings.rev);
     case CMD_WIFI_REMOVE: return get_str(p, a, "ssid", x->ssid, sizeof x->ssid, S_REQ) && x->ssid[0];
     case CMD_WIFI_ORDER: return parse_order(p, a, &x->order.n, x->order.ssid);
     default: return true; /* play_sound, wifi_scan, restart, unpair, unknown: args ignored */

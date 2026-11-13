@@ -79,3 +79,23 @@ bool owner_apply_lost(lost_state_t *lost, const owner_info_t *owner, const lost_
     lost->on = true;
     return true;
 }
+
+void settings_defaults(settings_t *s)
+{
+    s->brightness = BRIGHTNESS_MAX;
+    s->rev = 0;
+}
+
+bool settings_apply(settings_t *s, uint8_t pct, uint32_t rev)
+{
+    if (stale(rev, s->rev)) return false;
+    s->brightness = pct < BRIGHTNESS_MIN ? BRIGHTNESS_MIN : pct > BRIGHTNESS_MAX ? BRIGHTNESS_MAX : pct;
+    if (rev) s->rev = rev;
+    return true;
+}
+
+uint8_t brightness_raw(uint8_t pct)
+{
+    uint32_t p = pct < BRIGHTNESS_MIN ? BRIGHTNESS_MIN : pct > BRIGHTNESS_MAX ? BRIGHTNESS_MAX : pct;
+    return (uint8_t)((p * 255 + 50) / 100);
+}

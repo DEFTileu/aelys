@@ -313,6 +313,30 @@ static void test_snap_overlong_and_bad_counts_are_made_safe(void)
     CHECK(!store_decode_snap(buf, sizeof buf, &out));
 }
 
+static void test_settings_roundtrip_and_bounds(void)
+{
+    settings_t in = { .brightness = 35, .rev = 7 }, out = { 0 }; uint8_t buf[STORE_SETTINGS_BLOB];
+    size_t n = store_encode_settings(&in, buf, sizeof buf);
+    CHECK_EQ(n, sizeof buf);
+    CHECK_EQ(buf[0], STORE_SETTINGS_VERSION);
+    CHECK_EQ(STORE_SETTINGS_VERSION, 1);
+    CHECK(store_decode_settings(buf, n, &out));
+    CHECK(out.brightness == 35 && out.rev == 7);
+    CHECK_EQ(store_encode_settings(&in, buf, n - 1), 0); /* too small */
+    buf[2] ^= 1;
+    CHECK(!store_decode_settings(buf, n, &out));         /* corrupt */
+    store_encode_settings(&in, buf, sizeof buf);
+    buf[0] = 2; reseal(buf, n);
+    CHECK(!store_decode_settings(buf, n, &out));         /* another version */
+    store_encode_settings(&in, buf, sizeof buf);
+    buf[1] = 4; reseal(buf, n);                          /* a valid CRC does not make 4 % a brightness */
+    CHECK(!store_decode_settings(buf, n, &out));
+    buf[1] = 101; reseal(buf, n);
+    CHECK(!store_decode_settings(buf, n, &out));
+    CHECK(!store_decode_settings(buf, n - 1, &out));
+    CHECK(out.brightness == 35 && out.rev == 7);         /* untouched by every failure */
+}
+
 int main(void)
 {
     test_crc32_known_vector();
@@ -331,5 +355,6 @@ int main(void)
     test_pair_roundtrip_and_corrupt();
     test_snap_roundtrip();
     test_snap_overlong_and_bad_counts_are_made_safe();
+    test_settings_roundtrip_and_bounds();
     return g_failed ? 1 : 0;
 }

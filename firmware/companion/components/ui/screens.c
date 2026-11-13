@@ -285,6 +285,7 @@ static void show(scr_t s)
     scr_hold_set(0);
     stop_timer(&g.hold_timer);
     if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) scr_toast_hide();
+    if (s != SCR_LOST) scr_lost_hide_hint();
     if (s == SCR_ICE) arm_timer(&g.ice_timer, ice_timeout, ICE_TIMEOUT_MS);
     else stop_timer(&g.ice_timer);
     if (s == SCR_INBOX) arm_timer(&g.inbox_timer, inbox_timeout, INBOX_TIMEOUT_MS);
@@ -524,6 +525,7 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_TAP:
         stop_timer(&g.hold_timer);
         /* a touch that began on another screen (it closed the ICE card) is not a tap on this one */
+        if (g.lost && g.cur == SCR_LOST && g.down_scr == SCR_LOST) scr_lost_show_hint();
         if (g.lost || ev->len < 4 || g.down_scr != g.cur) return;
         on_tap((int32_t)(ev->data[0] | ev->data[1] << 8), (int32_t)(ev->data[2] | ev->data[3] << 8), &next);
         break;
@@ -531,9 +533,11 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_SWIPE_RIGHT:
         stop_timer(&g.hold_timer);
         if (g.down_scr != g.cur) return;
+        if (g.cur == SCR_LOST) scr_lost_show_hint();
         next = screen_next(g.cur, g.lost, (ui_event_type_t)ev->type);
         break;
     case UI_EV_BTN:
+        if (g.cur == SCR_LOST && ev->len >= 1) scr_lost_show_hint();
         if (g.lost || ev->len < 1) return;
         if (ev->data[0] == BTN_TOP && g.cur == SCR_FOCUS) {
             act(scr_focus_top_action(), NULL);

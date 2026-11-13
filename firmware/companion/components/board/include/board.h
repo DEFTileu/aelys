@@ -13,6 +13,10 @@ extern "C" {
 esp_err_t board_init(void);
 i2c_master_bus_handle_t board_i2c_bus(void);
 
+/* Panel brightness, 5..100 % (clamped) -> CO5300 register 0x51 = 13..255. Safe from any task (the panel IO serialises the bus);
+ * ESP_ERR_INVALID_STATE before board_init(). */
+esp_err_t board_display_set_brightness(uint8_t pct);
+
 /* Battery state of charge (0..100) and whether it is charging, from the AXP2101 fuel gauge. False when there is no
  * battery or the PMIC does not answer; the outputs are then untouched. Safe from any task. */
 bool board_battery(uint8_t *pct, bool *charging);
