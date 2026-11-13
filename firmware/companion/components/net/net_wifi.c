@@ -236,10 +236,10 @@ static int run_scan(wifi_seen_t *out, int max)
 /* remove or reorder: edit a copy, persist it, and only then adopt it, so RAM and flash never disagree. 1 changed, 0 nothing to do, -1 not saved */
 static int run_edit(bool remove)
 {
+    if (remove && !wifi_list_can_remove(&saved, rq.ssid, net_wifi_current_ssid())) return -3; /* never strand the board; checked before the copy below holds the passwords */
     wifi_list_t next = saved;
     char cur[33] = "";
     if (idx < saved.n) strlcpy(cur, saved.net[idx].ssid, sizeof cur);
-    if (remove && !wifi_list_can_remove(&saved, rq.ssid, net_wifi_current_ssid())) return -3; /* never strand the board */
     bool changed = remove ? wifi_list_remove(&next, rq.ssid) : wifi_list_reorder(&next, (const char(*)[33])rq.order, rq.n);
     int r = 0;
     if (changed) {
