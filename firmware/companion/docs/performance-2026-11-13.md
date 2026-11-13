@@ -162,7 +162,7 @@ independent review found no material config/report issue. These checks do not
 replace the remaining hardware gates above. Push/deployment and OTA/power work
 are outside this slice; no irreversible board operation was performed.
 
-## Home/Today invalidation experiment (hardware result pending)
+## Home/Today invalidation experiment (retained disabled)
 
 The visibility switch previously queued the full 466×466 screen (217156
 pixels). `CONFIG_AELYS_SPARSE_SCREEN_SWITCH`, disabled by default, instead queues
@@ -184,3 +184,71 @@ coalesced navigation, offline and toast overlay/removal. It does not model
 DMA/TE timing. These host checks establish image equivalence for the fixtures,
 not ESP32 latency or sustained frame rate. Keep the experiment off until a
 same-configuration on/off board comparison establishes its actual cost.
+
+
+### Controlled configuration, two 310 s board captures
+
+Both images were built from local main `3f33073`, with a 32 KB data cache,
+performance probe enabled, 60 s forced-reconnect setting and the same saved
+network priority. Generated configurations differ only in
+`CONFIG_AELYS_SPARSE_SCREEN_SWITCH`. Each app-only flash at `0x20000` was
+hash-verified; pairing and both saved Wi-Fi profiles were preserved.
+
+| Observation | Normal switch | Sparse switch |
+|---|---:|---:|
+| Successful synthetic switches | 153 | 152 |
+| Post-to-last-DMA maximum | 51.357 ms | 52.869 ms |
+| Cumulative worst refresh, including TE | 38.065 ms | 44.981 ms |
+| Maximum refresh work excluding TE | 22.889 ms | 30.842 ms |
+| Frames over 25 ms / counted frames | 119 / 6093 | 113 / 1743 |
+| ONLINE samples / all one-second samples | 84 / 308 | 240 / 307 |
+| Sampled ONLINE internal free heap | 83391–83527 B | 83283–83507 B |
+| Minimum internal heap since boot | 50004 B | 50152 B |
+| Live WS stack minimum | 2080 B | 2088 B |
+| DNS errors / forced reconnect requests | 8 / 1 | 0 / 4 |
+| Swipe timeout / interrupted / dropped / transfer failure | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
+| Startup metric | 1790 ms | 1790 ms |
+
+Neither run meets the 25 ms worst-frame or 50 ms synthetic-switch maximum.
+The variant did not demonstrate the benefit required to enable it. Network
+states differ substantially: the baseline had fewer ONLINE samples and eight
+DNS errors; the aggregates do not isolate the duration caused by DNS backoff.
+Offline/online moods also have different animation patterns. Total frame counts,
+over-budget fractions and latency medians therefore do not establish a causal
+speed comparison. Sampled ONLINE transitions to Today had median/max
+31.008/39.250 ms (21 samples) versus 34.123/52.869 ms (59 samples); to Home,
+25.574/35.436 ms (19) versus 25.976/33.904 ms (60). These quiet synthetic samples
+also omit physical-input/controller delay and are not a touch-acceptance test.
+Both runs reported zero TLS failure and no panic.
+
+A separate desktop CPU experiment (500 alternating navigations through real
+LVGL PARTIAL rendering, identical snapshot) supports investigating repeated
+raster work before reducing pixels further: normal rendering averaged 414.6 µs
+CPU/switch; 4/6/8/12/16 horizontal bands took 488.6/533.0/521.4/597.8/616.0 µs.
+Fewer dirty pixels did not mean less CPU work. These desktop values are not
+ESP32 timing predictions. No alternate band count was enabled on the board.
+
+The experimental switch remains **off by default**. Do not claim P1 timing
+acceptance, sustained 60 fps, startup acceptance, day-long heap stability or
+30-minute reconnect reliability from this slice. A future optimization should
+measure the cost of repeated rasterization and any PSRAM cache tradeoff; no
+cache, larger internal DMA buffers, TE removal or task-priority change is
+introduced here.
+
+Validation: host configure/build/ctest passed 21/21 in the isolated worktree
+(30.90 s) and again from main (44.14 s, concurrent builds). ESP-IDF builds passed
+with the experiment on and off. The normal image is 1541562 B, linked DIRAM
+158714 B (unchanged). The independent scoped review found no blocker after
+limiting the shared ring setter to its original behavior and matching the
+partial fixture's refresh period to firmware. Board images came only from main.
+
+After the experiment, the ordinary main `3f33073` image (probe off, forced
+reconnects off, sparse switch off) was app-flashed and hash-verified. A 125 s
+reset capture reported `paired=1`, no DNS/TLS error or panic, and two minute
+records with 95923 B free internal heap, 62664 B minimum since boot, largest
+block 31744 B and WS watermark 2092 B. `boot_ms=1790` still fails the startup
+budget. The normal rolling-window worst samples were 20.318 and 22.174 ms;
+these are not an exhaustive DMA-complete worst-frame check. The Mac app's fresh
+device list confirmed **Online**, ordinary firmware `3f33073-dirty` and two saved
+Wi-Fi profiles. No profile priority, account state or audible output was changed
+in this experiment. The board is left on the ordinary image.

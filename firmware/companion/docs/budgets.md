@@ -6,9 +6,12 @@ Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line p
 Status: **PASS**, **FAIL** (reported, not tuned away), **PENDING** (needs a measurement not yet taken).
 
 **Latest paired-board checkpoint:** [2026-11-13 measurements](performance-2026-11-13.md).
-The historical baseline rows below do not close current acceptance: instrumented
-screen changes reached 40.390 ms per refresh and 50.109 ms post-to-DMA with the
-32 KB cache (**FAIL** against 25/50 ms). The 32 KB probe's minimum since boot was
+The historical baseline rows below do not close current acceptance. The latest
+310 s baseline reached 38.065 ms per refresh and 51.357 ms post-to-DMA (**FAIL**
+against 25/50 ms). A sparse Home/Today redraw experiment reached 44.981/52.869 ms
+and remains disabled; its smaller pixel transfer did not establish a board
+speed benefit. Different DNS/online histories limit causal comparisons. The
+earlier 32 KB probe's minimum since boot was
 50472 B, versus 18348 B with 64 KB. A normal 32 KB image is checked separately;
 it reported 96095 B free internal heap and 62828 B minimum since boot after
 channel establishment (four once-per-minute records). `boot_ms=1774` is a
