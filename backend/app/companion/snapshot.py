@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Literal
 
+from app.companion.state import lost_mode_on
 from app.core.models import CalendarEvent, FocusSession, Notification, Task
 from app.domains.api import focus_elapsed
 from app.domains.briefings import TERMINAL_TASK_STATUSES
@@ -21,6 +22,11 @@ logger = logging.getLogger(__name__)
 ALLOWED_NOTICE_PREFIXES = ("task.", "calendar.", "focus.")
 EVENT_WINDOW = timedelta(days=7)
 MAX_NOTICES = 5
+MAX_TITLE_CHARS = 80  # keeps a full snapshot far below the 4096-byte frame cap even for Cyrillic text
+
+
+def _clip(title: str) -> str:
+    return title if len(title) <= MAX_TITLE_CHARS else title[: MAX_TITLE_CHARS - 1] + "…"
 
 
 class _Utc(BaseModel):
@@ -31,6 +37,11 @@ class _Utc(BaseModel):
     @classmethod
     def _to_utc(cls, value):
         return utc(value) if isinstance(value, datetime) else value
+
+    @field_validator("title", check_fields=False)
+    @classmethod
+    def _clip_title(cls, value: str) -> str:
+        return _clip(value)
 
 
 class SnapTask(_Utc):
@@ -70,6 +81,13 @@ class CompanionSnapshot(_Utc):
     unread_count: int
     notices: list[SnapNotice]  # max 5, newest first
     focus: SnapFocus | None
+
+
+async def for_device(db: AsyncSession, snapshot: CompanionSnapshot, device_id: str) -> CompanionSnapshot:
+    """What this board may see: while its lost mode is on, only the unread count and the timestamp."""
+    if not await lost_mode_on(db, device_id):
+        return snapshot
+    return snapshot.model_copy(update={"next_task": None, "next_event": None, "notices": [], "focus": None, "overdue_count": 0})
 
 
 async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> CompanionSnapshot:

@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from app.companion.models import CompanionState
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,3 +52,9 @@ def queue_command(row: CompanionState, name: str, args: dict) -> dict:
     # A new list: JSON columns don't track in-place edits. Malformed leftovers are dropped on the way.
     row.pending_commands_json = [c for c in row.pending_commands_json or [] if valid_command(c) and c["name"] != name] + [entry]
     return entry
+
+
+async def lost_mode_on(db: AsyncSession, device_id: str) -> bool:
+    """Whether the owner has put this board in lost mode; the server then hides data from it and refuses its actions."""
+    lost = (await db.execute(select(CompanionState.lost_mode_json).where(CompanionState.device_id == device_id))).scalar_one_or_none()
+    return bool(lost and lost.get("on"))

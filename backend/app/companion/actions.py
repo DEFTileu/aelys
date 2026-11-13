@@ -11,6 +11,7 @@ from app.ai.errors import PolicyDenied
 from app.ai.models import PermissionContext, ToolCall
 from app.ai.policy import ServerPolicyEngine
 from app.companion.models import CompanionAction
+from app.companion.state import lost_mode_on
 from app.core.models import Device
 from app.domains import focus_service, task_service
 from app.domains.api import set_notification_read
@@ -113,8 +114,10 @@ async def run_action(db: AsyncSession, owner_id: str, device: Device, action: Ac
     if (replay := await _stored(db, device_id, action.id)) is not None:
         return replay
     handler = ACTION_HANDLERS.get(action.kind)
-    if handler is None:
-        error: str | None = "ACTION_UNKNOWN"
+    if await lost_mode_on(db, device_id):  # a lost board is a locked board: nothing it asks for is done, whatever the kind
+        error: str | None = "POLICY_DENIED"
+    elif handler is None:
+        error = "ACTION_UNKNOWN"
     else:
         scope = ACTION_SCOPES[action.kind]
         try:

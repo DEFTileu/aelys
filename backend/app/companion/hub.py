@@ -122,16 +122,16 @@ class CompanionHub:
             if not targets:
                 return False
             # lazy: snapshot imports domains, which import this hub
-            from app.companion.snapshot import build_snapshot
+            from app.companion.snapshot import build_snapshot, for_device
 
             try:
                 async with database.SessionLocal() as db:
                     snapshot = await asyncio.wait_for(build_snapshot(db, owner_id, datetime.now(UTC)), BUILD_TIMEOUT_SECONDS)
+                    views = [await for_device(db, snapshot, c.device_id) for c in targets]  # a board in lost mode gets no data
             except Exception as exc:  # noqa: BLE001 - a failed or hung rebuild must not kill the hub
                 logger.warning("companion snapshot rebuild failed owner=%s reason=%s", owner_id, type(exc).__name__)
                 return False
-            message = {"type": "snapshot", "snapshot": snapshot.model_dump(mode="json")}
-            return all(await asyncio.gather(*(self._send(c, message) for c in targets)))
+            return all(await asyncio.gather(*(self._send(c, {"type": "snapshot", "snapshot": view.model_dump(mode="json")}) for c, view in zip(targets, views, strict=True))))
 
     async def _send(self, connection: _Connection, message: dict) -> bool:
         try:

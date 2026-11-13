@@ -1,6 +1,7 @@
 import logging
 import uuid
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -9,7 +10,7 @@ from app.companion.hub import hub, install_change_listeners
 from app.companion.models import CompanionState
 from app.companion.state import valid_command
 from app.core import db
-from app.core.models import Device, User
+from app.core.models import Device, Notification, Task, User
 from app.main import app
 from companion_helpers import B, Key, b64, bearer, companion_token, pair_companion
 from sqlalchemy import select
@@ -97,10 +98,68 @@ async def test_online_lost_mode_and_ice_go_out_at_once_and_stay_pending_until_ac
         assert client.put(url(device_id, '/lost-mode'), json=LOST_ON, headers=bearer(owner)).json()['delivered'] is True
         lost = socket.receive_json()
         assert (lost['name'], lost['args']) == ('lost_mode', {**LOST_ON, 'rev': 1})
+        assert socket.receive_json()['type'] == 'snapshot'  # the gate changed, so the board is re-pushed
         assert client.put(url(device_id, '/ice'), json=ice, headers=bearer(owner)).status_code == 200
         assert (socket.receive_json()['name'], ) == ('ice_update',)
     row = await state_of(device_id)
     assert row.ice_json == {**ice, 'rev': 1} and sorted(c['name'] for c in row.pending_commands_json) == ['ice_update', 'lost_mode']
+
+
+@pytest.mark.asyncio
+async def test_lost_mode_hides_server_data_and_denies_actions_until_turned_off(paired):
+    owner, owner_key, _, device_id, token = paired
+    headers = {'Authorization': f'Bearer {token}'}
+    with TestClient(app) as client:
+        owner_id = client.get(f'{B}/me', headers=bearer(owner)).json()['id']
+        async with db.SessionLocal() as session:
+            note = Notification(owner_id=owner_id, kind='task.due', title='Pay rent')
+            session.add_all([note, Task(owner_id=owner_id, title='Report', due_at=datetime.now(UTC) + timedelta(hours=3), status='todo'),
+                             Task(owner_id=owner_id, title='Late', due_at=datetime.now(UTC) - timedelta(hours=3), status='todo')])
+            await session.commit()
+            note_id = note.id
+        normal = client.get(f'{B}/companion/snapshot', headers=headers).json()
+        assert normal['next_task']['title'] == 'Report' and normal['overdue_count'] == 1 and normal['unread_count'] == 1 and len(normal['notices']) == 1
+
+        with board(client, token) as socket:
+            assert client.put(url(device_id, '/lost-mode'), json=LOST_ON, headers=bearer(owner)).json()['delivered'] is True
+            assert socket.receive_json()['name'] == 'lost_mode'
+            pushed = socket.receive_json()
+            assert pushed['type'] == 'snapshot'
+            redacted = pushed['snapshot']
+            assert (redacted['next_task'], redacted['next_event'], redacted['notices'], redacted['focus'], redacted['overdue_count']) == (None, None, [], None, 0)
+            assert redacted['unread_count'] == 1 and redacted['generated_at']
+            got = client.get(f'{B}/companion/snapshot', headers=headers).json()
+            assert got['next_task'] is None and got['notices'] == [] and got['unread_count'] == 1
+            act = {'id': str(uuid.uuid4()), 'kind': 'notification.read', 'payload': {'notification_id': note_id}}
+            assert client.post(f'{B}/companion/actions', headers=headers, json=act).json() == {'id': act['id'], 'ok': False, 'error_code': 'POLICY_DENIED'}
+            socket.send_json({'type': 'action', 'id': str(uuid.uuid4()), 'kind': 'nonsense', 'payload': {}})
+            assert socket.receive_json()['error_code'] == 'POLICY_DENIED'  # denied before dispatch, even for an unknown kind
+            async with db.SessionLocal() as session:
+                assert (await session.get(Notification, note_id)).read_at is None
+
+            off = lost_off(client, owner, owner_key, device_id)
+            assert client.put(url(device_id, '/lost-mode'), json=off, headers=bearer(owner)).status_code == 200
+            assert socket.receive_json()['name'] == 'lost_mode'
+            restored = socket.receive_json()['snapshot']
+            assert restored['next_task']['title'] == 'Report' and restored['overdue_count'] == 1 and len(restored['notices']) == 1
+            assert client.get(f'{B}/companion/snapshot', headers=headers).json()['next_task']['title'] == 'Report'
+            again = {'id': str(uuid.uuid4()), 'kind': 'notification.read', 'payload': {'notification_id': note_id}}
+            assert client.post(f'{B}/companion/actions', headers=headers, json=again).json()['ok'] is True
+
+
+@pytest.mark.asyncio
+async def test_initial_channel_snapshot_is_redacted_while_lost(paired):
+    owner, _, _, device_id, token = paired
+    with TestClient(app) as client:
+        owner_id = client.get(f'{B}/me', headers=bearer(owner)).json()['id']
+        async with db.SessionLocal() as session:
+            session.add(Task(owner_id=owner_id, title='Report', due_at=datetime.now(UTC) + timedelta(hours=3), status='todo'))
+            await session.commit()
+        assert client.put(url(device_id, '/lost-mode'), json=LOST_ON, headers=bearer(owner)).json()['delivered'] is False
+        with client.websocket_connect(CHANNEL, headers={'Authorization': f'Bearer {token}'}) as socket:
+            assert socket.receive_json()['type'] == 'ready'
+            first = socket.receive_json()
+            assert first['type'] == 'snapshot' and first['snapshot']['next_task'] is None
 
 
 @pytest.mark.asyncio
@@ -283,6 +342,7 @@ async def test_hello_flush_racing_a_put_delivers_revs_in_order_of_state(paired):
             await channel_module._hello(channel_module._Link(device_id, owner_id, reply, close), HELLO)
         finally:
             unregister()
+    received = [m for m in received if m['type'] == 'command']  # lost-mode PUTs also push a snapshot
     assert [m['args']['message'] for m in received] == ['B', 'A']  # B overtook A on the wire...
     assert [m['args']['rev'] for m in received] == [2, 1]  # ...but the board can tell: 2 > 1, so it keeps B
     assert [c['args']['message'] for c in (await state_of(device_id)).pending_commands_json] == ['B']

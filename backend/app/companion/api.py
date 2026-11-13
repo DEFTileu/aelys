@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from app.companion.actions import ActionIn, ActionResult, run_action
 from app.companion.commands import router as commands_router
-from app.companion.snapshot import CompanionSnapshot, build_snapshot
+from app.companion.snapshot import CompanionSnapshot, build_snapshot, for_device
 from app.core.db import get_db
 from app.core.security import current_principal
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,8 +23,8 @@ def _companion_device(principal):
 
 @router.get("/snapshot", response_model=CompanionSnapshot)
 async def get_snapshot(principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
-    user, _ = _companion_device(principal)
-    return await build_snapshot(db, user.id, datetime.now(UTC))
+    user, device = _companion_device(principal)
+    return await for_device(db, await build_snapshot(db, user.id, datetime.now(UTC)), device.id)
 
 
 @router.post("/actions", response_model=ActionResult)

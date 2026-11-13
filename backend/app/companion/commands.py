@@ -115,6 +115,8 @@ async def _send_or_queue(db: AsyncSession, user: User, board: Device, name: str,
     command = queue_command(row, name, args)
     await db.commit()
     delivered = await hub.send_to_device(board.id, {"type": "command", **command})
+    if name == "lost_mode":  # the snapshot gate changed: an online board gets the redacted (or restored) view now
+        await hub.push_snapshot(board.id)
     return CommandOut(id=command["id"], delivered=delivered)
 
 
