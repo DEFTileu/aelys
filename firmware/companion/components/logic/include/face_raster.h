@@ -45,3 +45,8 @@ bool face_raster_eye_parts(face_raster_surface_t *surface, const face_raster_eye
  * premultiplied space, then stored as straight-alpha ARGB8888. No allocation. */
 bool face_raster_rotate(const face_raster_surface_t *src, face_raster_surface_t *dst,
                         int32_t pivot_x, int32_t pivot_y, int32_t cos_q15, int32_t sin_q15);
+
+/* Unclipped half-open union of selected raster loop rectangles. Empty is all zero.
+ * Uses signed 64-bit coordinates; invalid input leaves output unchanged. */
+typedef struct { int64_t left, top, right, bottom; } face_raster_bounds_t;
+bool face_raster_eye_bounds(const face_raster_eye_t *eye, unsigned parts, face_raster_bounds_t *out);

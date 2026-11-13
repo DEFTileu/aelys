@@ -212,6 +212,18 @@ symbol. Since the UI does not call it, the normal firmware link may discard it;
 this is not an execution or performance test on the device. Full eye bounds,
 presentation, allocation recovery and lifecycle remain open.
 
+An unrotated descriptor-bounds helper now returns a conservative half-open
+union of the raster loops for a selected eye's body, highlight and mask. It
+does not yet bound the rotated output. A host sweep of the LVGL transform
+found counterexamples to using LVGL's transformed rectangle as-is, and even
+with a one-pixel margin: a 467 × 457 source at 52.9° produced a visible pixel
+two pixels outside that rectangle. A two-pixel margin contained all observed
+pixels in 156,000 tested cases, but this is not a proof for the adapter's full
+input domain. Some bounds also exceed the adapter's 512-pixel output limit.
+Do not use the sampled margin as a production guarantee without establishing a
+bound for the pinned fixed-point calculations and a fallback or tiling policy.
+The ignored `bounds-transform/NOTES.md` records the cases and commands.
+
 In the current single UI task and software renderer, source inspection shows
 that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
 Updating the source later from the serialized UI task, outside refresh, then

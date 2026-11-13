@@ -235,8 +235,81 @@ static void test_clipped_random_frames_keep_guards(void)
     }
 }
 
+static void check_bounds(face_raster_eye_t *e, unsigned parts, int64_t l, int64_t t, int64_t r, int64_t b)
+{
+    face_raster_bounds_t bounds = {99, 99, 99, 99};
+    CHECK(face_raster_eye_bounds(e, parts, &bounds));
+    CHECK(bounds.left == l && bounds.top == t && bounds.right == r && bounds.bottom == b);
+}
+
+static void test_descriptor_bounds(void)
+{
+    const uint8_t star[6]={255,255,255,255,255,255};
+    face_raster_eye_t e={.x=10,.y=20,.width=8,.height=6,
+        .star_x=-4,.star_y=7,.star_w=3,.star_h=2,.star_stride=3,.star_size=6,.star_data=star,
+        .lid=FACE_RASTER_LID_DOME,.dome_cx=30,.dome_cy=40,.dome_rx=4,.dome_ry=5};
+    check_bounds(&e,FACE_RASTER_BODY,10,20,18,26);
+    check_bounds(&e,FACE_RASTER_HIGHLIGHT,6,27,9,29);
+    check_bounds(&e,FACE_RASTER_MASK,26,35,34,45);
+    check_bounds(&e,FACE_RASTER_ALL,6,20,34,45);
+    e.lid=FACE_RASTER_LID_SLANT; e.lid_y10=-19; e.lid_slope=-500;
+    check_bounds(&e,FACE_RASTER_MASK,8,14,20,24);
+    e.lid_bounds_set=true; e.lid_x=-7; e.lid_y=2; e.lid_width=3; e.lid_height=4;
+    check_bounds(&e,FACE_RASTER_MASK,-7,2,-4,6);
+    e.lid_bounds_set=false; e.lid_y10=-4096; e.lid_slope=0;
+    check_bounds(&e,FACE_RASTER_MASK,0,0,0,0);
+    e.lid=FACE_RASTER_LID_NONE; check_bounds(&e,FACE_RASTER_MASK,0,0,0,0);
+    e.x=INT32_MAX; e.y=INT32_MIN; e.star_x=INT32_MAX; e.star_y=INT32_MIN;
+    check_bounds(&e,FACE_RASTER_HIGHLIGHT,4294967294LL,-4294967296LL,4294967297LL,-4294967294LL);
+    check_bounds(&e,FACE_RASTER_BODY,INT32_MAX,INT32_MIN,2147483655LL,-2147483642LL);
+    face_raster_bounds_t before={1,2,3,4}, out=before;
+    CHECK(!face_raster_eye_bounds(&e,0,&out)); CHECK(!memcmp(&before,&out,sizeof out));
+    CHECK(!face_raster_eye_bounds(&e,8,&out)); CHECK(!memcmp(&before,&out,sizeof out));
+    CHECK(!face_raster_eye_bounds(NULL,FACE_RASTER_BODY,&out)); CHECK(!memcmp(&before,&out,sizeof out));
+    CHECK(!face_raster_eye_bounds(&e,FACE_RASTER_BODY,NULL));
+    e.width=0; CHECK(!face_raster_eye_bounds(&e,FACE_RASTER_BODY,&out)); CHECK(!memcmp(&before,&out,sizeof out));
+    e.width=8; e.star_size=5; CHECK(!face_raster_eye_bounds(&e,FACE_RASTER_BODY,&out)); CHECK(!memcmp(&before,&out,sizeof out));
+    e.star_size=6; e.lid=FACE_RASTER_LID_DOME; e.dome_rx=0;
+    CHECK(!face_raster_eye_bounds(&e,FACE_RASTER_BODY,&out)); CHECK(!memcmp(&before,&out,sizeof out));
+    e.lid=FACE_RASTER_LID_SLANT; e.lid_bounds_set=true; e.lid_width=0;
+    CHECK(!face_raster_eye_bounds(&e,FACE_RASTER_BODY,&out)); CHECK(!memcmp(&before,&out,sizeof out));
+    e.lid_bounds_set=false; e.kind=FACE_RASTER_RING; e.border=0;
+    CHECK(!face_raster_eye_bounds(&e,FACE_RASTER_BODY,&out)); CHECK(!memcmp(&before,&out,sizeof out));
+    e.kind=FACE_RASTER_PILL; e.lid=FACE_RASTER_LID_DOME;
+    e.dome_cx=INT32_MIN; e.dome_cy=INT32_MAX; e.dome_rx=4096; e.dome_ry=4096;
+    check_bounds(&e,FACE_RASTER_MASK,-2147487744LL,2147479551LL,-2147479552LL,2147487743LL);
+}
+
+static void test_random_bounds_contain_rendered_pixels(void)
+{
+    uint32_t random=123, pixels[32*32]; const uint8_t star[4]={255,128,64,255};
+    face_raster_surface_t s={.pixels=pixels,.width=32,.height=32,.stride=32,.capacity=1024};
+    for (int n=0;n<4000;++n) {
+        face_raster_eye_t e={.x=(int32_t)(random_word(&random)%65)-24,.y=(int32_t)(random_word(&random)%65)-24,
+            .width=(int32_t)(random_word(&random)%20)+1,.height=(int32_t)(random_word(&random)%20)+1,
+            .radius=(int32_t)(random_word(&random)%20),.top_rgb=0xffffff,.bottom_rgb=0xffffff,
+            .star_x=(int32_t)(random_word(&random)%25)-12,.star_y=(int32_t)(random_word(&random)%25)-12,
+            .star_w=2,.star_h=2,.star_stride=2,.star_size=4,.star_data=star,.star_opacity=255};
+        if (n%3==1) { e.lid=FACE_RASTER_LID_SLANT; e.lid_y10=(int32_t)(random_word(&random)%201)-100;
+            e.lid_slope=(int32_t)(random_word(&random)%4001)-2000;
+            if (n%2) { e.lid_bounds_set=true; e.lid_x=(int32_t)(random_word(&random)%65)-24;
+                e.lid_y=(int32_t)(random_word(&random)%65)-24; e.lid_width=13; e.lid_height=11; } }
+        if (n%3==2) { e.lid=FACE_RASTER_LID_DOME; e.dome_cx=(int32_t)(random_word(&random)%65)-24;
+            e.dome_cy=(int32_t)(random_word(&random)%65)-24; e.dome_rx=8; e.dome_ry=7; }
+        if (n%4==0 && e.width>=2) { e.kind=FACE_RASTER_RING; e.border=1; e.ring_cos=32768; }
+        for (unsigned parts=1;parts<=FACE_RASTER_ALL;++parts) {
+            face_raster_bounds_t b; memset(pixels,0,sizeof pixels);
+            CHECK(face_raster_eye_bounds(&e,parts,&b)); CHECK(face_raster_eye_parts(&s,&e,parts));
+            for (int y=0;y<32;++y) for (int x=0;x<32;++x)
+                if (pixels[y*32+x]) CHECK(x>=b.left && x<b.right && y>=b.top && y<b.bottom);
+        }
+    }
+}
+
 int main(void)
 {
+    test_descriptor_bounds();
+    test_random_bounds_contain_rendered_pixels();
     test_capsule_gradient_and_clipping();
     test_slanted_lid_and_star();
     test_reject_invalid_and_handle_partial_offscreen();
