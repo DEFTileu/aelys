@@ -39,6 +39,7 @@ name, code or close code requires a new version of this file.
 |---|---|---|
 | `4401` | Auth: token or session invalid or expired | Re-login by device signature, then reconnect. |
 | `4403` | Device revoked, missing, or not a companion | Re-check with `/auth/device/challenge`. Wipe pairing only if that response says the device is unknown or revoked. |
+| `1011` | Server error or failed send (for example the first snapshot could not be built or sent) | Back off and reconnect with the same token; a fresh snapshot follows. |
 | `4000` | Replaced by a newer connection of the same device | This socket is closed and must not reconnect; the newer connection is live. |
 
 ## Board to server
