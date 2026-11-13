@@ -90,7 +90,7 @@ lv_obj_t *scr_focus_create(lv_obj_t *parent)
 {
     h.root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
     ui_arc_create(&h.ring, h.root);
-    h.face = face_create(h.root, 36); /* the design's 0.34 zoom of a 300x170 face */
+    h.face = face_create(h.root, 34); /* the design's 0.34 zoom of a 300x170 face */
     h.mood = MOOD_CALM;
     h.eb = ui_label(h.root, &inter_16, COLOR_FOCUS_TEXT, 300, 1, LV_TEXT_ALIGN_CENTER);
     h.big = ui_label(h.root, &inter_clock_96, UI_COLOR_TEXT, 330, 1, LV_TEXT_ALIGN_CENTER);

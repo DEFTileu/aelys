@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -148,15 +148,16 @@ static int screen_shot(const char *shot)
 int main(int argc, char **argv)
 {
     const char *shot = NULL, *out = NULL;
-    int scale = 100;
+    int scale = 100, at = 100; /* at: ms of animation before the shot */
     for (int i = 1; i + 1 < argc; i += 2) {
         if (!strcmp(argv[i], "--shot")) shot = argv[i + 1];
         else if (!strcmp(argv[i], "--out")) out = argv[i + 1];
         else if (!strcmp(argv[i], "--scale")) scale = atoi(argv[i + 1]);
+        else if (!strcmp(argv[i], "--at")) at = atoi(argv[i + 1]);
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
         return 2;
     }
@@ -176,7 +177,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "unknown screen '%s' (try home, lost, ice, ice_progress, face:calm)\n", shot);
         return 2;
     }
-    sim_step(100);
+    sim_step(at > 0 ? (uint32_t)at : 100);
+    sim_step(20); /* the frame after the last animation step draws it */
     if (bmp_write_rgb565(out, sim_fb(), SIM_W, SIM_H)) {
         fprintf(stderr, "cannot write %s\n", out);
         return 1;

@@ -123,14 +123,14 @@ lv_obj_t *scr_home_create(lv_obj_t *parent)
     lv_obj_t *root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
     h.orbit = orbit_create(root, UI_SCREEN_SIZE);
     h.clock = ui_label(root, &inter_20, UI_COLOR_TEXT2, 160, 1, LV_TEXT_ALIGN_CENTER);
-    h.face = face_create(root, 107); /* the design's 300x170 face box vs 280x160 at scale 1 */
+    h.face = face_create(root, 100); /* the design's 300x170 face box */
     h.agenda = ui_label(root, &inter_20, UI_COLOR_SUBTLE, 300, 1, LV_TEXT_ALIGN_CENTER);
     h.hint = ui_label(root, &inter_16, UI_COLOR_SUBTLE, 260, 2, LV_TEXT_ALIGN_CENTER);
     lv_label_set_text(h.hint, "Connect me by USB and open Aelys web");
     lv_obj_set_hidden(h.hint, true);
     h.wifi = ui_label(root, &inter_16, UI_COLOR_MUTED, 240, 1, LV_TEXT_ALIGN_CENTER);
     lv_obj_set_pos(h.wifi, (UI_SCREEN_SIZE - 240) / 2, 392); /* outside the stack: the column stays centred */
-    h.off_face = face_create(root, 75); /* the design's 0.7 zoom of a 300x170 face */
+    h.off_face = face_create(root, 70); /* the design's 0.7 zoom of a 300x170 face */
     face_set_mood(h.off_face, MOOD_OFFLINE);
     h.off_title = ui_label(root, &inter_24, UI_COLOR_TEXT, 330, 1, LV_TEXT_ALIGN_CENTER);
     lv_label_set_text(h.off_title, "Offline");
