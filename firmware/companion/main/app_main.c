@@ -49,6 +49,9 @@ static void reset_revs(void)
 static void boot_ui_setup(void)
 {
     ui_setup();
+#ifndef CONFIG_AELYS_NO_WIFI
+    ui_set_action_sink(link_post_action); /* taps and keys on Today, Focus and Inbox become actions for the server */
+#endif
     *(owner_info_t *)tribuf_back(&ui_owner_tb) = lost.on ? lost.shown : owner; /* lost mode shows what the owner chose */
     tribuf_publish(&ui_owner_tb);
     ui_event_t ev = {.type = UI_EV_OWNER};

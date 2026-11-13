@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "lvgl.h"
 #include "owner.h"
+#include "proto.h"
 #include "snap.h"
 #include "tribuf.h"
 #include "ui_events.h"
@@ -39,6 +40,10 @@ extern tribuf_t ui_owner_tb; /* owner_info_t */
  * and a producer must not publish. */
 extern tribuf_t ui_snap_tb; /* snap_t */
 void ui_handle_event(const ui_event_t *ev);
+/* The action hook (main passes link_post_action): false = refused, and the UI shows "No connection". */
+void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
+/* Wall clock for "today", relative times and the mood (default: time(); returns 0 while the clock is not set). Host tests set it. */
+void ui_set_clock(int64_t (*now)(void));
 
 #ifdef __cplusplus
 }

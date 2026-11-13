@@ -43,7 +43,7 @@ add_executable(companion_sim sim_main.c)
 target_link_libraries(companion_sim PRIVATE simlib)
 
 enable_testing()
-foreach(t test_face_moods test_face_geometry test_bmp test_screens)
+foreach(t test_face_moods test_face_geometry test_bmp test_mood_rules test_screens)
     add_executable(${t} ${t}.c)
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})

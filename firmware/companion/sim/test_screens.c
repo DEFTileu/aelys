@@ -1,8 +1,12 @@
 /* Screens: screen switching through ui_handle_event(), and the pixel check that no text or
  * widget leaves the round 466 px display, even with every owner field at its maximum length. */
+#define _POSIX_C_SOURCE 200809L /* setenv, tzset */
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "check.h"
 #include "sim_display.h"
+#include "snap_fixture.h"
 #include "src/misc/lv_text_private.h" /* lv_text_encoded_next */
 #include "ui_screens_priv.h"
 
@@ -375,6 +379,400 @@ static void test_first_boot_welcome(void)
     CHECK(!shows_text(scr, "Hi, I'm Aelys") && !shows_text(scr, "Not paired yet")); /* paired, no tasks yet */
 }
 
+/* ---- companion screens: Today, Aelys offline, Focus, Inbox, actions ---- */
+
+static lv_obj_t *find_label(lv_obj_t *obj, const char *txt)
+{
+    if (lv_obj_check_type(obj, &lv_label_class) && !strcmp(lv_label_get_text(obj), txt) && lv_obj_is_visible(obj)) return obj;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+        lv_obj_t *f = find_label(lv_obj_get_child(obj, i), txt);
+        if (f) return f;
+    }
+    return NULL;
+}
+
+/* LVGL cuts an over-long label in place and ends it with "...": the first visible label that does */
+static lv_obj_t *find_dotted(lv_obj_t *obj)
+{
+    if (lv_obj_check_type(obj, &lv_label_class) && lv_obj_is_visible(obj)) {
+        const char *t = lv_label_get_text(obj);
+        size_t n = strlen(t);
+        if (n > 3 && !strcmp(t + n - 3, "...")) return obj;
+    }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+        lv_obj_t *f = find_dotted(lv_obj_get_child(obj, i));
+        if (f) return f;
+    }
+    return NULL;
+}
+
+static void touch_at(int x, int y)
+{
+    uint8_t d[4] = { (uint8_t)x, (uint8_t)(x >> 8), (uint8_t)y, (uint8_t)(y >> 8) };
+    sim_post(UI_EV_TOUCH, d, 4);
+}
+
+/* what the input task posts for a tap / a swipe: TOUCH at the down, the gesture at the lift, then RELEASE */
+static void tap_at(int x, int y)
+{
+    uint8_t d[4] = { (uint8_t)x, (uint8_t)(x >> 8), (uint8_t)y, (uint8_t)(y >> 8) };
+    touch_at(x, y);
+    sim_post(UI_EV_TAP, d, 4);
+    post(UI_EV_RELEASE);
+}
+
+static void tap_label(const char *txt)
+{
+    lv_obj_t *l = find_label(lv_screen_active(), txt);
+    CHECK(l != NULL);
+    if (!l) return;
+    lv_area_t a;
+    lv_obj_get_coords(l, &a);
+    tap_at((a.x1 + a.x2) / 2, (a.y1 + a.y2) / 2);
+}
+
+static void swipe(uint8_t type)
+{
+    touch_at(233, 233);
+    post(type);
+    post(UI_EV_RELEASE);
+}
+
+static void btn(ui_btn_t b) { uint8_t v = (uint8_t)b; sim_post(UI_EV_BTN, &v, 1); }
+static void link_state(uint8_t st) { sim_post(UI_EV_LINK, &st, 1); }
+
+static struct { int n; act_kind_t kind; char id[40]; bool accept; } sink;
+static bool test_sink(act_kind_t k, const char *id)
+{
+    if (!sink.accept) return false;
+    sink.n++;
+    sink.kind = k;
+    snprintf(sink.id, sizeof sink.id, "%s", id ? id : "");
+    return true;
+}
+
+static void action_result(act_kind_t k, bool ok, const char *err)
+{
+    uint8_t d[26] = { (uint8_t)k, ok };
+    if (err) strncpy((char *)d + 2, err, 23);
+    sim_post(UI_EV_ACTION, d, sizeof d);
+}
+
+static snap_t fx;
+static void post_fx(void) { fx_post(&fx, 1); sim_step(100); }
+static void fresh_fx(void) { fx_snap(&fx); post_fx(); }
+
+static void test_companion_setup(void)
+{
+    setenv("TZ", "UTC", 1);
+    tzset();
+    ui_set_clock(fx_clock);
+    ui_set_action_sink(test_sink);
+    sink.accept = true;
+    uint8_t hm[2] = { 14, 32 };
+    sim_post(UI_EV_TIME, hm, 2);
+    link_state(LINK_UI_ONLINE);
+    fresh_fx();
+}
+
+static void test_today_shot(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    check_inside("today");
+    CHECK(shows_text(scr, "Thu, Nov 12") && shows_text(scr, "14:32"));
+    CHECK(shows_text(scr, "Ship pairing ADR") && shows_text(scr, "18:00"));
+    CHECK(shows_text(scr, "Design review") && shows_text(scr, "16:00"));
+    CHECK(shows_text(scr, "3 new") && shows_text(scr, "5 / 8 done"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+
+    fx.today_total = fx.today_done = -1;            /* server v1: no progress, no ring */
+    fx.has_event = false;
+    post_fx();
+    check_inside("today (v1)");
+    CHECK(!shows_text(scr, "5 / 8 done") && !shows_text(scr, "-1 / -1 done") && !shows_text(scr, "Design review"));
+    CHECK(shows_text(scr, "3 new"));
+
+    fx_snap(&fx);                                    /* a long Cyrillic title is cut with "..." inside the circle */
+    strcpy(fx.task.title, "\xD0\x9F\xD0\xBE\xD0\xB4\xD0\xB3\xD0\xBE\xD1\x82\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C \xD0\xBE\xD1\x82\xD1\x87\xD1\x91\xD1\x82 \xD0\xBF\xD0\xBE \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB5\xD0\xBA\xD1\x82\xD1\x83 Q4 ABC");
+    post_fx();
+    check_inside("today (long cyrillic)");
+    lv_obj_t *t = find_dotted(scr);
+    CHECK(t != NULL);
+    if (t) {
+        lv_point_t sz;
+        lv_text_get_size(&sz, fx.task.title, lv_obj_get_style_text_font(t, 0), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        CHECK(sz.x > lv_obj_get_width(t));           /* too long for the box, and it ends in "..." */
+    }
+    CHECK_EQ(missing_glyphs(scr), 0);
+    fresh_fx();
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
+static void test_tap_sends_task_complete(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    swipe(UI_EV_SWIPE_RIGHT);
+    sink.n = 0;
+    tap_label("Ship pairing ADR");
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(sink.kind, ACT_TASK_COMPLETE);
+    CHECK(!strcmp(sink.id, "t-101"));
+    tap_label("Ship pairing ADR");                   /* already ticked: not sent twice */
+    CHECK_EQ(sink.n, 1);
+    action_result(ACT_TASK_COMPLETE, false, "TIMEOUT");
+    sim_step(100);
+    CHECK(shows_text(scr, "Didn't work \xE2\x80\x94 try again"));
+    sim_step(1800);
+    CHECK(shows_text(scr, "Didn't work \xE2\x80\x94 try again"));
+    sim_step(300);
+    CHECK(!shows_text(scr, "Didn't work \xE2\x80\x94 try again")); /* gone after 2 s */
+    tap_label("Ship pairing ADR");                   /* the tick was taken back: can be sent again */
+    CHECK_EQ(sink.n, 2);
+
+    action_result(ACT_TASK_COMPLETE, false, "TIMEOUT");
+    sim_step(2100);
+    sink.accept = false;                             /* no pairing / offline: "No connection" at once */
+    tap_label("Ship pairing ADR");
+    sim_step(100);
+    CHECK(shows_text(scr, "No connection"));
+    check_inside("today (toast)");
+    sink.accept = true;
+    action_result(ACT_FOCUS_START, false, "OFFLINE");
+    sim_step(100);
+    CHECK(shows_text(scr, "No connection"));
+    sim_step(2100);
+
+    /* the "{n} new" row opens the inbox; the circle row does not */
+    sink.n = 0;
+    tap_label("3 new");
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    CHECK_EQ(sink.n, 0);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
+static void test_inbox_shot(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    swipe(UI_EV_SWIPE_RIGHT);
+    tap_label("3 new");
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    check_inside("inbox");
+    CHECK(shows_text(scr, "Inbox \xC2\xB7 3") && shows_text(scr, "+2 from other apps"));
+    CHECK(shows_text(scr, "Tasks \xC2\xB7 now") && shows_text(scr, "Calendar \xC2\xB7 15 min ago") &&
+          shows_text(scr, "Focus \xC2\xB7 20 min ago"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    sink.n = 0;
+    tap_label("Design review");
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(sink.kind, ACT_NOTIFICATION_READ);
+    CHECK(!strcmp(sink.id, "n-2"));
+    tap_label("Design review");
+    CHECK_EQ(sink.n, 1);                             /* ticked: once */
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);        /* swipes do nothing here */
+    tap_at(233, 436);                                /* below the rows */
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+
+    tap_label("3 new");
+    sim_step(14000);
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    tap_label("Session done");                       /* a touch restarts the 15 s */
+    sim_step(14000);
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    sim_step(1100);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);        /* timeout */
+
+    fx_snap(&fx);                                    /* five rows with long Cyrillic titles, v1 server */
+    fx.n_notices = 5;
+    fx.other_unread = -1;
+    fx.unread = 5;
+    for (int i = 0; i < 5; i++) {
+        char id[8];
+        snprintf(id, sizeof id, "n-%d", i);
+        fx_notice(&fx.notices[i], id, i % 2 ? "calendar.reminder" : "task.reminder",
+                  "\xD0\x9F\xD0\xBE\xD0\xB4\xD0\xB3\xD0\xBE\xD1\x82\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C \xD0\xBE\xD1\x82\xD1\x87\xD1\x91\xD1\x82 \xD0\xBF\xD0\xBE \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB5\xD0\xBA\xD1\x82\xD1\x83 Q4 ABC",
+                  FX_NOW - 3600 * (i + 1));
+    }
+    post_fx();
+    tap_label("5 new");
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    check_inside("inbox (5 long rows)");
+    CHECK(shows_text(scr, "Tasks \xC2\xB7 1 h ago") && shows_text(scr, "Calendar \xC2\xB7 2 h ago"));
+    CHECK(!shows_text(scr, "from other apps"));      /* v1: hidden */
+    CHECK_EQ(missing_glyphs(scr), 0);
+    btn(BTN_LOW);
+    swipe(UI_EV_SWIPE_LEFT);
+    fresh_fx();
+}
+
+static void test_offline_shot(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    CHECK(!shows_text(scr, "Offline"));
+    link_state(LINK_UI_OFFLINE);
+    sim_step(100);
+    check_inside("offline");
+    CHECK(shows_text(scr, "Offline") && shows_text(scr, "Showing data from 14:05"));
+    CHECK(shows_text(scr, "5 / 8 tasks \xC2\xB7 next at 16:00"));
+    CHECK(!shows_text(scr, "3 left today"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    link_state(LINK_UI_CONNECTING);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Offline") || !shows_text(scr, "Showing data from 14:05")); /* the normal home is back */
+    CHECK(shows_text(scr, "3 left today"));
+    memset(&fx, 0, sizeof fx);                       /* offline with nothing cached: just "Offline" */
+    fx.today_total = -1;
+    post_fx();
+    link_state(LINK_UI_OFFLINE);
+    sim_step(100);
+    check_inside("offline (no data)");
+    CHECK(shows_text(scr, "Offline") && !shows_text(scr, "Showing data from --:--"));
+    link_state(LINK_UI_ONLINE);
+    fresh_fx();
+}
+
+static void focus_snap(uint8_t status, const char *mode, int elapsed)
+{
+    fx_snap(&fx);
+    fx.focus.status = status;
+    strcpy(fx.focus.id, "f-3");
+    strcpy(fx.focus.mode, mode);
+    fx.focus.elapsed_s = elapsed;
+    post_fx();
+}
+
+static void test_focus_shots(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_FOCUS);
+    check_inside("focus (none)");
+    CHECK(shows_text(scr, "Focus \xC2\xB7 25 min session") && shows_text(scr, "Start"));
+    sink.n = 0;
+    tap_at(233, 300);                                /* a tap starts */
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(sink.kind, ACT_FOCUS_START);
+    sink.n = 0;
+    btn(BTN_TOP);                                    /* so does the top key */
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(sink.kind, ACT_FOCUS_START);
+
+    focus_snap(FOCUS_ACTIVE, "pomodoro", 545);       /* 9:05 elapsed -> 15:55 left */
+    check_inside("focus (active)");
+    CHECK(shows_text(scr, "15:55") && shows_text(scr, "Pause") && shows_text(scr, "Focus"));
+    sim_step(5000);
+    CHECK(shows_text(scr, "15:50"));                 /* seconds since the snapshot arrived are added */
+    sink.n = 0;
+    tap_at(233, 300);                                /* a tap does not pause */
+    CHECK_EQ(sink.n, 0);
+    btn(BTN_TOP);
+    CHECK_EQ(sink.kind, ACT_FOCUS_PAUSE);
+
+    focus_snap(FOCUS_PAUSED, "pomodoro", 1072);      /* 17:52 elapsed -> 07:08 */
+    sim_step(5000);
+    check_inside("focus (paused)");
+    CHECK(shows_text(scr, "07:08") && shows_text(scr, "Paused") && shows_text(scr, "Resume") && shows_text(scr, "Hold to stop"));
+    btn(BTN_TOP);
+    CHECK_EQ(sink.kind, ACT_FOCUS_RESUME);
+    sink.n = 0;
+    touch_at(233, 233);                              /* hold 800 ms: stop */
+    sim_step(790);
+    CHECK_EQ(sink.n, 0);
+    sim_step(30);
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(sink.kind, ACT_FOCUS_STOP);
+    post(UI_EV_RELEASE);
+    sink.n = 0;
+    touch_at(233, 233);                              /* lifted at 500 ms: nothing */
+    sim_step(500);
+    post(UI_EV_RELEASE);
+    sim_step(1000);
+    CHECK_EQ(sink.n, 0);
+    touch_at(233, 233);                              /* a swipe cancels it too */
+    sim_step(300);
+    post(UI_EV_SWIPE_LEFT);
+    post(UI_EV_RELEASE);
+    sim_step(1000);
+    CHECK_EQ(sink.n, 0);
+    CHECK_EQ(ui_current_screen(), SCR_FOCUS);        /* (no swipe left from Focus) */
+
+    focus_snap(FOCUS_ACTIVE, "pomodoro", 1495);      /* 5 s left, then done */
+    CHECK(shows_text(scr, "00:05"));
+    sim_step(5000);
+    check_inside("focus (done)");
+    CHECK(shows_text(scr, "Session done") && shows_text(scr, "Done") && shows_text(scr, "25 min"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    btn(BTN_TOP);
+    CHECK_EQ(sink.kind, ACT_FOCUS_STOP);
+
+    focus_snap(FOCUS_ACTIVE, "stopwatch", 3725);     /* counts up, no ring */
+    CHECK(shows_text(scr, "62:05") && shows_text(scr, "Pause"));
+    sim_step(3000);
+    CHECK(shows_text(scr, "62:08"));
+    check_inside("focus (stopwatch)");
+
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    fresh_fx();
+}
+
+/* The once-a-second refresh must not redraw anything while nothing changes (idle fps stays as it was). */
+static void test_idle_screens_do_not_redraw(void)
+{
+    swipe(UI_EV_SWIPE_RIGHT);                        /* Today: no animation on it */
+    sim_step(1000);
+    uint32_t n = sim_flushes();
+    sim_step(1000); sim_step(1000); sim_step(1000);
+    CHECK_EQ(sim_flushes(), n);
+    tap_label("3 new");                              /* Inbox */
+    sim_step(1000);
+    n = sim_flushes();
+    sim_step(1000); sim_step(1000); sim_step(1000);
+    CHECK_EQ(sim_flushes(), n);
+    btn(BTN_LOW);
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
+static void test_gestures_and_lost_mode(void)
+{
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    post_lost(1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    sink.n = 0;
+    swipe(UI_EV_SWIPE_RIGHT);
+    swipe(UI_EV_SWIPE_LEFT);
+    tap_at(233, 237);
+    btn(BTN_TOP);
+    btn(BTN_LOW);
+    action_result(ACT_TASK_COMPLETE, false, "TIMEOUT");
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    CHECK_EQ(sink.n, 0);
+    check_inside("lost (events ignored)");
+    CHECK(!shows_text(lv_screen_active(), "Didn't work \xE2\x80\x94 try again"));
+    post_lost(0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    post(UI_EV_COMBO_FIRE);                          /* the touch that closes the ICE card is not a swipe on home */
+    touch_at(233, 233);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    post(UI_EV_SWIPE_RIGHT);
+    post(UI_EV_RELEASE);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    swipe(UI_EV_SWIPE_RIGHT);                        /* a fresh touch does */
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
 int main(void)
 {
     sim_init();
@@ -390,5 +788,13 @@ int main(void)
     test_home_paired_line();
     test_pair_screen_shot();
     test_first_boot_welcome();
+    test_companion_setup();
+    test_today_shot();
+    test_tap_sends_task_complete();
+    test_inbox_shot();
+    test_offline_shot();
+    test_focus_shots();
+    test_idle_screens_do_not_redraw();
+    test_gestures_and_lost_mode();
     return g_failed ? 1 : 0;
 }

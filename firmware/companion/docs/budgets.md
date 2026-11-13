@@ -14,6 +14,8 @@ Status: **PASS**, **FAIL** (reported, not tuned away), **PENDING** (needs a meas
 | App internal RAM without Wi-Fi | <= 100 KB | 78760 B (76.9 KiB) = 322347 B free at `app_main` start minus 243587 B steady free after full init | PASS | No-Wi-Fi scratch build (`CONFIG_AELYS_NO_WIFI=y`, defaults outside the repo, app-only flash). |
 | Free internal heap at reconnect | >= 16 KB largest internal block before every TLS connect (the link waits up to 10 s for it); `heap_at_connect_min` and `tls_fail` = 0 over a 30-min chaos run (60 s reconnect) | Not measured: the board could not reach the owner's saved Wi-Fi (reason 201, no AP found; the previous firmware shows the same), so the link never connected. Static internal RAM of the link build: 252611 B free at `app_main` (259251 B before the link), 86223 B at Wi-Fi start (92879 B before). | PENDING | `link connect heap_int=... largest=...` WARN line before every TLS connect; metrics `heap_at_connect_min`, `tls_fail`, `hwm_link`, `hwm_ws`. Scratch build with `CONFIG_AELYS_LINK_CHAOS_S=60` and `CONFIG_AELYS_METRICS_PERIOD_S=10`. |
 | Image size | <= 2 MB | 1 446 982 B (1.38 MB, with the link and the websocket client), 65 % of the 4 MB app slot free | PASS | `idf.py size`. |
+| Touch -> swipe changes screen (Today / Aelys / Focus) | <= 50 ms | PENDING: Task F8 board step (the board was unavailable) | PENDING | Same method as the ICE tap row; a swipe fires at the lift. |
+| Idle fps with the companion screens | unchanged from idle home | Host sim: Today and Inbox draw nothing between snapshots (`test_idle_screens_do_not_redraw`); on the board PENDING | PENDING | `metrics` fps on Today, Focus and Aelys. |
 
 ## Heap risk for plan 3
 

@@ -1,11 +1,14 @@
-/* companion_sim --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot today|aelys|aelys_offline|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out file.bmp [--scale 100]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
+#define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "bmp.h"
 #include "sim_display.h"
 #include "owner.h"
+#include "snap_fixture.h"
 #include "ui.h"
 
 static int find_mood(const char *name)
@@ -63,8 +66,44 @@ static void cyr_owner(owner_info_t *o)
     strcpy(o->message, "\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8 \xD0\xBD\xD0\xB0\xD1\x88\xD0\xBB\xD0\xB8, \xD0\xBF\xD0\xBE\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xBD\xD0\xB8\xD1\x82\xD0\xB5");
 }
 
+static void post_ev(uint8_t type, uint8_t d0) { sim_post(type, &d0, 1); }
+
+/* The companion screens, fed with the made-up fixture of snap_fixture.h (14:32, UTC). */
+static int companion_shot(const char *shot)
+{
+    static snap_t s;
+    setenv("TZ", "UTC", 1);
+    tzset();
+    ui_setup();
+    ui_set_clock(fx_clock);
+    sim_post(UI_EV_TIME, (const uint8_t[]){ 14, 32 }, 2);
+    fx_snap(&s);
+    post_ev(UI_EV_LINK, LINK_UI_ONLINE);
+    if (!strncmp(shot, "focus_", 6)) {
+        s.focus.status = !strcmp(shot, "focus_paused") ? FOCUS_PAUSED : !strcmp(shot, "focus_none") ? FOCUS_NONE : FOCUS_ACTIVE;
+        strcpy(s.focus.mode, "pomodoro");
+        s.focus.elapsed_s = !strcmp(shot, "focus_paused") ? 17 * 60 + 52 : !strcmp(shot, "focus_done") ? 25 * 60 : 9 * 60 + 5;
+        strcpy(s.focus.id, "f-3");
+    }
+    if (!strcmp(shot, "aelys_offline")) { post_ev(UI_EV_LINK, LINK_UI_OFFLINE); fx_post(&s, 0); return 0; }
+    fx_post(&s, 1);
+    if (!strcmp(shot, "today")) sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
+    else if (!strcmp(shot, "inbox")) {
+        sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
+        const uint8_t tap[4] = { 233, 0, 0x52, 1 }; /* (233, 338): the unread row */
+        sim_post(UI_EV_TOUCH, tap, 4);
+        sim_post(UI_EV_TAP, tap, 4);
+    }
+    else if (!strncmp(shot, "focus_", 6)) sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+    else if (strcmp(shot, "aelys")) return -1;
+    return 0;
+}
+
 static int screen_shot(const char *shot)
 {
+    if (!strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "inbox") ||
+        !strncmp(shot, "focus_", 6))
+        return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };
     const uint8_t on = 1, pct = 60;
@@ -96,7 +135,7 @@ int main(int argc, char **argv)
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out <file.bmp> [--scale <percent>]\n",
                 argv[0]);
         return 2;
     }

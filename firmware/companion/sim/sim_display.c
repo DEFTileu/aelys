@@ -4,13 +4,14 @@
 #include "ui_theme.h"
 
 static uint16_t g_fb[SIM_W * SIM_H];
-static uint32_t g_ms;
+static uint32_t g_ms, g_flushes;
 
 static uint32_t tick_cb(void) { return g_ms; }
 
 static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 {
     (void)a; (void)px; /* FULL render mode draws straight into g_fb */
+    if (lv_display_flush_is_last(d)) g_flushes++;
     lv_display_flush_ready(d);
 }
 
@@ -43,3 +44,5 @@ void sim_post(uint8_t type, const void *data, uint8_t len)
     memcpy(ev.data, data, len);
     ui_handle_event(&ev);
 }
+
+uint32_t sim_flushes(void) { return g_flushes; }

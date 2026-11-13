@@ -23,6 +23,47 @@ void ui_stack(lv_obj_t *const o[], const uint8_t gap[], int n, int32_t area_y, i
 
 scr_t ui_current_screen(void); /* for host tests */
 
+/* screens.c: more helpers */
+void ui_text_color(lv_obj_t *o, uint32_t color);             /* ditto for the text colour */
+void ui_set_text(lv_obj_t *label, const char *txt);         /* only touches the label when the text changed: no redraw */
+void ui_fmt_hm(char out[8], int64_t epoch);                  /* local "HH:MM" ("--:--" for epoch <= 0) */
+int64_t ui_now(void);                                        /* wall-clock epoch seconds, 0 until the clock is set */
+bool ui_marked_done(const char *task_id);                    /* task.complete sent for it, answer still open or ok */
+bool ui_marked_read(const char *notice_id);                  /* notification.read sent for it */
+/* Round-ring track plus a clockwise lit arc from 12 o'clock (design ".ring": 12 px wide, 8 px inside the display). */
+typedef struct { lv_obj_t *obj; int pct; uint32_t fg, track; } ui_arc_t;
+void ui_arc_create(ui_arc_t *a, lv_obj_t *parent);
+void ui_arc_set(ui_arc_t *a, int pct, uint32_t fg, uint32_t track); /* redraws only when something changed */
+/* Round tick box: outline d px wide, filled with `fill` and a white check when on. */
+lv_obj_t *ui_check_create(lv_obj_t *parent, int32_t d);
+void ui_check_set(lv_obj_t *check, bool on, uint32_t fill);
+
+/* mood_rules.c: priority offline > focused > sad > worried > happy > proud > calm. `now` 0 = clock not set. */
+mood_t ui_mood_for(const snap_t *s, int64_t now, bool online, bool just_completed);
+
+/* scr_toast.c: one short message on top of everything, gone after 2 s. */
+lv_obj_t *scr_toast_create(lv_obj_t *parent);
+void scr_toast_show(const char *txt);
+
+/* scr_today.c (design "Today · обзор") */
+lv_obj_t *scr_today_create(lv_obj_t *parent);
+void scr_today_set_time(uint8_t hour, uint8_t minute);     /* hour 255 = clock not set */
+void scr_today_set(const snap_t *s, int64_t now);
+tap_hit_t scr_today_hit(int32_t x, int32_t y);             /* TAP_ROW = the task row, TAP_UNREAD_ROW = the "{n} new" row */
+
+/* scr_focus.c (design "Focus · идёт / пауза / сессия завершена") */
+typedef enum { FV_NONE, FV_ACTIVE, FV_PAUSED, FV_DONE } focus_view_t;
+lv_obj_t *scr_focus_create(lv_obj_t *parent);
+/* snap_ms: lv_tick_get() when the snapshot arrived, now_ms: lv_tick_get() now. Returns what the screen shows. */
+focus_view_t scr_focus_set(const snap_t *s, uint32_t snap_ms, uint32_t now_ms);
+focus_view_t scr_focus_view(void);                         /* what it showed last */
+act_kind_t scr_focus_top_action(void);                     /* what the top key / a tap does in the current view */
+
+/* scr_inbox.c (design "Уведомления · входящие") */
+lv_obj_t *scr_inbox_create(lv_obj_t *parent);
+void scr_inbox_set(const snap_t *s, int64_t now);
+int scr_inbox_hit(int32_t x, int32_t y);                   /* row index or -1 */
+
 /* orbit.c: task dots on a ring. total == 0 draws 8 dim placeholder dots (nothing paired yet). */
 lv_obj_t *orbit_create(lv_obj_t *parent, int32_t size);
 void orbit_set(lv_obj_t *orbit, int done, int total);
@@ -32,6 +73,7 @@ void scr_home_set_time(uint8_t hour, uint8_t minute);
 void scr_home_set_tasks(int done, int total);
 void scr_home_set_wifi(uint8_t state); /* ui_wifi_state_t */
 void scr_home_set_paired(bool on);    /* paired: no "Not paired yet" line while there are no tasks */
+void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline); /* orbit, face mood and the "Offline" view */
 void scr_home_set_welcome(bool on);   /* first boot: "Hi, I'm Aelys / Connect me by USB ..." instead of the agenda line */
 
 lv_obj_t *scr_lost_create(lv_obj_t *parent);

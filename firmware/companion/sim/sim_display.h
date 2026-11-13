@@ -12,3 +12,6 @@ const uint16_t *sim_fb(void);      /* SIM_W*SIM_H RGB565 */
 
 /* Deliver one UI event to ui_handle_event() (the UI must have been set up with ui_setup()). */
 void sim_post(uint8_t type, const void *data, uint8_t len);
+
+/* Refreshes that drew something since sim_init(): a screen with nothing animating must not add to it. */
+uint32_t sim_flushes(void);

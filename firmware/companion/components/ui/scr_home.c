@@ -1,9 +1,18 @@
 /* Home: clock, Aelys face and the task orbit. Layout from the "Elis · main screen" frame of the design
- * (clock, face and agenda line in one centred column with 16 px gaps). Wi-Fi status sits below the column. */
+ * (clock, face and agenda line in one centred column with 16 px gaps). Wi-Fi status sits below the column.
+ * When the link is down it turns into the design's "Нет связи" frame: sleepy-eyed Aelys, "Offline", the time of the data
+ * on screen and the tasks line. Deviation: no "Retry" hint (the top key has no retry action). */
 #include <stdio.h>
+#include <string.h>
 #include "ui_screens_priv.h"
 
-static struct { lv_obj_t *orbit, *clock, *face, *agenda, *hint, *wifi; int done, total; bool welcome, paired; } h;
+static struct {
+    lv_obj_t *orbit, *clock, *face, *agenda, *hint, *wifi;
+    lv_obj_t *off_face, *off_title, *off_since, *off_tasks;
+    int done, total;
+    bool welcome, paired, offline;
+    mood_t mood;
+} h;
 
 void scr_home_set_time(uint8_t hour, uint8_t minute)
 {
@@ -51,6 +60,52 @@ void scr_home_set_tasks(int done, int total)
     else lv_label_set_text_fmt(h.agenda, "%d left today", total > done ? total - done : 0);
 }
 
+static void offline_restack(void)
+{
+    lv_obj_t *col[] = { h.off_face, h.off_title, h.off_since, h.off_tasks };
+    const uint8_t gap[] = { 0, 6, 6, 8 };
+    ui_stack(col, gap, 4, 0, UI_SCREEN_SIZE, -1);
+}
+
+void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline)
+{
+    if (mood != h.mood) { h.mood = mood; face_set_mood(h.face, mood); }
+    bool known = s->today_total > 0;
+    int done = known ? s->today_done : 0, total = known ? s->today_total : 0;
+    if (done != h.done || total != h.total) scr_home_set_tasks(done, total); /* the orbit restyles its dots: only on a change */
+
+    offline = offline && h.paired && !h.welcome;
+    if (offline != h.offline) {
+        h.offline = offline;
+        lv_obj_t *normal[] = { h.orbit, h.clock, h.face, h.agenda, h.wifi };
+        for (unsigned i = 0; i < sizeof normal / sizeof *normal; i++) lv_obj_set_hidden(normal[i], offline);
+        lv_obj_t *off[] = { h.off_face, h.off_title, h.off_since, h.off_tasks };
+        for (unsigned i = 0; i < sizeof off / sizeof *off; i++) lv_obj_set_hidden(off[i], !offline);
+        if (!offline) restack();
+    }
+    if (!offline) return;
+    char t[64], hm[8];
+    ui_fmt_hm(hm, s->generated);
+    snprintf(t, sizeof t, "Showing data from %s", hm);
+    ui_set_text(h.off_since, t);
+    lv_obj_set_hidden(h.off_since, s->generated <= 0);
+    /* "5 / 8 tasks \xC2\xB7 next at 16:00": next = the earlier of the next task's due time and the next event's start */
+    int64_t next = 0;
+    if (s->has_task && s->task.due > 0) next = s->task.due;
+    if (s->has_event && s->event.starts > 0 && (!next || s->event.starts < next)) next = s->event.starts;
+    t[0] = 0;
+    if (known) snprintf(t, sizeof t, "%d / %d tasks", s->today_done, s->today_total);
+    if (next > 0) {
+        ui_fmt_hm(hm, next);
+        size_t n = strlen(t);
+        snprintf(t + n, sizeof t - n, "%snext at %s", n ? " \xC2\xB7 " : "", hm);
+    }
+    ui_set_text(h.off_tasks, t);
+    lv_obj_set_hidden(h.off_tasks, !t[0]);
+    (void)now;
+    offline_restack();
+}
+
 lv_obj_t *scr_home_create(lv_obj_t *parent)
 {
     lv_obj_t *root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
@@ -63,6 +118,14 @@ lv_obj_t *scr_home_create(lv_obj_t *parent)
     lv_obj_set_hidden(h.hint, true);
     h.wifi = ui_label(root, &inter_16, UI_COLOR_MUTED, 240, 1, LV_TEXT_ALIGN_CENTER);
     lv_obj_set_pos(h.wifi, (UI_SCREEN_SIZE - 240) / 2, 392); /* outside the stack: the column stays centred */
+    h.off_face = face_create(root, 75); /* the design's 0.7 zoom of a 300x170 face */
+    face_set_mood(h.off_face, MOOD_OFFLINE);
+    h.off_title = ui_label(root, &inter_24, UI_COLOR_TEXT, 330, 1, LV_TEXT_ALIGN_CENTER);
+    lv_label_set_text(h.off_title, "Offline");
+    h.off_since = ui_label(root, &inter_16, UI_COLOR_SUBTLE, 330, 1, LV_TEXT_ALIGN_CENTER);
+    h.off_tasks = ui_label(root, &inter_16, UI_COLOR_MUTED, 330, 1, LV_TEXT_ALIGN_CENTER);
+    lv_obj_t *off[] = { h.off_face, h.off_title, h.off_since, h.off_tasks };
+    for (unsigned i = 0; i < sizeof off / sizeof *off; i++) lv_obj_set_hidden(off[i], true);
     scr_home_set_wifi(UI_WIFI_OFFLINE);
     lv_label_set_text(h.clock, "--:--");
     scr_home_set_tasks(0, 0);
