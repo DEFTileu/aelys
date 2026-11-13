@@ -1,5 +1,6 @@
 use aelys_runtime::adapter::{AdapterKind, AgentAdapter, ProcessCommandProbe, VendorAdapter};
 use serde::Serialize;
+mod companion_serial;
 mod native;
 mod session_reader;
 
@@ -66,6 +67,7 @@ pub fn run() {
         .manage(native::NativeState::default())
         .manage(native::NativeAIStreams::default())
         .manage(session_reader::SessionReader::new())
+        .manage(companion_serial::SerialState::default())
         .invoke_handler(tauri::generate_handler![
             runtime_status,
             runtime_capabilities,
@@ -91,7 +93,12 @@ pub fn run() {
             native::native_operation,
             native::native_operation_diagnostic,
             native::native_ai_events,
-            native::native_ai_events_close
+            native::native_ai_events_close,
+            companion_serial::companion_serial_ports,
+            companion_serial::companion_serial_open,
+            companion_serial::companion_serial_write,
+            companion_serial::companion_serial_read,
+            companion_serial::companion_serial_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aelys desktop application");

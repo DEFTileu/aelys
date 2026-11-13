@@ -1,4 +1,5 @@
 import { isNativeHost } from '../nativeTransport'
+import { NativeSerialPort, nativeSerialHost } from './nativeSerial'
 import { CompanionError, ImprovParser, improvFrame, resultStrings, rpc, type ImprovPacket } from './improv'
 
 export { CompanionError }
@@ -12,6 +13,7 @@ type Handler<T> = (p: ImprovPacket) => T | undefined
 export class CompanionSerial {
   private parser = new ImprovParser()
   private handler: ((p: ImprovPacket) => void) | null = null
+  private abort: ((e: Error) => void) | null = null // fails the request in flight when the port dies
   private queue: Promise<unknown> = Promise.resolve()
   private writer: WritableStreamDefaultWriter<Uint8Array>
   private reader: ReadableStreamDefaultReader<Uint8Array>
@@ -24,11 +26,12 @@ export class CompanionSerial {
   }
 
   static supported(): boolean {
-    return typeof navigator !== 'undefined' && !!navigator.serial && !isNativeHost()
+    return typeof navigator !== 'undefined' && ((!!navigator.serial && !isNativeHost()) || nativeSerialHost())
   }
 
   static async request(): Promise<CompanionSerial> {
     if (!CompanionSerial.supported()) throw new CompanionError('UNSUPPORTED_BROWSER')
+    if (nativeSerialHost()) return CompanionSerial.fromPort(await NativeSerialPort.pick())
     return CompanionSerial.fromPort(await navigator.serial!.requestPort()) // no filters: USB-Serial/JTAG
   }
 
@@ -44,14 +47,14 @@ export class CompanionSerial {
         if (done) return
         for (const p of this.parser.push(value)) this.handler?.(p)
       }
-    } catch { /* port closed or unplugged: pending requests time out */ }
+    } catch { this.abort?.(new CompanionError('DISCONNECTED')) } // unplugged: end the request now, not at its timeout
   }
 
   private call<T>(cmd: number, strings: string[], ms: number, onPacket: Handler<T>): Promise<T> {
     const run = () => {
       const bytes = improvFrame(T_RPC, rpc(cmd, strings)) // may throw BAD_ARGS: before any timer or handler exists
       return new Promise<T>((resolve, reject) => {
-      const done = (fn: () => void) => { clearTimeout(timer); if (this.handler === handler) this.handler = null; fn() }
+      const done = (fn: () => void) => { clearTimeout(timer); if (this.handler === handler) { this.handler = null; this.abort = null } fn() }
       const timer = setTimeout(() => done(() => reject(new CompanionError('TIMEOUT'))), ms)
       const handler = (p: ImprovPacket) => {
         try {
@@ -61,6 +64,7 @@ export class CompanionSerial {
         } catch (e) { done(() => reject(e)) }
       }
       this.handler = handler
+      this.abort = (e) => done(() => reject(e))
       this.writer.write(bytes).catch((e) => done(() => reject(e)))
       })
     }
@@ -130,7 +134,7 @@ export class CompanionSerial {
   }
 
   async close(): Promise<void> {
-    this.handler = null
+    this.handler = null; this.abort = null
     await this.reader.cancel().catch(() => undefined)
     this.reader.releaseLock()
     try { await this.writer.close() } catch { /* already closed or broken */ } finally { this.writer.releaseLock() }

@@ -19,7 +19,7 @@ function describe(e: unknown): string {
   const code = errorCode(e)
   if (code === 'LOST_MODE') return LOST
   if (code === 'NOT_AELYS') return 'This USB device is not Aelys. Choose the Aelys port.'
-  if (code === 'TIMEOUT') return 'Aelys did not answer. Check the USB cable and try again.'
+  if (code === 'TIMEOUT' || code === 'DISCONNECTED') return 'Aelys did not answer. Check the USB cable and try again.'
   if (code === 'BAD_ARGS') return 'Aelys could not accept that. Check the values and try again.'
   return 'Something went wrong. Check the connection and try again.'
 }
