@@ -479,6 +479,48 @@ static void test_companion_setup(void)
     fresh_fx();
 }
 
+static void test_character_home_integration(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    fx_snap(&fx); fx.task.due = FX_NOW + 599;
+    fx.focus.status = FOCUS_ACTIVE; fx.focus.elapsed_s = 20; post_fx();
+    CHECK_EQ(ui_character_last().mood, CHAR_PANIC);
+    CHECK_EQ(ui_character_last().why, WHY_DEADLINE_PANIC);
+    CHECK_EQ(scr_home_mood(), MOOD_PANIC);
+    action_result(ACT_TASK_COMPLETE, true, NULL);
+    CHECK_EQ(ui_character_last().mood, CHAR_JOY);
+    CHECK_EQ(ui_character_last().why, WHY_TASK_DONE);
+    CHECK_EQ(scr_home_mood(), MOOD_HAPPY);
+    sim_step(3100);
+    CHECK_EQ(ui_character_last().mood, CHAR_PANIC);
+    CHECK_EQ(scr_home_mood(), MOOD_PANIC);
+    fx.task.due = FX_NOW + 3600; fx.focus.elapsed_s = 1501; post_fx();
+    CHECK_EQ(ui_character_last().mood, CHAR_FLOW);
+    CHECK_EQ(scr_home_mood(), MOOD_FLOW);
+    link_state(LINK_UI_OFFLINE);
+    CHECK_EQ(ui_character_last().mood, CHAR_FLOW);
+    CHECK_EQ(scr_home_offline_mood(), MOOD_FLOW);
+    fx.focus.status = FOCUS_NONE; post_fx();
+    CHECK_EQ(ui_character_last().mood, CHAR_OFFLINE);
+    CHECK_EQ(scr_home_offline_mood(), MOOD_OFFLINE);
+    link_state(LINK_UI_ONLINE);
+    fresh_fx();
+}
+
+static void test_last_task_reaction(void)
+{
+    fx_snap(&fx); fx.today_done = fx.today_total - 1; post_fx();
+    swipe(UI_EV_SWIPE_RIGHT); tap_label("Ship pairing ADR");
+    action_result(ACT_TASK_COMPLETE, true, NULL);
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_character_last().mood, CHAR_ELATION);
+    CHECK_EQ(ui_character_last().why, WHY_LAST_TASK);
+    CHECK_EQ(scr_home_mood(), MOOD_ELATION);
+    sim_step(3100);
+    fx.has_task = false; post_fx(); /* clear optimistic mark before later tests */
+    fresh_fx();
+}
+
 static void test_today_shot(void)
 {
     lv_obj_t *scr = lv_screen_active();
@@ -1318,6 +1360,8 @@ int main(void)
     test_pair_screen_shot();
     test_first_boot_welcome();
     test_companion_setup();
+    test_character_home_integration();
+    test_last_task_reaction();
     test_today_shot();
     test_tap_sends_task_complete();
     test_inbox_shot();

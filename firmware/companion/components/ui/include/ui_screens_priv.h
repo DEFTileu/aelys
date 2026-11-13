@@ -43,8 +43,12 @@ void ui_arc_set(ui_arc_t *a, int pct, uint32_t fg, uint32_t track); /* redraws o
 lv_obj_t *ui_check_create(lv_obj_t *parent, int32_t d);
 void ui_check_set(lv_obj_t *check, bool on, uint32_t fill);
 
-/* mood_rules.c: priority offline > focused > sad > worried > happy > proud > calm. `now` 0 = clock not set. */
-mood_t ui_mood_for(const snap_t *s, int64_t now, bool online, bool just_completed);
+/* mood_rules.c: translate known snapshot and clock inputs into the character engine. */
+character_inputs_t ui_character_inputs(const snap_t *s, int64_t now, bool have_time, uint8_t hour,
+                                       bool link_known, bool online, uint32_t snap_ms, uint32_t now_ms);
+character_result_t ui_character_last(void);
+mood_t scr_home_mood(void);
+mood_t scr_home_offline_mood(void);
 
 /* scr_toast.c: one short message on top of everything, gone after 2 s. */
 lv_obj_t *scr_toast_create(lv_obj_t *parent);

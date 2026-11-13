@@ -12,7 +12,7 @@
 #define PAIRED_SHOW_MS 2000
 #define INBOX_TIMEOUT_MS 15000
 #define HOLD_STOP_MS 800
-#define HAPPY_MS 3000
+#define REACTION_MS 3000
 
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
@@ -26,10 +26,13 @@ static struct {
 #ifdef CONFIG_AELYS_PERF_PROBE
     bool probe_touch_active, probe_combo_active;
 #endif
-    bool lost, happy, have_time, find; /* find: the "Here I am!" overlay is up */
+    character_result_t character_result;
+    character_state_t character;
+    bool snap_valid;
+    bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
-    lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *happy_timer, *tick_timer;
+    lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *reaction_timer, *tick_timer;
     const snap_t *snap;  /* the newest published snapshot; unchanged until the next tribuf_latest() */
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
     char done_id[40];    /* optimistic marks: task.complete / notification.read sent for these ids */
@@ -108,6 +111,7 @@ void ui_stack(lv_obj_t *const o[], const uint8_t gap[], int n, int32_t area_y, i
 }
 
 scr_t ui_current_screen(void) { return g.cur; }
+character_result_t ui_character_last(void) { return g.character_result; }
 
 void ui_set_text(lv_obj_t *label, const char *txt)
 {
@@ -412,7 +416,15 @@ static void render(void)
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
     switch (g.cur) {
-    case SCR_HOME: scr_home_set_snap(s, now, ui_mood_for(s, now, !offline, g.happy), offline); break;
+    case SCR_HOME: {
+        bool link_known = g.link == LINK_UI_ONLINE || g.link == LINK_UI_OFFLINE;
+        character_inputs_t inputs = ui_character_inputs(g.snap_valid ? s : NULL, now, g.have_time, g.hh,
+                                                        link_known, g.link == LINK_UI_ONLINE,
+                                                        g.snap_ms, lv_tick_get());
+        g.character_result = character_select(&g.character, &inputs, lv_tick_get());
+        scr_home_set_snap(s, now, mood_from_character(g.character_result.mood), offline);
+        break;
+    }
     case SCR_TODAY: scr_today_set(s, now); break;
     case SCR_FOCUS: scr_focus_set(s, g.snap_ms, lv_tick_get()); break;
     case SCR_INBOX: scr_inbox_set(s, now); break;
@@ -426,11 +438,10 @@ static void tick_timer_cb(lv_timer_t *t)
     render();
 }
 
-static void happy_timeout(lv_timer_t *t)
+static void reaction_timeout(lv_timer_t *t)
 {
     (void)t;
-    g.happy_timer = NULL;
-    g.happy = false;
+    g.reaction_timer = NULL;
     render();
 }
 
@@ -500,7 +511,10 @@ void ui_setup(void)
     snap_buf = lv_malloc_zeroed(3 * sizeof *snap_buf); /* zeroed: no snapshot yet */
     if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
-    g.lost = g.happy = g.have_time = g.find = false;
+    g.lost = g.have_time = g.find = false;
+    g.snap_valid = false;
+    character_init(&g.character);
+    g.character_result = (character_result_t){CHAR_CALM, WHY_CALM, CUE_NONE};
     scr_find_show(false);
     g.link = LINK_UI_UNPAIRED;
     g.snap = snap_buf ? tribuf_latest(&ui_snap_tb, NULL) : NULL;
@@ -540,8 +554,12 @@ static void on_action_result(const ui_event_t *ev)
     if (ev->data[0] == ACT_NOTIFICATION_READ) read_answered(ev->data[1] != 0);
     if (ev->data[1]) {
         if (ev->data[0] == ACT_TASK_COMPLETE) { /* Aelys cheers for 3 s */
-            g.happy = true;
-            arm_timer(&g.happy_timer, happy_timeout, HAPPY_MS);
+            bool last = g.snap_valid && g.snap && g.snap->today_total > 0 &&
+                        (g.snap->today_done >= g.snap->today_total ||
+                         (g.snap->today_done >= 0 && g.snap->today_done + 1 == g.snap->today_total &&
+                          g.snap->has_task && g.done_id[0] && !strcmp(g.done_id, g.snap->task.id)));
+            character_event(&g.character, last ? CHAR_EVENT_LAST_TASK : CHAR_EVENT_TASK_DONE, lv_tick_get());
+            arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
         }
         return;
     }
@@ -608,6 +626,7 @@ void ui_handle_event(const ui_event_t *ev)
         const snap_t *p = tribuf_latest(&ui_snap_tb, &fresh);
         if (fresh) {
             g.snap = p;
+            g.snap_valid = true;
             g.snap_ms = lv_tick_get();
             prune_marks(p);
         }

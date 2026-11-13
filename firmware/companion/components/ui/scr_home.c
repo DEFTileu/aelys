@@ -12,8 +12,11 @@ static struct {
     int done, total;
     bool welcome, paired, offline;
     uint8_t wifi_state; /* ui_wifi_state_t */
-    mood_t mood;
+    mood_t mood, off_mood;
 } h;
+
+mood_t scr_home_mood(void) { return h.mood; }
+mood_t scr_home_offline_mood(void) { return h.off_mood; }
 
 void scr_home_set_time(uint8_t hour, uint8_t minute)
 {
@@ -86,6 +89,7 @@ void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline)
     if (done != h.done || total != h.total) scr_home_set_tasks(done, total); /* the orbit restyles its dots: only on a change */
 
     offline = offline && h.paired && !h.welcome;
+    if (offline && mood != h.off_mood) { h.off_mood = mood; face_set_mood(h.off_face, mood); }
     if (offline != h.offline) {
         h.offline = offline;
         lv_obj_t *normal[] = { h.orbit, h.clock, h.face, h.agenda };
@@ -123,6 +127,7 @@ lv_obj_t *scr_home_create(lv_obj_t *parent)
     lv_obj_t *root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
     h.orbit = orbit_create(root, UI_SCREEN_SIZE);
     h.clock = ui_label(root, &inter_20, UI_COLOR_TEXT2, 160, 1, LV_TEXT_ALIGN_CENTER);
+    h.mood = MOOD_CALM;
     h.face = face_create(root, 100); /* the design's 300x170 face box */
     h.agenda = ui_label(root, &inter_20, UI_COLOR_SUBTLE, 300, 1, LV_TEXT_ALIGN_CENTER);
     h.hint = ui_label(root, &inter_16, UI_COLOR_SUBTLE, 260, 2, LV_TEXT_ALIGN_CENTER);
@@ -132,6 +137,7 @@ lv_obj_t *scr_home_create(lv_obj_t *parent)
     lv_obj_set_pos(h.wifi, (UI_SCREEN_SIZE - 240) / 2, 392); /* outside the stack: the column stays centred */
     h.off_face = face_create(root, 70); /* the design's 0.7 zoom of a 300x170 face */
     face_set_mood(h.off_face, MOOD_OFFLINE);
+    h.off_mood = MOOD_OFFLINE;
     h.off_title = ui_label(root, &inter_24, UI_COLOR_TEXT, 330, 1, LV_TEXT_ALIGN_CENTER);
     lv_label_set_text(h.off_title, "Offline");
     h.off_since = ui_label(root, &inter_16, UI_COLOR_SUBTLE, 330, 1, LV_TEXT_ALIGN_CENTER);
