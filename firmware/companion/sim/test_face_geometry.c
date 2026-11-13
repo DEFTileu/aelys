@@ -27,6 +27,11 @@ static void test_character_motion_design(void)
         NEAR(g.tx, cases[i].tx, 10); NEAR(g.ty, cases[i].ty, 10);
         NEAR(g.rot, cases[i].rot, 10); NEAR(g.sc, cases[i].scale, 2);
     }
+    CHECK_EQ(face_mood_def(MOOD_FLOW)->glow_width, 22);
+    CHECK_EQ(face_mood_def(MOOD_RELIEF)->lid, LID_RELAX);
+    CHECK_EQ(face_relax_lid_y100(0), 0);
+    CHECK_EQ(face_relax_lid_y100(1600), 800);
+    CHECK_EQ(face_relax_lid_y100(3200), 0);
     const face_mood_t *a = face_mood_def(MOOD_ATTENTION);
     CHECK_EQ(face_eye_openness(a,0,2100),1000); CHECK_EQ(face_eye_openness(a,0,2190),80);
     CHECK_EQ(face_eye_openness(a,0,2340),1000); CHECK_EQ(face_eye_openness(a,0,2430),80);

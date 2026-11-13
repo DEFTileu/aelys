@@ -164,6 +164,14 @@ static void lid_draw(lv_event_t *e)
     lv_layer_t *layer = lv_event_get_layer(e);
     lv_area_t a;
     lv_obj_get_coords(o, &a);
+    if (f->m->lid == LID_RELAX) {
+        lv_draw_rect_dsc_t lid;
+        lv_draw_rect_dsc_init(&lid);
+        lid.bg_color = lv_color_hex(UI_COLOR_BG); lid.bg_opa = LV_OPA_COVER;
+        lid.radius = (a.y2 - a.y1 + 1) / 2;
+        lv_draw_rect(layer, &lid, &a);
+        return;
+    }
 
     int32_t lo = c->yl < c->yr ? c->yl : c->yr;
     lv_draw_rect_dsc_t r;
@@ -299,7 +307,15 @@ static void layout_eyes(face_t *f, uint32_t t)
             put_img(f->star[side], img, d(f, sx), d(f, sy), blink >= 700 ? (m->star_opacity ? m->star_opacity : 255) : 0);
         }
 
-        if (m->lid == LID_SLANT || m->lid == LID_DROOP) {
+        if (m->lid == LID_RELAX) {
+            int32_t px = e->x * 100 + e->w * 50;
+            int32_t py = e->y * 100 - 4600 + 3900 + face_relax_lid_y100(t);
+            group_pt(&g, sn, cs, &px, &py);
+            int32_t hw = (e->w + 20) * 50 * g.sc / 1000, hh = 3900 * g.sc / 1000;
+            int32_t left = d(f, px - hw), top = d(f, py - hh);
+            place(f->lid[side], left, top, d(f, px + hw) - left, d(f, py + hh) - top);
+            show(f->lid[side], true);
+        } else if (m->lid == LID_SLANT || m->lid == LID_DROOP) {
             int32_t cut10 = e->lid_y10;
             if (m->lid == LID_DROOP) cut10 += DROOP_TRAVEL * g.ty / 600; /* same timing as the sink */
             int32_t ax = e->x * 100 + e->w * 50, ay = e->y * 100 + cut10 * 10;
@@ -399,6 +415,7 @@ static void apply_mood(face_t *f)
         lv_obj_t *eye = f->eye[side];
         show(eye, !ring);
         lv_obj_set_style_border_width(eye, 0, 0);
+        lv_obj_set_style_shadow_width(eye, d(f, m->glow_width * 100), 0);
         if (m->kind == EYE_PILL) {
             lv_obj_set_style_bg_opa(eye, LV_OPA_COVER, 0);
             lv_obj_set_style_bg_color(eye, lv_color_hex(m->gradient_top ? m->gradient_top : COLOR_GRAD_TOP), 0);
@@ -476,6 +493,10 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
         f->eye[i] = box(root, 0);
         lv_obj_set_style_radius(f->eye[i], LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_color(f->eye[i], lv_color_black(), 0);
+        /* Reserve glow style properties at creation, before mood changes. */
+        lv_obj_set_style_shadow_width(f->eye[i], 0, 0);
+        lv_obj_set_style_shadow_color(f->eye[i], lv_color_hex(0xB9A8FF), 0);
+        lv_obj_set_style_shadow_opa(f->eye[i], 140, 0);
     }
     for (int i = 0; i < 2; i++) f->star[i] = image(root, 0xFFFFFF);
     for (int i = 0; i < 2; i++) {

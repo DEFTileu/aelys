@@ -51,6 +51,12 @@ static void test_shapes(void)
     f = show(MOOD_FOCUSED, 100, 0, 0, 100);
     CHECK(lit(93, 85) && dark(93, 55) && dark(93, 115));           /* 44 tall at 63 */
     CHECK(close_to(105, 78, 255, 255, 255, 14));                   /* 14 px star at 40,8 */
+    rgb_t without_glow = at(93, 57);
+    gone(f);
+
+    f = show(MOOD_FLOW, 100, 0, 0, 100);
+    rgb_t glow = at(93, 57);
+    CHECK(glow.r + glow.g + glow.b > without_glow.r + without_glow.g + without_glow.b + 10);
     gone(f);
 
     f = show(MOOD_SLEEPING, 100, 0, 0, 100);
@@ -363,6 +369,16 @@ static void test_scales_and_api(void)
     lv_obj_delete(face);
 }
 
+static void test_relief_lid_moves(void)
+{
+    lv_obj_t *f = show(MOOD_RELIEF, 100, HX, HY, 100);
+    lv_obj_t *lid = lv_obj_get_child(f, 6);
+    lv_obj_update_layout(f); int initial_y = lv_obj_get_y(lid);
+    sim_step(1480); lv_obj_update_layout(f);
+    CHECK(lv_obj_get_y(lid) >= initial_y + 12);
+    gone(f);
+}
+
 static void test_asymmetric_wink_and_wake(void)
 {
     lv_obj_t *f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
@@ -402,6 +418,7 @@ int main(void)
 {
     sim_init();
     sim_direct(); /* redraw only what was invalidated, as the board does: stale pixels would show up */
+    test_relief_lid_moves();
     test_asymmetric_wink_and_wake();
     test_smooth_eye_transition();
     test_shapes();

@@ -52,12 +52,12 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
     [MOOD_ATTENTION] = { .eye = { E(58,31,70,108,35,30,12,20), E(172,31,70,108,35,30,12,20) },
         .kind = EYE_PILL, .motion = MOT_NONE, .blink_style = BLINK_DOUBLE, .blink_ms = 3000 },
     [MOOD_FLOW] = { .eye = { E(58,63,70,44,22,40,8,14), E(172,63,70,44,22,40,8,14) },
-        .kind = EYE_PILL, .motion = MOT_BREATHE_SLOW, .blink_ms = 9000 },
+        .kind = EYE_PILL, .motion = MOT_BREATHE_SLOW, .blink_ms = 9000, .glow_width = 22 },
     [MOOD_ELATION] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
         .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_PARTY,
         .n_spark = 3, .spark = { {14,18,26,0}, {262,4,26,600}, {268,118,20,1200} } },
     [MOOD_RELIEF] = { .eye = { EL(58,45,70,90,35,STD,320,0), EL(172,45,70,90,35,STD,320,0) },
-        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK_RELIEF },
+        .kind = EYE_PILL, .lid = LID_RELAX, .motion = MOT_SINK_RELIEF },
     [MOOD_PANIC] = { .eye = { E(63,26,60,118,30,28,12,20), E(177,26,60,118,30,28,12,20) },
         .kind = EYE_PILL, .motion = MOT_SHAKE },
     [MOOD_DISAPPOINTED] = { .eye = { EL(58,60,70,76,35,STD,300,0), EL(172,60,70,76,35,STD,300,0) },
@@ -237,6 +237,13 @@ int32_t face_eye_openness(const face_mood_t *m, int side, uint32_t t_ms)
         return 1000;
     }
     return face_blink_x1000(m->blink_ms, t_ms);
+}
+
+int32_t face_relax_lid_y100(uint32_t t_ms)
+{
+    int32_t phase = (int32_t)(t_ms % 3200u * 1000u / 3200u);
+    int32_t progress = phase <= 500 ? phase * 2 : (1000 - phase) * 2;
+    return 800 * ease(progress) / 1000;
 }
 
 /* ---- effect loops ---- */

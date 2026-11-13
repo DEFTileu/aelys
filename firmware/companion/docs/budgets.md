@@ -77,3 +77,10 @@ below 7/8 of a full screen instead of 3/4; pixel-exact redraw checks remain.
 Sparse switching stays disabled because the prior board experiment did not
 establish a benefit. Frame rate, swipe latency, `heap_int` and `heap_int_min`
 with the enlarged face remain **PENDING board**.
+
+The flow expression now uses a software-rendered 22 px eye shadow, with its
+style properties reserved at face creation; simulator tests check redraw
+correctness and no added local style properties during animation. This does
+not measure draw-task allocation or render time on the device. Flow's frame
+latency and internal heap impact remain **PENDING board**; the 30 fps face
+budget must be checked with the glow visible.

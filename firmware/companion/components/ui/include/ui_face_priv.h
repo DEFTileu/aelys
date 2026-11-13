@@ -14,6 +14,7 @@ typedef enum {
     LID_SLANT, /* black mask over the top of the eye, cut along a line (worried, sad, annoyed) */
     LID_DROOP, /* the same with a flat cut that moves (sleepy) */
     LID_DOME,  /* black ellipse over the lower part: the closed, smiling eye (happy, proud, love) */
+    LID_RELAX, /* rounded top lid, animated independently from eye-group motion */
 } face_lid_t;
 typedef enum {
     MOT_NONE, MOT_LOOK, MOT_HOP, MOT_HOP_SLOW, MOT_SWAY, MOT_BREATHE, MOT_JIT, MOT_SINK, MOT_SINK_SLOW, MOT_POP,
@@ -42,6 +43,7 @@ typedef struct {
     uint32_t color;               /* flat colour of arc, ring and dot */
     uint32_t gradient_top, gradient_bottom; /* 0 = normal purple gradient */
     uint8_t star_opacity;         /* 0 = default full opacity */
+    uint8_t glow_width;           /* shadow width in face pixels; 0 = no glow */
     uint8_t n_spark, n_zz, n_heart, n_line;
     bool drop, cheeks, dots;
     uint16_t drop_ms;             /* drip period */
@@ -58,6 +60,7 @@ uint32_t face_motion_period(face_motion_t m);
 /* Eye openness (permille, 80..1000) at t_ms: closes at 93..96 % of the period, opens again by 100 %. */
 int32_t face_blink_x1000(uint32_t period_ms, uint32_t t_ms);
 int32_t face_eye_openness(const face_mood_t *m, int side, uint32_t t_ms);
+int32_t face_relax_lid_y100(uint32_t t_ms);
 
 /* Effect loops. op = opacity 0..255; dx, dy = offset px*100; k = size permille. */
 typedef struct { int32_t op, dx, dy, k; } face_fx_state_t;
