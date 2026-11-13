@@ -27,12 +27,16 @@ static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi,
 static bool lost_is_on(void) { return lost.on; }
 
 #ifndef CONFIG_AELYS_NO_WIFI
-/* Command handlers (link task, the only writer of owner/lost/settings once the link runs). Never call LVGL from here: owner data goes
- * through ui_owner_tb, the rest as UI events. Every command is acked, a stale rev too; a state is saved exactly when its apply
- * function returns true. */
+/* Command handlers (link task, the only writer of owner/lost/settings once the link runs). Never call LVGL or the panel from here:
+ * owner data goes through ui_owner_tb, everything else as UI events. Every command is acked. A stale rev acks ok and changes
+ * nothing; an applied one is saved, and a failed save keeps the live state but acks BUSY with the rev rolled back (cmd_settle),
+ * so the server resends it after the next hello and the save is retried. */
 static void post_ui(ui_event_t ev)
 {
-    for (int i = 0; i < 10 && !lv_port_post(&ev); i++) vTaskDelay(pdMS_TO_TICKS(10)); /* queue of 16 is full: the ui task is busy */
+    /* This task may block: a dropped UI_EV_LOST would leave a board that acked lost-on showing home. Only a dead ui task ends it. */
+    int tries = 0;
+    while (!lv_port_post(&ev) && ++tries < 3000) vTaskDelay(pdMS_TO_TICKS(10));
+    if (tries >= 3000) ESP_LOGE(TAG, "ui event %d not delivered (queue stuck for 30 s)", ev.type);
 }
 
 static void publish_owner(void) /* what the lost and ICE screens show: lost.shown while lost, else the owner's data */
@@ -42,9 +46,16 @@ static void publish_owner(void) /* what the lost and ICE screens show: lost.show
     post_ui((ui_event_t){.type = UI_EV_OWNER});
 }
 
-static void warn_save(const char *what, esp_err_t e)
+static bool saved(const char *what, esp_err_t e)
 {
-    if (e != ESP_OK) ESP_LOGW(TAG, "%s not saved: %s", what, esp_err_to_name(e)); /* the change stays live until the next reboot */
+    if (e != ESP_OK) ESP_LOGW(TAG, "%s not saved: %s (BUSY, the server will resend)", what, esp_err_to_name(e));
+    return e == ESP_OK;
+}
+
+static void ack(const char *id, cmd_ack_t r)
+{
+    if (r == CMD_ACK_OK) link_send_ack(id, true, NULL);
+    else link_send_ack(id, false, "BUSY");
 }
 
 static void restart_soon(void)
@@ -56,7 +67,7 @@ static void restart_soon(void)
 static void unpair_board(void)
 {
     link_unpair(); /* pairing, revs, cached snapshot */
-    warn_save("unpair wipe", store_erase_device_data()); /* Wi-Fi list, owner, lost, settings, snap */
+    if (!saved("unpair wipe", store_erase_device_data())) ESP_LOGE(TAG, "unpair: some data may remain in flash"); /* Wi-Fi list, owner, lost, settings, snap */
     owner_defaults(&owner);
     memset(&lost, 0, sizeof lost);
     settings_defaults(&settings);
@@ -66,35 +77,44 @@ static void on_command(const proto_msg_t *m)
 {
     const char *id = m->id;
     switch (m->u.cmd.name) {
-    case CMD_LOST_MODE:
-        if (owner_apply_lost(&lost, &owner, &m->u.cmd.a.lost)) {
-            warn_save("lost", store_save_lost(&lost));
+    case CMD_LOST_MODE: {
+        uint32_t prev = lost.rev;
+        bool applied = owner_apply_lost(&lost, &owner, &m->u.cmd.a.lost);
+        bool ok = !applied || saved("lost", store_save_lost(&lost));
+        if (applied) { /* live even when the save failed */
             publish_owner();
             post_ui((ui_event_t){.type = UI_EV_LOST, .len = 1, .data = {lost.on}});
         }
-        link_send_ack(id, true, NULL);
+        ack(id, cmd_settle(applied, ok, &lost.rev, prev));
         break;
-    case CMD_ICE_UPDATE:
-        if (owner_apply_ice(&owner, &lost, &m->u.cmd.a.ice)) {
-            warn_save("owner", store_save_owner(&owner)); /* owner first, then lost */
-            if (lost.on) warn_save("lost", store_save_lost(&lost));
+    }
+    case CMD_ICE_UPDATE: {
+        uint32_t prev = owner.ice_rev;
+        bool applied = owner_apply_ice(&owner, &lost, &m->u.cmd.a.ice);
+        bool ok = true;
+        if (applied) {
+            ok = saved("owner", store_save_owner(&owner)); /* owner first, then lost; both are tried */
+            if (lost.on) ok = saved("lost", store_save_lost(&lost)) && ok;
             publish_owner();
         }
-        link_send_ack(id, true, NULL);
+        ack(id, cmd_settle(applied, ok, &owner.ice_rev, prev));
         break;
-    case CMD_SETTINGS:
-        if (settings_apply(&settings, m->u.cmd.a.settings.brightness, m->u.cmd.a.settings.rev)) {
-            warn_save("settings", store_save_settings(&settings));
-            warn_save("brightness", board_display_set_brightness(settings.brightness));
-        }
-        link_send_ack(id, true, NULL);
+    }
+    case CMD_SETTINGS: {
+        uint32_t prev = settings.rev;
+        bool applied = settings_apply(&settings, m->u.cmd.a.settings.brightness, m->u.cmd.a.settings.rev);
+        bool ok = !applied || saved("settings", store_save_settings(&settings));
+        if (applied) post_ui((ui_event_t){.type = UI_EV_BRIGHTNESS, .len = 1, .data = {settings.brightness}}); /* the ui task owns the panel's SPI device */
+        ack(id, cmd_settle(applied, ok, &settings.rev, prev));
         break;
+    }
     case CMD_RESTART:
         link_send_ack(id, true, NULL);
         restart_soon();
         break;
     case CMD_UNPAIR:
         link_send_ack(id, true, NULL); /* before the wipe: the server revokes the board right after sending the command */
+        vTaskDelay(pdMS_TO_TICKS(500)); /* the ack leaves before link_unpair closes the socket */
         unpair_board();
         restart_soon(); /* first boot: no pairing, no Wi-Fi, the welcome screen */
         break;
@@ -128,6 +148,13 @@ static void reset_revs(void)
     store_save_settings(&settings);
 }
 #endif
+
+/* Every UI event, in the ui task: the brightness one is the only thing that touches the panel's SPI device outside a flush. */
+static void on_ui_event(const ui_event_t *ev)
+{
+    if (ev->type != UI_EV_BRIGHTNESS) { ui_handle_event(ev); return; }
+    if (ev->len >= 1 && board_display_set_brightness(ev->data[0]) != ESP_OK) ESP_LOGW(TAG, "brightness %d%% not applied", ev->data[0]);
+}
 
 /* Runs in the ui task (LVGL lock held) before the first frame. */
 static void boot_ui_setup(void)
@@ -190,7 +217,7 @@ void app_main(void)
     explicit_bzero(&saved_wifi, sizeof saved_wifi); /* only the count was wanted; the list holds passwords */
     ESP_LOGW(TAG, "boot: lost_mode=%s", lost.on ? "on" : "off");
 
-    lv_port_set_handler(ui_handle_event);
+    lv_port_set_handler(on_ui_event);
     berr = lv_port_start(boot_ui_setup);
     if (berr != ESP_OK) halt("ui start", berr);
 

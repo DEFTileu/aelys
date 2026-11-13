@@ -49,7 +49,7 @@ export function DeviceSettingsPage({ state, onUnpaired }: Props) {
   const [unpairError, setUnpairError] = useState('')
   const attempt = useRef(0) // a cancelled attempt must not send anything when its fingerprint check returns late
   const unpair = async () => {
-    if (state.lost_mode?.on) return // the board keeps showing lost mode after a wipe, so the app refuses until it is off
+    if (state.lost_mode?.on) return // unpair erases lost mode on the board too (it would drop the owner's lost screen), so the app refuses until lost mode is off
     const mine = ++attempt.current
     setUnpairError(''); setSheet(true)
     try {

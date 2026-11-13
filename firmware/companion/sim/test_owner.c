@@ -246,6 +246,28 @@ static void test_settings_apply_and_brightness_map(void)
     CHECK_EQ(brightness_raw(200), 255);
 }
 
+/* apply -> save -> ack ok, or roll the rev back and ack BUSY so the server resends and the save is retried */
+static void test_cmd_settle_decides_ack_and_rolls_back_rev(void)
+{
+    uint32_t rev = 5;
+    CHECK_EQ(cmd_settle(false, false, &rev, 3), CMD_ACK_OK);   /* stale: nothing was applied, nothing to save */
+    CHECK_EQ(rev, 5);
+    CHECK_EQ(cmd_settle(true, true, &rev, 3), CMD_ACK_OK);     /* applied and saved */
+    CHECK_EQ(rev, 5);
+    CHECK_EQ(cmd_settle(true, false, &rev, 3), CMD_ACK_BUSY);  /* applied, save failed */
+    CHECK_EQ(rev, 3);                                          /* the same rev applies again on the resend */
+
+    owner_info_t o; lost_state_t l = { 0 }; lost_cmd_t c;
+    with_ice(&o);
+    lost_fixture(&c);
+    c.rev = 4;
+    uint32_t prev = l.rev;
+    CHECK(owner_apply_lost(&l, &o, &c));
+    CHECK_EQ(cmd_settle(true, false, &l.rev, prev), CMD_ACK_BUSY);
+    CHECK(l.on && l.rev == 0);                                 /* live state kept, rev back */
+    CHECK(owner_apply_lost(&l, &o, &c));                       /* the resend is not stale */
+}
+
 int main(void)
 {
     test_ice_fields_land_in_owner();
@@ -260,5 +282,6 @@ int main(void)
     test_lost_command_roundtrip_through_store();
     test_ice_while_lost_roundtrips_both_blobs();
     test_settings_apply_and_brightness_map();
+    test_cmd_settle_decides_ack_and_rolls_back_rev();
     return g_failed ? 1 : 0;
 }

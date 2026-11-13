@@ -85,3 +85,10 @@ void settings_defaults(settings_t *s); /* 100 %, rev 0 */
 bool settings_apply(settings_t *s, uint8_t pct, uint32_t rev);
 /* Panel brightness register (CO5300 0x51) for a percent: clamped to 5..100, then 13..255. */
 uint8_t brightness_raw(uint8_t pct);
+
+/* The ack for a versioned command (lost_mode, ice_update, settings) after "apply, then save". applied = the apply function
+ * returned true, saved = every save of it succeeded. A stale command (not applied) and a saved one get CMD_ACK_OK. An applied
+ * one that could not be saved keeps its live state, but *rev (the stored rev it moved) goes back to prev_rev and the ack is
+ * CMD_ACK_BUSY: the server keeps the command and resends it after the next hello, when it is not stale and the save is retried. */
+typedef enum { CMD_ACK_OK, CMD_ACK_BUSY } cmd_ack_t;
+cmd_ack_t cmd_settle(bool applied, bool saved, uint32_t *rev, uint32_t prev_rev);

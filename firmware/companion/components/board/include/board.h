@@ -13,7 +13,8 @@ extern "C" {
 esp_err_t board_init(void);
 i2c_master_bus_handle_t board_i2c_bus(void);
 
-/* Panel brightness, 5..100 % (clamped) -> CO5300 register 0x51 = 13..255. Safe from any task (the panel IO serialises the bus);
+/* Panel brightness, 5..100 % (clamped) -> CO5300 register 0x51 = 13..255. Not thread-safe against the ui task's flushes
+ * (one SPI device): call it at boot before lv_port_start, then only from the ui task (post UI_EV_BRIGHTNESS).
  * ESP_ERR_INVALID_STATE before board_init(). */
 esp_err_t board_display_set_brightness(uint8_t pct);
 

@@ -99,3 +99,10 @@ uint8_t brightness_raw(uint8_t pct)
     uint32_t p = pct < BRIGHTNESS_MIN ? BRIGHTNESS_MIN : pct > BRIGHTNESS_MAX ? BRIGHTNESS_MAX : pct;
     return (uint8_t)((p * 255 + 50) / 100);
 }
+
+cmd_ack_t cmd_settle(bool applied, bool saved, uint32_t *rev, uint32_t prev_rev)
+{
+    if (!applied || saved) return CMD_ACK_OK;
+    *rev = prev_rev;
+    return CMD_ACK_BUSY;
+}
