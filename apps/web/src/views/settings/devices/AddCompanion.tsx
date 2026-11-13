@@ -25,7 +25,12 @@ function describe(e: unknown): string {
 
 const GONE = new Error('unmounted') // thrown by live() so an unmounted page stops where it is
 
-export function AddCompanion() {
+/** The design's hint under the device list. */
+export function AddHint() {
+  return <div className="st-note"><Usb size={16} aria-hidden="true" /><span>To add a companion, connect it by USB to Aelys on your Mac or on the web. You'll confirm a 6-digit code shown on the device.</span></div>
+}
+
+export function AddCompanion({ onDone }: { onDone?: () => void } = {}) {
   const [stage, setStage] = useState<Stage>('start')
   const [busy, setBusy] = useState(false)
   const [found, setFound] = useState(false)
@@ -54,7 +59,7 @@ export function AddCompanion() {
 
   let apiUrl: URL | null = null
   try { apiUrl = new URL(getApiConfig().baseUrl, window.location.origin) } catch { /* a malformed base counts as not secure */ }
-  if (!CompanionSerial.supported()) return <div className="st-note"><Usb size={16} aria-hidden="true" /><span>To add a companion, connect it by USB to Aelys on your Mac or on the web. You'll confirm a 6-digit code shown on the device.</span></div>
+  if (!CompanionSerial.supported()) return <AddHint />
   if (apiUrl?.protocol !== 'https:') return <div className="st-note" role="alert">Aelys needs a secure (https) backend</div>
 
   // Steps 1-2 silently: the board makes a key, the backend opens a pairing, the board shows the code.
@@ -127,7 +132,7 @@ export function AddCompanion() {
     } catch (e) { await fail(e, true) }
   }
 
-  const finish = async (message: string) => { await drop(); if (!mounted.current) return; setPassword(''); setOnline(message); setStage('done'); setBusy(false) }
+  const finish = async (message: string) => { await drop(); if (!mounted.current) return; setPassword(''); setOnline(message); setStage('done'); setBusy(false); onDone?.() }
   const send = async () => {
     setError(''); setBusy(true)
     try {

@@ -19,15 +19,20 @@ export function LostModePage(props: Props) {
   return props.state.lost_mode?.on ? <LostOn {...props} /> : <LostSetup {...props} />
 }
 
+/** A QR whose contact is hidden would open nothing: app, preview and payload all say "none" then. */
+const qrFor = (qr: Qr, phoneShown: boolean, telegramShown: boolean): Qr => (qr === 'phone' && !phoneShown) || (qr === 'telegram' && !telegramShown) ? 'none' : qr
+
 function LostSetup({ state, owner, refresh }: Props) {
   const phone = state.contacts?.phone, telegram = state.contacts?.telegram, email = owner?.email ?? undefined
   const [message, setMessage] = useState('')
-  const [showPhone, setShowPhone] = useState(!!phone)
-  const [showTelegram, setShowTelegram] = useState(!!telegram)
-  const [showEmail, setShowEmail] = useState(false)
-  const [qr, setQr] = useState<Qr>(telegram ? 'telegram' : phone ? 'phone' : 'none')
+  // Only what the owner touched is kept; the rest follows the contacts, which may arrive in a later poll.
+  const [touched, setTouched] = useState<{ phone?: boolean; telegram?: boolean; email?: boolean; qr?: Qr }>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const showPhone = !!phone && (touched.phone ?? true)
+  const showTelegram = !!telegram && (touched.telegram ?? true)
+  const showEmail = !!email && (touched.email ?? false)
+  const qr = qrFor(touched.qr ?? (telegram ? 'telegram' : phone ? 'phone' : 'none'), showPhone, showTelegram)
 
   const turnOn = async () => {
     setBusy(true); setError('')
@@ -37,8 +42,8 @@ function LostSetup({ state, owner, refresh }: Props) {
     } catch { setError(FAILED) }
     setBusy(false)
   }
-  const pick = (label: string, Icon: typeof Mail, value: string | undefined, checked: boolean, set: (v: boolean) => void) =>
-    <label className="st-row st-row--14 dv-pick"><input type="checkbox" aria-label={label} checked={checked && !!value} disabled={!value || busy} onChange={(e) => set(e.target.checked)} /><Icon size={18} aria-hidden="true" /><span className="st-grow"><span className="st-label">{label}</span><span className="st-hint">{value ?? 'Not set'}</span></span></label>
+  const pick = (label: string, Icon: typeof Mail, value: string | undefined, checked: boolean, key: 'phone' | 'telegram' | 'email') =>
+    <label className="st-row st-row--14 dv-pick"><input type="checkbox" aria-label={label} checked={checked} disabled={!value || busy} onChange={(e) => setTouched({ ...touched, [key]: e.target.checked })} /><Icon size={18} aria-hidden="true" /><span className="st-grow"><span className="st-label">{label}</span><span className="st-hint">{value ?? 'Not set'}</span></span></label>
 
   return <>
     <div className="st-sub">Show your contacts on Aelys if it gets lost</div>
@@ -54,10 +59,10 @@ function LostSetup({ state, owner, refresh }: Props) {
     <div className="st-group">
       <div className="st-group-title">Show on Aelys</div>
       <Card>
-        {pick('Phone', Smartphone, phone, showPhone, setShowPhone)}
-        {pick('Telegram', Send, telegram, showTelegram, setShowTelegram)}
-        {pick('Email', Mail, email, showEmail, setShowEmail)}
-        <div className="st-row st-row--14"><span className="st-grow st-label">QR code opens</span><SelectChip label="QR code opens" value={qr} options={QR_OPTIONS} disabled={busy} onChange={(v) => setQr(v as Qr)} /></div>
+        {pick('Phone', Smartphone, phone, showPhone, 'phone')}
+        {pick('Telegram', Send, telegram, showTelegram, 'telegram')}
+        {pick('Email', Mail, email, showEmail, 'email')}
+        <div className="st-row st-row--14"><span className="st-grow st-label">QR code opens</span><SelectChip label="QR code opens" value={qr} options={QR_OPTIONS} disabled={busy} onChange={(v) => setTouched({ ...touched, qr: v as Qr })} /></div>
       </Card>
     </div>
     {error && <div className="st-error" role="alert">{error}</div>}
@@ -100,7 +105,7 @@ function LostOn({ state, owner, find, refresh }: Props) {
       {find.error && <div className="st-error" role="alert">{find.error}</div>}
     </div></Card>
     <Card><div className="dv-preview dv-preview--row">
-      <RoundPreview size={104} name={owner?.name} phone={lost.show_phone ? state.contacts?.phone : undefined} telegram={lost.show_telegram ? state.contacts?.telegram : undefined} email={lost.show_email ? lost.email ?? undefined : undefined} message={lost.message} qr={lost.qr ?? 'none'} />
+      <RoundPreview size={104} name={owner?.name} phone={lost.show_phone ? state.contacts?.phone : undefined} telegram={lost.show_telegram ? state.contacts?.telegram : undefined} email={lost.show_email ? lost.email ?? undefined : undefined} message={lost.message} qr={qrFor(lost.qr ?? 'none', !!lost.show_phone && !!state.contacts?.phone, !!lost.show_telegram && !!state.contacts?.telegram)} />
       <div className="st-hint">Aelys shows your message, phone and Telegram. Its buttons can't turn lost mode off.</div>
     </div></Card>
     <button type="button" className="st-btn st-btn--ghost dv-wide" onClick={() => void turnOff()}><Lock size={16} aria-hidden="true" />Turn off lost mode</button>

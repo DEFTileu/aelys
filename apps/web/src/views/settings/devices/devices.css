@@ -72,6 +72,7 @@
 /* "Confirm it's you" sheet, pinned to the bottom of the viewport. */
 .dv-dim { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgba(20, 10, 30, .38); }
 .dv-sheet { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 480px; padding: 10px 16px 28px; border-radius: 24px 24px 0 0; background: var(--st-solid); color: var(--st-ink); box-shadow: 0 -18px 50px rgba(20, 10, 30, .22); }
+.dv-sheet:focus { outline: none; }
 .dv-grab { align-self: center; width: 40px; height: 4px; border-radius: 2px; background: var(--st-line); }
 .dv-sheet-head { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 4px; text-align: center; }
 .dv-sheet-head .st-hint { max-width: 300px; font-size: 14px; }
