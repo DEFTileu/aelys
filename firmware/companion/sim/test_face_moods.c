@@ -363,6 +363,22 @@ static void test_scales_and_api(void)
     lv_obj_delete(face);
 }
 
+static void test_asymmetric_wink_and_wake(void)
+{
+    lv_obj_t *f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
+    sim_step(2160); lv_obj_update_layout(f);
+    int left = lv_obj_get_height(lv_obj_get_child(f, 0));
+    int right = lv_obj_get_height(lv_obj_get_child(f, 1));
+    CHECK(left >= 90); CHECK(right <= 15);
+    gone(f);
+    f = show(MOOD_WAKING, 100, HX, HY, 100);
+    lv_obj_update_layout(f);
+    CHECK(lv_obj_get_height(lv_obj_get_child(f, 0)) <= 15);
+    sim_step(1530); lv_obj_update_layout(f);
+    CHECK(lv_obj_get_height(lv_obj_get_child(f, 0)) >= 105);
+    gone(f);
+}
+
 static void test_smooth_eye_transition(void)
 {
     lv_obj_t *face = face_create(lv_screen_active(), 100);
@@ -386,6 +402,7 @@ int main(void)
 {
     sim_init();
     sim_direct(); /* redraw only what was invalidated, as the board does: stale pixels would show up */
+    test_asymmetric_wink_and_wake();
     test_smooth_eye_transition();
     test_shapes();
     test_inside_screen_and_own_area();

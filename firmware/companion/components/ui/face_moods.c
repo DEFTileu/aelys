@@ -48,48 +48,46 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
                     .n_heart = 2, .heart = { { 258, 20, 24, 0 }, { 16, 34, 24, 1400 } } },
     [MOOD_OFFLINE] = { .eye = { E(79, 66, 28, 28, 14, NOSTAR), E(193, 66, 28, 28, 14, NOSTAR) },
                        .kind = EYE_DOT, .color = 0x4A4554, .motion = MOT_NONE, .dots = true },
-    /* Additional character states from the ACTUAL design. The geometry is
-     * numeric per state; motion variants currently reuse the closest existing
-     * curve where the design's dedicated curve has not yet been ported. */
+    /* Additional character states from the ACTUAL design. */
     [MOOD_ATTENTION] = { .eye = { E(58,31,70,108,35,30,12,20), E(172,31,70,108,35,30,12,20) },
-        .kind = EYE_PILL, .motion = MOT_NONE, .blink_ms = 3000 },
+        .kind = EYE_PILL, .motion = MOT_NONE, .blink_style = BLINK_DOUBLE, .blink_ms = 3000 },
     [MOOD_FLOW] = { .eye = { E(58,63,70,44,22,40,8,14), E(172,63,70,44,22,40,8,14) },
-        .kind = EYE_PILL, .motion = MOT_BREATHE, .blink_ms = 9000 },
+        .kind = EYE_PILL, .motion = MOT_BREATHE_SLOW, .blink_ms = 9000 },
     [MOOD_ELATION] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
-        .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_HOP,
+        .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_PARTY,
         .n_spark = 3, .spark = { {14,18,26,0}, {262,4,26,600}, {268,118,20,1200} } },
     [MOOD_RELIEF] = { .eye = { EL(58,45,70,90,35,STD,320,0), EL(172,45,70,90,35,STD,320,0) },
-        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK_RELIEF },
     [MOOD_PANIC] = { .eye = { E(63,26,60,118,30,28,12,20), E(177,26,60,118,30,28,12,20) },
-        .kind = EYE_PILL, .motion = MOT_JIT },
+        .kind = EYE_PILL, .motion = MOT_SHAKE },
     [MOOD_DISAPPOINTED] = { .eye = { EL(58,60,70,76,35,STD,300,0), EL(172,60,70,76,35,STD,300,0) },
-        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK_SLOW, .blink_ms = 7000 },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK_LETDOWN, .blink_ms = 7000 },
     [MOOD_ANTICIPATION] = { .eye = { E(58,35,70,100,35,42,10,20), E(172,35,70,100,35,42,10,20) },
-        .kind = EYE_PILL, .motion = MOT_LOOK, .blink_ms = 5000 },
+        .kind = EYE_PILL, .motion = MOT_PEEK, .blink_ms = 5000 },
     [MOOD_THINKING] = { .eye = { E(58,30,70,90,35,36,6,20), E(172,30,70,90,35,36,6,20) },
-        .kind = EYE_PILL, .motion = MOT_TILT, .blink_ms = 5000 },
+        .kind = EYE_PILL, .motion = MOT_PONDER, .blink_ms = 5000 },
     [MOOD_FRIGHTENED] = { .eye = { E(70,62,46,46,23,22,6,12), E(184,62,46,46,23,22,6,12) },
-        .kind = EYE_PILL, .motion = MOT_POP },
+        .kind = EYE_PILL, .motion = MOT_JUMP },
     [MOOD_TICKLED] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
-        .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_JIT,
+        .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_SHIVER,
         .n_spark = 2, .spark = { {24,20,16,0}, {258,16,16,500} } },
     [MOOD_BASHFUL] = { .eye = { EL(40,54,70,88,35,STD,264,0), EL(154,54,70,88,35,STD,264,0) },
         .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_NONE, .cheeks = true },
     [MOOD_MISCHIEF] = { .eye = { EL(58,35,70,100,35,STD,240,-213), E(172,35,70,100,35,STD) },
-        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SWAY, .blink_ms = 3000 },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_CHEEKY, .blink_style = BLINK_WINK, .blink_ms = 3000 },
     [MOOD_WAKING] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
-        .kind = EYE_PILL, .motion = MOT_BREATHE, .blink_ms = 3000 },
+        .kind = EYE_PILL, .motion = MOT_NONE, .blink_style = BLINK_WAKE, .blink_ms = 3000 },
     [MOOD_BORED] = { .eye = { EL(58,35,70,100,35,STD,480,0), EL(172,35,70,100,35,STD,480,0) },
-        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK_SLOW },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_DRIFT },
     [MOOD_MISSED] = { .eye = { EL(58,42,70,92,35,STD,180,-176), EL(172,42,70,92,35,STD,180,176) },
-        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_LOOK },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SEARCH },
     [MOOD_EXHAUSTED] = { .eye = { EL(58,52,70,84,35,STD,320,0), EL(172,52,70,84,35,STD,320,0) },
         .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK, .blink_ms = 6000,
         .gradient_top = 0x8C869A, .gradient_bottom = 0x4A4554, .star_opacity = 128 },
     [MOOD_CHARGING] = { .eye = { EL(58,35,70,100,35,STD,340,0), EL(172,35,70,100,35,STD,340,0) },
         .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_BREATHE },
     [MOOD_RECONNECTED] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
-        .kind = EYE_PILL, .motion = MOT_HOP_SLOW, .blink_ms = 1600 },
+        .kind = EYE_PILL, .motion = MOT_HOP_SLOW, .blink_style = BLINK_DOUBLE, .blink_ms = 1600 },
 };
 
 static const char *const NAMES[MOOD_COUNT] = {
@@ -141,7 +139,7 @@ static int32_t ease_in(int32_t u) { return u * u / 1000; }
 
 /* ---- eye group (.ey) keyframes ---- */
 typedef struct { int16_t t, tx, ty, rot, sc; } kf_t; /* t permille of the loop; px, px, deg, permille */
-typedef struct { uint16_t period; bool out; uint8_t n; kf_t k[9]; } motion_t;
+typedef struct { uint16_t period; uint8_t easing, n; kf_t k[9]; } motion_t; /* 0 smooth, 1 out, 2 linear */
 #define K(t, tx, ty, rot) { t, tx, ty, rot, 1000 }
 #define KS(t, sc) { t, 0, 0, 0, sc }
 
@@ -164,6 +162,18 @@ static const motion_t MOTION[MOT_COUNT] = {
     [MOT_HUFF] = { 3000, false, 9, { K(0, 0, 0, 0), K(200, 0, 0, 0), K(300, 16, 0, 0), K(600, 16, 0, 0),
                                      K(640, 12, 0, 0), K(680, 18, 0, 0), K(720, 14, 0, 0), K(850, 0, 0, 0),
                                      K(1000, 0, 0, 0) } },
+    [MOT_PARTY] = { 1200, 0, 4, { K(0,0,0,0), K(250,0,-14,-6), K(750,0,-14,6), K(1000,0,0,0) } },
+    [MOT_SHAKE] = { 220, 2, 4, { K(0,0,0,0), K(250,-4,1,0), K(750,4,-1,0), K(1000,0,0,0) } },
+    [MOT_PEEK] = { 2600, 0, 5, { K(0,0,0,0), K(400,0,0,0), K(550,14,-10,0), K(850,14,-10,0), K(1000,0,0,0) } },
+    [MOT_PONDER] = { 3400, 0, 3, { K(0,-6,-8,0), K(500,8,-10,0), K(1000,-6,-8,0) } },
+    [MOT_JUMP] = { 1800, 1, 5, { K(0,0,0,0), {80,0,-22,0,1100}, {200,0,0,0,960}, K(600,0,0,0), K(1000,0,0,0) } },
+    [MOT_SHIVER] = { 200, 2, 3, { K(0,0,0,0), K(500,0,-3,0), K(1000,0,0,0) } },
+    [MOT_DRIFT] = { 7000, 0, 5, { K(0,0,0,0), K(250,6,-4,0), K(500,-4,6,0), K(750,-6,-3,0), K(1000,0,0,0) } },
+    [MOT_SEARCH] = { 4400, 0, 6, { K(0,0,0,0), K(200,-24,0,0), K(350,-24,0,0), K(550,24,0,0), K(700,24,0,0), K(1000,0,0,0) } },
+    [MOT_BREATHE_SLOW] = { 5000, 0, 3, { KS(0,1000), KS(500,1050), KS(1000,1000) } },
+    [MOT_SINK_RELIEF] = { 3200, 0, 3, { K(0,0,0,0), K(500,0,6,0), K(1000,0,0,0) } },
+    [MOT_SINK_LETDOWN] = { 5000, 0, 3, { K(0,0,0,0), K(500,0,6,0), K(1000,0,0,0) } },
+    [MOT_CHEEKY] = { 3000, 0, 2, { K(0,0,0,-7), K(1000,0,0,-7) } },
 };
 
 uint32_t face_motion_period(face_motion_t m) { return (unsigned)m < MOT_COUNT ? MOTION[m].period : 0; }
@@ -178,7 +188,7 @@ face_group_t face_group_at(face_motion_t m, uint32_t t_ms)
     while (i + 2 < mo->n && p > mo->k[i + 1].t) i++;
     const kf_t *a = &mo->k[i], *b = &mo->k[i + 1];
     int32_t u = (p - a->t) * 1000 / (b->t - a->t);
-    int32_t e = mo->out ? ease_out(u) : ease(u);
+    int32_t e = mo->easing == 2 ? u : mo->easing == 1 ? ease_out(u) : ease(u);
     g.tx = a->tx * 100 + (b->tx - a->tx) * e / 10;
     g.ty = a->ty * 100 + (b->ty - a->ty) * e / 10;
     g.rot = a->rot * 100 + (b->rot - a->rot) * e / 10;
@@ -194,6 +204,39 @@ int32_t face_blink_x1000(uint32_t period_ms, uint32_t t_ms)
     if (p < 930) return 1000;
     if (p < 960) return 1000 - 920 * ease((p - 930) * 1000 / 30) / 1000;
     return 80 + 920 * ease((p - 960) * 1000 / 40) / 1000;
+}
+
+static int32_t interpolate(int32_t p, int32_t a, int32_t b, int32_t from, int32_t to, bool out)
+{
+    int32_t u = (p - a) * 1000 / (b - a);
+    int32_t e = out ? ease_out(u) : ease(u);
+    return from + (to - from) * e / 1000;
+}
+
+int32_t face_eye_openness(const face_mood_t *m, int side, uint32_t t_ms)
+{
+    if (!m || !m->blink_ms) return 1000;
+    int32_t p = (int32_t)(t_ms % m->blink_ms * 1000 / m->blink_ms);
+    if (m->blink_style == BLINK_DOUBLE) {
+        if (p < 700) return 1000;
+        if (p < 730) return interpolate(p,700,730,1000,80,false);
+        if (p < 780) return interpolate(p,730,780,80,1000,false);
+        if (p < 810) return interpolate(p,780,810,1000,80,false);
+        return interpolate(p,810,1000,80,1000,false);
+    }
+    if (m->blink_style == BLINK_WINK) {
+        if (!side || p < 600) return 1000;
+        if (p < 680) return interpolate(p,600,680,1000,100,false);
+        if (p < 840) return 100;
+        return interpolate(p,840,1000,100,1000,false);
+    }
+    if (m->blink_style == BLINK_WAKE) {
+        if (p < 350) return 100;
+        if (p < 550) return interpolate(p,350,550,100,1120,true);
+        if (p < 700) return interpolate(p,550,700,1120,1000,true);
+        return 1000;
+    }
+    return face_blink_x1000(m->blink_ms, t_ms);
 }
 
 /* ---- effect loops ---- */

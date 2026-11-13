@@ -255,11 +255,12 @@ static void layout_eyes(face_t *f, uint32_t t)
 {
     const face_mood_t *m = f->m;
     face_group_t g = face_group_at((face_motion_t)m->motion, t);
-    int32_t blink = face_blink_x1000(m->blink_ms, t), sn, cs;
+    int32_t sn, cs;
     trig(g.rot, &sn, &cs);
 
     for (int side = 0; side < 2; side++) {
         const face_eye_t *e = &f->current_eye[side];
+        int32_t blink = face_eye_openness(m, side, t);
         /* CSS blink: scaleY about 50 % 60 % of the eye */
         int32_t w100 = e->w * 100, h100 = e->h * blink / 10;
         int32_t top100 = e->y * 100 + e->h * 60 * (1000 - blink) / 1000;

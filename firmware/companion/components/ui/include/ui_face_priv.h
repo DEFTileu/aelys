@@ -17,7 +17,9 @@ typedef enum {
 } face_lid_t;
 typedef enum {
     MOT_NONE, MOT_LOOK, MOT_HOP, MOT_HOP_SLOW, MOT_SWAY, MOT_BREATHE, MOT_JIT, MOT_SINK, MOT_SINK_SLOW, MOT_POP,
-    MOT_TILT, MOT_WOBBLE, MOT_HUFF, MOT_COUNT
+    MOT_TILT, MOT_WOBBLE, MOT_HUFF, MOT_PARTY, MOT_SHAKE, MOT_PEEK, MOT_PONDER,
+    MOT_JUMP, MOT_SHIVER, MOT_DRIFT, MOT_SEARCH, MOT_BREATHE_SLOW,
+    MOT_SINK_RELIEF, MOT_SINK_LETDOWN, MOT_CHEEKY, MOT_COUNT
 } face_motion_t;
 
 typedef struct {
@@ -29,9 +31,12 @@ typedef struct {
 
 typedef struct { int16_t x, y, size, delay_ms; } face_fx_t; /* position of the effect's box in the face, px */
 
+typedef enum { BLINK_STANDARD, BLINK_DOUBLE, BLINK_WINK, BLINK_WAKE } face_blink_style_t;
+
 typedef struct {
     face_eye_t eye[2];            /* [0] left, [1] right */
     uint8_t kind, lid, motion;
+    uint8_t blink_style;
     uint16_t blink_ms;            /* blink period, 0 = none */
     uint8_t border;               /* ring / arc thickness, px */
     uint32_t color;               /* flat colour of arc, ring and dot */
@@ -52,6 +57,7 @@ face_group_t face_group_at(face_motion_t m, uint32_t t_ms);
 uint32_t face_motion_period(face_motion_t m);
 /* Eye openness (permille, 80..1000) at t_ms: closes at 93..96 % of the period, opens again by 100 %. */
 int32_t face_blink_x1000(uint32_t period_ms, uint32_t t_ms);
+int32_t face_eye_openness(const face_mood_t *m, int side, uint32_t t_ms);
 
 /* Effect loops. op = opacity 0..255; dx, dy = offset px*100; k = size permille. */
 typedef struct { int32_t op, dx, dy, k; } face_fx_state_t;

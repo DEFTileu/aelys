@@ -11,6 +11,32 @@ static const face_eye_t *eye(mood_t m, int side) { return &face_mood_def(m)->eye
     CHECK_EQ(e_->star_x, X); CHECK_EQ(e_->star_y, Y); CHECK_EQ(e_->star, S); } while (0)
 #define NEAR(a, b, tol) CHECK(labs((long)(a) - (long)(b)) <= (tol))
 
+static void test_character_motion_design(void)
+{
+    const struct { mood_t mood; uint32_t period; uint32_t time; int tx, ty, rot, scale; } cases[] = {
+        {MOOD_ELATION,1200,300,0,-1400,-600,1000}, {MOOD_PANIC,220,55,-400,100,0,1000},
+        {MOOD_ANTICIPATION,2600,1430,1400,-1000,0,1000}, {MOOD_THINKING,3400,0,-600,-800,0,1000},
+        {MOOD_FRIGHTENED,1800,144,0,-2200,0,1100}, {MOOD_TICKLED,200,100,0,-300,0,1000},
+        {MOOD_BORED,7000,1750,600,-400,0,1000}, {MOOD_MISSED,4400,880,-2400,0,0,1000},
+        {MOOD_MISCHIEF,3000,0,0,0,-700,1000},
+    };
+    for (unsigned i = 0; i < sizeof cases / sizeof *cases; i++) {
+        face_motion_t motion = (face_motion_t)face_mood_def(cases[i].mood)->motion;
+        CHECK_EQ(face_motion_period(motion), cases[i].period);
+        face_group_t g = face_group_at(motion, cases[i].time);
+        NEAR(g.tx, cases[i].tx, 10); NEAR(g.ty, cases[i].ty, 10);
+        NEAR(g.rot, cases[i].rot, 10); NEAR(g.sc, cases[i].scale, 2);
+    }
+    const face_mood_t *a = face_mood_def(MOOD_ATTENTION);
+    CHECK_EQ(face_eye_openness(a,0,2100),1000); CHECK_EQ(face_eye_openness(a,0,2190),80);
+    CHECK_EQ(face_eye_openness(a,0,2340),1000); CHECK_EQ(face_eye_openness(a,0,2430),80);
+    const face_mood_t *wink = face_mood_def(MOOD_MISCHIEF);
+    CHECK_EQ(face_eye_openness(wink,0,2280),1000); CHECK_EQ(face_eye_openness(wink,1,2280),100);
+    const face_mood_t *wake = face_mood_def(MOOD_WAKING);
+    CHECK_EQ(face_eye_openness(wake,0,0),100); CHECK_EQ(face_eye_openness(wake,0,1650),1120);
+    CHECK_EQ(face_eye_openness(wake,1,2100),1000);
+}
+
 static void test_all_character_rows(void)
 {
     CHECK_EQ(CHAR_MOOD_COUNT, 32);
@@ -219,6 +245,7 @@ static void test_images(void)
 
 int main(void)
 {
+    test_character_motion_design();
     test_all_character_rows();
     test_eyes();
     test_lids();
