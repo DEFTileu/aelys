@@ -11,6 +11,26 @@ static const face_eye_t *eye(mood_t m, int side) { return &face_mood_def(m)->eye
     CHECK_EQ(e_->star_x, X); CHECK_EQ(e_->star_y, Y); CHECK_EQ(e_->star, S); } while (0)
 #define NEAR(a, b, tol) CHECK(labs((long)(a) - (long)(b)) <= (tol))
 
+static void test_all_character_rows(void)
+{
+    CHECK_EQ(CHAR_MOOD_COUNT, 32);
+    for (int m = 0; m < CHAR_MOOD_COUNT; m++) {
+        mood_t mapped = mood_from_character((character_mood_t)m);
+        CHECK(mapped >= 0 && mapped < MOOD_COUNT);
+        for (int k = 0; k < m; k++) CHECK(mapped != mood_from_character((character_mood_t)k));
+    }
+    CHECK_EQ(mood_from_character(CHAR_MOOD_COUNT), MOOD_CALM);
+    CHECK_EQ(MOOD_COUNT, 32);
+    for (int m = 0; m < MOOD_COUNT; m++) {
+        const face_mood_t *row = face_mood_def((mood_t)m);
+        CHECK(row != NULL);
+        CHECK(mood_name((mood_t)m)[0] != '?');
+        for (int side = 0; side < 2; side++) {
+            CHECK(row->eye[side].w > 0 && row->eye[side].h > 0);
+            CHECK(row->eye[side].x >= 0 && row->eye[side].x + row->eye[side].w <= FACE_W);
+        }
+    }
+}
 static void test_eyes(void)
 {
     for (int s = 0; s < 2; s++) {
@@ -35,7 +55,7 @@ static void test_eyes(void)
     EYE_IS(MOOD_CURIOUS, 0, 58, 46, 70, 84, 35);
     EYE_IS(MOOD_CURIOUS, 1, 172, 26, 70, 112, 35);
     STAR_IS(MOOD_CURIOUS, 1, 38, 14, 20);
-    for (int m = 0; m < MOOD_COUNT; m++) {
+    for (int m = 0; m <= MOOD_OFFLINE; m++) {
         int none = m == MOOD_SLEEPING || m == MOOD_DIZZY || m == MOOD_OFFLINE;
         CHECK_EQ(eye(m, 0)->star == 0, none);
         CHECK_EQ(eye(m, 1)->star == 0, none);
@@ -199,6 +219,7 @@ static void test_images(void)
 
 int main(void)
 {
+    test_all_character_rows();
     test_eyes();
     test_lids();
     test_motion_and_blink();

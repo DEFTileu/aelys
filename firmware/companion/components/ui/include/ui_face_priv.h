@@ -34,7 +34,9 @@ typedef struct {
     uint8_t kind, lid, motion;
     uint16_t blink_ms;            /* blink period, 0 = none */
     uint8_t border;               /* ring / arc thickness, px */
-    uint32_t color;               /* flat colour of arc, ring and dot; pill eyes use the gradient */
+    uint32_t color;               /* flat colour of arc, ring and dot */
+    uint32_t gradient_top, gradient_bottom; /* 0 = normal purple gradient */
+    uint8_t star_opacity;         /* 0 = default full opacity */
     uint8_t n_spark, n_zz, n_heart, n_line;
     bool drop, cheeks, dots;
     uint16_t drop_ms;             /* drip period */

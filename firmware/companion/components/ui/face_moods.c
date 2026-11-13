@@ -48,11 +48,56 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
                     .n_heart = 2, .heart = { { 258, 20, 24, 0 }, { 16, 34, 24, 1400 } } },
     [MOOD_OFFLINE] = { .eye = { E(79, 66, 28, 28, 14, NOSTAR), E(193, 66, 28, 28, 14, NOSTAR) },
                        .kind = EYE_DOT, .color = 0x4A4554, .motion = MOT_NONE, .dots = true },
+    /* Additional character states from the ACTUAL design. The geometry is
+     * numeric per state; motion variants currently reuse the closest existing
+     * curve where the design's dedicated curve has not yet been ported. */
+    [MOOD_ATTENTION] = { .eye = { E(58,31,70,108,35,30,12,20), E(172,31,70,108,35,30,12,20) },
+        .kind = EYE_PILL, .motion = MOT_NONE, .blink_ms = 3000 },
+    [MOOD_FLOW] = { .eye = { E(58,63,70,44,22,40,8,14), E(172,63,70,44,22,40,8,14) },
+        .kind = EYE_PILL, .motion = MOT_BREATHE, .blink_ms = 9000 },
+    [MOOD_ELATION] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
+        .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_HOP,
+        .n_spark = 3, .spark = { {14,18,26,0}, {262,4,26,600}, {268,118,20,1200} } },
+    [MOOD_RELIEF] = { .eye = { EL(58,45,70,90,35,STD,320,0), EL(172,45,70,90,35,STD,320,0) },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK },
+    [MOOD_PANIC] = { .eye = { E(63,26,60,118,30,28,12,20), E(177,26,60,118,30,28,12,20) },
+        .kind = EYE_PILL, .motion = MOT_JIT },
+    [MOOD_DISAPPOINTED] = { .eye = { EL(58,60,70,76,35,STD,300,0), EL(172,60,70,76,35,STD,300,0) },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK_SLOW, .blink_ms = 7000 },
+    [MOOD_ANTICIPATION] = { .eye = { E(58,35,70,100,35,42,10,20), E(172,35,70,100,35,42,10,20) },
+        .kind = EYE_PILL, .motion = MOT_LOOK, .blink_ms = 5000 },
+    [MOOD_THINKING] = { .eye = { E(58,30,70,90,35,36,6,20), E(172,30,70,90,35,36,6,20) },
+        .kind = EYE_PILL, .motion = MOT_TILT, .blink_ms = 5000 },
+    [MOOD_FRIGHTENED] = { .eye = { E(70,62,46,46,23,22,6,12), E(184,62,46,46,23,22,6,12) },
+        .kind = EYE_PILL, .motion = MOT_POP },
+    [MOOD_TICKLED] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
+        .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_JIT,
+        .n_spark = 2, .spark = { {24,20,16,0}, {258,16,16,500} } },
+    [MOOD_BASHFUL] = { .eye = { EL(40,54,70,88,35,STD,264,0), EL(154,54,70,88,35,STD,264,0) },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_NONE, .cheeks = true },
+    [MOOD_MISCHIEF] = { .eye = { EL(58,35,70,100,35,STD,240,-213), E(172,35,70,100,35,STD) },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SWAY, .blink_ms = 3000 },
+    [MOOD_WAKING] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
+        .kind = EYE_PILL, .motion = MOT_BREATHE, .blink_ms = 3000 },
+    [MOOD_BORED] = { .eye = { EL(58,35,70,100,35,STD,480,0), EL(172,35,70,100,35,STD,480,0) },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK_SLOW },
+    [MOOD_MISSED] = { .eye = { EL(58,42,70,92,35,STD,180,-176), EL(172,42,70,92,35,STD,180,176) },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_LOOK },
+    [MOOD_EXHAUSTED] = { .eye = { EL(58,52,70,84,35,STD,320,0), EL(172,52,70,84,35,STD,320,0) },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK, .blink_ms = 6000,
+        .gradient_top = 0x8C869A, .gradient_bottom = 0x4A4554, .star_opacity = 128 },
+    [MOOD_CHARGING] = { .eye = { EL(58,35,70,100,35,STD,340,0), EL(172,35,70,100,35,STD,340,0) },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_BREATHE },
+    [MOOD_RECONNECTED] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
+        .kind = EYE_PILL, .motion = MOT_HOP_SLOW, .blink_ms = 1600 },
 };
 
 static const char *const NAMES[MOOD_COUNT] = {
     "calm", "happy", "proud", "focused", "worried", "sad", "surprised",
     "curious", "sleepy", "sleeping", "dizzy", "annoyed", "love", "offline",
+    "attention", "flow", "elation", "relief", "panic", "disappointed", "anticipation", "thinking",
+    "frightened", "tickled", "bashful", "mischief", "waking", "bored", "missed", "exhausted",
+    "charging", "reconnected",
 };
 
 const face_mood_t *face_mood_def(mood_t m)
@@ -63,6 +108,29 @@ const face_mood_t *face_mood_def(mood_t m)
 const char *mood_name(mood_t m)
 {
     return (unsigned)m < MOOD_COUNT ? NAMES[m] : "?";
+}
+
+mood_t mood_from_character(character_mood_t mood)
+{
+    static const mood_t map[CHAR_MOOD_COUNT] = {
+        [CHAR_CALM] = MOOD_CALM, [CHAR_ATTENTION] = MOOD_ATTENTION,
+        [CHAR_FOCUSED] = MOOD_FOCUSED, [CHAR_FLOW] = MOOD_FLOW,
+        [CHAR_JOY] = MOOD_HAPPY, [CHAR_ELATION] = MOOD_ELATION,
+        [CHAR_PRIDE] = MOOD_PROUD, [CHAR_RELIEF] = MOOD_RELIEF,
+        [CHAR_ANXIETY] = MOOD_WORRIED, [CHAR_PANIC] = MOOD_PANIC,
+        [CHAR_SAD] = MOOD_SAD, [CHAR_DISAPPOINTED] = MOOD_DISAPPOINTED,
+        [CHAR_ANTICIPATION] = MOOD_ANTICIPATION, [CHAR_THINKING] = MOOD_THINKING,
+        [CHAR_CURIOUS] = MOOD_CURIOUS, [CHAR_SURPRISED] = MOOD_SURPRISED,
+        [CHAR_FRIGHTENED] = MOOD_FRIGHTENED, [CHAR_TICKLED] = MOOD_TICKLED,
+        [CHAR_TENDER] = MOOD_LOVE, [CHAR_BASHFUL] = MOOD_BASHFUL,
+        [CHAR_IRRITATED] = MOOD_ANNOYED, [CHAR_DIZZY] = MOOD_DIZZY,
+        [CHAR_MISCHIEF] = MOOD_MISCHIEF, [CHAR_WAKING] = MOOD_WAKING,
+        [CHAR_BORED] = MOOD_BORED, [CHAR_MISSED] = MOOD_MISSED,
+        [CHAR_SLEEPY] = MOOD_SLEEPY, [CHAR_SLEEPING] = MOOD_SLEEPING,
+        [CHAR_EXHAUSTED] = MOOD_EXHAUSTED, [CHAR_CHARGING] = MOOD_CHARGING,
+        [CHAR_OFFLINE] = MOOD_OFFLINE, [CHAR_RECONNECTED] = MOOD_RECONNECTED,
+    };
+    return (unsigned)mood < CHAR_MOOD_COUNT ? map[mood] : MOOD_CALM;
 }
 
 /* CSS ease-in-out per keyframe interval (smoothstep is within a few percent of cubic-bezier(.42,0,.58,1)),

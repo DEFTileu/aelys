@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "lvgl.h"
 #include "owner.h"
+#include "character.h"
 #include "proto.h"
 #include "snap.h"
 #include "tribuf.h"
@@ -15,7 +16,10 @@ extern "C" {
 typedef enum {
     MOOD_CALM, MOOD_HAPPY, MOOD_PROUD, MOOD_FOCUSED, MOOD_WORRIED, MOOD_SAD, MOOD_SURPRISED,
     MOOD_CURIOUS, MOOD_SLEEPY, MOOD_SLEEPING, MOOD_DIZZY, MOOD_ANNOYED, MOOD_LOVE, MOOD_OFFLINE,
-    MOOD_COUNT
+    MOOD_ATTENTION, MOOD_FLOW, MOOD_ELATION, MOOD_RELIEF, MOOD_PANIC, MOOD_DISAPPOINTED,
+    MOOD_ANTICIPATION, MOOD_THINKING, MOOD_FRIGHTENED, MOOD_TICKLED, MOOD_BASHFUL,
+    MOOD_MISCHIEF, MOOD_WAKING, MOOD_BORED, MOOD_MISSED, MOOD_EXHAUSTED,
+    MOOD_CHARGING, MOOD_RECONNECTED, MOOD_COUNT
 } mood_t;
 
 /* Face is 280x160 px at scale_x100 == 100 (fx like the "!" glyph may overflow the box).
@@ -24,6 +28,7 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100);
 void face_set_mood(lv_obj_t *face, mood_t m);
 /* Lower-case name ("calm", ...); "?" for an out-of-range value. */
 const char *mood_name(mood_t m);
+mood_t mood_from_character(character_mood_t mood);
 
 /* Screens (home, lost mode, ICE card). ui_setup() builds them on the active LVGL screen: it is the
  * lv_port_start callback, so call it with the LVGL lock held. ui_handle_event() applies one event

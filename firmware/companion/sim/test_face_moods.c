@@ -60,6 +60,10 @@ static void test_shapes(void)
     CHECK(dark(150, 90));
     gone(f);
 
+    f = show(MOOD_EXHAUSTED, 100, 0, 0, 100);
+    CHECK(at(93, 100).r < 160 && at(93, 100).g < 160 && at(93, 100).b < 170);
+    gone(f);
+
     f = show(MOOD_OFFLINE, 100, 0, 0, 100);
     CHECK(close_to(93, 80, 0x4A, 0x45, 0x54, 12) && close_to(207, 80, 0x4A, 0x45, 0x54, 12));
     CHECK(lit(150, 123) && dark(150, 100));                        /* the middle of the three dots */
@@ -176,10 +180,13 @@ static void test_inside_screen_and_own_area(void)
         }
         CHECK(lit_px > 500);
         CHECK_EQ(outside, 0);                                      /* nothing outside the 466 px circle */
-        CHECK(g_inv_set); /* every mood has some motion */
-        /* the animation only redraws the face box plus its 30 px of overhang (lids, drops, hearts) */
-        CHECK(g_inv.x1 >= HX - 30 && g_inv.y1 >= HY - 30);
-        CHECK(g_inv.x2 <= HX + 300 + 30 && g_inv.y2 <= HY + FACE_H + 30);
+        if (m == MOOD_BASHFUL) CHECK(!g_inv_set); /* design specifies no animation */
+        else CHECK(g_inv_set);
+        /* A moving face only redraws its box plus 30 px of overhang. */
+        if (g_inv_set) {
+            CHECK(g_inv.x1 >= HX - 30 && g_inv.y1 >= HY - 30);
+            CHECK(g_inv.x2 <= HX + 300 + 30 && g_inv.y2 <= HY + FACE_H + 30);
+        }
         gone(f);
     }
 }
@@ -207,7 +214,7 @@ static void test_partial_redraw_each_frame(void)
                 break;
             }
         }
-        CHECK(flushed > 0);
+        if (m == MOOD_BASHFUL) CHECK_EQ(flushed, 0); else CHECK(flushed > 0);
         gone(f);
     }
     lv_timer_set_period(anim, LV_DEF_REFR_PERIOD);
@@ -329,7 +336,7 @@ static void test_animation_style_footprint(void)
 
 static void test_scales_and_api(void)
 {
-    CHECK_EQ(MOOD_COUNT, 14);
+    CHECK_EQ(MOOD_COUNT, 32);
     static const int32_t S[] = { 34, 36, 42, 50, 70, 100, 107 };
     for (unsigned i = 0; i < sizeof S / sizeof *S; i++)
         for (int m = 0; m < MOOD_COUNT; m++) {
