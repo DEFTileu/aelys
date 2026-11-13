@@ -1216,7 +1216,58 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "resources"),
     ("POST", "resource-links"),
     ("DELETE", "resource-links/*"),
+    ("GET", "companion/devices"),
+    ("GET", "companion/devices/*"),
+    ("PUT", "companion/devices/*/lost-mode"),
+    ("PUT", "companion/devices/*/ice"),
+    ("POST", "companion/devices/*/find"),
+    ("POST", "companion/devices/*/wifi"),
+    ("POST", "companion/devices/*/wifi-scan"),
+    ("POST", "companion/devices/*/wifi/remove"),
+    ("PUT", "companion/devices/*/wifi/order"),
+    ("PUT", "companion/devices/*/settings"),
+    ("POST", "companion/devices/*/restart"),
+    ("POST", "companion/devices/*/unpair"),
+    // Companion pairing only: `api_route` pins the request to platform "companion" and
+    // lets approve through only for a pairing this process requested.
+    ("POST", "pairing/request"),
+    ("POST", "pairing/*/approve"),
 ];
+const PAIRING_REQUEST: &str = "/api/v1/pairing/request";
+/// Pairing ids this process created through `PAIRING_REQUEST`; nothing else may be approved.
+static COMPANION_PAIRINGS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(Default::default);
+fn approve_target(path: &str) -> Option<&str> {
+    path.strip_prefix("/api/v1/pairing/")?
+        .strip_suffix("/approve")
+}
+fn companion_pairing_allowed(path: &str, body: Option<&Value>) -> bool {
+    if path == PAIRING_REQUEST {
+        return body.and_then(|b| b.get("platform")).and_then(Value::as_str) == Some("companion");
+    }
+    approve_target(path)
+        .is_none_or(|id| COMPANION_PAIRINGS.lock().is_ok_and(|set| set.contains(id)))
+}
+fn remember_pairing(path: &str, value: &Value) {
+    let Ok(mut set) = COMPANION_PAIRINGS.lock() else {
+        return;
+    };
+    if path == PAIRING_REQUEST {
+        if let Some(id) = value
+            .get("pairing_id")
+            .and_then(Value::as_str)
+            .filter(|id| valid_id(id))
+        {
+            if set.len() >= 8 {
+                set.clear(); // pairings expire within minutes; a handful is plenty
+            }
+            set.insert(id.to_owned());
+        }
+    } else if let Some(id) = approve_target(path) {
+        set.remove(id);
+    }
+}
 /// English AI routes that run a model server-side for up to ~60-90 s; every
 /// other API route keeps the 15 s `client()` timeout.
 const SLOW_API: &[(&str, &str)] = &[
@@ -1436,7 +1487,10 @@ fn api_route(
     query: Option<std::collections::BTreeMap<String, String>>,
     body: Option<Value>,
 ) -> Result<(Method, String, Option<Value>), String> {
-    if path.len() > 512 || !api_allowed(&method, &path) {
+    if path.len() > 512
+        || !api_allowed(&method, &path)
+        || !companion_pairing_allowed(&path, body.as_ref())
+    {
         return Err(err("VALIDATION_ERROR"));
     }
     let http = Method::from_bytes(method.as_bytes()).map_err(|_| err("VALIDATION_ERROR"))?;
@@ -2752,6 +2806,9 @@ async fn execute_operation_inner(
             }
         })?;
     ensure_operation_session(state, origin, &access, is_mutation).await?;
+    if is_api {
+        remember_pairing(&path, &value);
+    }
     sanitize_response(kind, value).map_err(|e| {
         if is_mutation {
             err("MUTATION_OUTCOME_UNKNOWN")
@@ -4834,6 +4891,71 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn companion_routes_and_pairing_are_narrow() {
+        let api = |method: &str, path: &str, body: Option<Value>| {
+            route(Operation::Api {
+                method: method.into(),
+                path: path.into(),
+                query: None,
+                body,
+                idempotency_key: None,
+                upload: None,
+            })
+        };
+        assert!(api("GET", "/api/v1/companion/devices", None).is_ok());
+        assert!(api(
+            "PUT",
+            "/api/v1/companion/devices/d-1/lost-mode",
+            Some(json!({"on": true}))
+        )
+        .is_ok());
+        assert!(api(
+            "POST",
+            "/api/v1/companion/devices/d-1/unpair",
+            Some(json!({}))
+        )
+        .is_ok());
+        assert!(api(
+            "POST",
+            "/api/v1/companion/devices/../unpair",
+            Some(json!({}))
+        )
+        .is_err());
+        // pairing: only a companion request, and only approving what this process requested
+        assert!(api(
+            "POST",
+            PAIRING_REQUEST,
+            Some(json!({"platform": "companion"}))
+        )
+        .is_ok());
+        assert!(api(
+            "POST",
+            PAIRING_REQUEST,
+            Some(json!({"platform": "desktop"}))
+        )
+        .is_err());
+        assert!(api("POST", PAIRING_REQUEST, None).is_err());
+        let approve = "/api/v1/pairing/pz-1/approve";
+        let code = || Some(json!({"secret": "s", "sas": "123456"}));
+        assert!(api("POST", approve, code()).is_err());
+        remember_pairing(PAIRING_REQUEST, &json!({"pairing_id": "pz-1"}));
+        assert!(api("POST", approve, code()).is_ok());
+        assert!(api("POST", "/api/v1/pairing/other/approve", code()).is_err());
+        remember_pairing(approve, &json!({"device_id": "d-2"}));
+        assert!(api("POST", approve, code()).is_err());
+        for path in [
+            "/api/v1/pairing/invite",
+            "/api/v1/pairing/pz-1/claim",
+            "/api/v1/pairing/pz-1/finish",
+            "/api/v1/devices/channel",
+        ] {
+            assert!(
+                api("POST", path, Some(json!({"platform": "companion"}))).is_err(),
+                "{path}"
+            );
+        }
+    }
     #[test]
     fn ai_chat_routes_are_allowlisted_and_typed_fields_survive() {
         assert!(api_allowed("PATCH", "/api/v1/ai/conversations/abc123"));

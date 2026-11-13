@@ -71,10 +71,12 @@ function bodyValue(body: BodyInit | null | undefined): Record<string, unknown> {
 
 // Rust holds the real allowlist (API_ALLOWLIST); this only keeps obviously forbidden areas off the bridge.
 const GENERIC_BLOCKED = /^\/api\/v1\/(auth|devices|sync|pairing)(\/|$)/
+// The one pairing flow the bridge carries: Rust pins it to platform "companion" and its own requests.
+const COMPANION_PAIRING = /^\/api\/v1\/pairing\/(request|[A-Za-z0-9_-]+\/approve)$/
 
 function genericOperation(url: URL, init?: RequestInit): NativeOperation | undefined {
   const method = (init?.method ?? 'GET').toUpperCase()
-  if (!url.pathname.startsWith('/api/v1/') || GENERIC_BLOCKED.test(url.pathname)) return undefined
+  if (!url.pathname.startsWith('/api/v1/') || (GENERIC_BLOCKED.test(url.pathname) && !COMPANION_PAIRING.test(url.pathname))) return undefined
   if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return undefined
   if (init?.body !== undefined && init.body !== null && typeof init.body !== 'string') return undefined
   const query = Object.fromEntries(url.searchParams.entries())
