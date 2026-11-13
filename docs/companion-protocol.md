@@ -328,8 +328,8 @@ sends a fresh `wifi_state` after `wifi_remove` and `wifi_order`.
 `wifi_remove` never strands the board: if `ssid` is the network the board is
 connected to, or the last saved network, it acks `ok: false` with
 `error_code: "IN_USE"`, the saved list is unchanged and no `wifi_state` follows.
-Removing a name that is not saved is `ok: true` (nothing to change). `IN_USE`
-is final (not retried, unlike `BUSY`).
+Removing a name that is not saved is `ok: true` (nothing to change). `wifi_remove`
+is never queued, so the server does not retry it: `IN_USE` is final.
 ```json
 {"type": "command", "id": "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", "name": "settings", "args": {"brightness": 60, "rev": 2}}
 ```
