@@ -64,3 +64,25 @@ disabled. The diagnostic patch and test are retained in the ignored S2 ledger,
 not enabled in the firmware. The remaining question is how to render a stable,
 rotated image without adding this failure mode, while meeting the existing
 partial-redraw and memory constraints.
+
+## Allocation-free raster primitives
+
+The experimental `face_raster` module draws into caller-owned ARGB8888 storage
+without allocating: gradient pills, A8 highlights, opaque slanted or dome lids,
+and open rings with a caller-provided Q15 opening direction. It validates the
+surface capacity and clips writes; it is **not connected to the UI** and does
+not rotate or animate the face yet. Its visual comparison with the existing
+LVGL renderer covers selected still poses and ring phases, not the design's
+complete motion or spring transitions. At 100% scale the comparison found 64,
+48 and 44 silhouette pixels different for calm, happy and worried respectively;
+a 76 px ring differed by 42 pixels in each of eight tested phases. At 130%,
+happy differed by 416 silhouette pixels. These are approximation measurements,
+not a claim of pixel equivalence or hardware performance.
+
+Host-only AddressSanitizer and UndefinedBehaviorSanitizer checks include 3,000
+clipped randomized frames and guarded surface boundaries. Further work must
+preserve the existing draw order across both eyes, separately validate animated
+masks and highlights during spring retargets and blinking, rotate the composite
+with correct old/new invalidation, bound its PSRAM storage and fallback, and
+measure device CPU, heap and frame times. The renderer is a building block,
+not completion of S2.
