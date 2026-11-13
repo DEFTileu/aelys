@@ -110,8 +110,36 @@ static void test_does_not_fit_is_refused(void)
     CHECK(link_acts_add(&t, ID[0], ACT_FOCUS_START, NULL, 0));          /* NULL target = "" */
 }
 
+static void test_http_verdict_reads_401_bodies(void)
+{
+    const char *unk = "{\"detail\":{\"code\":\"UNAUTHORIZED\",\"message\":\"Unknown or revoked device\"}}";
+    const char *other = "{\"detail\":{\"code\":\"RATE_LIMITED\",\"message\":\"x\"}}";
+    CHECK_EQ(link_http_verdict(200, "{}", 2), LH_OK);
+    CHECK_EQ(link_http_verdict(401, unk, strlen(unk)), LH_UNAUTHORIZED);     /* the only verdict that may wipe */
+    CHECK_EQ(link_http_verdict(401, other, strlen(other)), LH_DENIED);
+    CHECK_EQ(link_http_verdict(401, "", 0), LH_DENIED);                      /* no body: never "unknown device" */
+    CHECK_EQ(link_http_verdict(401, "<html>", 6), LH_DENIED);
+    CHECK_EQ(link_http_verdict(403, unk, strlen(unk)), LH_DENIED);           /* a 403 never says "unknown" */
+    CHECK_EQ(link_http_verdict(429, unk, strlen(unk)), LH_FAIL);
+    CHECK_EQ(link_http_verdict(500, unk, strlen(unk)), LH_FAIL);
+    CHECK_EQ(link_http_verdict(502, "", 0), LH_FAIL);
+    CHECK_EQ(link_http_verdict(0, "", 0), LH_FAIL);
+}
+
+static void test_snapshot_save_throttle(void)
+{
+    CHECK(!link_snap_save_due(false, false, true, 999999));                  /* nothing new */
+    CHECK(!link_snap_save_due(false, true, true, 999999));
+    CHECK(link_snap_save_due(true, false, true, 0));                         /* first one */
+    CHECK(!link_snap_save_due(true, false, false, 299999));
+    CHECK(link_snap_save_due(true, false, false, 300000));
+    CHECK(link_snap_save_due(true, true, false, 0));                         /* lost mode: flash never keeps the older data */
+}
+
 int main(void)
 {
+    test_http_verdict_reads_401_bodies();
+    test_snapshot_save_throttle();
     test_table_holds_four_and_answers_by_id();
     test_send_order_is_fifo_and_marks_sent();
     test_timeout_counts_from_the_last_send();

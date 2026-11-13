@@ -15,8 +15,10 @@ typedef struct {
      * wifi_scan_result built by proto_wifi_scan_result and link_send_raw). BAD_ARGS and UNSUPPORTED acks are sent by
      * the link itself and never reach this hook. */
     void (*on_command)(const proto_msg_t *m);
-    void (*save_snap)(const snap_t *s);   /* flash, at most every 300 s */
-    bool (*load_snap)(snap_t *s);         /* false: none saved */
+    void (*save_snap)(const snap_t *s);   /* flash, at most every 300 s (at once in lost mode) */
+    bool (*load_snap)(snap_t *s);         /* false: none saved (or lost mode is on: nothing may show) */
+    void (*erase_snap)(void);             /* a wipe: the next owner must not see this one's cached data */
+    bool (*lost_on)(void);                /* a snapshot that arrives in lost mode is saved at once, not throttled */
     const char *(*contact_phone)(void);   /* may return NULL or "": left out of `hello` */
     const char *(*contact_telegram)(void);
     void (*load_wifi)(wifi_list_t *l);    /* saved networks, for `wifi_state` (only the SSIDs leave the board) */

@@ -24,3 +24,4 @@ esp_err_t store_erase_pair(void);                /* ESP_OK also when there was n
  * blob from a different snap_t layout (size or version) is ignored, never half-read. */
 bool store_load_snap(snap_t *s);                 /* false if absent, corrupt or from another layout; *s untouched */
 esp_err_t store_save_snap(const snap_t *s);
+esp_err_t store_erase_snap(void);                /* ESP_OK also when there was none */

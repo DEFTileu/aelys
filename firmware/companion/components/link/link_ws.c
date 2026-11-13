@@ -132,7 +132,10 @@ uint32_t link_ws_open(const char *api_url, const char *token)
     char uri[200];
     if (strncmp(api_url, "https://", 8) != 0 || snprintf(uri, sizeof uri, "wss://%s/devices/channel", api_url + 8) >= (int)sizeof uri) return 0;
     /* the header goes in the (idle) tx buffer; the client copies it, then it is wiped */
-    if (snprintf(link_mem->tx, sizeof link_mem->tx, "Authorization: Bearer %s\r\n", token) >= (int)sizeof link_mem->tx) return 0;
+    if (snprintf(link_mem->tx, sizeof link_mem->tx, "Authorization: Bearer %s\r\n", token) >= (int)sizeof link_mem->tx) {
+        explicit_bzero(link_mem->tx, sizeof link_mem->tx); /* a cut header still starts with the token */
+        return 0;
+    }
     esp_websocket_client_config_t cfg = {
         .uri = uri,
         .headers = link_mem->tx,

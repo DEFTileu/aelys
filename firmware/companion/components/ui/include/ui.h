@@ -35,7 +35,8 @@ void ui_setup(void);
 extern tribuf_t ui_owner_tb; /* owner_info_t */
 /* The companion snapshot (valid after ui_setup()). The link task fills tribuf_back(&ui_snap_tb), calls tribuf_publish(),
  * then posts UI_EV_SNAPSHOT (data[0] = 1 live from the server, 0 restored from flash); the UI reads tribuf_latest().
- * Rendering it is the UI's job; until the first publish the reader sees an all-zero snap_t. */
+ * Rendering it is the UI's job; until the first publish the reader sees an all-zero snap_t. If the allocation failed ui_snap_tb.slot[0] is NULL
+ * and a producer must not publish. */
 extern tribuf_t ui_snap_tb; /* snap_t */
 void ui_handle_event(const ui_event_t *ev);
 

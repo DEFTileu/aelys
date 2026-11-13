@@ -146,7 +146,7 @@ void ui_setup(void)
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
     tribuf_init(&ui_owner_tb, &owner_buf[0], &owner_buf[1], &owner_buf[2]);
     snap_buf = lv_malloc_zeroed(3 * sizeof *snap_buf); /* zeroed: no snapshot yet */
-    tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]);
+    if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
     g.lost = false;
     show(SCR_HOME);

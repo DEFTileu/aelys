@@ -33,3 +33,19 @@ void link_acts_unsend_all(link_acts_t *t, uint32_t now_ms);
 bool link_acts_done(link_acts_t *t, const char *id, act_kind_t *kind);
 /* Removes every action older than LINK_ACT_TIMEOUT_MS and copies them (oldest first) to out; returns how many. */
 size_t link_acts_expire(link_acts_t *t, uint32_t now_ms, link_act_t out[LINK_ACT_MAX]);
+
+/* Result of one sign-in HTTP call (/auth/device/challenge or /login). */
+typedef enum {
+    LH_OK,
+    LH_UNAUTHORIZED, /* 401 with detail.code == "UNAUTHORIZED": the server does not know this device / signature */
+    LH_DENIED,       /* any other 401, or 403 */
+    LH_FAIL          /* network, TLS, 5xx, 429, a body we cannot read */
+} link_http_t;
+/* Status plus body of a reply that was fully read. 200 gives LH_OK (the caller parses the body). Only a 401 whose body
+ * names UNAUTHORIZED is LH_UNAUTHORIZED: a missing or unreadable body is LH_DENIED, so it can never wipe a pairing. */
+link_http_t link_http_verdict(int status, const char *body, size_t len);
+
+#define LINK_SNAP_SAVE_MS 300000u
+/* Flash write of the cached snapshot: at most every LINK_SNAP_SAVE_MS, except at once the first time and whenever lost
+ * mode is on (the flash must not keep the data from before it). */
+bool link_snap_save_due(bool dirty, bool lost_on, bool never_saved, uint32_t since_last_ms);

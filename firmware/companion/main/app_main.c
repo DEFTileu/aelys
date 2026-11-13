@@ -27,7 +27,8 @@ static bool lost_is_on(void) { return lost.on; }
 #ifndef CONFIG_AELYS_NO_WIFI
 /* Link hooks. The command handlers are Task F9: until then every valid command is answered UNSUPPORTED. */
 static void on_command(const proto_msg_t *m) { link_send_ack(m->id, false, "UNSUPPORTED"); }
-static bool load_snap(snap_t *s) { return store_load_snap(s); }
+static bool load_snap(snap_t *s) { return !lost.on && store_load_snap(s); } /* lost mode shows no cached data */
+static void erase_snap(void) { store_erase_snap(); }
 static void save_snap(const snap_t *s) { store_save_snap(s); }
 static const char *contact_phone(void) { return owner.phone; }
 static const char *contact_telegram(void) { return owner.telegram; }
@@ -111,7 +112,7 @@ void app_main(void)
     ESP_LOGW(TAG, "wifi started: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     /* after the ui task ran ui_setup (the snapshot buffer exists) and after net_start (Wi-Fi is up or coming up) */
     static const link_deps_t ldeps = {.on_command = on_command, .save_snap = save_snap, .load_snap = load_snap,
-                                      .contact_phone = contact_phone, .contact_telegram = contact_telegram,
+                                      .erase_snap = erase_snap, .lost_on = lost_is_on, .contact_phone = contact_phone, .contact_telegram = contact_telegram,
                                       .load_wifi = store_load_wifi, .reset_revs = reset_revs};
     err = link_start(&ldeps);
     if (err != ESP_OK) ESP_LOGE(TAG, "link start: %s", esp_err_to_name(err));

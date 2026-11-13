@@ -4,6 +4,7 @@
  * (a 401 UNAUTHORIZED from /auth/device/challenge); every other failure only backs off. */
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "board.h"
 #include "codec_util.h"
 #include "esp_app_desc.h"
@@ -33,11 +34,11 @@
 #define LINK_STACK 8192        /* brief: >= 6 KB. esp_http_client's TLS handshake runs on it too; trim to the measured high-water mark */
 #define HB_MS 30000u           /* heartbeat */
 #define METRICS_MS 300000u     /* spec section 4.6 */
-#define SNAP_SAVE_MS 300000u   /* at most one flash write per 5 min */
 #define SILENCE_MS 75000u      /* no frame at all: the socket is dead */
 #define READY_MS 15000u        /* from the connect action to the server's `ready` */
 #define HEAP_NEED 16384u       /* largest internal block before a TLS connect */
 #define NO_EVENT (-1)
+#define CLOCK_SET_MIN 1735689600 /* 2025-01-01: any earlier time means SNTP has not run */
 
 typedef struct { uint8_t kind; uint32_t gen; int32_t a, b; } lq_t;
 
@@ -56,6 +57,7 @@ static volatile bool act_queued;
 static volatile uint32_t heap_conn_min, tls_fail;
 static uint32_t backoff_deadline, connect_deadline, open_ms, last_hb, last_metrics, last_snap_save, net_ups, reconnects;
 static bool stable_sent, net_up, snap_dirty, wipe_retry;
+static uint32_t seen_seq;             /* paired_seq the task has acted on */
 static uint8_t ui_posted;
 
 /* sign-in scratch, link task only (kept off the 6 KB stack, which identity_sign needs 4.3 KB of) */
@@ -127,6 +129,7 @@ static void post_action_result(act_kind_t k, bool ok, const char *err)
 
 static void publish_snapshot(const snap_t *s, bool live)
 {
+    if (!ui_snap_tb.slot[0]) return; /* the UI could not allocate its snapshot buffers */
     memcpy(tribuf_back(&ui_snap_tb), s, sizeof *s);
     tribuf_publish(&ui_snap_tb);
     ui_event_t ev = {.type = UI_EV_SNAPSHOT, .len = 1, .data = {live}};
@@ -212,7 +215,8 @@ bool link_post_action(act_kind_t k, const char *target_id)
     xSemaphoreTake(act_mu, portMAX_DELAY);
     bool ok = link_acts_add(&acts, id, k, target_id, ms());
     xSemaphoreGive(act_mu);
-    return ok && link_q_post(LQ_ACTION, 0, 0, 0);
+    if (ok) link_q_post(LQ_ACTION, 0, 0, 0); /* if the queue is full, tick() sends it within 100 ms anyway */
+    return ok;
 }
 
 /* ---------------------------------------------------------- sign-in actions */
@@ -262,14 +266,34 @@ static bool do_connect(void)
     return gen != 0;
 }
 
+/* Forget the pairing, but only the one the server just disowned: a pairing committed meanwhile (new identity) stays.
+ * Returns false when the NVS erase failed and has to be retried. */
+static bool try_wipe(void)
+{
+    char dev[40], url[129];
+    if (identity_ids(dev, url) != ESP_OK) return true;           /* already unpaired */
+    if (strcmp(dev, ctx.dev) != 0) {
+        ESP_LOGW(TAG, "wipe skipped: the board was paired again meanwhile");
+        return true;
+    }
+    esp_err_t e = identity_wipe();
+    if (e != ESP_OK) ESP_LOGE(TAG, "wiping the pairing failed: %s (retrying)", esp_err_to_name(e));
+    return e == ESP_OK;
+}
+
 static void do_wipe(void)
 {
     link_ws_close();
-    esp_err_t e = identity_wipe();
-    wipe_retry = e != ESP_OK; /* the record is still there: try again, the FSM already says unpaired */
-    if (e != ESP_OK) ESP_LOGE(TAG, "wiping the pairing failed: %s (retrying)", esp_err_to_name(e));
-    else ESP_LOGW(TAG, "pairing wiped: the server does not know this device");
+    wipe_retry = !try_wipe();
+    if (wipe_retry) return;
+    if (identity_paired()) return; /* skipped: a new pairing is in charge */
+    ESP_LOGW(TAG, "pairing wiped: the server does not know this device");
     if (link_deps.reset_revs) link_deps.reset_revs();
+    if (link_deps.erase_snap) link_deps.erase_snap(); /* the next owner must not see this one's tasks */
+    memset(&link_mem->snap, 0, sizeof link_mem->snap);
+    link_mem->snap.other_unread = link_mem->snap.today_done = link_mem->snap.today_total = -1;
+    snap_dirty = false;
+    publish_snapshot(&link_mem->snap, false);
 }
 
 static void on_online(void)
@@ -307,9 +331,13 @@ static void dispatch(link_event_t ev, int code)
         int next = NO_EVENT;
         code = 0;
         switch (a) {
-        case LA_LOGIN: next = do_login(); break;
+        case LA_LOGIN: next = do_login(); if (next != LE_LOGIN_OK) explicit_bzero(link_mem->token, LINK_TOKEN_MAX); break;
         case LA_CHECK: next = do_check(); break;
-        case LA_CLOSE_LOGIN: link_ws_close(); next = do_login(); break;
+        case LA_CLOSE_LOGIN:
+            link_ws_close();
+            next = do_login();
+            if (next != LE_LOGIN_OK) explicit_bzero(link_mem->token, LINK_TOKEN_MAX);
+            break;
         case LA_CLOSE: link_ws_close(); break;
         case LA_CONNECT:
             if (!do_connect()) next = LE_WS_CLOSED; /* could not even start: back off */
@@ -375,16 +403,26 @@ static bool net_ok(void)
 {
     esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     esp_netif_ip_info_t ip = {0};
-    return sta && esp_netif_is_netif_up(sta) && esp_netif_get_ip_info(sta, &ip) == ESP_OK && ip.ip.addr != 0;
+    /* no TLS before SNTP has set the clock: certificate dates cannot be checked against 1970 */
+    return sta && esp_netif_is_netif_up(sta) && esp_netif_get_ip_info(sta, &ip) == ESP_OK && ip.ip.addr != 0 &&
+           time(NULL) >= CLOCK_SET_MIN;
+}
+
+static void handle_paired(void)
+{
+    if (paired_seq == seen_seq) return;
+    seen_seq = paired_seq;
+    wipe_retry = false; /* a wipe of the old identity must not eat the new one */
+    if (link_deps.reset_revs) link_deps.reset_revs(); /* new account: its revisions start again */
+    dispatch(LE_PAIRED, 0);
+    if (!net_ok()) dispatch(LE_NET_DOWN, 0); /* paired over USB while offline: the next Wi-Fi up edge signs in */
 }
 
 static void handle_q(const lq_t *e)
 {
     switch (e->kind) {
     case LQ_PAIRED:
-        if (link_deps.reset_revs) link_deps.reset_revs(); /* new account: its revisions start again */
-        dispatch(LE_PAIRED, 0);
-        if (!net_ok()) dispatch(LE_NET_DOWN, 0); /* paired over USB while offline: the next Wi-Fi up edge signs in */
+        handle_paired(); /* the event only wakes the task: tick() also notices the counter, so a dropped event is harmless */
         break;
     case LQ_ACTION:
         act_queued = false;
@@ -409,6 +447,7 @@ static bool chaos_due(uint32_t now) { (void)now; return false; }
 
 static void tick(void)
 {
+    handle_paired();
     bool up = net_ok();
     if (up != net_up) {
         net_up = up;
@@ -427,7 +466,7 @@ static void tick(void)
             stable_sent = true;
             dispatch(LE_WS_STABLE, 0);
         }
-        if (now - link_ws_last_rx_ms() >= SILENCE_MS) {
+        if ((int32_t)(now - link_ws_last_rx_ms()) >= (int32_t)SILENCE_MS) {
             ESP_LOGW(TAG, "socket silent for 75 s: closing");
             link_ws_close();
             dispatch(LE_WS_CLOSED, 0);
@@ -446,24 +485,27 @@ static void tick(void)
             }
         }
     }
+    if (fsm.st == LS_ONLINE && acts.n) send_actions(); /* anything the queue missed */
     if (acts.n) { /* racy read of n is fine: the table is locked below */
         xSemaphoreTake(act_mu, portMAX_DELAY);
         size_t k = link_acts_expire(&acts, ms(), ctx.expired);
         xSemaphoreGive(act_mu);
         for (size_t i = 0; i < k; i++) post_action_result(ctx.expired[i].kind, false, ctx.expired[i].sent ? "TIMEOUT" : "OFFLINE");
     }
-    if (snap_dirty && link_deps.save_snap && (last_snap_save == 0 || (uint32_t)(ms() - last_snap_save) >= SNAP_SAVE_MS)) {
+    if (link_deps.save_snap &&
+        link_snap_save_due(snap_dirty, link_deps.lost_on && link_deps.lost_on(), last_snap_save == 0, (uint32_t)(ms() - last_snap_save))) {
         snap_dirty = false;
         last_snap_save = ms() | 1u; /* 0 means never */
         link_deps.save_snap(&link_mem->snap);
     }
-    if (wipe_retry && identity_wipe() == ESP_OK) wipe_retry = false;
+    if (wipe_retry) wipe_retry = !try_wipe();
     sync_ui();
 }
 
 static void link_task(void *arg)
 {
     (void)arg;
+    seen_seq = paired_seq; /* a pairing before this point is already in identity_paired() */
     bool paired = identity_paired();
     link_fsm_init(&fsm, paired);
     ui_posted = paired ? LINK_UI_OFFLINE : LINK_UI_UNPAIRED; /* what app_main already showed at boot */

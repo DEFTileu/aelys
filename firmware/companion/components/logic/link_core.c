@@ -65,3 +65,16 @@ size_t link_acts_expire(link_acts_t *t, uint32_t now_ms, link_act_t out[LINK_ACT
     }
     return k;
 }
+
+link_http_t link_http_verdict(int status, const char *body, size_t len)
+{
+    char code[32];
+    if (status == 200) return LH_OK;
+    if (status == 401) return proto_error_code(body, len, code) && strcmp(code, "UNAUTHORIZED") == 0 ? LH_UNAUTHORIZED : LH_DENIED;
+    return status == 403 ? LH_DENIED : LH_FAIL;
+}
+
+bool link_snap_save_due(bool dirty, bool lost_on, bool never_saved, uint32_t since_last_ms)
+{
+    return dirty && (lost_on || never_saved || since_last_ms >= LINK_SNAP_SAVE_MS);
+}

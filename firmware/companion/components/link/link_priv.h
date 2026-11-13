@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "link.h"
+#include "link_core.h"
 
 #define LINK_RX_SLOTS 3
 #define LINK_FRAME_MAX 4096   /* contract: a server frame is at most 4 KB; bigger is dropped (log: code only) */
@@ -29,12 +30,6 @@ void link_tls_failed(void);                                        /* count one 
 void link_heap_gate(const char *what);                             /* wait for a 16 KB internal block, log the connect line */
 
 /* link_http.c */
-typedef enum {
-    LH_OK,
-    LH_UNAUTHORIZED, /* 401 with detail.code == "UNAUTHORIZED": the server does not know this device / signature */
-    LH_DENIED,       /* any other 401 or 403 */
-    LH_FAIL          /* network, TLS, 5xx, 429, a body we cannot read */
-} link_http_t;
 link_http_t link_http_challenge(const char *api_url, const char *device_id, char id[40], char nonce[80]);
 link_http_t link_http_login(const char *api_url, const char *challenge_id, const char *sig, char *token, size_t cap);
 
