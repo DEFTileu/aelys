@@ -337,7 +337,7 @@ static void test_animation_style_footprint(void)
 static void test_scales_and_api(void)
 {
     CHECK_EQ(MOOD_COUNT, 32);
-    static const int32_t S[] = { 34, 36, 42, 50, 70, 100, 107 };
+    static const int32_t S[] = { 34, 36, 42, 50, 70, 100, 107, 130 };
     for (unsigned i = 0; i < sizeof S / sizeof *S; i++)
         for (int m = 0; m < MOOD_COUNT; m++) {
             lv_obj_t *face = face_create(lv_screen_active(), S[i]);

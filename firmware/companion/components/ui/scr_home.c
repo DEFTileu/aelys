@@ -15,6 +15,8 @@ static struct {
     mood_t mood, off_mood;
 } h;
 
+lv_obj_t *scr_home_root(void) { return h.face ? lv_obj_get_parent(h.face) : NULL; }
+
 mood_t scr_home_mood(void) { return h.mood; }
 mood_t scr_home_offline_mood(void) { return h.off_mood; }
 
@@ -48,6 +50,7 @@ static void restack(void)
     lv_obj_t *col[] = { h.clock, h.face, h.agenda, h.hint };
     const uint8_t gap[] = { 0, 16, 16, 4 };
     ui_stack(col, gap, 4, 0, UI_SCREEN_SIZE, -1);
+    lv_obj_set_y(h.wifi, h.welcome ? 420 : 392);
 }
 
 void scr_home_set_paired(bool on)
@@ -128,7 +131,7 @@ lv_obj_t *scr_home_create(lv_obj_t *parent)
     h.orbit = orbit_create(root, UI_SCREEN_SIZE);
     h.clock = ui_label(root, &inter_20, UI_COLOR_TEXT2, 160, 1, LV_TEXT_ALIGN_CENTER);
     h.mood = MOOD_CALM;
-    h.face = face_create(root, 100); /* the design's 300x170 face box */
+    h.face = face_create(root, 130); /* 390x221 box, approximately 91x130 eyes */
     h.agenda = ui_label(root, &inter_20, UI_COLOR_SUBTLE, 300, 1, LV_TEXT_ALIGN_CENTER);
     h.hint = ui_label(root, &inter_16, UI_COLOR_SUBTLE, 260, 2, LV_TEXT_ALIGN_CENTER);
     lv_label_set_text(h.hint, "Connect me by USB and open Aelys web");

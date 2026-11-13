@@ -479,6 +479,52 @@ static void test_companion_setup(void)
     fresh_fx();
 }
 
+static void check_home_stack(bool welcome)
+{
+    scr_home_set_welcome(welcome);
+    lv_obj_t *root = scr_home_root(); lv_obj_update_layout(root);
+    lv_obj_t *clock = lv_obj_get_child(root, 1), *face = lv_obj_get_child(root, 2);
+    lv_obj_t *agenda = lv_obj_get_child(root, 3), *hint = lv_obj_get_child(root, 4);
+    lv_obj_t *wifi = lv_obj_get_child(root, 5);
+    lv_area_t c, f, a, h, w;
+    lv_obj_get_coords(clock, &c); lv_obj_get_coords(face, &f); lv_obj_get_coords(agenda, &a);
+    lv_obj_get_coords(hint, &h); lv_obj_get_coords(wifi, &w);
+    CHECK_EQ(lv_area_get_width(&f), 390); CHECK_EQ(lv_area_get_height(&f), 221);
+    CHECK(c.y2 < f.y1 && f.y2 < a.y1);
+    if (welcome) CHECK(a.y2 < h.y1 && h.y2 < w.y1);
+    else CHECK(a.y2 < w.y1);
+    check_inside(welcome ? "larger face welcome" : "larger face home");
+}
+
+static void test_home_larger_face(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    check_home_stack(false);
+    check_home_stack(true);
+    for (uint8_t wifi = UI_WIFI_OFFLINE; wifi <= UI_WIFI_BAD_PASSWORD; wifi++) {
+        scr_home_set_wifi(wifi);
+        check_inside("larger face welcome Wi-Fi");
+    }
+    scr_home_set_wifi(UI_WIFI_BAD_PASSWORD); /* restore state left by test_wifi_status */
+    scr_home_set_welcome(false);
+}
+
+static void test_all_large_home_moods(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    fx_snap(&fx);
+    for (int mood = 0; mood < MOOD_COUNT; mood++) {
+        scr_home_set_snap(&fx, FX_NOW, (mood_t)mood, false);
+        for (int t = 0; t < 10; t++) {
+            sim_step(100); lv_refr_now(NULL);
+            int outside, inside; count_lit(&outside, &inside);
+            if (outside) fprintf(stderr, "%s: %d pixels outside circle at %d ms\n", mood_name((mood_t)mood), outside, t * 100);
+            CHECK_EQ(outside, 0); CHECK(inside > 1000);
+        }
+    }
+    fresh_fx();
+}
+
 static void test_character_home_integration(void)
 {
     CHECK_EQ(ui_current_screen(), SCR_HOME);
@@ -1360,6 +1406,8 @@ int main(void)
     test_pair_screen_shot();
     test_first_boot_welcome();
     test_companion_setup();
+    test_home_larger_face();
+    test_all_large_home_moods();
     test_character_home_integration();
     test_last_task_reaction();
     test_today_shot();
