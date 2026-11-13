@@ -114,6 +114,8 @@ static esp_err_t pair_begin_(const char *url)
         return ESP_FAIL;
     }
     strcpy(pend_url, url);
+    size_t ul = strlen(pend_url);
+    if (ul > 8 && pend_url[ul - 1] == '/') pend_url[ul - 1] = '\0'; /* paths are appended as "/auth/..." */
     return ESP_OK;
 }
 
@@ -414,6 +416,8 @@ static void selftest_run(void)
     T(identity_pair_begin("https://selftest.invalid") == ESP_OK);
     T(identity_pub_b64(b) == ESP_OK && memcmp(pend_pub, VEC_DEVICE_PUB, PUB_LEN) != 0);
     T(identity_pair_code(VEC_SECRET, VEC_PAIRING_ID, sas) == ESP_OK && strlen(sas) == 6 && strcmp(sas, VEC_SAS) != 0);
+    identity_pair_cancel();
+    T(identity_pair_begin("https://selftest.invalid/") == ESP_OK && !strcmp(pend_url, "https://selftest.invalid"));
     identity_pair_cancel();
     T(identity_pair_code(VEC_SECRET, VEC_PAIRING_ID, sas) == ESP_ERR_INVALID_STATE);
     T(identity_pair_begin("https://selftest.invalid") == ESP_OK);

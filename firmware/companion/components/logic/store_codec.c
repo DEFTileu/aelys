@@ -161,6 +161,14 @@ bool wifi_list_remove(wifi_list_t *l, const char *ssid)
     return false;
 }
 
+bool wifi_list_can_remove(const wifi_list_t *l, const char *ssid, const char *in_use)
+{
+    if (!ssid || !*ssid) return true;
+    for (int i = 0; i < l->n && i < WIFI_MAX; i++)
+        if (strcmp(l->net[i].ssid, ssid) == 0) return l->n > 1 && !(in_use && strcmp(in_use, ssid) == 0);
+    return true;
+}
+
 bool wifi_list_reorder(wifi_list_t *l, const char ssids[][33], int n)
 {
     wifi_list_t out;

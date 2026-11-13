@@ -492,6 +492,11 @@ static void tick(void)
         link_ws_close();
         dispatch(LE_WS_CLOSED, 0);
     }
+    if ((fsm.st == LS_CONNECT || fsm.st == LS_ONLINE) && link_ws_lost_frame()) {
+        ESP_LOGW(TAG, "frame dropped, reconnecting"); /* the hello after the reconnect resends pending commands and brings a fresh snapshot */
+        link_ws_close();
+        dispatch(LE_WS_CLOSED, 0);
+    }
     if (fsm.st == LS_ONLINE) {
         uint32_t now = ms();
         if (!stable_sent && now - open_ms >= LINK_STABLE_MS) {

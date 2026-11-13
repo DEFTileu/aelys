@@ -33,7 +33,9 @@ typedef enum { NET_TRY_OK, NET_TRY_FAILED, NET_TRY_NOT_RUN } net_try_t;
  * never ran or was replaced by an Improv request (bad arguments, the hand-over slot busy or not picked up, aborted): the network was not
  * judged and the old link was not necessarily touched. Zero the password after the call. */
 net_try_t net_wifi_try(const char *ssid, const char *pass);
-/* Edits of the saved list (persisted, then adopted; the current connection is left alone). True: the list now is what was asked for
- * (also when there was nothing to change); false: the edit could not be saved or run. */
-bool net_wifi_remove(const char *ssid);
+/* Edits of the saved list (persisted, then adopted; the current connection is left alone). OK: the list now is what was asked for
+ * (also when there was nothing to change). IN_USE: the network is the one connected or the last saved one, so the list is unchanged.
+ * FAILED: the edit could not be saved or run. net_wifi_reorder returns true for OK. */
+typedef enum { NET_EDIT_OK, NET_EDIT_IN_USE, NET_EDIT_FAILED } net_edit_t;
+net_edit_t net_wifi_remove(const char *ssid);
 bool net_wifi_reorder(const char ssids[][33], int n);

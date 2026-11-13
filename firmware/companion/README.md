@@ -11,6 +11,8 @@ idf.py -p /dev/cu.usbmodem101 flash
 python3 tools/serlog.py --seconds 8 --reset                    # PORT=... overrides the port
 ```
 
+`sdkconfig.defaults` only fills keys that `sdkconfig` does not have yet. After pulling a change to it, delete `firmware/companion/sdkconfig` and rebuild; a stale `sdkconfig` stops the build with an `#error` from `main/app_main.c`.
+
 Wi-Fi is set up over USB with Improv Serial (the password is asked with `getpass`, never an argument):
 
 ```sh

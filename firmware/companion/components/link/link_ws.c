@@ -24,6 +24,7 @@ static struct {
     volatile uint32_t gen;        /* 0 = no socket */
     uint32_t next_gen;
     volatile uint32_t last_rx_ms;
+    volatile bool lost_frame;     /* a frame was dropped for this socket: the link task closes it (tick), so the reconnect's hello resends what is pending */
     /* below: written by the ws task only (for the current gen) */
     int slot;                     /* slot being filled, -1 none */
     size_t len;
@@ -42,6 +43,7 @@ static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 
 uint32_t link_ws_gen(void) { return ws.gen; }
 uint32_t link_ws_last_rx_ms(void) { return ws.last_rx_ms; }
+bool link_ws_lost_frame(void) { return ws.gen && ws.lost_frame; }
 uint32_t link_ws_stack_free_min(void) { return ws.stack_min; }
 void link_ws_slot_free(int slot) { if (slot >= 0 && slot < LINK_RX_SLOTS) ws.busy[slot] = false; }
 
@@ -66,7 +68,7 @@ static void on_data(uint32_t gen, const esp_websocket_event_data_t *e)
         ws.slot = claim_slot();
         ws.len = 0;
         ws.drop = ws.slot < 0;
-        if (ws.drop) ESP_LOGW(TAG, "frame dropped: no free buffer");
+        if (ws.drop) { ESP_LOGW(TAG, "frame dropped: no free buffer"); ws.lost_frame = true; }
     }
     if (ws.slot < 0 && !ws.drop) return; /* a continuation without a start */
     if (!ws.drop) {
@@ -83,7 +85,7 @@ static void on_data(uint32_t gen, const esp_websocket_event_data_t *e)
     if (e->fin && e->payload_offset + e->data_len >= e->payload_len) { /* message complete */
         if (!ws.drop && ws.slot >= 0) {
             link_mem->rx[ws.slot][ws.len] = '\0';
-            if (!link_q_post(LQ_WS_FRAME, gen, ws.slot, (int32_t)ws.len)) ws.busy[ws.slot] = false;
+            if (!link_q_post(LQ_WS_FRAME, gen, ws.slot, (int32_t)ws.len)) { ws.busy[ws.slot] = false; ws.lost_frame = true; }
         }
         ws.slot = -1;
         ws.len = 0;
@@ -157,7 +159,7 @@ uint32_t link_ws_open(const char *api_url, const char *token)
     if (!c) return 0;
     if (++ws.next_gen == 0) ws.next_gen = 1; /* 0 means no socket */
     uint32_t gen = ws.next_gen;
-    ws.slot = -1; ws.len = 0; ws.drop = false; ws.close_code = 0; ws.hs_status = 0;
+    ws.slot = -1; ws.len = 0; ws.drop = false; ws.close_code = 0; ws.hs_status = 0; ws.lost_frame = false;
     ws.last_rx_ms = now_ms();
     ws.gen = gen;
     if (esp_websocket_register_events(c, WEBSOCKET_EVENT_ANY, on_ws, (void *)(uintptr_t)gen) != ESP_OK ||
@@ -179,6 +181,7 @@ void link_ws_close(void)
     esp_websocket_client_handle_t c = ws.client;
     ws.client = NULL;
     ws.gen = 0; /* its callbacks are stale from here on */
+    ws.lost_frame = false;
     xSemaphoreGive(mu);
     if (!c) return;
     TaskHandle_t t = xTaskGetHandle(WS_TASK_NAME);

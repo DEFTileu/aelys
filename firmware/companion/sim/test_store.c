@@ -208,6 +208,23 @@ static void test_wifi_remove(void)
     CHECK(!wifi_list_remove(&l, "A"));
 }
 
+static void test_wifi_can_remove_never_strands_the_board(void)
+{
+    wifi_list_t l; seed_abc(&l);
+    CHECK(wifi_list_can_remove(&l, "A", "B"));           /* another network is in use: fine */
+    CHECK(wifi_list_can_remove(&l, "A", ""));            /* offline: fine while others stay */
+    CHECK(wifi_list_can_remove(&l, "A", NULL));
+    CHECK(!wifi_list_can_remove(&l, "B", "B"));          /* the connected network */
+    CHECK(wifi_list_can_remove(&l, "Nope", "B"));        /* not saved: nothing to remove, nothing to refuse */
+    CHECK(wifi_list_remove(&l, "C") && wifi_list_remove(&l, "B"));
+    CHECK_EQ(l.n, 1);
+    CHECK(!wifi_list_can_remove(&l, "A", ""));           /* the last saved network, even when offline */
+    CHECK(!wifi_list_can_remove(&l, "A", "Other"));
+    CHECK(wifi_list_can_remove(&l, "Nope", ""));
+    CHECK(wifi_list_can_remove(&l, "", "A") && wifi_list_can_remove(&l, NULL, "A")); /* bad input: the remove itself is a no-op */
+    CHECK_EQ(l.n, 1);                                    /* the check never edits */
+}
+
 static void test_wifi_reorder_partial_and_unknown(void)
 {
     wifi_list_t l; seed_abc(&l);
@@ -403,6 +420,7 @@ int main(void)
     test_wifi_upsert_drops_oldest_when_full();
     test_wifi_upsert_rejects_bad_input();
     test_wifi_remove();
+    test_wifi_can_remove_never_strands_the_board();
     test_wifi_reorder_partial_and_unknown();
     test_lost_roundtrip();
     test_ice_rev_survives_the_owner_blob();

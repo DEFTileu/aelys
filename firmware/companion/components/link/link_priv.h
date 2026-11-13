@@ -40,6 +40,7 @@ bool link_ws_send(const char *json, size_t n);
 uint32_t link_ws_gen(void);                                      /* 0 = no socket */
 uint32_t link_ws_last_rx_ms(void);                               /* any frame, pings and pongs included */
 void link_ws_slot_free(int slot);
+bool link_ws_lost_frame(void);                                   /* a frame of the open socket was dropped (no buffer, or the link queue was full) */
 
 /* link_cmd.c: a parsed command frame. args_ok false = the args did not validate (proto_parse returned false). */
 void link_cmd_handle(const proto_msg_t *m, bool args_ok);

@@ -57,6 +57,9 @@ bool wifi_list_upsert(wifi_list_t *l, const char *ssid, const char *pass);
 
 /* Removes the network named ssid (exact match), later ones move up and the vacated slot is wiped. True when something was removed. */
 bool wifi_list_remove(wifi_list_t *l, const char *ssid);
+/* False when removing ssid would strand the board: it is the network in use (in_use, NULL or "" when offline) or the last saved one.
+ * A name that is not saved is always fine (the remove changes nothing). Never edits the list. */
+bool wifi_list_can_remove(const wifi_list_t *l, const char *ssid, const char *in_use);
 /* Listed SSIDs first, in that order (each once); names that are not saved are ignored; the rest keep their order after them.
  * True when the order changed (the list is untouched otherwise). */
 bool wifi_list_reorder(wifi_list_t *l, const char ssids[][33], int n);

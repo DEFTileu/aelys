@@ -60,7 +60,7 @@ static struct {
     char order[WIFI_MAX][33];
     int n;                              /* order: names; scan: capacity of out */
     wifi_seen_t *out;
-    int result;                         /* scan: count or -1; try: a net_try_t; remove/reorder: 1 changed, 0 nothing to change, -1 not saved; -2 set by the caller until the net task answers */
+    int result;                         /* scan: count or -1; try: a net_try_t; remove/reorder: 1 changed, 0 nothing to change, -1 not saved, -3 remove refused (in use or the last network); -2 set by the caller until the net task answers */
 } rq;
 static SemaphoreHandle_t rq_mu, rq_done;
 static atomic_bool rq_pending;          /* set by the caller once rq is filled; cleared by whoever takes it (net task or the caller withdrawing) */
@@ -239,6 +239,7 @@ static int run_edit(bool remove)
     wifi_list_t next = saved;
     char cur[33] = "";
     if (idx < saved.n) strlcpy(cur, saved.net[idx].ssid, sizeof cur);
+    if (remove && !wifi_list_can_remove(&saved, rq.ssid, net_wifi_current_ssid())) return -3; /* never strand the board */
     bool changed = remove ? wifi_list_remove(&next, rq.ssid) : wifi_list_reorder(&next, (const char(*)[33])rq.order, rq.n);
     int r = 0;
     if (changed) {
@@ -322,12 +323,13 @@ net_try_t net_wifi_try(const char *ssid, const char *pass)
     return r == NET_TRY_OK || r == NET_TRY_FAILED ? (net_try_t)r : NET_TRY_NOT_RUN;
 }
 
-bool net_wifi_remove(const char *ssid)
+net_edit_t net_wifi_remove(const char *ssid)
 {
-    if (!ssid || !*ssid || strlen(ssid) > 32 || !rq_begin()) return false;
+    if (!ssid || !*ssid || strlen(ssid) > 32 || !rq_begin()) return NET_EDIT_FAILED;
     rq.kind = RQ_REMOVE;
     strlcpy(rq.ssid, ssid, sizeof rq.ssid);
-    return rq_finish() >= 0;
+    int r = rq_finish();
+    return r >= 0 ? NET_EDIT_OK : r == -3 ? NET_EDIT_IN_USE : NET_EDIT_FAILED;
 }
 
 bool net_wifi_reorder(const char ssids[][33], int n)

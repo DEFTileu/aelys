@@ -4,6 +4,7 @@ Tick each box as you go. "Agent" steps are run by the coding agent on the board;
 
 ## 0. Before anything else
 
+- [ ] Fresh `sdkconfig`: delete `firmware/companion/sdkconfig` and rebuild (`sdkconfig.defaults` only applies to new keys). A stale one stops the build with an `#error` in `main/app_main.c`.
 - [ ] The board can see your saved Wi-Fi. It currently reports "AP not found" (reason 201), also with the pre-link firmware, so it is the network, not the code. Check the router, the band (2.4 GHz only) and the distance.
 - [ ] Back end with the plan 3 routes is deployed to production. Check: an unauthenticated `GET https://api-production-1cea.up.railway.app/api/v1/companion/devices` answers 401, not 404 (404 means B1 is not deployed).
 - [ ] A web build with the plan 3 pages is deployed (or running locally against that back end) and you can sign in to it. It needs the back end above; do not merge the web alone.
@@ -37,7 +38,7 @@ Tick each box as you go. "Agent" steps are run by the coding agent on the board;
 - [ ] **Brightness and Restart** from the app.
 - [ ] **Unpair from the app.** The board lands on the first-boot screen, the device is gone from the app, and the saved Wi-Fi list is empty (the command erases it on purpose). You do this, and you re-provision your own Wi-Fi afterwards over USB Improv (`tools/improv_send.py`); an agent never erases or re-provisions Wi-Fi. Pair again after that.
 - [ ] **Offline cache.** Pull the router's power; the board shows the cached day and "Offline". Plug it back in: the board returns on its own, with no restart.
-- [ ] **Revoke.** Revoke the device from the app (not Unpair, which erases Wi-Fi): the board ends up unpaired on the first-boot screen. Pair it again.
+- [ ] **Revoke.** Revoke the device from the app (not Unpair, which erases Wi-Fi): the board shows the welcome screen right away; after a reboot with the Wi-Fi still saved it shows "Not paired yet". Pair it again.
 - [ ] **Look at the pages.** Web at phone width (390 px) and desktop: Add companion, overview, Lost mode, Emergency, Wi-Fi (the tightest rows), Device settings. No agent has seen these in a browser.
 
 ## 3. Decisions for you

@@ -519,6 +519,13 @@ static void test_wifi_state_escapes_ssid(void)
     CHECK(proto_wifi_state(b, sizeof b, &l, NULL) > 0);
     CHECK(strstr(b, "\"saved\":[]") != NULL);
     CHECK_EQ(proto_wifi_state(b, 20, &l, NULL), 0);
+    /* an SSID that is not UTF-8 would make the server close the socket (1007) in a loop: skip it, and a bad current is null */
+    l.n = 3;
+    strcpy(l.net[0].ssid, "ok1");
+    strcpy(l.net[1].ssid, "bad\xFF\xFE");
+    strcpy(l.net[2].ssid, "ok2");
+    CHECK(proto_wifi_state(b, sizeof b, &l, "bad\xFF") > 0);
+    CHECK(strstr(b, "\"saved\":[\"ok1\",\"ok2\"]") != NULL && strstr(b, "\"current\":null") != NULL);
 }
 
 static void test_hello_with_contacts(void)

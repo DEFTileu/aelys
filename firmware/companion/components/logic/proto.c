@@ -601,9 +601,15 @@ size_t proto_wifi_state(char *buf, size_t cap, const wifi_list_t *saved, const c
 {
     W w; w_init(&w, buf, cap);
     wr(&w, "{\"type\":\"wifi_state\",\"saved\":[");
-    for (int i = 0; i < saved->n && i < WIFI_MAX; i++) { if (i) wr(&w, ","); wq(&w, saved->net[i].ssid); }
+    bool first = true;
+    for (int i = 0; i < saved->n && i < WIFI_MAX; i++) { /* a non-UTF-8 name would make the server close the socket (1007) on every hello */
+        if (!utf8_ok(saved->net[i].ssid)) continue;
+        if (!first) wr(&w, ",");
+        first = false;
+        wq(&w, saved->net[i].ssid);
+    }
     wr(&w, "],\"current\":");
-    if (current) wq(&w, current); else wr(&w, "null");
+    if (current && utf8_ok(current)) wq(&w, current); else wr(&w, "null");
     wr(&w, "}");
     return w_done(&w);
 }

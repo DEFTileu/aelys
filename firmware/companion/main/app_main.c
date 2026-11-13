@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "esp_psram.h"
 #include "esp_system.h"
+#include "sdkconfig.h"
 #include "identity.h"
 #include "link.h"
 #include "metrics.h"
@@ -18,6 +19,11 @@
 #include "ui.h"
 
 #define FW_VERSION "0.1.0"
+
+/* sdkconfig.defaults only fills keys a sdkconfig does not have yet, so an old sdkconfig keeps its old (smaller) values and fails at runtime. */
+#if CONFIG_ESP_MAIN_TASK_STACK_SIZE < 6144 || !defined(CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC) || !defined(CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN)
+#error "stale sdkconfig: delete firmware/companion/sdkconfig and rebuild (sdkconfig.defaults only applies to new keys)"
+#endif
 
 static const char *TAG = "companion";
 
@@ -153,9 +159,8 @@ static void on_command(const proto_msg_t *m)
         uint32_t prev = owner.ice_rev;
         bool applied = owner_apply_ice(&owner, &lost, &m->u.cmd.a.ice);
         bool ok = true;
-        if (applied) {
-            ok = saved("owner", store_save_owner(&owner)); /* owner first, then lost; both are tried */
-            if (lost.on) ok = saved("lost", store_save_lost(&lost)) && ok;
+        if (applied) { /* what the lost screen shows is saved first; the owner copy only after it, so a failure never leaves the owner newer than the lost screen */
+            ok = (!lost.on || saved("lost", store_save_lost(&lost))) && saved("owner", store_save_owner(&owner));
             publish_owner();
         }
         ack(id, cmd_settle(applied, ok, &owner.ice_rev, prev));
@@ -185,9 +190,12 @@ static void on_command(const proto_msg_t *m)
     case CMD_WIFI_SCAN:
         wifi_scan(id);
         break;
-    case CMD_WIFI_REMOVE:
-        wifi_changed(id, net_wifi_remove(m->u.cmd.a.ssid));
+    case CMD_WIFI_REMOVE: {
+        net_edit_t r = net_wifi_remove(m->u.cmd.a.ssid);
+        if (r == NET_EDIT_IN_USE) link_send_ack(id, false, "IN_USE"); /* nothing changed: the list on the server is still right */
+        else wifi_changed(id, r == NET_EDIT_OK);
         break;
+    }
     case CMD_WIFI_ORDER:
         wifi_changed(id, net_wifi_reorder((const char(*)[33])m->u.cmd.a.order.ssid, m->u.cmd.a.order.n));
         break;
@@ -224,9 +232,9 @@ static void reset_revs(void)
     owner.ice_rev = 0;
     lost.rev = 0;
     settings.rev = 0;
-    store_save_owner(&owner);
-    store_save_lost(&lost);
-    store_save_settings(&settings);
+    esp_err_t e1 = store_save_owner(&owner), e2 = store_save_lost(&lost), e3 = store_save_settings(&settings); /* all three are tried */
+    if (e1 != ESP_OK || e2 != ESP_OK || e3 != ESP_OK) ESP_LOGW(TAG, "rev reset not fully saved (owner %s, lost %s, settings %s)",
+                                                                esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(e3));
 }
 #endif
 
