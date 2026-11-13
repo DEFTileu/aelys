@@ -60,3 +60,13 @@ production migration or live Telegram/provider calls were made. Apply
 updated backend, and release the updated web bundle. Live acceptance needs a
 permitted chat reproducing photo → error text → owner-name summons. Attachment
 storage remains OPEN; no new access to personal modules or memory was granted.
+
+## Subsequent release verification — 2026-11-13
+
+The earlier PDF failure came from missing declared `pypdf` in the old test
+environment. It passes with the complete dependency environment, without any
+PDF code changes. The final secretary + owner-command snapshot passed the full
+backend suite: **1443 passed, 118 skipped** in 155.79 seconds. The changed web
+test file passed **24 tests**. Owner-authorized release commits are `6bec25b`
+and `d03bae6`; the earlier no-push status above describes the initial handoff.
+Live Telegram/provider acceptance remains unperformed.

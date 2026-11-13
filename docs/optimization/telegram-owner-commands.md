@@ -82,6 +82,22 @@ verified on a permitted live chat. Normal Business private-chat/24-hour reply
 restrictions still apply; group chats and private bot `/ask` are outside this slice.
 Network is required. Live acceptance and deployment are not claimed.
 
+## Release verification — 2026-11-13
+
+The earlier PDF failure was traced to the incomplete `backend/.venv`: its
+declared `pypdf` dependency was absent. With the complete root environment,
+the PDF regression passes without a code change. The final isolated backend
+snapshot (`python -m pytest tests -q --tb=short`) passed **1443 tests**, with
+**118 skipped**, in 155.79 seconds. All 27 changed code/test files match that
+tested snapshot. The changed web test file passed **24 tests**. Ruff, mypy
+(126 files), Bandit and whitespace checks passed.
+
+The owner subsequently authorized push and backend deployment. Implementation
+commits are `6bec25b` (secretary context) and `d03bae6` (owner commands).
+Unrelated notes, desktop and companion changes remain outside these commits.
+Deployment outcome is recorded in the release handoff; no live chat messages
+were sent during validation.
+
 Suggested live acceptance: send `/ask что такое Elasticsearch`; select “Proxmox”
 in a contact message and reply `/ask`; send `/search Proxmox`; confirm short output
 as the owner, correct reply target and actual sources; edit/delete a pending
