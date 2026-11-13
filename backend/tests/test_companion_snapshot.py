@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -205,3 +206,22 @@ async def test_other_owners_rows_never_appear(client, owner):
     ]
     snap = await snapshot(owner, foreign)
     assert (snap.next_task, snap.overdue_count, snap.next_event, snap.unread_count, snap.notices, snap.focus) == (None, 0, None, 0, [], None)
+
+
+@pytest.mark.asyncio
+async def test_long_titles_are_clipped_and_the_whole_frame_stays_under_4_kb(owner):
+    long_title, long_kind = 'ж' * 300, 'task.' + 'я' * 75  # worst case: 2-byte letters, a kind at its column limit
+    rows = [Task(owner_id=owner, title=long_title, due_at=NOW + timedelta(hours=1), status='todo'),
+            CalendarEvent(owner_id=owner, title=long_title, starts_at=NOW + timedelta(hours=2), ends_at=NOW + timedelta(hours=3)),
+            FocusSession(owner_id=owner, started_at=NOW - timedelta(minutes=5), status='active', mode='pomodoro')]
+    rows += [Notification(owner_id=owner, kind=long_kind, title=long_title, created_at=NOW - timedelta(minutes=i)) for i in range(5)]
+    snap = await snapshot(owner, rows)
+    clipped = 'ж' * 79 + '…'
+    assert snap.next_task.title == clipped and snap.next_event.title == clipped and all(n.title == clipped for n in snap.notices) and len(snap.notices) == 5
+    frame = json.dumps({'type': 'snapshot', 'snapshot': snap.model_dump(mode='json')}, separators=(',', ':'), ensure_ascii=False)
+    assert len(frame.encode()) <= 4096  # the board's receive buffer; worst case measured at 2937 bytes
+
+
+@pytest.mark.asyncio
+async def test_short_titles_are_untouched(owner):
+    assert (await snapshot(owner, [Task(owner_id=owner, title='ж' * 80, due_at=NOW + timedelta(hours=1), status='todo')])).next_task.title == 'ж' * 80
