@@ -60,7 +60,7 @@ static struct {
     char order[WIFI_MAX][33];
     int n;                              /* order: names; scan: capacity of out */
     wifi_seen_t *out;
-    int result;                         /* scan: count or -1; others: 1 done, 0 nothing to change, -1 failed */
+    int result;                         /* scan: count or -1; try: a net_try_t; remove/reorder: 1 changed, 0 nothing to change, -1 not saved; -2 set by the caller until the net task answers */
 } rq;
 static SemaphoreHandle_t rq_mu, rq_done;
 static atomic_bool rq_pending;          /* set by the caller once rq is filled; cleared by whoever takes it (net task or the caller withdrawing) */
@@ -372,8 +372,15 @@ static void net_task(void *arg)
                 backoff_ms = backoff_ms * 2 > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : backoff_ms * 2;
             }
         }
+        /* Invariant: abort_req is false whenever the reconnect block above decides (its loop tests it). It is only ever raised inside an
+         * attempt() (an Improv request, or rq_pending seen by the wait loop) and that attempt returns R_ABORT at once; nothing else
+         * clears it, and a request that never calls attempt() (scan, remove, reorder) would leave it set and silence reconnects for
+         * good. So drop it here, every pass, whichever branch ran. A try or Improv request that follows starts with attempt(), which
+         * clears it too. */
+        abort_req = false;
         net_improv_run_pending();
         rq_run();
+        abort_req = false; /* a request run above may have aborted an attempt nested inside it */
     }
 }
 
