@@ -3,6 +3,8 @@
 Status: DECIDED (owner, 2026-11-13). Governed by ADR-029 in `docs/DECISIONS.md`.
 Firmware (plan 3) is built against this document. Any change to a field,
 name, code or close code requires a new version of this file.
+See "Plan 3 additions (v1.1)" at the end for the additive fields, messages,
+commands and routes added for the app pages and firmware.
 
 ## Transport and framing
 
@@ -245,3 +247,121 @@ reported as `ACTION_FAILED`; the real cause is logged on the server only.
 - The board never receives a refresh token, a notification body, or `data_json`.
 - `reauth` is HTTP-only and never forwarded to the board.
 - Firmware OTA is not part of v1 (plan 4).
+
+## Plan 3 additions (v1.1)
+
+Everything here is additive: a v1 board or app keeps working unchanged. Unknown
+fields are ignored by the server on board frames, and every new request field
+has a default.
+
+### Board to server
+
+`hello` gains optional `contacts`. Both parts default to `""`; a `hello`
+without `contacts` keeps what is stored. The server stores it for the owner's
+app and never logs it.
+```json
+{"type": "hello", "fw_version": "0.5.0", "board": "esp32-s3-n16r8", "features": [], "contacts": {"phone": "+7 700 123 45 67", "telegram": "@owner"}}
+```
+`phone` is at most 23 characters, `telegram` at most 32.
+
+`metrics` gains optional `battery_pct` (int 0 to 100), `charging` (bool) and
+`heap_at_connect_min` (int bytes). Absent fields are not stored.
+```json
+{"type": "metrics", "heap_min_internal": 84312, "largest_block": 61440, "psram_free": 7864320, "wifi_reconnects": 2, "uptime_s": 3600, "battery_pct": 81, "charging": true, "heap_at_connect_min": 90112}
+```
+
+New message `wifi_state`: the board's saved networks (at most 5, each SSID at
+most 32 characters) and the one it is on now (`null` if none). Send it after
+every change to the saved list and after joining a network. Invalid content
+gets `error` `VALIDATION_ERROR`.
+```json
+{"type": "wifi_state", "saved": ["Home", "Work"], "current": "Home"}
+```
+
+`command_ack` is now recorded for **every** command id the server sent in the
+last 24 hours, not only queued ones: `wifi_add`, `wifi_remove`, `wifi_order`,
+`restart` and `unpair` are never queued, but an ack that arrives after a
+reconnect still reaches the owner's command log. `wifi_scan_result` counts as
+the ack of its `wifi_scan` (`ok: true`). An ack for an unknown or older id is
+ignored.
+
+### Server to board
+
+`snapshot` gains three integers:
+
+| Field | Type | Notes |
+|---|---|---|
+| `today_done` | int | Tasks due today in the owner's day that are completed. |
+| `today_total` | int | Completed plus still open tasks due today. Cancelled and deleted tasks count in neither. |
+| `other_unread_count` | int | Unread notifications of kinds outside `task.`, `calendar.`, `focus.`. `unread_count` is still the total. |
+
+"Today" is cut like the Telegram `/today` agenda: the owner's local day in the
+Telegram integration's time zone, UTC if there is none. Like every time-based
+value it is not pushed at midnight; it refreshes on the next snapshot. In lost
+mode `today_done` and `today_total` are 0; `other_unread_count` keeps its value,
+like `unread_count`.
+```json
+{"today_done": 2, "today_total": 5, "other_unread_count": 3}
+```
+
+`command` args that grow (all new fields have defaults, so v1 requests work):
+
+| `name` | New `args` |
+|---|---|
+| `lost_mode` | `show_email: bool = false`, `email: str (max 48) \| null`, `qr: "telegram" \| "phone" \| "none" = "telegram"`, `since: datetime` (set by the server when lost mode goes on and kept while it stays on; absent when `on` is false) |
+| `ice_update` | `owner_name: str (max 32) = ""`, `contacts[].relation: str (max 16) = ""`, `show_contacts: bool = true`, `show_med: bool = true`. The full args are `{owner_name, contacts: [{name (max 32), relation, phone (max 23)}] (max 2), med_note (max 96), show_name, show_contacts, show_med, rev}`. |
+
+`rev`, at-least-once delivery and BUSY handling are unchanged for `lost_mode`
+and `ice_update`. New commands (`name`, `args`):
+
+| `name` | `args` | Delivery |
+|---|---|---|
+| `settings` | `{"brightness": int 5..100, "rev": int}` | Queued like `lost_mode`, one pending per name, `rev` as above. |
+| `wifi_remove` | `{"ssid": str (1..32)}` | Never queued. |
+| `wifi_order` | `{"ssids": [str (1..32)] (max 5)}` | Never queued. |
+| `restart` | `{}` | Never queued. |
+| `unpair` | `{}` | Never queued. The board wipes its pairing and shows the pairing screen. The server revokes the board right after sending it, so the socket closes with `4403`. |
+
+All are answered with `command_ack` (`BAD_ARGS` for invalid args). The board
+sends a fresh `wifi_state` after `wifi_remove` and `wifi_order`.
+```json
+{"type": "command", "id": "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", "name": "settings", "args": {"brightness": 60, "rev": 2}}
+```
+```json
+{"type": "command", "id": "0c1d2e3f-4a5b-4c6d-8e7f-8a9b0c1d2e3f", "name": "unpair", "args": {}}
+```
+
+### HTTP routes (owner devices only)
+
+Same guard as the other `/api/v1/companion/devices/{id}` routes: a companion
+principal gets `403 DEVICE_SCOPE_DENIED`; another owner's board is `404`.
+Command routes answer `{"id": "<command id>", "delivered": bool}` as in v1.
+
+| Route | Body | Result |
+|---|---|---|
+| `GET /api/v1/companion/devices` | none | The owner's live (not revoked) companions: `[{"device_id", "display_name", "online", "last_seen_at", "wifi_current", "battery_pct"}]` |
+| `PUT .../devices/{id}/settings` | `{"brightness": 5..100}` | Queued `settings`; `delivered` is false while the board is offline. |
+| `POST .../devices/{id}/wifi/remove` | `{"ssid": str}` | `wifi_remove`; `409 DEVICE_OFFLINE` if offline. |
+| `PUT .../devices/{id}/wifi/order` | `{"ssids": [str]}` (max 5) | `wifi_order`; `409 DEVICE_OFFLINE` if offline. |
+| `POST .../devices/{id}/restart` | none | `restart`; `409 DEVICE_OFFLINE` if offline. |
+| `POST .../devices/{id}/unpair` | `{"reauth": {"challenge_id", "signature"}}` | Needs a fresh signature by the calling device over `aelys-companion-unpair-v1\n{board id}\n{nonce}` (a lost-mode-off signature is refused; wrong or missing is `403 REAUTH_REQUIRED`). If the board is online it gets `unpair` first; then it is revoked the same way as `POST /api/v1/devices/{id}/revoke`. An offline board is just revoked (`delivered: false`, no 409). |
+
+`PUT .../lost-mode` accepts `show_email`, `email`, `qr`; `PUT .../ice` accepts
+`owner_name`, `contacts[].relation`, `show_contacts`, `show_med` (all optional).
+`POST .../wifi`, `.../wifi-scan` and `.../find` are unchanged apart from being
+recorded in the command log.
+
+`GET /api/v1/companion/devices/{id}` gains:
+
+| Field | Type |
+|---|---|
+| `contacts` | `{"phone": str, "telegram": str} \| null` (from the last `hello` that sent them) |
+| `wifi` | `{"saved": [str], "current": str \| null} \| null` (last `wifi_state`) |
+| `battery` | `{"pct": int, "charging": bool} \| null` (from `metrics`) |
+| `settings` | `{"brightness": int} \| null` (the last value the owner set) |
+| `command_log` | The last 10 commands sent: `[{"id", "name", "sent_at", "ok": bool \| null, "error_code": str \| null}]`, oldest first. `ok` is `null` until acked. |
+| `lost_mode.since` | datetime, present while lost mode is on |
+| `last_metrics` | also carries `battery_pct`, `charging`, `heap_at_connect_min` when sent |
+```json
+{"device_id": "7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d", "wifi": {"saved": ["Home"], "current": "Home"}, "battery": {"pct": 81, "charging": true}, "settings": {"brightness": 60}, "command_log": [{"id": "c1d2e3f4-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "name": "wifi_add", "sent_at": "2026-11-13T09:30:00+00:00", "ok": false, "error_code": "WIFI_FAILED"}]}
+```
