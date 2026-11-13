@@ -54,4 +54,4 @@ def test_container_startup(tmp_path: Path, port: str | None, expected: str, migr
     if migration_status:
         assert result.stdout == ""
     else:
-        assert result.stdout.splitlines() == ["app.main:app", "--host", "0.0.0.0", "--port", expected, "--ws-max-size", "65536"]
+        assert result.stdout.splitlines() == ["app.main:app", "--host", "0.0.0.0", "--port", expected, "--ws-max-size", "1048576"]
