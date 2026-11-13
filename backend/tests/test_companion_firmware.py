@@ -2,6 +2,7 @@ import hashlib
 
 import pytest
 import pytest_asyncio
+from app.companion.firmware import latest_release
 from app.companion.ota_models import CompanionFirmware
 from app.core import db
 from app.core.device_auth import sas_code
@@ -16,6 +17,7 @@ from companion_helpers import (
 )
 from firmware_fixtures import make_image, sha256
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -174,3 +176,13 @@ async def test_no_release_is_404(client, paired):
     for headers in (board, bearer(owner)):
         response = await client.get(f'{B}/devices/{device_id}/firmware', headers=headers)
         assert response.status_code == 404 and response.json()['detail']['code'] == 'FIRMWARE_NONE'
+
+
+@pytest.mark.asyncio
+async def test_latest_release_does_not_load_the_image_bytes(client, paired):
+    owner, _, _ = paired
+    await put(client, owner, '1.0.0')
+    async with db.SessionLocal() as session:
+        user_id = (await session.execute(select(CompanionFirmware.owner_id))).scalar_one()
+        release = await latest_release(session, user_id)
+        assert release.version == '1.0.0' and 'data' in sa_inspect(release).unloaded

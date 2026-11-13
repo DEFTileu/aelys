@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 router = APIRouter(tags=["companion"])
 
@@ -69,7 +70,9 @@ async def _newest_first(db: AsyncSession, owner_id: str) -> list[tuple[str, str]
 async def latest_release(db: AsyncSession, owner_id: str) -> CompanionFirmware | None:
     """Highest version wins, not the newest upload: a late 0.9.0 must not roll the fleet back."""
     ordered = await _newest_first(db, owner_id)
-    return await db.get(CompanionFirmware, ordered[0][0]) if ordered else None
+    if not ordered:
+        return None
+    return (await db.execute(select(CompanionFirmware).options(defer(CompanionFirmware.data)).where(CompanionFirmware.id == ordered[0][0]))).scalar_one()
 
 
 class ReleaseOut(BaseModel):
@@ -105,7 +108,7 @@ async def upload_firmware(version: str, request: Request, response: Response, mi
     if sha256.lower() != digest:
         raise _error(422, "FIRMWARE_HASH_MISMATCH", "X-Content-Sha256 does not match the body")
     check_image(data, version)
-    existing = (await db.execute(select(CompanionFirmware).where(CompanionFirmware.owner_id == user.id, CompanionFirmware.version == version))).scalar_one_or_none()
+    existing = (await db.execute(select(CompanionFirmware).options(defer(CompanionFirmware.data)).where(CompanionFirmware.owner_id == user.id, CompanionFirmware.version == version))).scalar_one_or_none()
     if existing:
         if existing.sha256 != digest:
             raise _error(409, "FIRMWARE_EXISTS", "This version is already released with other contents")
