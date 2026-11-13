@@ -159,7 +159,7 @@ callback. Новый task-only executor, набор DTO и payload_digest зде
    и кнопками «Создать задачу»/«Отклонить». Переход в Web не нужен.
    Если дата неоднозначна, срок отсутствует либо нужна явная правка владельца.
 4. Владелец подтверждает **показанный payload**, а не свободный дальнейший план.
-5. Общий существующий approve проверяет owner, project, source version/consent,
+5. Общий существующий approve проверяет owner, project, live source/consent,
    expiry, current policy и pending; создаёт задачу, sync и result_json одной
    транзакцией. AIAction.status/result_json — receipt этого среза, без новой таблицы.
 6. Контакту не пишут «задача создана» или «документ отправлен» без отдельного права
@@ -175,7 +175,8 @@ callback. Новый task-only executor, набор DTO и payload_digest зде
 Нужны отдельно session ID, run ID, step/action ID, delivery receipt и command ID.
 Один и тот же provider call ID нельзя считать универсальной бизнес-идемпотентностью.
 В следующем срезе ключ исполнения — AIAction.id, результат — его result_json;
-Business proposal дедуплицируется по проверенному источнику/ревизии. Для будущих
+Business proposal обрабатывает проверенный источник один раз через отдельный
+state на сообщении; edited_at/deleted_at и eager invalidation защищают его актуальность. Для будущих
 внешних операций receipt нужно определять отдельно, не заимствовать слово без схемы.
 
 Предлагаемый run lifecycle: queued → running → waiting_approval/waiting_device →
@@ -264,12 +265,12 @@ feature до общего workflow engine. В этой работе ни исп�
 остаются возможными направлениями; включать их по потребности с текущими gates.
 
 Подробный следующий план:
-[Telegram task suggestions v2](../superpowers/plans/2026-11-13-aelys-personal-harness.md).
+[Telegram task suggestions v3](../superpowers/plans/2026-11-13-aelys-personal-harness.md).
 
 ## 12. Что остаётся OPEN
 
 - Правила автоматического создания задач по чужой переписке и допустимые чаты.
-- Предложенный Telegram opt-in/callback UX и TTL требуют утверждения; реализационная схема уже описана в v2, пустого backend endpoint больше нет.
+- Предложенный Telegram opt-in/callback UX и TTL требуют утверждения; реализационная схема уже описана в v3, пустого backend endpoint больше нет.
 - Retention новых workflow/proposal данных, связь удаления с уже созданной задачей.
 - Архивный поиск, размер summary/token budgets, embeddings и место их исполнения.
 - Выбор SDK/нового search backend/моделей после сравнительных проверок.
@@ -286,7 +287,7 @@ feature до общего workflow engine. В этой работе ни исп�
 automation/hooks.py, Telegram transport/poller и личные task-команды. CAS,
 результат одного commit, generic write-tools и ACTION_NOT_PENDING уже есть.
 callback_query в allowed_updates отсутствует, reply_markup/answerCallbackQuery
-в транспорте не реализованы: в v2 они явная часть feature, а не допущение.
+в транспорте не реализованы: в плане они явная часть feature, а не допущение.
 Существующий PermissionContext не заменяется набором похожих DTO.
 
 Проверка ссылок выполнена HTTP открытием обеих форм URL Anthropic:
@@ -298,3 +299,11 @@ callback_query в allowed_updates отсутствует, reply_markup/answerCal
 [answerCallbackQuery](https://core.telegram.org/bots/api#answercallbackquery)
 проверены: callback_data ограничена 1–64 bytes; callback sender/DB authorisation
 нельзя заменять доверием к тексту кнопки. Это проверка документации, не live smoke.
+
+Уточнение v3 после следующего ревью: Business command queue не используется для
+предложений — отдельный task_suggestion_state на inbound message не может попасть
+в contact-facing /ask worker. Ненужные content_version и action.source_version
+удалены из плана; edited_at/deleted_at проверяются под row lock, а pending-actions
+инвалидируются в существующих edit/delete/wipe плюс retention/off путях. В v1 —
+20 model attempts за UTC-день и monthly budget; pending-команда убрана. Это
+уточнение проектного среза, не изменение действующего кода или выданных прав.

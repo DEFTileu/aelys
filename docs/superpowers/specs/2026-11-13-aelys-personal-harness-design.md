@@ -1,6 +1,6 @@
 # Aelys harness — один полезный срез после ревью
 
-Статус: **PROPOSED / НЕ РЕАЛИЗОВАНО**, редакция 2, 2026-11-13.
+Статус: **PROPOSED / НЕ РЕАЛИЗОВАНО**, редакция 3, 2026-11-13.
 [Исследование](../../research/2026-11-13-aelys-personal-harness.md) и
 [короткий план](../plans/2026-11-13-aelys-personal-harness.md).
 Работа остаётся планированием расширения Phase 4 / task 3; новые grants не выданы.
@@ -11,12 +11,13 @@
 разрешённые Business-чаты с ID и текущую настройку. `/task_suggestions on <chat_id>`
 включает **один** проверенный чат с текущего момента; `off` выключает. Команды
 принимаются только от уже привязанного owner в его private bot chat.
-Новая реплика контакта в выбранном чате попадает в durable connector queue.
+Новая реплика контакта сохраняется с task_suggestion_state=queued на самой
+TelegramBusinessMessage; отдельный worker анализирует её после ingestion commit.
 Секретарь выделяет ноль или одно предложение задачи. При кандидате бот присылает
 в личку владельца название, срок/таймзону (либо «не указан») и чат-источник,
 с кнопками **«Создать задачу» / «Отклонить»**. Подтверждение выполняется там же;
-переход в Web не нужен. `/task_suggestions pending` повторно показывает pending
-предложения по явному запросу, если уведомление потерялось.
+переход в Web не нужен. В v1 есть только on/off/статус, без pending-команды.
+Если уведомление потерялось, неполученное предложение истекает по TTL.
 
 Никакой `/task-proposal` REST endpoint без вызывающего клиента, reply-команды
 для каждой задачи или нового экрана. Существующие `/task` и личный AI-диалог
@@ -36,21 +37,41 @@ Suggestions не зависят от переключателя `auto_reply`: op
   error; отдельной receipt-таблицы/automation receipt и payload digest нет.
   Аргументы серверные, после preview не редактируются. Любая будущая правка
   создаёт новое предложение; она не подменяет существующий pending payload.
-- В AIAction нужны **четыре** nullable-поля: `source_kind`, `source_id`,
-  `source_version`, `expires_at`. Legacy Web actions имеют NULL source.
+- В AIAction нужны **три** nullable-поля: `source_kind`, `source_id`,
+  `expires_at`. Legacy Web actions имеют NULL source.
   Proposed TTL — 24 часа, не позднее source retention; это default для утверждения.
-- Source version должна означать изменение содержимого, а не draft/send state.
-  В Business `Owned.version` меняется и worker-ом: для нового пути добавить
-  `content_version` (default 1), увеличивать при remote content edit/delete.
-  Связь source_id → owner/integration/connection/chat проверяется сервером.
+- Новой ревизии источника нет: запомнить edited_at до модели; после неё взять
+  исходную inbound-строку FOR UPDATE, проверить тот же edited_at и отсутствие
+  deleted_at. Изменения draft/send не считают remote content edit. При approve
+  повторно проверить live source/права; source_id разрешается только сервером.
 
 ## Доставка и безопасность
 
-Queue опирается на существующий `TelegramBusinessCommand`, новый kind
-`task_suggestion` без session/answer; selector owner `/ask`-worker его исключает.
-Кандидат AIAction и смена queue state сохраняются до отправки preview. Queue
-claim/state также фиксирует попытку уведомления; ambiguous send — unknown без
-автоматического повтора. Нулевой кандидат тоже terminal, чтобы не читать его снова.
+Одна nullable-колонка task_suggestion_state на TelegramBusinessMessage:
+NULL → queued → generating → ready → sending → sent; no-candidate/skipped_limit/
+failed/unknown — terminal. Существующая message row даёт durable trigger;
+claim — UPDATE WHERE state='queued' RETURNING id. Никаких строк kind=task_suggestion
+в TelegramBusinessCommand, фильтров в command_iteration или разделяемого recovery.
+Зависший generating после restart становится failed, sending — unknown, без
+автоматической новой генерации/отправки. No-candidate не анализируется снова.
+Создание AIAction и state=ready — один commit. CAS ready→sending сохраняется до
+private I/O; ошибка доставки не откатывает proposal и не запускает task mutation.
+
+Предлагаемый лимит v1: 20 model attempts на integration за UTC-день и существующий
+monthly BYOK budget. Попытка записывается в AIRun с feature marker до I/O под
+integration lock, включая неудачные вызовы; RAM-счётчик не подходит. На лимите
+сообщение получает skipped_limit, не переносится в завтрашний backlog. Остаток
+показывает status-команда; новая модель/дешёвый routing для этого не добавляются.
+
+Edit/delete/clear_messages/purge/retention/off атомарно инвалидируют связанные
+AIAction со status=pending (failed, ACTION_SOURCE_STALE) и незавершённый suggestion
+state. Такой UPDATE добавляется рядом с существующими eager stale/wipe путями,
+а не через изменение command worker. Выполненная задача не удаляется.
+Во всех конкурирующих путях порядок lock одинаковый: integration → source →
+action. После LLM I/O source проверяется и action вставляется в одной короткой
+транзакции; approve держит эти locks до task+result commit. Поэтому edit/delete
+либо делает pending stale первым, либо идёт после уже завершённого approve;
+не держать DB locks во время model или Telegram network I/O.
 
 `callback_query` пока не запрашивается и не обрабатывается; это новая работа.
 В callback передаётся только action ID и approve/reject (до 64 байт), не args/scopes.

@@ -1,11 +1,11 @@
-# Telegram task suggestions — короткий Implementation Plan v2
+# Telegram task suggestions — короткий Implementation Plan v3
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** секретарь предлагает задачу из одного opt-in Business-чата; владелец
 подтверждает inline-кнопкой в личке бота. **Статус: PROPOSED, код не начат.**
 **Architecture:** существующие AIAction, общий generic approve/reject, registry,
-connector queue и capture/sync. **Tech Stack:** текущий FastAPI/Python/PostgreSQL.
+отдельное состояние сообщения и capture/sync. **Tech Stack:** текущий FastAPI/Python/PostgreSQL.
 **Spec:** [сценарий и точные границы](../specs/2026-11-13-aelys-personal-harness-design.md).
 **Roadmap anchor:** предлагаемое расширение Phase 4 / task 3, не rewrite harness.
 
@@ -31,7 +31,7 @@ stale; injection → никакого нового scope; предложение
   create_task, complete/update/reminder. Не подменять общий approve на approve_task.
 - [ ] Перенести тело approve/reject и owner lookup как есть в сервис; endpoints
   делегируют туда. Сохранить CAS, registry/policy, commit и формат _action_out.
-- [ ] Добавить nullable source_kind/source_id/source_version/expires_at в AIAction;
+- [ ] Добавить nullable source_kind/source_id/expires_at в AIAction;
   source guard только для source-bound actions, legacy NULL остаётся рабочим.
   Новые ошибки — ACTION_EXPIRED/ACTION_SOURCE_STALE; ACTION_NOT_PENDING уже есть.
 - [ ] Args immutable после preview; approve принимает action ID без клиентского
@@ -48,21 +48,26 @@ stale; injection → никакого нового scope; предложение
 Tests: новый `backend/tests/test_telegram_task_suggestions.py`, transport tests.
 
 - [ ] Зафиксировать UX из spec: private `/task_suggestions` (список/статус),
-  `on <chat_id>` / `off`, `pending`; один активный чат, только новые сообщения.
+  `on <chat_id>` / `off`; один активный чат, только новые сообщения.
   Новые настройки — nullable chat_id и enabled_at; нет historical backlog scan.
-- [ ] Добавить content_version источника: worker draft/status его не меняет,
-  remote edit/delete меняет. Action.source_version ссылается на эту ревизию.
-- [ ] В ingestion транзакционно поставить kind=task_suggestion в существующую
-  Business command queue. Исключить kind из owner-command selector/recovery.
-  Новый supervised worker claims по DB, обрабатывает source один раз; no-candidate
-  terminal. Уже существующая очередь сохраняет trigger через restart.
+- [ ] Добавить только nullable `TelegramBusinessMessage.task_suggestion_state`;
+  ingestion ставит queued для нового подходящего inbound. Новый worker claims
+  через UPDATE WHERE state='queued'. TelegramBusinessCommand и его worker не менять.
+  Interrupted generating → failed без автоповтора; no-candidate тоже terminal.
+- [ ] Перед моделью сохранить edited_at; после модели взять источник FOR UPDATE
+  и сравнить edited_at/deleted_at. Pending-actions инвалидировать при remote edit,
+  delete, clear/purge, retention и off. Ни content_version, ни action.source_version.
+  Порядок блокировок в worker/approve/invalidation: integration → source → action.
 - [ ] Extractor использует текущий provider/budget/timeout, tools=(), strict
   CreateTaskToolArgs|null. Проверить source/allowlist до и после модели; неясный
   срок оставить пустым. Создать приватные AIConversation/AIRun и pending AIAction
   с минимальными metadata, без полной копии чата; закрепить источник/TTL.
-- [ ] Persist proposal до I/O; private sendMessage получает reply_markup с
-  «Создать задачу»/«Отклонить». Queue delivery claim сохранять до отправки;
-  timeout/unknown не повторять автоматически. pending-команда — явное восстановление.
+- [ ] Лимит v1: 20 попыток модели на integration за UTC-день + текущий monthly
+  budget; резервировать попытку durable AIRun до I/O под integration lock,
+  учитывать ошибки/рестарты. Лимит исчерпан → skipped_limit, без backlog на завтра.
+- [ ] Persist proposal и state=ready до I/O; private sendMessage с кнопками
+  «Создать задачу»/«Отклонить». CAS ready→sending до отправки, затем sent/unknown;
+  неизвестная отправка не повторяется. Без pending-команды: предложение истечёт по TTL.
 - [ ] Добавить callback_query в allowed_updates, безопасный parser,
   answerCallbackQuery и private editMessageReplyMarkup для закрытия кнопок; callback data = operation + opaque action ID (<=64 bytes).
   Проверить bound owner, private chat и bot identity; args/permissions только из DB.
@@ -84,8 +89,8 @@ Tests: новый `backend/tests/test_telegram_task_suggestions.py`, transport t
 7. Expiry/недоступный проект/policy denial → нет записи, legacy Web approvals работают.
 8. Injection в RU/KK/EN не выдаёт tools/scopes и не публикует private данные контакту.
 9. Restart/replayed update не дублирует analysis/action; unknown private send не replay.
-10. Content version переживает обычный draft/send; неясный срок не угадывается;
-    source wipe/rotation покрывают новые connector поля.
+10. Draft/send не инвалидирует source; неясный срок не угадывается; дневной лимит
+    (включая concurrent workers и restart) не превышается; cleanup покрывает новое state.
 
 Run relevant pytest, full backend, Ruff/mypy/Bandit и migration checks; точные
 команды взять из действующего CI. PostgreSQL race обязателен до выпуска, skip не
