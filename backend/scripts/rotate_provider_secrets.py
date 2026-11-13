@@ -46,12 +46,13 @@ async def rotate() -> int:
         # Raw SQL bypasses EncryptedText, which would try the configured new key
         # while the database still contains ciphertext encrypted with the old key.
         integrations = (await db.execute(text(
-            "SELECT id, encrypted_token, instructions, status_text FROM telegram_integrations"
+            "SELECT id, encrypted_token, instructions, status_text, owner_name FROM telegram_integrations"
         ))).mappings().all()
         for integration in integrations:
             await db.execute(text(
                 "UPDATE telegram_integrations SET encrypted_token = :token, "
-                "instructions = :instructions, status_text = :status_text WHERE id = :id"
+                "instructions = :instructions, status_text = :status_text, "
+                "owner_name = :owner_name WHERE id = :id"
             ), {
                 "id": integration["id"],
                 "token": (encrypt_secret(decrypt_secret(integration["encrypted_token"], old_key), new_key)
@@ -59,6 +60,8 @@ async def rotate() -> int:
                 "instructions": encrypt_secret(decrypt_secret(integration["instructions"], old_key), new_key),
                 "status_text": (encrypt_secret(decrypt_secret(integration["status_text"], old_key), new_key)
                                 if integration["status_text"] is not None else None),
+                "owner_name": (encrypt_secret(decrypt_secret(integration["owner_name"], old_key), new_key)
+                               if integration["owner_name"] is not None else None),
             })
         messages = (await db.execute(text(
             "SELECT id, chat_title, text, draft_text, owner_note, media_metadata FROM telegram_business_messages"
@@ -84,6 +87,18 @@ async def rotate() -> int:
                 'quote': encrypt_secret(decrypt_secret(job['quote'], old_key), new_key) if job['quote'] is not None else None,
                 'media': encrypt_secret(decrypt_secret(job['media_metadata'], old_key), new_key) if job['media_metadata'] is not None else None,
             })
+        commands = (await db.execute(text(
+            "SELECT id, query, quote FROM telegram_business_commands"
+        ))).mappings().all()
+        for command in commands:
+            await db.execute(text(
+                "UPDATE telegram_business_commands SET query = :query, quote = :quote WHERE id = :id"
+            ), {
+                "id": command["id"],
+                "query": encrypt_secret(decrypt_secret(command["query"], old_key), new_key),
+                "quote": (encrypt_secret(decrypt_secret(command["quote"], old_key), new_key)
+                          if command["quote"] is not None else None),
+            })
         # Memory uses EncryptedText too. Never instantiate its ORM model under
         # the new configured key before old ciphertext has been re-encrypted.
         facts = (await db.execute(text("SELECT id, text FROM owner_memory_facts"))).mappings().all()
@@ -92,7 +107,7 @@ async def rotate() -> int:
                 'id': fact['id'], 'body': encrypt_secret(decrypt_secret(fact['text'], old_key), new_key),
             })
         await db.commit()
-    return len(calendar_credentials) + len(calendar_states) + len(calendar_sync) + len(facts) + len(jobs) + len(rows) + len(gmail) + len(oauth) + len(integrations) + len(messages)
+    return len(calendar_credentials) + len(calendar_states) + len(calendar_sync) + len(facts) + len(jobs) + len(rows) + len(gmail) + len(oauth) + len(integrations) + len(messages) + len(commands)
 
 
 if __name__ == "__main__":

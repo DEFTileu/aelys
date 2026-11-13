@@ -176,3 +176,24 @@ class TelegramChatSend(Owned):
     send_status: Mapped[str] = mapped_column(String(24), default="sending")
     error_code: Mapped[str | None] = mapped_column(String(80))
     message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("telegram_business_messages.id", ondelete="SET NULL"))
+
+
+class TelegramBusinessCommand(Owned):
+    """At-most-once owner request; quote/query encrypted, never raw Telegram updates."""
+    __tablename__ = "telegram_business_commands"
+    __table_args__ = (UniqueConstraint("integration_id", "business_connection_id", "chat_id", "telegram_message_id", name="uq_telegram_business_command_message"),)
+    integration_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_integrations.id"))
+    source_message_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_business_messages.id"))
+    source_version: Mapped[int] = mapped_column(Integer)
+    telegram_message_id: Mapped[int] = mapped_column(BigInteger)
+    business_connection_id: Mapped[str] = mapped_column(String(256))
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    kind: Mapped[str] = mapped_column(String(16))
+    query: Mapped[str] = mapped_column(EncryptedText(), default="")
+    quote: Mapped[str | None] = mapped_column(EncryptedText())
+    reply_to_message_id: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    run_id: Mapped[str | None] = mapped_column(String(36))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))

@@ -96,12 +96,15 @@ class ProviderRequest:
     tools: tuple[Mapping[str, Any], ...] = ()
     stream: bool = False
     effort: str | None = None
+    web_search: bool = False
 
 
 @dataclass(frozen=True)
 class Usage:
     input_tokens: int = 0
     output_tokens: int = 0
+    extra_cost: Decimal = Decimal(0)
+    reported_cost: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +113,8 @@ class ProviderResponse:
     usage: Usage = Usage()
     provider_request_id: str | None = None
     tool_calls: tuple[Mapping[str, Any], ...] = ()
+    sources: tuple[str, ...] = ()
+    search_used: bool = False
 
 
 @dataclass(frozen=True)

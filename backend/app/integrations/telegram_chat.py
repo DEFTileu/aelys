@@ -6,8 +6,9 @@ import asyncio
 import hashlib
 import hmac
 import json
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 
 from app.ai.crypto import decrypt_secret
 from app.ai.errors import PolicyDenied
@@ -227,6 +228,8 @@ async def send_chat(
     body: str,
     key: str,
     reply_to_message_id: int | None = None,
+    *, before_send: Callable[[], Awaitable[None]] | None = None,
+    direction: Literal["owner", "outbound"] = "owner",
 ) -> TelegramBusinessMessage:
     authorize(item)
     digest = fingerprint(connection_id, chat_id, body, reply_to_message_id)
@@ -339,6 +342,13 @@ async def send_chat(
                 409, receipt.error_code, "Подключение или доступность чата изменились."
             )
         authorize(item)
+        if before_send:
+            try:
+                await before_send()
+            except Exception:  # Source changed before I/O: this is a known unsent receipt.
+                await db.execute(update(TelegramChatSend).where(TelegramChatSend.id == receipt_id).values(send_status="failed", error_code="COMMAND_STALE", version=TelegramChatSend.version + 1))
+                await db.commit()
+                raise
         try:
             reply_arguments={"reply_to_message_id":reply_to_message_id} if reply_to_message_id is not None else {}
             sent = await client.send_message(chat_id, body, business_connection_id=connection_id, **reply_arguments)
@@ -419,7 +429,7 @@ async def send_chat(
                 chat_title=incoming.chat_title if incoming else "",
                 text=body,
                 sent_at=now(),
-                direction="owner",
+                direction=direction,
                 draft_status="none",
                 reply_to_telegram_message_id=reply_to_message_id,
             )
@@ -431,6 +441,8 @@ async def send_chat(
                 outgoing = (
                     await db.execute(select(TelegramBusinessMessage).where(*conditions))
                 ).scalar_one()
+        if direction == "outbound":
+            outgoing.direction = "outbound"
         if reply_to_message_id is not None and outgoing.reply_to_telegram_message_id is None:
             outgoing.reply_to_telegram_message_id = reply_to_message_id
             outgoing.version += 1
