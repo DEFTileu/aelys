@@ -1,10 +1,12 @@
 import re
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 from app.companion.access import COMPANION_ALLOWED
 from app.core import db
-from app.core.models import Device
+from app.core.config import get_settings
+from app.core.models import AuthSession, Device
 from app.core.security import create_token, current_principal, decode_token
 from app.main import app
 from companion_helpers import (
@@ -108,6 +110,22 @@ async def test_companion_login_returns_no_refresh(client):
     forged = create_token(claims['sub'], 'refresh', 3600, device_id, claims['sid'])
     denied = await client.post(f'{B}/auth/refresh', json={'refresh_token': forged})
     assert denied.status_code == 403 and denied.json()['detail']['code'] == 'DEVICE_SCOPE_DENIED'
+
+
+@pytest.mark.asyncio
+async def test_companion_session_expires_with_its_access_token_but_owner_keeps_30_days(client):
+    owner, key, device_id = await pair_companion(client)
+    login = await companion_login(client, key, device_id)
+    minutes = get_settings().access_token_minutes
+
+    async def expiry(session_id):
+        async with db.SessionLocal() as session:
+            value = (await session.get(AuthSession, session_id)).expires_at
+        return (value.replace(tzinfo=UTC) if value.tzinfo is None else value) - datetime.now(UTC)  # SQLite returns naive values
+
+    board_left = await expiry(decode_token(login.json()['access_token'])['sid'])
+    assert timedelta(minutes=minutes - 1) < board_left <= timedelta(minutes=minutes)
+    assert await expiry(decode_token(owner['access_token'])['sid']) > timedelta(days=get_settings().refresh_token_days - 1)
 
 
 @pytest.mark.asyncio

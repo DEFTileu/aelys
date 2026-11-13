@@ -183,7 +183,9 @@ def _issue_session(db: AsyncSession, owner_id: str, device_id: str, platform: st
     settings = get_settings()
     session_id = secrets.token_urlsafe(24)
     refresh = create_token(owner_id, "refresh", settings.refresh_token_days * 86400, device_id, session_id)
-    db.add(AuthSession(id=session_id, owner_id=owner_id, device_id=device_id, refresh_token_hash=token_hash(refresh), expires_at=now() + timedelta(days=settings.refresh_token_days)))
+    # A board has no refresh token and signs in again every access-token lifetime, so its session lives no longer than that.
+    lifetime = timedelta(minutes=settings.access_token_minutes) if platform == "companion" else timedelta(days=settings.refresh_token_days)
+    db.add(AuthSession(id=session_id, owner_id=owner_id, device_id=device_id, refresh_token_hash=token_hash(refresh), expires_at=now() + lifetime))
     access = create_token(owner_id, "access", settings.access_token_minutes * 60, device_id, session_id)
     # The session row still needs a refresh hash, but a board never receives the token: it signs in again with its key.
     return DeviceSession(access_token=access, refresh_token=None if platform == "companion" else refresh, device_id=device_id)
