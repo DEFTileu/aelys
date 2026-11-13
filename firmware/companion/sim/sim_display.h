@@ -7,6 +7,7 @@
 #define SIM_H 466
 
 void sim_init(void);               /* lv_init + display + black screen; call once per process */
+void sim_direct(void);             /* redraw only invalidated areas (DIRECT render mode), like the board's partial refresh */
 void sim_step(uint32_t ms);        /* advance the fake clock and render */
 const uint16_t *sim_fb(void);      /* SIM_W*SIM_H RGB565 */
 

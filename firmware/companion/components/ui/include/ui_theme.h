@@ -8,7 +8,6 @@
 #define UI_COLOR_MUTED   0x8C869A
 #define UI_COLOR_DIM     0x625D69
 #define UI_COLOR_CHEEK   0xF6907F /* drawn at 55 % opacity */
-#define UI_COLOR_SWEAT   0x6F9CF0
 /* Screens (design "ACTUAL AELYS Companion", section 1 and 10) */
 #define UI_COLOR_TEXT    0xF1EEF6
 #define UI_COLOR_TEXT2   0xCBC6D5
@@ -29,13 +28,6 @@ UI_FONT_DECLARE(inter_24);
 UI_FONT_DECLARE(inter_28);
 UI_FONT_DECLARE(inter_40);
 UI_FONT_DECLARE(inter_clock_96); /* digits 0-9, ':' and space only */
-/* Bold "!?z" for the face effects: sizes are the scale-1.0 and scale-1.5 variants. */
-UI_FONT_DECLARE(inter_bold_fx_24);
-UI_FONT_DECLARE(inter_bold_fx_34);
-UI_FONT_DECLARE(inter_bold_fx_54);
-UI_FONT_DECLARE(inter_bold_fx_36);
-UI_FONT_DECLARE(inter_bold_fx_51);
-UI_FONT_DECLARE(inter_bold_fx_81);
 
 /* Black background, light text, Inter 20: call once per screen. */
 void ui_theme_apply(lv_obj_t *screen);

@@ -49,7 +49,7 @@ static void check_inside(const char *what)
     count_lit(&out, &in);
     if (out) fprintf(stderr, "%s: %d lit pixels outside radius %d\n", what, out, R);
     CHECK_EQ(out, 0);
-    CHECK(in > 2000); /* something was drawn */
+    CHECK(in > 1000); /* something was drawn (the offline view is two dim 28 px dots and some text) */
 }
 
 static void test_flow(void)

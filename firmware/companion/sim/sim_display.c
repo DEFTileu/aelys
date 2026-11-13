@@ -27,6 +27,13 @@ void sim_init(void)
     sim_step(40);
 }
 
+void sim_direct(void)
+{
+    lv_display_set_buffers(lv_display_get_default(), g_fb, NULL, sizeof g_fb, LV_DISPLAY_RENDER_MODE_DIRECT);
+    lv_obj_invalidate(lv_screen_active());
+    sim_step(20);
+}
+
 void sim_step(uint32_t ms)
 {
     g_ms += ms;
