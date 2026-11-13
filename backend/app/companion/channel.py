@@ -339,11 +339,16 @@ async def device_channel(websocket: WebSocket) -> None:
         # Registration order and epoch allocation must agree, even when two
         # reconnects race while one awaits database I/O.
         async with hub.connection_lock(device_id):
-            unregister = hub.register(device_id, owner_id, push, close)
             if (code := await _validate(owner_id, device_id, session_id)) is not None:
                 await close(code)
                 return
+            # Fence the previous reader, then revalidate before exposing this
+            # socket to hub pushes. Revocation uses the same connection lock.
             link.character_epoch = await _begin_character_session(link)
+            if (code := await _validate(owner_id, device_id, session_id)) is not None:
+                await close(code)
+                return
+            unregister = hub.register(device_id, owner_id, push, close)
         # After register and under the owner's lock: a concurrent push can't land after it. No snapshot, no session.
         if not await hub.push_snapshot(device_id):
             await close(ERROR_CLOSE_CODE)

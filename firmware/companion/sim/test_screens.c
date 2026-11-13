@@ -528,6 +528,48 @@ static void test_all_large_home_moods(void)
 static int cue_count;
 static character_cue_t last_cue;
 static void capture_cue(character_cue_t cue) { cue_count++; last_cue = cue; }
+/* The status sink also follows snapshots while another screen is visible. */
+static character_mood_t reported_mood;
+static character_reason_t reported_why;
+static uint32_t reported_rev;
+static void capture_status(character_mood_t mood, character_reason_t why, uint32_t rev, uint32_t identity) { (void)identity; reported_rev = rev; reported_mood = mood; reported_why = why; }
+static void test_character_status_while_home_hidden(void)
+{
+    fresh_fx(); ui_set_character_status_sink(capture_status);
+    swipe(UI_EV_SWIPE_RIGHT); CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    fx.focus.status = FOCUS_ACTIVE;
+    post_fx();
+    CHECK_EQ(reported_mood, CHAR_FOCUSED); CHECK_EQ(reported_why, WHY_FOCUS);
+    ui_set_character_status_sink(NULL);
+    swipe(UI_EV_SWIPE_LEFT); fresh_fx();
+}
+static void test_lost_mode_discards_old_reaction_before_publishing_new_revision(void)
+{
+    fresh_fx(); ui_set_lost_revision(0); ui_set_character_status_sink(capture_status);
+    action_result(ACT_TASK_COMPLETE, true, NULL);
+    CHECK_EQ(reported_why, WHY_TASK_DONE);
+    const uint8_t on[] = {1, 1, 0, 0, 0}, off[] = {0, 2, 0, 0, 0};
+    sim_post(UI_EV_LOST, on, sizeof on); sim_post(UI_EV_LOST, off, sizeof off);
+    sim_step(1100);
+    CHECK_EQ(reported_rev, 2);
+    CHECK(reported_why != WHY_TASK_DONE);
+    action_result(ACT_TASK_COMPLETE, true, NULL);
+    CHECK_EQ(reported_why, WHY_TASK_DONE);
+    const uint8_t new_identity[] = {0, 2, 0, 0, 0, 1, 0, 0, 0};
+    sim_post(UI_EV_LOST, new_identity, sizeof new_identity);
+    sim_step(1100);
+    CHECK(reported_why != WHY_TASK_DONE); /* same revision, different owner */
+    ui_set_character_status_sink(NULL); fresh_fx();
+}
+static void test_identity_change_drops_old_snapshot_before_reporting(void)
+{
+    fresh_fx(); ui_set_lost_revision(0); ui_set_character_status_sink(capture_status);
+    fx.focus.status = FOCUS_ACTIVE; post_fx(); CHECK_EQ(reported_why, WHY_FOCUS);
+    const uint8_t reset[] = {0, 0, 0, 0, 0, 7, 0, 0, 0};
+    sim_post(UI_EV_LOST, reset, sizeof reset); sim_step(1100);
+    CHECK(reported_why != WHY_FOCUS);
+    ui_set_character_status_sink(NULL); fresh_fx();
+}
 static void test_character_cue_delivery(void)
 {
     ui_set_character_cue_sink(capture_cue); cue_count = 0;
@@ -1484,6 +1526,9 @@ int main(void)
     test_companion_setup();
     test_home_larger_face();
     test_all_large_home_moods();
+    test_character_status_while_home_hidden();
+    test_lost_mode_discards_old_reaction_before_publishing_new_revision();
+    test_identity_change_drops_old_snapshot_before_reporting();
     test_character_cue_delivery();
     test_character_tap_and_idle();
     test_character_reconnected();

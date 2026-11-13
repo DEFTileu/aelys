@@ -37,6 +37,9 @@ static settings_t settings;
 static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi, home shows the welcome */
 
 static bool lost_is_on(void) { return lost.on; }
+#ifndef CONFIG_AELYS_NO_WIFI
+static uint32_t lost_revision(void) { return lost.rev; }
+#endif
 
 #ifndef CONFIG_AELYS_NO_WIFI
 /* Command handlers (link task, the only writer of owner/lost/settings once the link runs). Never call LVGL or the panel from here:
@@ -152,11 +155,14 @@ static void on_command(const proto_msg_t *m)
         uint32_t prev = lost.rev;
         bool applied = owner_apply_lost(&lost, &owner, &m->u.cmd.a.lost);
         bool ok = !applied || saved("lost", store_save_lost(&lost));
-        if (applied) { /* live even when the save failed */
+        cmd_ack_t settled = cmd_settle(applied, ok, &lost.rev, prev);
+        if (applied) { /* live even when the save failed; attach only the settled revision */
             publish_owner();
-            post_ui((ui_event_t){.type = UI_EV_LOST, .len = 1, .data = {lost.on}});
+            ui_event_t ev = {.type = UI_EV_LOST, .len = 5, .data = {lost.on,
+                (uint8_t)lost.rev, (uint8_t)(lost.rev >> 8), (uint8_t)(lost.rev >> 16), (uint8_t)(lost.rev >> 24)}};
+            post_ui(ev);
         }
-        ack(id, cmd_settle(applied, ok, &lost.rev, prev));
+        ack(id, settled);
         break;
     }
     case CMD_ICE_UPDATE: {
@@ -236,6 +242,9 @@ static void reset_revs(void)
     owner.ice_rev = 0;
     lost.rev = 0;
     settings.rev = 0;
+    uint32_t identity = link_character_new_identity();
+    post_ui((ui_event_t){.type = UI_EV_LOST, .len = 9, .data = {lost.on, 0, 0, 0, 0,
+        (uint8_t)identity, (uint8_t)(identity >> 8), (uint8_t)(identity >> 16), (uint8_t)(identity >> 24)}});
     esp_err_t e1 = store_save_owner(&owner), e2 = store_save_lost(&lost), e3 = store_save_settings(&settings); /* all three are tried */
     if (e1 != ESP_OK || e2 != ESP_OK || e3 != ESP_OK) ESP_LOGW(TAG, "rev reset not fully saved (owner %s, lost %s, settings %s)",
                                                                 esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(e3));
@@ -258,6 +267,8 @@ static void boot_ui_setup(void)
 #endif
     ui_set_find_stop(board_audio_stop); /* a tap or key while "Here I am!" shows ends the beeps */
 #ifndef CONFIG_AELYS_NO_WIFI
+    ui_set_lost_revision(lost.rev);
+    ui_set_character_status_sink(link_post_character);
     ui_set_action_sink(link_post_action); /* taps and keys on Today, Focus and Inbox become actions for the server */
 #endif
     *(owner_info_t *)tribuf_back(&ui_owner_tb) = lost.on ? lost.shown : owner; /* lost mode shows what the owner chose */
@@ -328,7 +339,7 @@ void app_main(void)
     ESP_LOGW(TAG, "wifi started: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     /* after the ui task ran ui_setup (the snapshot buffer exists) and after net_start (Wi-Fi is up or coming up) */
     static const link_deps_t ldeps = {.on_command = on_command, .save_snap = save_snap, .load_snap = load_snap,
-                                      .erase_snap = erase_snap, .lost_on = lost_is_on, .contact_phone = contact_phone, .contact_telegram = contact_telegram,
+                                      .erase_snap = erase_snap, .lost_on = lost_is_on, .lost_rev = lost_revision, .contact_phone = contact_phone, .contact_telegram = contact_telegram,
                                       .current_ssid = net_wifi_current_ssid, .load_wifi = store_load_wifi, .reset_revs = reset_revs};
     err = link_start(&ldeps);
     if (err != ESP_OK) ESP_LOGE(TAG, "link start: %s", esp_err_to_name(err));

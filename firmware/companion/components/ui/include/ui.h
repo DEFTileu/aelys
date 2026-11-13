@@ -47,6 +47,10 @@ extern tribuf_t ui_snap_tb; /* snap_t */
 void ui_handle_event(const ui_event_t *ev);
 /* The action hook (main passes link_post_action): false = refused, and the UI shows "No connection". */
 void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
+/* Runs in the UI task; sink must be non-blocking. */
+void ui_set_character_status_sink(void (*sink)(character_mood_t mood, character_reason_t why, uint32_t lost_rev, uint32_t identity));
+/* Called before registering the status sink during UI setup. */
+void ui_set_lost_revision(uint32_t rev);
 #ifndef ESP_PLATFORM
 /* Simulator only: the firmware cannot register a character-audio sink. */
 void ui_set_character_cue_sink(void (*sink)(character_cue_t cue));

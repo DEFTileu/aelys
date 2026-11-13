@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include "esp_err.h"
 #include "proto.h"
+#include "character.h"
 #include "snap.h"
 #include "store_codec.h"
 
@@ -18,6 +19,7 @@ typedef struct {
     void (*save_snap)(const snap_t *s);   /* flash, at most every 300 s (at once in lost mode) */
     bool (*load_snap)(snap_t *s);         /* false: none saved (or lost mode is on: nothing may show) */
     void (*erase_snap)(void);             /* a wipe: the next owner must not see this one's cached data */
+    uint32_t (*lost_rev)(void);          /* last successfully applied lost-mode revision; link task only */
     bool (*lost_on)(void);                /* a snapshot that arrives in lost mode is saved at once, not throttled */
     const char *(*contact_phone)(void);   /* may return NULL or "": left out of `hello` */
     const char *(*contact_telegram)(void);
@@ -38,6 +40,10 @@ void link_notify_paired(void);
 /* ui task: queue an action for the server. False when the board is not online (the UI shows "No connection") or four
  * actions are already waiting. The answer arrives as UI_EV_ACTION. target_id: notification or task id, NULL for focus.* */
 bool link_post_action(act_kind_t k, const char *target_id);
+/* UI task: bounded atomic publication, never waits for network or queue capacity. */
+void link_post_character(character_mood_t mood, character_reason_t why, uint32_t lost_rev, uint32_t identity);
+/* Link task only, at pairing reset: fence status from the old identity. */
+uint32_t link_character_new_identity(void);
 
 /* Unpair command, link task only (an on_command handler), after the ack went out: closes the socket, wipes the pairing
  * unconditionally and runs the same clean-up as a server-side wipe (reset_revs, erase_snap, empty snapshot on screen), then

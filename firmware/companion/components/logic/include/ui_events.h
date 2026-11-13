@@ -9,7 +9,7 @@ typedef enum {
     UI_EV_TIME,
     UI_EV_WIFI,
     UI_EV_OWNER,
-    UI_EV_LOST,
+    UI_EV_LOST,        /* [0]=on; optional [1..4]=revision, [5..8]=identity generation, little-endian */
     UI_EV_TICK,
     /* appended by the companion link: never renumber the values above */
     UI_EV_TAP,          /* x, y: uint16 LE, as UI_EV_TOUCH */

@@ -51,7 +51,7 @@ foreach(t test_face_moods test_face_geometry test_bmp test_mood_rules test_scree
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
-foreach(t test_combo test_pwrkey test_screen_fsm test_store test_improv test_codec_util test_tribuf test_owner test_proto test_link_fsm test_link_core test_gesture test_beep test_perf_probe test_character test_face_spring)
+foreach(t test_combo test_pwrkey test_screen_fsm test_store test_improv test_codec_util test_tribuf test_owner test_proto test_link_fsm test_link_core test_gesture test_beep test_perf_probe test_character test_character_report test_face_spring)
     add_executable(${t} ${t}.c)
     target_compile_options(${t} PRIVATE -Wall -Wextra)
     target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main) # example owner contacts
@@ -61,6 +61,7 @@ endforeach()
 target_compile_definitions(test_proto PRIVATE PROTO_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/proto_corpus")
 find_package(Threads REQUIRED)
 target_link_libraries(test_tribuf PRIVATE Threads::Threads)
+target_link_libraries(test_character_report PRIVATE Threads::Threads)
 target_link_libraries(test_perf_probe PRIVATE Threads::Threads)
 add_test(NAME sim_shot_smoke COMMAND companion_sim --shot face:happy --out ${CMAKE_BINARY_DIR}/smoke.bmp)
 

@@ -8,6 +8,7 @@
 #include <time.h>
 #include "board.h"
 #include "codec_util.h"
+#include "character_report.h"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -51,6 +52,18 @@ static QueueHandle_t q;
 static SemaphoreHandle_t act_mu;
 static link_acts_t acts;
 static link_fsm_t fsm;
+static character_report_mailbox_t character_mailbox = CHARACTER_REPORT_MAILBOX_INIT;
+static character_report_t character_sender;
+static uint32_t character_retry_at;
+static bool character_retry;
+static uint32_t character_identity;
+
+void link_post_character(character_mood_t mood, character_reason_t why, uint32_t lost_rev, uint32_t identity)
+{
+    character_report_offer(&character_mailbox, mood, why, lost_rev, identity);
+}
+uint32_t link_character_new_identity(void) { return ++character_identity; }
+
 #ifdef CONFIG_AELYS_PERF_PROBE
 static atomic_int probe_state = ATOMIC_VAR_INIT(-1);
 #endif
@@ -325,6 +338,8 @@ static void do_wipe(void)
 static void on_online(void)
 {
     ws_online = true;
+    character_report_reset(&character_sender);
+    character_retry = false;
     open_ms = last_hb = last_metrics = ms();
     stable_sent = false;
     send_hello();
@@ -530,6 +545,18 @@ static void tick(void)
         }
     }
     if (fsm.st == LS_ONLINE && acts.n) send_actions(); /* anything the queue missed */
+    if (fsm.st == LS_ONLINE && link_deps.lost_on && link_deps.lost_rev &&
+        (!character_retry || (int32_t)(ms() - character_retry_at) >= 0)) {
+        character_report_frame_t frame;
+        if (character_report_prepare(&character_sender, &character_mailbox, link_deps.lost_on(),
+                                     link_deps.lost_rev(), character_identity, &frame)) {
+            size_t n = character_report_json(link_mem->tx, sizeof link_mem->tx, &frame);
+            bool sent = link_send_raw(link_mem->tx, n);
+            character_report_finish(&character_sender, &frame, sent);
+            character_retry = !sent;
+            if (!sent) character_retry_at = ms() + 1000u;
+        }
+    }
     if (acts.n) { /* racy read of n is fine: the table is locked below */
         xSemaphoreTake(act_mu, portMAX_DELAY);
         size_t k = link_acts_expire(&acts, ms(), ctx.expired);

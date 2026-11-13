@@ -131,13 +131,16 @@ async def enroll(body: DeviceEnroll, principal=Depends(current_principal), db: A
 
 @router.post("/devices/{device_id}/revoke")
 async def revoke(device_id: str, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
-    user, _ = principal; device = await db.get(Device, device_id)
-    if not device or device.owner_id != user.id: raise HTTPException(404, detail={"code":"NOT_FOUND","message":"Device not found"})
-    from .models import now
-    device.revoked_at = now(); device.credential_version += 1
-    db.add(AuditLog(owner_id=user.id,action="device.revoke",actor="owner",scope=f"device:{device_id}",decision="allow",outcome="revoked",correlation_id=device_id,redacted_metadata={}))
-    await db.commit()
-    await hub.close_device(device_id, 4403)  # an open board socket must not outlive its revocation
+    user, _ = principal
+    # Serialize the revocation commit against companion socket registration.
+    async with hub.connection_lock(device_id):
+        device = await db.get(Device, device_id)
+        if not device or device.owner_id != user.id: raise HTTPException(404, detail={"code":"NOT_FOUND","message":"Device not found"})
+        from .models import now
+        device.revoked_at = now(); device.credential_version += 1
+        db.add(AuditLog(owner_id=user.id,action="device.revoke",actor="owner",scope=f"device:{device_id}",decision="allow",outcome="revoked",correlation_id=device_id,redacted_metadata={}))
+        await db.commit()
+        await hub.close_device(device_id, 4403)
     return {"revoked": True}
 
 @router.get("/projects", response_model=list[ProjectResponse])

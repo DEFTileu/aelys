@@ -32,7 +32,7 @@ static struct {
     character_result_t character_result;
     character_state_t character;
     bool snap_valid, touch_after_idle, touch_character_valid;
-    uint32_t idle_sample_ms, idle_elapsed_ms;
+    uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
     bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
@@ -128,6 +128,9 @@ void ui_text_color(lv_obj_t *o, uint32_t c)
     if (!lv_color_eq(lv_obj_get_style_text_color(o, LV_PART_MAIN), n)) lv_obj_set_style_text_color(o, n, 0);
 }
 
+static void (*character_status_sink)(character_mood_t, character_reason_t, uint32_t, uint32_t);
+void ui_set_character_status_sink(void (*sink)(character_mood_t, character_reason_t, uint32_t, uint32_t)) { character_status_sink = sink; }
+void ui_set_lost_revision(uint32_t rev) { g.lost_rev = rev; }
 void ui_set_action_sink(bool (*sink)(act_kind_t, const char *)) { g.sink = sink; }
 #ifndef ESP_PLATFORM
 static void (*character_cue_sink)(character_cue_t cue);
@@ -437,6 +440,7 @@ static void update_character(void)
     inputs.idle_seconds = idle_ms / 1000u;
     inputs.no_touch_at_night = idle_ms >= NIGHT_IDLE_MS;
     g.character_result = character_select(&g.character, &inputs, now_ms);
+    if (character_status_sink) character_status_sink(g.character_result.mood, g.character_result.why, g.lost_rev, g.character_identity);
 #ifndef ESP_PLATFORM
     if (character_cue_sink && g.character_result.cue != CUE_NONE) character_cue_sink(g.character_result.cue);
 #endif
@@ -448,9 +452,9 @@ static void render(void)
     const snap_t *s = g.snap ? g.snap : &empty_snap;
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
+    update_character();
     switch (g.cur) {
     case SCR_HOME: {
-        update_character();
         scr_home_set_snap(s, now, mood_from_character(g.character_result.mood), offline);
         break;
     }
@@ -542,6 +546,7 @@ void ui_setup(void)
     if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
     g.lost = g.have_time = g.find = false;
+    g.lost_rev = g.character_identity = 0;
     g.snap_valid = false; g.touch_after_idle = false; g.touch_character_valid = false;
     g.idle_sample_ms = lv_tick_get(); g.idle_elapsed_ms = 0;
     character_init(&g.character);
@@ -725,7 +730,21 @@ void ui_handle_event(const ui_event_t *ev)
         return;
     case UI_EV_LOST:
         if (ev->len < 1) return;
-        g.lost = ev->data[0] != 0;
+        {
+            uint32_t rev = ev->len >= 5 ? (uint32_t)ev->data[1] | ((uint32_t)ev->data[2] << 8) |
+                              ((uint32_t)ev->data[3] << 16) | ((uint32_t)ev->data[4] << 24) : g.lost_rev;
+            uint32_t identity = ev->len >= 9 ? (uint32_t)ev->data[5] | ((uint32_t)ev->data[6] << 8) |
+                                   ((uint32_t)ev->data[7] << 16) | ((uint32_t)ev->data[8] << 24) : g.character_identity;
+            if (identity != g.character_identity) {
+                g.snap_valid = false;
+                g.snap = &empty_snap; /* never derive the next owner's state from the previous snapshot */
+            }
+            if (g.lost != (ev->data[0] != 0) || rev != g.lost_rev || identity != g.character_identity)
+                character_init(&g.character); /* do not replay a pre-transition reaction */
+            g.lost = ev->data[0] != 0;
+            g.lost_rev = rev;
+            g.character_identity = identity;
+        }
         if (g.cur == SCR_ICE) return; /* the card stays open; dismissing it picks the right screen */
         next = screen_next(g.cur, g.lost, UI_EV_LOST);
         break;

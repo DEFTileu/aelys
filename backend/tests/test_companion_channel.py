@@ -536,3 +536,31 @@ async def test_character_rejects_expired_access_token(paired):
     await channel_module._character_state(link, {'type': 'character_state', 'lost_rev': 0, 'seq': 0, 'mood': 'calm', 'reason': 'calm'})
     assert closed == [channel_module.AUTH_CLOSE_CODE]
     assert (await state_of(device_id)).character_json is None
+
+
+@pytest.mark.asyncio
+async def test_revocation_during_epoch_allocation_never_receives_snapshot(paired, monkeypatch):
+    _, device_id, token = paired
+    original = channel_module._begin_character_session
+    async def revoke_during_allocation(link):
+        epoch = await original(link)
+        async with db.SessionLocal() as session:
+            device = await session.get(Device, device_id)
+            device.revoked_at = datetime.now(UTC)
+            await session.commit()
+        return epoch
+    monkeypatch.setattr(channel_module, '_begin_character_session', revoke_during_allocation)
+    original_validate = channel_module._validate
+    checks = 0
+    async def validate_before_exposing(*args):
+        nonlocal checks
+        checks += 1
+        if checks == 3:  # post-allocation, before the new socket can receive hub pushes
+            assert not hub.is_online(device_id)
+        return await original_validate(*args)
+    monkeypatch.setattr(channel_module, '_validate', validate_before_exposing)
+    with TestClient(app) as client, client.websocket_connect(CHANNEL, headers=headers(token)) as socket:
+        assert socket.receive_json()['type'] == 'ready'
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+        assert closed.value.code == channel_module.DEVICE_CLOSE_CODE

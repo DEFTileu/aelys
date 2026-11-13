@@ -38,7 +38,7 @@ commands and routes added for the app pages and firmware.
 2. Server sends `ready`, then `snapshot`.
 3. Board sends `hello`. The server then sends any pending `command` messages.
 4. Board sends `heartbeat`, `metrics`, `action`, `command_ack`, and
-   `wifi_scan_result` as needed. Every server change (new task, focus change,
+   `wifi_scan_result`, and `character_state` as needed. Every server change (new task, focus change,
    notification) is sent as a full `snapshot`.
 
 ## Close codes
@@ -73,6 +73,31 @@ never clears lost mode locally.
 ```json
 {"type": "metrics", "heap_min_internal": 84312, "largest_block": 61440, "psram_free": 7864320, "wifi_reconnects": 2, "uptime_s": 3600}
 ```
+
+### `character_state`
+
+The board sends the selected mood and reason as fixed, allowlisted codes (no task
+text, sensor samples, audio or other free-form data):
+
+```json
+{"type":"character_state","seq":0,"lost_rev":0,"mood":"joy","reason":"task_done"}
+```
+
+`seq` is an unsigned 32-bit per-connection counter. The sender coalesces unchanged
+values, increments the counter for each attempt, and resends the latest value on
+reconnect. The server fences older sockets with a per-device connection epoch and
+accepts only a strictly newer sequence from the current authenticated connection.
+`lost_rev` is the board's applied lost-mode command revision; a report is ignored
+while lost mode is on or when the revision does not match the server. This also
+rejects delayed reports from before a lost-mode transition. Unrecognized codes,
+invalid mood/reason pairs and extra fields are rejected.
+
+Only the latest observation and one recent transient reaction are retained, each
+with server receipt time. The authenticated owner can read them as `character`
+in `GET /api/v1/companion/devices/{id}`; it is null before a fresh connection
+report and while lost mode is on. The application hides character status while
+the board is offline and hides reactions after five minutes. This derived status
+is not a durable mutation and does not contain message or task content.
 
 ### `action`
 `kind` is one of the action kinds listed below. Repeating an `id` returns the
@@ -361,6 +386,7 @@ recorded in the command log.
 
 | Field | Type |
 |---|---|
+| `character` | `{"current": {"mood", "reason", "reported_at"}, "recent": observation \| null} \| null` (owner-only bounded status) |
 | `contacts` | `{"phone": str, "telegram": str} \| null` (from the last `hello` that sent them) |
 | `wifi` | `{"saved": [str], "current": str \| null} \| null` (last `wifi_state`) |
 | `battery` | `{"pct": int, "charging": bool} \| null` (from `metrics`) |
