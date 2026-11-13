@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
+from collections.abc import Awaitable, Callable
 
+from app.companion.hub import hub
+from app.companion.models import CompanionState
 from app.companion.ota_models import CompanionFirmware
+from app.core import db as core_db
 from app.core.db import get_db
 from app.core.device_auth import trusted_device
 from app.core.models import Device, User
@@ -15,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["companion"])
 
 MAX_IMAGE_BYTES = 4 * 1024 * 1024  # ota_0 / ota_1 are 0x400000
@@ -75,6 +81,30 @@ async def latest_release(db: AsyncSession, owner_id: str) -> CompanionFirmware |
     return (await db.execute(select(CompanionFirmware).options(defer(CompanionFirmware.data)).where(CompanionFirmware.id == ordered[0][0]))).scalar_one()
 
 
+def should_offer(fw_version: str | None, release: CompanionFirmware) -> bool:
+    """The board runs a parseable version below the release and at or above its min_version; anything else gets no offer."""
+    if not fw_version or not _SEMVER.fullmatch(fw_version):
+        return False
+    return parse_semver(release.version) > parse_semver(fw_version) >= parse_semver(release.min_version)
+
+
+async def offer_on_hello(owner_id: str, fw_version: str, reply: Callable[[dict], Awaitable[None]]) -> None:
+    async with core_db.SessionLocal() as db:
+        release = await latest_release(db, owner_id)
+    if release and should_offer(fw_version, release):
+        await reply({"type": "ota_available", "version": release.version})
+
+
+async def push_offers(owner_id: str, release: CompanionFirmware) -> None:
+    """Tell the owner's online boards that run an older version; a send that fails is the hub's to close."""
+    async with core_db.SessionLocal() as db:
+        rows = (await db.execute(select(CompanionState.device_id, CompanionState.fw_version).join(Device, Device.id == CompanionState.device_id).where(
+            CompanionState.owner_id == owner_id, Device.platform == "companion", Device.revoked_at.is_(None)))).all()
+    for device_id, fw_version in rows:
+        if hub.is_online(device_id) and should_offer(fw_version, release):
+            await hub.send_to_device(device_id, {"type": "ota_available", "version": release.version})
+
+
 class ReleaseOut(BaseModel):
     version: str
     sha256: str
@@ -125,7 +155,12 @@ async def upload_firmware(version: str, request: Request, response: Response, mi
     if stale:
         await db.execute(delete(CompanionFirmware).where(CompanionFirmware.id.in_(stale)))
     await db.commit()
-    return _out(row)
+    out = _out(row)
+    try:
+        await push_offers(user.id, row)
+    except Exception:  # noqa: BLE001 - the release is stored; boards also learn of it on their next hello
+        logger.warning("companion firmware offer push failed owner=%s", user.id)
+    return out
 
 
 @router.get("/devices/{device_id}/firmware", response_model=ReleaseMetaOut)

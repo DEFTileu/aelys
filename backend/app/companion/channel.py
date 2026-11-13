@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.companion.actions import ActionIn, run_action
+from app.companion.firmware import offer_on_hello
 from app.companion.hub import hub
 from app.companion.state import locked_state, valid_command
 from app.core import db as core_db
@@ -49,6 +50,8 @@ class MetricsIn(BaseModel):
     psram_free: int = Field(ge=0)
     wifi_reconnects: int = Field(ge=0)
     uptime_s: int = Field(ge=0)
+    light_sleep_pct: int | None = Field(default=None, ge=0, le=100)
+    ui_wakes_per_s: int | None = Field(default=None, ge=0)
 
 
 class CommandAckIn(BaseModel):
@@ -88,6 +91,7 @@ async def _hello(link: _Link, message: dict) -> None:
             logger.warning("companion skipped a malformed pending command device=%s", link.device_id)
             continue
         await link.reply({"type": "command", "id": command["id"], "name": command["name"], "args": command["args"]})
+    await offer_on_hello(link.owner_id, body.fw_version, link.reply)
 
 
 async def _heartbeat(link: _Link, message: dict) -> None:
@@ -100,7 +104,7 @@ async def _heartbeat(link: _Link, message: dict) -> None:
 async def _metrics(link: _Link, message: dict) -> None:
     body = MetricsIn.model_validate(message)
     async with core_db.SessionLocal() as db:
-        (await locked_state(db, link.device_id, link.owner_id)).last_metrics_json = body.model_dump()
+        (await locked_state(db, link.device_id, link.owner_id)).last_metrics_json = body.model_dump(exclude_none=True)
         await db.commit()
 
 
