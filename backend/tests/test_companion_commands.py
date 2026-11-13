@@ -4,6 +4,7 @@ from contextlib import contextmanager
 
 import pytest
 import pytest_asyncio
+from app.companion import channel as channel_module
 from app.companion.hub import hub, install_change_listeners
 from app.companion.models import CompanionState
 from app.companion.state import valid_command
@@ -81,7 +82,7 @@ async def test_lost_mode_on_while_offline_is_delivered_on_connect(paired):
         with board(client, token) as socket:
             socket.send_json(HELLO)
             command = socket.receive_json()
-            assert command == {'type': 'command', 'id': newer.json()['id'], 'name': 'lost_mode', 'args': {**LOST_ON, 'message': 'Newer'}}
+            assert command == {'type': 'command', 'id': newer.json()['id'], 'name': 'lost_mode', 'args': {**LOST_ON, 'message': 'Newer', 'rev': 2}}
             socket.send_json({'type': 'command_ack', 'id': command['id'], 'ok': True})
             socket.send_json({'type': 'heartbeat'})
             assert socket.receive_json() == {'type': 'heartbeat_ack'}
@@ -95,11 +96,11 @@ async def test_online_lost_mode_and_ice_go_out_at_once_and_stay_pending_until_ac
     with TestClient(app) as client, board(client, token) as socket:
         assert client.put(url(device_id, '/lost-mode'), json=LOST_ON, headers=bearer(owner)).json()['delivered'] is True
         lost = socket.receive_json()
-        assert (lost['name'], lost['args']) == ('lost_mode', LOST_ON)
+        assert (lost['name'], lost['args']) == ('lost_mode', {**LOST_ON, 'rev': 1})
         assert client.put(url(device_id, '/ice'), json=ice, headers=bearer(owner)).status_code == 200
         assert (socket.receive_json()['name'], ) == ('ice_update',)
     row = await state_of(device_id)
-    assert row.ice_json == ice and sorted(c['name'] for c in row.pending_commands_json) == ['ice_update', 'lost_mode']
+    assert row.ice_json == {**ice, 'rev': 1} and sorted(c['name'] for c in row.pending_commands_json) == ['ice_update', 'lost_mode']
 
 
 @pytest.mark.asyncio
@@ -156,7 +157,9 @@ async def test_wifi_blob_is_forwarded_not_stored_or_logged(paired, caplog):
         assert sent.status_code == 200
         assert socket.receive_json() == {'type': 'command', 'id': sent.json()['id'], 'name': 'wifi_add', 'args': {'blob': BLOB}}
         assert client.post(url(device_id, '/wifi'), json={'blob': b64(bytes(513))}, headers=bearer(owner)).status_code == 422
-        assert client.post(url(device_id, '/wifi'), json={'blob': 'not base64!'}, headers=bearer(owner)).status_code == 422
+        rejected = client.post(url(device_id, '/wifi'), json={'blob': 'ZZtopSecretBlobPart not base64!'}, headers=bearer(owner))
+        assert rejected.status_code == 422 and 'ZZtopSecretBlobPart' not in rejected.text  # the 422 body must not echo the blob
+        assert rejected.json() == {'detail': {'code': 'VALIDATION_ERROR', 'message': 'Invalid request'}}
         assert client.post(url(device_id, '/wifi'), json={'blob': b64(bytes(512))}, headers=bearer(owner)).status_code == 200
     assert 'ZZtopSecretBlobPart' not in caplog.text and BLOB not in caplog.text
     row = await state_of(device_id)
@@ -232,3 +235,69 @@ def test_pending_entry_shape():
     for bad in [{**ok, 'id': 'c-1'}, {**ok, 'id': str(uuid.uuid1())}, {**ok, 'name': 'reboot'}, {**ok, 'args': []},
                 {**ok, 'extra': 1}, {'id': ok['id'], 'name': 'lost_mode'}, 'x', None]:
         assert not valid_command(bad)
+
+
+@pytest.mark.asyncio
+async def test_revs_increase_and_state_exposes_them(paired):
+    owner, _, _, device_id, _ = paired
+    with TestClient(app) as client:
+        assert client.get(url(device_id), headers=bearer(owner)).json()['lost_mode'] is None
+        for expected in (1, 2, 3):
+            assert client.put(url(device_id, '/lost-mode'), json=LOST_ON, headers=bearer(owner)).status_code == 200
+            assert client.get(url(device_id), headers=bearer(owner)).json()['lost_mode']['rev'] == expected
+        assert client.put(url(device_id, '/ice'), json={'contacts': []}, headers=bearer(owner)).status_code == 200  # per name
+        state = client.get(url(device_id), headers=bearer(owner)).json()
+        assert (state['lost_mode']['rev'], state['ice']['rev']) == (3, 1)
+        assert [c['args']['rev'] for c in (await state_of(device_id)).pending_commands_json] == [3, 1]
+
+
+@pytest.mark.asyncio
+async def test_hello_flush_racing_a_put_delivers_revs_in_order_of_state(paired):
+    """_hello read pending [A] and committed, then a PUT stores and sends B, then _hello flushes the stale A."""
+    from httpx import ASGITransport, AsyncClient
+    owner, _, _, device_id, _ = paired
+    received = []
+
+    async def send(message):
+        received.append(message)
+
+    async def close(code):
+        pass
+
+    async with db.SessionLocal() as session:
+        owner_id = (await session.get(Device, device_id)).owner_id
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as http:
+        assert (await http.put(url(device_id, '/lost-mode'), json={**LOST_ON, 'message': 'A'}, headers=bearer(owner))).status_code == 200
+        unregister = hub.register(device_id, owner_id, send, close)
+        flushed = False
+
+        async def reply(message):
+            nonlocal flushed
+            if not flushed:  # the first flushed command: the PUT lands between _hello's commit and its sends
+                flushed = True
+                put = await http.put(url(device_id, '/lost-mode'), json={**LOST_ON, 'message': 'B'}, headers=bearer(owner))
+                assert put.status_code == 200
+            received.append(message)
+
+        try:
+            await channel_module._hello(channel_module._Link(device_id, owner_id, reply, close), HELLO)
+        finally:
+            unregister()
+    assert [m['args']['message'] for m in received] == ['B', 'A']  # B overtook A on the wire...
+    assert [m['args']['rev'] for m in received] == [2, 1]  # ...but the board can tell: 2 > 1, so it keeps B
+    assert [c['args']['message'] for c in (await state_of(device_id)).pending_commands_json] == ['B']
+
+
+@pytest.mark.asyncio
+async def test_busy_ack_keeps_the_command_other_failures_drop_it(paired):
+    owner, _, _, device_id, token = paired
+    with TestClient(app) as client:
+        client.put(url(device_id, '/lost-mode'), json=LOST_ON, headers=bearer(owner))
+        client.put(url(device_id, '/ice'), json={'contacts': []}, headers=bearer(owner))
+        pending = {c['name']: c['id'] for c in (await state_of(device_id)).pending_commands_json}
+        with board(client, token) as socket:
+            socket.send_json({'type': 'command_ack', 'id': pending['lost_mode'], 'ok': False, 'error_code': 'BUSY'})
+            socket.send_json({'type': 'command_ack', 'id': pending['ice_update'], 'ok': False, 'error_code': 'BAD_ARGS'})
+            socket.send_json({'type': 'heartbeat'})
+            assert socket.receive_json() == {'type': 'heartbeat_ack'}
+    assert [c['name'] for c in (await state_of(device_id)).pending_commands_json] == ['lost_mode']

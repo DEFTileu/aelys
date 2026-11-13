@@ -10,7 +10,7 @@ from app.companion.hub import hub
 from app.companion.models import CompanionState
 from app.companion.state import locked_state, queue_command
 from app.core.db import get_db
-from app.core.device_auth import trusted_device, verify_signature
+from app.core.device_auth import _aware, trusted_device, verify_signature
 from app.core.models import Device, DeviceChallenge, User, now
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -109,6 +109,8 @@ async def _send_now(board: Device, name: str, args: dict[str, Any]) -> CommandOu
 async def _send_or_queue(db: AsyncSession, user: User, board: Device, name: str, args: dict[str, Any], field: str) -> CommandOut:
     """Store the new value and keep the command pending until the board acks it; if it is online it also goes out now."""
     row = await locked_state(db, board.id, user.id)
+    # rev lets the board drop a stale copy that arrives after a newer one; read under the row lock so revs never repeat.
+    args = {**args, "rev": int((getattr(row, field) or {}).get("rev", 0)) + 1}
     setattr(row, field, args)
     command = queue_command(row, name, args)
     await db.commit()
@@ -124,8 +126,7 @@ async def _check_reauth(db: AsyncSession, caller: Device, board: Device, reauth:
     challenge = await db.get(DeviceChallenge, reauth.challenge_id)
     if challenge is None or challenge.device_id != caller.id or challenge.used_at:
         raise denied
-    expires = challenge.expires_at if challenge.expires_at.tzinfo else challenge.expires_at.replace(tzinfo=now().tzinfo)
-    if expires <= now():
+    if _aware(challenge.expires_at) <= now():
         raise denied
     burned = await db.execute(update(DeviceChallenge).where(DeviceChallenge.id == challenge.id, DeviceChallenge.used_at.is_(None)).values(used_at=now()))
     await db.commit()

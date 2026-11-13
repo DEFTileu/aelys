@@ -95,6 +95,8 @@ async def validation_error(request: Request, exc: RequestValidationError):
         return JSONResponse(status_code=422, content={"detail": {"code": "INVALID_OAUTH_STATE", "message": "Restart the Calendar connection in Aelys."}})
     if request.url.path.startswith("/api/v1/auth/native/"):
         return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Invalid native authentication request"}})
+    if request.url.path.startswith("/api/v1/companion/devices/"):  # the default body echoes the input, e.g. the Wi-Fi blob
+        return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Invalid request"}})
     if request.url.path == "/api/v1/integrations/telegram/connect":
         return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Некорректный токен Telegram."}})
     return await request_validation_exception_handler(request, exc)

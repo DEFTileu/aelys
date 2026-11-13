@@ -70,7 +70,7 @@ stored `action_result` without a second effect. A non-UUID `id` or a non-object
 
 ### `command_ack`
 Acknowledges a `command` (every name except `wifi_scan`); the server drops the
-matching pending command. `error_code` is present only when `ok` is false:
+matching pending command (except after a `BUSY` failure, below). `error_code` is present only when `ok` is false:
 
 | `error_code` | Meaning |
 |---|---|
@@ -147,20 +147,32 @@ answered by `wifi_scan_result`.
 
 | `name` | `args` |
 |---|---|
-| `lost_mode` | `{"on": bool, "message": str (max 64), "show_phone": bool, "show_telegram": bool}` |
+| `lost_mode` | `{"on": bool, "message": str (max 64), "show_phone": bool, "show_telegram": bool, "rev": int}` |
 | `play_sound` | `{}` |
-| `ice_update` | `{"contacts": [{"name": str (max 32), "phone": str (max 23)}] (max 2), "med_note": str (max 96), "show_name": bool}` |
+| `ice_update` | `{"contacts": [{"name": str (max 32), "phone": str (max 23)}] (max 2), "med_note": str (max 96), "show_name": bool, "rev": int}` |
 | `wifi_add` | `{"blob": str}`: base64url, at most 512 bytes decoded. Opaque to the server. The app encrypts it to the board's public key (ECIES); the board decrypts it. Never logged or stored by the server. |
 | `wifi_scan` | `{}` |
 
 ```json
-{"type": "command", "id": "c1d2e3f4-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "name": "lost_mode", "args": {"on": true, "message": "If found, call the owner", "show_phone": true, "show_telegram": false}}
+{"type": "command", "id": "c1d2e3f4-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "name": "lost_mode", "args": {"on": true, "message": "If found, call the owner", "show_phone": true, "show_telegram": false, "rev": 3}}
 ```
 ```json
 {"type": "command", "id": "e5f6a7b8-2c3d-4e4f-8a9b-0c1d2e3f4a5b", "name": "wifi_add", "args": {"blob": "q2V5ZGF0YS1lbmNyeXB0ZWQ"}}
 ```
 
 Pending commands are kept until acknowledged.
+
+Ordering and delivery of `lost_mode` and `ice_update`:
+- `rev` is an integer, monotonic per device and command name; every send of a
+  given state carries its `rev`.
+- Delivery is at-least-once. Both commands are queued even while the board is
+  online and kept until acked, so the same `id` can arrive again after a
+  reconnect, and a newer command can arrive before an older one.
+- The board applies a command only if its `rev` is greater than the last `rev`
+  it applied for that name, and always acks it (a stale one too), so the server
+  can drop it.
+- An ack with `ok: false` and `error_code` `BUSY` keeps the command pending; it
+  is sent again after the next `hello`. Any other ack removes it.
 
 Queueing while the board is offline:
 - Only `lost_mode` and `ice_update` are queued, delivered after `hello`. Pending

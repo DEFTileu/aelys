@@ -109,8 +109,9 @@ async def _command_ack(link: _Link, message: dict) -> None:
     async with core_db.SessionLocal() as db:
         row = await locked_state(db, link.device_id, link.owner_id)
         # A new list: JSON columns don't track in-place edits.
-        # Malformed leftovers go too: they could never be delivered.
-        row.pending_commands_json = [c for c in row.pending_commands_json or [] if valid_command(c) and c["id"] != body.id]
+        # BUSY keeps the command for the next hello. Malformed leftovers always go: they could never be delivered.
+        retry = not body.ok and body.error_code == "BUSY"
+        row.pending_commands_json = [c for c in row.pending_commands_json or [] if valid_command(c) and (retry or c["id"] != body.id)]
         await db.commit()
 
 
