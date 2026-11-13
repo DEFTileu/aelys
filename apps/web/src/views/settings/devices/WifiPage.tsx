@@ -11,6 +11,8 @@ const POLL_MS = 2000
 const WAIT_MS = 60_000
 const SCAN_WAIT_MS = 20_000
 const MAX_SSID = 32, MAX_PASSWORD = 64 // bytes
+const MAX_NETWORKS = 5 // the board's list; one more would push the oldest out
+const IN_USE = 'Aelys is using this network. Switch first.'
 const errorText = (e: unknown) => (e instanceof ApiError && e.code === 'DEVICE_OFFLINE' ? 'Aelys is offline' : FAILED)
 
 /** Polls the command log every 2 s until the board answered the command (null: no answer in time, or the page was left). */
@@ -45,6 +47,7 @@ export function WifiPage({ state, refresh }: Props) {
   const [sheet, setSheet] = useState<{ ssid: string } | null>(null)
   const [job, setJob] = useState<Job | null>(null)
   const [error, setError] = useState('')
+  const [confirm, setConfirm] = useState<string | null>(null)
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   const listEl = useRef<HTMLDivElement>(null)
@@ -59,7 +62,13 @@ export function WifiPage({ state, refresh }: Props) {
   const remove = async (ssid: string) => {
     const prev = latest.current
     show(prev.filter((s) => s !== ssid)); setError('')
-    try { await companion.removeWifi(id, ssid) } catch (e) { if (alive.current) { show(prev); setError(errorText(e)) } }
+    try {
+      const { command_id } = await companion.removeWifi(id, ssid)
+      const result = await waitForCommand(id, command_id, () => alive.current)
+      if (!alive.current || !result) return
+      if (result.ok) await refresh()
+      else { show(prev); setError(result.error_code === 'IN_USE' ? IN_USE : FAILED) } // the board refuses its connected or last network
+    } catch (e) { if (alive.current) { show(prev); setError(errorText(e)) } }
   }
   const step = (i: number, by: -1 | 1) => { const prev = saved; const next = move(prev, i, i + by); show(next); void sendOrder(next, prev) }
 
@@ -124,7 +133,20 @@ export function WifiPage({ state, refresh }: Props) {
       </div>
       <div className="dv-actions">
         <button type="button" className="st-btn st-btn--primary dv-grow" onClick={() => { setSheet({ ssid: job.ssid }); setJob(null) }}>Try again</button>
-        {job.kind === 'wrong' && <button type="button" className="st-btn st-btn--danger" onClick={() => { void remove(job.ssid); setJob(null) }}>Remove</button>}
+        {job.kind === 'wrong' && !saved.includes(job.ssid) && <button type="button" className="st-btn st-btn--danger" onClick={() => { setConfirm(job.ssid); setJob(null) }}>Remove</button>}
+      </div>
+    </div>}
+    {confirm && <div className="dv-fail" role="alertdialog" aria-label={`Remove ${confirm}?`}>
+      <div className="dv-fail-head">
+        <Trash2 size={20} aria-hidden="true" />
+        <div className="st-grow">
+          <div className="dv-fail-title">Remove {confirm}?</div>
+          <div className="dv-fail-text">Aelys will forget this network and its password.</div>
+        </div>
+      </div>
+      <div className="dv-actions">
+        <button type="button" className="st-btn st-btn--danger dv-grow" onClick={() => { void remove(confirm); setConfirm(null) }}>Remove</button>
+        <button type="button" className="st-btn" onClick={() => setConfirm(null)}>Cancel</button>
       </div>
     </div>}
     <Group title="Saved networks">
@@ -138,14 +160,18 @@ export function WifiPage({ state, refresh }: Props) {
               <button type="button" aria-label={`Move ${ssid} up`} disabled={i === 0} onClick={() => step(i, -1)}><ChevronUp size={16} aria-hidden="true" /></button>
               <button type="button" aria-label={`Move ${ssid} down`} disabled={i === saved.length - 1} onClick={() => step(i, 1)}><ChevronDown size={16} aria-hidden="true" /></button>
             </span>
-            <button type="button" className="dv-del" aria-label={`Delete ${ssid}`} onClick={() => void remove(ssid)}><Trash2 size={18} aria-hidden="true" /></button>
+            {ssid === current || saved.length < 2 // never the connected or the last network: the board would refuse it
+              ? <span className="dv-del" aria-hidden="true"><span style={{ width: 18, height: 18 }} /></span>
+              : <button type="button" className="dv-del" aria-label={`Delete ${ssid}`} onClick={() => setConfirm(ssid)}><Trash2 size={18} aria-hidden="true" /></button>}
           </div>)}
         </div>
       </Card>
     </Group>
     {error && <div className="st-error" role="alert">{error}</div>}
     <div className="st-hint dv-pad">Aelys joins the first network in range. Drag to change the order.</div>
-    <button type="button" className="st-btn st-btn--ghost dv-wide" disabled={working} onClick={() => setSheet({ ssid: '' })}><Plus size={16} aria-hidden="true" />Add network</button>
+    {saved.length < MAX_NETWORKS
+      ? <button type="button" className="st-btn st-btn--ghost dv-wide" disabled={working} onClick={() => setSheet({ ssid: '' })}><Plus size={16} aria-hidden="true" />Add network</button>
+      : <div className="st-hint dv-pad">Aelys keeps up to {MAX_NETWORKS} networks. Remove one to add another.</div>}
     <div className="st-note"><Lock size={16} aria-hidden="true" /><span>Passwords are encrypted on this phone for Aelys only. Aelys servers never see them.</span></div>
     {sheet && <AddNetworkSheet state={state} refresh={refresh} initialSsid={sheet.ssid} onClose={() => setSheet(null)} onSend={(ssid, blob) => void send(ssid, blob)} />}
   </>
