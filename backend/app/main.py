@@ -17,6 +17,9 @@ from .ai.api import router as ai_router
 from .ai.memory_api import router as memory_router
 from .automation.api import router as automation_router
 from .automation.hooks import wait_for_automations
+from .companion.api import router as companion_router
+from .companion.channel import router as companion_channel_router
+from .companion.hub import hub, install_change_listeners
 from .core import models  # noqa: F401 - register domain metadata
 from .core.api import router as core_router
 from .core.browser_auth import router as browser_auth_router
@@ -38,11 +41,13 @@ async def lifespan(app: FastAPI):
     with suppress(Exception):  # a missing schema must not stop startup; the console token is a convenience
         await announce_first_run_token()
     from .english.reminders import reminder_loop
+    install_change_listeners()
     worker = asyncio.create_task(connector_loop(), name="telegram-business")
     reminders = asyncio.create_task(reminder_loop(), name="english-reminders")
     try:
         yield
     finally:
+        await hub.wait_idle(timeout=5)  # board pushes in flight must not outlive the loop
         await wait_for_automations()
         for task in (worker, reminders):
             task.cancel()
@@ -91,6 +96,8 @@ async def validation_error(request: Request, exc: RequestValidationError):
         return JSONResponse(status_code=422, content={"detail": {"code": "INVALID_OAUTH_STATE", "message": "Restart the Calendar connection in Aelys."}})
     if request.url.path.startswith("/api/v1/auth/native/"):
         return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Invalid native authentication request"}})
+    if request.url.path.startswith("/api/v1/companion/devices/"):  # the default body echoes the input, e.g. the Wi-Fi blob
+        return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Invalid request"}})
     if request.url.path == "/api/v1/integrations/telegram/connect":
         return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Некорректный токен Telegram."}})
     return await request_validation_exception_handler(request, exc)
@@ -102,8 +109,10 @@ async def value_error(_: Request, exc: ValueError):
 @app.get("/healthz", include_in_schema=False)
 async def healthz(): return {"status":"ok"}
 
+app.include_router(companion_channel_router, prefix="/api/v1")  # before core: no /devices/{device_id} pattern may shadow /devices/channel
 app.include_router(core_router, prefix="/api/v1")
 app.include_router(device_auth_router, prefix="/api/v1")
+app.include_router(companion_router, prefix="/api/v1")
 app.include_router(browser_auth_router, prefix="/api/v1")
 app.include_router(native_auth_router, prefix="/api/v1")
 app.include_router(domain_router, prefix="/api/v1")
