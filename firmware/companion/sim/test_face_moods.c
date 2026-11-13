@@ -409,6 +409,52 @@ static void test_charging_lid_scales_with_eyes(void)
     gone(f);
 }
 
+static void check_compressed_highlight(lv_obj_t *f, int side)
+{
+    lv_obj_t *eye = lv_obj_get_child(f, side);
+    lv_obj_t *star = lv_obj_get_child(f, 2 + side);
+    lv_obj_update_layout(f);
+    lv_area_t a; lv_obj_get_coords(eye, &a);
+    int min_y = SIM_H, max_y = -1;
+    for (int y = a.y1; y <= a.y2; ++y) for (int x = a.x1; x <= a.x2; ++x) {
+        rgb_t p = at(x,y);
+        if (p.r > 240 && p.g > 240 && p.b > 240) {
+            if (y < min_y) min_y = y;
+            if (y > max_y) max_y = y;
+        }
+    }
+    CHECK(!lv_obj_is_hidden(star));
+    CHECK(max_y >= min_y);
+    CHECK(max_y - min_y + 1 < lv_obj_get_width(star) * 4 / 5);
+}
+
+static void test_highlight_compresses_with_blink(void)
+{
+    for (int width = 5; width <= 26; ++width) {
+        const lv_image_dsc_t *normal = face_img_star(width);
+        CHECK(face_img_star_squashed(width, 1000) == normal);
+        int last = 0;
+        for (int openness = 80; openness <= 1120; openness += 40) {
+            const lv_image_dsc_t *img = face_img_star_squashed(width, openness);
+            CHECK_EQ(img->header.w, normal->header.w);
+            CHECK(img->header.h >= last);
+            CHECK(img->header.h >= 1);
+            CHECK(abs((int)img->header.h * 1000 - width * openness) <= 600);
+            last = img->header.h;
+        }
+    }
+    lv_obj_t *f = show(MOOD_CALM, 100, HX, HY, 100);
+    sim_step(4630); /* 4.75 s: halfway through the closing blink */
+    lv_refr_now(NULL);
+    check_compressed_highlight(f, 0);
+    gone(f);
+    f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
+    sim_step(1800); /* 1.92 s: right eye halfway through a wink */
+    lv_refr_now(NULL);
+    check_compressed_highlight(f, 1);
+    gone(f);
+}
+
 static void test_asymmetric_wink_and_wake(void)
 {
     lv_obj_t *f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
@@ -472,5 +518,6 @@ int main(void)
     test_animation_style_footprint();
     test_scales_and_api();
     test_long_hidden_resume();
+    test_highlight_compresses_with_blink();
     return g_failed ? 1 : 0;
 }

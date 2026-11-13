@@ -104,6 +104,14 @@ int main(void)
             exact_frame();
         }
     }
+    /* Include an entire ordinary blink at Home scale, including the short
+     * closing and reopening phases. */
+    scr_home_set_snap(&snap, FX_NOW, MOOD_CALM, false);
+    for (int frame = 0; frame < 160; ++frame) {
+        scr_home_set_snap(&snap, FX_NOW, MOOD_CALM, false);
+        sim_step(34);
+        exact_frame();
+    }
     /* Every percent and text-width change, empty rows and the offline variant. */
     snap.today_total = 100;
     for (int pct = 0; pct <= 100; pct++) {

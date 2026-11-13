@@ -74,6 +74,8 @@ int32_t face_fx_dot(uint32_t t_ms, int index); /* offline dots: 0..255 mix of di
 
 /* Pre-rendered A8 shapes (img_fx.c, tools/gen_face_fx.py), nearest size to the requested one. */
 const lv_image_dsc_t *face_img_star(int32_t px);   /* edge */
+/* Width clamped to 5..26; height rounded from openness in permille and clamped to 1..ceil(width * 1.12). */
+const lv_image_dsc_t *face_img_star_squashed(int32_t width_key, int32_t openness_permille);
 const lv_image_dsc_t *face_img_heart(int32_t w);
 const lv_image_dsc_t *face_img_drop(int32_t px);   /* box edge before the 45 degree turn */
 const lv_image_dsc_t *face_img_z(int32_t h);       /* glyph height */
