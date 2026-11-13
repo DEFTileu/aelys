@@ -214,6 +214,26 @@ static void test_partial_redraw_each_frame(void)
     lv_timer_set_period(refresh, LV_DEF_REFR_PERIOD);
 }
 
+/* Dirty regions must remain pixel-identical to a full redraw during a retarget. */
+static void test_transition_partial_redraw(void)
+{
+    lv_timer_t *anim = lv_anim_get_timer();
+    lv_timer_t *refresh = lv_display_get_refr_timer(lv_display_get_default());
+    lv_timer_set_period(anim, 5); lv_timer_set_period(refresh, 5);
+    lv_obj_t *face = show(MOOD_CALM, 100, HX, HY, 100);
+    const mood_t sequence[] = {MOOD_FOCUSED, MOOD_WORRIED, MOOD_SURPRISED, MOOD_CALM};
+    for (unsigned n = 0; n < sizeof sequence / sizeof *sequence; n++) {
+        face_set_mood(face, sequence[n]);
+        for (int t = 0; t < 1000; t += 5) {
+            sim_step(5); lv_refr_now(NULL);
+            int diff = pixel_exact();
+            if (diff) { fprintf(stderr, "transition %u at %d ms: %d pixels differ\n", n, t, diff); CHECK_EQ(diff, 0); break; }
+        }
+    }
+    gone(face);
+    lv_timer_set_period(anim, LV_DEF_REFR_PERIOD); lv_timer_set_period(refresh, LV_DEF_REFR_PERIOD);
+}
+
 /* A face at rest costs nothing: calm does not move for the first 2.5 s of its look loop, and a hidden face never draws. */
 static void test_rest_is_free(void)
 {
@@ -336,13 +356,34 @@ static void test_scales_and_api(void)
     lv_obj_delete(face);
 }
 
+static void test_smooth_eye_transition(void)
+{
+    lv_obj_t *face = face_create(lv_screen_active(), 100);
+    sim_step(100);
+    lv_obj_t *left = lv_obj_get_child(face, 0);
+    lv_obj_update_layout(face);
+    int before = lv_obj_get_height(left);
+    face_set_mood(face, MOOD_FOCUSED);
+    lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left), before);
+    sim_step(100); lv_obj_update_layout(face);
+    int middle = lv_obj_get_height(left);
+    CHECK(middle < before && middle > 46);
+    for (int n = 0; n < 54; n++) sim_step(34);
+    lv_obj_update_layout(face);
+    CHECK(lv_obj_get_height(left) >= 44 && lv_obj_get_height(left) <= 47);
+    lv_obj_delete(face);
+}
+
 int main(void)
 {
     sim_init();
     sim_direct(); /* redraw only what was invalidated, as the board does: stale pixels would show up */
+    test_smooth_eye_transition();
     test_shapes();
     test_inside_screen_and_own_area();
     test_partial_redraw_each_frame();
+    test_transition_partial_redraw();
     test_rest_is_free();
     test_animation_style_footprint();
     test_scales_and_api();

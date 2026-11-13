@@ -18,6 +18,7 @@
 #include "ui.h"
 #include "ui_face_priv.h"
 #include "ui_theme.h"
+#include "face_spring.h"
 
 #define COLOR_GRAD_TOP 0xCDBFFF
 #define COLOR_GRAD_BOTTOM 0x7C58F4
@@ -26,9 +27,8 @@
 #define COLOR_DOT_OFF 0x4A4554
 #define DROOP_TRAVEL 250 /* sleepy lid: bottom edge moves 25 px (tenths) between -56 % and -30 % of 96 px */
 /* The anim timer ticks every LV_DEF_REFR_PERIOD (5 ms on the board) while the panel flushes at 60 Hz (16.67 ms, TE).
- * A fixed minimum gap would quantise to that 5 ms grid (15 ms: a state is skipped now and then; 16 ms: 20 ms, a state
- * is shown twice). So frames are scheduled on a 16.67 ms clock kept in 1/3 ms: gaps of 15, 15 and 20 ms, average 60 Hz. */
-#define FRAME_THIRDS 50
+ * The face uses a 33.33 ms clock in 1/3 ms; the panel and navigation remain at 60 Hz. */
+#define FRAME_THIRDS 100
 
 typedef struct { int16_t w, h, yl, yr; } cut_t; /* lid object size, cut height at its left and right edge */
 
@@ -42,8 +42,35 @@ typedef struct {
     int16_t dot_mix[3];
     int32_t s;           /* scale_x100 */
     const face_mood_t *m;
+    face_spring_t eye_spring[2][10];
+    face_eye_t current_eye[2];
+    bool eye_initialized, drawn;
+    uint32_t spring_time;
     uint32_t t0, due3;   /* start of the mood's loops (ms), next frame due (1/3 ms) */
 } face_t;
+
+/* All eye dimensions are independent numerical spring targets. */
+static void eye_values(const face_eye_t *e, int32_t v[10])
+{
+    v[0] = e->x; v[1] = e->y; v[2] = e->w; v[3] = e->h; v[4] = e->r;
+    v[5] = e->star_x; v[6] = e->star_y; v[7] = e->star;
+    v[8] = e->lid_y10; v[9] = e->lid_slope;
+}
+static void eye_step(face_t *f, uint32_t elapsed, bool snap)
+{
+    for (int side = 0; side < 2; ++side) {
+        int32_t target[10], v[10];
+        eye_values(&f->m->eye[side], target);
+        for (int k = 0; k < 10; ++k) {
+            if (snap) face_spring_init(&f->eye_spring[side][k], target[k]);
+            else face_spring_step(&f->eye_spring[side][k], target[k], elapsed);
+            v[k] = face_spring_value(&f->eye_spring[side][k]);
+        }
+        f->current_eye[side] = (face_eye_t){v[0], v[1], v[2], v[3], v[4],
+                                           v[5], v[6], v[7], v[8], v[9]};
+    }
+    f->eye_initialized = true;
+}
 
 /* face px * 100 -> device px */
 static int32_t d(const face_t *f, int32_t v100)
@@ -232,7 +259,7 @@ static void layout_eyes(face_t *f, uint32_t t)
     trig(g.rot, &sn, &cs);
 
     for (int side = 0; side < 2; side++) {
-        const face_eye_t *e = &m->eye[side];
+        const face_eye_t *e = &f->current_eye[side];
         /* CSS blink: scaleY about 50 % 60 % of the eye */
         int32_t w100 = e->w * 100, h100 = e->h * blink / 10;
         int32_t top100 = e->y * 100 + e->h * 60 * (1000 - blink) / 1000;
@@ -351,10 +378,13 @@ static void tick(void *var, int32_t unused)
     uint32_t now3 = now * 3;
     /* Keep hidden faces' deadlines current, so a long absence cannot make the
      * signed modular comparison ambiguous when they become visible again. */
-    if (!lv_obj_is_visible(f->root)) { f->due3 = now3; return; }
+    if (!lv_obj_is_visible(f->root)) { f->due3 = now3; f->spring_time = now; return; }
     if ((int32_t)(now3 - f->due3) < 0) return;
     f->due3 += FRAME_THIRDS;
     if ((int32_t)(now3 - f->due3) >= 0) f->due3 = now3 + FRAME_THIRDS; /* far behind (hidden, stalled): do not catch up */
+    eye_step(f, now - f->spring_time, false);
+    f->spring_time = now;
+    f->drawn = true;
     layout_eyes(f, now - f->t0);
     layout_fx(f, now - f->t0);
 }
@@ -506,6 +536,8 @@ void face_set_mood(lv_obj_t *face, mood_t m)
     f->m = face_mood_def(m);
     f->t0 = lv_tick_get();
     f->due3 = f->t0 * 3;
+    f->spring_time = f->t0;
+    if (!f->eye_initialized || !f->drawn) eye_step(f, 0, true);
     apply_mood(f);
     layout_eyes(f, 0);
     layout_fx(f, 0);
