@@ -69,3 +69,21 @@ add_test(NAME sim_cue_smoke COMMAND companion_sim --cue joy --out ${CMAKE_BINARY
 add_test(NAME sim_event_cue_smoke COMMAND companion_sim --event-cue task-complete --out ${CMAKE_BINARY_DIR}/event-joy.wav)
 add_test(NAME sim_event_cue_night COMMAND ${CMAKE_COMMAND} -DSIM_EXE=$<TARGET_FILE:companion_sim> -P ${CMAKE_CURRENT_SOURCE_DIR}/test_cue_silence.cmake)
 add_test(NAME sim_character_tap_smoke COMMAND companion_sim --shot character_tap --out ${CMAKE_BINARY_DIR}/character-tap.bmp)
+
+# Compile the actual port into this host-only test; discard unrelated platform entry points.
+foreach(port_test test_lv_port test_lv_port_probe)
+    add_executable(${port_test} test_lv_port.c)
+    target_include_directories(${port_test} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/port_fakes
+        ${CMAKE_CURRENT_SOURCE_DIR}/../components/board/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../components/logic/include)
+    target_compile_options(${port_test} PRIVATE -Wall -Wextra -ffunction-sections -fdata-sections)
+    if(APPLE)
+        target_link_options(${port_test} PRIVATE -Wl,-dead_strip)
+    else()
+        target_link_options(${port_test} PRIVATE -Wl,--gc-sections)
+    endif()
+    add_test(NAME ${port_test} COMMAND ${port_test})
+    set_tests_properties(${port_test} PROPERTIES TIMEOUT 5)
+endforeach()
+target_compile_definitions(test_lv_port_probe PRIVATE CONFIG_AELYS_PERF_PROBE=1)
