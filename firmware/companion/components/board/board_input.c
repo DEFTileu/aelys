@@ -15,11 +15,15 @@
 #include "esp_lcd_touch_cst9217.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "gesture.h"
 #include "pwrkey.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 static const char *TAG = "input";
+
+/* shortcut: top/low key mapping unverified on hardware. Assumed: the PWR key (AXP2101) is the top side key and BOOT the
+ * lower one. If the board says otherwise, swap the two arguments of btn_feed() below (the board step of Task F8). */
 
 #define POLL_MS     4 /* loop period: INT level, BOOT key, combo */
 #define SLOW_PASSES 5 /* every 20 ms: PMIC edges, and the release check while a finger is down */
@@ -171,7 +175,10 @@ static void input_task(void *arg)
     pwrkey_t pwrkey;
     combo_reset(&combo);
     pwrkey_reset(&pwrkey);
-    bool was_touched = false, fire_pending = false;
+    gesture_ctx_t gctx = {0};
+    btn_ctx_t bctx = {0};
+    gesture_t pend_gest = GEST_NONE; /* a tap or swipe the ui queue had no room for yet */
+    bool was_touched = false, fire_pending = false, release_pending = false;
     int shown = 0; /* the last progress percent the ui was told about */
     uint32_t pass = 0;
     TickType_t wake = xTaskGetTickCount();
@@ -185,7 +192,11 @@ static void input_task(void *arg)
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
             uint32_t t0 = (uint32_t)esp_timer_get_time();
 #endif
-            if (!touch_down(&x, &y)) {
+            bool down = touch_down(&x, &y);
+            gesture_t gs = gesture_feed(&gctx, down, (int16_t)x, (int16_t)y, (uint32_t)(esp_timer_get_time() / 1000));
+            if (gs != GEST_NONE) pend_gest = gs;
+            if (!down) {
+                release_pending = release_pending || was_touched; /* the ui hears the lift after the gesture */
                 was_touched = false;
             } else if (!was_touched) {
                 ui_event_t ev = {.type = UI_EV_TOUCH, .len = 4, .data = {x, x >> 8, y, y >> 8}};
@@ -199,6 +210,12 @@ static void input_task(void *arg)
 #endif
             }
         }
+        if (pend_gest != GEST_NONE) {
+            ui_event_t ev = {.type = pend_gest == GEST_TAP ? UI_EV_TAP : pend_gest == GEST_SWIPE_LEFT ? UI_EV_SWIPE_LEFT : UI_EV_SWIPE_RIGHT};
+            if (pend_gest == GEST_TAP) { ev.len = 4; ev.data[0] = gctx.x; ev.data[1] = gctx.x >> 8; ev.data[2] = gctx.y; ev.data[3] = gctx.y >> 8; }
+            if (lv_port_post(&ev)) pend_gest = GEST_NONE;
+        }
+        if (release_pending && pend_gest == GEST_NONE && post(UI_EV_RELEASE, -1)) release_pending = false;
 
         if (axp && slow) {
             uint8_t sts;
@@ -218,6 +235,8 @@ static void input_task(void *arg)
         boot = boot || st_boot;
         pwr = pwr || st_pwr;
 #endif
+        ui_btn_t click = btn_feed(&bctx, pwr, boot, (uint32_t)(esp_timer_get_time() / 1000)); /* top = PWR: see the top of this file */
+        if (click) post(UI_EV_BTN, click);
         int pct = combo_update(&combo, boot, pwr, (uint32_t)(esp_timer_get_time() / 1000));
         if (pct == 100) {
             fire_pending = true;

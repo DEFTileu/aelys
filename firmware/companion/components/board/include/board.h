@@ -34,7 +34,9 @@ uint32_t lv_port_first_flush_end_us(void);
 
 /* Touch (CST9217), BOOT key and the AXP2101 PWR key, polled every 10 ms in the `input` task. Posts
  * UI_EV_TOUCH (data = x, y as two uint16, little-endian), UI_EV_COMBO_PROGRESS (percent, 0 on
- * release) and UI_EV_COMBO_FIRE (BOOT + PWR held 2 s). Call after board_init(). Returns the first
+ * release) and UI_EV_COMBO_FIRE (BOOT + PWR held 2 s). Also
+ * UI_EV_TAP / UI_EV_SWIPE_LEFT / UI_EV_SWIPE_RIGHT at the lift (gesture.h), UI_EV_RELEASE after them, and UI_EV_BTN
+ * (BTN_TOP / BTN_LOW) for a short click of one key. Call after board_init(). Returns the first
  * init error but starts the task anyway with whatever worked. */
 esp_err_t board_input_start(void);
 

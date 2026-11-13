@@ -18,3 +18,11 @@ scr_t screen_next(scr_t cur, bool lost_mode, ui_event_type_t ev);
  * "Paired" stays up for 2 s: the UI layer shows it on DONE and arms a timer that calls
  * screen_next_pair(SCR_PAIR, lost_mode, PAIR_UI_DONE) on expiry, like the ICE timeout. */
 scr_t screen_next_pair(scr_t cur, bool lost_mode, ui_pair_t what);
+
+/* Swipes (UI_EV_SWIPE_RIGHT: HOME -> TODAY, FOCUS -> HOME; UI_EV_SWIPE_LEFT: HOME -> FOCUS, TODAY -> HOME) go through
+ * screen_next() above. A tap and a key click carry a payload screen_next() does not see, so they have their own entry points.
+ * In lost mode none of them moves anything. The inbox 15 s timeout is the UI layer's: it arms a timer on entering SCR_INBOX
+ * and on expiry calls screen_next_btn(SCR_INBOX, lost_mode, BTN_LOW). */
+typedef enum { TAP_OUTSIDE, TAP_UNREAD_ROW, TAP_ROW } tap_hit_t; /* where a tap landed on the current screen */
+scr_t screen_next_tap(scr_t cur, bool lost_mode, tap_hit_t hit);  /* TODAY + unread row -> INBOX; INBOX + outside the rows -> TODAY */
+scr_t screen_next_btn(scr_t cur, bool lost_mode, ui_btn_t btn);   /* BTN_LOW: TODAY/FOCUS -> HOME, INBOX -> TODAY */

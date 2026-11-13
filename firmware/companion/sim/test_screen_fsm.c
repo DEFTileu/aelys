@@ -63,6 +63,55 @@ static void test_pair_screen_follows_lost_and_combo(void)
     CHECK_EQ(screen_next(SCR_PAIR, false, UI_EV_TOUCH), SCR_PAIR);
 }
 
+static void test_swipe_cycle_today_home_focus(void)
+{
+    CHECK_EQ(screen_next(SCR_HOME, false, UI_EV_SWIPE_RIGHT), SCR_TODAY);
+    CHECK_EQ(screen_next(SCR_HOME, false, UI_EV_SWIPE_LEFT), SCR_FOCUS);
+    CHECK_EQ(screen_next(SCR_TODAY, false, UI_EV_SWIPE_LEFT), SCR_HOME);
+    CHECK_EQ(screen_next(SCR_FOCUS, false, UI_EV_SWIPE_RIGHT), SCR_HOME);
+    /* no wrap-around and no other screen swipes */
+    CHECK_EQ(screen_next(SCR_TODAY, false, UI_EV_SWIPE_RIGHT), SCR_TODAY);
+    CHECK_EQ(screen_next(SCR_FOCUS, false, UI_EV_SWIPE_LEFT), SCR_FOCUS);
+    scr_t other[] = { SCR_INBOX, SCR_ICE, SCR_PAIR };
+    for (unsigned i = 0; i < sizeof other / sizeof *other; i++) {
+        CHECK_EQ(screen_next(other[i], false, UI_EV_SWIPE_LEFT), other[i]);
+        CHECK_EQ(screen_next(other[i], false, UI_EV_SWIPE_RIGHT), other[i]);
+    }
+}
+
+static void test_inbox_back(void)
+{
+    CHECK_EQ(screen_next_tap(SCR_TODAY, false, TAP_UNREAD_ROW), SCR_INBOX);
+    CHECK_EQ(screen_next_tap(SCR_TODAY, false, TAP_OUTSIDE), SCR_TODAY);
+    CHECK_EQ(screen_next_tap(SCR_TODAY, false, TAP_ROW), SCR_TODAY);
+    CHECK_EQ(screen_next_tap(SCR_HOME, false, TAP_UNREAD_ROW), SCR_HOME);
+    CHECK_EQ(screen_next_tap(SCR_INBOX, false, TAP_OUTSIDE), SCR_TODAY);  /* tap outside the rows */
+    CHECK_EQ(screen_next_tap(SCR_INBOX, false, TAP_ROW), SCR_INBOX);
+    CHECK_EQ(screen_next_btn(SCR_INBOX, false, BTN_LOW), SCR_TODAY);
+    CHECK_EQ(screen_next_btn(SCR_INBOX, false, BTN_TOP), SCR_INBOX);
+    CHECK_EQ(screen_next_btn(SCR_TODAY, false, BTN_LOW), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_FOCUS, false, BTN_LOW), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_HOME, false, BTN_LOW), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_FOCUS, false, BTN_TOP), SCR_FOCUS);
+    CHECK_EQ(screen_next_btn(SCR_ICE, false, BTN_LOW), SCR_ICE);
+}
+
+static void test_swipes_ignored_in_lost_mode(void)
+{
+    CHECK_EQ(screen_next(SCR_LOST, true, UI_EV_SWIPE_LEFT), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_LOST, true, UI_EV_SWIPE_RIGHT), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_LOST, true, UI_EV_TAP), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_LOST, true, UI_EV_RELEASE), SCR_LOST);
+    CHECK_EQ(screen_next_tap(SCR_LOST, true, TAP_UNREAD_ROW), SCR_LOST);
+    CHECK_EQ(screen_next_btn(SCR_LOST, true, BTN_LOW), SCR_LOST);
+    /* the ICE card opened over lost mode returns to it: swipes do not move it, and a home that is
+     * still showing while the flag is on (the instant before the screen switches) does not leave either */
+    CHECK_EQ(screen_next(SCR_ICE, true, UI_EV_SWIPE_RIGHT), SCR_ICE);
+    CHECK_EQ(screen_next(SCR_HOME, true, UI_EV_SWIPE_RIGHT), SCR_HOME);
+    CHECK_EQ(screen_next(SCR_TODAY, true, UI_EV_SWIPE_LEFT), SCR_TODAY);
+    CHECK_EQ(screen_next_btn(SCR_TODAY, true, BTN_LOW), SCR_TODAY);
+}
+
 static int terminated(const char *s, size_t cap) { return memchr(s, '\0', cap) != NULL; }
 
 static void test_owner_defaults(void)
@@ -100,6 +149,9 @@ int main(void)
     test_pair_done_returns_home();
     test_pair_code_ignored_in_lost_mode();
     test_pair_screen_follows_lost_and_combo();
+    test_swipe_cycle_today_home_focus();
+    test_inbox_back();
+    test_swipes_ignored_in_lost_mode();
     test_owner_defaults();
     return g_failed ? 1 : 0;
 }

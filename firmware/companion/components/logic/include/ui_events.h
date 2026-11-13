@@ -21,6 +21,7 @@ typedef enum {
     UI_EV_ACTION,       /* [0] = act_kind_t, [1] = ok, [2..25] = error code (NUL-terminated, "OFFLINE" when not sent) */
     UI_EV_FIND,         /* [0] = 1 start / 0 stop */
     UI_EV_WIFI_ADD,     /* [0] = 0 connecting / 1 connected / 2 failed, [1..33] = SSID, [34..59] = previous SSID (25 bytes, UTF-8 safe) */
+    UI_EV_RELEASE,      /* the finger lifted (no payload): posted after the UI_EV_TAP / SWIPE of that touch, or alone when the touch was neither */
 } ui_event_type_t;
 
 typedef struct {
@@ -30,6 +31,9 @@ typedef struct {
 } ui_event_t;
 
 _Static_assert(sizeof(ui_event_t) == 64, "ui_event_t");
+
+/* UI_EV_BTN data[0]: a short click of one side key */
+typedef enum { BTN_TOP = 1, BTN_LOW } ui_btn_t;
 
 /* UI_EV_WIFI data[0] */
 typedef enum { UI_WIFI_OFFLINE, UI_WIFI_CONNECTING, UI_WIFI_ONLINE, UI_WIFI_BAD_PASSWORD } ui_wifi_state_t;
