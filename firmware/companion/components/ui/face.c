@@ -343,8 +343,10 @@ static void tick(void *var, int32_t unused)
     (void)unused;
     uint32_t now = lv_tick_get();
     uint32_t now3 = now * 3;
+    /* Keep hidden faces' deadlines current, so a long absence cannot make the
+     * signed modular comparison ambiguous when they become visible again. */
+    if (!lv_obj_is_visible(f->root)) { f->due3 = now3; return; }
     if ((int32_t)(now3 - f->due3) < 0) return;
-    if (!lv_obj_is_visible(f->root)) return;
     f->due3 += FRAME_THIRDS;
     if ((int32_t)(now3 - f->due3) >= 0) f->due3 = now3 + FRAME_THIRDS; /* far behind (hidden, stalled): do not catch up */
     layout_eyes(f, now - f->t0);

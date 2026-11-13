@@ -129,18 +129,19 @@ static void on_invalidate(lv_event_t *e)
     if (a->y2 > g_inv.y2) g_inv.y2 = a->y2;
 }
 
-/* Partial redraws must equal a full redraw: snapshot the frame, poison the buffer, redraw the whole screen with the
- * animation clock frozen, compare. A missed or wrongly clipped invalidation leaves a stale pixel behind. */
+/* Compare the partial framebuffer with a clean redraw of the entire face region.
+ * Restore the partial framebuffer afterwards, so the oracle cannot repair a stale pixel. */
 static uint16_t g_snap[SIM_W * SIM_H];
 
 static int pixel_exact(void)
 {
-    lv_refr_now(NULL); /* the animation ran after the last refresh: draw its partial update first */
     memcpy(g_snap, sim_fb(), sizeof g_snap);
-    memset((void *)sim_fb(), 0xAA, sizeof g_snap);
-    lv_area_t keep = g_inv; /* the full-screen invalidation below is not the face's */
+    const lv_area_t area = { HX - 40, HY - 40, HX + 300 + 40, HY + FACE_H + 40 };
+    for (int y = area.y1; y <= area.y2; y++)
+        memset((uint16_t *)sim_fb() + y * SIM_W + area.x1, 0xAA, (size_t)(area.x2 - area.x1 + 1) * sizeof(uint16_t));
+    lv_area_t keep = g_inv; /* the reference invalidation is not the face's */
     bool kept = g_inv_set;
-    lv_obj_invalidate(lv_screen_active());
+    lv_obj_invalidate_area(lv_screen_active(), &area);
     lv_refr_now(NULL);      /* redraw now, the animation clock does not move */
     g_inv = keep;
     g_inv_set = kept;
@@ -150,6 +151,7 @@ static int pixel_exact(void)
             if (!diff) fprintf(stderr, "first difference at %d,%d: %04x vs %04x\n", i % SIM_W, i / SIM_W, g_snap[i], sim_fb()[i]);
             diff++;
         }
+    memcpy((void *)sim_fb(), g_snap, sizeof g_snap);
     return diff;
 }
 
@@ -162,11 +164,6 @@ static void test_inside_screen_and_own_area(void)
         int outside = 0, lit_px = 0;
         for (uint32_t t = 0; t < 12000; t += 100) {                /* longer than every loop (the look loop is 9 s) */
             sim_step(100);
-            if (t == 400 || t == 1000 || t == 2800 || t == 4800 || t == 5700 || t == 7700 || t == 11000) {
-                int diff = pixel_exact();
-                if (diff) fprintf(stderr, "%s at %u ms: %d pixels differ\n", mood_name((mood_t)m), t + 100, diff);
-                CHECK_EQ(diff, 0);
-            }
             for (int y = HY - 40; y < HY + FACE_H + 40; y++)
                 for (int x = HX - 40; x < HX + 300 + 40; x++) {
                     if (!lit(x, y)) continue;
@@ -185,6 +182,36 @@ static void test_inside_screen_and_own_area(void)
     }
 }
 
+/* Run both LVGL timers at the board's 5 ms period, and compare every tick,
+ * including ticks with no flush, over complete motion/effect cycles. */
+static void test_partial_redraw_each_frame(void)
+{
+    lv_timer_t *anim = lv_anim_get_timer();
+    lv_timer_t *refresh = lv_display_get_refr_timer(lv_display_get_default());
+    lv_timer_set_period(anim, 5);
+    lv_timer_set_period(refresh, 5);
+    for (int m = 0; m < MOOD_COUNT; m++) {
+        lv_obj_t *f = show((mood_t)m, 100, HX, HY, 100);
+        unsigned flushed = 0;
+        for (uint32_t t = 0; t < 12000; t += 5) {
+            uint32_t before = sim_flushes();
+            sim_step(5);
+            lv_refr_now(NULL); /* also draw invalidations from the animation callback */
+            if (sim_flushes() != before) flushed++;
+            int diff = pixel_exact();
+            if (diff) {
+                fprintf(stderr, "%s at %u ms: %d pixels differ\n", mood_name((mood_t)m), t + 5, diff);
+                CHECK_EQ(diff, 0);
+                break;
+            }
+        }
+        CHECK(flushed > 0);
+        gone(f);
+    }
+    lv_timer_set_period(anim, LV_DEF_REFR_PERIOD);
+    lv_timer_set_period(refresh, LV_DEF_REFR_PERIOD);
+}
+
 /* A face at rest costs nothing: calm does not move for the first 2.5 s of its look loop, and a hidden face never draws. */
 static void test_rest_is_free(void)
 {
@@ -201,6 +228,35 @@ static void test_rest_is_free(void)
     for (int i = 0; i < 625; i++) sim_step(16);                    /* 10 s: every loop would have moved */
     CHECK_EQ(sim_flushes(), n);
     gone(f);
+}
+
+/* A stale deadline must not freeze a face when it reappears, even across tick wrap. */
+static void check_long_hidden_resume(void)
+{
+    lv_obj_t *f = show(MOOD_HAPPY, 100, HX, HY, 100);
+    lv_obj_set_hidden(f, true);
+    sim_step(20);
+    sim_step(9u * 24u * 60u * 60u * 1000u);
+    lv_obj_set_hidden(f, false);
+    sim_step(20);
+    lv_refr_now(NULL);
+    memcpy(g_snap, sim_fb(), sizeof g_snap);
+    bool changed = false;
+    for (int i = 0; i < 20; i++) {
+        sim_step(20);
+        lv_refr_now(NULL);
+        if (memcmp(g_snap, sim_fb(), sizeof g_snap)) changed = true;
+    }
+    CHECK(changed);
+    gone(f);
+}
+
+static void test_long_hidden_resume(void)
+{
+    check_long_hidden_resume();
+    /* Create the second face four days before uint32 tick wrap. */
+    sim_step(UINT32_MAX - lv_tick_get() - 4u * 24u * 60u * 60u * 1000u);
+    check_long_hidden_resume();
 }
 
 static void test_scales_and_api(void)
@@ -238,7 +294,9 @@ int main(void)
     sim_direct(); /* redraw only what was invalidated, as the board does: stale pixels would show up */
     test_shapes();
     test_inside_screen_and_own_area();
+    test_partial_redraw_each_frame();
     test_rest_is_free();
     test_scales_and_api();
+    test_long_hidden_resume();
     return g_failed ? 1 : 0;
 }
