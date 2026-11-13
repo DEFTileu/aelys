@@ -87,6 +87,27 @@ fn read_chunk(port: &mut impl Read, max: usize) -> Result<Vec<u8>, String> {
     }
 }
 
+/// The two modem lines that drive the board's reset circuit.
+trait ModemLines {
+    fn set_rts(&mut self, on: bool) -> serialport::Result<()>;
+    fn set_dtr(&mut self, on: bool) -> serialport::Result<()>;
+}
+impl ModemLines for dyn SerialPort {
+    fn set_rts(&mut self, on: bool) -> serialport::Result<()> {
+        self.write_request_to_send(on)
+    }
+    fn set_dtr(&mut self, on: bool) -> serialport::Result<()> {
+        self.write_data_terminal_ready(on)
+    }
+}
+
+/// RTS first, then DTR, like the board's own tools: the other order pulses a chip reset (and macOS
+/// leaves both asserted after open, so a later close would drop DTR while RTS is still high).
+fn lower_lines(port: &mut (impl ModemLines + ?Sized)) -> serialport::Result<()> {
+    port.set_rts(false)?;
+    port.set_dtr(false)
+}
+
 fn list_ports() -> Vec<String> {
     serialport::available_ports()
         .unwrap_or_default()
@@ -124,10 +145,11 @@ pub async fn companion_serial_open(
         if !list_ports().contains(&path) {
             return Err("NOT_FOUND".into());
         }
-        let reader = serialport::new(&path, BAUD)
+        let mut reader = serialport::new(&path, BAUD)
             .timeout(READ_TIMEOUT)
             .open()
             .map_err(|_| "OPEN_FAILED".to_string())?;
+        lower_lines(&mut *reader).map_err(|_| "OPEN_FAILED".to_string())?;
         let writer = reader.try_clone().map_err(|_| "OPEN_FAILED".to_string())?;
         *lock(&slot) = Some(Open {
             reader: Arc::new(Mutex::new(reader)),
@@ -242,6 +264,26 @@ mod tests {
         let mut garbage = vec![0u8; 9];
         garbage.extend(b"IMPROV");
         assert!(!valid_improv_rpc(&garbage));
+    }
+
+    #[derive(Default)]
+    struct Lines(Vec<(&'static str, bool)>);
+    impl ModemLines for Lines {
+        fn set_rts(&mut self, on: bool) -> serialport::Result<()> {
+            self.0.push(("rts", on));
+            Ok(())
+        }
+        fn set_dtr(&mut self, on: bool) -> serialport::Result<()> {
+            self.0.push(("dtr", on));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn lowers_rts_before_dtr() {
+        let mut lines = Lines::default();
+        lower_lines(&mut lines).unwrap();
+        assert_eq!(lines.0, [("rts", false), ("dtr", false)]);
     }
 
     struct Fake(Vec<io::Result<usize>>);

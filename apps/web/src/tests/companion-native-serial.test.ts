@@ -52,6 +52,25 @@ beforeEach(() => {
 afterEach(() => { delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__; vi.restoreAllMocks() })
 
 describe('native serial bridge', () => {
+  it('lowers RTS then DTR on a Web Serial port right after opening it', async () => {
+    const order: string[] = []
+    const port = {
+      readable: new ReadableStream<Uint8Array>(), writable: new WritableStream<Uint8Array>(),
+      open: vi.fn(async () => { order.push('open') }), close: vi.fn(async () => undefined),
+      setSignals: vi.fn(async (s: object) => { order.push(JSON.stringify(s)) }),
+    }
+    await CompanionSerial.fromPort(port)
+    expect(order).toEqual(['open', '{"requestToSend":false}', '{"dataTerminalReady":false}'])
+  })
+
+  it('treats a refused frame as BAD_ARGS, not as an unplug', async () => {
+    const serial = await CompanionSerial.request()
+    const base = b.invoke.getMockImplementation()!
+    b.invoke.mockImplementation(async (cmd: string, args?: never) => { if (cmd === 'companion_serial_write') throw 'BAD_FRAME'; return base(cmd, args) })
+    await expect(serial.pairBegin('s'.repeat(40), 'https://aelys.example/api/v1')).rejects.toMatchObject({ code: 'BAD_ARGS' })
+    await serial.close()
+  })
+
   it('native port round-trips a pairBegin through CompanionSerial', async () => {
     const serial = await CompanionSerial.request()
     expect(b.invoke).toHaveBeenCalledWith('companion_serial_open', { path: PORT })

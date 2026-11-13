@@ -4,6 +4,8 @@ import { CompanionError } from './improv'
 /** The Mac app only (Android has its own host without this bridge); WKWebView has no Web Serial. */
 export const nativeSerialHost = () => isNativeHost() && !/Android/i.test(navigator.userAgent)
 
+// Bridge codes meaning the port is gone; anything else (e.g. BAD_FRAME) is a refusal of the request itself.
+const GONE = new Set(['DISCONNECTED', 'NOT_OPEN', 'WRITE_FAILED'])
 let core: Promise<typeof import('@tauri-apps/api/core')> | undefined
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await (core ??= import('@tauri-apps/api/core'))
@@ -52,7 +54,7 @@ export class NativeSerialPort {
     })
     this.writable = new WritableStream<Uint8Array>({
       write: async (frame) => {
-        try { await call<void>('companion_serial_write', { bytes: Array.from(frame) }) } catch { throw new CompanionError('DISCONNECTED') }
+        try { await call<void>('companion_serial_write', { bytes: Array.from(frame) }) } catch (e) { throw new CompanionError(GONE.has(String(e)) ? 'DISCONNECTED' : 'BAD_ARGS') }
       },
     })
   }
