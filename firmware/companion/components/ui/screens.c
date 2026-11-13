@@ -452,10 +452,12 @@ static void on_action_result(const ui_event_t *ev)
     toast(!strncmp(err, "OFFLINE", 8) ? "No connection" : "Didn't work \xE2\x80\x94 try again");
 }
 
-/* Input that ends a find: a touch, a key click, both buttons held (not the 0 % of letting go). */
+/* Input that ends a find: a touch, a key click, both buttons held (not the 0 % of letting go). A tap or swipe also counts: the finger may
+ * have gone down before the overlay came up, and its lift must not act on the screen below. */
 static bool ends_find(const ui_event_t *ev)
 {
-    return ev->type == UI_EV_TOUCH || ev->type == UI_EV_BTN || ev->type == UI_EV_COMBO_FIRE ||
+    return ev->type == UI_EV_TOUCH || ev->type == UI_EV_TAP || ev->type == UI_EV_SWIPE_LEFT || ev->type == UI_EV_SWIPE_RIGHT ||
+           ev->type == UI_EV_BTN || ev->type == UI_EV_COMBO_FIRE ||
            (ev->type == UI_EV_COMBO_PROGRESS && ev->len >= 1 && ev->data[0] > 0);
 }
 
@@ -467,7 +469,7 @@ void ui_handle_event(const ui_event_t *ev)
         scr_find_show(false);
         if (g.find_stop) g.find_stop();
         if (ev->type == UI_EV_TOUCH) g.down_scr = SCR_COUNT; /* the tap, swipe and release of this touch are not for the screen below */
-        if (ev->type == UI_EV_TOUCH || ev->type == UI_EV_BTN) return;
+        if (ev->type != UI_EV_COMBO_FIRE && ev->type != UI_EV_COMBO_PROGRESS) return; /* used up; the two-button hold carries on to its ring / the card */
     }
     switch (ev->type) {
     case UI_EV_TIME:
@@ -540,6 +542,7 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_FIND:
         if (ev->len < 1) return;
         g.find = ev->data[0] != 0;
+        if (g.find) scr_toast_hide(); /* a toast or the Wi-Fi card must not come out from under the overlay when it ends */
         scr_find_show(g.find);
         return;
     case UI_EV_COMBO_PROGRESS:

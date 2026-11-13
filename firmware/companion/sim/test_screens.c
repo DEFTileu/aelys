@@ -1100,26 +1100,55 @@ static void test_find_overlay_shot(void)
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
 
+    /* a finger that went down before the overlay came up: its lift stops the sound and does not act on the screen below */
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    touch_at(233, 233);
+    find_ev(1);
+    sim_step(100);
+    CHECK(shows_text(scr, title));
+    post(UI_EV_SWIPE_LEFT);                           /* would go home */
+    post(UI_EV_RELEASE);
+    sim_step(100);
+    CHECK(!shows_text(scr, title));
+    CHECK_EQ(find_stops, 3);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    touch_at(233, 440);
+    find_ev(1);
+    tap_at(233, 440);
+    CHECK_EQ(find_stops, 4);
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* a Wi-Fi card that is up when the find starts does not come back after it */
+    wifi_add_ev(0, "Office", "Home");
+    sim_step(100);
+    find_ev(1);
+    sim_step(100);
+    find_ev(0);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Office"));
+
     /* a second FIND(1) while it plays changes nothing; a stray both-buttons release (0 %) does not stop it */
     find_ev(1);
     find_ev(1);
     post_progress(0);
     sim_step(100);
     CHECK(shows_text(scr, title));
-    CHECK_EQ(find_stops, 2);
+    CHECK_EQ(find_stops, 4);
 
     /* both buttons held: the overlay gives way to the progress ring, then the ICE card, and the sound stops */
     post_progress(30);
     sim_step(100);
     CHECK(!shows_text(scr, title));
-    CHECK_EQ(find_stops, 3);
+    CHECK_EQ(find_stops, 5);
     post_progress(0);
     find_ev(1);
     post(UI_EV_COMBO_FIRE);
     sim_step(100);
     CHECK_EQ(ui_current_screen(), SCR_ICE);
     CHECK(!shows_text(scr, title));
-    CHECK_EQ(find_stops, 4);
+    CHECK_EQ(find_stops, 6);
     post(UI_EV_TOUCH);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
 
@@ -1129,7 +1158,7 @@ static void test_find_overlay_shot(void)
     sim_step(15100);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
     CHECK(shows_text(scr, title));
-    CHECK_EQ(find_stops, 4);
+    CHECK_EQ(find_stops, 6);
     find_ev(0);
     sim_step(100);
     CHECK(!shows_text(scr, title));

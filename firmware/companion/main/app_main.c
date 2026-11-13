@@ -191,12 +191,12 @@ static void on_command(const proto_msg_t *m)
     case CMD_WIFI_ORDER:
         wifi_changed(id, net_wifi_reorder((const char(*)[33])m->u.cmd.a.order.ssid, m->u.cmd.a.order.n));
         break;
-    case CMD_PLAY_SOUND: /* find: ack first, then the overlay and the beeps (60 s, a tap or key stops them); works on every screen */
-        link_send_ack(id, true, NULL);
-        post_ui((ui_event_t){.type = UI_EV_FIND, .len = 1, .data = {1}});
+    case CMD_PLAY_SOUND: /* find: board_audio_beep() starts the beeps (60 s, a tap or key stops them) and posts UI_EV_FIND itself, in step with the sound; works on every screen */
         if (board_audio_beep(BEEP_MAX_MS) != ESP_OK) {
             ESP_LOGW(TAG, "play_sound: the sound did not start");
-            post_ui((ui_event_t){.type = UI_EV_FIND, .len = 1, .data = {0}});
+            link_send_ack(id, false, "BUSY"); /* no task: only this is known synchronously; a codec init failure later is log-only */
+        } else {
+            link_send_ack(id, true, NULL);
         }
         break;
     default:

@@ -47,10 +47,12 @@ esp_err_t board_input_start(void);
 
 /* "Find Aelys": plays the 2 kHz beep pattern (200 ms on / 200 ms off, beep.h) through the ES8311 and the speaker for duration_ms, at most 60 s.
  * Returns at once: an `audio` task (priority 3) is created for it and deleted when the sound ends; the codec, the I2S channel and the amplifier
- * exist only while it plays, so nothing is held at idle. When the sound ends for any reason (time, board_audio_stop, an init error) the task posts
- * UI_EV_FIND with data[0] = 0. Called while it plays, it restarts the clock (the sound goes on for another duration_ms).
- * Call it from ONE task (the link task): it may wait a few tens of ms while the previous sound is torn down. ESP_ERR_NO_MEM when the task
- * cannot be created; ESP_ERR_INVALID_ARG for 0. */
+ * exist only while it plays, so nothing is held at idle. On success it posts UI_EV_FIND data[0] = 1 (the overlay); when the sound ends for any
+ * reason (time, board_audio_stop, an init error in the task) the task posts data[0] = 0. Both are posted under one lock, so a request that
+ * arrives while the previous sound is torn down still gets FIND(0) then FIND(1), in that order. Called while it plays, it restarts the clock
+ * (the sound goes on for another duration_ms). Call it from ONE task (the link task): it may wait a few tens of ms for the teardown.
+ * ESP_ERR_NO_MEM when the task cannot be created (nothing posted); ESP_ERR_INVALID_ARG for 0. A failure to start the codec or I2S cannot be
+ * known here: it ends the sound at once with FIND(0). */
 esp_err_t board_audio_beep(uint32_t duration_ms);
 /* Ends the sound within about 10 ms. Non-blocking, safe from any task (the ui task calls it on a tap) while the audio task runs; a no-op when
  * nothing plays. */

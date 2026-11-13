@@ -34,6 +34,7 @@ typedef struct {
     const audio_codec_data_if_t *data;
     const audio_codec_if_t *codec;
     esp_codec_dev_handle_t dev;
+    bool opened; /* esp_codec_dev_open succeeded: its close stops the I2S channel */
 } audio_t;
 
 static StaticSemaphore_t lock_buf;
@@ -50,7 +51,10 @@ static void audio_close(audio_t *a)
     if (a->ctrl) audio_codec_delete_ctrl_if(a->ctrl);                          /* removes the codec's device from the shared I2C bus */
     if (a->gpio) audio_codec_delete_gpio_if(a->gpio);
     if (a->data) audio_codec_delete_data_if(a->data);
-    if (a->tx) { i2s_channel_disable(a->tx); i2s_del_channel(a->tx); }         /* disable: already stopped by close, an error is fine */
+    if (a->tx) {
+        if (!a->opened) i2s_channel_disable(a->tx); /* never opened: the channel is still running (close stops it otherwise) */
+        i2s_del_channel(a->tx);
+    }
     *a = (audio_t){0};
 }
 
@@ -72,7 +76,8 @@ static esp_err_t audio_open(audio_t *a)
     audio_codec_i2s_cfg_t ic = { .port = I2S_PORT, .tx_handle = a->tx };
     a->data = audio_codec_new_i2s_data(&ic);
     a->gpio = audio_codec_new_gpio();
-    audio_codec_i2c_cfg_t cfg_i2c = { .port = I2C_NUM_0, .addr = I2C_ADDR_ES8311 << 1, .bus_handle = board_i2c_bus() };
+    audio_codec_i2c_cfg_t cfg_i2c = { .port = I2C_NUM_0, .addr = I2C_ADDR_ES8311 << 1, .bus_handle = board_i2c_bus(),
+                                      .clock_speed_hz = 400000 }; /* like the other devices on the bus */
     a->ctrl = audio_codec_new_i2c_ctrl(&cfg_i2c);
     if (!a->data || !a->gpio || !a->ctrl) return ESP_ERR_NO_MEM;
     es8311_codec_cfg_t ec = {
@@ -87,14 +92,16 @@ static esp_err_t audio_open(audio_t *a)
     if (!a->dev) return ESP_ERR_NO_MEM;
     esp_codec_dev_sample_info_t fs = { .bits_per_sample = 16, .channel = 2, .sample_rate = BEEP_RATE_HZ };
     if (esp_codec_dev_open(a->dev, &fs) != ESP_CODEC_DEV_OK) return ESP_FAIL; /* also switches the amplifier on */
+    a->opened = true;
     esp_codec_dev_set_out_vol(a->dev, BEEP_VOLUME);
     return ESP_OK;
 }
 
-/* The ui task drains this queue; the end of a sound must reach it or the overlay would stay up. */
-static void post_find_off(void)
+/* The ui task drains this queue; both ends of a sound must reach it or the overlay would be wrong. Always posted under `lock`: the old
+ * sound's FIND(0) goes out before the lock is released, a new request's FIND(1) after it is taken, so the ui task sees them in that order. */
+static void post_find(bool on)
 {
-    ui_event_t ev = { .type = UI_EV_FIND, .len = 1, .data = {0} };
+    ui_event_t ev = { .type = UI_EV_FIND, .len = 1, .data = { on } };
     for (int i = 0; i < 50 && !lv_port_post(&ev); i++) vTaskDelay(pdMS_TO_TICKS(10));
 }
 
@@ -133,7 +140,7 @@ static void audio_task(void *arg)
     ESP_LOGW(TAG, "end: stack_free=%u free_internal=%u", (unsigned)uxTaskGetStackHighWaterMark(NULL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL)); /* before the task's own memory is freed */
     task = NULL;
-    post_find_off(); /* before the lock is given back: a new request's UI_EV_FIND(1) can only come after this */
+    post_find(false);
     xSemaphoreGive(lock);
     vTaskDelete(NULL);
 }
@@ -151,6 +158,7 @@ esp_err_t board_audio_beep(uint32_t duration_ms)
         task = NULL;
         e = ESP_ERR_NO_MEM;
     }
+    if (e == ESP_OK) post_find(true); /* the overlay follows the sound; a later init failure ends it with the task's FIND(0) */
     xSemaphoreGive(lock);
     return e;
 }
