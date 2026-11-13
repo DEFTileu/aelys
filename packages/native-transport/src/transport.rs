@@ -2063,21 +2063,25 @@ async fn establish_device(
     )
     .await
 }
-async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Session, String> {
+struct DeviceChallenge {
+    challenge_id: String,
+    nonce: String,
+}
+async fn device_challenge(
+    client: &Client,
+    origin: &str,
+    device_id: &str,
+) -> Result<DeviceChallenge, String> {
     #[derive(Deserialize)]
     struct Challenge {
         challenge_id: String,
         nonce: String,
     }
-    let key = old
-        .device_key
-        .as_ref()
-        .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
     let challenge: Challenge = request(
         client,
         Method::POST,
         &format!("{origin}/api/v1/auth/device/challenge"),
-        Some(json!({"device_id":old.device_id})),
+        Some(json!({"device_id":device_id})),
         None,
     )
     .await?;
@@ -2087,6 +2091,17 @@ async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Se
     {
         return Err(err("INVALID_RESPONSE"));
     }
+    Ok(DeviceChallenge {
+        challenge_id: challenge.challenge_id,
+        nonce: challenge.nonce,
+    })
+}
+async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Session, String> {
+    let key = old
+        .device_key
+        .as_ref()
+        .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
+    let challenge = device_challenge(client, origin, &old.device_id).await?;
     let message = format!(
         "aelys-device-login-v1\n{}\n{}",
         old.device_id, challenge.nonce
@@ -2098,6 +2113,81 @@ async fn resume_device(client: &Client, origin: &str, old: &Record) -> Result<Se
         return Err(err("INVALID_RESPONSE"));
     }
     Ok(session)
+}
+#[derive(Serialize, Debug)]
+pub struct ReauthProof {
+    challenge_id: String,
+    signature: String,
+}
+fn reauth_prefix(purpose: &str) -> Result<&'static str, String> {
+    match purpose {
+        "lost_off" => Ok("aelys-companion-lost-off-v1"),
+        "unpair" => Ok("aelys-companion-unpair-v1"),
+        _ => Err(err("INVALID_REQUEST")),
+    }
+}
+async fn reauth_challenge(
+    client: &Client,
+    origin: &str,
+    device_id: &str,
+    key: &crate::device_key::DeviceKey,
+    prefix: &str,
+    target: &str,
+) -> Result<ReauthProof, String> {
+    let challenge = device_challenge(client, origin, device_id).await?;
+    let message = format!("{prefix}\n{target}\n{}", challenge.nonce);
+    Ok(ReauthProof {
+        signature: key.sign(message.as_bytes())?,
+        challenge_id: challenge.challenge_id,
+    })
+}
+/// Fresh biometric-gated signature from this device's own key, proving the
+/// owner is present for a companion lost-mode-off or unpair of `target_device_id`.
+#[tauri::command]
+pub async fn native_device_reauth(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    origin: String,
+    purpose: String,
+    target_device_id: String,
+) -> Result<ReauthProof, String> {
+    check_window(&window)?;
+    let origin = origin_fn(&origin)?;
+    let prefix = reauth_prefix(&purpose)?;
+    if !valid_id(&target_device_id) {
+        return Err(err("INVALID_REQUEST"));
+    }
+    // Copy the key out so the session lock is not held across the biometric prompt.
+    let (device_id, key) = {
+        let guard = state.0.lock().await;
+        let session = guard
+            .as_ref()
+            .filter(|s| s.origin == origin)
+            .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
+        let key = session
+            .record
+            .device_key
+            .clone()
+            .ok_or_else(|| err("SIGN_IN_REQUIRED"))?;
+        (session.record.device_id.clone(), key)
+    };
+    tauri::async_runtime::spawn_blocking(|| {
+        if crate::biometric::available() {
+            crate::biometric::authenticate()?;
+        }
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|_| err("BIOMETRIC_UNAVAILABLE"))??;
+    reauth_challenge(
+        &client()?,
+        &origin,
+        &device_id,
+        &key,
+        prefix,
+        &target_device_id,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn native_enroll(
@@ -5016,5 +5106,65 @@ mod tests {
         assert!(decode_upload(&op("POST", UPLOAD_PATH, "audio/wav", max, Value::Null)).is_ok());
         let over = STANDARD.encode(vec![0u8; MAX_UPLOAD + 1]);
         bad(op("POST", UPLOAD_PATH, "audio/wav", over, Value::Null));
+    }
+    #[test]
+    fn reauth_signs_the_purpose_message_for_the_own_device_challenge() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 4096];
+            let n = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..n]).into_owned();
+            let body = r#"{"challenge_id":"chal-1","nonce":"nonce-abc"}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+            request
+        });
+        let key = crate::device_key::DeviceKey::generate().unwrap();
+        for (purpose, prefix) in [("lost_off", "lost-off"), ("unpair", "unpair")] {
+            assert_eq!(
+                reauth_prefix(purpose).unwrap(),
+                format!("aelys-companion-{prefix}-v1")
+            );
+        }
+        let proof = tauri::async_runtime::block_on(reauth_challenge(
+            &client().unwrap(),
+            &url,
+            "own-device",
+            &key,
+            "aelys-companion-lost-off-v1",
+            "target-dev",
+        ))
+        .unwrap();
+        let request = server.join().unwrap();
+        assert!(request.starts_with("POST /api/v1/auth/device/challenge "));
+        assert!(request.contains(r#""device_id":"own-device""#));
+        assert_eq!(proof.challenge_id, "chal-1");
+        let verifier = ring::signature::UnparsedPublicKey::new(
+            &ring::signature::ECDSA_P256_SHA256_FIXED,
+            URL_SAFE_NO_PAD.decode(key.public_key().unwrap()).unwrap(),
+        );
+        let signature = URL_SAFE_NO_PAD.decode(&proof.signature).unwrap();
+        verifier
+            .verify(
+                b"aelys-companion-lost-off-v1\ntarget-dev\nnonce-abc",
+                &signature,
+            )
+            .unwrap();
+    }
+    #[test]
+    fn reauth_rejects_unknown_purposes() {
+        assert_eq!(reauth_prefix("login").unwrap_err(), "INVALID_REQUEST");
+        assert_eq!(reauth_prefix("").unwrap_err(), "INVALID_REQUEST");
+        assert_eq!(reauth_prefix("lost-off").unwrap_err(), "INVALID_REQUEST");
     }
 }

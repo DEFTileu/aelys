@@ -113,6 +113,8 @@ export function createNativeTransport(invoke: NativeInvoke, makeChannel?: Native
     authorizeKeychain: (origin: string, scope: KeychainScope) => invoke<boolean>('native_keychain_authorize', { origin, scope }),
     biometricStatus: (origin: string) => invoke<BiometricStatus>('native_biometric_status', { origin }),
     setBiometric: (origin: string, enabled: boolean) => invoke<BiometricStatus>('native_biometric_set', { origin, enabled }),
+    deviceReauth: (origin: string, purpose: 'lost_off' | 'unpair', targetDeviceId: string) =>
+      invoke<{ challenge_id: string; signature: string }>('native_device_reauth', { origin, purpose, targetDeviceId }),
     health: (origin: string) => invoke<boolean>('native_health', { origin }),
     login: (origin: string, email: string, password: string, bootstrap = false) =>
       invoke<NativeStatus>('native_login', { origin, email, password, bootstrap }),

@@ -80,6 +80,7 @@ pub fn run() {
             native::native_health,
             native::native_biometric_status,
             native::native_biometric_set,
+            native::native_device_reauth,
             native::native_keychain_authorize,
             native::native_login,
             native::native_enroll,

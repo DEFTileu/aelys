@@ -86,4 +86,15 @@ describe('native transport', () => {
       ['native_biometric_set', { origin: 'https://aelys.example', enabled: true }],
     ])
   })
+  it('asks native code to sign a companion re-auth challenge', async () => {
+    const proof = { challenge_id: 'challenge-1', signature: 'sig' }
+    const invoke = vi.fn(async () => proof)
+    const transport = createNativeTransport(invoke as NativeInvoke)
+    expect(await transport.deviceReauth('https://aelys.example', 'lost_off', 'dev-1')).toEqual(proof)
+    await transport.deviceReauth('https://aelys.example', 'unpair', 'dev-1')
+    expect(invoke.mock.calls).toEqual([
+      ['native_device_reauth', { origin: 'https://aelys.example', purpose: 'lost_off', targetDeviceId: 'dev-1' }],
+      ['native_device_reauth', { origin: 'https://aelys.example', purpose: 'unpair', targetDeviceId: 'dev-1' }],
+    ])
+  })
 })
