@@ -112,3 +112,11 @@ this path adds decoder allocations and substantial memory pressure. The UI
 prototype is not enabled; its diagnostic patch and allocator-fault test are in
 the ignored S2 ledger. No assertion was disabled. A recoverable drawing path,
 transition and draw-order fidelity, and board measurements remain open.
+
+Directly compositing pixels from an object draw event was also investigated.
+In the pinned LVGL version, pending tasks can include blocked layer composites;
+the event is not itself an ordered draw task, and the effective object clip is
+internal state. The event's layer can also be an intermediate layer rather than
+the display strip. The current synchronous software configuration is therefore
+not sufficient evidence that direct buffer writes preserve clipping and draw
+order. This approach was not enabled.
