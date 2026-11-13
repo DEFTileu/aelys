@@ -8,7 +8,7 @@ import { GROUPS } from '../views/settings/useSettings'
 
 const m = vi.hoisted(() => ({
   base: 'https://aelys.example/api/v1', calls: [] as string[], supported: true,
-  board: { info: vi.fn(), state: vi.fn(), pairBegin: vi.fn(), pairCode: vi.fn(), pairCommit: vi.fn(), sendWifi: vi.fn(), close: vi.fn() },
+  board: { pairStatus: vi.fn(), info: vi.fn(), state: vi.fn(), pairBegin: vi.fn(), pairCode: vi.fn(), pairCommit: vi.fn(), sendWifi: vi.fn(), close: vi.fn() },
   request: vi.fn(), requestPairing: vi.fn(), approve: vi.fn(), newSecret: vi.fn(),
 }))
 vi.mock('../lib/companion/serial', async (original) => ({ ...(await original<typeof import('../lib/companion/serial')>()), CompanionSerial: { supported: () => m.supported, request: m.request } }))
@@ -35,6 +35,7 @@ beforeEach(() => {
   m.board.pairCode.mockReset().mockImplementation(track('pairCode', undefined))
   m.board.pairCommit.mockReset().mockImplementation(track('pairCommit', undefined))
   m.board.sendWifi.mockReset().mockResolvedValue('ok')
+  m.board.pairStatus.mockReset().mockResolvedValue({ paired: false })
   m.board.close.mockReset().mockResolvedValue(undefined)
   m.requestPairing.mockReset().mockImplementation(track('requestPairing', { pairing_id: 'pid-1' }))
   m.approve.mockReset().mockImplementation(track('approve', { device_id: 'aaaaaaaa-0000-4000-8000-000000000001' }))
@@ -129,6 +130,83 @@ describe('Add companion', () => {
     expect(host.textContent).toContain('Aelys needs a secure (https) backend')
     expect(host.querySelector('button')).toBeNull()
     expect(m.request).not.toHaveBeenCalled()
+  })
+
+  const DEV = 'aaaaaaaa-0000-4000-8000-000000000001'
+  const pairWith = async () => { await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456'); await act(async () => button('Pair').click()) }
+
+  it('continues to Wi-Fi when a timed-out commit shows the board is paired with the same device', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT'))
+    m.board.pairStatus.mockResolvedValue({ paired: true, deviceId: DEV })
+    await pairWith()
+    expect(m.board.pairCommit).toHaveBeenCalledTimes(1)
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('retries a timed-out commit once when the board is not paired', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT'))
+    await pairWith()
+    expect(m.board.pairCommit).toHaveBeenCalledTimes(2)
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('restarts with honest copy when the board lost the pairing (NOT_PENDING)', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('NOT_PENDING'))
+    await pairWith()
+    expect(host.textContent).toContain('Aelys lost the pairing. Starting again.')
+    expect(host.textContent).not.toContain('The code expired')
+    expect(m.board.pairBegin.mock.calls.map((c) => c[0])).toEqual(['S1', 'S2'])
+    expect(document.activeElement).toBe(host.querySelector('input[aria-label="Digit 1"]'))
+  })
+
+  it('restarts after a second commit failure', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockRejectedValueOnce(new CompanionError('TIMEOUT'))
+    await pairWith()
+    expect(m.board.pairCommit).toHaveBeenCalledTimes(2)
+    expect(host.textContent).toContain('Aelys lost the pairing. Starting again.')
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(2)
+  })
+
+  it('closes the port when the page is left while the chooser is open', async () => {
+    let pick!: (b: typeof m.board) => void
+    m.request.mockReturnValue(new Promise((resolve) => { pick = resolve }))
+    await mount(); await act(async () => button('Connect Aelys').click())
+    act(() => root.unmount())
+    await act(async () => { pick(m.board) })
+    expect(m.board.close).toHaveBeenCalled()
+    expect(m.board.info).not.toHaveBeenCalled()
+  })
+
+  it('closes the port when the page is left during pairing', async () => {
+    let answer!: (k: string) => void
+    m.board.pairBegin.mockReturnValue(new Promise((resolve) => { answer = resolve }))
+    await mount(); await act(async () => button('Connect Aelys').click())
+    act(() => root.unmount())
+    await act(async () => { answer('PUB') })
+    expect(m.board.close).toHaveBeenCalled()
+    expect(m.requestPairing).not.toHaveBeenCalled()
+  })
+
+  it('treats a malformed backend address as not secure', async () => {
+    m.base = 'http://[bad'
+    await mount()
+    expect(host.textContent).toContain('Aelys needs a secure (https) backend')
+  })
+
+  it('submits the code with Enter, reveals the password and limits the network name to 32 bytes', async () => {
+    await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456')
+    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    const name = host.querySelector<HTMLInputElement>('input[aria-label="Network name"]')!
+    await setValue(name, 'é'.repeat(17)); expect(name.value).toBe('')
+    await setValue(name, 'é'.repeat(16)); expect(name.value).toBe('é'.repeat(16))
+    const password = host.querySelector<HTMLInputElement>('input[aria-label="Password"]')!
+    expect(password.type).toBe('password')
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Show password"]')!.click())
+    expect(password.type).toBe('text')
+    expect(host.querySelector('button[aria-label="Hide password"]')).not.toBeNull()
   })
 
   it('devices nav item sits between Connection and Security', () => {

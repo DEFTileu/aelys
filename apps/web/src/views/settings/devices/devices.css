@@ -10,3 +10,4 @@
 .dv-digit:nth-child(4) { margin-left: 10px; }
 .dv-actions { display: flex; gap: 10px; }
 .dv-actions .st-btn--primary { width: auto; }
+.dv-form { display: flex; flex-direction: column; gap: 10px; }
