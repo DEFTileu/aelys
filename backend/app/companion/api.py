@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.companion.actions import ActionIn, ActionResult, run_action
+from app.companion.commands import router as commands_router
 from app.companion.snapshot import CompanionSnapshot, build_snapshot
 from app.core.db import get_db
 from app.core.security import current_principal
@@ -10,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/companion", tags=["companion"])
+router.include_router(commands_router)
 
 
 def _companion_device(principal):

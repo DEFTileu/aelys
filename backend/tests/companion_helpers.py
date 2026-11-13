@@ -52,9 +52,9 @@ def bearer(session):
     return {'Authorization': f"Bearer {session['access_token']}"}
 
 
-async def pair_companion(client):
+async def pair_companion(client, owner_key=None):
     """Pair a board through the request flow; returns the owner session, the board's key and its device id."""
-    _, owner = await claim_owner(client)
+    _, owner = await claim_owner(client, owner_key)
     secret, secret_hash = new_secret()
     board = Key()
     request = (await client.post(f'{B}/pairing/request', json={'secret_hash': secret_hash, 'public_key': board.public, 'platform': 'companion', 'display_name': 'Desk'})).json()

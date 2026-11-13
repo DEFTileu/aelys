@@ -20,6 +20,7 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 CHANNEL = f'{B}/devices/channel'
+C1, C2 = str(uuid.uuid4()), str(uuid.uuid4())
 
 
 @pytest_asyncio.fixture
@@ -158,26 +159,26 @@ async def test_hello_flushes_pending_commands_until_acked(paired):
     async with db.SessionLocal() as session:
         device = await session.get(Device, device_id)
         session.add(CompanionState(device_id=device_id, owner_id=device.owner_id, pending_commands_json=[
-            {'id': 'c-1', 'name': 'lost_mode', 'args': {'on': True, 'message': 'hi', 'show_phone': False, 'show_telegram': False}},
-            {'id': 'c-2', 'name': 'ice_update', 'args': {'contacts': [], 'med_note': '', 'show_name': False}}]))
+            {'id': C1, 'name': 'lost_mode', 'args': {'on': True, 'message': 'hi', 'show_phone': False, 'show_telegram': False}},
+            {'id': C2, 'name': 'ice_update', 'args': {'contacts': [], 'med_note': '', 'show_name': False}}]))
         await session.commit()
     hello = {'type': 'hello', 'fw_version': '0.4.1', 'board': 'esp32-s3-n16r8', 'features': ['display']}
     with TestClient(app) as client:
         with board(client, token) as socket:
             socket.send_json(hello)
             first, second = socket.receive_json(), socket.receive_json()
-            assert (first['type'], first['id'], first['name']) == ('command', 'c-1', 'lost_mode') and first['args']['on'] is True
-            assert (second['id'], second['name']) == ('c-2', 'ice_update')
-            socket.send_json({'type': 'command_ack', 'id': 'c-1', 'ok': True})
+            assert (first['type'], first['id'], first['name']) == ('command', C1, 'lost_mode') and first['args']['on'] is True
+            assert (second['id'], second['name']) == (C2, 'ice_update')
+            socket.send_json({'type': 'command_ack', 'id': C1, 'ok': True})
             socket.send_json({'type': 'heartbeat'})  # replies are ordered, so once this answers the ack was handled
             assert socket.receive_json() == {'type': 'heartbeat_ack'}
         with board(client, token) as socket:  # the unacked command comes again
             socket.send_json(hello)
             again = socket.receive_json()
-            assert again['id'] == 'c-2'
+            assert again['id'] == C2
     row = await state_of(device_id)
     assert row.fw_version == '0.4.1' and row.board == 'esp32-s3-n16r8' and row.last_hello_at is not None
-    assert [c['id'] for c in row.pending_commands_json] == ['c-2']
+    assert [c['id'] for c in row.pending_commands_json] == [C2]
 
 
 @pytest.mark.asyncio
@@ -379,3 +380,23 @@ async def test_real_server_delivers_close_codes_after_the_handshake(paired):
         assert await real_close_code(server.port, owner['access_token']) == 4403  # a macOS device, not a companion
         # An expired token is rejected by decode_token, so exp=-10 never reaches the session lookup.
         assert await real_close_code(server.port, expired) == 4401
+
+
+@pytest.mark.asyncio
+async def test_hello_skips_malformed_pending_entries(paired, caplog):
+    _, device_id, token = paired
+    good = {'id': str(uuid.uuid4()), 'name': 'ice_update', 'args': {'contacts': [], 'med_note': 'SECRET', 'show_name': False}}
+    bad = [{'id': 'c-1', 'name': 'lost_mode', 'args': {}}, {'id': str(uuid.uuid4()), 'name': 'reboot', 'args': {}},
+           {'id': str(uuid.uuid4()), 'name': 'lost_mode', 'args': []}, 'junk', {'id': str(uuid.uuid4()), 'name': 'wifi_scan'}]
+    async with db.SessionLocal() as session:
+        device = await session.get(Device, device_id)
+        session.add(CompanionState(device_id=device_id, owner_id=device.owner_id, pending_commands_json=[*bad, good]))
+        await session.commit()
+    with caplog.at_level('DEBUG'), TestClient(app) as client, board(client, token) as socket:
+        socket.send_json({'type': 'hello', 'fw_version': '1', 'board': 'b', 'features': []})
+        assert socket.receive_json()['id'] == good['id']
+        socket.send_json({'type': 'command_ack', 'id': good['id'], 'ok': True})
+        socket.send_json({'type': 'heartbeat'})
+        assert socket.receive_json() == {'type': 'heartbeat_ack'}  # still alive: no reconnect loop
+    assert 'SECRET' not in caplog.text
+    assert (await state_of(device_id)).pending_commands_json == []  # the ack also swept the junk

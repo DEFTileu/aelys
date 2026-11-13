@@ -19,14 +19,13 @@ from typing import Any
 
 from app.companion.actions import ActionIn, run_action
 from app.companion.hub import hub
-from app.companion.models import CompanionState
+from app.companion.state import locked_state, valid_command
 from app.core import db as core_db
 from app.core.models import AuthSession, Device
 from app.core.security import decode_token
 from fastapi import APIRouter, WebSocket
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -77,22 +76,17 @@ class _Link:
     close: Callable[[int], Awaitable[None]]
 
 
-async def _state(db: AsyncSession, link: _Link) -> CompanionState:
-    row = await db.get(CompanionState, link.device_id)
-    if row is None:
-        row = CompanionState(device_id=link.device_id, owner_id=link.owner_id, pending_commands_json=[])
-        db.add(row)
-    return row
-
-
 async def _hello(link: _Link, message: dict) -> None:
     body = HelloIn.model_validate(message)
     async with core_db.SessionLocal() as db:
-        row = await _state(db, link)
+        row = await locked_state(db, link.device_id, link.owner_id)
         row.fw_version, row.board, row.last_hello_at = body.fw_version, body.board, datetime.now(UTC)
-        await db.commit()
         pending = list(row.pending_commands_json or [])
+        await db.commit()
     for command in pending:  # kept until the board acks them
+        if not valid_command(command):
+            logger.warning("companion skipped a malformed pending command device=%s", link.device_id)
+            continue
         await link.reply({"type": "command", "id": command["id"], "name": command["name"], "args": command["args"]})
 
 
@@ -106,16 +100,17 @@ async def _heartbeat(link: _Link, message: dict) -> None:
 async def _metrics(link: _Link, message: dict) -> None:
     body = MetricsIn.model_validate(message)
     async with core_db.SessionLocal() as db:
-        (await _state(db, link)).last_metrics_json = body.model_dump()
+        (await locked_state(db, link.device_id, link.owner_id)).last_metrics_json = body.model_dump()
         await db.commit()
 
 
 async def _command_ack(link: _Link, message: dict) -> None:
     body = CommandAckIn.model_validate(message)
     async with core_db.SessionLocal() as db:
-        row = await _state(db, link)
+        row = await locked_state(db, link.device_id, link.owner_id)
         # A new list: JSON columns don't track in-place edits.
-        row.pending_commands_json = [c for c in row.pending_commands_json or [] if c.get("id") != body.id]
+        # Malformed leftovers go too: they could never be delivered.
+        row.pending_commands_json = [c for c in row.pending_commands_json or [] if valid_command(c) and c["id"] != body.id]
         await db.commit()
 
 
@@ -123,7 +118,7 @@ async def _wifi_scan_result(link: _Link, message: dict) -> None:
     body = WifiScanResultIn.model_validate(message)
     async with core_db.SessionLocal() as db:
         # The result is the wifi_scan command's ack; wifi_scan is never queued, so nothing is left to drop.
-        (await _state(db, link)).last_wifi_scan_json = {**body.model_dump(), "received_at": datetime.now(UTC).isoformat()}
+        (await locked_state(db, link.device_id, link.owner_id)).last_wifi_scan_json = {**body.model_dump(), "received_at": datetime.now(UTC).isoformat()}
         await db.commit()
 
 
