@@ -400,3 +400,11 @@ async def test_hello_skips_malformed_pending_entries(paired, caplog):
         assert socket.receive_json() == {'type': 'heartbeat_ack'}  # still alive: no reconnect loop
     assert 'SECRET' not in caplog.text
     assert (await state_of(device_id)).pending_commands_json == []  # the ack also swept the junk
+
+
+@pytest.mark.asyncio
+async def test_agents_channel_rejects_a_companion_token(paired):
+    _, _, token = paired
+    with TestClient(app) as client, pytest.raises(WebSocketDisconnect) as info, client.websocket_connect(f'{B}/agents/channel', headers=headers(token)) as socket:
+        socket.receive_json()
+    assert info.value.code == 4403
