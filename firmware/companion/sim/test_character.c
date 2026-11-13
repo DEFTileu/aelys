@@ -107,7 +107,7 @@ static void test_all_events(void)
     const character_mood_t mood[] = {CHAR_CALM, CHAR_DIZZY, CHAR_FRIGHTENED, CHAR_CURIOUS,
         CHAR_SURPRISED, CHAR_TICKLED, CHAR_TENDER, CHAR_IRRITATED, CHAR_CURIOUS, CHAR_FRIGHTENED,
         CHAR_JOY, CHAR_ELATION, CHAR_RELIEF, CHAR_ATTENTION, CHAR_RECONNECTED, CHAR_WAKING,
-        CHAR_CURIOUS, CHAR_BASHFUL, CHAR_DISAPPOINTED};
+        CHAR_CURIOUS, CHAR_BASHFUL, CHAR_DISAPPOINTED, CHAR_ATTENTION};
     character_state_t s; character_inputs_t i = normal();
     for (int e = 1; e < CHAR_EVENT_COUNT; ++e) {
         character_init(&s); character_event(&s, (character_event_t)e, 0);

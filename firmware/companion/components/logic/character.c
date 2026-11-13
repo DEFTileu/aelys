@@ -27,6 +27,7 @@ static const event_rule_t EVENTS[CHAR_EVENT_COUNT] = {
     [CHAR_EVENT_TILT] = {CHAR_CURIOUS, WHY_TILT, CUE_NONE, false},
     [CHAR_EVENT_HOLD] = {CHAR_BASHFUL, WHY_HOLD, CUE_NONE, false},
     [CHAR_EVENT_RESCHEDULE] = {CHAR_DISAPPOINTED, WHY_RESCHEDULE, CUE_NONE, false},
+    [CHAR_EVENT_ATTENTION] = {CHAR_ATTENTION, WHY_TOUCH, CUE_NONE, false},
 };
 
 void character_init(character_state_t *s)

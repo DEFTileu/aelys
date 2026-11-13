@@ -28,3 +28,12 @@ at night. The cue renderer and UI cue callback compile only in the host
 simulator; they do not open an audio device and are excluded from firmware.
 The five cue sounds are provisional pending owner review. Further gesture and
 sensor event producers arrive in later stages.
+
+Character scenarios exercise actual UI events and can be saved as BMP files:
+
+```sh
+firmware/companion/sim/build/companion_sim --shot character_tap --out tap.bmp
+```
+
+Other scenarios are `character_surprise`, `character_sleep`, and
+`character_reconnected`. They use fake snapshot data and a simulated clock.

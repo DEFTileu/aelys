@@ -546,6 +546,61 @@ static void test_character_cue_delivery(void)
     sim_step(3100); ui_set_character_cue_sink(NULL); fresh_fx();
 }
 
+static void test_character_tap_and_idle(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    uint8_t day[] = {14, 32}; sim_post(UI_EV_TIME, day, 2);
+    fresh_fx(); touch_at(233, 233); post(UI_EV_RELEASE); sim_step(3100);
+    ui_set_character_cue_sink(capture_cue); cue_count = 0;
+    character_mood_t before = ui_character_last().mood;
+    post(UI_EV_TOUCH); /* malformed down must not make a later tap a physical reaction */
+    const uint8_t coords[] = {233, 0, 233, 0};
+    sim_post(UI_EV_TAP, coords, 4); post(UI_EV_RELEASE);
+    CHECK_EQ(ui_character_last().mood, before);
+    touch_at(233, 233); before = ui_character_last().mood;
+    post(UI_EV_TAP); /* malformed lift consumes the earlier touch */
+    sim_post(UI_EV_TAP, coords, 4); post(UI_EV_RELEASE);
+    CHECK_EQ(ui_character_last().mood, before);
+    tap_at(233, 233);
+    CHECK_EQ(ui_character_last().mood, CHAR_ATTENTION);
+    CHECK_EQ(ui_character_last().why, WHY_TOUCH);
+    CHECK_EQ(scr_home_mood(), MOOD_ATTENTION); CHECK_EQ(cue_count, 0);
+    sim_step(3100); sim_step(301000);
+    tap_at(233, 233);
+    CHECK_EQ(ui_character_last().mood, CHAR_SURPRISED);
+    CHECK_EQ(scr_home_mood(), MOOD_SURPRISED);
+    CHECK_EQ(cue_count, 1); CHECK_EQ(last_cue, CUE_SURPRISE);
+    sim_step(3100); uint8_t night[] = {23, 0}; sim_post(UI_EV_TIME, night, 2);
+    sim_step(601000);
+    CHECK_EQ(ui_character_last().mood, CHAR_SLEEPING);
+    CHECK_EQ(ui_character_last().why, WHY_NIGHT_SLEEP);
+    tap_at(233, 233);
+    CHECK_EQ(ui_character_last().mood, CHAR_SURPRISED);
+    CHECK_EQ(cue_count, 1); /* night is always quiet */
+    sim_step(3100); sim_post(UI_EV_TIME, day, 2); ui_set_character_cue_sink(NULL); fresh_fx();
+    /* More than one 32-bit millisecond cycle without interaction must not
+       turn a long-idle character suddenly attentive again. */
+    touch_at(233, 233); post(UI_EV_RELEASE);
+    sim_step(2100000000u); sim_step(2100000000u); sim_step(96000000u);
+    sim_post(UI_EV_TIME, day, 2);
+    CHECK_EQ(ui_character_last().mood, CHAR_BORED);
+    CHECK_EQ(ui_character_last().why, WHY_BORED);
+    touch_at(233, 233); post(UI_EV_RELEASE); fresh_fx();
+}
+
+static void test_character_reconnected(void)
+{
+    fresh_fx(); sim_step(3100);
+    link_state(LINK_UI_OFFLINE); CHECK_EQ(ui_character_last().mood, CHAR_OFFLINE);
+    link_state(LINK_UI_ONLINE);
+    CHECK_EQ(ui_character_last().mood, CHAR_RECONNECTED);
+    CHECK_EQ(ui_character_last().why, WHY_RECONNECTED);
+    CHECK_EQ(scr_home_mood(), MOOD_RECONNECTED);
+    link_state(LINK_UI_ONLINE); sim_step(3100);
+    CHECK(ui_character_last().mood != CHAR_RECONNECTED);
+    fresh_fx();
+}
+
 static void test_character_home_integration(void)
 {
     CHECK_EQ(ui_current_screen(), SCR_HOME);
@@ -1430,6 +1485,8 @@ int main(void)
     test_home_larger_face();
     test_all_large_home_moods();
     test_character_cue_delivery();
+    test_character_tap_and_idle();
+    test_character_reconnected();
     test_character_home_integration();
     test_last_task_reaction();
     test_today_shot();

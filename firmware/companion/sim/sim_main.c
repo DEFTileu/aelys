@@ -93,6 +93,20 @@ static int companion_shot(const char *shot)
         return 0;
     }
     fx_post(&s, 1);
+    if (!strncmp(shot, "character_", 10)) {
+        post_ev(UI_EV_WIFI, UI_WIFI_ONLINE);
+        if (!strcmp(shot, "character_sleep")) {
+            const uint8_t night[] = {23, 0}; sim_post(UI_EV_TIME, night, 2);
+            sim_step(601000);
+        } else if (!strcmp(shot, "character_reconnected")) {
+            post_ev(UI_EV_LINK, LINK_UI_OFFLINE); post_ev(UI_EV_LINK, LINK_UI_ONLINE);
+        } else if (!strcmp(shot, "character_tap") || !strcmp(shot, "character_surprise")) {
+            if (!strcmp(shot, "character_surprise")) sim_step(301000);
+            const uint8_t point[] = {233, 0, 233, 0};
+            sim_post(UI_EV_TOUCH, point, 4); sim_post(UI_EV_TAP, point, 4); sim_post(UI_EV_RELEASE, NULL, 0);
+        } else return -1;
+        return 0;
+    }
     if (!strcmp(shot, "today")) sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
     else if (!strcmp(shot, "inbox")) {
         sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
@@ -107,7 +121,7 @@ static int companion_shot(const char *shot)
 
 static int screen_shot(const char *shot)
 {
-    if (!strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
+    if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
         !strncmp(shot, "focus_", 6))
         return companion_shot(shot);
     static owner_info_t owner;

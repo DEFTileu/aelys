@@ -67,3 +67,4 @@ add_test(NAME sim_shot_smoke COMMAND companion_sim --shot face:happy --out ${CMA
 add_test(NAME sim_cue_smoke COMMAND companion_sim --cue joy --out ${CMAKE_BINARY_DIR}/joy.wav)
 add_test(NAME sim_event_cue_smoke COMMAND companion_sim --event-cue task-complete --out ${CMAKE_BINARY_DIR}/event-joy.wav)
 add_test(NAME sim_event_cue_night COMMAND ${CMAKE_COMMAND} -DSIM_EXE=$<TARGET_FILE:companion_sim> -P ${CMAKE_CURRENT_SOURCE_DIR}/test_cue_silence.cmake)
+add_test(NAME sim_character_tap_smoke COMMAND companion_sim --shot character_tap --out ${CMAKE_BINARY_DIR}/character-tap.bmp)

@@ -13,6 +13,9 @@
 #define INBOX_TIMEOUT_MS 15000
 #define HOLD_STOP_MS 800
 #define REACTION_MS 3000
+#define SURPRISE_IDLE_MS 300000u /* provisional: five minutes */
+#define NIGHT_IDLE_MS 600000u    /* provisional: ten minutes */
+#define IDLE_MAX_MS 3600000u     /* saturation at the boredom threshold */
 
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
@@ -28,7 +31,8 @@ static struct {
 #endif
     character_result_t character_result;
     character_state_t character;
-    bool snap_valid;
+    bool snap_valid, touch_after_idle, touch_character_valid;
+    uint32_t idle_sample_ms, idle_elapsed_ms;
     bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
@@ -413,12 +417,25 @@ bool ui_probe_swipe(void)
 }
 #endif
 
+static uint32_t idle_advance(uint32_t now_ms)
+{
+    uint32_t delta = now_ms - g.idle_sample_ms;
+    g.idle_sample_ms = now_ms;
+    if (delta >= IDLE_MAX_MS - g.idle_elapsed_ms) g.idle_elapsed_ms = IDLE_MAX_MS;
+    else g.idle_elapsed_ms += delta;
+    return g.idle_elapsed_ms;
+}
+
 static void update_character(void)
 {
     bool link_known = g.link == LINK_UI_ONLINE || g.link == LINK_UI_OFFLINE;
     uint32_t now_ms = lv_tick_get();
     character_inputs_t inputs = ui_character_inputs(g.snap_valid ? g.snap : NULL, ui_now(), g.have_time, g.hh,
                                                     link_known, g.link == LINK_UI_ONLINE, g.snap_ms, now_ms);
+    uint32_t idle_ms = idle_advance(now_ms);
+    inputs.idle_known = true;
+    inputs.idle_seconds = idle_ms / 1000u;
+    inputs.no_touch_at_night = idle_ms >= NIGHT_IDLE_MS;
     g.character_result = character_select(&g.character, &inputs, now_ms);
 #ifndef ESP_PLATFORM
     if (character_cue_sink && g.character_result.cue != CUE_NONE) character_cue_sink(g.character_result.cue);
@@ -447,6 +464,7 @@ static void render(void)
 static void tick_timer_cb(lv_timer_t *t)
 {
     (void)t;
+    idle_advance(lv_tick_get());
     render();
 }
 
@@ -524,7 +542,8 @@ void ui_setup(void)
     if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
     g.lost = g.have_time = g.find = false;
-    g.snap_valid = false;
+    g.snap_valid = false; g.touch_after_idle = false; g.touch_character_valid = false;
+    g.idle_sample_ms = lv_tick_get(); g.idle_elapsed_ms = 0;
     character_init(&g.character);
     g.character_result = (character_result_t){CHAR_CALM, WHY_CALM, CUE_NONE};
     scr_find_show(false);
@@ -599,6 +618,18 @@ void ui_handle_event(const ui_event_t *ev)
     if (ev->type == UI_EV_COMBO_FIRE) g.probe_combo_active = false;
 #endif
     scr_t next = g.cur;
+    if (ev->type == UI_EV_TOUCH) {
+        g.touch_character_valid = ev->len >= 4 && !g.find && !g.lost && g.cur == SCR_HOME;
+    }
+    if (ev->type == UI_EV_TOUCH && ev->len >= 4) {
+        uint32_t now_ms = lv_tick_get();
+        g.touch_after_idle = idle_advance(now_ms) >= SURPRISE_IDLE_MS;
+        g.idle_elapsed_ms = 0;
+        if (!g.find && !g.lost && g.cur == SCR_HOME) render();
+    } else if (ev->type == UI_EV_BTN && ev->len >= 1) {
+        idle_advance(lv_tick_get());
+        g.idle_elapsed_ms = 0;
+    }
     if (g.find && ends_find(ev)) {
         g.find = false;
         scr_find_show(false);
@@ -646,13 +677,20 @@ void ui_handle_event(const ui_event_t *ev)
         render();
         return;
     }
-    case UI_EV_LINK:
+    case UI_EV_LINK: {
         if (ev->len < 1) return;
+        bool reconnected = g.link == LINK_UI_OFFLINE && ev->data[0] == LINK_UI_ONLINE && !g.lost;
         g.link = ev->data[0];
+        if (reconnected) {
+            character_event(&g.character, CHAR_EVENT_RECONNECTED, lv_tick_get());
+            update_character();
+            arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+        }
         scr_home_set_paired(ev->data[0] != LINK_UI_UNPAIRED);
         scr_home_set_welcome(ev->data[0] == LINK_UI_UNPAIRED);
         render();
         return;
+    }
     case UI_EV_PAIR: {
         if (ev->len < 1) return;
         ui_pair_t what = (ui_pair_t)ev->data[0];
@@ -699,15 +737,25 @@ void ui_handle_event(const ui_event_t *ev)
         next = screen_next(g.cur, g.lost, UI_EV_TOUCH);
         break;
     case UI_EV_RELEASE:
+        g.touch_character_valid = false;
         stop_timer(&g.hold_timer);
         return;
-    case UI_EV_TAP:
+    case UI_EV_TAP: {
+        bool physical_home_tap = g.touch_character_valid;
+        g.touch_character_valid = false;
         stop_timer(&g.hold_timer);
         /* a touch that began on another screen (it closed the ICE card) is not a tap on this one */
         if (g.lost && g.cur == SCR_LOST && g.down_scr == SCR_LOST) scr_lost_show_hint();
         if (g.lost || ev->len < 4 || g.down_scr != g.cur) return;
         on_tap((int32_t)(ev->data[0] | ev->data[1] << 8), (int32_t)(ev->data[2] | ev->data[3] << 8), &next);
+        if (g.cur == SCR_HOME && next == SCR_HOME && physical_home_tap) {
+            character_event(&g.character, g.touch_after_idle ? CHAR_EVENT_TOUCH : CHAR_EVENT_ATTENTION, lv_tick_get());
+            update_character();
+            arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+            render();
+        }
         break;
+    }
     case UI_EV_SWIPE_LEFT:
     case UI_EV_SWIPE_RIGHT:
         stop_timer(&g.hold_timer);
