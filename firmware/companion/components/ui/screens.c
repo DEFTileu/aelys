@@ -1,7 +1,7 @@
 /* Screen switching: home, Today, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
  * one active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress and a toast
- * sits on top. The snapshot (ui_snap_tb) is rendered into every screen by render(), on each event that can change it and
- * once a second (relative times, the focus countdown, the "due within 60 min" mood). */
+ * sits on top. The latest snapshot (ui_snap_tb) is rendered into the visible screen on entry, on events that can change
+ * it and once a second (relative times, the focus countdown, the "due within 60 min" mood). Hidden screens do no layout. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
 #include <string.h>
@@ -301,6 +301,7 @@ static void show(scr_t s)
     if (s == SCR_INBOX) arm_timer(&g.inbox_timer, inbox_timeout, INBOX_TIMEOUT_MS);
     else stop_timer(&g.inbox_timer);
     if (s != SCR_PAIR) stop_timer(&g.paired_timer);
+    render(); /* refresh before the first frame, including time spent away and snapshots received while hidden */
 }
 
 static void set_owner(const owner_info_t *o)
@@ -309,16 +310,19 @@ static void set_owner(const owner_info_t *o)
     scr_ice_set_owner(o);
 }
 
-/* Draw the newest snapshot into every screen. Idempotent and cheap: widgets only change when their text or colour does. */
+/* Only the visible screen needs labels and layout. The snapshot itself stays current even while a card hides it. */
 static void render(void)
 {
     const snap_t *s = g.snap ? g.snap : &empty_snap;
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
-    scr_home_set_snap(s, now, ui_mood_for(s, now, !offline, g.happy), offline);
-    scr_today_set(s, now);
-    scr_focus_set(s, g.snap_ms, lv_tick_get());
-    scr_inbox_set(s, now);
+    switch (g.cur) {
+    case SCR_HOME: scr_home_set_snap(s, now, ui_mood_for(s, now, !offline, g.happy), offline); break;
+    case SCR_TODAY: scr_today_set(s, now); break;
+    case SCR_FOCUS: scr_focus_set(s, g.snap_ms, lv_tick_get()); break;
+    case SCR_INBOX: scr_inbox_set(s, now); break;
+    default: break; /* lost mode, ICE and pairing have their own event-driven data */
+    }
 }
 
 static void tick_timer_cb(lv_timer_t *t)
@@ -409,7 +413,6 @@ void ui_setup(void)
     memset(g.read_id, 0, sizeof g.read_id);
     memset(g.pend_read, 0, sizeof g.pend_read);
     if (!g.tick_timer) g.tick_timer = lv_timer_create(tick_timer_cb, 1000, NULL);
-    render();
     show(SCR_HOME);
 }
 
