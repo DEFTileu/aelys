@@ -786,6 +786,7 @@ default and offers a per-message image-load action and plaintext fallback.
 Decision: ADR-029. Board channel messages, close codes, snapshot schema, action
 kinds and `rev` rules are defined once in [companion-protocol.md](companion-protocol.md);
 this section lists only the HTTP routes and the auth model.
+Routes and fields added in plan 3 (Wi-Fi remove/order, settings, restart, unpair, command log, contacts) are in "Plan 3 additions (v1.1)" of [companion-protocol.md](companion-protocol.md).
 
 ### Auth model
 

@@ -1,16 +1,16 @@
-# Companion firmware: carry-over after plan 1
+# Companion firmware: carry-over after plan 1 and plan 3
 
 Backend (plan 2) is done: pairing and login for a `companion` platform, the WebSocket channel, snapshots, actions, owner commands, revoke. Plan 3 (firmware link + app pages) consumes it as listed in "Plan 3 inputs" at the end of this file.
 
 Plan 1 (`docs/superpowers/plans/2026-11-12-companion-firmware-base.md`) is done. These points came out of its reviews and must be picked up later.
 
-## Contracts to change before plan 3
-- `UI_EV_OWNER` carries a pointer to a sender buffer. Today the only sender is synchronous at boot. Once data arrives from the app, the buffer must stay unchanged until the UI has copied it: double-buffer in the sender or have the UI acknowledge the copy.
-- With lost mode on, both the lost screen and the ICE card show `lost.shown`, so the lost-mode record must carry the ICE fields too.
-- Fonts are ASCII only. Names or messages from the app may be Cyrillic: add glyph ranges before showing them.
+## Contracts to change before plan 3 (done in plan 3)
+- [x] `UI_EV_OWNER` lifetime: owner data now goes through a triple buffer (`e9cf328`, ui/owner).
+- [x] ICE fields in the lost-mode record, so the lost screen and the ICE card agree (`5cb8ffe`, logic/owner + store).
+- [x] Cyrillic and Kazakh glyphs in the fonts (`891374e`, ui/fonts).
 
 ## Memory and TLS (plan 3)
-- Internal heap dips to 62 KB within ~12 s of Wi-Fi bring-up (steady ONLINE minimum 96.9 KB). Measure free heap at every reconnect and set `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y` (or the v6.1 equivalent) before adding the TLS/WebSocket channel.
+- [x] mbedTLS buffers allocate in PSRAM (`5a6db3e`, sdkconfig). Still to measure on the board: heap at every TLS connect and the dip after Wi-Fi bring-up (see `link-checklist.md`).
 
 ## Owner checks (done 2026-11-13)
 - Touch latency on real taps: median 27 ms, max 35 ms (budget 50 ms).
@@ -34,3 +34,16 @@ Plan 1 (`docs/superpowers/plans/2026-11-12-companion-firmware-base.md`) is done.
 - Action ids: the server requires a UUID v4 per action and treats a repeated `id` as the same action (stored result, no second effect). Reuse the id only when resending the same action after a lost reply; generate a fresh id when the user retries.
 - Commands never queued (`play_sound`, `wifi_add`, `wifi_scan`) arrive only while online; `wifi_scan` is answered by `wifi_scan_result`, not `command_ack`.
 - Send `hello` after `ready`/`snapshot`; pending commands are delivered after it. Frames are text only, at most 4 KB.
+
+## Carry-over after plan 3
+Code is done and reviewed, but nothing ran online yet: do `link-checklist.md` first. Then, for plan 4 or later:
+- Board is untested online: HTTP/TLS, ws fragment reassembly, close codes, `board_battery`, the Find audio path, brightness QSPI write, and the PWR = top key mapping. Trim the link (8 KB) and ws (6 KB) stacks after a real run. `heap_int_min` was 41 KB offline (below the plan 1 figure): explain it.
+- Failed-read tick FIFO can desync (assumes answers arrive in send order): carry the target id in `UI_EV_ACTION`. Two quick Start taps rely on the server's conflict error.
+- Unpair, lost mode and re-pair: `ice_update` can save the owner blob but not the lost one (stale ICE on the lost screen after a reboot); unpair writes `reset_revs` before the erase; an identity erase failure then restart is not handled; an unpaired lost board refuses re-pair (owner decision pending).
+- Wi-Fi: removing the network in use keeps it connected; a failed `wifi_add` save is invisible to the app; the 20 s "connecting" card is shorter than the 24 s worst case; "Wrong password" is also shown for a weak signal.
+- `play_sound` that fails to start is still acked ok; a held finger on a paused Focus can stop the session under the find overlay; the beep call can block the link task.
+- Link: a server that sends `ready` and then 4401 loops at login speed (counted as a rejection, only backed off); the link task blocks up to ~18 s in `wifi_add`; AXP2101 is read from two tasks; `lost.on` is read across tasks without a lock.
+- Web: an unpaired-then-erased device overview shows "Couldn't reach Aelys" on Back; no backend delete for an orphan approved device after a failed restart; QR picker still lists hidden targets; no focus trap in the reauth sheet.
+- Backend (B1): unpair not in the command log; today fields use the Telegram time zone and are not pushed at midnight; a failed send is logged as pending.
+- Alembic: B1 uses revision `0051_companion_v11`; plan 4 also creates a `0051_*` and retitles the protocol to v2, so whichever lands second needs one merge revision.
+- Spec items still out: OTA, coredump upload, power management, Sounds / Emotions / Other-apps / Name rows, focus break timer, device menu apps, SOS, USB pairing from the Mac app, NVS encryption.
