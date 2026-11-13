@@ -564,3 +564,27 @@ async def test_revocation_during_epoch_allocation_never_receives_snapshot(paired
         with pytest.raises(WebSocketDisconnect) as closed:
             socket.receive_json()
         assert closed.value.code == channel_module.DEVICE_CLOSE_CODE
+
+
+@pytest.mark.asyncio
+async def test_character_status_survives_real_socket_replacements(paired):
+    """A recent event survives a fresh connection without posing as its current state."""
+    owner, device_id, token = paired
+    with TestClient(app) as client:
+        for _ in range(4):
+            with board(client, token) as first:
+                first.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 0, 'mood': 'joy', 'reason': 'task_done'})
+                first.send_json({'type': 'heartbeat'})
+                assert first.receive_json()['type'] == 'heartbeat_ack'
+                with board(client, token) as second:
+                    with pytest.raises(WebSocketDisconnect) as closed:
+                        first.receive_json()
+                    assert closed.value.code == 4000
+                    url = f'{B}/companion/devices/{device_id}'
+                    assert client.get(url, headers=bearer(owner)).json()['character'] is None
+                    second.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 0, 'mood': 'calm', 'reason': 'calm'})
+                    second.send_json({'type': 'heartbeat'})
+                    assert second.receive_json()['type'] == 'heartbeat_ack'
+                    character = client.get(url, headers=bearer(owner)).json()['character']
+                    assert character['current']['reason'] == 'calm'
+                    assert character['recent']['reason'] == 'task_done'
