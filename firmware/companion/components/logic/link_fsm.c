@@ -7,6 +7,7 @@ void link_fsm_init(link_fsm_t *f, bool paired)
     f->st = paired ? LS_WAIT_NET : LS_UNPAIRED;
     f->backoff_ms = 0;
     f->login_rejects = 0;
+    f->stable = false;
 }
 
 /* 1 s x 2^n capped at 60 s, +-20 % jitter (80..120 %) taken from rnd. */
@@ -67,16 +68,21 @@ link_action_t link_next(link_fsm_t *f, link_event_t ev, int close_code, uint32_t
         return s == LS_CHECK ? go(f, LS_LOGIN, LA_LOGIN) : LA_NONE;
     case LE_WS_OPEN:
         if (s != LS_CONNECT) return LA_NONE;
+        f->stable = false; /* backoff and the reject count survive: only LE_WS_STABLE clears them */
+        return go(f, LS_ONLINE, LA_NONE);
+    case LE_WS_STABLE:
+        if (s != LS_ONLINE) return LA_NONE;
+        f->stable = true;
         f->backoff_ms = 0;
         f->login_rejects = 0;
-        return go(f, LS_ONLINE, LA_NONE);
+        return LA_NONE;
     case LE_WS_CLOSED:
         if (s != LS_CONNECT && s != LS_ONLINE) return LA_NONE;
         if (close_code == 4000) return go(f, LS_REPLACED, LA_NONE);
         if (close_code == 4401 || close_code == 4403) {
             link_state_t next = close_code == 4401 ? LS_LOGIN : LS_CHECK;
             link_action_t act = close_code == 4401 ? LA_LOGIN : LA_CHECK;
-            return s == LS_CONNECT ? early_reject(f, next, act, rnd, wait_ms) : go(f, next, act);
+            return (s == LS_CONNECT || !f->stable) ? early_reject(f, next, act, rnd, wait_ms) : go(f, next, act);
         }
         return backoff(f, rnd, wait_ms);
     case LE_TIMER:

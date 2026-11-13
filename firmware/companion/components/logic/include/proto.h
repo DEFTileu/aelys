@@ -50,7 +50,13 @@ typedef struct {
  * out->id and out->u.cmd.name set, so the caller can ack BAD_ARGS. In every other false case out->type == MSG_UNKNOWN. */
 bool proto_parse(const char *json, size_t len, proto_msg_t *out);
 
-size_t proto_hello(char *buf, size_t cap, const char *fw, const char *board, const char *phone, const char *telegram); /* phone/telegram NULL = omit */
+/* phone/telegram NULL or empty = omit that part; both omitted = no `contacts` key (the server keeps what it stored) */
+size_t proto_hello(char *buf, size_t cap, const char *fw, const char *board, const char *phone, const char *telegram);
+/* HTTP sign-in bodies (device auth). Output is written only on success; a value that does not fit is a failure. */
+bool proto_parse_challenge(const char *json, size_t len, char id[40], char nonce[80]);
+bool proto_parse_login(const char *json, size_t len, char *token, size_t cap); /* reads access_token only: a refresh token is never copied */
+bool proto_error_code(const char *json, size_t len, char code[32]);           /* FastAPI {"detail":{"code":...}}; false when there is none */
+
 size_t proto_heartbeat(char *buf, size_t cap);
 size_t proto_metrics(char *buf, size_t cap, const proto_metrics_t *m);
 size_t proto_action(char *buf, size_t cap, const char id[37], act_kind_t k, const char *target_id /* NULL for focus.* */, const char *focus_mode /* NULL = omit */);

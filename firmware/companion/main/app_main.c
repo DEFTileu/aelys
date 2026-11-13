@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_psram.h"
 #include "identity.h"
+#include "link.h"
 #include "metrics.h"
 #include "net.h"
 #include "owner.h"
@@ -22,6 +23,23 @@ static lost_state_t lost;
 static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi, home shows the welcome */
 
 static bool lost_is_on(void) { return lost.on; }
+
+#ifndef CONFIG_AELYS_NO_WIFI
+/* Link hooks. The command handlers are Task F9: until then every valid command is answered UNSUPPORTED. */
+static void on_command(const proto_msg_t *m) { link_send_ack(m->id, false, "UNSUPPORTED"); }
+static bool load_snap(snap_t *s) { return store_load_snap(s); }
+static void save_snap(const snap_t *s) { store_save_snap(s); }
+static const char *contact_phone(void) { return owner.phone; }
+static const char *contact_telegram(void) { return owner.telegram; }
+/* A new pairing or a wipe: the next account's rev counters start again, or its lost_mode/ice_update would be dropped as stale. */
+static void reset_revs(void)
+{
+    owner.ice_rev = 0;
+    lost.rev = 0;
+    store_save_owner(&owner);
+    store_save_lost(&lost);
+}
+#endif
 
 /* Runs in the ui task (LVGL lock held) before the first frame. */
 static void boot_ui_setup(void)
@@ -91,6 +109,12 @@ void app_main(void)
     err = net_start(&nstore);
     if (err != ESP_OK) ESP_LOGE(TAG, "net start: %s", esp_err_to_name(err));
     ESP_LOGW(TAG, "wifi started: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    /* after the ui task ran ui_setup (the snapshot buffer exists) and after net_start (Wi-Fi is up or coming up) */
+    static const link_deps_t ldeps = {.on_command = on_command, .save_snap = save_snap, .load_snap = load_snap,
+                                      .contact_phone = contact_phone, .contact_telegram = contact_telegram,
+                                      .load_wifi = store_load_wifi, .reset_revs = reset_revs};
+    err = link_start(&ldeps);
+    if (err != ESP_OK) ESP_LOGE(TAG, "link start: %s", esp_err_to_name(err));
 #endif
 
     metrics_start(CONFIG_AELYS_METRICS_PERIOD_S);

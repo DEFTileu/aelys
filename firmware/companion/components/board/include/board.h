@@ -13,6 +13,10 @@ extern "C" {
 esp_err_t board_init(void);
 i2c_master_bus_handle_t board_i2c_bus(void);
 
+/* Battery state of charge (0..100) and whether it is charging, from the AXP2101 fuel gauge. False when there is no
+ * battery or the PMIC does not answer; the outputs are then untouched. Safe from any task. */
+bool board_battery(uint8_t *pct, bool *charging);
+
 /* Starts the `ui` task (core 1, priority 6): LVGL init, display and buffers, then ui_setup() inside the
  * task, then lv_timer_handler() forever. Returns once ui_setup() has run (or on failure). */
 esp_err_t lv_port_start(void (*ui_setup)(void));

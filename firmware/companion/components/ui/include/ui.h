@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "lvgl.h"
 #include "owner.h"
+#include "snap.h"
 #include "tribuf.h"
 #include "ui_events.h"
 
@@ -32,6 +33,10 @@ void ui_setup(void);
  * NUL-terminates every string, calls tribuf_publish(), then posts UI_EV_OWNER (len 0); the UI reads
  * tribuf_latest(). The content is what the lost and ICE screens show: lost.on ? lost.shown : owner. */
 extern tribuf_t ui_owner_tb; /* owner_info_t */
+/* The companion snapshot (valid after ui_setup()). The link task fills tribuf_back(&ui_snap_tb), calls tribuf_publish(),
+ * then posts UI_EV_SNAPSHOT (data[0] = 1 live from the server, 0 restored from flash); the UI reads tribuf_latest().
+ * Rendering it is the UI's job; until the first publish the reader sees an all-zero snap_t. */
+extern tribuf_t ui_snap_tb; /* snap_t */
 void ui_handle_event(const ui_event_t *ev);
 
 #ifdef __cplusplus

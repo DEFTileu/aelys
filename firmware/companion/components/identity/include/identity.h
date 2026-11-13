@@ -1,9 +1,10 @@
 #pragma once
 /* The board's identity towards the Aelys backend: one P-256 key (PSA volatile key, imported from the pair
  * record), the pairing SAS code and Wi-Fi ECIES decryption. Persistence is injected, like net_store_t.
- * NOT thread-safe (no lock around the key, the pending key or the pair record). Today only the net task (USB
- * pairing in net_improv.c) calls it. When the link task (F7) signs, decrypts or reads the device id, it must either
- * take a mutex shared with every identity_* caller or have pairing routed through the link task. */
+ * Thread-safe: every entry point takes one recursive mutex (created by identity_init, which must run before any task
+ * uses identity). The net task (USB pairing) and the link task (sign-in) share it. The string pointers returned by
+ * identity_device_id/identity_api_url are only stable until the next pair or wipe: a task copies them with identity_ids().
+ */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -22,6 +23,8 @@ esp_err_t identity_init(const identity_store_t *st);
 bool identity_paired(void);
 const char *identity_device_id(void);  /* "" when unpaired */
 const char *identity_api_url(void);    /* "" when unpaired */
+/* Copies device id and api_url under the lock. ESP_ERR_INVALID_STATE when unpaired (outputs untouched). */
+esp_err_t identity_ids(char device_id[40], char url[129]);
 /* Public key (uncompressed point, base64url, 87 chars + NUL) of the pending key during pairing, else of the current key. */
 esp_err_t identity_pub_b64(char out[88]);
 /* New key in RAM only. ESP_ERR_INVALID_ARG unless api_url starts with "https://" and is <= 128 chars. */

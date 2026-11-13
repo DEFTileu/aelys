@@ -339,9 +339,11 @@ static bool parse_command(const P *p, proto_msg_t *out)
     return parse_args(p, find(p, 0, "args"), out->u.cmd.name, out);
 }
 
+/* shortcut: not re-entrant, only the link task parses; make it a parameter if that changes */
+static jsmntok_t toks[MAX_TOKENS];
+
 bool proto_parse(const char *json, size_t len, proto_msg_t *out)
 {
-    static jsmntok_t toks[MAX_TOKENS]; /* shortcut: not re-entrant, only the link task parses; make it a parameter if that changes */
     memset(out, 0, sizeof *out);
     out->type = MSG_UNKNOWN;
     if (len > MAX_FRAME) return false;
@@ -378,6 +380,51 @@ bool proto_parse(const char *json, size_t len, proto_msg_t *out)
     } else t = MSG_UNKNOWN;
     out->type = t;
     return true;
+}
+
+/* ------------------------------------------------------------ HTTP bodies */
+
+/* tokenizes one JSON object into toks; false when it is anything else */
+static bool http_obj(const char *json, size_t len, P *p)
+{
+    if (len == 0 || len > MAX_FRAME) return false;
+    jsmn_parser jp;
+    jsmn_init(&jp);
+    int n = jsmn_parse(&jp, json, len, toks, MAX_TOKENS);
+    if (n < 1 || toks[0].type != JSMN_OBJECT) return false;
+    p->js = json; p->t = toks; p->n = n;
+    return true;
+}
+
+bool proto_parse_challenge(const char *json, size_t len, char id[40], char nonce[80])
+{
+    P p;
+    char i[40], n[80];
+    if (!http_obj(json, len, &p) || !get_str(&p, 0, "challenge_id", i, sizeof i, S_REQ) || !i[0] ||
+        !get_str(&p, 0, "nonce", n, sizeof n, S_REQ) || !n[0]) return false;
+    memcpy(id, i, sizeof i);
+    memcpy(nonce, n, sizeof n);
+    return true;
+}
+
+bool proto_parse_login(const char *json, size_t len, char *token, size_t cap)
+{
+    P p;
+    if (cap == 0) return false;
+    if (!http_obj(json, len, &p) || !get_str(&p, 0, "access_token", token, cap, S_REQ) || !token[0]) {
+        token[0] = '\0';
+        return false;
+    }
+    return true;
+}
+
+bool proto_error_code(const char *json, size_t len, char code[32])
+{
+    P p;
+    int d;
+    code[0] = '\0';
+    if (!http_obj(json, len, &p) || (d = find(&p, 0, "detail")) < 0 || p.t[d].type != JSMN_OBJECT) return false;
+    return get_str(&p, d, "code", code, 32, S_REQ | S_TRUNC) && code[0];
 }
 
 /* ----------------------------------------------------------------- building */
@@ -438,10 +485,11 @@ size_t proto_hello(char *buf, size_t cap, const char *fw, const char *board, con
     wr(&w, "{\"type\":\"hello\",\"fw_version\":"); wq(&w, fw);
     wr(&w, ",\"board\":"); wq(&w, board);
     wr(&w, ",\"features\":[\"display\",\"speaker\",\"wifi_scan\"]");
-    if (phone || telegram) {
+    bool ph = phone && *phone, tg = telegram && *telegram; /* an empty part is left out: the server then keeps what it stored */
+    if (ph || tg) {
         wr(&w, ",\"contacts\":{");
-        if (phone) { wr(&w, "\"phone\":"); wq(&w, phone); }
-        if (telegram) { wr(&w, phone ? ",\"telegram\":" : "\"telegram\":"); wq(&w, telegram); }
+        if (ph) { wr(&w, "\"phone\":"); wq(&w, phone); }
+        if (tg) { wr(&w, ph ? ",\"telegram\":" : "\"telegram\":"); wq(&w, telegram); }
         wr(&w, "}");
     }
     wr(&w, "}");

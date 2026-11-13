@@ -40,3 +40,27 @@ esp_err_t board_init(void)
     board_power_init(); /* a silent PMIC is not fatal: the rails default to on */
     return board_display_init();
 }
+
+/* AXP2101 fuel gauge (datasheet / XPowersLib): 0x00 bit3 = battery present, 0x01 bits 7:5 = 001 charging,
+ * 0xA4 = state of charge in percent. A second device handle of its own: the input task keeps the first one. */
+#define AXP_STATUS1 0x00
+#define AXP_STATUS2 0x01
+#define AXP_SOC     0xA4
+
+bool board_battery(uint8_t *pct, bool *charging)
+{
+    static i2c_master_dev_handle_t dev;
+    if (!dev) {
+        const i2c_device_config_t cfg = {.dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = I2C_ADDR_AXP2101,
+                                         .scl_speed_hz = 400000};
+        if (i2c_master_bus_add_device(board_i2c_bus(), &cfg, &dev) != ESP_OK) { dev = NULL; return false; }
+    }
+    const uint8_t regs[] = {AXP_STATUS1, AXP_STATUS2, AXP_SOC};
+    uint8_t v[sizeof regs];
+    for (size_t i = 0; i < sizeof regs; i++)
+        if (i2c_master_transmit_receive(dev, &regs[i], 1, &v[i], 1, 50) != ESP_OK) return false;
+    if (!(v[0] & (1u << 3)) || v[2] > 100) return false; /* no battery, or a gauge that has not settled */
+    *pct = v[2];
+    *charging = (v[1] >> 5) == 0x01;
+    return true;
+}

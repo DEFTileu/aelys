@@ -12,6 +12,7 @@
 #include "freertos/task.h"
 #include "identity.h"
 #include "improv.h"
+#include "link.h"
 #include "net_priv.h"
 #include "ui_events.h"
 
@@ -27,8 +28,7 @@ static bool provisioning;
  * net task runs it next. Wiped as soon as it is taken. */
 static struct { bool set; char ssid[33], pass[65]; } pending;
 
-/* USB pairing, RAM only. The identity API is not thread-safe: today only this (net) task calls it; F7 must add a
- * mutex (see identity.h) or route pairing through the link task before the link task touches identity. */
+/* USB pairing, RAM only. identity is thread-safe (one mutex), so the link task may sign in while this task pairs. */
 static struct { bool active, coded; int64_t deadline_us; char secret[129]; } pair; /* secret is "" once the SAS was computed */
 
 static void send(uint8_t type, const uint8_t *data, size_t len)
@@ -161,6 +161,7 @@ static void handle_pair(const improv_frame_t *f)
         pair.active = pair.coded = false;
         post_pair(PAIR_UI_DONE, NULL);
         send_result(cmd, NULL, 0);
+        link_notify_paired(); /* resets the stored command revisions and signs in with the new identity */
         ESP_LOGW(TAG, "paired");
         break;
     }

@@ -487,6 +487,58 @@ static void test_wifi_state_escapes_ssid(void)
     CHECK_EQ(proto_wifi_state(b, 20, &l, NULL), 0);
 }
 
+static void test_hello_with_contacts(void)
+{
+    char b[512];
+    J j;
+    /* empty or missing contacts: the key is absent (a v1 hello keeps what the server stored) */
+    CHECK(proto_hello(b, sizeof b, "0.5.0", "board", "", "") > 0);
+    CHECK(strstr(b, "contacts") == NULL);
+    CHECK(proto_hello(b, sizeof b, "0.5.0", "board", NULL, "") > 0);
+    CHECK(strstr(b, "contacts") == NULL);
+    /* only one part present: only that key */
+    CHECK(proto_hello(b, sizeof b, "0.5.0", "board", "", "@owner") > 0);
+    jload(&j, b);
+    int c = jkey(&j, 0, "contacts");
+    CHECK(c > 0 && jis(&j, c, "telegram", "@owner") && jkey(&j, c, "phone") < 0);
+    CHECK(proto_hello(b, sizeof b, "0.5.0", "board", "+7 700", NULL) > 0);
+    jload(&j, b);
+    c = jkey(&j, 0, "contacts");
+    CHECK(c > 0 && jis(&j, c, "phone", "+7 700") && jkey(&j, c, "telegram") < 0);
+    /* escaped, and the whole message is still valid JSON */
+    CHECK(proto_hello(b, sizeof b, "0.5.0", "board", "a\"b\\c", "@o\nw") > 0);
+    CHECK(strstr(b, "\"phone\":\"a\\\"b\\\\c\"") != NULL && strstr(b, "\"telegram\":\"@o\\u000aw\"") != NULL);
+    jload(&j, b);
+    CHECK(jkey(&j, 0, "contacts") > 0);
+}
+
+static void test_http_bodies(void)
+{
+    char id[40], nonce[80], tok[1024], code[32];
+    const char *ch = "{\"challenge_id\":\"0a9f2c3e-8b7d-4e6f-a1b2-c3d4e5f60718\",\"nonce\":\"abc_DEF-123\",\"expires_at\":\"2026-11-13T09:30:00Z\"}";
+    CHECK(proto_parse_challenge(ch, strlen(ch), id, nonce));
+    CHECK(strcmp(id, "0a9f2c3e-8b7d-4e6f-a1b2-c3d4e5f60718") == 0 && strcmp(nonce, "abc_DEF-123") == 0);
+    const char *bad[] = { "{}", "[]", "{\"challenge_id\":\"x\"}", "{\"nonce\":\"x\"}", "{\"challenge_id\":1,\"nonce\":\"n\"}",
+                          "{\"challenge_id\":\"1234567890123456789012345678901234567890\",\"nonce\":\"n\"}", "nope", "" };
+    for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; i++) CHECK(!proto_parse_challenge(bad[i], strlen(bad[i]), id, nonce));
+
+    const char *lg = "{\"access_token\":\"aaa.bbb.ccc\",\"refresh_token\":null,\"token_type\":\"bearer\",\"device_id\":\"d\"}";
+    CHECK(proto_parse_login(lg, strlen(lg), tok, sizeof tok) && strcmp(tok, "aaa.bbb.ccc") == 0);
+    const char *lg2 = "{\"access_token\":\"aaa.bbb.ccc\",\"refresh_token\":\"secret\"}"; /* a refresh token is never copied */
+    CHECK(proto_parse_login(lg2, strlen(lg2), tok, sizeof tok) && strstr(tok, "secret") == NULL);
+    CHECK(!proto_parse_login("{\"access_token\":\"\"}", 18, tok, sizeof tok));
+    CHECK(!proto_parse_login("{\"token_type\":\"bearer\"}", 22, tok, sizeof tok));
+    CHECK(!proto_parse_login(lg, strlen(lg), tok, 8));           /* does not fit: no truncated token */
+
+    const char *e1 = "{\"detail\":{\"code\":\"UNAUTHORIZED\",\"message\":\"Unknown or revoked device\"}}";
+    CHECK(proto_error_code(e1, strlen(e1), code) && strcmp(code, "UNAUTHORIZED") == 0);
+    const char *e2 = "{\"detail\":\"Not Found\"}";               /* FastAPI default shape: no code */
+    CHECK(!proto_error_code(e2, strlen(e2), code) && code[0] == '\0');
+    const char *e3 = "{\"detail\":[{\"msg\":\"x\"}]}";
+    CHECK(!proto_error_code(e3, strlen(e3), code));
+    CHECK(!proto_error_code("<html>502</html>", 16, code));
+}
+
 int main(void)
 {
     test_parses_every_contract_example();
@@ -502,5 +554,7 @@ int main(void)
     test_command_bad_args_still_reports_id();
     test_built_messages_parse_as_json();
     test_wifi_state_escapes_ssid();
+    test_hello_with_contacts();
+    test_http_bodies();
     return g_failed ? 1 : 0;
 }

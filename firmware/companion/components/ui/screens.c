@@ -8,6 +8,8 @@
 
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
+tribuf_t ui_snap_tb;
+static snap_t *snap_buf; /* 3 slots, from the LVGL allocator (PSRAM on the board): 3.3 KB that internal RAM can spare */
 
 static struct {
     scr_t cur;
@@ -143,6 +145,8 @@ void ui_setup(void)
     scr_hold_create(root);
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
     tribuf_init(&ui_owner_tb, &owner_buf[0], &owner_buf[1], &owner_buf[2]);
+    snap_buf = lv_malloc_zeroed(3 * sizeof *snap_buf); /* zeroed: no snapshot yet */
+    tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]);
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
     g.lost = false;
     show(SCR_HOME);

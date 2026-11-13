@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 #include "esp_log.h"
 #include "nvs.h"
@@ -118,5 +119,33 @@ esp_err_t store_erase_pair(void)
     if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
+    return err;
+}
+
+#define SNAP_VERSION 1
+#define SNAP_BLOB (1 + sizeof(snap_t) + 4)
+
+bool store_load_snap(snap_t *s)
+{
+    uint8_t *b = malloc(SNAP_BLOB); /* ~1.1 KB, only while reading */
+    if (!b) return false;
+    size_t n = read_blob("snap", b, SNAP_BLOB);
+    uint32_t crc = n == SNAP_BLOB ? b[n - 4] | b[n - 3] << 8 | b[n - 2] << 16 | (uint32_t)b[n - 1] << 24 : 0;
+    bool ok = n == SNAP_BLOB && b[0] == SNAP_VERSION && crc == store_crc32(b, n - 4);
+    if (ok) memcpy(s, b + 1, sizeof *s);
+    free(b);
+    return ok;
+}
+
+esp_err_t store_save_snap(const snap_t *s)
+{
+    uint8_t *b = malloc(SNAP_BLOB);
+    if (!b) return ESP_ERR_NO_MEM;
+    b[0] = SNAP_VERSION;
+    memcpy(b + 1, s, sizeof *s);
+    uint32_t crc = store_crc32(b, SNAP_BLOB - 4);
+    for (int i = 0; i < 4; i++) b[SNAP_BLOB - 4 + i] = (uint8_t)(crc >> (8 * i));
+    esp_err_t err = write_blob("snap", b, SNAP_BLOB);
+    free(b);
     return err;
 }

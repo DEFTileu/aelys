@@ -19,7 +19,8 @@ typedef enum {
     LE_CHALLENGE_OK,
     LE_CHALLENGE_FAIL,     /* anything else */
     LE_TIMER,              /* backoff elapsed */
-    LE_UNPAIR              /* owner removed the pairing on the board */
+    LE_UNPAIR,             /* owner removed the pairing on the board */
+    LE_WS_STABLE           /* the caller saw the socket stay open for LINK_STABLE_MS after LE_WS_OPEN */
 } link_event_t;
 
 typedef enum { LA_NONE, LA_LOGIN, LA_CONNECT, LA_CHECK, LA_WIPE_PAIRING, LA_CLOSE,
@@ -28,11 +29,13 @@ typedef enum { LA_NONE, LA_LOGIN, LA_CONNECT, LA_CHECK, LA_WIPE_PAIRING, LA_CLOS
 typedef struct {
     link_state_t st;
     uint32_t backoff_ms;    /* current un-jittered backoff step, 0 = none yet */
-    uint8_t login_rejects;  /* consecutive rejected logins / early 4401-4403 closes, cleared on LE_WS_OPEN and on entering LS_BACKOFF */
+    uint8_t login_rejects;  /* consecutive rejected logins / early 4401-4403 closes, cleared on LE_WS_STABLE and on entering LS_BACKOFF */
+    bool stable;            /* LE_WS_STABLE seen on the current socket; a 4401/4403 close before that counts as a rejection */
 } link_fsm_t;
 
 #define LINK_BACKOFF_MIN_MS 1000u
 #define LINK_BACKOFF_MAX_MS 60000u
+#define LINK_STABLE_MS 10000u   /* a socket that lives this long after `ready` was really accepted: it resets backoff and the reject count */
 
 void link_fsm_init(link_fsm_t *f, bool paired);
 
@@ -42,5 +45,7 @@ void link_fsm_init(link_fsm_t *f, bool paired);
  * own the request timeouts and emit LE_LOGIN_FAIL / LE_CHALLENGE_FAIL / LE_WS_CLOSED(0) on a hang;
  * LE_PAIRED works from every state: the new identity replaces the old one, so a live socket is closed and the board
  * logs in again (LA_CLOSE_LOGIN when LS_CONNECT/LS_ONLINE, else LA_LOGIN); backoff and reject counters restart.
+ * A server that sends `ready` and closes 4401/4403 at once must not loop at login RTT: until LE_WS_STABLE, those closes
+ * count as rejections (3rd backs off) and the backoff keeps doubling; only LE_WS_STABLE resets it.
  * LA_WIPE_PAIRING is returned ONLY for LE_UNPAIR, or LE_CHALLENGE_UNKNOWN while in LS_CHECK. */
 link_action_t link_next(link_fsm_t *f, link_event_t ev, int close_code, uint32_t rnd, uint32_t *wait_ms);

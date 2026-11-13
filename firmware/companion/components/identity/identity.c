@@ -4,11 +4,9 @@
 #include "esp_log.h"
 #include "identity.h"
 #include "psa/crypto.h"
-#ifdef CONFIG_AELYS_IDENTITY_SELFTEST
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#endif
 
 #ifdef CONFIG_AELYS_IDENTITY_SELFTEST
 #include "vectors.h"
@@ -33,6 +31,12 @@ static char api_url[129];
 static psa_key_id_t pend;                /* the key being paired: RAM only until commit */
 static uint8_t pend_pub[PUB_LEN];
 static char pend_url[129];
+
+/* One recursive lock around every entry point: the net task (USB pairing) and the link task (sign-in) both come
+ * here. Created by identity_init, which runs in app_main before either task exists; a NULL lock means "single task". */
+static SemaphoreHandle_t mu;
+static void lock(void) { if (mu) xSemaphoreTakeRecursive(mu, portMAX_DELAY); }
+static void unlock(void) { if (mu) xSemaphoreGiveRecursive(mu); }
 
 static void key_attrs(psa_key_attributes_t *a)
 {
@@ -64,7 +68,7 @@ static void drop_key(void)
     dev_id[0] = api_url[0] = '\0';
 }
 
-esp_err_t identity_init(const identity_store_t *store)
+static esp_err_t init_(const identity_store_t *store)
 {
     if (!store || !store->load || !store->save || !store->erase) return ESP_ERR_INVALID_ARG;
     if (psa_crypto_init() != PSA_SUCCESS) return ESP_FAIL;
@@ -84,18 +88,15 @@ esp_err_t identity_init(const identity_store_t *store)
     return ESP_OK;
 }
 
-bool identity_paired(void) { return key != PSA_KEY_ID_NULL; }
-const char *identity_device_id(void) { return dev_id; }
-const char *identity_api_url(void) { return api_url; }
 
-esp_err_t identity_pub_b64(char out[88])
+static esp_err_t pub_b64_(char out[88])
 {
     const uint8_t *p = pend ? pend_pub : key ? pub : NULL;
     if (!p) return ESP_ERR_INVALID_STATE;
     return b64url_encode(p, PUB_LEN, out, 88) ? ESP_OK : ESP_FAIL;
 }
 
-esp_err_t identity_pair_begin(const char *url)
+static esp_err_t pair_begin_(const char *url)
 {
     if (!url || strncmp(url, "https://", 8) != 0 || strlen(url) > 128) return ESP_ERR_INVALID_ARG;
     if (!st) return ESP_ERR_INVALID_STATE;
@@ -116,7 +117,7 @@ esp_err_t identity_pair_begin(const char *url)
     return ESP_OK;
 }
 
-void identity_pair_cancel(void)
+static void pair_cancel_(void)
 {
     if (pend) psa_destroy_key(pend);
     pend = PSA_KEY_ID_NULL;
@@ -156,13 +157,13 @@ static esp_err_t sas_for(const char *secret, const char *id, const uint8_t p[PUB
     return ESP_OK;
 }
 
-esp_err_t identity_pair_code(const char *secret, const char *pairing_id, char sas[7])
+static esp_err_t pair_code_(const char *secret, const char *pairing_id, char sas[7])
 {
     if (!pend) return ESP_ERR_INVALID_STATE;
     return sas_for(secret, pairing_id, pend_pub, sas);
 }
 
-esp_err_t identity_pair_commit(const char *device_id)
+static esp_err_t pair_commit_(const char *device_id)
 {
     if (!pend) return ESP_ERR_INVALID_STATE;
     if (!device_id || !*device_id || strlen(device_id) >= sizeof dev_id) return ESP_ERR_INVALID_ARG;
@@ -191,7 +192,7 @@ esp_err_t identity_pair_commit(const char *device_id)
     return ESP_OK;
 }
 
-esp_err_t identity_sign(const char *msg, char sig_b64[87])
+static esp_err_t sign_(const char *msg, char sig_b64[87])
 {
     if (!key) return ESP_ERR_INVALID_STATE;
     if (!msg) return ESP_ERR_INVALID_ARG;
@@ -202,7 +203,7 @@ esp_err_t identity_sign(const char *msg, char sig_b64[87])
     return b64url_encode(sig, n, sig_b64, 87) ? ESP_OK : ESP_FAIL;
 }
 
-esp_err_t identity_wifi_decrypt(const uint8_t *blob, size_t n, char ssid[33], char pass[65])
+static esp_err_t wifi_decrypt_(const uint8_t *blob, size_t n, char ssid[33], char pass[65])
 {
     /* version, eph point, nonce, at least a 3-byte plaintext, tag */
     if (!key) return ESP_ERR_INVALID_STATE;
@@ -240,7 +241,7 @@ esp_err_t identity_wifi_decrypt(const uint8_t *blob, size_t n, char ssid[33], ch
     return err;
 }
 
-esp_err_t identity_wipe(void)
+static esp_err_t wipe_(void)
 {
     if (!st) return ESP_ERR_INVALID_STATE;
     esp_err_t err = st->erase();
@@ -248,6 +249,117 @@ esp_err_t identity_wipe(void)
     identity_pair_cancel();
     drop_key();
     return ESP_OK;
+}
+
+/* ---- public API: every call takes the lock ---- */
+
+bool identity_paired(void)
+{
+    lock();
+    bool r = key != PSA_KEY_ID_NULL;
+    unlock();
+    return r;
+}
+
+/* The pointers below are stable only until the next pair/wipe: a task that outlives those copies with identity_ids(). */
+const char *identity_device_id(void)
+{
+    lock();
+    const char *r = dev_id;
+    unlock();
+    return r;
+}
+
+const char *identity_api_url(void)
+{
+    lock();
+    const char *r = api_url;
+    unlock();
+    return r;
+}
+
+esp_err_t identity_init(const identity_store_t *store)
+{
+    if (!mu && !(mu = xSemaphoreCreateRecursiveMutex())) return ESP_ERR_NO_MEM;
+    lock();
+    esp_err_t r = init_(store);
+    unlock();
+    return r;
+}
+
+esp_err_t identity_pub_b64(char out[88])
+{
+    lock();
+    esp_err_t r = pub_b64_(out);
+    unlock();
+    return r;
+}
+
+esp_err_t identity_pair_begin(const char *url)
+{
+    lock();
+    esp_err_t r = pair_begin_(url);
+    unlock();
+    return r;
+}
+
+void identity_pair_cancel(void)
+{
+    lock();
+    pair_cancel_();
+    unlock();
+}
+
+esp_err_t identity_pair_code(const char *secret, const char *pairing_id, char sas[7])
+{
+    lock();
+    esp_err_t r = pair_code_(secret, pairing_id, sas);
+    unlock();
+    return r;
+}
+
+esp_err_t identity_pair_commit(const char *device_id)
+{
+    lock();
+    esp_err_t r = pair_commit_(device_id);
+    unlock();
+    return r;
+}
+
+esp_err_t identity_sign(const char *msg, char sig_b64[87])
+{
+    lock();
+    esp_err_t r = sign_(msg, sig_b64);
+    unlock();
+    return r;
+}
+
+esp_err_t identity_wifi_decrypt(const uint8_t *blob, size_t n, char ssid[33], char pass[65])
+{
+    lock();
+    esp_err_t r = wifi_decrypt_(blob, n, ssid, pass);
+    unlock();
+    return r;
+}
+
+esp_err_t identity_wipe(void)
+{
+    lock();
+    esp_err_t r = wipe_();
+    unlock();
+    return r;
+}
+
+esp_err_t identity_ids(char device_id[40], char url[129])
+{
+    lock();
+    esp_err_t r = key ? ESP_OK : ESP_ERR_INVALID_STATE;
+    if (r == ESP_OK) {
+        memcpy(device_id, dev_id, sizeof dev_id);
+        memcpy(url, api_url, sizeof api_url);
+    }
+    unlock();
+    return r;
 }
 
 #ifdef CONFIG_AELYS_IDENTITY_SELFTEST

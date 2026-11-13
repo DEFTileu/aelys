@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pair the board over USB with the Improv vendor RPCs (0xA0..0xA3) and print the replies in words.
 
-  improv_pair.py --secret-gen            PAIR_BEGIN (https://example.invalid/api/v1), print the public key,
+  improv_pair.py --secret-gen            PAIR_BEGIN (https://example.invalid/api/v1, or --api-url), print the public key,
                                          PAIR_CODE with a fixed UUID, print the 6-digit SAS this tool computes
                                          (compare it with the digits on the board's screen), PAIR_STATUS
   improv_pair.py --commit <device_id>    PAIR_COMMIT, then PAIR_STATUS (board shows "Paired")
@@ -61,6 +61,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--secret-gen", action="store_true", help="begin a pairing with a fresh random secret")
     ap.add_argument("--commit", metavar="DEVICE_ID", help="commit the pending pairing under this device id")
+    ap.add_argument("--api-url", default=API_URL, help="api_url stored with the pairing (https:// only), default %(default)s")
     ap.add_argument("--status", action="store_true", help="only ask for the pairing status")
     args = ap.parse_args()
     if not (args.secret_gen or args.commit or args.status):
@@ -81,7 +82,7 @@ def main():
         with s:
             if args.secret_gen:
                 secret = secrets.token_urlsafe(32)  # 43 chars, within the board's 32..128
-                pub = call(s, BEGIN, [secret, API_URL])[0]
+                pub = call(s, BEGIN, [secret, args.api_url])[0]
                 print(f"public key: {pub}")
                 call(s, CODE, [PAIRING_ID])
                 print(f"code on the board's screen must be: {sas_code(secret, PAIRING_ID, pub)}")
