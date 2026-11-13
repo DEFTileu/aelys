@@ -404,6 +404,16 @@ static void test_asymmetric_wink_and_wake(void)
     gone(f);
 }
 
+static void test_star_disappears_after_transition_to_no_star(void)
+{
+    lv_obj_t *face=show(MOOD_CALM,100,HX,HY,100);
+    face_set_mood(face,MOOD_OFFLINE);
+    for (int i=0;i<120;i++) sim_step(34);
+    CHECK(lv_obj_is_hidden(lv_obj_get_child(face,2)));
+    CHECK(lv_obj_is_hidden(lv_obj_get_child(face,3)));
+    gone(face);
+}
+
 static void test_smooth_eye_transition(void)
 {
     lv_obj_t *face = face_create(lv_screen_active(), 100);
@@ -430,6 +440,7 @@ int main(void)
     test_elation_confetti();
     test_relief_lid_moves();
     test_asymmetric_wink_and_wake();
+    test_star_disappears_after_transition_to_no_star();
     test_smooth_eye_transition();
     test_shapes();
     test_inside_screen_and_own_area();

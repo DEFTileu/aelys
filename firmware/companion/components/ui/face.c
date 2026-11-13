@@ -349,6 +349,8 @@ static void layout_eyes(face_t *f, uint32_t t)
             const lv_image_dsc_t *img = face_img_star(d(f, e->star * g.sc / 10));
             /* squashed by a blink the star would have to flatten with the eye: hide it for those few frames */
             put_img(f->star[side], img, d(f, sx), d(f, sy), blink >= 700 ? (m->star_opacity ? m->star_opacity : 255) : 0);
+        } else {
+            show(f->star[side], false); /* a shrinking highlight has reached zero */
         }
 
         if (m->lid == LID_RELAX) {
