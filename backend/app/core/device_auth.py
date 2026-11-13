@@ -36,7 +36,6 @@ from .models import (
     now,
 )
 from .ratelimit import enforce
-from .schemas import TokenResponse
 from .security import create_token, current_principal, token_hash
 
 router = APIRouter()
@@ -49,7 +48,7 @@ SAS_CONTEXT = b"aelys-sas-v1|"
 MAX_REQUEST_PAIRINGS = 20
 MAX_INVITES = 5
 MAX_CHALLENGES = 10
-PLATFORM = "^(web|macos|android|helper)$"
+PLATFORM = "^(web|macos|android|helper|companion)$"
 
 
 # ---- crypto -----------------------------------------------------------------
@@ -99,7 +98,10 @@ def _aware(value: datetime) -> datetime:
 
 # ---- schemas ----------------------------------------------------------------
 
-class DeviceSession(TokenResponse):
+class DeviceSession(BaseModel):
+    access_token: str
+    refresh_token: str | None = None  # null for companion devices, which sign in again with their key
+    token_type: str = "bearer"
     device_id: str
 
 
@@ -167,17 +169,26 @@ def _error(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status, detail={"code": code, "message": message})
 
 
+def _reject_companion(platform: str) -> None:
+    """A board may only join through owner-approved pairing: never as the first owner device, never by self-registering."""
+    if platform == "companion":
+        raise _error(422, "PLATFORM_NOT_ALLOWED", "This device type can only be added by pairing")
+
+
 def _audit(db: AsyncSession, owner_id: str, action: str, scope: str, outcome: str, correlation_id: str) -> None:
     db.add(AuditLog(owner_id=owner_id, action=action, actor="owner", scope=scope, decision="allow", outcome=outcome, correlation_id=correlation_id, redacted_metadata={}))
 
 
-def _issue_session(db: AsyncSession, owner_id: str, device_id: str) -> DeviceSession:
+def _issue_session(db: AsyncSession, owner_id: str, device_id: str, platform: str) -> DeviceSession:
     settings = get_settings()
     session_id = secrets.token_urlsafe(24)
     refresh = create_token(owner_id, "refresh", settings.refresh_token_days * 86400, device_id, session_id)
-    db.add(AuthSession(id=session_id, owner_id=owner_id, device_id=device_id, refresh_token_hash=token_hash(refresh), expires_at=now() + timedelta(days=settings.refresh_token_days)))
+    # A board has no refresh token and signs in again every access-token lifetime, so its session lives no longer than that.
+    lifetime = timedelta(minutes=settings.access_token_minutes) if platform == "companion" else timedelta(days=settings.refresh_token_days)
+    db.add(AuthSession(id=session_id, owner_id=owner_id, device_id=device_id, refresh_token_hash=token_hash(refresh), expires_at=now() + lifetime))
     access = create_token(owner_id, "access", settings.access_token_minutes * 60, device_id, session_id)
-    return DeviceSession(access_token=access, refresh_token=refresh, device_id=device_id)
+    # The session row still needs a refresh hash, but a board never receives the token: it signs in again with its key.
+    return DeviceSession(access_token=access, refresh_token=None if platform == "companion" else refresh, device_id=device_id)
 
 
 def _new_device(owner_id: str, platform: str, display_name: str, public_key: str) -> Device:
@@ -213,6 +224,7 @@ async def announce_first_run_token() -> None:
 @router.post("/auth/setup/claim", response_model=DeviceSession)
 async def claim_setup(body: SetupClaim, request: Request, db: AsyncSession = Depends(get_db)):
     enforce(request, "setup-claim", (10, 600))
+    _reject_companion(body.platform)
     public_key = normalize_public_key(body.public_key)
     await lock_owner_initialization(db, password=False)
     row = (await db.execute(select(SetupToken).where(SetupToken.token_hash == token_hash(body.token)))).scalar_one_or_none()
@@ -237,7 +249,7 @@ async def claim_setup(body: SetupClaim, request: Request, db: AsyncSession = Dep
     db.add(device)
     await db.flush()
     _audit(db, user.id, f"device.setup.{row.purpose}", f"device:{device.id}", "enrolled", device.id)
-    session = _issue_session(db, user.id, device.id)
+    session = _issue_session(db, user.id, device.id, body.platform)
     await db.commit()
     return session
 
@@ -276,7 +288,7 @@ async def device_login(body: DeviceLogin, request: Request, db: AsyncSession = D
     if not device or device.revoked_at or not device.public_key or not verify_signature(device.public_key, message, body.signature):
         raise _error(401, "UNAUTHORIZED", "Signature rejected")
     device.last_seen_at = now()
-    session = _issue_session(db, device.owner_id, device.id)
+    session = _issue_session(db, device.owner_id, device.id, device.platform)
     await db.commit()
     return session
 
@@ -285,6 +297,7 @@ async def device_login(body: DeviceLogin, request: Request, db: AsyncSession = D
 async def register_key(body: KeyRegister, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     """Migrate a password session to a key-bound device; the key must sign over the owner and itself."""
     user, _ = principal
+    _reject_companion(body.platform)
     public_key = normalize_public_key(body.public_key)
     if not verify_signature(public_key, f"{REGISTER_CONTEXT}\n{user.id}\n{public_key}".encode(), body.proof):
         raise _error(401, "INVALID_PROOF", "Key possession proof rejected")
@@ -292,7 +305,7 @@ async def register_key(body: KeyRegister, principal=Depends(current_principal), 
     db.add(device)
     await db.flush()
     _audit(db, user.id, "device.register_key", f"device:{device.id}", "enrolled", device.id)
-    session = _issue_session(db, user.id, device.id)
+    session = _issue_session(db, user.id, device.id, body.platform)
     await db.commit()
     return session
 
@@ -448,6 +461,6 @@ async def pairing_finish(pairing_id: str, body: PairingFinish, request: Request,
     if int(getattr(consumed, "rowcount", 0) or 0) != 1:
         await db.rollback()
         raise _error(410, "PAIRING_EXPIRED", "Pairing already used; start again")
-    session = _issue_session(db, row.owner_id, row.device_id)
+    session = _issue_session(db, row.owner_id, row.device_id, row.platform or "")
     await db.commit()
     return session

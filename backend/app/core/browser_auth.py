@@ -101,6 +101,8 @@ async def cookie_session(request: Request, db: AsyncSession) -> AuthSession | No
     device = await db.get(Device, session.device_id)
     if not device or device.revoked_at or device.owner_id != session.owner_id:
         return None
+    if device.platform == "companion":  # a board never holds a refresh cookie; refuse one that somehow exists
+        raise HTTPException(403, detail={"code": "DEVICE_SCOPE_DENIED", "message": "This device may not use this endpoint"})
     return session
 
 

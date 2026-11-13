@@ -1,0 +1,329 @@
+import uuid
+from datetime import UTC, datetime
+
+import pytest_asyncio
+from app.ai.errors import PolicyDenied
+from app.ai.policy import ServerPolicyEngine
+from app.core import db
+from app.core.device_auth import sas_code
+from app.core.models import Notification
+from app.main import app
+from companion_helpers import (
+    B,
+    Key,
+    bearer,
+    claim_owner,
+    companion_token,
+    new_secret,
+    pair_companion,
+)
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+
+@pytest_asyncio.fixture
+async def client(tmp_path, monkeypatch):
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path}/actions.db')
+    async with engine.begin() as connection:
+        await connection.run_sync(db.Base.metadata.create_all)
+    monkeypatch.setattr(db, 'SessionLocal', async_sessionmaker(engine, expire_on_commit=False))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as http:
+        yield http
+    await engine.dispose()
+
+
+async def board(client):
+    owner, key, device_id = await pair_companion(client)
+    token = await companion_token(client, key, device_id)
+    owner_id = (await client.get(f'{B}/me', headers=bearer(owner))).json()['id']
+    return owner_id, {'Authorization': f'Bearer {token}'}
+
+
+async def add_notification(owner_id):
+    async with db.SessionLocal() as session:
+        item = Notification(owner_id=owner_id, kind='task.due', title='Pay rent')
+        session.add(item)
+        await session.commit()
+        return item.id
+
+
+async def read_at(item_id):
+    async with db.SessionLocal() as session:
+        return (await session.get(Notification, item_id)).read_at
+
+
+def action(kind='notification.read', **payload):
+    return {'id': str(uuid.uuid4()), 'kind': kind, 'payload': payload}
+
+
+async def test_read_notification_action_marks_read(client):
+    owner_id, headers = await board(client)
+    item_id = await add_notification(owner_id)
+    body = action(notification_id=item_id)
+    response = await client.post(f'{B}/companion/actions', headers=headers, json=body)
+    assert response.status_code == 200, response.text
+    assert response.json() == {'id': body['id'], 'ok': True, 'error_code': None}
+    assert await read_at(item_id) is not None
+
+
+async def test_same_action_id_replays_result_without_second_effect(client):
+    owner_id, headers = await board(client)
+    item_id = await add_notification(owner_id)
+    body = action(notification_id=item_id)
+    first = await client.post(f'{B}/companion/actions', headers=headers, json=body)
+    async with db.SessionLocal() as session:
+        (await session.get(Notification, item_id)).read_at = None
+        await session.commit()
+    second = await client.post(f'{B}/companion/actions', headers=headers, json=body)
+    assert second.json() == first.json()
+    assert await read_at(item_id) is None, 'the replay must not run the effect again'
+    from app.companion.models import CompanionAction
+    async with db.SessionLocal() as session:
+        assert await session.scalar(select(func.count()).select_from(CompanionAction)) == 1
+
+
+async def test_unknown_kind_returns_action_unknown(client):
+    _, headers = await board(client)
+    body = action('does.not.exist')
+    response = await client.post(f'{B}/companion/actions', headers=headers, json=body)
+    assert response.json() == {'id': body['id'], 'ok': False, 'error_code': 'ACTION_UNKNOWN'}
+
+
+async def test_action_of_other_owner_notification_is_not_found(client):
+    _, headers = await board(client)
+    async with db.SessionLocal() as session:
+        from app.core.models import User
+        other = User(email='other@example.com')
+        session.add(other)
+        await session.commit()
+        other_id = other.id
+    item_id = await add_notification(other_id)
+    response = await client.post(f'{B}/companion/actions', headers=headers, json=action(notification_id=item_id))
+    assert response.json()['error_code'] == 'NOT_FOUND' and response.json()['ok'] is False
+    assert await read_at(item_id) is None
+
+
+async def test_policy_denied_maps_to_error_code(client, monkeypatch):
+    owner_id, headers = await board(client)
+    item_id = await add_notification(owner_id)
+
+    def deny(self, tool, call, context):
+        raise PolicyDenied('no')
+    monkeypatch.setattr(ServerPolicyEngine, 'authorize', deny)
+    response = await client.post(f'{B}/companion/actions', headers=headers, json=action(notification_id=item_id))
+    assert response.json()['error_code'] == 'POLICY_DENIED' and response.json()['ok'] is False
+    assert await read_at(item_id) is None
+
+
+async def test_invalid_action_body_is_a_validation_error(client):
+    _, headers = await board(client)
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json={'id': 'nope', 'kind': 'x', 'payload': {}})).status_code == 422
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json={'id': str(uuid.uuid4()), 'kind': 'x', 'payload': []})).status_code == 422
+
+
+async def test_owner_session_cannot_post_actions(client):
+    _, owner = await claim_owner(client)
+    response = await client.post(f'{B}/companion/actions', headers=bearer(owner), json=action())
+    assert response.status_code == 403 and response.json()['detail']['code'] == 'COMPANION_ONLY'
+
+
+async def test_concurrent_first_requests_execute_once(client):
+    import asyncio
+    owner_id, headers = await board(client)
+    item_id = await add_notification(owner_id)
+    body = action(notification_id=item_id)
+    first, second = await asyncio.gather(*(client.post(f'{B}/companion/actions', headers=headers, json=body) for _ in range(2)))
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json() and first.json()['ok'] is True
+
+
+async def pair_second_board(client, owner):
+    secret, secret_hash = new_secret()
+    key = Key()
+    request = (await client.post(f'{B}/pairing/request', json={'secret_hash': secret_hash, 'public_key': key.public, 'platform': 'companion', 'display_name': 'Desk 2'})).json()
+    pid = request['pairing_id']
+    approved = await client.post(f'{B}/pairing/{pid}/approve', headers=bearer(owner), json={'secret': secret, 'sas': sas_code(secret, pid, key.public)})
+    assert approved.status_code == 200, approved.text
+    done = await client.post(f'{B}/pairing/{pid}/finish', json={'signature': key.sign(f'aelys-pairing-finish-v1\n{pid}', raw=True)})
+    return {'Authorization': f"Bearer {await companion_token(client, key, done.json()['device_id'])}"}
+
+
+async def test_same_action_id_on_two_devices_of_one_owner_does_not_collide(client):
+    owner, key, device_id = await pair_companion(client)
+    first = {'Authorization': f'Bearer {await companion_token(client, key, device_id)}'}
+    second = await pair_second_board(client, owner)
+    owner_id = (await client.get(f'{B}/me', headers=bearer(owner))).json()['id']
+    item_id = await add_notification(owner_id)
+    body = action(notification_id=item_id)
+    one = await client.post(f'{B}/companion/actions', headers=first, json=body)
+    async with db.SessionLocal() as session:
+        (await session.get(Notification, item_id)).read_at = None
+        await session.commit()
+    two = await client.post(f'{B}/companion/actions', headers=second, json=body)
+    assert one.status_code == two.status_code == 200
+    assert two.json()['ok'] is True and await read_at(item_id) is not None, 'the second device runs its own action, not a replay'
+
+
+async def test_same_action_id_for_two_owners_does_not_collide(client):
+    from app.companion.actions import ActionIn, run_action
+    from app.core.models import Device, User
+    owner_id, headers = await board(client)
+    item_id = await add_notification(owner_id)
+    body = action(notification_id=item_id)
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json=body)).json()['ok'] is True
+    async with db.SessionLocal() as session:
+        other = User(email='other@example.com')
+        session.add(other)
+        await session.flush()
+        device = Device(owner_id=other.id, platform='companion', display_name='Other', credential_hash='x')
+        session.add(device)
+        await session.commit()
+        result = await run_action(session, other.id, device, ActionIn(**body))
+    assert result.ok is False and result.error_code == 'NOT_FOUND', 'the other owner gets their own result, not the first one'
+
+
+async def test_malformed_notification_id_is_not_found(client):
+    _, headers = await board(client)
+    for payload in ({}, {'notification_id': 5}, {'notification_id': None}):
+        response = await client.post(f'{B}/companion/actions', headers=headers, json={'id': str(uuid.uuid4()), 'kind': 'notification.read', 'payload': payload})
+        assert response.json()['error_code'] == 'NOT_FOUND'
+
+
+async def test_action_id_must_be_v4_and_kind_bounded(client):
+    _, headers = await board(client)
+    v1 = {'id': str(uuid.uuid1()), 'kind': 'notification.read', 'payload': {}}
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json=v1)).status_code == 422
+    long_kind = {'id': str(uuid.uuid4()), 'kind': 'k' * 41, 'payload': {}}
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json=long_kind)).status_code == 422
+
+
+async def run(client, headers, kind, **payload):
+    return (await client.post(f'{B}/companion/actions', headers=headers, json=action(kind, **payload))).json()
+
+
+async def focus_row(owner_id):
+    from app.core.models import FocusSession
+    async with db.SessionLocal() as session:
+        return (await session.execute(select(FocusSession).where(FocusSession.owner_id == owner_id))).scalars().all()
+
+
+async def test_focus_actions_drive_the_active_session(client):
+    owner_id, headers = await board(client)
+    assert (await run(client, headers, 'focus.pause'))['error_code'] == 'NO_ACTIVE_FOCUS'
+    assert (await run(client, headers, 'focus.stop'))['error_code'] == 'NO_ACTIVE_FOCUS'
+    assert (await run(client, headers, 'focus.start', mode='bogus'))['error_code'] == 'VALIDATION_ERROR'
+    assert (await run(client, headers, 'focus.start'))['ok'] is True
+    (item,) = await focus_row(owner_id)
+    assert item.status == 'active' and item.mode == 'pomodoro'
+    assert (await run(client, headers, 'focus.start', mode='stopwatch'))['error_code'] == 'TIMER_ACTIVE'
+    assert (await run(client, headers, 'focus.pause'))['ok'] is True
+    assert (await focus_row(owner_id))[0].status == 'paused'
+    assert (await run(client, headers, 'focus.resume'))['ok'] is True
+    assert (await focus_row(owner_id))[0].status == 'active'
+    assert (await run(client, headers, 'focus.stop'))['ok'] is True
+    (done,) = await focus_row(owner_id)
+    assert done.status == 'completed' and done.ended_at is not None
+    assert (await run(client, headers, 'focus.stop'))['error_code'] == 'NO_ACTIVE_FOCUS'
+    assert (await run(client, headers, 'focus.start', mode='stopwatch'))['ok'] is True
+
+
+async def test_task_complete_action(client):
+    from app.core.models import Task
+    owner_id, headers = await board(client)
+    async with db.SessionLocal() as session:
+        session.add(Task(id='t1', owner_id=owner_id, title='Ship'))
+        await session.commit()
+    assert (await run(client, headers, 'task.complete', task_id='t1'))['ok'] is True
+    async with db.SessionLocal() as session:
+        task = await session.get(Task, 't1')
+        assert task.status == 'completed' and task.completed_at is not None and task.version == 2
+    assert (await run(client, headers, 'task.complete', task_id='t1'))['ok'] is True, 'completing again is idempotent'
+    async with db.SessionLocal() as session:
+        assert (await session.get(Task, 't1')).version == 2
+    assert (await run(client, headers, 'task.complete', task_id='missing'))['error_code'] == 'NOT_FOUND'
+    assert (await run(client, headers, 'task.complete'))['error_code'] == 'NOT_FOUND'
+
+
+async def add_task(owner_id, task_id='t1'):
+    from app.core.models import Task
+    async with db.SessionLocal() as session:
+        session.add(Task(id=task_id, owner_id=owner_id, title='Ship'))
+        await session.commit()
+
+
+async def other_owner():
+    from app.core.models import User
+    async with db.SessionLocal() as session:
+        other = User(email='other@example.com')
+        session.add(other)
+        await session.commit()
+        return other.id
+
+
+async def test_failed_action_rolls_back_the_handlers_partial_write(client, monkeypatch):
+    from app.core.models import Task
+    from app.domains import task_service
+    from fastapi import HTTPException
+    owner_id, headers = await board(client)
+    await add_task(owner_id)
+
+    async def fail(db, item):
+        raise HTTPException(409, detail={'code': 'SYNC_RECONCILIATION_REQUIRED', 'message': 'x'})
+    monkeypatch.setattr(task_service, 'record_domain_change', fail)
+    body = action('task.complete', task_id='t1')
+    first = (await client.post(f'{B}/companion/actions', headers=headers, json=body)).json()
+    assert first['ok'] is False and first['error_code'] == 'ACTION_FAILED'
+    async with db.SessionLocal() as session:
+        task = await session.get(Task, 't1')
+        assert (task.status, task.version, task.completed_at) == ('todo', 1, None), 'the UPDATE must not survive the failure'
+    from app.companion.models import CompanionAction
+    async with db.SessionLocal() as session:
+        assert await session.scalar(select(func.count()).select_from(CompanionAction)) == 1
+    assert (await client.post(f'{B}/companion/actions', headers=headers, json=body)).json() == first
+
+
+async def test_internal_service_code_is_hidden_and_logged_without_payload(client, monkeypatch, caplog):
+    from app.domains import task_service
+    from fastapi import HTTPException
+    _, headers = await board(client)
+
+    async def fail(*args, **kwargs):
+        raise HTTPException(500, detail={'code': 'INTERNAL_SECRET_CODE', 'message': 'm'})
+    monkeypatch.setattr(task_service, 'complete_task', fail)
+    result = await run(client, headers, 'task.complete', task_id='secret-task-id')
+    assert result['error_code'] == 'ACTION_FAILED'
+    assert 'INTERNAL_SECRET_CODE' in caplog.text and 'secret-task-id' not in caplog.text
+
+
+async def test_policy_denied_for_focus_and_task_actions_applies_no_effect(client, monkeypatch):
+    from app.core.models import Task
+    owner_id, headers = await board(client)
+    await add_task(owner_id)
+
+    def deny(self, tool, call, context):
+        raise PolicyDenied('no')
+    monkeypatch.setattr(ServerPolicyEngine, 'authorize', deny)
+    for kind, payload in (('focus.start', {}), ('focus.pause', {}), ('focus.resume', {}), ('focus.stop', {}), ('task.complete', {'task_id': 't1'})):
+        result = await run(client, headers, kind, **payload)
+        assert result['ok'] is False and result['error_code'] == 'POLICY_DENIED', kind
+    assert await focus_row(owner_id) == []
+    async with db.SessionLocal() as session:
+        assert (await session.get(Task, 't1')).status == 'todo'
+
+
+async def test_actions_cannot_touch_another_owners_task_or_focus(client):
+    from app.core.models import FocusSession, Task
+    from app.domains import focus_service
+    _, headers = await board(client)
+    other_id = await other_owner()
+    await add_task(other_id)
+    async with db.SessionLocal() as session:
+        await focus_service.start_focus(session, other_id, started_at=datetime.now(UTC), mode='pomodoro', task_id=None, idempotency_key=None)
+        await session.commit()
+    assert (await run(client, headers, 'task.complete', task_id='t1'))['error_code'] == 'NOT_FOUND'
+    for kind in ('focus.pause', 'focus.stop'):
+        assert (await run(client, headers, kind))['error_code'] == 'NO_ACTIVE_FOCUS'
+    async with db.SessionLocal() as session:
+        assert (await session.get(Task, 't1')).status == 'todo'
+        assert (await session.execute(select(FocusSession.status))).scalar_one() == 'active'

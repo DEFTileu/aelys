@@ -7,7 +7,8 @@ import json
 import secrets
 import time
 
-from fastapi import Depends, HTTPException, status
+from app.companion.access import ensure_companion_allowed
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,7 +66,7 @@ def decode_refresh_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Refresh token required"})
     return claims
 
-async def current_principal(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), db: AsyncSession = Depends(get_db)) -> tuple[User, Device | None]:
+async def current_principal(request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), db: AsyncSession = Depends(get_db)) -> tuple[User, Device | None]:
     if not credentials:
         raise HTTPException(status_code=401, detail={"code":"UNAUTHORIZED","message":"Bearer token required"})
     claims = decode_token(credentials.credentials)
@@ -88,4 +89,5 @@ async def current_principal(credentials: HTTPAuthorizationCredentials | None = D
         if not found or found.owner_id != user.id or found.revoked_at:
             raise HTTPException(status_code=401, detail={"code":"DEVICE_REVOKED","message":"Device credential revoked"})
         device = found
+    ensure_companion_allowed(request, device)
     return user, device

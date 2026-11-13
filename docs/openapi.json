@@ -929,6 +929,390 @@
         }
       }
     },
+    "/api/v1/companion/devices/{device_id}": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Get Device",
+        "operationId": "get_device_api_v1_companion_devices__device_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/lost-mode": {
+      "put": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Put Lost Mode",
+        "operationId": "put_lost_mode_api_v1_companion_devices__device_id__lost_mode_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LostModeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/ice": {
+      "put": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Put Ice",
+        "operationId": "put_ice_api_v1_companion_devices__device_id__ice_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IceIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/find": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Find Device",
+        "operationId": "find_device_api_v1_companion_devices__device_id__find_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/wifi": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Add Wifi",
+        "operationId": "add_wifi_api_v1_companion_devices__device_id__wifi_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/wifi-scan": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Scan Wifi",
+        "operationId": "scan_wifi_api_v1_companion_devices__device_id__wifi_scan_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/snapshot": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Get Snapshot",
+        "operationId": "get_snapshot_api_v1_companion_snapshot_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanionSnapshot"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/companion/actions": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Post Action",
+        "operationId": "post_action_api_v1_companion_actions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/browser/status": {
       "get": {
         "tags": [
@@ -8618,6 +9002,62 @@
         ],
         "title": "Action"
       },
+      "ActionIn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid4",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Kind"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind"
+        ],
+        "title": "ActionIn"
+      },
+      "ActionResult": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid4",
+            "title": "Id"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ok"
+        ],
+        "title": "ActionResult"
+      },
       "AdaptationOut": {
         "properties": {
           "skill": {
@@ -9292,6 +9732,89 @@
         ],
         "title": "ChatSendIn"
       },
+      "CommandOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "delivered": {
+            "type": "boolean",
+            "title": "Delivered"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "delivered"
+        ],
+        "title": "CommandOut"
+      },
+      "CompanionSnapshot": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "next_task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapTask"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overdue_count": {
+            "type": "integer",
+            "title": "Overdue Count"
+          },
+          "next_event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unread_count": {
+            "type": "integer",
+            "title": "Unread Count"
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/SnapNotice"
+            },
+            "type": "array",
+            "title": "Notices"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapFocus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "next_task",
+          "overdue_count",
+          "next_event",
+          "unread_count",
+          "notices",
+          "focus"
+        ],
+        "title": "CompanionSnapshot"
+      },
       "ConnectIn": {
         "properties": {
           "bot_token": {
@@ -9337,6 +9860,26 @@
           "telegram_user_id"
         ],
         "title": "ConnectionOut"
+      },
+      "Contact": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Name"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 23,
+            "title": "Phone"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "phone"
+        ],
+        "title": "Contact"
       },
       "ConversationIn": {
         "properties": {
@@ -9824,7 +10367,14 @@
             "title": "Access Token"
           },
           "refresh_token": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Refresh Token"
           },
           "token_type": {
@@ -9840,10 +10390,121 @@
         "type": "object",
         "required": [
           "access_token",
-          "refresh_token",
           "device_id"
         ],
         "title": "DeviceSession"
+      },
+      "DeviceStateOut": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "fw_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fw Version"
+          },
+          "public_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Key"
+          },
+          "lost_mode": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lost Mode"
+          },
+          "ice": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ice"
+          },
+          "last_metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Metrics"
+          },
+          "last_wifi_scan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Wifi Scan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "display_name",
+          "online",
+          "last_seen_at",
+          "fw_version",
+          "public_key",
+          "lost_mode",
+          "ice",
+          "last_metrics",
+          "last_wifi_scan"
+        ],
+        "title": "DeviceStateOut"
       },
       "DraftIn": {
         "properties": {
@@ -11244,6 +11905,34 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "IceIn": {
+        "properties": {
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/Contact"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Contacts"
+          },
+          "med_note": {
+            "type": "string",
+            "maxLength": 96,
+            "title": "Med Note",
+            "default": ""
+          },
+          "show_name": {
+            "type": "boolean",
+            "title": "Show Name",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "contacts"
+        ],
+        "title": "IceIn"
+      },
       "KeyRegister": {
         "properties": {
           "public_key": {
@@ -11253,7 +11942,7 @@
           },
           "platform": {
             "type": "string",
-            "pattern": "^(web|macos|android|helper)$",
+            "pattern": "^(web|macos|android|helper|companion)$",
             "title": "Platform"
           },
           "display_name": {
@@ -11501,6 +12190,45 @@
           "password"
         ],
         "title": "LoginRequest"
+      },
+      "LostModeIn": {
+        "properties": {
+          "on": {
+            "type": "boolean",
+            "title": "On"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Message",
+            "default": ""
+          },
+          "show_phone": {
+            "type": "boolean",
+            "title": "Show Phone",
+            "default": false
+          },
+          "show_telegram": {
+            "type": "boolean",
+            "title": "Show Telegram",
+            "default": false
+          },
+          "reauth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Reauth"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "on"
+        ],
+        "title": "LostModeIn"
       },
       "MailAccountIn": {
         "properties": {
@@ -12711,7 +13439,7 @@
           },
           "platform": {
             "type": "string",
-            "pattern": "^(web|macos|android|helper)$",
+            "pattern": "^(web|macos|android|helper|companion)$",
             "title": "Platform"
           },
           "display_name": {
@@ -12772,7 +13500,7 @@
           },
           "platform": {
             "type": "string",
-            "pattern": "^(web|macos|android|helper)$",
+            "pattern": "^(web|macos|android|helper|companion)$",
             "title": "Platform"
           },
           "display_name": {
@@ -13344,6 +14072,26 @@
           "etag"
         ],
         "title": "ReadPage[NoteOut]"
+      },
+      "Reauth": {
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Challenge Id"
+          },
+          "signature": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Signature"
+          }
+        },
+        "type": "object",
+        "required": [
+          "challenge_id",
+          "signature"
+        ],
+        "title": "Reauth"
       },
       "ReminderIn": {
         "properties": {
@@ -14161,7 +14909,7 @@
           },
           "platform": {
             "type": "string",
-            "pattern": "^(web|macos|android|helper)$",
+            "pattern": "^(web|macos|android|helper|companion)$",
             "title": "Platform"
           },
           "display_name": {
@@ -14222,6 +14970,139 @@
           "trend"
         ],
         "title": "SkillOut"
+      },
+      "SnapEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
+          },
+          "all_day": {
+            "type": "boolean",
+            "title": "All Day"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "starts_at",
+          "ends_at",
+          "all_day"
+        ],
+        "title": "SnapEvent"
+      },
+      "SnapFocus": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused"
+            ],
+            "title": "Status"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "elapsed_seconds": {
+            "type": "integer",
+            "title": "Elapsed Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "mode",
+          "started_at",
+          "elapsed_seconds"
+        ],
+        "title": "SnapFocus"
+      },
+      "SnapNotice": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "created_at"
+        ],
+        "title": "SnapNotice"
+      },
+      "SnapTask": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Due At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "due_at"
+        ],
+        "title": "SnapTask"
       },
       "SpeakingIn": {
         "properties": {
@@ -15298,6 +16179,22 @@
           "streak"
         ],
         "title": "WeekStats"
+      },
+      "WifiIn": {
+        "properties": {
+          "blob": {
+            "type": "string",
+            "maxLength": 700,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+={0,2}$",
+            "title": "Blob"
+          }
+        },
+        "type": "object",
+        "required": [
+          "blob"
+        ],
+        "title": "WifiIn"
       },
       "app__agents__api__RunIn": {
         "properties": {
