@@ -3,6 +3,7 @@ import { useTheme } from './lib/theme'
 import { Component, lazy, Suspense, useEffect, useState, type ReactElement, type ReactNode } from 'react'
 import { AppShell } from './components/AppShell'
 import { AuthGate } from './components/AuthGate'
+import { AndroidUpdateNotice } from './components/AndroidUpdateNotice'
 import { getApiConfig } from './lib/api'
 import { createApiHealth } from './lib/apiHealth'
 import { getRoute } from './lib/router'
@@ -79,5 +80,5 @@ function WorkspaceApp({ route, theme, toggleTheme }: { route: RoutePath; theme: 
   const moduleKey = route.slice(1)
   const screens: Partial<Record<RoutePath, ReactElement>> = { '/': <HomeView apiStatus={apiStatus} />, '/mail': <MailView apiStatus={apiStatus} />, '/ai': <AiView apiStatus={apiStatus} />, '/tasks': <TasksView apiStatus={apiStatus} />, '/calendar': <CalendarView apiStatus={apiStatus} />, '/projects': <ProjectsView apiStatus={apiStatus} />, '/notes': <NotesView apiStatus={apiStatus} />, '/knowledge': <KnowledgeView apiStatus={apiStatus} />, '/widgets': <MobileCustomizeView theme={theme} onToggleTheme={toggleTheme} />, '/finance': <FinanceView apiStatus={apiStatus} />, '/apps': <AppsView apiStatus={apiStatus} />, '/timer': <TimerView apiStatus={apiStatus} />, '/english': <EnglishView apiStatus={apiStatus} />, '/automation': <AutomationView apiStatus={apiStatus} />, '/messages': <MessagesView apiStatus={apiStatus} />, '/notification-log': <NotificationLogView apiStatus={apiStatus} />, '/developer': <DeveloperView apiStatus={apiStatus} />, '/search': <SearchView apiStatus={apiStatus} />, '/settings': <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> }
   const content = screens[route] ?? <ModuleView moduleKey={moduleKey} apiStatus={apiStatus} />
-  return <AuthGate apiStatus={apiStatus}><AppShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme}><RouteErrorBoundary key={route}><Suspense fallback={<div role="status">Loading section…</div>}>{content}</Suspense></RouteErrorBoundary></AppShell></AuthGate>
+  return <AuthGate apiStatus={apiStatus}><AppShell route={route} apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme}><AndroidUpdateNotice /><RouteErrorBoundary key={route}><Suspense fallback={<div role="status">Loading section…</div>}>{content}</Suspense></RouteErrorBoundary></AppShell></AuthGate>
 }

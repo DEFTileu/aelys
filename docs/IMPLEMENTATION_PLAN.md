@@ -119,6 +119,11 @@ Exit: replay tests pass, out-of-policy actions rejected.
 
 ## Goal-size guidance for coding agents
 
+Owner-requested Phase 8 installer slice (2026-11-13): Android in-app update
+checks, verified APK download, and system installer integration are tracked in
+[Android updates](android-updates.md). Signing/publication and physical-device
+acceptance remain release gates; this does not close Phase 8 or ADR-006.
+
 - One milestone = several PR-sized tasks, not one unlimited diff.
 - A `/goal` (where supported) should refer to a specific phase and acceptance criteria.
 - Every run reports changed files, test evidence, deviations/OPEN questions and next dependent task.

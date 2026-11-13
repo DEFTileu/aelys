@@ -37,6 +37,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: dtolnay/rust-toolchain@stable
+      - run: cargo fmt --manifest-path packages/android-updater/Cargo.toml -- --check
+      - run: cargo test --manifest-path packages/android-updater/Cargo.toml --locked
+      - run: cargo clippy --manifest-path packages/android-updater/Cargo.toml --all-targets --locked -- -D warnings
       - run: cargo fmt --manifest-path packages/native-transport/Cargo.toml -- --check
       - run: cargo test --manifest-path packages/native-transport/Cargo.toml --locked --lib
       - run: cargo clippy --manifest-path packages/native-transport/Cargo.toml --all-targets --locked -- -D warnings

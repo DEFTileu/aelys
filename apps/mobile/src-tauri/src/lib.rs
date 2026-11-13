@@ -1,6 +1,7 @@
 use aelys_native_transport as native;
 use serde::Serialize;
 use tauri::Manager;
+mod updates;
 
 #[derive(Debug, Serialize)]
 struct MobileRuntimePolicy {
@@ -20,7 +21,12 @@ fn runtime_policy() -> MobileRuntimePolicy {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder
+        .plugin(tauri_plugin_android_installer::init())
+        .plugin(tauri_plugin_aelys_update_verifier::init());
+    builder
         .plugin(
             tauri_plugin_opener::Builder::new()
                 .open_js_links_on_click(false)
@@ -35,8 +41,12 @@ pub fn run() {
         })
         .manage(native::NativeState::default())
         .manage(native::NativeAIStreams::default())
+        .manage(updates::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             runtime_policy,
+            updates::android_update_check,
+            updates::android_update_download,
+            updates::android_update_install,
             native::native_status,
             native::native_health,
             native::native_biometric_status,

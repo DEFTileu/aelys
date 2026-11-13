@@ -9,9 +9,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "aelys-android-updater"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "rustls",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "url",
+ "webpki-roots",
+]
+
+[[package]]
 name = "aelys-mobile"
 version = "0.1.0"
 dependencies = [
+ "aelys-android-updater",
  "aelys-native-transport",
  "serde",
  "serde_json",
@@ -19,8 +35,11 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-aelys-notification-log",
  "tauri-plugin-aelys-session-store",
+ "tauri-plugin-aelys-update-verifier",
+ "tauri-plugin-android-installer",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "tokio",
 ]
 
 [[package]]
@@ -3901,6 +3920,27 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-aelys-update-verifier"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
+name = "tauri-plugin-android-installer"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a4924be58035994aba1187bf8d303e8b6fb1564aca760cad176d2a233c9ceca"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

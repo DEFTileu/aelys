@@ -9,6 +9,11 @@ with Android Studio, SDK, NDK, Java and platform tools installed.
 The mobile command surface deliberately has no vendor execution. Agent runs
 remain Mac-only through the authenticated backend/runtime channel.
 
+Android in-app update implementation and release-manifest tooling are described
+in [Android updates](../../docs/android-updates.md). It uses an HTTPS release
+channel and the system installer; publication and physical-device acceptance
+remain separate gates.
+
 For a local arm64 build, select an installed JDK 21, SDK and NDK for this shell
 only (the paths below describe this validation machine):
 
