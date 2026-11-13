@@ -1,5 +1,7 @@
 # Companion firmware: carry-over after plan 1
 
+Backend (plan 2) is done: pairing and login for a `companion` platform, the WebSocket channel, snapshots, actions, owner commands, revoke. Plan 3 (firmware link + app pages) consumes it as listed in "Plan 3 inputs" at the end of this file.
+
 Plan 1 (`docs/superpowers/plans/2026-11-12-companion-firmware-base.md`) is done. These points came out of its reviews and must be picked up later.
 
 ## Contracts to change before plan 3
@@ -22,3 +24,13 @@ Plan 1 (`docs/superpowers/plans/2026-11-12-companion-firmware-base.md`) is done.
 - No WPA3-only (H2E) networks yet.
 - Wi-Fi/panel start-failure paths and the queued-Improv-request path compile and were reviewed but were never forced on hardware.
 - One unexplained USB-Serial/JTAG silence during measurements (see `budgets.md`); if it recurs, try unplug/replug first and record `lsof /dev/cu.usbmodem*`.
+
+## Plan 3 inputs (backend done, 2026-11-13)
+- Protocol: `docs/companion-protocol.md` is the contract; HTTP routes and auth model are in `docs/API_CONTRACTS.md` (section "Companion").
+- Routes: pair with `platform: "companion"`, log in by device signature (no refresh token, so log in again when the access token expires); channel `/api/v1/devices/channel` with the `Authorization` header only; owner routes under `/api/v1/companion/devices/{id}/...`.
+- `rev` rules: `lost_mode` and `ice_update` carry a per-device, per-name `rev`. Apply a command only if its `rev` is greater than the last applied one for that name, always ack (a stale one too), keep the last `rev` in NVS. `BUSY` keeps the command pending until the next `hello`. Delivery is at-least-once, so the same `id` can come again.
+- Reconnect: on close `1011` (server failed to send the first snapshot) back off and retry. Never reconnect immediately in a loop.
+- Close codes: `4401` re-login then reconnect; `4403` re-check with `/auth/device/challenge` and wipe pairing only if it says the device is unknown or revoked (401 `UNAUTHORIZED`); `4000` do not reconnect, a newer connection is live.
+- Action ids: the server requires a UUID v4 per action and treats a repeated `id` as the same action (stored result, no second effect). Reuse the id only when resending the same action after a lost reply; generate a fresh id when the user retries.
+- Commands never queued (`play_sound`, `wifi_add`, `wifi_scan`) arrive only while online; `wifi_scan` is answered by `wifi_scan_result`, not `command_ack`.
+- Send `hello` after `ready`/`snapshot`; pending commands are delivered after it. Frames are text only, at most 4 KB.
