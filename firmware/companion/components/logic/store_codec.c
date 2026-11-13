@@ -149,6 +149,34 @@ bool wifi_list_upsert(wifi_list_t *l, const char *ssid, const char *pass)
     return true;
 }
 
+bool wifi_list_remove(wifi_list_t *l, const char *ssid)
+{
+    if (!ssid || !*ssid) return false;
+    for (int i = 0; i < l->n && i < WIFI_MAX; i++) {
+        if (strcmp(l->net[i].ssid, ssid) != 0) continue;
+        memmove(&l->net[i], &l->net[i + 1], (size_t)(l->n - 1 - i) * sizeof l->net[0]);
+        memset(&l->net[--l->n], 0, sizeof l->net[0]); /* no password left behind */
+        return true;
+    }
+    return false;
+}
+
+bool wifi_list_reorder(wifi_list_t *l, const char ssids[][33], int n)
+{
+    wifi_list_t out;
+    memset(&out, 0, sizeof out);
+    bool used[WIFI_MAX] = { false };
+    for (int k = 0; k < n && out.n < l->n; k++)
+        for (int i = 0; i < l->n && i < WIFI_MAX; i++)
+            if (!used[i] && strncmp(l->net[i].ssid, ssids[k], 33) == 0) { used[i] = true; out.net[out.n++] = l->net[i]; break; }
+    for (int i = 0; i < l->n && i < WIFI_MAX; i++)
+        if (!used[i]) out.net[out.n++] = l->net[i];
+    bool changed = memcmp(&out, l, sizeof out) != 0;
+    if (changed) *l = out;
+    for (volatile uint8_t *w = (volatile uint8_t *)&out; w < (volatile uint8_t *)(&out + 1); w++) *w = 0; /* passwords: not optimised away */
+    return changed;
+}
+
 size_t store_encode_snap(const snap_t *in, uint8_t *buf, size_t cap)
 {
     return seal(STORE_SNAP_VERSION, in, sizeof *in, buf, cap);

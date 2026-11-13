@@ -183,6 +183,58 @@ static void test_wifi_upsert_rejects_bad_input(void)
     CHECK_EQ(l.n, 0);
 }
 
+static void seed_abc(wifi_list_t *l)
+{
+    memset(l, 0, sizeof *l);
+    CHECK(wifi_list_upsert(l, "A", "pa"));
+    CHECK(wifi_list_upsert(l, "B", "pb"));
+    CHECK(wifi_list_upsert(l, "C", "pc"));
+}
+
+static void test_wifi_remove(void)
+{
+    wifi_list_t l; seed_abc(&l);
+    CHECK(wifi_list_remove(&l, "B"));
+    CHECK_EQ(l.n, 2);
+    CHECK(!strcmp(l.net[0].ssid, "A") && !strcmp(l.net[1].ssid, "C") && !strcmp(l.net[1].pass, "pc"));
+    CHECK(l.net[2].ssid[0] == 0 && l.net[2].pass[0] == 0); /* the vacated slot holds no password */
+    CHECK(!wifi_list_remove(&l, "B"));                   /* gone already: unchanged */
+    CHECK(!wifi_list_remove(&l, "b"));                   /* exact match only */
+    CHECK(!wifi_list_remove(&l, ""));
+    CHECK(!wifi_list_remove(&l, NULL));
+    CHECK_EQ(l.n, 2);
+    CHECK(wifi_list_remove(&l, "A") && wifi_list_remove(&l, "C"));
+    CHECK_EQ(l.n, 0);
+    CHECK(!wifi_list_remove(&l, "A"));
+}
+
+static void test_wifi_reorder_partial_and_unknown(void)
+{
+    wifi_list_t l; seed_abc(&l);
+    char o1[2][33] = { "C", "A" };                       /* partial: C, A first, B keeps its place after them */
+    CHECK(wifi_list_reorder(&l, o1, 2));
+    CHECK_EQ(l.n, 3);
+    CHECK(!strcmp(l.net[0].ssid, "C") && !strcmp(l.net[1].ssid, "A") && !strcmp(l.net[2].ssid, "B"));
+    CHECK(!strcmp(l.net[0].pass, "pc") && !strcmp(l.net[2].pass, "pb")); /* passwords travel with their network */
+    char o2[3][33] = { "Nope", "B", "Nope" };            /* unknown names are ignored */
+    CHECK(wifi_list_reorder(&l, o2, 3));
+    CHECK(!strcmp(l.net[0].ssid, "B") && !strcmp(l.net[1].ssid, "C") && !strcmp(l.net[2].ssid, "A"));
+    char o3[3][33] = { "B", "B", "C" };                  /* a repeated name counts once */
+    CHECK(!wifi_list_reorder(&l, o3, 3));                /* B, C, A is already the order: unchanged */
+    CHECK_EQ(l.n, 3);
+    char o4[1][33] = { "Nope" };
+    CHECK(!wifi_list_reorder(&l, o4, 1));
+    CHECK(!wifi_list_reorder(&l, o4, 0));
+    CHECK(!strcmp(l.net[0].ssid, "B") && !strcmp(l.net[1].ssid, "C") && !strcmp(l.net[2].ssid, "A"));
+    char o5[3][33] = { "A", "C", "B" };                  /* a full reverse */
+    CHECK(wifi_list_reorder(&l, o5, 3));
+    CHECK(!strcmp(l.net[0].ssid, "A") && !strcmp(l.net[1].ssid, "C") && !strcmp(l.net[2].ssid, "B"));
+    uint8_t buf[STORE_WIFI_BLOB], v = 0;                 /* the blob format is untouched */
+    CHECK_EQ(store_encode_wifi(&l, buf, sizeof buf), sizeof buf);
+    v = buf[0];
+    CHECK_EQ(v, 1);
+}
+
 static void test_lost_roundtrip(void)
 {
     lost_state_t in, out; uint8_t buf[STORE_LOST_BLOB];
@@ -350,6 +402,8 @@ int main(void)
     test_wifi_upsert_replaces_same_ssid();
     test_wifi_upsert_drops_oldest_when_full();
     test_wifi_upsert_rejects_bad_input();
+    test_wifi_remove();
+    test_wifi_reorder_partial_and_unknown();
     test_lost_roundtrip();
     test_ice_rev_survives_the_owner_blob();
     test_pair_roundtrip_and_corrupt();

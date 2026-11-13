@@ -43,6 +43,17 @@ bool link_post_action(act_kind_t k, const char *target_id);
  * the state machine waits unpaired. Other stored data is the caller's to erase. */
 void link_unpair(void);
 
+/* Link task only (an on_command handler): the Wi-Fi network was switched, so the socket is dead or about to be. Closes it and signs in
+ * again at once, as soon as the network is up. */
+void link_wifi_switched(void);
+
+/* Link task only: an ack that must wait for the channel to come back (wifi_add: switching networks drops it). Held in RAM, at most
+ * four (the oldest goes first), sent after the next hello and before wifi_state; forgotten on a wipe or a new pairing. */
+void link_queue_ack(const char *cmd_id, bool ok, const char *error_code);
+
+/* Link task only: sends a fresh `wifi_state` (saved SSIDs and the current one). */
+void link_send_wifi_state(void);
+
 /* From the link task (command handlers) or any task: false when the socket is not open or the send failed. */
 bool link_send_ack(const char *cmd_id, bool ok, const char *error_code);
 bool link_send_raw(const char *json, size_t n);

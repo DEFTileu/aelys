@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out file.bmp [--scale 100]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|face:<mood> --out file.bmp [--scale 100]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -131,6 +131,14 @@ static int screen_shot(const char *shot)
     if (!strcmp(shot, "pair")) { const uint8_t d[7] = { PAIR_UI_CODE, '4', '8', '2', '9', '1', '3' }; sim_post(UI_EV_PAIR, d, sizeof d); return 0; }
     if (!strcmp(shot, "pair_done")) { const uint8_t d = PAIR_UI_DONE; sim_post(UI_EV_PAIR, &d, 1); return 0; }
     if (!strcmp(shot, "welcome")) { const uint8_t d = LINK_UI_UNPAIRED; sim_post(UI_EV_LINK, &d, 1); return 0; }
+    if (!strncmp(shot, "wifi_", 5)) { /* UI_EV_WIFI_ADD: state, SSID, previous SSID */
+        uint8_t d[60] = { !strcmp(shot, "wifi_connecting") ? 0 : !strcmp(shot, "wifi_connected") ? 1 : 2 };
+        const char *name = !strcmp(shot, "wifi_wrong_long") ? "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW" : "Office";
+        memcpy(&d[1], name, strlen(name));
+        memcpy(&d[34], "Home", 4);
+        sim_post(UI_EV_WIFI_ADD, d, sizeof d);
+        return 0;
+    }
     if (!strcmp(shot, "ice_progress")) { sim_post(UI_EV_COMBO_PROGRESS, &pct, 1); return 0; }
     return -1;
 }
@@ -146,7 +154,7 @@ int main(int argc, char **argv)
         else shot = NULL;
     }
     if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|face:<mood> --out <file.bmp> [--scale <percent>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|face:<mood> --out <file.bmp> [--scale <percent>]\n",
                 argv[0]);
         return 2;
     }

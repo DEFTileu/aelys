@@ -537,6 +537,37 @@ size_t proto_command_ack(char *buf, size_t cap, const char *id, bool ok, const c
     return w_done(&w);
 }
 
+static bool utf8_ok(const char *s)
+{
+    const uint8_t *p = (const uint8_t *)s;
+    while (*p) {
+        int extra = *p < 0x80 ? 0 : (*p >> 5) == 6 ? 1 : (*p >> 4) == 14 ? 2 : (*p >> 3) == 30 ? 3 : -1;
+        if (extra < 0 || (*p < 0xC2 && *p >= 0x80)) return false;
+        p++;
+        while (extra--) { if ((*p & 0xC0) != 0x80) return false; p++; }
+    }
+    return true;
+}
+
+int wifi_seen_merge(wifi_seen_t *v, int n, int max)
+{
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        if (!v[i].ssid[0] || !utf8_ok(v[i].ssid)) continue;
+        int j = 0;
+        while (j < k && strcmp(v[j].ssid, v[i].ssid) != 0) j++;
+        if (j < k) { if (v[i].rssi > v[j].rssi) v[j] = v[i]; continue; }
+        v[k++] = v[i];
+    }
+    for (int i = 1; i < k; i++) { /* insertion sort: stable, k is small */
+        wifi_seen_t t = v[i];
+        int j = i;
+        while (j > 0 && v[j - 1].rssi < t.rssi) { v[j] = v[j - 1]; j--; }
+        v[j] = t;
+    }
+    return k > max ? (max < 0 ? 0 : max) : k;
+}
+
 size_t proto_wifi_scan_result(char *buf, size_t cap, const char *id, const wifi_seen_t *nets, int n)
 {
     W w; w_init(&w, buf, cap);

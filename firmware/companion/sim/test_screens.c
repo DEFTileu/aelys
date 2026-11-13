@@ -910,6 +910,108 @@ static void test_lost_hint_toast_shot(void)
     CHECK(!shows_text(scr, hint));
 }
 
+/* UI_EV_WIFI_ADD: [0] state, [1..33] SSID, [34..59] previous SSID */
+static void wifi_add_ev(uint8_t state, const char *ssid, const char *prev)
+{
+    uint8_t d[60] = { state };
+    strncpy((char *)&d[1], ssid, 32);
+    strncpy((char *)&d[34], prev, 25);
+    sim_post(UI_EV_WIFI_ADD, d, sizeof d);
+}
+
+/* Designs "Wi-Fi с телефона" and "Wi-Fi · неверный пароль": a card on top of the everyday screens, never over lost mode, the
+ * ICE card or the pairing screen. A 32-character SSID still fits the circle. */
+static void test_wifi_toast_shots(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    char wide[33];
+    memset(wide, 'W', 32);
+    wide[32] = '\0';
+
+    wifi_add_ev(0, "Office", "Home");
+    sim_step(100);
+    check_inside("wifi connecting");
+    CHECK(shows_text(scr, "New Wi-Fi from phone") && shows_text(scr, "Office") && shows_text(scr, "Connecting\xE2\x80\xA6"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    sim_step(5000);
+    CHECK(shows_text(scr, "Connecting\xE2\x80\xA6"));          /* waits for the answer, not for a timer */
+    wifi_add_ev(1, "Office", "Home");
+    sim_step(100);
+    check_inside("wifi connected");
+    CHECK(shows_text(scr, "Connected") && shows_text(scr, "Office") && !shows_text(scr, "Connecting\xE2\x80\xA6"));
+    CHECK(!shows_text(scr, "New Wi-Fi from phone"));
+    sim_step(2100);
+    CHECK(!shows_text(scr, "Connected") && !shows_text(scr, "Office")); /* gone after 2 s */
+
+    wifi_add_ev(0, wide, "");
+    sim_step(100);
+    check_inside("wifi connecting (32 chars)");
+    wifi_add_ev(2, wide, "Home");
+    sim_step(100);
+    check_inside("wifi wrong password (32 chars)");
+    CHECK(shows_text(scr, "Wrong password") && shows_text(scr, "still on Home") && shows_text(scr, "Fix it in Aelys on your phone"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    sim_step(4000);
+    CHECK(shows_text(scr, "Wrong password"));                    /* long enough to read */
+    sim_step(1200);
+    CHECK(!shows_text(scr, "Wrong password"));
+
+    wifi_add_ev(2, "Office", "");                                /* no previous network: no "still on" line */
+    sim_step(100);
+    check_inside("wifi wrong password (offline before)");
+    CHECK(shows_text(scr, "Wrong password") && shows_text(scr, "Office") && !shows_text(scr, "still on Home"));
+    wifi_add_ev(0, "Cafe", "");                                  /* a new attempt replaces the card */
+    sim_step(100);
+    CHECK(!shows_text(scr, "Wrong password") && shows_text(scr, "Cafe"));
+
+    uint8_t short_ev[2] = { 1, 'X' };                            /* a short event is cut safely: no crash, still inside the circle */
+    sim_post(UI_EV_WIFI_ADD, short_ev, 0);
+    sim_post(UI_EV_WIFI_ADD, short_ev, 2);
+    sim_step(100);
+    check_inside("wifi short event");
+    uint8_t bad[60] = { 9, 'Z' };                                /* unknown state: ignored */
+    sim_post(UI_EV_WIFI_ADD, bad, sizeof bad);
+    sim_step(2200);
+
+    /* lost mode, the ICE card and the pairing screen: nothing shows (the command still runs on the board) */
+    post_lost(1);
+    sim_step(100);
+    wifi_add_ev(0, "Office", "Home");
+    sim_step(100);
+    CHECK(!shows_text(scr, "New Wi-Fi from phone") && !shows_text(scr, "Office"));
+    wifi_add_ev(2, "Office", "Home");
+    sim_step(100);
+    CHECK(!shows_text(scr, "Wrong password"));
+    post(UI_EV_COMBO_FIRE);
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_ICE);
+    wifi_add_ev(2, "Office", "Home");
+    sim_step(100);
+    CHECK(!shows_text(scr, "Wrong password"));
+    post(UI_EV_TOUCH);
+    post_lost(0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    wifi_add_ev(0, "Office", "Home");                            /* shown, then lost mode takes it off at once */
+    sim_step(100);
+    CHECK(shows_text(scr, "Office"));
+    post_lost(1);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Office") && !shows_text(scr, "New Wi-Fi from phone"));
+    post_lost(0);
+    sim_step(100);
+    CHECK(!shows_text(scr, "Office"));                           /* and it does not come back */
+    const uint8_t code[7] = { PAIR_UI_CODE, '4', '8', '2', '9', '1', '3' };
+    sim_post(UI_EV_PAIR, code, sizeof code);
+    wifi_add_ev(1, "Office", "");
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_PAIR);
+    CHECK(!shows_text(scr, "Connected"));
+    const uint8_t hide = PAIR_UI_HIDE;
+    sim_post(UI_EV_PAIR, &hide, 1);
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
 int main(void)
 {
     sim_init();
@@ -936,5 +1038,6 @@ int main(void)
     test_idle_screens_do_not_redraw();
     test_gestures_and_lost_mode();
     test_lost_hint_toast_shot();
+    test_wifi_toast_shots();
     return g_failed ? 1 : 0;
 }

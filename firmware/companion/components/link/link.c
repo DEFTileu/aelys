@@ -147,6 +147,30 @@ bool link_send_ack(const char *cmd_id, bool ok, const char *error_code)
     return link_send_raw(b, n);
 }
 
+/* acks that wait for the channel (wifi_add); link task only */
+static struct { char id[40]; bool ok; char code[16]; } held[4];
+static int n_held;
+
+void link_queue_ack(const char *cmd_id, bool ok, const char *error_code)
+{
+    if (n_held == (int)(sizeof held / sizeof held[0])) {
+        memmove(&held[0], &held[1], sizeof held - sizeof held[0]);
+        n_held--;
+    }
+    strlcpy(held[n_held].id, cmd_id, sizeof held[0].id);
+    held[n_held].ok = ok;
+    strlcpy(held[n_held].code, ok || !error_code ? "" : error_code, sizeof held[0].code);
+    n_held++;
+}
+
+static void flush_acks(void)
+{
+    int sent = 0;
+    while (sent < n_held && link_send_ack(held[sent].id, held[sent].ok, held[sent].code)) sent++;
+    n_held -= sent;
+    memmove(&held[0], &held[sent], (size_t)n_held * sizeof held[0]); /* what did not go out waits for the next hello */
+}
+
 static void send_hello(void)
 {
     size_t n = proto_hello(link_mem->tx, sizeof link_mem->tx, esp_app_get_description()->version, "waveshare-amoled-1.75c",
@@ -158,7 +182,7 @@ static void send_hello(void)
 
 _Static_assert(sizeof(wifi_list_t) <= LINK_HTTP_MAX, "wifi_state borrows the HTTP buffer");
 
-static void send_wifi_state(void)
+void link_send_wifi_state(void)
 {
     wifi_list_t *l = (wifi_list_t *)link_mem->http; /* idle outside sign-in; only SSIDs go out, the passwords are wiped */
     memset(l, 0, sizeof *l);
@@ -270,6 +294,7 @@ static bool do_connect(void)
 static void after_wipe(void)
 {
     ESP_LOGW(TAG, "pairing wiped: the server does not know this device");
+    n_held = 0; /* acks for the old account's commands */
     if (link_deps.reset_revs) link_deps.reset_revs();
     if (link_deps.erase_snap) link_deps.erase_snap();
     memset(&link_mem->snap, 0, sizeof link_mem->snap);
@@ -301,7 +326,8 @@ static void on_online(void)
     open_ms = last_hb = last_metrics = ms();
     stable_sent = false;
     send_hello();
-    send_wifi_state();
+    flush_acks();
+    link_send_wifi_state();
     xSemaphoreTake(act_mu, portMAX_DELAY);
     link_acts_unsend_all(&acts, ms()); /* every open action goes out again with its own id */
     xSemaphoreGive(act_mu);
@@ -347,6 +373,12 @@ static void dispatch(link_event_t ev, int code)
         if (next == NO_EVENT) return;
         ev = (link_event_t)next;
     }
+}
+
+void link_wifi_switched(void)
+{
+    net_up = false; /* tick() sees the network again (or its return) as an up edge and signs in */
+    dispatch(LE_NET_DOWN, 0);
 }
 
 void link_unpair(void) { dispatch(LE_UNPAIR, 0); } /* LA_WIPE_PAIRING: do_wipe -> try_wipe -> after_wipe */
@@ -414,6 +446,7 @@ static void handle_paired(void)
     if (paired_seq == seen_seq) return;
     seen_seq = paired_seq;
     wipe_retry = false; /* a wipe of the old identity must not eat the new one */
+    n_held = 0;
     if (link_deps.reset_revs) link_deps.reset_revs(); /* new account: its revisions start again */
     dispatch(LE_PAIRED, 0);
     if (!net_ok()) dispatch(LE_NET_DOWN, 0); /* paired over USB while offline: the next Wi-Fi up edge signs in */

@@ -37,6 +37,9 @@ typedef struct {
 } proto_msg_t; /* ~1.1 KB: callers keep it static, never on a task stack */
 
 typedef struct { char ssid[33]; int8_t rssi; bool secure; } wifi_seen_t;
+/* In place: one entry per SSID (the strongest), sorted by RSSI descending (equal: first seen first), cut at max. Hidden (empty) and
+ * non-UTF-8 SSIDs are dropped (the server would reject the frame). Returns the new count; v holds at least n entries. */
+int wifi_seen_merge(wifi_seen_t *v, int n, int max);
 typedef struct {
     uint32_t heap_min_internal, largest_block, psram_free, wifi_reconnects, uptime_s;
     int8_t battery_pct; /* 0..100, -1 = omit battery_pct and charging */

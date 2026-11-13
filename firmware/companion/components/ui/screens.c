@@ -238,9 +238,18 @@ static void ice_timeout(lv_timer_t *t)
 static void show(scr_t s);
 
 /* A toast belongs to the everyday screens: never over lost mode, the ICE card or the pairing screen. */
+static bool toast_ok(void) { return g.cur != SCR_LOST && g.cur != SCR_ICE && g.cur != SCR_PAIR && !g.lost; }
 static void toast(const char *txt)
 {
-    if (g.cur != SCR_LOST && g.cur != SCR_ICE && g.cur != SCR_PAIR && !g.lost) scr_toast_show(txt);
+    if (toast_ok()) scr_toast_show(txt);
+}
+
+/* Bytes of an event payload from off up to the first NUL, cut to cap - 1; a short event gives "". */
+static void ev_str(char *dst, size_t cap, const ui_event_t *ev, size_t off)
+{
+    size_t n = 0;
+    while (off + n < ev->len && n + 1 < cap && ev->data[off + n]) { dst[n] = (char)ev->data[off + n]; n++; }
+    dst[n] = '\0';
 }
 
 static void paired_timeout(lv_timer_t *t)
@@ -455,6 +464,14 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_WIFI:
         if (ev->len >= 1) scr_home_set_wifi(ev->data[0]);
         return;
+    case UI_EV_WIFI_ADD: {
+        if (ev->len < 2 || !toast_ok()) return; /* lost mode, ICE card, pairing: nothing (the command still runs on the board) */
+        char ssid[33], prev[26];
+        ev_str(ssid, sizeof ssid, ev, 1);
+        ev_str(prev, sizeof prev, ev, 34);
+        scr_wifi_card_show(ev->data[0], ssid, prev);
+        return;
+    }
     case UI_EV_OWNER: {
         bool fresh;
         const owner_info_t *o = tribuf_latest(&ui_owner_tb, &fresh);

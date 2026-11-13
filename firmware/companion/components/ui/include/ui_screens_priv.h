@@ -44,7 +44,9 @@ mood_t ui_mood_for(const snap_t *s, int64_t now, bool online, bool just_complete
 /* scr_toast.c: one short message on top of everything, gone after 2 s. */
 lv_obj_t *scr_toast_create(lv_obj_t *parent);
 void scr_toast_show(const char *txt);
-void scr_toast_hide(void);                                 /* at once, timer stopped */
+void scr_toast_hide(void);                                 /* at once, timers stopped; also takes the Wi-Fi card off */
+/* The Wi-Fi card: state as UI_EV_WIFI_ADD data[0] (0 connecting, 1 connected, 2 failed); prev "" = no network to name. False for an unknown state. */
+bool scr_wifi_card_show(uint8_t state, const char *ssid, const char *prev);
 
 /* scr_today.c (design "Today · обзор") */
 lv_obj_t *scr_today_create(lv_obj_t *parent);

@@ -54,3 +54,9 @@ bool   store_decode_snap(const uint8_t *buf, size_t len, snap_t *out); /* also f
 /* Replaces the password of an existing SSID in place; otherwise appends, dropping the oldest
  * (index 0) when full. Returns false (list unchanged) if ssid is empty or ssid/pass do not fit. */
 bool wifi_list_upsert(wifi_list_t *l, const char *ssid, const char *pass);
+
+/* Removes the network named ssid (exact match), later ones move up and the vacated slot is wiped. True when something was removed. */
+bool wifi_list_remove(wifi_list_t *l, const char *ssid);
+/* Listed SSIDs first, in that order (each once); names that are not saved are ignored; the rest keep their order after them.
+ * True when the order changed (the list is untouched otherwise). */
+bool wifi_list_reorder(wifi_list_t *l, const char ssids[][33], int n);

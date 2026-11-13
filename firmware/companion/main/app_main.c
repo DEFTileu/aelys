@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "board.h"
+#include "codec_util.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_psram.h"
@@ -73,6 +74,60 @@ static void unpair_board(void)
     settings_defaults(&settings);
 }
 
+/* Wi-Fi commands. wifi_add switches the board's network, which drops the channel: its ack is queued in RAM and goes out after the
+ * reconnect and hello (then wifi_state). Buffers are static (the link task stack is kept free for mbedTLS) and wiped right after use;
+ * nothing here logs an SSID, a password, the blob or the plaintext. */
+static struct { uint8_t blob[528]; char ssid[33], pass[65], prev[33]; } wa; /* 704 base64url chars decode to at most 528 bytes */
+static char scan_buf[1536];
+
+static void post_wifi_add(uint8_t state, const char *ssid, const char *prev)
+{
+    ui_event_t ev = {.type = UI_EV_WIFI_ADD, .len = 60, .data = {state}};
+    strlcpy((char *)&ev.data[1], ssid, 33);
+    utf8_copy((char *)&ev.data[34], 26, prev, strlen(prev)); /* 25 bytes, never half a character */
+    post_ui(ev);
+    explicit_bzero(&ev, sizeof ev);
+}
+
+static void wifi_add(const char *id, const char *blob_b64)
+{
+    int n = b64url_decode(blob_b64, wa.blob, sizeof wa.blob);
+    esp_err_t e = n > 0 ? identity_wifi_decrypt(wa.blob, (size_t)n, wa.ssid, wa.pass) : ESP_FAIL;
+    explicit_bzero(wa.blob, sizeof wa.blob);
+    if (e != ESP_OK) {
+        ESP_LOGW(TAG, "wifi_add: blob did not decrypt");
+        explicit_bzero(&wa, sizeof wa);
+        link_send_ack(id, false, "DECRYPT_FAILED"); /* nothing changed: the channel is still up */
+        return;
+    }
+    strlcpy(wa.prev, net_wifi_current_ssid(), sizeof wa.prev); /* the net task is idle here: no Wi-Fi change is racing this read */
+    post_wifi_add(0, wa.ssid, wa.prev);
+    bool ok = net_wifi_try(wa.ssid, wa.pass);
+    explicit_bzero(wa.pass, sizeof wa.pass);
+    ESP_LOGW(TAG, "wifi_add: %s", ok ? "connected and saved" : "could not connect");
+    post_wifi_add(ok ? 1 : 2, wa.ssid, wa.prev);
+    explicit_bzero(&wa, sizeof wa);
+    link_queue_ack(id, ok, ok ? NULL : "WIFI_FAILED");
+    link_wifi_switched(); /* the old socket is gone either way: sign in again as soon as a network is up */
+}
+
+static void wifi_scan(const char *id)
+{
+    wifi_seen_t v[10];
+    int n = net_wifi_scan(v, 10);
+    if (n < 0) {
+        link_send_ack(id, false, "BUSY"); /* never queued by the server: the app asks again */
+        return;
+    }
+    link_send_raw(scan_buf, proto_wifi_scan_result(scan_buf, sizeof scan_buf, id, v, n)); /* this IS the ack of wifi_scan */
+}
+
+static void wifi_changed(const char *id, bool ok)
+{
+    link_send_ack(id, ok, ok ? NULL : "BUSY"); /* BUSY: the list could not be saved and is unchanged */
+    if (ok) link_send_wifi_state();
+}
+
 static void on_command(const proto_msg_t *m)
 {
     const char *id = m->id;
@@ -118,7 +173,19 @@ static void on_command(const proto_msg_t *m)
         unpair_board();
         restart_soon(); /* first boot: no pairing, no Wi-Fi, the welcome screen */
         break;
-    default: /* play_sound, wifi_*: later tasks */
+    case CMD_WIFI_ADD:
+        wifi_add(id, m->u.cmd.a.blob);
+        break;
+    case CMD_WIFI_SCAN:
+        wifi_scan(id);
+        break;
+    case CMD_WIFI_REMOVE:
+        wifi_changed(id, net_wifi_remove(m->u.cmd.a.ssid));
+        break;
+    case CMD_WIFI_ORDER:
+        wifi_changed(id, net_wifi_reorder((const char(*)[33])m->u.cmd.a.order.ssid, m->u.cmd.a.order.n));
+        break;
+    default: /* play_sound: a later task */
         link_send_ack(id, false, "UNSUPPORTED");
         break;
     }

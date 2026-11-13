@@ -465,6 +465,28 @@ static void test_built_messages_parse_as_json(void)
     CHECK_EQ(proto_wifi_scan_result(small, 30, "d4e5", nets, 3), 0); /* not even the frame fits */
 }
 
+static void test_wifi_seen_merge(void)
+{
+    wifi_seen_t v[16] = { { "Home", -70, true }, { "Cafe", -50, false }, { "Home", -40, true }, { "", -30, true },
+                          { "Guest", -80, false }, { "Cafe", -90, false }, { "Bad\xC3", -20, true } };
+    int n = wifi_seen_merge(v, 7, 10);                   /* one entry per SSID, the strongest; hidden and non-UTF-8 dropped */
+    CHECK_EQ(n, 3);
+    CHECK(!strcmp(v[0].ssid, "Home") && v[0].rssi == -40 && v[0].secure);
+    CHECK(!strcmp(v[1].ssid, "Cafe") && v[1].rssi == -50 && !v[1].secure);
+    CHECK(!strcmp(v[2].ssid, "Guest") && v[2].rssi == -80);
+    wifi_seen_t many[16];
+    for (int i = 0; i < 16; i++) { snprintf(many[i].ssid, sizeof many[i].ssid, "n%d", i); many[i].rssi = (int8_t)(-90 + i); many[i].secure = true; }
+    n = wifi_seen_merge(many, 16, 10);                   /* cut at max, strongest first */
+    CHECK_EQ(n, 10);
+    CHECK(!strcmp(many[0].ssid, "n15") && many[0].rssi == -75 && !strcmp(many[9].ssid, "n6"));
+    CHECK_EQ(wifi_seen_merge(many, 0, 10), 0);
+    wifi_seen_t one[1] = { { "Solo", -60, false } };
+    CHECK_EQ(wifi_seen_merge(one, 1, 0), 0);
+    wifi_seen_t tie[3] = { { "x", -60, false }, { "y", -60, true }, { "x", -60, true } };
+    CHECK_EQ(wifi_seen_merge(tie, 3, 10), 2);            /* equal strength: stable, first seen first */
+    CHECK(!strcmp(tie[0].ssid, "x") && !strcmp(tie[1].ssid, "y"));
+}
+
 static void test_wifi_state_escapes_ssid(void)
 {
     char b[512];
@@ -548,6 +570,7 @@ static void test_http_bodies(void)
 
 int main(void)
 {
+    test_wifi_seen_merge();
     test_parses_every_contract_example();
     test_parses_v11_examples();
     test_command_unknown_name_is_not_rejected();
