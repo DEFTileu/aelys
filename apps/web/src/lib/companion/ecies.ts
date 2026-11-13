@@ -33,6 +33,9 @@ export async function encryptWifi(devicePubB64: string, deviceId: string, ssid: 
   const keyBits = await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('aelys-wifi-v1') }, ikm, 256)
   const key = await crypto.subtle.importKey('raw', keyBits, 'AES-GCM', false, ['encrypt'])
   const nonce = testOnly?.nonce ?? crypto.getRandomValues(new Uint8Array(12))
-  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: Uint8Array.from(nonce), additionalData: enc.encode(deviceId) }, key, plain))
+  let sealed: Uint8Array
+  try {
+    sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: Uint8Array.from(nonce), additionalData: enc.encode(deviceId) }, key, plain))
+  } finally { plain.fill(0); ssidBytes.fill(0); passBytes.fill(0) } // the password must not linger in memory
   return base64Url(Uint8Array.from([1, ...ephPub, ...nonce, ...sealed]))
 }

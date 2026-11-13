@@ -49,6 +49,7 @@ export function DeviceSettingsPage({ state, onUnpaired }: Props) {
   const [unpairError, setUnpairError] = useState('')
   const attempt = useRef(0) // a cancelled attempt must not send anything when its fingerprint check returns late
   const unpair = async () => {
+    if (state.lost_mode?.on) return // the board keeps showing lost mode after a wipe, so the app refuses until it is off
     const mine = ++attempt.current
     setUnpairError(''); setSheet(true)
     try {
@@ -85,7 +86,7 @@ export function DeviceSettingsPage({ state, onUnpaired }: Props) {
       {restartError && <div className="st-error" role="alert">{restartError}</div>}
     </Card>
     <Card>
-      <Row title="Unpair Aelys" hint="Erases Aelys, its saved Wi-Fi and contacts. Requires your fingerprint"><button type="button" className="st-btn st-btn--danger" onClick={() => void unpair()}>Unpair</button></Row>
+      <Row title="Unpair Aelys" hint="Erases Aelys, its saved Wi-Fi and contacts. Requires your fingerprint"><button type="button" className="st-btn st-btn--danger" disabled={!!state.lost_mode?.on} onClick={() => void unpair()}>Unpair</button></Row>
     </Card>
     {sheet && <ReauthSheet error={unpairError} onCancel={cancel} hint="Erases Aelys, its saved Wi-Fi and contacts" />}
   </>

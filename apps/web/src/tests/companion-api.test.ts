@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import vectors from './fixtures/companion-vectors.json'
-import { clearAccessToken, getSharedApiClient, setIdentityStore } from '../lib/api'
+import { clearAccessToken, getSharedApiClient, setIdentityStore, signWithThisDevice } from '../lib/api'
 import { generateDeviceKey, type DeviceIdentity, type IdentityStore } from '../lib/deviceKey'
 import { companion, reauth } from '../lib/companion/api'
 import { encryptWifi, newPairingSecret, sha256Hex } from '../lib/companion/ecies'
@@ -22,11 +22,28 @@ describe('encryptWifi', () => {
     expect(unb64(a).length).toBeLessThanOrEqual(192)
   })
 
+  it('zeroes the plaintext buffer once it is encrypted', async () => {
+    let seen: Uint8Array | undefined
+    const real = crypto.subtle.encrypt.bind(crypto.subtle)
+    vi.spyOn(crypto.subtle, 'encrypt').mockImplementation(async (algorithm, key, data) => { seen = data as Uint8Array; return real(algorithm, key, data) })
+    await encryptWifi(vectors.device_pub_b64, vectors.device_id, 'Office', 'hunter22')
+    expect(seen).toBeInstanceOf(Uint8Array)
+    expect(seen!.length).toBeGreaterThan(0)
+    expect([...seen!].every((b) => b === 0)).toBe(true)
+  })
+
   it('rejects ssid > 32 bytes, empty ssid or password > 64 bytes', async () => {
     await expect(encryptWifi(vectors.device_pub_b64, vectors.device_id, 'x'.repeat(33), 'pw')).rejects.toThrow(RangeError)
     await expect(encryptWifi(vectors.device_pub_b64, vectors.device_id, 'я'.repeat(17), 'pw')).rejects.toThrow(RangeError) // 34 bytes
     await expect(encryptWifi(vectors.device_pub_b64, vectors.device_id, '', 'pw')).rejects.toThrow(RangeError)
     await expect(encryptWifi(vectors.device_pub_b64, vectors.device_id, 'net', 'p'.repeat(65))).rejects.toThrow(RangeError)
+  })
+})
+
+describe('signWithThisDevice', () => {
+  it('refuses any context other than the two re-auth ones', async () => {
+    await expect(signWithThisDevice('aelys-device-login-v1' as never, 'target')).rejects.toThrow(/context/i)
+    await expect(signWithThisDevice('' as never, 'target')).rejects.toThrow(/context/i)
   })
 })
 
@@ -74,7 +91,7 @@ describe('reauth', () => {
 
 describe('companion client', () => {
   afterEach(() => { vi.restoreAllMocks() })
-  const spy = () => vi.spyOn(getSharedApiClient(), 'request').mockResolvedValue(undefined as never) as unknown as { mock: { calls: [string, { method?: string; body?: unknown; queueOnOffline?: boolean }][] } }
+  const spy = () => vi.spyOn(getSharedApiClient(), 'request').mockResolvedValue({} as never) as unknown as { mock: { calls: [string, { method?: string; body?: unknown; queueOnOffline?: boolean }][] } }
 
   it('setLost does not queue offline', async () => {
     const request = spy()
@@ -82,6 +99,15 @@ describe('companion client', () => {
     await companion.setLost('dev 1', body)
     expect(request.mock.calls[0]).toEqual(['/api/v1/companion/devices/dev%201/lost-mode', { method: 'PUT', body, queueOnOffline: false }])
   })
+
+  it.each([{ id: 'c-7', delivered: true }, { command_id: 'c-8' }, { id: 'ignored', command_id: 'c-9' }])(
+    'command routes normalise %j to command_id', async (reply) => {
+      vi.spyOn(getSharedApiClient(), 'request').mockResolvedValue(reply as never)
+      const want = (reply as { command_id?: string; id?: string }).command_id ?? (reply as { id?: string }).id
+      const calls = [companion.find('d'), companion.addWifi('d', 'b'), companion.scanWifi('d'), companion.removeWifi('d', 'n'),
+        companion.orderWifi('d', ['n']), companion.setSettings('d', { brightness: 50 }), companion.restart('d')]
+      for (const result of await Promise.all(calls)) expect(result).toEqual({ command_id: want })
+    })
 
   it('maps every call to its route, method and body', async () => {
     const request = spy()

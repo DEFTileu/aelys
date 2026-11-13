@@ -209,6 +209,16 @@ describe('Add companion', () => {
     expect(host.querySelector('button[aria-label="Hide password"]')).not.toBeNull()
   })
 
+  it('limits the Wi-Fi password to 64 UTF-8 bytes', async () => {
+    await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456')
+    await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    const password = host.querySelector<HTMLInputElement>('input[aria-label="Password"]')!
+    await setValue(password, 'ж'.repeat(40))
+    expect(password.value).toBe('ж'.repeat(32))
+    await setValue(password, 'p'.repeat(70))
+    expect(password.value).toBe('p'.repeat(64))
+  })
+
   it('devices nav item sits between Connection and Security', () => {
     const system = GROUPS.find((g) => g.title === 'System')!.items
     expect(system.map((i) => i.id)).toEqual(['accounts', 'connection', 'devices', 'security', 'about'])

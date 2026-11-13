@@ -5,6 +5,7 @@ import { getApiConfig } from '../../../lib/api'
 import { companion, newPairingSecret, sha256Hex } from '../../../lib/companion/api'
 import { CompanionError, CompanionSerial } from '../../../lib/companion/serial'
 import { Card } from '../ui'
+import { clampBytes } from './bytes'
 import './devices.css'
 
 type Stage = 'start' | 'code' | 'wifi' | 'done'
@@ -185,7 +186,7 @@ export function AddCompanion({ onDone }: { onDone?: () => void } = {}) {
           {stage === 'done' && <div className="dv-found"><span className="st-dot" />{online}</div>}
           {stage === 'wifi' && <form className="st-form st-form--flush" onSubmit={(e) => { e.preventDefault(); if (ssid && !busy) void send() }}>
             <label className="st-field-label">Network name<input className="st-input" aria-label="Network name" value={ssid} autoCapitalize="none" autoCorrect="off" spellCheck={false} disabled={busy} onChange={(e) => { if (new TextEncoder().encode(e.target.value).length <= 32) setSsid(e.target.value) }} /></label>
-            <label className="st-field-label">Password<span className="st-keyrow"><input className="st-input" type={showPassword ? 'text' : 'password'} aria-label="Password" value={password} maxLength={63} autoComplete="off" disabled={busy} onChange={(e) => setPassword(e.target.value)} /><button type="button" className="st-btn" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></span></label>
+            <label className="st-field-label">Password<span className="st-keyrow"><input className="st-input" type={showPassword ? 'text' : 'password'} aria-label="Password" value={password} maxLength={64} autoComplete="off" disabled={busy} onChange={(e) => setPassword(clampBytes(e.target.value, 64))} /><button type="button" className="st-btn" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></span></label>
             <div className="dv-actions"><button type="submit" className="st-btn st-btn--primary" disabled={busy || !ssid}>Send to Aelys</button></div>
           </form>}
         </div>

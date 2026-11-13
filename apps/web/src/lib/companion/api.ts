@@ -6,6 +6,11 @@ export { encryptWifi, newPairingSecret, sha256Hex } from './ecies'
 
 const send = <T>(path: string, method: 'GET' | 'POST' | 'PUT', body?: unknown) =>
   getSharedApiClient().request<T>(`/api/v1${path}`, { method, body, queueOnOffline: false })
+/** Plan 2 answers command routes with `{id, delivered}`; the app only ever uses `command_id`. */
+const command = async (path: string, method: 'GET' | 'POST' | 'PUT', body?: unknown): Promise<CommandResult> => {
+  const r = await send<{ command_id?: string; id?: string }>(path, method, body)
+  return { command_id: (r.command_id ?? r.id)! }
+}
 const dev = (id: string) => `/companion/devices/${encodeURIComponent(id)}`
 
 export const companion = {
@@ -17,13 +22,13 @@ export const companion = {
   state: (id: string) => send<CompanionState>(dev(id), 'GET'),
   setLost: (id: string, body: LostBody) => send<void>(`${dev(id)}/lost-mode`, 'PUT', body),
   setIce: (id: string, body: IceBody) => send<void>(`${dev(id)}/ice`, 'PUT', body),
-  find: (id: string) => send<CommandResult>(`${dev(id)}/find`, 'POST'),
-  addWifi: (id: string, blob: string) => send<CommandResult>(`${dev(id)}/wifi`, 'POST', { blob }),
-  scanWifi: (id: string) => send<CommandResult>(`${dev(id)}/wifi-scan`, 'POST'),
-  removeWifi: (id: string, ssid: string) => send<CommandResult>(`${dev(id)}/wifi/remove`, 'POST', { ssid }),
-  orderWifi: (id: string, ssids: string[]) => send<CommandResult>(`${dev(id)}/wifi/order`, 'PUT', { ssids }),
-  setSettings: (id: string, body: { brightness: number }) => send<CommandResult>(`${dev(id)}/settings`, 'PUT', body),
-  restart: (id: string) => send<CommandResult>(`${dev(id)}/restart`, 'POST'),
+  find: (id: string) => command(`${dev(id)}/find`, 'POST'),
+  addWifi: (id: string, blob: string) => command(`${dev(id)}/wifi`, 'POST', { blob }),
+  scanWifi: (id: string) => command(`${dev(id)}/wifi-scan`, 'POST'),
+  removeWifi: (id: string, ssid: string) => command(`${dev(id)}/wifi/remove`, 'POST', { ssid }),
+  orderWifi: (id: string, ssids: string[]) => command(`${dev(id)}/wifi/order`, 'PUT', { ssids }),
+  setSettings: (id: string, body: { brightness: number }) => command(`${dev(id)}/settings`, 'PUT', body),
+  restart: (id: string) => command(`${dev(id)}/restart`, 'POST'),
   unpair: (id: string, reauth: CompanionReauth) => send<void>(`${dev(id)}/unpair`, 'POST', { reauth }),
 }
 

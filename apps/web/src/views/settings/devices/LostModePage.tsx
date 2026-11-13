@@ -6,9 +6,10 @@ import type { CompanionState, LostMode } from '../../../lib/companion/types'
 import { Card, SelectChip } from '../ui'
 import { hhmm, type FindControl } from './CompanionOverview'
 import { ReauthSheet } from './ReauthSheet'
+import { clampBytes } from './bytes'
 import { RoundPreview } from './RoundPreview'
 
-const MAX_MESSAGE = 60 // the design's limit: it must fit the round screen
+const MAX_MESSAGE = 64 // UTF-8 bytes, the board's limit; the design's hint still says 60 characters
 type Qr = NonNullable<LostMode['qr']>
 const QR_OPTIONS = [['telegram', 'Telegram'], ['phone', 'Phone'], ['none', 'None']] as const
 const FAILED = 'Something went wrong. Check the connection and try again.'
@@ -53,8 +54,8 @@ function LostSetup({ state, owner, refresh }: Props) {
     </div></Card>
     <Card><div className="st-block">
       <label className="st-label" htmlFor="dv-lost-message">Message</label>
-      <div className="st-hint">Optional, up to {MAX_MESSAGE} characters</div>
-      <input id="dv-lost-message" className="st-input" aria-label="Message" maxLength={MAX_MESSAGE} value={message} disabled={busy} onChange={(e) => setMessage(e.target.value.slice(0, MAX_MESSAGE))} />
+      <div className="st-hint">Optional, up to 60 characters</div>
+      <input id="dv-lost-message" className="st-input" aria-label="Message" maxLength={MAX_MESSAGE} value={message} disabled={busy} onChange={(e) => setMessage(clampBytes(e.target.value, MAX_MESSAGE))} />
     </div></Card>
     <div className="st-group">
       <div className="st-group-title">Show on Aelys</div>

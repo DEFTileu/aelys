@@ -130,8 +130,13 @@ async function deviceRequest<T>(path: string, body: unknown): Promise<T> {
   return value as T
 }
 
-/** Signs `{context}\n{targetId}\n{nonce}` with this browser's device key over a fresh challenge for its own device_id. */
-export async function signWithThisDevice(context: string, targetId: string): Promise<{ challenge_id: string; signature: string }> {
+export type ReauthContext = 'aelys-companion-lost-off-v1' | 'aelys-companion-unpair-v1'
+const REAUTH_CONTEXTS: readonly string[] = ['aelys-companion-lost-off-v1', 'aelys-companion-unpair-v1']
+
+/** Signs `{context}\n{targetId}\n{nonce}` with this browser's device key over a fresh challenge for its own device_id.
+ * Only the two companion re-auth contexts are allowed, so this can never sign a login or another purpose's string. */
+export async function signWithThisDevice(context: ReauthContext, targetId: string): Promise<{ challenge_id: string; signature: string }> {
+  if (!REAUTH_CONTEXTS.includes(context)) throw new TypeError('Unsupported signing context')
   const identity = await currentIdentity()
   if (!identity) throw new SharedApiError(400, 'DEVICE_KEY_UNAVAILABLE', 'This browser has no device key.')
   const challenge = await deviceRequest<{ challenge_id: string; nonce: string }>('auth/device/challenge', { device_id: identity.deviceId })

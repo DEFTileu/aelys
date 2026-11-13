@@ -210,12 +210,17 @@ describe('Lost mode', () => {
     expect(box('Telegram').disabled).toBe(false); expect(box('Telegram').checked).toBe(true)
     expect(box('Phone').checked).toBe(false)
   })
-  it('message input stops at 60 characters', async () => {
+  it('message input stops at 64 UTF-8 bytes, cutting whole characters, and keeps the design hint', async () => {
     await mount(lostUrl)
     const input = host.querySelector<HTMLInputElement>('input[aria-label="Message"]')!
-    expect(input.maxLength).toBe(60)
+    expect(host.textContent).toContain('Optional, up to 60 characters')
     await type(input, 'x'.repeat(75))
-    expect(input.value).toHaveLength(60)
+    expect(input.value).toHaveLength(64)
+    await type(input, 'ж'.repeat(40)) // 2 bytes each
+    expect(input.value).toBe('ж'.repeat(32))
+    await type(input, 'a' + 'ж'.repeat(40)) // 1 + 62 bytes, the next 2-byte letter would make 65
+    expect(new TextEncoder().encode(input.value).length).toBe(63)
+    expect(input.value).toBe('a' + 'ж'.repeat(31))
   })
   it('shows when and where Aelys was last seen while lost mode is on', async () => {
     m.state.mockResolvedValue(baseState({ lost_mode: LOST_ON }))

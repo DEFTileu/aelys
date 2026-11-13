@@ -409,6 +409,14 @@ describe('Device settings', () => {
     expect(m.unpair).toHaveBeenCalledWith(ID, { challenge_id: 'ch1', signature: 'sig' })
     expect(window.location.search).toBe('?section=devices') // back to the Devices list
   })
+  it('unpair is disabled while lost mode is on and sends nothing', async () => {
+    m.state.mockResolvedValue(baseState({ lost_mode: { on: true, message: '', show_phone: true, show_telegram: true, show_email: false, email: null, qr: 'telegram', since: '2026-11-13T09:10:00Z' } }))
+    await mount('settings')
+    expect(button('Unpair').disabled).toBe(true)
+    await click(button('Unpair'))
+    expect(m.reauth).not.toHaveBeenCalled(); expect(m.unpair).not.toHaveBeenCalled()
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+  })
   it('after unpair the device page is replaced in history and no brightness goes to the erased device', async () => {
     vi.useFakeTimers()
     await mount('settings')
