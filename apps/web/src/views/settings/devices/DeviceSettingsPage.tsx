@@ -55,7 +55,7 @@ export function DeviceSettingsPage({ state, onUnpaired }: Props) {
       const proof = await reauth('unpair', id)
       if (mine !== attempt.current) return
       await companion.unpair(id, proof)
-      if (mine === attempt.current) onUnpaired()
+      if (mine === attempt.current) { clearTimeout(timer.current); pending.current = null; onUnpaired() } // nothing more goes to the erased device
     } catch { if (mine === attempt.current) setUnpairError(FAILED) }
   }
   const cancel = () => { attempt.current++; setSheet(false); setUnpairError('') }

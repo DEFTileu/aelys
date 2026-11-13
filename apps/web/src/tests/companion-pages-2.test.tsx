@@ -95,6 +95,29 @@ describe('Emergency', () => {
     expect(byLabel<HTMLInputElement>('Contact 2 phone').maxLength).toBe(23)
     expect(host.querySelector<HTMLTextAreaElement>('#dv-med')!.maxLength).toBe(96)
   })
+  it('limits every field by UTF-8 bytes, not characters', async () => {
+    await mount('emergency')
+    await click(button('Add contact'))
+    await type(byLabel('Contact 2 name'), 'Әсем Құрманғали Сапарова Айгерім'); await type(byLabel('Contact 2 relation'), 'Қарындасым Сәкен'); await type(byLabel('Contact 2 phone'), '+7 701 555 98 76 + 12345')
+    const bytes = (el: string) => new TextEncoder().encode(byLabel<HTMLInputElement>(el).value).length
+    expect(bytes('Contact 2 name')).toBeLessThanOrEqual(32); expect(byLabel<HTMLInputElement>('Contact 2 name').value.length).toBeGreaterThan(14)
+    expect(bytes('Contact 2 relation')).toBeLessThanOrEqual(16); expect(byLabel<HTMLInputElement>('Contact 2 relation').value).toBe('Қарындас') // 8 two-byte letters
+    expect(bytes('Contact 2 phone')).toBeLessThanOrEqual(23)
+    const note = host.querySelector<HTMLTextAreaElement>('#dv-med')!
+    await type(note, 'Аллергия на пенициллин. '.repeat(6))
+    expect(new TextEncoder().encode(note.value).length).toBeLessThanOrEqual(96); expect(new TextEncoder().encode(note.value).length).toBeGreaterThan(94)
+    await click(button('Save'))
+    const sent = m.setIce.mock.calls[0]![1]
+    for (const c of sent.contacts) { expect(new TextEncoder().encode(c.name).length).toBeLessThanOrEqual(32); expect(new TextEncoder().encode(c.relation).length).toBeLessThanOrEqual(16); expect(new TextEncoder().encode(c.phone).length).toBeLessThanOrEqual(23) }
+    expect(new TextEncoder().encode(sent.med_note).length).toBeLessThanOrEqual(96)
+  })
+  it('clamps the owner name sent with the card by bytes', async () => {
+    window.history.replaceState({}, '', `/settings?section=devices&device=${ID}&page=emergency`)
+    host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    await act(async () => root.render(<div className="st"><DevicesPanel owner={{ name: 'Тілеужан Қайратұлы Сапарбаев Әлібек', email: null }} /></div>)); await flush()
+    await click(button('Save'))
+    expect(new TextEncoder().encode(m.setIce.mock.calls[0]![1].owner_name).length).toBeLessThanOrEqual(32)
+  })
   it('removes a contact and refuses a half-filled one', async () => {
     await mount('emergency')
     await click(button('Add contact')); await type(byLabel('Contact 2 name'), 'Marat')
@@ -131,14 +154,37 @@ describe('Wi-Fi saved networks', () => {
     await click(byLabel('Move Cafe up'))
     expect(m.orderWifi).toHaveBeenLastCalledWith(ID, ['Office', 'Cafe', 'Home'])
   })
-  it('reorders by dragging the handle', async () => {
+  it('reorders by dragging the handle, listening on window so a re-render that moves the row cannot lose the drop', async () => {
     await mount('wifi')
-    const rows = [...host.querySelectorAll<HTMLElement>('[data-testid="wifi-row"]')]
-    rows.forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 60, bottom: i * 60 + 60, height: 60, left: 0, right: 300, width: 300, x: 0, y: i * 60, toJSON: () => ({}) }) })
+    const rows = () => [...host.querySelectorAll<HTMLElement>('[data-testid="wifi-row"]')]
+    const place = () => rows().forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 60, bottom: i * 60 + 60, height: 60, left: 0, right: 300, width: 300, x: 0, y: i * 60, toJSON: () => ({}) }) })
+    place()
     const grip = byLabel('Reorder Home')
-    const fire = (type: string, y: number) => act(async () => { grip.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, clientY: y }), { pointerId: 1 })) })
-    await fire('pointerdown', 30); await fire('pointermove', 95); await fire('pointerup', 95)
-    expect(m.orderWifi).toHaveBeenCalledWith(ID, ['Office', 'Home', 'Cafe'])
+    const onWindow = (type: string, y: number) => act(async () => { window.dispatchEvent(Object.assign(new MouseEvent(type, { clientY: y }), { pointerId: 1 })) })
+    await act(async () => { grip.dispatchEvent(Object.assign(new MouseEvent('pointerdown', { bubbles: true, clientY: 30 }), { pointerId: 1 })) })
+    await onWindow('pointermove', 95)
+    expect(rows().map((r) => r.textContent)[0]).toContain('Office') // the swap re-rendered the list
+    expect(m.orderWifi).not.toHaveBeenCalled()
+    place(); await onWindow('pointermove', 150); place() // Home on to the end
+    await onWindow('pointerup', 150)
+    expect(m.orderWifi).toHaveBeenCalledTimes(1)
+    expect(m.orderWifi).toHaveBeenCalledWith(ID, ['Office', 'Cafe', 'Home'])
+    await onWindow('pointerup', 150); expect(m.orderWifi).toHaveBeenCalledTimes(1) // listeners are gone
+  })
+  it('sends nothing when the drag ends where it began, and drops its listeners on unmount', async () => {
+    await mount('wifi')
+    await act(async () => { byLabel('Reorder Home').dispatchEvent(Object.assign(new MouseEvent('pointerdown', { bubbles: true }), { pointerId: 1 })) })
+    await act(async () => { window.dispatchEvent(new MouseEvent('pointerup')) })
+    expect(m.orderWifi).not.toHaveBeenCalled()
+    await act(async () => { byLabel('Reorder Home').dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })) })
+    const remove = vi.spyOn(window, 'removeEventListener')
+    act(() => root.unmount())
+    expect(remove.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(['pointermove', 'pointerup', 'pointercancel']))
+  })
+  it('keeps the drag handle out of the tab order (the move buttons serve the keyboard)', async () => {
+    await mount('wifi')
+    const grip = byLabel<HTMLButtonElement>('Reorder Home')
+    expect(grip.tabIndex).toBe(-1); expect(grip.getAttribute('aria-hidden')).toBe('true')
   })
   it('puts the order back and says so when the order cannot be sent', async () => {
     m.orderWifi.mockRejectedValue(new ApiError(409, 'DEVICE_OFFLINE', 'offline'))
@@ -173,6 +219,12 @@ describe('Wi-Fi add network', () => {
     expect(names[0]).toContain('Cafe'); expect(names[0]).toContain('Strong'); expect(names[2]).toContain('Weak')
     await click(host.querySelectorAll('[data-testid="nearby"]')[0]!)
     expect(byLabel<HTMLInputElement>('Network name').value).toBe('Cafe')
+  })
+  it('shows each scanned name once, with its strongest signal', async () => {
+    m.state.mockResolvedValue(baseState({ last_wifi_scan: { networks: [{ ssid: 'Mesh', rssi: -85, secure: true }, { ssid: 'Mesh', rssi: -40, secure: true }, { ssid: 'Other', rssi: -60, secure: true }] } }))
+    await open()
+    const rows = [...host.querySelectorAll('[data-testid="nearby"]')].map((n) => n.textContent!)
+    expect(rows).toHaveLength(2); expect(rows[0]).toContain('Mesh'); expect(rows[0]).toContain('Strong')
   })
   it('keeps manual entry when Aelys is offline for the scan', async () => {
     m.scanWifi.mockRejectedValue(new ApiError(409, 'DEVICE_OFFLINE', 'offline'))
@@ -276,6 +328,25 @@ describe('Wi-Fi add network', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
     expect(m.state.mock.calls.length).toBe(before)
   })
+  it('limits the network name and password by bytes', async () => {
+    await open(); await fill('Үй'.repeat(20), 'ж'.repeat(40))
+    expect(new TextEncoder().encode(byLabel<HTMLInputElement>('Network name').value).length).toBeLessThanOrEqual(32)
+    expect(new TextEncoder().encode(byLabel<HTMLInputElement>('Network name').value).length).toBeGreaterThan(30)
+    expect(new TextEncoder().encode(byLabel<HTMLInputElement>('Password').value).length).toBe(64) // 32 two-byte letters
+    await sendIt(); expect(host.textContent).not.toContain('bytes')
+  })
+  it('blocks Send inline, without losing the password, when a value is over the limit', async () => {
+    await open(); await fill('Office', 'x')
+    const field = byLabel<HTMLInputElement>('Password')
+    field.value = 'ж'.repeat(40) // bypasses the input handler, as an autofill might
+    await click(button('Send to Aelys'))
+    expect(host.querySelector('[role="alert"]')!.textContent).toContain('up to 64 bytes')
+    expect(host.textContent).not.toContain('RangeError'); expect(field.value).toBe('ж'.repeat(40))
+    expect(m.addWifi).not.toHaveBeenCalled(); expect(byLabel('Network name')).toBeTruthy()
+  })
+  it('asks the browser not to save or autofill the Wi-Fi password', async () => {
+    await open(); expect(byLabel<HTMLInputElement>('Password').autocomplete).toBe('new-password')
+  })
   it('needs a network name to send', async () => {
     await open(); expect(button('Send to Aelys').disabled).toBe(true)
   })
@@ -337,6 +408,17 @@ describe('Device settings', () => {
     await act(async () => release({ challenge_id: 'ch1', signature: 'sig' }))
     expect(m.unpair).toHaveBeenCalledWith(ID, { challenge_id: 'ch1', signature: 'sig' })
     expect(window.location.search).toBe('?section=devices') // back to the Devices list
+  })
+  it('after unpair the device page is replaced in history and no brightness goes to the erased device', async () => {
+    vi.useFakeTimers()
+    await mount('settings')
+    const before = window.history.length
+    await type(byLabel('Brightness'), '20')
+    await click(button('Unpair'))
+    expect(window.history.length).toBe(before); expect(window.location.search).toBe('?section=devices')
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    act(() => root.unmount())
+    expect(m.setSettings).not.toHaveBeenCalled()
   })
   it('unpair cancel and a failed fingerprint send nothing', async () => {
     m.reauth.mockReturnValue(new Promise(() => {}))

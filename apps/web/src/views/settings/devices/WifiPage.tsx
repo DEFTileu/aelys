@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '@aelys/shared'
 import { Check, ChevronDown, ChevronUp, Eye, EyeOff, GripVertical, Lock, Plus, RefreshCw, Trash2, Wifi, X } from '../../../icons'
 import { companion, encryptWifi } from '../../../lib/companion/api'
 import type { CompanionCommandLogEntry, CompanionState, WifiScanNetwork } from '../../../lib/companion/types'
 import { Card, Group } from '../ui'
+import { byteLength, clampBytes } from './bytes'
 
 const FAILED = 'Something went wrong. Check the connection and try again.'
 const POLL_MS = 2000
 const WAIT_MS = 60_000
 const SCAN_WAIT_MS = 20_000
+const MAX_SSID = 32, MAX_PASSWORD = 64 // bytes
 const errorText = (e: unknown) => (e instanceof ApiError && e.code === 'DEVICE_OFFLINE' ? 'Aelys is offline' : FAILED)
 
 /** Polls the command log every 2 s until the board answered the command (null: no answer in time, or the page was left). */
@@ -28,7 +30,7 @@ const move = (list: string[], from: number, to: number) => { const next = [...li
 
 type Job =
   | { ssid: string; stage: 'sending' | 'connecting' | 'connected' }
-  | { ssid: string; stage: 'failed'; kind: 'wrong' | 'offline' | 'failed'; detail?: string }
+  | { ssid: string; stage: 'failed'; kind: 'wrong' | 'offline' | 'failed' }
 
 interface Props { state: CompanionState; refresh: () => Promise<void> }
 
@@ -61,8 +63,11 @@ export function WifiPage({ state, refresh }: Props) {
   }
   const step = (i: number, by: -1 | 1) => { const prev = saved; const next = move(prev, i, i + by); show(next); void sendOrder(next, prev) }
 
-  const onDown = (e: ReactPointerEvent, ssid: string) => { e.currentTarget.setPointerCapture?.(e.pointerId); drag.current = { ssid, start: latest.current } }
-  const onMove = (e: ReactPointerEvent) => {
+  // The drag listens on window: the row (and its grip) is moved in the DOM by every swap, which makes browsers drop pointer capture.
+  const dragMove = useRef<(e: PointerEvent) => void>(() => {})
+  const dragEnd = useRef<() => void>(() => {})
+  const stopDrag = useRef<(() => void) | null>(null)
+  dragMove.current = (e) => {
     const d = drag.current
     const rows = listEl.current?.querySelectorAll('[data-testid="wifi-row"]')
     if (!d || !rows?.length) return
@@ -71,10 +76,20 @@ export function WifiPage({ state, refresh }: Props) {
     if (to < 0) to = rows.length - 1
     if (from >= 0 && to !== from) show(move(latest.current, from, to))
   }
-  const onUp = () => {
+  dragEnd.current = () => {
     const d = drag.current; drag.current = null
     if (d && latest.current.join('\n') !== d.start.join('\n')) void sendOrder(latest.current, d.start)
   }
+  const onDown = (ssid: string) => {
+    stopDrag.current?.()
+    drag.current = { ssid, start: latest.current }
+    const onMove = (e: PointerEvent) => dragMove.current(e)
+    const stop = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); stopDrag.current = null }
+    const onUp = () => { stop(); dragEnd.current() }
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp)
+    stopDrag.current = stop
+  }
+  useEffect(() => () => stopDrag.current?.(), [])
 
   // The sheet hands over the encryption already under way: the password never reaches this component.
   const send = async (ssid: string, blob: Promise<string>) => {
@@ -91,7 +106,7 @@ export function WifiPage({ state, refresh }: Props) {
         await refresh()
       } else setJob({ ssid, stage: 'failed', kind: result?.error_code === 'WIFI_FAILED' ? 'wrong' : 'failed' })
     } catch (e) {
-      if (alive.current) setJob({ ssid, stage: 'failed', kind: e instanceof ApiError && e.code === 'DEVICE_OFFLINE' ? 'offline' : 'failed', detail: e instanceof RangeError ? e.message : undefined })
+      if (alive.current) setJob({ ssid, stage: 'failed', kind: e instanceof ApiError && e.code === 'DEVICE_OFFLINE' ? 'offline' : 'failed' })
     }
   }
 
@@ -104,7 +119,7 @@ export function WifiPage({ state, refresh }: Props) {
         <Wifi size={20} aria-hidden="true" />
         <div className="st-grow">
           <div className="dv-fail-title">{job.kind === 'wrong' ? `Wrong password for ${job.ssid}` : `Couldn't add ${job.ssid}`}</div>
-          <div className="dv-fail-text">{job.kind === 'wrong' ? (current ? `Aelys is still on ${current}. Nothing else changed` : 'Nothing else changed') : job.kind === 'offline' ? 'Aelys is offline' : job.detail ?? FAILED}</div>
+          <div className="dv-fail-text">{job.kind === 'wrong' ? (current ? `Aelys is still on ${current}. Nothing else changed` : 'Nothing else changed') : job.kind === 'offline' ? 'Aelys is offline' : FAILED}</div>
         </div>
       </div>
       <div className="dv-actions">
@@ -116,7 +131,7 @@ export function WifiPage({ state, refresh }: Props) {
       <Card>
         <div ref={listEl}>
           {saved.map((ssid, i) => <div key={ssid} className="st-row st-row--14 dv-wifi" data-testid="wifi-row">
-            <button type="button" className="dv-grip" aria-label={`Reorder ${ssid}`} onPointerDown={(e) => onDown(e, ssid)} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}><GripVertical size={18} aria-hidden="true" /></button>
+            <button type="button" className="dv-grip" aria-label={`Reorder ${ssid}`} aria-hidden="true" tabIndex={-1} onPointerDown={() => onDown(ssid)}><GripVertical size={18} aria-hidden="true" /></button>
             <span className="dv-num" aria-hidden="true">{i + 1}</span>
             <div className="st-grow"><div className="st-label dv-ssid">{ssid}</div><div className={`st-hint${ssid === current ? ' dv-ok' : ''}`}>{ssid === current ? 'Connected' : 'Saved'}</div></div>
             <span className="dv-move">
@@ -160,10 +175,12 @@ function AddNetworkSheet({ state, refresh, initialSsid, onClose, onSend }: { sta
   const [reveal, setReveal] = useState(false)
   const [scanning, setScanning] = useState(true)
   const [scanError, setScanError] = useState('')
+  const [fieldError, setFieldError] = useState('')
   const password = useRef<HTMLInputElement>(null) // uncontrolled: the password lives in the field only
   const sheet = useRef<HTMLDivElement>(null)
   const close = useRef(onClose); close.current = onClose
-  const nearby = [...new Map((state.last_wifi_scan?.networks ?? []).filter((n) => n.ssid).sort((a, b) => b.rssi - a.rssi).map((n) => [n.ssid, n])).values()]
+  const seen = new Set<string>()
+  const nearby = (state.last_wifi_scan?.networks ?? []).filter((n) => n.ssid).sort((a, b) => b.rssi - a.rssi).filter((n) => !seen.has(n.ssid) && !!seen.add(n.ssid)) // strongest entry per name
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null
@@ -184,6 +201,10 @@ function AddNetworkSheet({ state, refresh, initialSsid, onClose, onSend }: { sta
   const submit = () => {
     const field = password.current
     const typed = field?.value ?? ''
+    // Checked before anything is cleared, so a refused send loses nothing.
+    if (byteLength(ssid) < 1 || byteLength(ssid) > MAX_SSID) { setFieldError('The network name can be 1 to 32 bytes long.'); return }
+    if (byteLength(typed) > MAX_PASSWORD) { setFieldError('The password can be up to 64 bytes long.'); return }
+    setFieldError('')
     if (field) field.value = ''
     onSend(ssid, encryptWifi(state.public_key, id, ssid, typed))
   }
@@ -203,12 +224,13 @@ function AddNetworkSheet({ state, refresh, initialSsid, onClose, onSend }: { sta
         </button>)}
       </div>
       <label className="st-label" htmlFor="dv-ssid">Network name</label>
-      <input id="dv-ssid" className="st-input dv-tight" aria-label="Network name" maxLength={32} autoComplete="off" autoCapitalize="none" spellCheck={false} value={ssid} onChange={(e) => setSsid(e.target.value)} />
+      <input id="dv-ssid" className="st-input dv-tight" aria-label="Network name" maxLength={32} autoComplete="off" autoCapitalize="none" spellCheck={false} value={ssid} onChange={(e) => { setSsid(clampBytes(e.target.value, MAX_SSID)); setFieldError('') }} />
       <label className="st-label" htmlFor="dv-pw">Password</label>
       <div className="dv-pw">
-        <input id="dv-pw" ref={password} className="st-input dv-tight" aria-label="Password" type={reveal ? 'text' : 'password'} maxLength={64} autoComplete="off" autoCapitalize="none" spellCheck={false} />
+        <input id="dv-pw" ref={password} className="st-input dv-tight" aria-label="Password" type={reveal ? 'text' : 'password'} maxLength={MAX_PASSWORD} autoComplete="new-password" onInput={(e) => { const f = e.currentTarget; const cut = clampBytes(f.value, MAX_PASSWORD); if (cut !== f.value) f.value = cut; setFieldError('') }} autoCapitalize="none" spellCheck={false} />
         <button type="button" className="dv-back" aria-label={reveal ? 'Hide password' : 'Show password'} onClick={() => setReveal(!reveal)}>{reveal ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button>
       </div>
+      {fieldError && <div className="st-error" role="alert">{fieldError}</div>}
       <button type="button" className="st-btn st-btn--primary dv-wide" disabled={!ssid} onClick={submit}>Send to Aelys</button>
     </div>
   </div>

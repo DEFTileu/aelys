@@ -24,10 +24,10 @@ function readRoute(): { device: string | null; page: Page } {
   const page = query.get('page') as Page
   return { device: query.get('device'), page: PAGES.includes(page) ? page : 'overview' }
 }
-function navigate(device?: string, page?: Page) {
+function navigate(device?: string, page?: Page, replace = false) {
   const query = new URLSearchParams({ section: 'devices' })
   if (device) { query.set('device', device); query.set('page', page ?? 'overview') }
-  window.history.pushState({}, '', `?${query}`)
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', `?${query}`)
   window.dispatchEvent(new PopStateEvent('popstate'))
 }
 
@@ -124,7 +124,7 @@ function DevicePage({ id, page, owner }: { id: string; page: Page; owner: { name
     {state && (page === 'lost' ? <LostModePage state={state} owner={owner} find={find} refresh={refresh} />
       : page === 'emergency' ? <EmergencyPage state={state} ownerName={owner?.name} refresh={refresh} />
       : page === 'wifi' ? <WifiPage state={state} refresh={refresh} />
-      : page === 'settings' ? <DeviceSettingsPage state={state} onUnpaired={() => navigate()} />
+      : page === 'settings' ? <DeviceSettingsPage state={state} onUnpaired={() => navigate(undefined, undefined, true)} />
       : <CompanionOverview state={state} find={find} onGo={(next) => navigate(id, next)} />)}
   </>
 }
