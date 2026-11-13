@@ -4,6 +4,7 @@ import { AppearancePanel } from './AppearancePanel'
 import { AboutPanel, ConnectionPanel, NotificationsPanel, ProfilePanel, SecurityPanel } from './panels'
 import { WeatherPanel } from './WeatherPanel'
 import { AccountsPanel } from './AccountsPanel'
+import { DevicesPanel } from './devices/DevicesPanel'
 import { GoogleCalendarSettings } from '../GoogleCalendarSettings'
 import { MemorySettings } from '../MemorySettings'
 import { ProviderSettings } from '../ProviderSettings'
@@ -44,6 +45,7 @@ export function SettingsDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
       {panel === 'telegram' && <TelegramSettings />}
       {panel === 'accounts' && <AccountsPanel apiStatus={apiStatus} onGo={go} />}
       {panel === 'connection' && <ConnectionPanel apiStatus={apiStatus} owner={owner} />}
+      {panel === 'devices' && <DevicesPanel />}
       {panel === 'security' && <SecurityPanel />}
       {panel === 'about' && <AboutPanel />}
       {(panel === 'memory' || panel === 'calendar') && <div className="st-legacy actual-settings-content">{panel === 'memory' ? <MemorySettings /> : <GoogleCalendarSettings />}</div>}

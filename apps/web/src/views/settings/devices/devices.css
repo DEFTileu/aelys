@@ -1,0 +1,12 @@
+/* Add companion, from design frame "Добавление компаньона". Colors come from the Settings tokens, so dark mode follows. */
+.dv-step { display: flex; gap: 14px; padding: 16px 18px; }
+.dv-badge { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--st-badge); color: var(--st-mute); font-size: 13px; font-weight: 600; }
+.dv-badge[data-state='active'] { background: var(--st-violet); color: #fff; }
+.dv-badge[data-state='done'] { background: var(--st-green-bg); color: var(--st-green-ink); }
+.dv-body { display: flex; flex: 1; flex-direction: column; gap: 10px; min-width: 0; }
+.dv-found { display: flex; align-items: center; gap: 8px; color: var(--st-green-ink); font-size: 13px; font-weight: 600; }
+.dv-digits { display: flex; align-items: center; gap: 6px; }
+.dv-digit { flex: 1 1 0; min-width: 0; max-width: 44px; height: 52px; padding: 0 !important; border: 1px solid var(--st-line) !important; border-radius: 12px; background: var(--st-solid) !important; font-size: 22px; font-weight: 700; text-align: center; }
+.dv-digit:nth-child(4) { margin-left: 10px; }
+.dv-actions { display: flex; gap: 10px; }
+.dv-actions .st-btn--primary { width: auto; }

@@ -113,6 +113,8 @@ export const glyphs = {
   TrendingUp: 'M3 17l6-6 4 4 8-8m-6 0h6v6',
   Trophy: 'M8 4h8v5a4 4 0 0 1-8 0V4ZM8 6H5a3 3 0 0 0 3 4m8-4h3a3 3 0 0 1-3 4M12 13v4m-4 3.5h8M9.5 17h5',
   CalendarClock: 'M7 3v4m8-4v4M4 10h9M11 20H6.5A2.5 2.5 0 0 1 4 17.5v-10A2.5 2.5 0 0 1 6.5 5h9A2.5 2.5 0 0 1 18 7.5V9M21 16.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Zm-4.5-2v2l1.5 1',
+  Smartphone: 'M7 2.5h10a1.5 1.5 0 0 1 1.5 1.5v16a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 20V4A1.5 1.5 0 0 1 7 2.5Zm4.9 16.5h.2',
+  Usb: 'M12 3v13m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0-3-5-2.5V8m5 2 5-2.5V6M5.5 6h3v2h-3Zm10.5 0a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Z',
 } as const
 
 export type GlyphName = keyof typeof glyphs
