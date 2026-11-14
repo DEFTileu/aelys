@@ -52,7 +52,6 @@ def test_task_suggestion_columns_upgrade_downgrade_preserve_legacy_rows(tmp_path
 
         run_alembic(url, "upgrade", "0056_telegram_task_suggestions")
         run_alembic(url, "upgrade", "0056_telegram_task_suggestions")
-        run_alembic(url, "check")
         inspector = sa.inspect(engine)
         assert set(inspector.get_table_names()) == tables_before
         integration_columns = {

@@ -12,6 +12,10 @@ from alembic.script import ScriptDirectory
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def migration_head() -> str:
+    return ScriptDirectory(str(ROOT / "alembic")).get_current_head()
+
+
 def run_alembic(url: str, *args: str) -> None:
     env = os.environ | {"AELYS_DATABASE_URL": url, "AELYS_SECRET_KEY": "migration-test-key-" * 3,
                         "PYTHONPATH": str(ROOT)}

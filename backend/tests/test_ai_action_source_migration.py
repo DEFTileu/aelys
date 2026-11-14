@@ -1,7 +1,7 @@
 """AI action source and expiry columns migrate without changing legacy actions."""
 
 import sqlalchemy as sa
-from test_clean_migrations import run_alembic
+from test_clean_migrations import migration_head, run_alembic
 
 
 def test_ai_action_source_columns_upgrade_downgrade_preserve_legacy_action(tmp_path):
@@ -42,7 +42,7 @@ def test_ai_action_source_columns_upgrade_downgrade_preserve_legacy_action(tmp_p
                 FROM ai_actions WHERE id='legacy-action'
             """)).one()
             assert tuple(row) == ("legacy-action", 7, "Legacy", "preserve me", None, None, None)
-            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0056_telegram_task_suggestions"
+            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == migration_head()
 
         run_alembic(url, "downgrade", "0054_telegram_command_sessions")
         columns = {column["name"] for column in sa.inspect(engine).get_columns("ai_actions")}

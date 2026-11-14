@@ -1,7 +1,7 @@
 """Telegram command session columns upgrade and downgrade without data loss."""
 
 import sqlalchemy as sa
-from test_clean_migrations import run_alembic
+from test_clean_migrations import migration_head, run_alembic
 
 
 def test_command_session_columns_upgrade_and_downgrade_preserve_legacy_data(tmp_path):
@@ -74,6 +74,6 @@ def test_clean_upgrade_includes_command_session_schema(tmp_path):
         assert not columns["knowledge_refs"]["nullable"]
         assert any(index["name"] == "ix_telegram_business_commands_session_id" for index in inspector.get_indexes("telegram_business_commands"))
         with engine.connect() as db:
-            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0056_telegram_task_suggestions"
+            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == migration_head()
     finally:
         engine.dispose()
