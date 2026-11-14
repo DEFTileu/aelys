@@ -90,6 +90,11 @@ bool scr_menu_hit(int32_t x, int32_t y);                   /* a tap on the selec
 lv_obj_t *scr_placeholder_create(lv_obj_t *parent);
 void scr_placeholder_set(void);                            /* shows the selected menu item's name */
 
+/* scr_tasks.c (design "Задачи · сегодня", one task at a time): the next task, today's progress, the check that completes it */
+lv_obj_t *scr_tasks_create(lv_obj_t *parent);
+void scr_tasks_set(const snap_t *s, int64_t now, bool offline);
+bool scr_tasks_hit(int32_t x, int32_t y);                  /* a tap on the check (or close to it) */
+
 /* orbit.c: task dots on a ring. total == 0 draws 8 dim placeholder dots (nothing paired yet). */
 lv_obj_t *orbit_create(lv_obj_t *parent, int32_t size);
 void orbit_set(lv_obj_t *orbit, int done, int total);

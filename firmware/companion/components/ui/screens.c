@@ -1,4 +1,4 @@
-/* Screen switching: home, the menu wheel and its placeholder, Today, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
+/* Screen switching: home, the menu wheel and its placeholder, Today, Tasks, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
  * one active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress and a toast
  * sits on top. The latest snapshot (ui_snap_tb) is rendered into the visible screen on entry, on events that can change
  * it and once a second (relative times, the focus countdown, the "due within 60 min" mood). Hidden screens do no layout. */
@@ -464,6 +464,7 @@ static void render(void)
         break;
     }
     case SCR_TODAY: scr_today_set(s, now); break;
+    case SCR_TASKS: scr_tasks_set(s, now, offline); break;
     case SCR_FOCUS: scr_focus_set(s, g.snap_ms, lv_tick_get()); break;
     case SCR_INBOX: scr_inbox_set(s, now); break;
     case SCR_MENU: scr_menu_set(s); break;
@@ -555,6 +556,7 @@ void ui_setup(void)
     g.scr[SCR_PAIR] = scr_pair_create(root);
     g.scr[SCR_MENU] = scr_menu_create(root);
     g.scr[SCR_PLACEHOLDER] = scr_placeholder_create(root);
+    g.scr[SCR_TASKS] = scr_tasks_create(root);
     scr_hold_create(root);
     scr_toast_create(root);
     scr_find_create(root); /* last: on top of the toast and every screen */
@@ -579,6 +581,15 @@ void ui_setup(void)
     show(SCR_HOME);
 }
 
+/* Complete the next task: once per id, ticked at once, taken back if the server says no (on_action_result). */
+static void complete_task(void)
+{
+    const snap_t *s = g.snap ? g.snap : &empty_snap;
+    if (!s->has_task || ui_marked_done(s->task.id) || !act(ACT_TASK_COMPLETE, s->task.id)) return;
+    snprintf(g.done_id, sizeof g.done_id, "%s", s->task.id);
+    render();
+}
+
 static void on_tap(int32_t x, int32_t y, scr_t *next)
 {
     const snap_t *s = g.snap ? g.snap : &empty_snap;
@@ -586,8 +597,7 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
     int row = -1;
     if (g.cur == SCR_TODAY) {
         hit = scr_today_hit(x, y);
-        if (hit == TAP_ROW && s->has_task && !ui_marked_done(s->task.id) && act(ACT_TASK_COMPLETE, s->task.id))
-            snprintf(g.done_id, sizeof g.done_id, "%s", s->task.id);
+        if (hit == TAP_ROW) complete_task();
     } else if (g.cur == SCR_INBOX) {
         row = scr_inbox_hit(x, y);
         hit = row >= 0 ? TAP_ROW : TAP_OUTSIDE;
@@ -596,6 +606,8 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
             if (!ui_marked_read(id) && act(ACT_NOTIFICATION_READ, id)) mark_read(id);
         }
         arm_timer(&g.inbox_timer, inbox_timeout, INBOX_TIMEOUT_MS); /* a touch in the inbox restarts the 15 s */
+    } else if (g.cur == SCR_TASKS) {
+        if (scr_tasks_hit(x, y)) complete_task();
     } else if (g.cur == SCR_FOCUS && scr_focus_view() == FV_NONE) {
         act(ACT_FOCUS_START, NULL);
     } else if (g.cur == SCR_MENU && scr_menu_hit(x, y)) {
@@ -831,6 +843,7 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->data[0] == BTN_TOP && g.cur == SCR_FOCUS) {
             act(scr_focus_top_action(), NULL);
         }
+        if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task();
         next = g.cur == SCR_MENU && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_menu_target())
                                                           : screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
         break;

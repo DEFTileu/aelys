@@ -26,7 +26,7 @@ typedef struct {
 } menu_item_t;
 
 static const menu_item_t items[N_ITEMS] = {
-    { "Tasks",     0x7FA8F5, SCR_TODAY }, /* the Tasks stage replaces SCR_TODAY with its own screen */
+    { "Tasks",     0x7FA8F5, SCR_TASKS },
     { "Focus",     0xF6907F, SCR_FOCUS },
     { "Timer",     0xF6907F, SCR_PLACEHOLDER },
     { "Calendar",  0xFF8A84, SCR_PLACEHOLDER },
@@ -73,7 +73,7 @@ static void sub_text(char *out, size_t cap, int i, const snap_t *s)
 {
     out[0] = 0;
     if (items[i].target == SCR_PLACEHOLDER) snprintf(out, cap, "Coming soon");
-    else if (items[i].target == SCR_TODAY && s->today_total > 0) snprintf(out, cap, "%d / %d done", s->today_done, s->today_total);
+    else if (items[i].target == SCR_TASKS && s->today_total > 0) snprintf(out, cap, "%d / %d done", s->today_done, s->today_total);
     else if (items[i].target == SCR_INBOX) snprintf(out, cap, "%d new", s->unread > 0 ? s->unread : 0);
 }
 

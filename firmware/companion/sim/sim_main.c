@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -68,6 +68,7 @@ static void cyr_owner(owner_info_t *o)
 }
 
 static void post_ev(uint8_t type, uint8_t d0) { sim_post(type, &d0, 1); }
+static bool accept_action(act_kind_t k, const char *id) { (void)k; (void)id; return true; }
 
 /* The companion screens, fed with the made-up fixture of snap_fixture.h (14:32, UTC). */
 static int companion_shot(const char *shot)
@@ -92,6 +93,7 @@ static int companion_shot(const char *shot)
         fx_post(&s, 0);
         return 0;
     }
+    if (!strcmp(shot, "tasks_empty")) { s.has_task = false; s.today_done = s.today_total = 8; }
     fx_post(&s, 1);
     if (!strncmp(shot, "character_", 10)) {
         post_ev(UI_EV_WIFI, UI_WIFI_ONLINE);
@@ -126,6 +128,12 @@ static int companion_shot(const char *shot)
             post_ev(UI_EV_BTN, BTN_TOP);
         }
     }
+    else if (!strncmp(shot, "tasks", 5)) {
+        ui_set_action_sink(accept_action);
+        post_ev(UI_EV_BTN, BTN_TOP); /* the menu, then Tasks */
+        post_ev(UI_EV_BTN, BTN_TOP);
+        if (!strcmp(shot, "tasks_done")) post_ev(UI_EV_BTN, BTN_TOP); /* Done: ticked, waiting for the next snapshot */
+    }
     else if (strcmp(shot, "aelys")) return -1;
     return 0;
 }
@@ -133,7 +141,7 @@ static int companion_shot(const char *shot)
 static int screen_shot(const char *shot)
 {
     if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
-        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "focus_", 6))
+        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6))
         return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };
@@ -207,7 +215,7 @@ int main(int argc, char **argv)
         else return 2;
     }
     if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
         fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
                         "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);

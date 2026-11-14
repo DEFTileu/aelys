@@ -1248,8 +1248,10 @@ static void test_menu_wheel(void)
     sim_step(300);
     CHECK(shows_text(scr, "Tasks"));
 
-    btn(BTN_TOP);                                    /* Tasks -> Today for now */
-    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    btn(BTN_TOP);                                    /* Tasks */
+    CHECK_EQ(ui_current_screen(), SCR_TASKS);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
 
@@ -1307,6 +1309,134 @@ static void test_menu_wheel(void)
     btn(BTN_TOP);
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
+static void open_tasks(void)
+{
+    btn(BTN_TOP);
+    for (int i = 0; i < 9 && scr_menu_selected() != 0; i++) { swipe(UI_EV_SWIPE_RIGHT); sim_step(300); }
+    CHECK_EQ(scr_menu_selected(), 0);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_TASKS);
+    sim_step(100);
+}
+
+static void test_tasks_screen(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    sink.accept = true;
+    sink.n = 0;
+    fresh_fx();
+    open_tasks();
+    check_inside("tasks");
+    CHECK(shows_text(scr, "TASKS \xC2\xB7 5 / 8") && shows_text(scr, "Ship pairing ADR") && shows_text(scr, "Due 18:00"));
+    CHECK(shows_text(scr, "Done"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    btn(BTN_LOW);                                    /* back to the menu, which shows the progress */
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    CHECK(shows_text(scr, "5 / 8 done"));
+    tap_at(233, 233);                                /* the centre opens Tasks again */
+    CHECK_EQ(ui_current_screen(), SCR_TASKS);
+
+    tap_at(233, 100);                                /* away from the check: nothing */
+    CHECK_EQ(sink.n, 0);
+    tap_at(233, 280);                                /* the check */
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(sink.kind, ACT_TASK_COMPLETE);
+    CHECK(!strcmp(sink.id, "t-101"));
+    CHECK(ui_marked_done("t-101"));                  /* ticked at once, 5 + 1 done */
+    sim_step(100);
+    CHECK(shows_text(scr, "TASKS \xC2\xB7 6 / 8") && !shows_text(scr, "Done"));
+    check_inside("tasks (done)");
+    tap_at(233, 280);
+    btn(BTN_TOP);                                    /* neither a second tap nor the key sends it again */
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(ui_current_screen(), SCR_TASKS);
+
+    action_result(ACT_TASK_COMPLETE, false, "TIMEOUT"); /* failure: the task is back, the toast says why */
+    sim_step(100);
+    CHECK(!ui_marked_done("t-101"));
+    CHECK(shows_text(scr, "TASKS \xC2\xB7 5 / 8") && shows_text(scr, "Done"));
+    CHECK(shows_text(scr, "Didn't work \xE2\x80\x94 try again"));
+    check_inside("tasks (failed)");
+    sim_step(2100);
+    btn(BTN_TOP);                                    /* the key sends it again */
+    CHECK_EQ(sink.n, 2);
+    CHECK(!strcmp(sink.id, "t-101"));
+    action_result(ACT_TASK_COMPLETE, true, NULL);
+    fx_snap(&fx);                                    /* the next snapshot brings the next task */
+    strcpy(fx.task.id, "t-102"); strcpy(fx.task.title, "Buy groceries"); fx.task.due = 0;
+    fx.today_done = 6;
+    post_fx();
+    CHECK(!ui_marked_done("t-102"));
+    CHECK(shows_text(scr, "Buy groceries") && shows_text(scr, "Done") && shows_text(scr, "TASKS \xC2\xB7 6 / 8"));
+    CHECK(!shows_text(scr, "Due 18:00"));
+    btn(BTN_TOP);
+    CHECK_EQ(sink.n, 3);
+    CHECK(!strcmp(sink.id, "t-102"));
+    action_result(ACT_TASK_COMPLETE, false, "OFFLINE");
+    sim_step(2100);
+
+    sink.accept = false;                             /* refused: nothing is ticked, "No connection" */
+    btn(BTN_TOP);
+    sim_step(100);
+    CHECK(!ui_marked_done("t-102") && shows_text(scr, "No connection"));
+    sink.accept = true;
+    sim_step(2100);
+
+    fx_snap(&fx);                                    /* overdue, and a title of three full lines is cut inside the circle */
+    fx.task.due = FX_H(13, 0);
+    strcpy(fx.task.title, "WWWWWWWWW WWWWWWWWW WWWWWWWWW WWWWWWWWW WWWWWWWWW WWWWWWWWW");
+    post_fx();
+    check_inside("tasks (3 lines, overdue)");
+    CHECK(shows_text(scr, "Overdue 13:00"));
+    strcpy(fx.task.title, "\xD0\x9F\xD0\xBE\xD0\xB4\xD0\xB3\xD0\xBE\xD1\x82\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C \xD0\xBE\xD1\x82\xD1\x87\xD1\x91\xD1\x82 \xD0\xBF\xD0\xBE \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB5\xD0\xBA\xD1\x82\xD1\x83 Q4");
+    post_fx();
+    check_inside("tasks (cyrillic)");
+    CHECK_EQ(missing_glyphs(scr), 0);
+
+    fx_snap(&fx);                                    /* nothing left: all done, no check target to send from */
+    fx.has_task = false; fx.today_done = fx.today_total = 8;
+    post_fx();
+    check_inside("tasks (all done)");
+    CHECK(shows_text(scr, "All done") && shows_text(scr, "TASKS \xC2\xB7 8 / 8") && !shows_text(scr, "Done"));
+    int n = sink.n;
+    tap_at(233, 280);
+    btn(BTN_TOP);
+    CHECK_EQ(sink.n, n);
+
+    fx.today_done = 3;                               /* no next task, but today is not over */
+    post_fx();
+    CHECK(shows_text(scr, "No tasks due"));
+    check_inside("tasks (no task)");
+    fx.today_total = fx.today_done = -1;             /* server v1: no ring, no counter */
+    post_fx();
+    CHECK(shows_text(scr, "TASKS") && shows_text(scr, "No tasks due"));
+    link_state(LINK_UI_OFFLINE);
+    sim_step(100);
+    CHECK(shows_text(scr, "Offline"));
+    check_inside_min("tasks (offline)", 500);
+    link_state(LINK_UI_ONLINE);
+
+    memset(&fx, 0, sizeof fx);                       /* no snapshot yet */
+    fx.today_done = fx.today_total = -1;
+    post_fx();
+    CHECK(shows_text(scr, "No data yet"));
+    check_inside_min("tasks (no data)", 500);
+    btn(BTN_TOP);
+    CHECK_EQ(sink.n, n);                             /* nothing to complete */
+
+    btn(BTN_LOW);                                    /* lost mode takes the screen away */
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_TASKS);
+    post_lost(1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_lost(0);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    btn(BTN_LOW);
+    fresh_fx();
 }
 
 /* Design "Режим потери · нажата кнопка": a key or a touch on the lost screen leaves lost mode alone and shows the hint for 2 s. */
@@ -1725,6 +1855,7 @@ int main(void)
     test_idle_screens_do_not_redraw();
     test_gestures_and_lost_mode();
     test_menu_wheel();
+    test_tasks_screen();
     test_lost_hint_toast_shot();
     test_wifi_toast_shots();
     test_find_overlay_shot();
