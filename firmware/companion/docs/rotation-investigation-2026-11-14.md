@@ -453,3 +453,12 @@ This is not a per-source ownership or cancellation protocol. No borrowed draw
 task was deliberately held across source mutation or deletion, and a task that
 fails after successful submission has no visual recovery. The prototype remains
 unintegrated; see ignored `borrowed-retirement/report.md`.
+
+A follow-up host test kept a real borrowed draw task waiting on a detached
+layer, then mutated its caller-owned source. The queued descriptor observed the
+new pixels; the deliberately failing test was independently rerun. This proves
+that the current experimental task does not freeze or own its source. It does
+not execute the delayed task or test deletion, growth, cancellation, actual
+threading or hardware. A candidate immutable-generation and reference-counting
+protocol is described in ignored `borrowed-owner/INVESTIGATION.md`; it has not
+been implemented or validated.
