@@ -1,11 +1,11 @@
 #include <string.h>
 #include "store_codec.h"
 
-/* No padding anywhere, so the in-memory layout is the blob layout. */
+/* Legacy blobs use in-memory layouts; the owned snapshot zeros its padding. */
 _Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 49 + 97 + 65 + 97 + 2 * 33 + 2 * 17 + 2 * 24 + 2 + 4, "owner layout");
 _Static_assert(sizeof(wifi_list_t) == 1 + WIFI_MAX * (33 + 65), "wifi layout");
 _Static_assert(sizeof(pair_rec_t) == 40 + 129 + 32, "pair layout");
-_Static_assert(sizeof(snap_t) == 1088, "snap layout changed: bump STORE_SNAP_VERSION, then this number");
+_Static_assert(sizeof(snap_t) == 2272, "snap layout changed: bump STORE_SNAP_VERSION, then this number");
 
 uint32_t store_crc32(const uint8_t *p, size_t n)
 {
@@ -114,6 +114,27 @@ bool store_decode_settings(const uint8_t *buf, size_t len, settings_t *out)
     return true;
 }
 
+size_t store_encode_ui(const ui_prefs_t *in, uint8_t *buf, size_t cap)
+{
+    uint8_t p[STORE_UI_PAYLOAD] = { in->level_on ? 1 : 0, in->sound_on ? 1 : 0 };
+    return seal(STORE_UI_VERSION, p, sizeof p, buf, cap);
+}
+
+bool store_decode_ui(const uint8_t *buf, size_t len, ui_prefs_t *out)
+{
+    const uint8_t *p = unseal(STORE_UI_VERSION, buf, len, STORE_UI_PAYLOAD);
+    if (p && p[0] <= 1 && p[1] <= 1) {
+        out->level_on = p[0] == 1;
+        out->sound_on = p[1] == 1;
+        return true;
+    }
+    p = unseal(1, buf, len, 1); /* version 1, before the sounds: they stay off */
+    if (!p || p[0] > 1) return false;
+    out->level_on = p[0] == 1;
+    out->sound_on = false;
+    return true;
+}
+
 size_t store_encode_pair(const pair_rec_t *in, uint8_t *buf, size_t cap)
 {
     return seal(STORE_PAIR_VERSION, in, sizeof *in, buf, cap);
@@ -185,6 +206,15 @@ bool wifi_list_reorder(wifi_list_t *l, const char ssids[][33], int n)
     return changed;
 }
 
+static void term_snap(snap_t *s)
+{
+    TERM(s->task.id); TERM(s->task.title); TERM(s->event.id); TERM(s->event.title);
+    TERM(s->focus.id); TERM(s->focus.mode);
+    for (int i = 0; i < 5; i++) { TERM(s->notices[i].id); TERM(s->notices[i].kind); TERM(s->notices[i].title); }
+    for (int i = 0; i < SNAP_MAX_TASKS; i++) { TERM(s->tasks[i].id); TERM(s->tasks[i].title); }
+    for (int i = 0; i < SNAP_MAX_EVENTS; i++) { TERM(s->events[i].id); TERM(s->events[i].title); }
+}
+
 size_t store_encode_snap(const snap_t *in, uint8_t *buf, size_t cap)
 {
     return seal(STORE_SNAP_VERSION, in, sizeof *in, buf, cap);
@@ -196,10 +226,106 @@ bool store_decode_snap(const uint8_t *buf, size_t len, snap_t *out)
     if (!p) return false;
     snap_t s;
     memcpy(&s, p, sizeof s);
-    if (s.n_notices > 5 || s.focus.status > FOCUS_PAUSED) return false;
-    TERM(s.task.id); TERM(s.task.title); TERM(s.event.id); TERM(s.event.title);
-    TERM(s.focus.id); TERM(s.focus.mode);
-    for (int i = 0; i < 5; i++) { TERM(s.notices[i].id); TERM(s.notices[i].kind); TERM(s.notices[i].title); }
+    if (s.n_notices > 5 || s.n_tasks > SNAP_MAX_TASKS || s.n_events > SNAP_MAX_EVENTS || s.focus.status > FOCUS_PAUSED ||
+        s.weather.n_hours > SNAP_MAX_HOURS) return false;
+    term_snap(&s);
+    *out = s;
+    return true;
+}
+
+/* Write members individually: snap_t contains alignment padding, which must not
+ * become persisted data. Strings are terminated and their unused tails zeroed. */
+static void snapshot_payload(uint8_t *p, const snap_t *s)
+{
+    memset(p, 0, sizeof *s);
+#define SCALAR(f) memcpy(p + offsetof(snap_t, f), &s->f, sizeof s->f)
+#define COPY_STRING(at, src) do { \
+    size_t j = 0; \
+    while (j + 1 < sizeof (src) && (src)[j]) { p[(at) + j] = (uint8_t)(src)[j]; j++; } \
+} while (0)
+#define STRING(f) do { \
+    size_t i = 0; \
+    while (i + 1 < sizeof s->f && s->f[i]) { \
+        p[offsetof(snap_t, f) + i] = (uint8_t)s->f[i]; i++; \
+    } \
+} while (0)
+    SCALAR(generated); SCALAR(has_task); SCALAR(has_event);
+    STRING(task.id); STRING(task.title); SCALAR(task.due);
+    STRING(event.id); STRING(event.title); SCALAR(event.starts); SCALAR(event.ends);
+    SCALAR(event.all_day); SCALAR(event.has_end);
+    SCALAR(overdue); SCALAR(unread); SCALAR(other_unread); SCALAR(today_done); SCALAR(today_total);
+    SCALAR(n_notices);
+    for (size_t i = 0; i < 5; i++) {
+        size_t base = offsetof(snap_t, notices) + i * sizeof(snap_notice_t);
+#define NOTICE_STRING(f) do { \
+        size_t j = 0; \
+        while (j + 1 < sizeof s->notices[i].f && s->notices[i].f[j]) { \
+            p[base + offsetof(snap_notice_t, f) + j] = (uint8_t)s->notices[i].f[j]; j++; \
+        } \
+    } while (0)
+        NOTICE_STRING(id); NOTICE_STRING(kind); NOTICE_STRING(title);
+#undef NOTICE_STRING
+        memcpy(p + base + offsetof(snap_notice_t, created), &s->notices[i].created, sizeof s->notices[i].created);
+    }
+    STRING(focus.id); SCALAR(focus.status); STRING(focus.mode); SCALAR(focus.started); SCALAR(focus.elapsed_s);
+    SCALAR(n_tasks); SCALAR(n_events);
+    SCALAR(weather.updated); SCALAR(weather.present); SCALAR(weather.temp); SCALAR(weather.hi); SCALAR(weather.lo); SCALAR(weather.code);
+    SCALAR(weather.n_hours);
+    for (size_t i = 0; i < s->weather.n_hours && i < SNAP_MAX_HOURS; i++) { /* only the hours in use; the rest stays zero */
+        size_t base = offsetof(snap_t, weather.hours) + i * sizeof(snap_hour_t);
+        memcpy(p + base, &s->weather.hours[i], sizeof(snap_hour_t));
+    }
+    for (size_t i = 0; i < s->n_tasks && i < SNAP_MAX_TASKS; i++) { /* only the entries in use; the rest stays zero */
+        size_t base = offsetof(snap_t, tasks) + i * sizeof(snap_task_t);
+        COPY_STRING(base + offsetof(snap_task_t, id), s->tasks[i].id);
+        COPY_STRING(base + offsetof(snap_task_t, title), s->tasks[i].title);
+        memcpy(p + base + offsetof(snap_task_t, due), &s->tasks[i].due, sizeof s->tasks[i].due);
+    }
+    for (size_t i = 0; i < s->n_events && i < SNAP_MAX_EVENTS; i++) {
+        size_t base = offsetof(snap_t, events) + i * sizeof(snap_event_t);
+        COPY_STRING(base + offsetof(snap_event_t, id), s->events[i].id);
+        COPY_STRING(base + offsetof(snap_event_t, title), s->events[i].title);
+        memcpy(p + base + offsetof(snap_event_t, starts), &s->events[i].starts, sizeof s->events[i].starts);
+        memcpy(p + base + offsetof(snap_event_t, ends), &s->events[i].ends, sizeof s->events[i].ends);
+        memcpy(p + base + offsetof(snap_event_t, all_day), &s->events[i].all_day, sizeof s->events[i].all_day);
+        memcpy(p + base + offsetof(snap_event_t, has_end), &s->events[i].has_end, sizeof s->events[i].has_end);
+    }
+#undef COPY_STRING
+#undef STRING
+#undef SCALAR
+}
+
+size_t store_encode_snap_owned(const snap_t *in, const uint8_t *owner, uint8_t *buf, size_t cap)
+{
+    if (!in || !owner || !buf || cap < STORE_SNAP_OWNED_BLOB ||
+        in->n_notices > 5 || in->n_tasks > SNAP_MAX_TASKS || in->n_events > SNAP_MAX_EVENTS || in->focus.status > FOCUS_PAUSED) return 0;
+    buf[0] = STORE_SNAP_OWNED_VERSION;
+    memcpy(buf + 1, owner, STORE_SNAP_OWNER_LEN);
+    snapshot_payload(buf + 1 + STORE_SNAP_OWNER_LEN, in);
+    uint32_t crc = store_crc32(buf, STORE_SNAP_OWNED_BLOB - 4);
+    for (int i = 0; i < 4; i++) buf[STORE_SNAP_OWNED_BLOB - 4 + i] = (uint8_t)(crc >> (8 * i));
+    return STORE_SNAP_OWNED_BLOB;
+}
+
+bool store_decode_snap_owned(const uint8_t *buf, size_t len, const uint8_t *owner, snap_t *out)
+{
+    if (!owner || !out) return false;
+    const uint8_t *p = unseal(STORE_SNAP_OWNED_VERSION, buf, len, STORE_SNAP_OWNER_LEN + sizeof(snap_t));
+    if (!p || memcmp(p, owner, STORE_SNAP_OWNER_LEN) != 0) return false;
+    p += STORE_SNAP_OWNER_LEN;
+    /* Validate boolean representations before copying them into a C bool. */
+    if (p[offsetof(snap_t, has_task)] > 1 || p[offsetof(snap_t, has_event)] > 1 ||
+        p[offsetof(snap_t, event.all_day)] > 1 || p[offsetof(snap_t, event.has_end)] > 1 ||
+        p[offsetof(snap_t, n_notices)] > 5 || p[offsetof(snap_t, focus.status)] > FOCUS_PAUSED ||
+        p[offsetof(snap_t, n_tasks)] > SNAP_MAX_TASKS || p[offsetof(snap_t, n_events)] > SNAP_MAX_EVENTS ||
+        p[offsetof(snap_t, weather.present)] > 1 || p[offsetof(snap_t, weather.n_hours)] > SNAP_MAX_HOURS) return false;
+    for (int i = 0; i < SNAP_MAX_EVENTS; i++) {
+        size_t base = offsetof(snap_t, events) + i * sizeof(snap_event_t);
+        if (p[base + offsetof(snap_event_t, all_day)] > 1 || p[base + offsetof(snap_event_t, has_end)] > 1) return false;
+    }
+    snap_t s;
+    memcpy(&s, p, sizeof s);
+    term_snap(&s);
     *out = s;
     return true;
 }

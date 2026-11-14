@@ -19,6 +19,16 @@ static const kind_t KINDS[] = {
     { "focus.", "Focus", 0x2A1716, 0xF6907F },
 };
 
+bool ui_notice_style(const char *kind, const char **name, uint32_t *bg, uint32_t *fg)
+{
+    for (unsigned j = 0; j < sizeof KINDS / sizeof *KINDS; j++)
+        if (!strncmp(kind, KINDS[j].prefix, strlen(KINDS[j].prefix))) {
+            *name = KINDS[j].name; *bg = KINDS[j].bg; *fg = KINDS[j].fg;
+            return true;
+        }
+    return false;
+}
+
 static struct {
     lv_obj_t *root, *head, *foot;
     struct { lv_obj_t *row, *tile, *dot, *title, *sub; uint32_t fg; bool read; } r[ROWS];
@@ -56,11 +66,10 @@ void scr_inbox_set(const snap_t *s, int64_t now)
         lv_obj_set_hidden(h.r[i].row, !on);
         if (!on) continue;
         const snap_notice_t *n = &s->notices[i];
-        const kind_t *k = NULL;
-        for (unsigned j = 0; j < sizeof KINDS / sizeof *KINDS && !k; j++)
-            if (!strncmp(n->kind, KINDS[j].prefix, strlen(KINDS[j].prefix))) k = &KINDS[j];
+        const char *kname = "";
+        uint32_t bg = 0x16141C, fg = UI_COLOR_SUBTLE;
+        bool k = ui_notice_style(n->kind, &kname, &bg, &fg);
         bool read = ui_marked_read(n->id);
-        uint32_t bg = k ? k->bg : 0x16141C, fg = k ? k->fg : UI_COLOR_SUBTLE;
         if (h.r[i].fg != fg || h.r[i].read != read) { /* restyle only on a change: no redraw once a second */
             h.r[i].fg = fg;
             h.r[i].read = read;
@@ -74,7 +83,7 @@ void scr_inbox_set(const snap_t *s, int64_t now)
         ui_set_text(h.r[i].title, n->title);
         ui_text_color(h.r[i].title, read ? UI_COLOR_MUTED : UI_COLOR_TEXT);
         rel_time(rel, sizeof rel, now, n->created);
-        snprintf(t, sizeof t, "%s%s%s", k ? k->name : "", k && rel[0] ? " \xC2\xB7 " : "", rel);
+        snprintf(t, sizeof t, "%s%s%s", kname, k && rel[0] ? " \xC2\xB7 " : "", rel);
         ui_set_text(h.r[i].sub, t);
     }
     bool other = s->other_unread > 0;

@@ -8,11 +8,11 @@ import type { CompanionCommandLogEntry, CompanionState } from '../lib/companion/
 
 const m = vi.hoisted(() => ({
   list: vi.fn(), state: vi.fn(), reauth: vi.fn(), setIce: vi.fn(), scanWifi: vi.fn(), addWifi: vi.fn(), removeWifi: vi.fn(),
-  orderWifi: vi.fn(), setSettings: vi.fn(), restart: vi.fn(), unpair: vi.fn(),
+  orderWifi: vi.fn(), setSettings: vi.fn(), restart: vi.fn(), unpair: vi.fn(), weather: vi.fn(), setWeather: vi.fn(), clearWeather: vi.fn(),
 }))
 vi.mock('../lib/companion/serial', async (original) => ({ ...(await original<typeof import('../lib/companion/serial')>()), CompanionSerial: { supported: () => false, request: vi.fn() } }))
 vi.mock('../lib/companion/api', async () => ({
-  companion: { list: m.list, state: m.state, setIce: m.setIce, scanWifi: m.scanWifi, addWifi: m.addWifi, removeWifi: m.removeWifi, orderWifi: m.orderWifi, setSettings: m.setSettings, restart: m.restart, unpair: m.unpair },
+  companion: { list: m.list, state: m.state, setIce: m.setIce, scanWifi: m.scanWifi, addWifi: m.addWifi, removeWifi: m.removeWifi, orderWifi: m.orderWifi, setSettings: m.setSettings, restart: m.restart, unpair: m.unpair, weather: m.weather, setWeather: m.setWeather, clearWeather: m.clearWeather },
   reauth: m.reauth,
   encryptWifi: (await import('../lib/companion/ecies')).encryptWifi,
   newPairingSecret: () => 'S1', sha256Hex: async () => 'hash',
@@ -58,6 +58,7 @@ beforeEach(() => {
   m.removeWifi.mockResolvedValue({ command_id: 'c2' }); m.orderWifi.mockResolvedValue({ command_id: 'c3' })
   m.setSettings.mockResolvedValue({ command_id: 'c4' }); m.restart.mockResolvedValue({ command_id: 'c5' })
   m.unpair.mockResolvedValue(undefined)
+  m.weather.mockResolvedValue({ name: null, lat: null, lon: null, updated: null })
   m.reauth.mockResolvedValue({ challenge_id: 'ch1', signature: 'sig' })
 })
 afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
@@ -268,7 +269,7 @@ describe('Wi-Fi add network', () => {
   })
   it('add network encrypts and never sends the password in clear', async () => {
     await open(); await fill('Office', PASSWORD)
-    await click(button('Send to Aelys')); await settle()
+    await sendIt() /* wait for the request: the encryption runs on WebCrypto's own thread, a fixed settle() lost the race in CI */
     expect(m.addWifi).toHaveBeenCalledTimes(1)
     const [id, blob] = m.addWifi.mock.calls[0]!
     expect(id).toBe(ID)

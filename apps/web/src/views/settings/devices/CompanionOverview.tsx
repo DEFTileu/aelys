@@ -14,6 +14,28 @@ export function hhmm(iso: string | null | undefined): string | null {
 }
 export const batteryPct = (s: CompanionState) => s.battery?.pct ?? s.last_metrics?.battery_pct ?? null
 
+const moods: Record<string, string> = {
+  calm: 'Calm', attention: 'Attentive', focused: 'Focused', flow: 'In flow', joy: 'Joyful', elation: 'Delighted',
+  pride: 'Proud', relief: 'Relieved', anxiety: 'Anxious', panic: 'Alarmed', sad: 'Sad', disappointed: 'Disappointed',
+  anticipation: 'Anticipating', thinking: 'Thinking', curious: 'Curious', surprised: 'Surprised', frightened: 'Frightened',
+  tickled: 'Tickled', tender: 'Tender', bashful: 'Bashful', irritated: 'Irritated', dizzy: 'Dizzy', mischief: 'Playful',
+  waking: 'Waking', bored: 'Bored', missed: 'Missing you', sleepy: 'Sleepy', sleeping: 'Sleeping', exhausted: 'Tired',
+  charging: 'Charging', offline: 'Offline', reconnected: 'Reconnected',
+}
+const reasons: Record<string, string> = {
+  calm: 'At ease', face_down: 'Face down', night_sleep: 'Night rest', shake: 'Shaken', fall: 'Falling', turn: 'Turned',
+  low_battery: 'Low battery', charging: 'Charging', touch: 'Touched', double_touch: 'Double touch', stroke: 'Stroked',
+  pokes: 'Repeated touches', notification: 'Notification', loud: 'Loud sound', task_done: 'Task completed',
+  last_task: 'Last task completed', task_near_deadline: 'Task completed near deadline', lift: 'Picked up',
+  reconnected: 'Connection restored', wake: 'Waking up', tilt: 'Tilted', deadline_panic: 'Deadline very close',
+  deadline_anxiety: 'Deadline approaching', overdue: 'Overdue task', flow: 'Long focus', focus: 'Focus active',
+  calendar: 'Event approaching', waiting: 'Waiting', offline: 'Connection unavailable', all_done: 'Tasks complete',
+  clear_week: 'Clear week', bored: 'Idle', missed: 'Time apart', morning: 'Morning', evening: 'Evening',
+  idle_attention: 'Idle attention', idle_mischief: 'Idle play', hold: 'Held', reschedule: 'Rescheduled',
+}
+const label = (map: Record<string, string>, value: string): string | null =>
+  Object.hasOwn(map, value) ? map[value] : null
+
 const MODEL = 'Waveshare AMOLED 1.75″' // the only board there is; the API does not report a model
 
 export function CompanionOverview({ state, find, onGo }: { state: CompanionState; find: FindControl; onGo: (page: Page) => void }) {
@@ -22,6 +44,14 @@ export function CompanionOverview({ state, find, onGo }: { state: CompanionState
   const contacts = state.ice?.contacts?.length ?? 0
   const saved = state.wifi?.saved?.length ?? 0
   const current = state.wifi?.current
+  const character = state.online && !state.lost_mode?.on ? state.character : null
+  const mood = character && label(moods, character.current.mood)
+  const reason = character && label(reasons, character.current.reason)
+  const recent = character?.recent
+  const recentAge = recent ? Date.now() - Date.parse(recent.reported_at) : NaN
+  const recentMood = recent && label(moods, recent.mood)
+  const recentReason = recent && label(reasons, recent.reason)
+  const showRecent = recent && recentMood && recentReason && recentAge >= 0 && recentAge < 300_000
   const stat = (value: string, label: string) => <div className="dv-stat"><b>{value}</b><span className="st-hint">{label}</span></div>
   return <>
     <Card>
@@ -32,6 +62,8 @@ export function CompanionOverview({ state, find, onGo }: { state: CompanionState
           <div className="st-hint">{MODEL}</div>
         </div>
       </div>
+      {mood && reason && <div className="st-hint">{mood} · {reason}{hhmm(character?.current.reported_at) ? ` · ${hhmm(character?.current.reported_at)}` : ''}</div>}
+      {showRecent && <div className="st-hint">Recent reaction: {recentMood} · {recentReason}{hhmm(recent.reported_at) ? ` · ${hhmm(recent.reported_at)}` : ''}</div>}
       <div className="dv-stats">{stat(pct === null ? '—' : `${pct}%`, 'Battery')}{stat(current || '—', 'Wi-Fi')}{stat(state.fw_version || '—', 'Firmware')}</div>
     </Card>
     <div className="st-group">

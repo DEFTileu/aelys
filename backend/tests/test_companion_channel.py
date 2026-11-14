@@ -408,3 +408,183 @@ async def test_agents_channel_rejects_a_companion_token(paired):
     with TestClient(app) as client, pytest.raises(WebSocketDisconnect) as info, client.websocket_connect(f'{B}/agents/channel', headers=headers(token)) as socket:
         socket.receive_json()
     assert info.value.code == 4403
+
+
+@pytest.mark.asyncio
+async def test_character_status_is_owner_only_versioned_and_keeps_recent_reaction(paired):
+    owner, device_id, token = paired
+    with TestClient(app) as client, board(client, token) as socket:
+        empty = client.get(f'{B}/companion/devices/{device_id}', headers=bearer(owner))
+        assert empty.status_code == 200 and empty.json()['character'] is None
+        socket.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 1, 'mood': 'surprised', 'reason': 'touch'})
+        socket.send_json({'type': 'heartbeat'})
+        assert socket.receive_json() == {'type': 'heartbeat_ack'}
+        first = client.get(f'{B}/companion/devices/{device_id}', headers=bearer(owner)).json()['character']
+        assert first['current']['mood'] == 'surprised' and first['current']['reason'] == 'touch'
+        assert first['recent'] == first['current'] and first['current']['reported_at']
+        # An equal or older sequence cannot overwrite state, even with a different payload.
+        socket.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 1, 'mood': 'sad', 'reason': 'overdue'})
+        socket.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 0, 'mood': 'sad', 'reason': 'overdue'})
+        socket.send_json({'type': 'heartbeat'})
+        assert socket.receive_json()['type'] == 'heartbeat_ack'
+        assert client.get(f'{B}/companion/devices/{device_id}', headers=bearer(owner)).json()['character'] == first
+        socket.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 2, 'mood': 'calm', 'reason': 'calm'})
+        socket.send_json({'type': 'heartbeat'})
+        assert socket.receive_json()['type'] == 'heartbeat_ack'
+        latest = client.get(f'{B}/companion/devices/{device_id}', headers=bearer(owner)).json()['character']
+        assert latest['current']['mood'] == 'calm' and latest['recent'] == first['recent']
+        socket.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 3, 'mood': 'arbitrary secret text', 'reason': 'touch'})
+        assert socket.receive_json()['code'] == 'VALIDATION_ERROR'
+        socket.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': True, 'mood': 'calm', 'reason': 'calm'})
+        assert socket.receive_json()['code'] == 'VALIDATION_ERROR'
+        assert client.get(f'{B}/companion/devices/{device_id}', headers=headers(token)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_character_epoch_fences_replaced_socket_and_rechecks_revocation(paired):
+    from app.core.security import decode_token
+
+    owner, device_id, token = paired
+    owner_id = decode_token(token)['sub']
+    session_id = decode_token(token)['sid']
+    closed = []
+
+    async def reply(_message):
+        pass
+
+    async def close(code):
+        closed.append(code)
+
+    old = channel_module._Link(device_id, owner_id, reply, close, session_id=session_id)
+    old.character_epoch = await channel_module._begin_character_session(old)
+    await channel_module._character_state(old, {'type': 'character_state', 'lost_rev': 0, 'seq': 50, 'mood': 'joy', 'reason': 'task_done'})
+    newer = channel_module._Link(device_id, owner_id, reply, close, session_id=session_id)
+    newer.character_epoch = await channel_module._begin_character_session(newer)
+    assert newer.character_epoch > old.character_epoch
+    # No stale previous-session value is presented as current before the first fresh report.
+    with TestClient(app) as client:
+        assert client.get(f'{B}/companion/devices/{device_id}', headers=bearer(owner)).json()['character'] is None
+    # Reconnect starts a fresh sequence; old socket cannot win with a huge seq.
+    await channel_module._character_state(newer, {'type': 'character_state', 'lost_rev': 0, 'seq': 0, 'mood': 'calm', 'reason': 'calm'})
+    await channel_module._character_state(old, {'type': 'character_state', 'lost_rev': 0, 'seq': 999, 'mood': 'sad', 'reason': 'overdue'})
+    row = await state_of(device_id)
+    assert row.character_seq == 0 and row.character_json['current']['mood'] == 'calm'
+    assert row.character_json['recent']['mood'] == 'joy'
+    async with db.SessionLocal() as session:
+        identity = await session.get(AuthSession, session_id)
+        identity.revoked_at = datetime.now(UTC)
+        await session.commit()
+    await channel_module._character_state(newer, {'type': 'character_state', 'lost_rev': 0, 'seq': 1, 'mood': 'joy', 'reason': 'task_done'})
+    assert closed == [channel_module.AUTH_CLOSE_CODE]
+    assert (await state_of(device_id)).character_seq == 0
+
+
+@pytest.mark.asyncio
+async def test_character_lost_mode_hides_and_clears_reason(paired):
+    owner, device_id, token = paired
+    with TestClient(app) as client, board(client, token) as socket:
+        socket.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 1, 'mood': 'joy', 'reason': 'task_done'})
+        socket.send_json({'type': 'heartbeat'})
+        assert socket.receive_json()['type'] == 'heartbeat_ack'
+        assert client.get(f'{B}/companion/devices/{device_id}', headers=bearer(owner)).json()['character'] is not None
+        body = {'on': True, 'message': '', 'show_phone': False, 'show_telegram': False}
+        assert client.put(f'{B}/companion/devices/{device_id}/lost-mode', json=body, headers=bearer(owner)).status_code == 200
+        assert client.get(f'{B}/companion/devices/{device_id}', headers=bearer(owner)).json()['character'] is None
+        socket.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 2, 'mood': 'sad', 'reason': 'overdue'})
+        socket.send_json({'type': 'heartbeat'})
+        received = []
+        while not received or received[-1].get('type') != 'heartbeat_ack':
+            received.append(socket.receive_json())
+        assert client.get(f'{B}/companion/devices/{device_id}', headers=bearer(owner)).json()['character'] is None
+    row = await state_of(device_id)
+    assert row.character_json is None
+
+
+@pytest.mark.asyncio
+async def test_character_rejects_pre_lost_mode_frame_after_restore(paired):
+    from app.core.security import decode_token
+
+    _, device_id, token = paired
+    claims = decode_token(token)
+    async def noop(_value):
+        pass
+    link = channel_module._Link(device_id, claims['sub'], noop, noop, session_id=claims['sid'])
+    link.character_epoch = await channel_module._begin_character_session(link)
+    async with db.SessionLocal() as session:
+        row = await session.get(CompanionState, device_id)
+        row.lost_mode_json = {'on': False, 'rev': 2}
+        await session.commit()
+    await channel_module._character_state(link, {'type': 'character_state', 'lost_rev': 0, 'seq': 10, 'mood': 'joy', 'reason': 'task_done'})
+    assert (await state_of(device_id)).character_json is None
+    await channel_module._character_state(link, {'type': 'character_state', 'lost_rev': 2, 'seq': 11, 'mood': 'calm', 'reason': 'calm'})
+    assert (await state_of(device_id)).character_json['current']['mood'] == 'calm'
+
+
+@pytest.mark.asyncio
+async def test_character_rejects_expired_access_token(paired):
+    from app.core.security import decode_token
+
+    _, device_id, token = paired
+    claims = decode_token(token)
+    closed = []
+    async def noop(_value):
+        pass
+    async def close(code):
+        closed.append(code)
+    link = channel_module._Link(device_id, claims['sub'], noop, close, session_id=claims['sid'], token_exp=0)
+    link.character_epoch = await channel_module._begin_character_session(link)
+    await channel_module._character_state(link, {'type': 'character_state', 'lost_rev': 0, 'seq': 0, 'mood': 'calm', 'reason': 'calm'})
+    assert closed == [channel_module.AUTH_CLOSE_CODE]
+    assert (await state_of(device_id)).character_json is None
+
+
+@pytest.mark.asyncio
+async def test_revocation_during_epoch_allocation_never_receives_snapshot(paired, monkeypatch):
+    _, device_id, token = paired
+    original = channel_module._begin_character_session
+    async def revoke_during_allocation(link):
+        epoch = await original(link)
+        async with db.SessionLocal() as session:
+            device = await session.get(Device, device_id)
+            device.revoked_at = datetime.now(UTC)
+            await session.commit()
+        return epoch
+    monkeypatch.setattr(channel_module, '_begin_character_session', revoke_during_allocation)
+    original_validate = channel_module._validate
+    checks = 0
+    async def validate_before_exposing(*args):
+        nonlocal checks
+        checks += 1
+        if checks == 3:  # post-allocation, before the new socket can receive hub pushes
+            assert not hub.is_online(device_id)
+        return await original_validate(*args)
+    monkeypatch.setattr(channel_module, '_validate', validate_before_exposing)
+    with TestClient(app) as client, client.websocket_connect(CHANNEL, headers=headers(token)) as socket:
+        assert socket.receive_json()['type'] == 'ready'
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+        assert closed.value.code == channel_module.DEVICE_CLOSE_CODE
+
+
+@pytest.mark.asyncio
+async def test_character_status_survives_real_socket_replacements(paired):
+    """A recent event survives a fresh connection without posing as its current state."""
+    owner, device_id, token = paired
+    with TestClient(app) as client:
+        for _ in range(4):
+            with board(client, token) as first:
+                first.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 0, 'mood': 'joy', 'reason': 'task_done'})
+                first.send_json({'type': 'heartbeat'})
+                assert first.receive_json()['type'] == 'heartbeat_ack'
+                with board(client, token) as second:
+                    with pytest.raises(WebSocketDisconnect) as closed:
+                        first.receive_json()
+                    assert closed.value.code == 4000
+                    url = f'{B}/companion/devices/{device_id}'
+                    assert client.get(url, headers=bearer(owner)).json()['character'] is None
+                    second.send_json({'type': 'character_state', 'lost_rev': 0, 'seq': 0, 'mood': 'calm', 'reason': 'calm'})
+                    second.send_json({'type': 'heartbeat'})
+                    assert second.receive_json()['type'] == 'heartbeat_ack'
+                    character = client.get(url, headers=bearer(owner)).json()['character']
+                    assert character['current']['reason'] == 'calm'
+                    assert character['recent']['reason'] == 'task_done'

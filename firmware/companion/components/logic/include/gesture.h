@@ -12,9 +12,11 @@ typedef struct { bool down; int16_t x0, y0, x, y; uint32_t t0; } gesture_ctx_t;
  * SWIPE_RIGHT = the finger moved right. Anything else (a hold, a slow or vertical drag) is GEST_NONE. */
 gesture_t gesture_feed(gesture_ctx_t *g, bool touched, int16_t x, int16_t y, uint32_t now_ms);
 
-/* One side key pressed and released within 500 ms while the other was never down since both were up (so the
- * two-key combo never started) is a click: returns BTN_TOP / BTN_LOW at the release, else 0. */
-typedef struct { bool top, low, tainted; uint32_t t0; } btn_ctx_t;
+/* One side key pressed while the other was never down since both were up (so the two-key combo never started) is a click.
+ * It is returned while the key is still held, once it has been down alone for 40 ms (BTN_PRESS_MS): acting at the release made
+ * every key feel 0.2 s late. A press shorter than that clicks at its release. One click per press; 0 otherwise. */
+#define BTN_PRESS_MS 40
+typedef struct { bool top, low, tainted, fired; uint32_t t0; } btn_ctx_t;
 ui_btn_t btn_feed(btn_ctx_t *b, bool top, bool low, uint32_t now_ms);
 
 /* The finger is down and has moved 20 px or more from where it landed: not a tap, and not a hold either. */

@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from app.companion.actions import ActionIn, run_action
+from app.companion.character import REACTION_REASONS, CharacterStateIn
 from app.companion.hub import hub
 from app.companion.state import locked_state, record_ack, valid_command
 from app.core import db as core_db
@@ -88,6 +89,47 @@ class _Link:
     owner_id: str
     reply: Callable[[dict], Awaitable[None]]
     close: Callable[[int], Awaitable[None]]
+    session_id: str | None = None
+    character_epoch: int | None = None
+    token_exp: int | None = None
+
+
+async def _begin_character_session(link: _Link) -> int:
+    async with core_db.SessionLocal() as db:
+        row = await locked_state(db, link.device_id, link.owner_id)
+        row.character_epoch += 1
+        row.character_seq = -1
+        await db.commit()
+        return row.character_epoch
+
+
+async def _character_state(link: _Link, message: dict) -> None:
+    body = CharacterStateIn.model_validate(message)
+    close_code = None
+    async with core_db.SessionLocal() as db:
+        device = await db.get(Device, link.device_id, with_for_update=True)
+        session = await db.get(AuthSession, link.session_id, with_for_update=True) if link.session_id else None
+        if (not session or session.revoked_at or session.owner_id != link.owner_id or
+                session.device_id != link.device_id or _expired(session.expires_at) or
+                (link.token_exp is not None and time.time() >= link.token_exp)):
+            close_code = AUTH_CLOSE_CODE
+        elif not device or device.revoked_at or device.platform != 'companion' or device.owner_id != link.owner_id:
+            close_code = DEVICE_CLOSE_CODE
+        else:
+            row = await locked_state(db, link.device_id, link.owner_id)
+            lost = row.lost_mode_json or {}
+            if (link.character_epoch is None or row.character_epoch != link.character_epoch or
+                    body.seq <= row.character_seq or lost.get('on') or body.lost_rev != lost.get('rev', 0)):
+                return
+            observed = {'mood': body.mood, 'reason': body.reason, 'reported_at': datetime.now(UTC).isoformat()}
+            previous = row.character_json if isinstance(row.character_json, dict) else {}
+            recent = observed if body.reason in REACTION_REASONS else previous.get('recent')
+            row.character_json = {'current': observed, 'recent': recent}
+            row.character_seq = body.seq
+            await db.commit()
+    if close_code is not None:
+        await link.close(close_code)
+
 
 
 async def _hello(link: _Link, message: dict) -> None:
@@ -162,7 +204,8 @@ async def _action(link: _Link, message: dict) -> None:
 
 HANDLERS: dict[str, Callable[[_Link, dict], Awaitable[None]]] = {
     "hello": _hello, "heartbeat": _heartbeat, "metrics": _metrics, "action": _action,
-    "command_ack": _command_ack, "wifi_scan_result": _wifi_scan_result, "wifi_state": _wifi_state}
+    "command_ack": _command_ack, "wifi_scan_result": _wifi_scan_result, "wifi_state": _wifi_state,
+    "character_state": _character_state}
 
 
 def _error(code: str, message: str) -> dict:
@@ -288,15 +331,24 @@ async def device_channel(websocket: WebSocket) -> None:
                 return
             await _dispatch(link, event.get("text"))
 
-    link = _Link(device_id, owner_id, reply, close)
+    link = _Link(device_id, owner_id, reply, close, session_id=session_id, token_exp=int(claims["exp"]))
     tasks: list[asyncio.Task[Any]] = [asyncio.create_task(writer())]
     unregister: Callable[[], None] | None = None
     try:
         await reply({"type": "ready", "device_id": device_id})
-        unregister = hub.register(device_id, owner_id, push, close)
-        if (code := await _validate(owner_id, device_id, session_id)) is not None:  # a revoke between the first check and register
-            await close(code)
-            return
+        # Registration order and epoch allocation must agree, even when two
+        # reconnects race while one awaits database I/O.
+        async with hub.connection_lock(device_id):
+            if (code := await _validate(owner_id, device_id, session_id)) is not None:
+                await close(code)
+                return
+            # Fence the previous reader, then revalidate before exposing this
+            # socket to hub pushes. Revocation uses the same connection lock.
+            link.character_epoch = await _begin_character_session(link)
+            if (code := await _validate(owner_id, device_id, session_id)) is not None:
+                await close(code)
+                return
+            unregister = hub.register(device_id, owner_id, push, close)
         # After register and under the owner's lock: a concurrent push can't land after it. No snapshot, no session.
         if not await hub.push_snapshot(device_id):
             await close(ERROR_CLOSE_CODE)

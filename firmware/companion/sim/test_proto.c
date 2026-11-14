@@ -8,7 +8,7 @@
 #include "codec_util.h"
 #include "proto.h"
 
-static proto_msg_t g_m; /* ~1.1 KB: static, like the firmware does */
+static proto_msg_t g_m; /* ~2.3 KB: static, like the firmware does */
 
 static int64_t iso(const char *s)
 {
@@ -71,6 +71,7 @@ static void test_parses_every_contract_example(void)
     CHECK_EQ(s->today_total, -1);
     CHECK_EQ(s->today_done, -1);
     CHECK_EQ(s->other_unread, -1);
+    CHECK(s->n_tasks == 0 && s->n_events == 0); /* an older server: no lists */
 
     CHECK(parse_file("action_result_ok"));
     CHECK_EQ(g_m.type, MSG_ACTION_RESULT);
@@ -126,6 +127,7 @@ static void test_parses_v11_examples(void)
     CHECK_EQ(s->today_done, 3);
     CHECK_EQ(s->today_total, 7);
     CHECK_EQ(s->other_unread, 4);
+    CHECK(s->n_tasks == 0 && s->n_events == 0);
 
     CHECK(parse_file("cmd_lost_mode_v11"));
     const lost_cmd_t *l = &g_m.u.cmd.a.lost;
@@ -167,6 +169,137 @@ static void test_parses_v11_examples(void)
     CHECK_EQ(g_m.u.cmd.name, CMD_RESTART);
     CHECK(parse_file("cmd_unpair"));
     CHECK_EQ(g_m.u.cmd.name, CMD_UNPAIR);
+}
+
+static bool parse_str(const char *json)
+{
+    memset(&g_m, 0xA5, sizeof g_m);
+    return proto_parse(json, strlen(json), &g_m);
+}
+
+#define SNAP_HEAD "{\"type\":\"snapshot\",\"snapshot\":{\"generated_at\":\"2026-11-13T09:30:00Z\","
+#define T(id, due) "{\"id\":\"" id "\",\"title\":\"T " id "\",\"due_at\":\"" due "\"}"
+
+static void test_snapshot_lists(void)
+{
+    CHECK(parse_file("snapshot_v12"));
+    const snap_t *s = &g_m.u.snap;
+    CHECK(s->has_task && s->has_event && strcmp(s->task.id, "t-101") == 0); /* the v1 fields are still read */
+    CHECK_EQ(s->n_tasks, 3);
+    CHECK(strcmp(s->tasks[0].id, "t-101") == 0 && strcmp(s->tasks[1].title, "Reply to Dana") == 0);
+    CHECK_EQ(s->tasks[2].due, iso("2026-11-12T08:00:00Z"));
+    CHECK_EQ(s->n_events, 3);
+    CHECK(strcmp(s->events[0].title, "Standup") == 0 && s->events[0].has_end && !s->events[0].all_day);
+    CHECK_EQ(s->events[0].ends, iso("2026-11-13T10:15:00Z"));
+    CHECK_EQ(s->events[1].starts, iso("2026-11-14T09:30:00Z"));
+    CHECK(s->events[2].all_day && !s->events[2].has_end);
+    CHECK_EQ(s->today_done, 2);
+
+    /* null, empty and wrongly typed lists are no list; the rest of the snapshot is kept */
+    CHECK(parse_str(SNAP_HEAD "\"next_task\":null,\"tasks_today\":null,\"events_upcoming\":[]}}"));
+    CHECK(g_m.u.snap.n_tasks == 0 && g_m.u.snap.n_events == 0);
+    CHECK(parse_str(SNAP_HEAD "\"unread_count\":4,\"tasks_today\":{\"a\":1},\"events_upcoming\":\"x\"}}"));
+    CHECK(g_m.u.snap.n_tasks == 0 && g_m.u.snap.n_events == 0 && g_m.u.snap.unread == 4);
+
+    /* a bad entry is skipped (not an object, no id, bad time, title of the wrong type); good ones around it stay */
+    CHECK(parse_str(SNAP_HEAD "\"unread_count\":4,\"tasks_today\":[" T("a", "2026-11-13T10:00:00Z") ",7,{\"title\":\"no id\",\"due_at\":\"2026-11-13T10:00:00Z\"},"
+                    T("b", "yesterday") ",{\"id\":\"c\",\"title\":5,\"due_at\":\"2026-11-13T10:00:00Z\"}," T("d", "2026-11-13T11:00:00Z") "],"
+                    "\"events_upcoming\":[{\"id\":\"e\",\"title\":\"x\",\"starts_at\":\"2026-11-13T10:00:00Z\",\"all_day\":\"yes\"},[1,2],"
+                    "{\"id\":\"f\",\"title\":\"ok\",\"starts_at\":\"2026-11-13T12:00:00Z\",\"ends_at\":\"2026-11-13T13:00:00Z\",\"all_day\":false}]}}"));
+    s = &g_m.u.snap;
+    CHECK_EQ(s->unread, 4);
+    CHECK_EQ(s->n_tasks, 2);
+    CHECK(strcmp(s->tasks[0].id, "a") == 0 && strcmp(s->tasks[1].id, "d") == 0);
+    CHECK_EQ(s->n_events, 1);
+    CHECK(strcmp(s->events[0].id, "f") == 0 && s->events[0].has_end);
+    CHECK(s->tasks[2].id[0] == '\0' && s->events[1].id[0] == '\0'); /* unused entries are zero, not poison */
+
+    /* more than the arrays hold: the first ones count */
+    CHECK(parse_str(SNAP_HEAD "\"tasks_today\":[" T("1", "2026-11-13T10:00:00Z") "," T("2", "2026-11-13T10:00:00Z") "," T("3", "2026-11-13T10:00:00Z") ","
+                    T("4", "2026-11-13T10:00:00Z") "," T("5", "2026-11-13T10:00:00Z") "," T("6", "2026-11-13T10:00:00Z") "," T("7", "2026-11-13T10:00:00Z") "]}}"));
+    CHECK_EQ(g_m.u.snap.n_tasks, SNAP_MAX_TASKS);
+    CHECK(strcmp(g_m.u.snap.tasks[4].id, "5") == 0);
+
+    /* a title of 80 Cyrillic letters is cut on a character boundary, never rejected */
+    char json[1200], title[200];
+    for (int i = 0; i < 80; i++) memcpy(title + 2 * i, "\xD0\xAF", 2);
+    title[160] = '\0';
+    snprintf(json, sizeof json, SNAP_HEAD "\"tasks_today\":[{\"id\":\"a\",\"title\":\"%s\",\"due_at\":\"2026-11-13T10:00:00Z\"}]}}", title);
+    CHECK(parse_str(json));
+    CHECK_EQ(g_m.u.snap.n_tasks, 1);
+    CHECK_EQ(strlen(g_m.u.snap.tasks[0].title) % 2, 0);
+}
+
+static void test_snapshot_weather(void)
+{
+    CHECK(parse_file("snapshot_v13"));
+    const snap_weather_t *w = &g_m.u.snap.weather;
+    CHECK(w->present && w->temp == -3 && w->code == 71 && w->hi == -1 && w->lo == -8);
+    CHECK_EQ(w->updated, iso("2026-11-13T09:30:00Z"));
+    CHECK_EQ(w->n_hours, 5);
+    CHECK(w->hours[0].hour == 16 && w->hours[0].temp == -4 && w->hours[0].code == 71 && w->hours[4].hour == 20 && w->hours[4].temp == -9 && w->hours[4].code == 0);
+    CHECK_EQ(g_m.u.snap.n_tasks, 3); /* the rest of the snapshot is read as before */
+
+    /* an older server, a null, a lost-mode snapshot: no weather, and the board keeps working */
+    CHECK(parse_file("snapshot_v12"));
+    CHECK(!g_m.u.snap.weather.present && g_m.u.snap.weather.n_hours == 0);
+    CHECK(parse_str(SNAP_HEAD "\"unread_count\":4,\"weather\":null}}"));
+    CHECK(!g_m.u.snap.weather.present && g_m.u.snap.unread == 4);
+
+    /* a weather object that does not validate is left out whole, never half-read; the snapshot is kept */
+    const char *bad[] = {
+        "\"weather\":{\"temp\":1,\"code\":0,\"hi\":2,\"lo\":0}",                                       /* no updated */
+        "\"weather\":{\"temp\":1,\"code\":0,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\"}",             /* no hi */
+        "\"weather\":{\"temp\":\"hot\",\"code\":0,\"hi\":2,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\"}",
+        "\"weather\":{\"temp\":1.5,\"code\":0,\"hi\":2,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\"}",   /* the server sends integers */
+        "\"weather\":{\"temp\":1,\"code\":0,\"hi\":2,\"lo\":0,\"updated\":\"yesterday\"}",
+        "\"weather\":[1,2]", "\"weather\":\"sunny\"" };
+    for (unsigned i = 0; i < sizeof bad / sizeof *bad; i++) {
+        char json[400];
+        snprintf(json, sizeof json, SNAP_HEAD "\"unread_count\":4,%s}}", bad[i]);
+        CHECK(parse_str(json));
+        CHECK(!g_m.u.snap.weather.present && g_m.u.snap.unread == 4);
+    }
+
+    /* no hours is fine; a bad hour is skipped and the good ones around it stay; past 5 the first ones count; values are clamped */
+    CHECK(parse_str(SNAP_HEAD "\"weather\":{\"temp\":500,\"code\":-4,\"hi\":-500,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\"}}}"));
+    CHECK(g_m.u.snap.weather.present && g_m.u.snap.weather.n_hours == 0 && g_m.u.snap.weather.temp == 99 && g_m.u.snap.weather.hi == -99 && g_m.u.snap.weather.code == 0);
+    CHECK(parse_str(SNAP_HEAD "\"weather\":{\"temp\":1,\"code\":999,\"hi\":2,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\",\"hours\":["
+                    "{\"h\":1,\"t\":1,\"c\":1},{\"h\":24,\"t\":1,\"c\":1},{\"h\":-1,\"t\":1,\"c\":1},{\"h\":2,\"c\":1},7,{\"h\":3,\"t\":3,\"c\":3},"
+                    "{\"h\":4,\"t\":4,\"c\":4},{\"h\":5,\"t\":5,\"c\":5},{\"h\":6,\"t\":6,\"c\":6},{\"h\":7,\"t\":7,\"c\":7}]}}}"));
+    w = &g_m.u.snap.weather;
+    CHECK(w->present && w->code == 99);
+    CHECK_EQ(w->n_hours, SNAP_MAX_HOURS);
+    CHECK(w->hours[0].hour == 1 && w->hours[1].hour == 3 && w->hours[4].hour == 6);
+    CHECK(parse_str(SNAP_HEAD "\"weather\":{\"temp\":1,\"code\":0,\"hi\":2,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\",\"hours\":{\"h\":1}}}}"));
+    CHECK(g_m.u.snap.weather.present && g_m.u.snap.weather.n_hours == 0);
+}
+
+/* The most tokens a snapshot can use (every field of every object, 5 notices, a focus, both lists full) must fit the parser's token
+ * table, or the whole frame would be rejected. Titles are short: the byte cap is the server's job (docs/companion-protocol.md). */
+static void test_fullest_snapshot_fits_the_token_table(void)
+{
+    char json[4096];
+    int n = snprintf(json, sizeof json, "{\"type\":\"snapshot\",\"snapshot\":{\"generated_at\":\"2026-11-13T09:30:00Z\","
+        "\"next_task\":" T("a", "2026-11-13T10:00:00Z") ",\"overdue_count\":1,"
+        "\"next_event\":{\"id\":\"e\",\"title\":\"E\",\"starts_at\":\"2026-11-13T10:00:00Z\",\"ends_at\":\"2026-11-13T11:00:00Z\",\"all_day\":false},"
+        "\"unread_count\":5,\"notices\":[");
+    for (int i = 0; i < 5; i++)
+        n += snprintf(json + n, sizeof json - (size_t)n, "%s{\"id\":\"n%d\",\"kind\":\"task.reminder\",\"title\":\"N\",\"created_at\":\"2026-11-13T09:00:00Z\"}", i ? "," : "", i);
+    n += snprintf(json + n, sizeof json - (size_t)n, "],\"focus\":{\"id\":\"f\",\"status\":\"active\",\"mode\":\"m\",\"started_at\":\"2026-11-13T09:10:00Z\",\"elapsed_seconds\":1},"
+        "\"today_done\":1,\"today_total\":2,\"other_unread_count\":1,\"tasks_today\":[");
+    for (int i = 0; i < 5; i++)
+        n += snprintf(json + n, sizeof json - (size_t)n, "%s{\"id\":\"t%d\",\"title\":\"T\",\"due_at\":\"2026-11-13T10:00:00Z\"}", i ? "," : "", i);
+    n += snprintf(json + n, sizeof json - (size_t)n, "],\"events_upcoming\":[");
+    for (int i = 0; i < 4; i++)
+        n += snprintf(json + n, sizeof json - (size_t)n, "%s{\"id\":\"e%d\",\"title\":\"E\",\"starts_at\":\"2026-11-13T10:00:00Z\",\"ends_at\":\"2026-11-13T11:00:00Z\",\"all_day\":false}", i ? "," : "", i);
+    n += snprintf(json + n, sizeof json - (size_t)n, "],\"weather\":{\"temp\":-3,\"code\":71,\"hi\":-1,\"lo\":-8,\"updated\":\"2026-11-13T09:30:00Z\",\"hours\":[");
+    for (int i = 0; i < 5; i++)
+        n += snprintf(json + n, sizeof json - (size_t)n, "%s{\"h\":%d,\"t\":-4,\"c\":71}", i ? "," : "", 16 + i);
+    snprintf(json + n, sizeof json - (size_t)n, "]}}}");
+    CHECK(parse_str(json));
+    CHECK(g_m.u.snap.n_notices == 5 && g_m.u.snap.n_tasks == 5 && g_m.u.snap.n_events == 4 && g_m.u.snap.focus.status == FOCUS_ACTIVE);
+    CHECK(g_m.u.snap.weather.present && g_m.u.snap.weather.n_hours == 5);
 }
 
 static void test_command_unknown_name_is_not_rejected(void)
@@ -585,6 +718,9 @@ int main(void)
     test_wifi_seen_merge();
     test_parses_every_contract_example();
     test_parses_v11_examples();
+    test_snapshot_lists();
+    test_snapshot_weather();
+    test_fullest_snapshot_fits_the_token_table();
     test_command_unknown_name_is_not_rejected();
     test_snapshot_nulls_and_missing_optional();
     test_more_than_5_notices_keeps_first_5();

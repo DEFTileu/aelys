@@ -18,6 +18,7 @@
 #include "ui.h"
 #include "ui_face_priv.h"
 #include "ui_theme.h"
+#include "face_spring.h"
 
 #define COLOR_GRAD_TOP 0xCDBFFF
 #define COLOR_GRAD_BOTTOM 0x7C58F4
@@ -26,9 +27,8 @@
 #define COLOR_DOT_OFF 0x4A4554
 #define DROOP_TRAVEL 250 /* sleepy lid: bottom edge moves 25 px (tenths) between -56 % and -30 % of 96 px */
 /* The anim timer ticks every LV_DEF_REFR_PERIOD (5 ms on the board) while the panel flushes at 60 Hz (16.67 ms, TE).
- * A fixed minimum gap would quantise to that 5 ms grid (15 ms: a state is skipped now and then; 16 ms: 20 ms, a state
- * is shown twice). So frames are scheduled on a 16.67 ms clock kept in 1/3 ms: gaps of 15, 15 and 20 ms, average 60 Hz. */
-#define FRAME_THIRDS 50
+ * The face uses a 33.33 ms clock in 1/3 ms; the panel and navigation remain at 60 Hz. */
+#define FRAME_THIRDS 100
 
 typedef struct { int16_t w, h, yl, yr; } cut_t; /* lid object size, cut height at its left and right edge */
 
@@ -36,14 +36,44 @@ typedef struct {
     lv_obj_t *root;
     lv_obj_t *eye[2], *star[2], *ring[2], *lid[2], *dome[2];
     lv_obj_t *cheek[2], *dot[3], *line[3], *spark[3], *drop, *zz[2], *heart[2];
+    lv_obj_t *confetti_layer;
+    face_confetti_state_t confetti_state[6];
     cut_t cut[2];
     int16_t ring_a[2];
     int16_t line_k[3], line_op[3];
     int16_t dot_mix[3];
     int32_t s;           /* scale_x100 */
     const face_mood_t *m;
+    face_spring_t eye_spring[2][10];
+    face_eye_t current_eye[2];
+    bool eye_initialized, drawn;
+    uint32_t spring_time;
+    uint32_t left_blink_t0, right_blink_t0; /* inherited blink phases */
     uint32_t t0, due3;   /* start of the mood's loops (ms), next frame due (1/3 ms) */
 } face_t;
+
+/* All eye dimensions are independent numerical spring targets. */
+static void eye_values(const face_eye_t *e, int32_t v[10])
+{
+    v[0] = e->x; v[1] = e->y; v[2] = e->w; v[3] = e->h; v[4] = e->r;
+    v[5] = e->star_x; v[6] = e->star_y; v[7] = e->star;
+    v[8] = e->lid_y10; v[9] = e->lid_slope;
+}
+static void eye_step(face_t *f, uint32_t elapsed, bool snap)
+{
+    for (int side = 0; side < 2; ++side) {
+        int32_t target[10], v[10];
+        eye_values(&f->m->eye[side], target);
+        for (int k = 0; k < 10; ++k) {
+            if (snap) face_spring_init(&f->eye_spring[side][k], target[k]);
+            else face_spring_step(&f->eye_spring[side][k], target[k], elapsed);
+            v[k] = face_spring_value(&f->eye_spring[side][k]);
+        }
+        f->current_eye[side] = (face_eye_t){v[0], v[1], v[2], v[3], v[4],
+                                           v[5], v[6], v[7], v[8], v[9]};
+    }
+    f->eye_initialized = true;
+}
 
 /* face px * 100 -> device px */
 static int32_t d(const face_t *f, int32_t v100)
@@ -127,6 +157,48 @@ static void group_pt(const face_group_t *g, int32_t sn, int32_t cs, int32_t *x, 
     *y = FACE_H * 50 + ry * g->sc / 1000 + g->ty;
 }
 
+/* Confetti geometry and colors from the celebration state; the layer draws
+ * all pieces and invalidates only their old/new bounds during animation. */
+typedef struct { int16_t x, y; uint16_t delay_ms; uint32_t color; } confetti_spec_t;
+static const confetti_spec_t CONFETTI[6] = {
+    {20,0,0,0xB9A8FF}, {70,-10,400,0xF4C46B}, {232,-6,200,0x5FD7A8},
+    {270,4,800,0xF6907F}, {150,-14,1100,0x7FA8F5}, {110,0,600,0xE6DCFF},
+};
+static void confetti_center(const face_t *f, int i, face_confetti_state_t state, int32_t *x, int32_t *y)
+{
+    lv_area_t root;
+    lv_obj_get_coords(f->root, &root);
+    *x = root.x1 + d(f, (CONFETTI[i].x + 4) * 100);
+    *y = root.y1 + d(f, (CONFETTI[i].y + 7) * 100 + state.dy100);
+}
+static void confetti_invalidate(face_t *f, int i, face_confetti_state_t state)
+{
+    if (!state.opacity) return;
+    int32_t x, y, radius = d(f, 1200) + 2;
+    confetti_center(f, i, state, &x, &y);
+    lv_area_t area = {x - radius, y - radius, x + radius, y + radius};
+    lv_obj_invalidate_area(f->confetti_layer, &area);
+}
+static void confetti_draw(lv_event_t *e)
+{
+    const face_t *f = lv_event_get_user_data(e);
+    for (int i = 0; i < 6; i++) {
+        face_confetti_state_t state = f->confetti_state[i];
+        if (!state.opacity) continue;
+        int32_t x, y; confetti_center(f, i, state, &x, &y);
+        int32_t half = d(f, 700);
+        int32_t dx = lv_trigo_sin(state.angle) * half / 32768;
+        int32_t dy = lv_trigo_cos(state.angle) * half / 32768;
+        lv_draw_line_dsc_t line; lv_draw_line_dsc_init(&line);
+        line.color = lv_color_hex(CONFETTI[i].color); line.opa = state.opacity;
+        line.width = d(f, 800); if (line.width < 1) line.width = 1;
+        line.round_start = line.round_end = 1;
+        line.p1.x = x - dx; line.p1.y = y - dy;
+        line.p2.x = x + dx; line.p2.y = y + dy;
+        lv_draw_line(lv_event_get_layer(e), &line);
+    }
+}
+
 /* ---- drawing callbacks ---- */
 
 static void lid_draw(lv_event_t *e)
@@ -137,6 +209,14 @@ static void lid_draw(lv_event_t *e)
     lv_layer_t *layer = lv_event_get_layer(e);
     lv_area_t a;
     lv_obj_get_coords(o, &a);
+    if (f->m->lid == LID_RELAX) {
+        lv_draw_rect_dsc_t lid;
+        lv_draw_rect_dsc_init(&lid);
+        lid.bg_color = lv_color_hex(UI_COLOR_BG); lid.bg_opa = LV_OPA_COVER;
+        lid.radius = (a.y2 - a.y1 + 1) / 2;
+        lv_draw_rect(layer, &lid, &a);
+        return;
+    }
 
     int32_t lo = c->yl < c->yr ? c->yl : c->yr;
     lv_draw_rect_dsc_t r;
@@ -228,11 +308,18 @@ static void layout_eyes(face_t *f, uint32_t t)
 {
     const face_mood_t *m = f->m;
     face_group_t g = face_group_at((face_motion_t)m->motion, t);
-    int32_t blink = face_blink_x1000(m->blink_ms, t), sn, cs;
+    int32_t sn, cs;
     trig(g.rot, &sn, &cs);
 
     for (int side = 0; side < 2; side++) {
-        const face_eye_t *e = &m->eye[side];
+        const face_eye_t *e = &f->current_eye[side];
+        bool base_left = side == 0 &&
+                         ((m->blink_style == BLINK_STANDARD && m->blink_ms == 5000) ||
+                          m->blink_style == BLINK_WINK);
+        bool base_right = side == 1 && m->blink_style == BLINK_STANDARD && m->blink_ms == 5000;
+        int32_t blink = base_left ? face_blink_x1000(5000, lv_tick_get() - f->left_blink_t0) :
+                        base_right ? face_blink_x1000(5000, lv_tick_get() - f->right_blink_t0) :
+                                     face_eye_openness(m, side, t);
         /* CSS blink: scaleY about 50 % 60 % of the eye */
         int32_t w100 = e->w * 100, h100 = e->h * blink / 10;
         int32_t top100 = e->y * 100 + e->h * 60 * (1000 - blink) / 1000;
@@ -247,6 +334,9 @@ static void layout_eyes(face_t *f, uint32_t t)
             place(f->ring[side], x1, y1, x2 - x1, y2 - y1);
             int16_t a = (int16_t)(t % 1000 * 360 / 1000); /* one turn a second, the right eye the other way */
             if (side) a = (int16_t)((360 - a) % 360);
+            /* A circular ring keeps its shape under group rotation, but its
+             * opening must turn along with the rest of the eye group. */
+            a = (int16_t)((a + g.rot / 100 + 360) % 360);
             if (a != f->ring_a[side]) {
                 f->ring_a[side] = a;
                 lv_obj_invalidate(f->ring[side]);
@@ -266,19 +356,35 @@ static void layout_eyes(face_t *f, uint32_t t)
 
         if (e->star) {
             int32_t sx = cx - w100 / 2 + e->star_x * g.sc / 10, sy = cy - h100 / 2 + e->star_y * blink * g.sc / 10000;
-            const lv_image_dsc_t *img = face_img_star(d(f, e->star * g.sc / 10));
-            /* squashed by a blink the star would have to flatten with the eye: hide it for those few frames */
-            put_img(f->star[side], img, d(f, sx), d(f, sy), blink >= 700 ? 255 : 0);
+            const lv_image_dsc_t *img = face_img_star_squashed(d(f, e->star * g.sc / 10), blink);
+            put_img(f->star[side], img, d(f, sx), d(f, sy), m->star_opacity ? m->star_opacity : 255);
+        } else {
+            show(f->star[side], false); /* a shrinking highlight has reached zero */
         }
 
-        if (m->lid == LID_SLANT || m->lid == LID_DROOP) {
+        if (m->lid == LID_RELAX) {
+            int32_t px = e->x * 100 + e->w * 50;
+            int32_t py = e->y * 100 - 4600 + 3900 + face_relax_lid_y100(t);
+            group_pt(&g, sn, cs, &px, &py);
+            int32_t hw = (e->w + 20) * 50 * g.sc / 1000, hh = 3900 * g.sc / 1000;
+            int32_t left = d(f, px - hw), top = d(f, py - hh);
+            place(f->lid[side], left, top, d(f, px + hw) - left, d(f, py + hh) - top);
+            show(f->lid[side], true);
+        } else if (m->lid == LID_SLANT || m->lid == LID_DROOP) {
             int32_t cut10 = e->lid_y10;
             if (m->lid == LID_DROOP) cut10 += DROOP_TRAVEL * g.ty / 600; /* same timing as the sink */
-            int32_t ax = e->x * 100 + e->w * 50, ay = e->y * 100 + cut10 * 10;
+            /* The lid belongs to the eye: blink scales its cut and slope
+             * around the same 60% vertical origin as the pill. */
+            int32_t pivot = e->y * 100 + e->h * 60;
+            int32_t ax = e->x * 100 + e->w * 50;
+            int32_t ay = pivot + (e->y * 100 + cut10 * 10 - pivot) * blink / 1000;
             group_pt(&g, sn, cs, &ax, &ay);
-            int32_t xl = ax - e->w * 50 - 200, xr = ax + e->w * 50 + 200; /* the eye plus 2 px */
-            int32_t yl = ay + e->lid_slope * (xl - ax) / 1000, yr = ay + e->lid_slope * (xr - ax) / 1000;
-            int32_t top = d(f, ay - cut10 * 10 - 600);
+            int32_t half = (e->w * 50 + 200) * g.sc / 1000; /* eye plus 2 px, scaled with group */
+            int32_t xl = ax - half, xr = ax + half;
+            int32_t slope = e->lid_slope * blink / 1000;
+            int32_t yl = ay + slope * (xl - ax) / 1000, yr = ay + slope * (xr - ax) / 1000;
+            int32_t lid_height = (cut10 * 10 + 600) * blink / 1000 * g.sc / 1000;
+            int32_t top = d(f, ay - lid_height);
             lid_set(f, side, d(f, xl), top, d(f, xr), d(f, yl) - top, d(f, yr) - top);
         } else if (m->lid == LID_DOME) {
             /* left -14, right -14, top 52, 96 tall: an ellipse 98 x 96 */
@@ -295,6 +401,17 @@ static void layout_eyes(face_t *f, uint32_t t)
 static void layout_fx(face_t *f, uint32_t t)
 {
     const face_mood_t *m = f->m;
+    if (m->confetti) {
+        for (int i = 0; i < 6; i++) {
+            face_confetti_state_t next = face_confetti_at(t, CONFETTI[i].delay_ms);
+            face_confetti_state_t old = f->confetti_state[i];
+            if (old.dy100 != next.dy100 || old.angle != next.angle || old.opacity != next.opacity) {
+                confetti_invalidate(f, i, old);
+                f->confetti_state[i] = next;
+                confetti_invalidate(f, i, next);
+            }
+        }
+    }
     for (int i = 0; i < m->n_spark; i++) {
         const face_fx_t *p = &m->spark[i];
         face_fx_state_t st = face_fx_twinkle(t, p->delay_ms);
@@ -351,10 +468,13 @@ static void tick(void *var, int32_t unused)
     uint32_t now3 = now * 3;
     /* Keep hidden faces' deadlines current, so a long absence cannot make the
      * signed modular comparison ambiguous when they become visible again. */
-    if (!lv_obj_is_visible(f->root)) { f->due3 = now3; return; }
+    if (!lv_obj_is_visible(f->root)) { f->due3 = now3; f->spring_time = now; return; }
     if ((int32_t)(now3 - f->due3) < 0) return;
     f->due3 += FRAME_THIRDS;
     if ((int32_t)(now3 - f->due3) >= 0) f->due3 = now3 + FRAME_THIRDS; /* far behind (hidden, stalled): do not catch up */
+    eye_step(f, now - f->spring_time, false);
+    f->spring_time = now;
+    f->drawn = true;
     layout_eyes(f, now - f->t0);
     layout_fx(f, now - f->t0);
 }
@@ -368,10 +488,11 @@ static void apply_mood(face_t *f)
         lv_obj_t *eye = f->eye[side];
         show(eye, !ring);
         lv_obj_set_style_border_width(eye, 0, 0);
+        lv_obj_set_style_shadow_width(eye, d(f, m->glow_width * 100), 0);
         if (m->kind == EYE_PILL) {
             lv_obj_set_style_bg_opa(eye, LV_OPA_COVER, 0);
-            lv_obj_set_style_bg_color(eye, lv_color_hex(COLOR_GRAD_TOP), 0);
-            lv_obj_set_style_bg_grad_color(eye, lv_color_hex(COLOR_GRAD_BOTTOM), 0);
+            lv_obj_set_style_bg_color(eye, lv_color_hex(m->gradient_top ? m->gradient_top : COLOR_GRAD_TOP), 0);
+            lv_obj_set_style_bg_grad_color(eye, lv_color_hex(m->gradient_bottom ? m->gradient_bottom : COLOR_GRAD_BOTTOM), 0);
             lv_obj_set_style_bg_grad_dir(eye, LV_GRAD_DIR_VER, 0);
         } else {
             lv_obj_set_style_bg_grad_dir(eye, LV_GRAD_DIR_NONE, 0);
@@ -386,6 +507,8 @@ static void apply_mood(face_t *f)
         show(f->cheek[side], m->cheeks);
     }
     show(f->drop, false);
+    show(f->confetti_layer, m->confetti);
+    for (int i = 0; i < 6; i++) f->confetti_state[i] = (face_confetti_state_t){0};
     for (int i = 0; i < 3; i++) {
         show(f->spark[i], false);
         show(f->line[i], false);
@@ -407,11 +530,11 @@ static void apply_mood(face_t *f)
     for (int i = 0; i < 3; i++) place(f->dot[i], d(f, (123 + 22 * i) * 100), d(f, 11800), d(f, 1000), d(f, 1000));
 }
 
-/* LVGL clips invalidation to the parent plus its ext draw size: lids, drops, hearts and z reach up to 30 px out. */
+/* Confetti can start 34 px above the face; allow 40 px of overhang. */
 static void face_ext_size(lv_event_t *e)
 {
     const face_t *f = lv_event_get_user_data(e);
-    lv_event_set_ext_draw_size(e, d(f, 3000));
+    lv_event_set_ext_draw_size(e, d(f, 4000));
 }
 
 static void face_deleted(lv_event_t *e)
@@ -445,6 +568,10 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
         f->eye[i] = box(root, 0);
         lv_obj_set_style_radius(f->eye[i], LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_color(f->eye[i], lv_color_black(), 0);
+        /* Reserve glow style properties at creation, before mood changes. */
+        lv_obj_set_style_shadow_width(f->eye[i], 0, 0);
+        lv_obj_set_style_shadow_color(f->eye[i], lv_color_hex(0xB9A8FF), 0);
+        lv_obj_set_style_shadow_opa(f->eye[i], 140, 0);
     }
     for (int i = 0; i < 2; i++) f->star[i] = image(root, 0xFFFFFF);
     for (int i = 0; i < 2; i++) {
@@ -485,6 +612,14 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
         f->heart[i] = image(root, UI_COLOR_CHEEK);
     }
 
+    f->confetti_layer = box(root, UI_COLOR_BG);
+    lv_obj_set_style_bg_opa(f->confetti_layer, LV_OPA_TRANSP, 0);
+    lv_obj_set_size(f->confetti_layer, d(f, FACE_W * 100), d(f, (FACE_H + 80) * 100));
+    lv_obj_set_pos(f->confetti_layer, 0, -d(f, 4000));
+    lv_obj_add_event_cb(f->confetti_layer, confetti_draw, LV_EVENT_DRAW_MAIN, f);
+    lv_obj_set_user_flag(f->confetti_layer, 1, true);
+    lv_obj_set_hidden(f->confetti_layer, true);
+
     lv_obj_set_user_data(root, f);
     face_set_mood(root, MOOD_CALM);
 
@@ -499,13 +634,32 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
     return root;
 }
 
+void face_set_level(lv_obj_t *face, int32_t angle10)
+{
+    if (!face || lv_obj_get_style_transform_rotation(face, 0) == angle10) return;
+    lv_obj_set_style_transform_pivot_x(face, lv_pct(50), 0);
+    lv_obj_set_style_transform_pivot_y(face, lv_pct(50), 0);
+    lv_obj_set_style_transform_rotation(face, angle10, 0);
+}
+
 void face_set_mood(lv_obj_t *face, mood_t m)
 {
     face_t *f = face ? lv_obj_get_user_data(face) : NULL;
     if (!f || !face_mood_def(m)) return;
-    f->m = face_mood_def(m);
+    const face_mood_t *next = face_mood_def(m);
+    bool old_base_left = f->m && ((f->m->blink_style == BLINK_STANDARD && f->m->blink_ms == 5000) ||
+                                  f->m->blink_style == BLINK_WINK);
+    bool new_base_left = (next->blink_style == BLINK_STANDARD && next->blink_ms == 5000) ||
+                         next->blink_style == BLINK_WINK;
+    bool old_base_right = f->m && f->m->blink_style == BLINK_STANDARD && f->m->blink_ms == 5000;
+    bool new_base_right = next->blink_style == BLINK_STANDARD && next->blink_ms == 5000;
+    f->m = next;
     f->t0 = lv_tick_get();
+    if (!old_base_left || !new_base_left) f->left_blink_t0 = f->t0;
+    if (!old_base_right || !new_base_right) f->right_blink_t0 = f->t0;
     f->due3 = f->t0 * 3;
+    f->spring_time = f->t0;
+    if (!f->eye_initialized || !f->drawn) eye_step(f, 0, true);
     apply_mood(f);
     layout_eyes(f, 0);
     layout_fx(f, 0);

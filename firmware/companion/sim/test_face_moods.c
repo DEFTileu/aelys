@@ -51,6 +51,12 @@ static void test_shapes(void)
     f = show(MOOD_FOCUSED, 100, 0, 0, 100);
     CHECK(lit(93, 85) && dark(93, 55) && dark(93, 115));           /* 44 tall at 63 */
     CHECK(close_to(105, 78, 255, 255, 255, 14));                   /* 14 px star at 40,8 */
+    rgb_t without_glow = at(93, 57);
+    gone(f);
+
+    f = show(MOOD_FLOW, 100, 0, 0, 100);
+    rgb_t glow = at(93, 57);
+    CHECK(glow.r + glow.g + glow.b > without_glow.r + without_glow.g + without_glow.b + 10);
     gone(f);
 
     f = show(MOOD_SLEEPING, 100, 0, 0, 100);
@@ -58,6 +64,10 @@ static void test_shapes(void)
     CHECK(dark(93, 90) && dark(93, 70) && dark(62, 72));           /* hollow, nothing above the line */
     CHECK(close_to(62, 85, 0x8F, 0x70, 0xF7, 16));                 /* its sides */
     CHECK(dark(150, 90));
+    gone(f);
+
+    f = show(MOOD_EXHAUSTED, 100, 0, 0, 100);
+    CHECK(at(93, 100).r < 160 && at(93, 100).g < 160 && at(93, 100).b < 170);
     gone(f);
 
     f = show(MOOD_OFFLINE, 100, 0, 0, 100);
@@ -176,10 +186,13 @@ static void test_inside_screen_and_own_area(void)
         }
         CHECK(lit_px > 500);
         CHECK_EQ(outside, 0);                                      /* nothing outside the 466 px circle */
-        CHECK(g_inv_set); /* every mood has some motion */
-        /* the animation only redraws the face box plus its 30 px of overhang (lids, drops, hearts) */
-        CHECK(g_inv.x1 >= HX - 30 && g_inv.y1 >= HY - 30);
-        CHECK(g_inv.x2 <= HX + 300 + 30 && g_inv.y2 <= HY + FACE_H + 30);
+        CHECK(g_inv_set); /* every mood has motion or blinking during this window */
+        /* A moving face only redraws its box plus 30 px of overhang. */
+        if (g_inv_set) {
+            int margin = m == MOOD_ELATION ? 40 : 30;
+            CHECK(g_inv.x1 >= HX - margin && g_inv.y1 >= HY - margin);
+            CHECK(g_inv.x2 <= HX + 300 + margin && g_inv.y2 <= HY + FACE_H + margin);
+        }
         gone(f);
     }
 }
@@ -214,6 +227,26 @@ static void test_partial_redraw_each_frame(void)
     lv_timer_set_period(refresh, LV_DEF_REFR_PERIOD);
 }
 
+/* Dirty regions must remain pixel-identical to a full redraw during a retarget. */
+static void test_transition_partial_redraw(void)
+{
+    lv_timer_t *anim = lv_anim_get_timer();
+    lv_timer_t *refresh = lv_display_get_refr_timer(lv_display_get_default());
+    lv_timer_set_period(anim, 5); lv_timer_set_period(refresh, 5);
+    lv_obj_t *face = show(MOOD_CALM, 100, HX, HY, 100);
+    const mood_t sequence[] = {MOOD_FOCUSED, MOOD_WORRIED, MOOD_SURPRISED, MOOD_CALM};
+    for (unsigned n = 0; n < sizeof sequence / sizeof *sequence; n++) {
+        face_set_mood(face, sequence[n]);
+        for (int t = 0; t < 1000; t += 5) {
+            sim_step(5); lv_refr_now(NULL);
+            int diff = pixel_exact();
+            if (diff) { fprintf(stderr, "transition %u at %d ms: %d pixels differ\n", n, t, diff); CHECK_EQ(diff, 0); break; }
+        }
+    }
+    gone(face);
+    lv_timer_set_period(anim, LV_DEF_REFR_PERIOD); lv_timer_set_period(refresh, LV_DEF_REFR_PERIOD);
+}
+
 /* A face at rest costs nothing: calm does not move for the first 2.5 s of its look loop, and a hidden face never draws. */
 static void test_rest_is_free(void)
 {
@@ -229,6 +262,14 @@ static void test_rest_is_free(void)
     n = sim_flushes();
     for (int i = 0; i < 625; i++) sim_step(16);                    /* 10 s: every loop would have moved */
     CHECK_EQ(sim_flushes(), n);
+    gone(f);
+
+    f = show(MOOD_BASHFUL, 100, HX, HY, 100);
+    n = sim_flushes();
+    for (int i = 0; i < 250; i++) sim_step(16); /* stationary before the first blink */
+    CHECK_EQ(sim_flushes(), n);
+    for (int i = 0; i < 50; i++) sim_step(16); /* inherited blink updates the face */
+    CHECK(sim_flushes() > n);
     gone(f);
 }
 
@@ -309,8 +350,8 @@ static void test_animation_style_footprint(void)
 
 static void test_scales_and_api(void)
 {
-    CHECK_EQ(MOOD_COUNT, 14);
-    static const int32_t S[] = { 34, 36, 42, 50, 70, 100, 107 };
+    CHECK_EQ(MOOD_COUNT, 32);
+    static const int32_t S[] = { 34, 36, 42, 50, 70, 100, 107, 130 };
     for (unsigned i = 0; i < sizeof S / sizeof *S; i++)
         for (int m = 0; m < MOOD_COUNT; m++) {
             lv_obj_t *face = face_create(lv_screen_active(), S[i]);
@@ -336,16 +377,255 @@ static void test_scales_and_api(void)
     lv_obj_delete(face);
 }
 
+static void test_elation_confetti(void)
+{
+    lv_obj_t *f = show(MOOD_ELATION, 100, HX, HY, 100);
+    rgb_t yellow = at(HX + 74, HY - 3);
+    CHECK(yellow.r > 150 && yellow.g > 120 && yellow.b < 160);
+    gone(f);
+}
+
+static void test_relief_lid_moves(void)
+{
+    lv_obj_t *f = show(MOOD_RELIEF, 100, HX, HY, 100);
+    lv_obj_t *lid = lv_obj_get_child(f, 6);
+    lv_obj_update_layout(f); int initial_y = lv_obj_get_y(lid);
+    sim_step(1480); lv_obj_update_layout(f);
+    CHECK(lv_obj_get_y(lid) >= initial_y + 12);
+    gone(f);
+}
+
+static void test_charging_lid_scales_with_eyes(void)
+{
+    lv_obj_t *f = show(MOOD_CHARGING, 130, HX, HY, 100);
+    sim_step(2380); /* 2.5 s: breathing group at 105% */
+    lv_obj_update_layout(f);
+    lv_obj_t *eye = lv_obj_get_child(f, 0);
+    lv_obj_t *lid = lv_obj_get_child(f, 6);
+    /* A 74 px mask and its 34 px cut both follow the 105% group scale,
+       then the 130% face scale. */
+    CHECK(abs(lv_obj_get_width(lid) - 101) <= 1);
+    int cut = lv_obj_get_y(lid) + lv_obj_get_height(lid) - 1 - lv_obj_get_y(eye);
+    CHECK(abs(cut - 46) <= 1);
+    sim_step(20); /* render the animation step */
+    lv_obj_update_layout(f);
+    lv_area_t bounds; lv_obj_get_coords(eye, &bounds);
+    int cx = (bounds.x1 + bounds.x2) / 2;
+    CHECK(dark(cx, bounds.y1 + 25));
+    CHECK(lit(cx, bounds.y1 + 55));
+    gone(f);
+}
+
+static void check_compressed_highlight(lv_obj_t *f, int side)
+{
+    lv_obj_t *eye = lv_obj_get_child(f, side);
+    lv_obj_t *star = lv_obj_get_child(f, 2 + side);
+    lv_obj_update_layout(f);
+    lv_area_t a; lv_obj_get_coords(eye, &a);
+    int min_y = SIM_H, max_y = -1;
+    for (int y = a.y1; y <= a.y2; ++y) for (int x = a.x1; x <= a.x2; ++x) {
+        rgb_t p = at(x,y);
+        if (p.r > 240 && p.g > 240 && p.b > 240) {
+            if (y < min_y) min_y = y;
+            if (y > max_y) max_y = y;
+        }
+    }
+    CHECK(!lv_obj_is_hidden(star));
+    CHECK(max_y >= min_y);
+    CHECK(max_y - min_y + 1 < lv_obj_get_width(star) * 4 / 5);
+}
+
+static void test_highlight_compresses_with_blink(void)
+{
+    for (int width = 5; width <= 26; ++width) {
+        const lv_image_dsc_t *normal = face_img_star(width);
+        CHECK(face_img_star_squashed(width, 1000) == normal);
+        int last = 0;
+        for (int openness = 80; openness <= 1120; openness += 40) {
+            const lv_image_dsc_t *img = face_img_star_squashed(width, openness);
+            CHECK_EQ(img->header.w, normal->header.w);
+            CHECK(img->header.h >= last);
+            CHECK(img->header.h >= 1);
+            CHECK(abs((int)img->header.h * 1000 - width * openness) <= 600);
+            last = img->header.h;
+        }
+    }
+    lv_obj_t *f = show(MOOD_CALM, 100, HX, HY, 100);
+    sim_step(4630); /* 4.75 s: halfway through the closing blink */
+    lv_refr_now(NULL);
+    check_compressed_highlight(f, 0);
+    gone(f);
+    f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
+    sim_step(1800); /* 1.92 s: right eye halfway through a wink */
+    lv_refr_now(NULL);
+    check_compressed_highlight(f, 1);
+    gone(f);
+}
+
+static void test_worried_lid_follows_blink(void)
+{
+    lv_obj_t *f = show(MOOD_WORRIED, 100, HX, HY, 100);
+    sim_step(4596); /* near one-third openness with CSS ease */
+    lv_refr_now(NULL);
+    lv_obj_update_layout(f);
+    lv_area_t eye; lv_obj_get_coords(lv_obj_get_child(f, 0), &eye);
+    int cx = (eye.x1 + eye.x2) / 2;
+    CHECK(dark(cx, eye.y1 + 4));
+    CHECK(lit(cx, eye.y1 + 22));
+    CHECK(dark(cx - 18, eye.y1 + 9));
+    CHECK(lit(cx + 18, eye.y1 + 9));
+    lv_obj_get_coords(lv_obj_get_child(f, 1), &eye);
+    cx = (eye.x1 + eye.x2) / 2;
+    CHECK(lit(cx - 18, eye.y1 + 9));
+    CHECK(dark(cx + 18, eye.y1 + 9));
+    gone(f);
+}
+
+static void test_worried_lids_close_and_reopen_at_home_scale(void)
+{
+    lv_obj_t *f = show(MOOD_WORRIED, 130, HX, HY, 100);
+    sim_step(4680); /* 4.8 s: minimum openness */
+    lv_refr_now(NULL);
+    lv_obj_update_layout(f);
+    for (int side = 0; side < 2; ++side) {
+        lv_area_t a; lv_obj_get_coords(lv_obj_get_child(f, side), &a);
+        int cx = (a.x1 + a.x2) / 2;
+        CHECK(dark(cx, a.y1 + 1));
+        CHECK(lit(cx, a.y1 + 6));
+    }
+    sim_step(60); /* near half openness while reopening with CSS ease */
+    lv_refr_now(NULL);
+    lv_obj_update_layout(f);
+    for (int side = 0; side < 2; ++side) {
+        lv_area_t a; lv_obj_get_coords(lv_obj_get_child(f, side), &a);
+        int cx = (a.x1 + a.x2) / 2;
+        CHECK(dark(cx, a.y1 + 5));
+        CHECK(lit(cx, a.y1 + 25));
+    }
+    gone(f);
+}
+
+static void test_dizzy_rings_follow_group_rotation(void)
+{
+    lv_obj_t *f=face_create(lv_screen_active(),100);
+    lv_obj_set_pos(f,HX,HY);
+    face_set_mood(f,MOOD_DIZZY); /* at t=0, group angle is -9 degrees */
+    lv_obj_update_layout(f); lv_refr_now(NULL);
+    for (int side=0;side<2;++side) {
+        lv_area_t a; lv_obj_get_coords(lv_obj_get_child(f,4+side),&a);
+        int cx=(a.x1+a.x2+1)/2, cy=(a.y1+a.y2+1)/2;
+        /* 41 degrees lies inside the tilted arc, but outside an unrotated arc. */
+        CHECK(lit(cx+24,cy+21));
+    }
+    sim_step(800); lv_refr_now(NULL); lv_obj_update_layout(f); /* group angle +9°, opposite ring spins */
+    lv_area_t a;
+    lv_obj_get_coords(lv_obj_get_child(f,4),&a);
+    int cx=(a.x1+a.x2+1)/2, cy=(a.y1+a.y2+1)/2;
+    CHECK(dark(cx+29,cy-12));
+    lv_obj_get_coords(lv_obj_get_child(f,5),&a);
+    cx=(a.x1+a.x2+1)/2; cy=(a.y1+a.y2+1)/2;
+    CHECK(dark(cx-16,cy+27));
+    gone(f);
+}
+
+static void test_asymmetric_wink_and_wake(void)
+{
+    lv_obj_t *f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
+    sim_step(2160); lv_obj_update_layout(f);
+    int left = lv_obj_get_height(lv_obj_get_child(f, 0));
+    int right = lv_obj_get_height(lv_obj_get_child(f, 1));
+    CHECK(left >= 90); CHECK(right <= 15);
+    gone(f);
+    f = show(MOOD_WAKING, 100, HX, HY, 100);
+    lv_obj_update_layout(f);
+    CHECK(lv_obj_get_height(lv_obj_get_child(f, 0)) <= 15);
+    sim_step(1530); lv_obj_update_layout(f);
+    CHECK(lv_obj_get_height(lv_obj_get_child(f, 0)) >= 105);
+    gone(f);
+}
+
+static void test_star_disappears_after_transition_to_no_star(void)
+{
+    lv_obj_t *face=show(MOOD_CALM,100,HX,HY,100);
+    face_set_mood(face,MOOD_OFFLINE);
+    for (int i=0;i<120;i++) sim_step(34);
+    CHECK(lv_obj_is_hidden(lv_obj_get_child(face,2)));
+    CHECK(lv_obj_is_hidden(lv_obj_get_child(face,3)));
+    gone(face);
+}
+
+static void test_inherited_blink_phase(void)
+{
+    lv_obj_t *face = show(MOOD_CALM,100,HX,HY,100);
+    sim_step(4680); lv_obj_update_layout(face);
+    lv_obj_t *left = lv_obj_get_child(face,0);
+    int before = lv_obj_get_height(left);
+    CHECK(before < 60);
+    lv_obj_t *right = lv_obj_get_child(face,1);
+    int right_before = lv_obj_get_height(right);
+    CHECK(right_before < 60);
+    const mood_t inherited[] = { MOOD_PANIC, MOOD_BASHFUL, MOOD_MISSED };
+    for (unsigned i = 0; i < sizeof inherited / sizeof *inherited; ++i) {
+        face_set_mood(face,inherited[i]); lv_obj_update_layout(face);
+        CHECK_EQ(lv_obj_get_height(left),before);
+        CHECK_EQ(lv_obj_get_height(right),right_before);
+    }
+    face_set_mood(face,MOOD_BORED); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left),before);
+    CHECK_EQ(lv_obj_get_height(right),right_before);
+    face_set_mood(face,MOOD_WORRIED); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left),before);
+    CHECK_EQ(lv_obj_get_height(right),right_before);
+    face_set_mood(face,MOOD_CALM); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(right),right_before);
+    face_set_mood(face,MOOD_MISCHIEF); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left),before);
+    face_set_mood(face,MOOD_CALM); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left),before);
+    gone(face);
+}
+
+static void test_smooth_eye_transition(void)
+{
+    lv_obj_t *face = face_create(lv_screen_active(), 100);
+    sim_step(100);
+    lv_obj_t *left = lv_obj_get_child(face, 0);
+    lv_obj_update_layout(face);
+    int before = lv_obj_get_height(left);
+    face_set_mood(face, MOOD_FOCUSED);
+    lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left), before);
+    sim_step(100); lv_obj_update_layout(face);
+    int middle = lv_obj_get_height(left);
+    CHECK(middle < before && middle > 46);
+    for (int n = 0; n < 54; n++) sim_step(34);
+    lv_obj_update_layout(face);
+    CHECK(lv_obj_get_height(left) >= 44 && lv_obj_get_height(left) <= 47);
+    lv_obj_delete(face);
+}
+
 int main(void)
 {
     sim_init();
     sim_direct(); /* redraw only what was invalidated, as the board does: stale pixels would show up */
+    test_elation_confetti();
+    test_relief_lid_moves();
+    test_charging_lid_scales_with_eyes();
+    test_asymmetric_wink_and_wake();
+    test_star_disappears_after_transition_to_no_star();
+    test_smooth_eye_transition();
+    test_inherited_blink_phase();
     test_shapes();
     test_inside_screen_and_own_area();
     test_partial_redraw_each_frame();
+    test_transition_partial_redraw();
     test_rest_is_free();
     test_animation_style_footprint();
     test_scales_and_api();
     test_long_hidden_resume();
+    test_highlight_compresses_with_blink();
+    test_worried_lid_follows_blink();
+    test_worried_lids_close_and_reopen_at_home_scale();
+    test_dizzy_rings_follow_group_rotation();
     return g_failed ? 1 : 0;
 }

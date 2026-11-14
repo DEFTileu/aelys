@@ -33,6 +33,41 @@ static inline void fx_snap(snap_t *s)
     fx_notice(&s->notices[2], "n-3", "focus.done", "Session done", FX_NOW - 20 * 60);
 }
 
+/* The v1.2 lists on top of fx_snap(): today's tasks (the first is the next task, one is overdue) and the events up to the end of tomorrow. */
+static inline void fx_task(snap_task_t *t, const char *id, const char *title, int64_t due)
+{
+    memset(t, 0, sizeof *t);
+    strcpy(t->id, id); strcpy(t->title, title); t->due = due;
+}
+
+static inline void fx_event(snap_event_t *e, const char *id, const char *title, int64_t starts, int64_t ends)
+{
+    memset(e, 0, sizeof *e);
+    strcpy(e->id, id); strcpy(e->title, title); e->starts = starts; e->ends = ends; e->has_end = true;
+}
+
+static inline void fx_lists(snap_t *s)
+{
+    s->n_tasks = 5;
+    fx_task(&s->tasks[0], "t-101", "Ship pairing ADR", FX_H(18, 0));
+    fx_task(&s->tasks[1], "t-102", "Reply to Dana", FX_H(15, 30));
+    fx_task(&s->tasks[2], "t-103", "Book dentist", FX_H(17, 0));
+    fx_task(&s->tasks[3], "t-104", "Water the plants", FX_H(19, 30));
+    fx_task(&s->tasks[4], "t-100", "Send invoice", FX_H(9, 0)); /* overdue */
+    s->n_events = 4;
+    fx_event(&s->events[0], "e-22", "Design review", FX_H(16, 0), FX_H(16, 30));
+    fx_event(&s->events[1], "e-23", "Retro notes", FX_H(17, 30), FX_H(18, 0));
+    fx_event(&s->events[2], "e-24", "Team sync", FX_H(33, 30), FX_H(34, 0));
+    fx_event(&s->events[3], "e-25", "Dentist", FX_H(35, 0), FX_H(36, 0));
+}
+
+/* The v1.3 weather on top of fx_snap(): snowing, the next five hours. */
+static inline void fx_weather(snap_t *s)
+{
+    s->weather = (snap_weather_t){ .updated = FX_NOW - 5 * 60, .present = true, .temp = -3, .hi = -1, .lo = -8, .code = 71, .n_hours = 5,
+                                   .hours = { { 15, 71, -4 }, { 16, 3, -5 }, { 17, 3, -6 }, { 18, 2, -7 }, { 19, 0, -8 } } };
+}
+
 /* publish into ui_snap_tb and tell the UI */
 static inline void fx_post(const snap_t *s, uint8_t live)
 {

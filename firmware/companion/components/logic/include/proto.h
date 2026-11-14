@@ -34,7 +34,7 @@ typedef struct {
             } a;
         } cmd;
     } u;
-} proto_msg_t; /* ~1.1 KB: callers keep it static, never on a task stack */
+} proto_msg_t; /* ~2.3 KB (it holds a snap_t): callers keep it static, never on a task stack */
 
 typedef struct { char ssid[33]; int8_t rssi; bool secure; } wifi_seen_t;
 /* In place: one entry per SSID (the strongest), sorted by RSSI descending (equal: first seen first), cut at max. Hidden (empty) and

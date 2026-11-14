@@ -7,6 +7,7 @@
  * keeps it through teardown, so a request that arrives meanwhile either restarts the sound (it sees `gen` change) or waits for the teardown. */
 #include <stdatomic.h>
 #include "beep.h"
+#include "sfx.h"
 #include "board.h"
 #include "board_pins.h"
 #include "driver/i2s_std.h"
@@ -21,6 +22,7 @@
 #include "freertos/task.h"
 
 #define BEEP_VOLUME 80       /* esp_codec_dev 0..100: tune on the board; the tone itself peaks at 73 % of full scale */
+#define SFX_VOLUME 65        /* the small sounds: quieter than "find me" (shortcut: a first guess, tune it by ear on the board) */
 #define AUDIO_TASK_PRIO 3
 #define AUDIO_TASK_STACK 5120
 #define LEAD_CHUNKS 2        /* 20 ms of silence before and after: the amplifier switches on/off without a pop on the first/last cycle */
@@ -43,11 +45,12 @@ typedef struct {
 static const audio_codec_ctrl_if_t *ctrl;
 
 static StaticSemaphore_t lock_buf;
-static SemaphoreHandle_t lock;       /* created by the first board_audio_beep() */
+static SemaphoreHandle_t lock;       /* created by board_audio_init() at boot, before the link and ui tasks start */
 static TaskHandle_t task;            /* guarded by `lock` */
 static atomic_bool stop_req;
 static atomic_uint gen;              /* bumped by every request: the task restarts its clock when it changes */
 static atomic_uint want_ms;
+static atomic_uint want_sfx;         /* SFX_NONE: the find beeps; otherwise the sound effect to play */
 
 static void audio_close(audio_t *a)
 {
@@ -122,20 +125,36 @@ static void audio_task(void *arg)
     audio_t a = {0};
     int16_t buf[2 * BEEP_CHUNK_FRAMES];
     uint32_t phase = 0, chunk = 0, seen = atomic_load(&gen), total = atomic_load(&want_ms);
+    sfx_t snd = (sfx_t)atomic_load(&want_sfx);
+    bool found = snd == SFX_NONE; /* this task played the find beeps, so it ends the overlay */
+    sfx_player_t pl;
+    sfx_start(&pl, snd);
     ESP_LOGW(TAG, "start: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     bool ok = audio_open(&a) == ESP_OK;
     if (!ok) ESP_LOGW(TAG, "codec or I2S did not start");
+    else if (snd != SFX_NONE) esp_codec_dev_set_out_vol(a.dev, SFX_VOLUME);
     for (int i = 0; ok && i < LEAD_CHUNKS; i++) ok = play_chunk(&a, buf, &phase, false);
     for (;;) {
         uint32_t g = atomic_load(&gen);
-        if (g != seen) { seen = g; chunk = 0; total = atomic_load(&want_ms); } /* asked again: the clock restarts */
-        beep_phase_t ph = !ok || atomic_load(&stop_req) ? BEEP_DONE : beep_phase(chunk * BEEP_CHUNK_MS, total);
+        if (g != seen) { /* asked again: the clock restarts, maybe with the other kind of sound */
+            seen = g; chunk = 0; total = atomic_load(&want_ms);
+            sfx_t next = (sfx_t)atomic_load(&want_sfx);
+            if (ok && (next == SFX_NONE) != (snd == SFX_NONE)) esp_codec_dev_set_out_vol(a.dev, next == SFX_NONE ? BEEP_VOLUME : SFX_VOLUME);
+            snd = next;
+            found |= snd == SFX_NONE;
+            sfx_start(&pl, snd);
+        }
+        bool sfx_more = ok && snd != SFX_NONE && !atomic_load(&stop_req) && sfx_fill(&pl, buf, BEEP_CHUNK_FRAMES);
+        beep_phase_t ph = !ok || atomic_load(&stop_req) ? BEEP_DONE
+                          : snd != SFX_NONE           ? (sfx_more ? BEEP_ON : BEEP_DONE)
+                                                      : beep_phase(chunk * BEEP_CHUNK_MS, total);
         if (ph == BEEP_DONE) {
             xSemaphoreTake(lock, portMAX_DELAY);
             if (ok && atomic_load(&gen) != seen) { xSemaphoreGive(lock); continue; } /* asked again while finishing */
             break; /* lock held through teardown */
         }
-        ok = play_chunk(&a, buf, &phase, ph == BEEP_ON);
+        if (snd != SFX_NONE) ok = esp_codec_dev_write(a.dev, buf, sizeof buf) == ESP_CODEC_DEV_OK; /* sfx_fill wrote buf */
+        else ok = play_chunk(&a, buf, &phase, ph == BEEP_ON);
         if (!ok) ESP_LOGW(TAG, "write failed");
         chunk++;
     }
@@ -145,7 +164,7 @@ static void audio_task(void *arg)
     ESP_LOGW(TAG, "end: stack_free=%u free_internal=%u", (unsigned)uxTaskGetStackHighWaterMark(NULL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL)); /* before the task's own memory is freed */
     task = NULL;
-    post_find(false);
+    if (found) post_find(false);
     xSemaphoreGive(lock);
     vTaskDelete(NULL);
 }
@@ -153,10 +172,11 @@ static void audio_task(void *arg)
 esp_err_t board_audio_beep(uint32_t duration_ms)
 {
     if (duration_ms == 0) return ESP_ERR_INVALID_ARG;
-    if (!lock) lock = xSemaphoreCreateMutexStatic(&lock_buf); /* one caller: no race */
+    if (!lock) return ESP_ERR_INVALID_STATE; /* board_audio_init() not called */
     xSemaphoreTake(lock, portMAX_DELAY); /* waits only while a finished sound is torn down */
     atomic_store(&stop_req, false);
     atomic_store(&want_ms, duration_ms > BEEP_MAX_MS ? BEEP_MAX_MS : duration_ms);
+    atomic_store(&want_sfx, SFX_NONE);
     atomic_fetch_add(&gen, 1);
     esp_err_t e = ESP_OK;
     if (!task && xTaskCreate(audio_task, "audio", AUDIO_TASK_STACK, NULL, AUDIO_TASK_PRIO, &task) != pdPASS) {
@@ -168,4 +188,22 @@ esp_err_t board_audio_beep(uint32_t duration_ms)
     return e;
 }
 
+void board_audio_init(void)
+{
+    if (!lock) lock = xSemaphoreCreateMutexStatic(&lock_buf);
+}
+
 void board_audio_stop(void) { atomic_store(&stop_req, true); }
+
+void board_audio_sfx(uint8_t id)
+{
+    if (id == SFX_NONE || id >= SFX_COUNT) return;
+    if (!lock) return;
+    if (xSemaphoreTake(lock, 0) != pdTRUE) return; /* a sound is being torn down: drop this one rather than stall the ui */
+    if (task && atomic_load(&want_sfx) == SFX_NONE) { xSemaphoreGive(lock); return; } /* "find me" is beeping: never cut it short */
+    atomic_store(&stop_req, false);
+    atomic_store(&want_sfx, id);
+    atomic_fetch_add(&gen, 1);
+    if (!task && xTaskCreate(audio_task, "audio", AUDIO_TASK_STACK, NULL, AUDIO_TASK_PRIO, &task) != pdPASS) task = NULL;
+    xSemaphoreGive(lock);
+}

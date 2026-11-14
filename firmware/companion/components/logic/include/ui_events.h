@@ -7,13 +7,13 @@ typedef enum {
     UI_EV_COMBO_PROGRESS,
     UI_EV_COMBO_FIRE,
     UI_EV_TIME,
-    UI_EV_WIFI,
+    UI_EV_WIFI,         /* [0] = ui_wifi_state_t; optional [1..33] = the network in use (UTF-8, NUL-terminated, "" when none), for the Settings screen */
     UI_EV_OWNER,
-    UI_EV_LOST,
+    UI_EV_LOST,        /* [0]=on; optional [1..4]=revision, [5..8]=identity generation, little-endian */
     UI_EV_TICK,
     /* appended by the companion link: never renumber the values above */
     UI_EV_TAP,          /* x, y: uint16 LE, as UI_EV_TOUCH */
-    UI_EV_SWIPE_LEFT,
+    UI_EV_SWIPE_LEFT,   /* optional x, y: uint16 LE, where the finger landed (the menu wheel turns the other way below its centre) */
     UI_EV_SWIPE_RIGHT,
     UI_EV_SNAPSHOT,     /* [0] = 1 live / 0 cached; the data is in ui_snap_tb */
     UI_EV_LINK,         /* [0] = ui_link_state_t */
@@ -22,7 +22,10 @@ typedef enum {
     UI_EV_FIND,         /* [0] = 1 show the "Here I am!" overlay (the board is beeping) / 0 hide it (the sound ended). Not a screen change; any touch, key or both-buttons hold in the ui task hides it by itself and stops the sound */
     UI_EV_WIFI_ADD,     /* [0] = 0 connecting / 1 connected / 2 failed / 3 take the card off (the attempt never ran), [1..33] = SSID, [34..59] = previous SSID (25 bytes, UTF-8 safe) */
     UI_EV_RELEASE,      /* hold cancelled: optional [0]=1 finger moved but remains down, [0]=0 physical lift (legacy no payload also lift). After TAP/SWIPE at lift, or alone; may come twice per touch. */
-    UI_EV_BRIGHTNESS,   /* [0] = percent 5..100. Handled by main (the panel's SPI device belongs to the ui task), never reaches ui_handle_event */
+    UI_EV_BRIGHTNESS,   /* [0] = percent 5..100. main sets the panel (its SPI device belongs to the ui task) and then hands the event on, so Settings shows it */
+    UI_EV_LEVEL,        /* [0..1] = int16 LE, eye rotation in tenths of a degree that keeps the face level (level.h). Optional [2..3], [4..5] = int16 LE gravity along the screen x (right) and y (down), 16384 counts = 1 g, for the tilt maze */
+    UI_EV_WIFI_LIST,    /* the saved network names changed: they are in ui_wifi_tb (names only, never passwords) */
+    UI_EV_MOTION,       /* [0] = motion_event_t (motion.h): a shake, fall or pick-up, or the board turned face down / back up */
 } ui_event_type_t;
 
 typedef struct {

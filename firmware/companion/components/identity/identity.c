@@ -289,6 +289,16 @@ esp_err_t identity_init(const identity_store_t *store)
     return r;
 }
 
+esp_err_t identity_active_pub(uint8_t out[65])
+{
+    if (!out) return ESP_ERR_INVALID_ARG;
+    lock();
+    esp_err_t r = key ? ESP_OK : ESP_ERR_INVALID_STATE;
+    if (r == ESP_OK) memcpy(out, pub, PUB_LEN);
+    unlock();
+    return r;
+}
+
 esp_err_t identity_pub_b64(char out[88])
 {
     lock();
@@ -393,10 +403,13 @@ static void selftest_run(void)
     static const identity_store_t ram = {.load = st_load, .save = st_save, .erase = st_erase}; /* RAM only: no NVS */
     bool ok = true;
     char ssid[33], pass[65], sas[7], sig[87], b[88];
+    uint8_t active[PUB_LEN], unchanged[PUB_LEN];
+    memset(unchanged, 0xa5, sizeof unchanged);
     T(identity_init(&ram) == ESP_OK);
     T(identity_paired() && !strcmp(identity_device_id(), VEC_DEVICE_ID));
     T(identity_pub_b64(b) == ESP_OK && strlen(b) == 87);
-    T(memcmp(pub, VEC_DEVICE_PUB, PUB_LEN) == 0);
+    T(identity_active_pub(active) == ESP_OK && memcmp(active, VEC_DEVICE_PUB, PUB_LEN) == 0);
+    T(identity_active_pub(NULL) == ESP_ERR_INVALID_ARG);
 
     T(sas_for(VEC_SECRET, VEC_PAIRING_ID, VEC_DEVICE_PUB, sas) == ESP_OK && !strcmp(sas, VEC_SAS));
     T(identity_wifi_decrypt(VEC_BLOB, VEC_BLOB_LEN, ssid, pass) == ESP_OK && !strcmp(ssid, VEC_SSID) && !strcmp(pass, VEC_PASS));
@@ -415,6 +428,7 @@ static void selftest_run(void)
     T(identity_pair_commit("x") == ESP_ERR_INVALID_STATE);
     T(identity_pair_begin("https://selftest.invalid") == ESP_OK);
     T(identity_pub_b64(b) == ESP_OK && memcmp(pend_pub, VEC_DEVICE_PUB, PUB_LEN) != 0);
+    T(identity_active_pub(active) == ESP_OK && memcmp(active, VEC_DEVICE_PUB, PUB_LEN) == 0);
     T(identity_pair_code(VEC_SECRET, VEC_PAIRING_ID, sas) == ESP_OK && strlen(sas) == 6 && strcmp(sas, VEC_SAS) != 0);
     identity_pair_cancel();
     T(identity_pair_begin("https://selftest.invalid/") == ESP_OK && !strcmp(pend_url, "https://selftest.invalid"));
@@ -424,9 +438,15 @@ static void selftest_run(void)
     uint8_t newpub[PUB_LEN];
     memcpy(newpub, pend_pub, PUB_LEN);
     T(identity_pair_commit("selftest-device") == ESP_OK && st_saves == 1);
-    T(!strcmp(identity_device_id(), "selftest-device") && memcmp(pub, newpub, PUB_LEN) == 0);
+    T(!strcmp(identity_device_id(), "selftest-device") && identity_active_pub(active) == ESP_OK &&
+      memcmp(active, newpub, PUB_LEN) == 0);
     T(identity_sign("x", sig) == ESP_OK);
     T(identity_wipe() == ESP_OK && st_erases == 1 && !identity_paired() && identity_sign("x", sig) == ESP_ERR_INVALID_STATE);
+    memcpy(active, unchanged, sizeof active);
+    T(identity_active_pub(active) == ESP_ERR_INVALID_STATE && memcmp(active, unchanged, sizeof active) == 0);
+    T(identity_pair_begin("https://selftest.invalid") == ESP_OK);
+    T(identity_active_pub(active) == ESP_ERR_INVALID_STATE && memcmp(active, unchanged, sizeof active) == 0);
+    identity_pair_cancel();
     explicit_bzero(&st_rec, sizeof st_rec);
 
     ESP_LOGW(TAG, "identity selftest %s", ok ? "PASS" : "FAIL");

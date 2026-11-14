@@ -38,8 +38,11 @@ static void switch_and_check(uint8_t type)
     CHECK(pixels > 0);
     if (pixels > most_pixels) most_pixels = pixels;
     if (pixels < least_pixels) least_pixels = pixels;
-    if (pixels >= SIM_W * SIM_H * 3u / 4u) fprintf(stderr, "screen change sent %u pixels\n", pixels);
-    CHECK(pixels < SIM_W * SIM_H * 3u / 4u);
+    /* The 130% face has larger dirty rectangles than the previous 100% face.
+     * This is a host traffic regression guard, not a board timing budget:
+     * require at least 1/8 less traffic than a full-screen transfer. */
+    if (pixels >= SIM_W * SIM_H * 7u / 8u) fprintf(stderr, "screen change sent %u pixels\n", pixels);
+    CHECK(pixels < SIM_W * SIM_H * 7u / 8u);
     exact_frame();
 }
 
@@ -88,6 +91,43 @@ int main(void)
             swipe(UI_EV_SWIPE_LEFT);
             sim_step(20);
             exact_frame();
+        }
+    }
+    /* At Home scale, follow these motions through real partial buffers; the
+     * periodic UI timer can also retarget the mood during each loop. */
+    const mood_t animated[] = {MOOD_CURIOUS, MOOD_DIZZY, MOOD_LOVE, MOOD_ELATION, MOOD_MISCHIEF, MOOD_CHARGING};
+    for (unsigned m = 0; m < sizeof animated / sizeof *animated; ++m) {
+        scr_home_set_snap(&snap, FX_NOW, animated[m], false);
+        for (int frame = 0; frame < 90; ++frame) {
+            scr_home_set_snap(&snap, FX_NOW, animated[m], false);
+            sim_step(34);
+            exact_frame();
+        }
+    }
+    /* Include an entire ordinary blink at Home scale, including the short
+     * closing and reopening phases. */
+    const mood_t blinking[] = {MOOD_CALM, MOOD_WORRIED, MOOD_BORED, MOOD_ATTENTION, MOOD_RECONNECTED, MOOD_PANIC, MOOD_BASHFUL, MOOD_MISSED};
+    for (unsigned m = 0; m < sizeof blinking / sizeof *blinking; ++m) {
+        scr_home_set_snap(&snap, FX_NOW, blinking[m], false);
+        for (int frame = 0; frame < (blinking[m] == MOOD_BORED ? 210 : 160); ++frame) {
+            scr_home_set_snap(&snap, FX_NOW, blinking[m], false);
+            sim_step(34);
+            exact_frame();
+        }
+    }
+    /* Retarget repeatedly before the spring has settled. These cover each
+     * rotating mood against every other mood at the 130% Home scale. */
+    const mood_t rotating[] = {MOOD_CURIOUS, MOOD_DIZZY, MOOD_LOVE, MOOD_ELATION, MOOD_MISCHIEF};
+    for (unsigned m = 0; m < sizeof rotating / sizeof *rotating; ++m) {
+        for (int next = 0; next < MOOD_COUNT; ++next) {
+            const mood_t pair[] = {rotating[m], (mood_t)next, rotating[m]};
+            for (unsigned p = 0; p < sizeof pair / sizeof *pair; ++p) {
+                for (int frame = 0; frame < 3; ++frame) {
+                    scr_home_set_snap(&snap, FX_NOW, pair[p], false);
+                    sim_step(34);
+                    exact_frame();
+                }
+            }
         }
     }
     /* Every percent and text-width change, empty rows and the offline variant. */

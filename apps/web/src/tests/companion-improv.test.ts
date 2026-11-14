@@ -88,6 +88,8 @@ describe('CompanionSerial', () => {
     await expect(c.pairCode('id')).rejects.toMatchObject({ code: 'LOST_MODE' })
     code = 0x81
     await expect(c.pairCommit('a'.repeat(36))).rejects.toMatchObject({ code: 'NOT_PENDING' })
+    code = 0x82
+    await expect(c.pairCommit('a'.repeat(36))).rejects.toMatchObject({ code: 'PAIR_BUSY' })
     code = 0x01
     await expect(c.pairCode('id')).rejects.toBeInstanceOf(CompanionError)
   })

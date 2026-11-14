@@ -38,7 +38,7 @@ commands and routes added for the app pages and firmware.
 2. Server sends `ready`, then `snapshot`.
 3. Board sends `hello`. The server then sends any pending `command` messages.
 4. Board sends `heartbeat`, `metrics`, `action`, `command_ack`, and
-   `wifi_scan_result` as needed. Every server change (new task, focus change,
+   `wifi_scan_result`, and `character_state` as needed. Every server change (new task, focus change,
    notification) is sent as a full `snapshot`.
 
 ## Close codes
@@ -73,6 +73,31 @@ never clears lost mode locally.
 ```json
 {"type": "metrics", "heap_min_internal": 84312, "largest_block": 61440, "psram_free": 7864320, "wifi_reconnects": 2, "uptime_s": 3600}
 ```
+
+### `character_state`
+
+The board sends the selected mood and reason as fixed, allowlisted codes (no task
+text, sensor samples, audio or other free-form data):
+
+```json
+{"type":"character_state","seq":0,"lost_rev":0,"mood":"joy","reason":"task_done"}
+```
+
+`seq` is an unsigned 32-bit per-connection counter. The sender coalesces unchanged
+values, increments the counter for each attempt, and resends the latest value on
+reconnect. The server fences older sockets with a per-device connection epoch and
+accepts only a strictly newer sequence from the current authenticated connection.
+`lost_rev` is the board's applied lost-mode command revision; a report is ignored
+while lost mode is on or when the revision does not match the server. This also
+rejects delayed reports from before a lost-mode transition. Unrecognized codes,
+invalid mood/reason pairs and extra fields are rejected.
+
+Only the latest observation and one recent transient reaction are retained, each
+with server receipt time. The authenticated owner can read them as `character`
+in `GET /api/v1/companion/devices/{id}`; it is null before a fresh connection
+report and while lost mode is on. The application hides character status while
+the board is offline and hides reactions after five minutes. This derived status
+is not a durable mutation and does not contain message or task content.
 
 ### `action`
 `kind` is one of the action kinds listed below. Repeating an `id` returns the
@@ -152,6 +177,8 @@ Snapshot schema (`CompanionSnapshot`):
 | `unread_count` | int | Counts unread notifications of every kind. |
 | `notices` | `SnapNotice[]` | Max 5, newest first. Only kinds `task.*`, `calendar.*`, `focus.*`. |
 | `focus` | `SnapFocus \| null` | Only when status is `active` or `paused`. |
+| `tasks_today`, `events_upcoming` | arrays | v1.2, see "Snapshot lists (v1.2)". |
+| `weather` | `SnapWeather` | v1.3, see "Weather (v1.3)". Left out entirely when there is none. |
 
 - Every `title` is at most 80 characters (cut with a trailing `…`).
 - `SnapTask`: `id` str, `title` str, `due_at` datetime.
@@ -304,6 +331,66 @@ like `unread_count`.
 {"today_done": 2, "today_total": 5, "other_unread_count": 3}
 ```
 
+### Snapshot lists (v1.2)
+
+`snapshot` gains two optional arrays, always present from a v1.2 server and
+simply absent from an older one (a board must treat a missing key as "no list"
+and fall back to `next_task` / `next_event`). `next_task` and `next_event` keep
+their v1 meaning for boards that do not read the lists.
+
+| Field | Type | Notes |
+|---|---|---|
+| `tasks_today` | `SnapTask[]` | Max 5 open tasks that are due today or overdue (not done, not cancelled, not deleted). Not yet due first, ordered by `due_at` then id, so the first entry is `next_task` when that is due today; then overdue tasks, oldest first. "Today" is the owner's local day, cut like `today_done`. |
+| `events_upcoming` | `SnapEvent[]` | Max 4 events (recurring ones expanded) that are on now or start before the end of the owner's tomorrow. The first entry is the same pick as `next_event` when that falls in the window (a timed event wins over an all-day one); the rest follow in start order. |
+
+Entries have the same shape and the same 80-character title cut as `SnapTask` /
+`SnapEvent`; descriptions, notes, attendees and locations are never sent. The
+whole snapshot is kept under 3900 bytes: if the lists would push it past that
+(for example with many long Cyrillic titles), entries are dropped from the end
+of `events_upcoming`, then of `tasks_today`, until it fits. In lost mode both
+lists are empty, like `next_task` and `next_event`. Like every time-based value
+they are not pushed when time passes; the board refreshes on the next snapshot
+and hides entries whose time has passed locally.
+```json
+{"tasks_today": [{"id": "t-101", "title": "Submit report", "due_at": "2026-11-13T12:00:00Z"}], "events_upcoming": [{"id": "e-22", "title": "Standup", "starts_at": "2026-11-13T10:00:00Z", "ends_at": "2026-11-13T10:15:00Z", "all_day": false}]}
+```
+
+### Weather (v1.3)
+
+`snapshot` may carry one optional `weather` object. The key is **absent** (not
+`null`) when the owner has not set a city, when no forecast has been fetched yet,
+when the cached forecast is over 24 hours old, and in lost mode; a board must
+treat a missing key as "no weather". An older board ignores it.
+
+| Field | Type | Notes |
+|---|---|---|
+| `temp` | int | Degrees Celsius now (rounded). |
+| `code` | int | WMO weather code now. |
+| `hi`, `lo` | int | Today's high and low, Celsius. |
+| `hours` | `{"h": int, "t": int, "c": int}[]` | Max 5 upcoming hours: `h` is the **city's local** hour 0-23, `t` Celsius, `c` WMO code. Hours already past are left out, so it can hold fewer than 5. |
+| `updated` | datetime | UTC, when the server fetched the forecast. The board shows "Updated HH:MM" when this is over 2 hours old. |
+
+The owner picks a city in the app; the server stores its name (max 64
+characters) and coordinates **rounded to 0.1 degree (about 10 km)**, never a
+precise position, and fetches the forecast from Open-Meteo (no key) at most once
+per 30 minutes per owner, with a 10 second timeout. A failed fetch keeps the last
+good forecast and never delays or breaks a snapshot. It works while the owner's
+Mac is off. The board never learns the city name or the coordinates. Without a
+city nothing is fetched. The weather counts towards the 3900-byte cap (about 200
+bytes).
+```json
+{"weather": {"temp": -3, "code": 71, "hi": -1, "lo": -8, "hours": [{"h": 16, "t": -4, "c": 71}, {"h": 17, "t": -5, "c": 3}], "updated": "2026-11-13T09:30:00Z"}}
+```
+
+Owner routes (owner devices only, like the other companion routes; a companion
+principal gets `403 DEVICE_SCOPE_DENIED`):
+
+| Route | Body | Result |
+|---|---|---|
+| `GET /api/v1/companion/weather` | none | `{"name", "lat", "lon", "updated"}`; all `null` while weather is off, `updated` `null` until the first fetch. |
+| `PUT /api/v1/companion/weather` | `{"name": str (1..64), "lat": -90..90, "lon": -180..180}` | Stores the city (coordinates rounded to 0.1) and pushes a snapshot to the owner's online boards. Saving the same place again keeps the cache and the 30-minute window. `422` for out-of-range values. |
+| `DELETE /api/v1/companion/weather` | none | Turns weather off and forgets the city and the cached forecast. |
+
 `command` args that grow (all new fields have defaults, so v1 requests work):
 
 | `name` | New `args` |
@@ -361,6 +448,7 @@ recorded in the command log.
 
 | Field | Type |
 |---|---|
+| `character` | `{"current": {"mood", "reason", "reported_at"}, "recent": observation \| null} \| null` (owner-only bounded status) |
 | `contacts` | `{"phone": str, "telegram": str} \| null` (from the last `hello` that sent them) |
 | `wifi` | `{"saved": [str], "current": str \| null} \| null` (last `wifi_state`) |
 | `battery` | `{"pct": int, "charging": bool} \| null` (from `metrics`) |

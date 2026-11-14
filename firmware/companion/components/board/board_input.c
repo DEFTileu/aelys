@@ -5,6 +5,7 @@
  * BOOT + PWR held COMBO_HOLD_MS opens the ICE card; the PMIC's own long-press power-off is pushed
  * out to 10 s so the 2 s hold can never power the board off. */
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "board.h"
@@ -17,6 +18,8 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "gesture.h"
+#include "level.h"
+#include "motion.h"
 #include "pwrkey.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -28,6 +31,11 @@ static const char *TAG = "input";
 
 #define POLL_MS     4 /* loop period: INT level, BOOT key, combo */
 #define SLOW_PASSES 5 /* every 20 ms: PMIC edges, and the release check while a finger is down */
+#define IMU_PASSES  5  /* every 20 ms: accelerometer for the level face, so a quick flip is followed at once */
+#define TILT_STEP   256 /* counts (1/64 g, about 1 degree): a board lying still posts nothing, a tilting one at most every 20 ms */
+/* Chip axes to screen axes (x right, y down). shortcut: set from one upright sample; recheck if the face turns the wrong way. */
+#define IMU_SCREEN_X(ax, ay) (-(ay)) /* chip -y is screen right: the plain mapping showed the face 90 degrees clockwise */
+#define IMU_SCREEN_Y(ax, ay) (ax)
 
 /* AXP2101 registers (datasheet / XPowersLib) */
 #define AXP_PWRKEY_TIMES 0x27 /* [5:4] IRQ time, [3:2] power-on time, [1:0] power-off time: 4/6/8/10 s */
@@ -195,6 +203,9 @@ static void input_task(void *arg)
     combo_reset(&combo);
     pwrkey_reset(&pwrkey);
     gesture_ctx_t gctx = {0};
+    level_t lvl = {0};
+    motion_t mot = {0};
+    int32_t lvl_sent = 0, tilt_x_sent = 0, tilt_y_sent = 0; /* the tilt the maze last heard */
     btn_ctx_t bctx = {0};
     debounce_t boot_deb = {0}; /* for the click only: the combo has its own 2 s timing */
     bool moved_sent = false;   /* UI_EV_RELEASE already sent for this touch because the finger moved */
@@ -244,6 +255,7 @@ static void input_task(void *arg)
         if (pend_gest != GEST_NONE) {
             ui_event_t ev = {.type = pend_gest == GEST_TAP ? UI_EV_TAP : pend_gest == GEST_SWIPE_LEFT ? UI_EV_SWIPE_LEFT : UI_EV_SWIPE_RIGHT};
             if (pend_gest == GEST_TAP) { ev.len = 4; ev.data[0] = gctx.x; ev.data[1] = gctx.x >> 8; ev.data[2] = gctx.y; ev.data[3] = gctx.y >> 8; }
+            else { ev.len = 4; ev.data[0] = gctx.x0; ev.data[1] = gctx.x0 >> 8; ev.data[2] = gctx.y0; ev.data[3] = gctx.y0 >> 8; } /* where the swipe began */
             if (lv_port_post(&ev)) pend_gest = GEST_NONE;
         }
         if (release_pending && pend_gest == GEST_NONE && post(UI_EV_RELEASE, 0)) release_pending = false;
@@ -284,6 +296,33 @@ static void input_task(void *arg)
             ice_open = true;
             ice_open_ms = (uint32_t)(esp_timer_get_time() / 1000);
 #endif
+        }
+        int16_t ax, ay, az;
+        if (pass % IMU_PASSES == 0 && board_imu_read(&ax, &ay, &az)) {
+            int32_t tx = IMU_SCREEN_X(ax, ay), ty = IMU_SCREEN_Y(ax, ay);
+            int32_t a = level_update_3d(&lvl, tx, ty, az);
+            motion_event_t me = motion_update(&mot, ax, ay, az, (uint32_t)(esp_timer_get_time() / 1000));
+            if (me != MOTION_NONE) {
+                if (!post(UI_EV_MOTION, me)) ESP_LOGW(TAG, "motion %d dropped: ui queue full", me);
+                else ESP_LOGW(TAG, "motion %d", me);
+            }
+            if (tx > INT16_MAX) tx = INT16_MAX; /* chip -y of -32768 */
+            if (abs(tx - tilt_x_sent) >= TILT_STEP || abs(ty - tilt_y_sent) >= TILT_STEP || a != lvl_sent) {
+                ui_event_t ev = {.type = UI_EV_LEVEL, .len = 6,
+                                 .data = {(uint8_t)a, (uint8_t)((uint16_t)a >> 8), (uint8_t)tx, (uint8_t)((uint16_t)tx >> 8),
+                                          (uint8_t)ty, (uint8_t)((uint16_t)ty >> 8)}};
+                if (lv_port_post(&ev)) {
+                    lvl_sent = a; /* a full queue retries on the next sample */
+                    tilt_x_sent = tx;
+                    tilt_y_sent = ty;
+                    static int64_t logged_us;
+                    int64_t now_us = esp_timer_get_time();
+                    if (now_us - logged_us >= 1000000) { /* at most once a second, only while turning */
+                        logged_us = now_us;
+                        ESP_LOGW(TAG, "level %ld from ax=%d ay=%d az=%d", (long)a, ax, ay, az);
+                    }
+                }
+            }
         }
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
         tap_poll();

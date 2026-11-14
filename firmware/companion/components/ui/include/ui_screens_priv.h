@@ -3,6 +3,7 @@
  * screens keep their widgets in file-level statics. Not a public API. */
 #include "owner.h"
 #include "screen_fsm.h"
+#include "sfx.h"
 #include "ui.h"
 #include "ui_theme.h"
 
@@ -43,8 +44,12 @@ void ui_arc_set(ui_arc_t *a, int pct, uint32_t fg, uint32_t track); /* redraws o
 lv_obj_t *ui_check_create(lv_obj_t *parent, int32_t d);
 void ui_check_set(lv_obj_t *check, bool on, uint32_t fill);
 
-/* mood_rules.c: priority offline > focused > sad > worried > happy > proud > calm. `now` 0 = clock not set. */
-mood_t ui_mood_for(const snap_t *s, int64_t now, bool online, bool just_completed);
+/* mood_rules.c: translate known snapshot and clock inputs into the character engine. */
+character_inputs_t ui_character_inputs(const snap_t *s, int64_t now, bool have_time, uint8_t hour,
+                                       bool link_known, bool online, uint32_t snap_ms, uint32_t now_ms);
+character_result_t ui_character_last(void);
+mood_t scr_home_mood(void);
+mood_t scr_home_offline_mood(void);
 
 /* scr_toast.c: one short message on top of everything, gone after 2 s. */
 lv_obj_t *scr_toast_create(lv_obj_t *parent);
@@ -75,17 +80,94 @@ act_kind_t scr_focus_top_action(void);                     /* what the top key /
 lv_obj_t *scr_inbox_create(lv_obj_t *parent);
 void scr_inbox_set(const snap_t *s, int64_t now);
 int scr_inbox_hit(int32_t x, int32_t y);                   /* row index or -1 */
+/* The look of a notice kind ("Tasks", tile and dot colours); false for a kind without a title on the board (Telegram, other apps). */
+bool ui_notice_style(const char *kind, const char **name, uint32_t *bg, uint32_t *fg);
+
+/* scr_calendar.c (design "Календарь · следующее"): the one next event, relative to the clock; ring over the last 60 min before the start */
+lv_obj_t *scr_calendar_create(lv_obj_t *parent);
+void scr_calendar_set(const snap_t *s, int64_t now);
+
+/* scr_weather.c (design "Погода · сейчас и по часам"): the snapshot's weather - glyph, temperature, condition, high / low, the next hours */
+lv_obj_t *scr_weather_create(lv_obj_t *parent);
+void scr_weather_set(const snap_t *s, int64_t now);
+void scr_weather_summary(const snap_t *s, char *out, size_t cap); /* one line for the menu: "-3 C Â· Light snow", or "" without weather */
+
+/* scr_notice.c (designs "Уведомление · всплывает", "Уведомление · Telegram"): the new-notice card, 6 s, over everyday screens only. A kind
+ * without a title on the board (Telegram, others) shows its name and `count` instead of the title. */
+lv_obj_t *scr_notice_create(lv_obj_t *parent);
+void scr_notice_show(const snap_notice_t *n, int count);
+void scr_notice_hide(void);                                /* at once, timer stopped */
+bool scr_notice_visible(void);
+bool scr_notice_hit(int32_t x, int32_t y);                 /* a touch on the card (a little around it) */
+
+/* scr_menu.c: the menu wheel and the shared "Coming soon" screen. The item table (name, colour, target screen) is items[] there. */
+lv_obj_t *scr_menu_create(lv_obj_t *parent);
+void scr_menu_set(const snap_t *s);                        /* name and sub line of the selected item */
+void scr_menu_step(int dir);                               /* turn the wheel one item: dir > 0 next (swipe left), < 0 previous; wraps */
+int scr_menu_selected(void);                               /* index of the selected item */
+scr_t scr_menu_target(void);                               /* the screen the selected item opens */
+bool scr_menu_hit(int32_t x, int32_t y);                   /* a tap on the centre or any item (which it selects) */
+lv_obj_t *scr_placeholder_create(lv_obj_t *parent);
+void scr_placeholder_set(void);                            /* shows the selected menu item's name */
+
+/* scr_tasks.c (design "Задачи · сегодня", one task at a time): the next task, today's progress, the check that completes it */
+lv_obj_t *scr_tasks_create(lv_obj_t *parent);
+void scr_tasks_set(const snap_t *s, int64_t now, bool offline);
+int scr_tasks_hit(int32_t x, int32_t y);                   /* a tap on a check (or close to it): its slot (0 = the big one, 1.. = the rows), else -1 */
+extern const snap_t ui_empty_snap;                         /* all zero; a screen's first draw uses it, so no 2 KB snap_t sits on a task stack */
+
+/* scr_timer.c (design "Таймер · идёт / время вышло", "Секундомер"): one screen, a timer (presets by swipe) and a stopwatch (the last
+ * item of the same swipe). The state lives here and runs on lv_tick_get(), so it carries on while another screen shows. */
+lv_obj_t *scr_timer_create(lv_obj_t *parent);
+void scr_timer_set(void);                                  /* render the state (the visible screen) */
+void scr_timer_swipe(int dir);                             /* dir > 0 swipe left: next preset / the stopwatch; paused timer: back to Set */
+void scr_timer_top(void);                                  /* the top key: start / pause / resume; stop on "Time's up"; stopwatch start / stop */
+void scr_timer_tap(int32_t x, int32_t y);                  /* the same as the top key, +1 min on "Time's up", Lap / Reset on the stopwatch pill */
+void scr_timer_summary(char *out, size_t cap);             /* one line for the menu: "04:12 left", "Paused", "Time's up" or "" */
+void ui_toast(const char *txt);                            /* screens.c: toast() for screens that expire on their own */
+
+/* scr_settings.c (designs "Настройки", "Wi-Fi · сохранённые сети"): the list and the Wi-Fi and About screens it opens */
+lv_obj_t *scr_settings_create(lv_obj_t *parent);
+lv_obj_t *scr_wifinets_create(lv_obj_t *parent);
+lv_obj_t *scr_about_create(lv_obj_t *parent);
+void scr_settings_set(void);
+void scr_wifinets_set(void);
+void scr_about_set(void);
+void scr_settings_step(int dir);                           /* the highlight to the next (dir > 0, swipe left) or previous enabled row; wraps */
+scr_t scr_settings_top(void);                              /* the top key on the highlighted row: the screen to open (SCR_SETTINGS = stay) */
+scr_t scr_settings_tap(int32_t x, int32_t y);              /* a tap on a row: selects and acts like the top key */
+void scr_settings_note_brightness(uint8_t pct);            /* UI_EV_BRIGHTNESS */
+void scr_settings_set_wifi(uint8_t state, const char *cur); /* UI_EV_WIFI: ui_wifi_state_t and the network in use ("" = none) */
+void scr_settings_level_changed(bool on);                  /* tells the board (hook) that the switch changed */
+bool ui_level_on(void);                                    /* screens.c: "always level" */
+void ui_level_set(bool on, bool notify);                   /* turn it on or off; notify: also tell the board to save it */
+bool ui_sound_on(void);                                    /* screens.c: the "Sounds" switch */
+void ui_sound_set(bool on, bool notify);                   /* notify: also tell the board to save it */
+void scr_settings_sound_changed(bool on);                  /* tells the board (hook) that the switch changed */
+void ui_sound(sfx_t s);                                    /* screens.c: plays it if sounds are on and it is not night */
+bool ui_paired(void);                                      /* screens.c: the board is paired with the server */
+/* scr_games.c (design "Игры"): the hub (Ask Aelys, Coin, Dice, Reaction, Tilt Maze) and the games; one screen, the state lives here */
+lv_obj_t *scr_games_create(lv_obj_t *parent);
+void scr_games_visible(bool on);                           /* shown / hidden: everything that runs stops, and it opens on the hub */
+void scr_games_swipe(int dir);                             /* hub: dir > 0 (swipe left) next game, < 0 previous; in a game nothing */
+void scr_games_top(void);                                  /* the top key: open the selected game / play */
+void scr_games_tap(void);                                  /* a tap: the same */
+bool scr_games_back(void);                                 /* the low key: true if it only went from a game back to the hub */
+int scr_games_selected(void);                              /* the hub's game, for host tests */
+void scr_games_tilt(int32_t gx, int32_t gy);               /* newest gravity along the screen x / y, 16384 = 1 g (UI_EV_LEVEL) */
 
 /* orbit.c: task dots on a ring. total == 0 draws 8 dim placeholder dots (nothing paired yet). */
 lv_obj_t *orbit_create(lv_obj_t *parent, int32_t size);
 void orbit_set(lv_obj_t *orbit, int done, int total);
 
 lv_obj_t *scr_home_create(lv_obj_t *parent);
+lv_obj_t *scr_home_root(void);
 void scr_home_set_time(uint8_t hour, uint8_t minute);
 void scr_home_set_tasks(int done, int total);
 void scr_home_set_wifi(uint8_t state); /* ui_wifi_state_t */
 void scr_home_set_paired(bool on);    /* paired: no "Not paired yet" line while there are no tasks */
 void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline); /* orbit, face mood and the "Offline" view */
+void scr_home_set_level(int32_t angle10); /* keeps both home faces level (face_set_level) */
 void scr_home_set_welcome(bool on);   /* first boot: "Hi, I'm Aelys / Connect me by USB ..." instead of the agenda line */
 
 lv_obj_t *scr_lost_create(lv_obj_t *parent);

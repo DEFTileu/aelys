@@ -1547,6 +1547,100 @@
         }
       }
     },
+    "/api/v1/companion/weather": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Get Weather",
+        "operationId": "get_weather_api_v1_companion_weather_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Put Weather",
+        "operationId": "put_weather_api_v1_companion_weather_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeatherIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Delete Weather",
+        "operationId": "delete_weather_api_v1_companion_weather_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/companion/snapshot": {
       "get": {
         "tags": [
@@ -9947,6 +10041,51 @@
         ],
         "title": "ChallengeResponse"
       },
+      "CharacterObservation": {
+        "properties": {
+          "mood": {
+            "type": "string",
+            "title": "Mood"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "reported_at": {
+            "type": "string",
+            "title": "Reported At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mood",
+          "reason",
+          "reported_at"
+        ],
+        "title": "CharacterObservation"
+      },
+      "CharacterStatusOut": {
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/CharacterObservation"
+          },
+          "recent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CharacterObservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "current"
+        ],
+        "title": "CharacterStatusOut"
+      },
       "ChatOut": {
         "properties": {
           "business_connection_id": {
@@ -10134,6 +10273,32 @@
           "other_unread_count": {
             "type": "integer",
             "title": "Other Unread Count"
+          },
+          "tasks_today": {
+            "items": {
+              "$ref": "#/components/schemas/SnapTask"
+            },
+            "type": "array",
+            "title": "Tasks Today",
+            "default": []
+          },
+          "events_upcoming": {
+            "items": {
+              "$ref": "#/components/schemas/SnapEvent"
+            },
+            "type": "array",
+            "title": "Events Upcoming",
+            "default": []
+          },
+          "weather": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapWeather"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10879,6 +11044,16 @@
               }
             ],
             "title": "Last Metrics"
+          },
+          "character": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CharacterStatusOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "last_wifi_scan": {
             "anyOf": [
@@ -15553,6 +15728,29 @@
         ],
         "title": "SnapFocus"
       },
+      "SnapHour": {
+        "properties": {
+          "h": {
+            "type": "integer",
+            "title": "H"
+          },
+          "t": {
+            "type": "integer",
+            "title": "T"
+          },
+          "c": {
+            "type": "integer",
+            "title": "C"
+          }
+        },
+        "type": "object",
+        "required": [
+          "h",
+          "t",
+          "c"
+        ],
+        "title": "SnapHour"
+      },
       "SnapNotice": {
         "properties": {
           "id": {
@@ -15605,6 +15803,48 @@
           "due_at"
         ],
         "title": "SnapTask"
+      },
+      "SnapWeather": {
+        "properties": {
+          "temp": {
+            "type": "integer",
+            "title": "Temp"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code"
+          },
+          "hi": {
+            "type": "integer",
+            "title": "Hi"
+          },
+          "lo": {
+            "type": "integer",
+            "title": "Lo"
+          },
+          "hours": {
+            "items": {
+              "$ref": "#/components/schemas/SnapHour"
+            },
+            "type": "array",
+            "title": "Hours"
+          },
+          "updated": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "temp",
+          "code",
+          "hi",
+          "lo",
+          "hours",
+          "updated"
+        ],
+        "title": "SnapWeather"
       },
       "SpeakingIn": {
         "properties": {
@@ -16662,6 +16902,87 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WeatherIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "lat",
+          "lon"
+        ],
+        "title": "WeatherIn"
+      },
+      "WeatherOut": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "updated": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "title": "WeatherOut"
       },
       "WeekStats": {
         "properties": {

@@ -8,6 +8,7 @@
 #include <time.h>
 #include "board.h"
 #include "codec_util.h"
+#include "character_report.h"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -49,18 +50,35 @@ link_deps_t link_deps;
 
 static QueueHandle_t q;
 static SemaphoreHandle_t act_mu;
+static SemaphoreHandle_t pair_send_mu;
 static link_acts_t acts;
+static bool pair_transition_pending; /* guarded by act_mu */
+static atomic_bool link_task_ready;
 static link_fsm_t fsm;
+static character_report_mailbox_t character_mailbox = CHARACTER_REPORT_MAILBOX_INIT;
+static character_report_t character_sender;
+static uint32_t character_retry_at;
+static bool character_retry;
+static uint32_t character_identity;
+
+void link_post_character(character_mood_t mood, character_reason_t why, uint32_t lost_rev, uint32_t identity)
+{
+    character_report_offer(&character_mailbox, mood, why, lost_rev, identity);
+}
+uint32_t link_character_new_identity(void) { return ++character_identity; }
+
 #ifdef CONFIG_AELYS_PERF_PROBE
 static atomic_int probe_state = ATOMIC_VAR_INIT(-1);
 #endif
-static volatile bool ws_online;
-static volatile uint32_t paired_seq;  /* bumped by the net task on every PAIR_COMMIT */
-static volatile bool act_queued;
+static bool ws_online; /* guarded by act_mu */
+static atomic_uint paired_seq;  /* bumped by the net task on every PAIR_COMMIT */
+static atomic_bool act_queued;
 static volatile uint32_t heap_conn_min, tls_fail;
 static uint32_t backoff_deadline, connect_deadline, open_ms, last_hb, last_metrics, last_snap_save, net_ups, reconnects;
 static bool stable_sent, net_up, snap_dirty, wipe_retry;
+static bool snapshot_notify_pending, snapshot_notify_live; /* link task only */
 static uint32_t seen_seq;             /* paired_seq the task has acted on */
+static uint32_t login_seq;            /* identity that obtained the pending token */
 static uint8_t ui_posted;
 
 /* sign-in scratch, link task only (kept off the 6 KB stack, which identity_sign needs 4.3 KB of) */
@@ -77,12 +95,11 @@ bool link_q_post(lq_kind_t k, uint32_t gen, int32_t a, int32_t b)
 {
     if (!q) return false;
     if (k == LQ_ACTION) {
-        if (act_queued) return true; /* the pending event will send every waiting action */
-        act_queued = true;
+        if (atomic_exchange_explicit(&act_queued, true, memory_order_acq_rel)) return true; /* one wake-up is enough */
     }
     lq_t ev = {.kind = (uint8_t)k, .gen = gen, .a = a, .b = b};
     bool ok = xQueueSend(q, &ev, pdMS_TO_TICKS(50)) == pdTRUE;
-    if (!ok && k == LQ_ACTION) act_queued = false;
+    if (!ok && k == LQ_ACTION) atomic_store_explicit(&act_queued, false, memory_order_release);
     return ok;
 }
 
@@ -110,9 +127,13 @@ static uint8_t ui_state(link_state_t s)
     }
 }
 
-static void ui_post(const ui_event_t *ev)
+static bool ui_post(const ui_event_t *ev)
 {
-    for (int i = 0; i < 5 && !lv_port_post(ev); i++) vTaskDelay(pdMS_TO_TICKS(10));
+    for (int i = 0; i < 5; i++) {
+        if (lv_port_post(ev)) return true;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return false;
 }
 
 static void sync_ui(void)
@@ -136,7 +157,8 @@ static void publish_snapshot(const snap_t *s, bool live)
     memcpy(tribuf_back(&ui_snap_tb), s, sizeof *s);
     tribuf_publish(&ui_snap_tb);
     ui_event_t ev = {.type = UI_EV_SNAPSHOT, .len = 1, .data = {live}};
-    ui_post(&ev);
+    snapshot_notify_live = live;
+    snapshot_notify_pending = !ui_post(&ev);
 }
 
 /* ------------------------------------------------------------------ sending */
@@ -217,29 +239,35 @@ static void send_metrics(void)
 static void send_actions(void)
 {
     for (;;) {
+        /* Pairing may change on the net task. Its commit must not pass an in-flight send. */
+        xSemaphoreTake(pair_send_mu, portMAX_DELAY);
         xSemaphoreTake(act_mu, portMAX_DELAY);
-        const link_act_t *a = link_acts_next_unsent(&acts);
+        const link_act_t *a = ws_online ? link_acts_next_unsent(&acts) : NULL;
         link_act_t cur;
         if (a) cur = *a;
         xSemaphoreGive(act_mu);
-        if (!a) return;
+        if (!a) { xSemaphoreGive(pair_send_mu); return; }
         size_t n = proto_action(link_mem->tx, sizeof link_mem->tx, cur.id, cur.kind, cur.target[0] ? cur.target : NULL, NULL);
-        if (!link_send_raw(link_mem->tx, n)) return; /* stays un-sent; expires after 10 s if the socket never comes back */
-        xSemaphoreTake(act_mu, portMAX_DELAY);
-        link_acts_sent(&acts, cur.id, ms());
-        xSemaphoreGive(act_mu);
+        bool sent = link_send_raw(link_mem->tx, n);
+        if (sent) {
+            xSemaphoreTake(act_mu, portMAX_DELAY);
+            link_acts_sent(&acts, cur.id, ms());
+            xSemaphoreGive(act_mu);
+        }
+        xSemaphoreGive(pair_send_mu);
+        if (!sent) return;
     }
 }
 
 bool link_post_action(act_kind_t k, const char *target_id)
 {
-    if (!q || !ws_online) return false;
+    if (!q) return false;
     uint8_t r[16];
     char id[37];
     esp_fill_random(r, sizeof r);
     uuid4_format(r, id);
-    xSemaphoreTake(act_mu, portMAX_DELAY);
-    bool ok = link_acts_add(&acts, id, k, target_id, ms());
+    if (xSemaphoreTake(act_mu, 0) != pdTRUE) return false;
+    bool ok = ws_online && link_acts_add(&acts, id, k, target_id, ms());
     xSemaphoreGive(act_mu);
     if (ok) link_q_post(LQ_ACTION, 0, 0, 0); /* if the queue is full, tick() sends it within 100 ms anyway */
     return ok;
@@ -267,7 +295,7 @@ static int do_login(void)
     link_heap_gate("login");
     h = link_http_login(ctx.url, ctx.cid, ctx.sig, link_mem->token, LINK_TOKEN_MAX);
     if (seq != paired_seq) { explicit_bzero(link_mem->token, LINK_TOKEN_MAX); return NO_EVENT; }
-    if (h == LH_OK) return LE_LOGIN_OK;
+    if (h == LH_OK) { login_seq = seq; return LE_LOGIN_OK; }
     return reject_or_fail(h, LE_LOGIN_REJECTED, LE_LOGIN_FAIL);
 }
 
@@ -286,8 +314,15 @@ static int do_check(void)
 static bool do_connect(void)
 {
     link_heap_gate("ws");
-    uint32_t gen = link_ws_open(ctx.url, link_mem->token);
+    xSemaphoreTake(pair_send_mu, portMAX_DELAY);
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    uint32_t current_seq = atomic_load_explicit(&paired_seq, memory_order_acquire);
+    /* handle_paired has closed the previous socket before obtaining this login. */
+    bool current = login_seq == current_seq && (!pair_transition_pending || seen_seq == login_seq);
+    xSemaphoreGive(act_mu);
+    uint32_t gen = current ? link_ws_open(ctx.url, link_mem->token) : 0;
     explicit_bzero(link_mem->token, LINK_TOKEN_MAX); /* the socket has its own copy of the header */
+    xSemaphoreGive(pair_send_mu);
     connect_deadline = ms() + READY_MS;
     return gen != 0;
 }
@@ -295,6 +330,10 @@ static bool do_connect(void)
 /* What a wipe leaves behind for the next owner: revisions, cached snapshot (flash and screen). */
 static void after_wipe(void)
 {
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    ws_online = false;
+    link_acts_discard_all(&acts);
+    xSemaphoreGive(act_mu);
     ESP_LOGW(TAG, "pairing wiped: the server does not know this device");
     n_held = 0; /* acks for the old account's commands */
     if (link_deps.reset_revs) link_deps.reset_revs();
@@ -324,22 +363,24 @@ static void do_wipe(void)
 
 static void on_online(void)
 {
-    ws_online = true;
+    character_report_reset(&character_sender);
+    character_retry = false;
     open_ms = last_hb = last_metrics = ms();
     stable_sent = false;
     send_hello();
     flush_acks();
     link_send_wifi_state();
     xSemaphoreTake(act_mu, portMAX_DELAY);
+    ws_online = !pair_transition_pending;
     link_acts_unsend_all(&acts, ms()); /* every open action goes out again with its own id */
     xSemaphoreGive(act_mu);
-    send_actions();
+    /* The tick sends actions after the frame handler releases pair_send_mu. */
 }
 
 static void on_offline(void)
 {
-    ws_online = false;
     xSemaphoreTake(act_mu, portMAX_DELAY);
+    ws_online = false;
     link_acts_unsend_all(&acts, ms());
     xSemaphoreGive(act_mu);
 }
@@ -390,7 +431,7 @@ void link_unpair(void) { dispatch(LE_UNPAIR, 0); } /* LA_WIPE_PAIRING: do_wipe -
 
 /* ------------------------------------------------------------------ frames */
 
-static void handle_frame(int slot, int len)
+static void handle_frame_locked(int slot, int len)
 {
     proto_msg_t *m = &link_mem->msg;
     bool ok = proto_parse(link_mem->rx[slot], (size_t)len, m);
@@ -435,6 +476,18 @@ static void handle_frame(int slot, int len)
     }
 }
 
+/* Serialize old-socket frame effects with the pairing commit. */
+static void handle_frame(int slot, int len)
+{
+    xSemaphoreTake(pair_send_mu, portMAX_DELAY);
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    bool blocked = pair_transition_pending;
+    xSemaphoreGive(act_mu);
+    if (blocked) link_ws_slot_free(slot);
+    else handle_frame_locked(slot, len);
+    xSemaphoreGive(pair_send_mu);
+}
+
 /* ------------------------------------------------------------------- events */
 
 static bool net_ok(void)
@@ -450,10 +503,23 @@ static void handle_paired(void)
 {
     if (paired_seq == seen_seq) return;
     seen_seq = paired_seq;
+    /* Close admission under the same lock before clearing the previous identity's actions. */
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    ws_online = false;
+    link_acts_discard_all(&acts);
+    xSemaphoreGive(act_mu);
     wipe_retry = false; /* a wipe of the old identity must not eat the new one */
     n_held = 0;
+    /* Never persist or publish a snapshot received under the old identity. */
+    memset(&link_mem->snap, 0, sizeof link_mem->snap);
+    link_mem->snap.other_unread = link_mem->snap.today_done = link_mem->snap.today_total = -1;
+    snap_dirty = false; last_snap_save = 0;
+    publish_snapshot(&link_mem->snap, false);
     if (link_deps.reset_revs) link_deps.reset_revs(); /* new account: its revisions start again */
     dispatch(LE_PAIRED, 0);
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    pair_transition_pending = false;
+    xSemaphoreGive(act_mu);
     if (!net_ok()) dispatch(LE_NET_DOWN, 0); /* paired over USB while offline: the next Wi-Fi up edge signs in */
 }
 
@@ -464,7 +530,7 @@ static void handle_q(const lq_t *e)
         handle_paired(); /* the event only wakes the task: tick() also notices the counter, so a dropped event is harmless */
         break;
     case LQ_ACTION:
-        act_queued = false;
+        atomic_store_explicit(&act_queued, false, memory_order_release);
         if (fsm.st == LS_ONLINE) send_actions();
         break;
     case LQ_WS_FRAME:
@@ -519,30 +585,61 @@ static void tick(void)
             dispatch(LE_NET_DOWN, 0); /* closes the socket ... */
             dispatch(LE_NET_UP, 0);   /* ... and signs in again at once (dev builds only) */
         } else {
-            if (now - last_hb >= HB_MS) {
+            xSemaphoreTake(pair_send_mu, portMAX_DELAY);
+            xSemaphoreTake(act_mu, portMAX_DELAY);
+            bool send_allowed = !pair_transition_pending;
+            xSemaphoreGive(act_mu);
+            if (send_allowed && now - last_hb >= HB_MS) {
                 last_hb = now;
                 link_send_raw(link_mem->tx, proto_heartbeat(link_mem->tx, sizeof link_mem->tx));
             }
-            if (now - last_metrics >= METRICS_MS) {
+            if (send_allowed && now - last_metrics >= METRICS_MS) {
                 last_metrics = now;
                 send_metrics();
             }
+            xSemaphoreGive(pair_send_mu);
         }
     }
-    if (fsm.st == LS_ONLINE && acts.n) send_actions(); /* anything the queue missed */
-    if (acts.n) { /* racy read of n is fine: the table is locked below */
+    if (fsm.st == LS_ONLINE) send_actions(); /* anything the queue missed */
+    if (fsm.st == LS_ONLINE && link_deps.lost_on && link_deps.lost_rev &&
+        (!character_retry || (int32_t)(ms() - character_retry_at) >= 0)) {
+        xSemaphoreTake(pair_send_mu, portMAX_DELAY);
         xSemaphoreTake(act_mu, portMAX_DELAY);
-        size_t k = link_acts_expire(&acts, ms(), ctx.expired);
+        bool send_allowed = !pair_transition_pending;
         xSemaphoreGive(act_mu);
-        for (size_t i = 0; i < k; i++) post_action_result(ctx.expired[i].kind, false, ctx.expired[i].sent ? "TIMEOUT" : "OFFLINE");
+        character_report_frame_t frame;
+        if (send_allowed && character_report_prepare(&character_sender, &character_mailbox, link_deps.lost_on(),
+                                                     link_deps.lost_rev(), character_identity, &frame)) {
+            size_t n = character_report_json(link_mem->tx, sizeof link_mem->tx, &frame);
+            bool sent = link_send_raw(link_mem->tx, n);
+            character_report_finish(&character_sender, &frame, sent);
+            character_retry = !sent;
+            if (!sent) character_retry_at = ms() + 1000u;
+        }
+        xSemaphoreGive(pair_send_mu);
     }
-    if (link_deps.save_snap &&
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    size_t k = link_acts_expire(&acts, ms(), ctx.expired);
+    xSemaphoreGive(act_mu);
+    for (size_t i = 0; i < k; i++) post_action_result(ctx.expired[i].kind, false, ctx.expired[i].sent ? "TIMEOUT" : "OFFLINE");
+    /* Capture and save under the pairing barrier, so the current identity cannot
+       change between selecting the snapshot and tagging/writing its owner. */
+    xSemaphoreTake(pair_send_mu, portMAX_DELAY);
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    bool save_allowed = !pair_transition_pending;
+    xSemaphoreGive(act_mu);
+    if (save_allowed && link_deps.save_snap &&
         link_snap_save_due(snap_dirty, link_deps.lost_on && link_deps.lost_on(), last_snap_save == 0, (uint32_t)(ms() - last_snap_save))) {
         snap_dirty = false;
         last_snap_save = ms() | 1u; /* 0 means never */
         link_deps.save_snap(&link_mem->snap);
     }
+    xSemaphoreGive(pair_send_mu);
     if (wipe_retry) try_wipe();
+    if (snapshot_notify_pending) {
+        ui_event_t ev = {.type = UI_EV_SNAPSHOT, .len = 1, .data = {snapshot_notify_live}};
+        if (lv_port_post(&ev)) snapshot_notify_pending = false;
+    }
     sync_ui();
 }
 
@@ -556,8 +653,9 @@ static void link_task(void *arg)
     atomic_store_explicit(&probe_state, (int)fsm.st, memory_order_relaxed);
 #endif
     ui_posted = paired ? LINK_UI_OFFLINE : LINK_UI_UNPAIRED; /* what app_main already showed at boot */
-    if (link_deps.load_snap && link_deps.load_snap(&link_mem->snap)) publish_snapshot(&link_mem->snap, false);
+    if (paired && link_deps.load_snap && link_deps.load_snap(&link_mem->snap)) publish_snapshot(&link_mem->snap, false);
     ESP_LOGW(TAG, "link started: paired=%d", paired);
+    atomic_store_explicit(&link_task_ready, true, memory_order_release);
     for (;;) {
         lq_t e;
         if (xQueueReceive(q, &e, pdMS_TO_TICKS(100)) == pdTRUE) handle_q(&e);
@@ -565,10 +663,26 @@ static void link_task(void *arg)
     }
 }
 
-void link_notify_paired(void)
+link_pair_result_t link_pair_commit(const char *device_id)
 {
-    paired_seq++;
-    link_q_post(LQ_PAIRED, 0, 0, 0);
+    if (!atomic_load_explicit(&link_task_ready, memory_order_acquire) || !pair_send_mu || !act_mu)
+        return LINK_PAIR_BUSY;
+    /* Never block the net task: an old command can be waiting for it. */
+    if (xSemaphoreTake(pair_send_mu, 0) != pdTRUE) return LINK_PAIR_BUSY;
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    link_pair_result_t result = pair_transition_pending ? LINK_PAIR_BUSY :
+                                !link_deps.lost_on || link_deps.lost_on() ? LINK_PAIR_LOST :
+                                identity_pair_commit(device_id) == ESP_OK ? LINK_PAIR_OK : LINK_PAIR_FAILED;
+    if (result == LINK_PAIR_OK) {
+        ws_online = false;
+        pair_transition_pending = true;
+        link_acts_discard_all(&acts);
+        atomic_fetch_add_explicit(&paired_seq, 1, memory_order_release);
+    }
+    xSemaphoreGive(act_mu);
+    xSemaphoreGive(pair_send_mu);
+    if (result == LINK_PAIR_OK) link_q_post(LQ_PAIRED, 0, 0, 0);
+    return result;
 }
 
 esp_err_t link_start(const link_deps_t *d)
@@ -577,9 +691,10 @@ esp_err_t link_start(const link_deps_t *d)
     link_deps = *d;
     link_mem = heap_caps_calloc(1, sizeof *link_mem, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     act_mu = xSemaphoreCreateMutex();
+    pair_send_mu = xSemaphoreCreateMutex();
     q = xQueueCreate(12, sizeof(lq_t));
     link_acts_init(&acts);
-    if (!link_mem || !act_mu || !q ||
+    if (!link_mem || !act_mu || !pair_send_mu || !q ||
         xTaskCreatePinnedToCore(link_task, "link", LINK_STACK, NULL, 5, NULL, 0) != pdPASS) {
         ESP_LOGE(TAG, "start failed (out of memory)");
         return ESP_ERR_NO_MEM;

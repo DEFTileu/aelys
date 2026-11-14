@@ -10,8 +10,7 @@
 #define ROW_W 316
 #define ROW_H 50
 #define COL_TEXT 38 /* x of the row titles: after the 26 px round box */
-#define COLOR_TASK 0x7FA8F5 /* module colours of the design: tasks blue, calendar coral */
-#define COLOR_TASK_TRACK 0x141B2A
+/* module colours of the design: tasks blue (UI_UI_COLOR_TASK), calendar coral */
 #define COLOR_EVENT 0xFF8A84
 
 static struct {
@@ -92,7 +91,7 @@ void scr_today_set(const snap_t *s, int64_t now)
     lv_obj_set_hidden(h.task.row, !s->has_task);
     if (s->has_task) {
         bool done = ui_marked_done(s->task.id);
-        ui_check_set(h.task.mark, done, 0x6A4CF2);
+        ui_check_set(h.task.mark, done, UI_COLOR_CHECK);
         ui_set_text(h.task.title, s->task.title);
         ui_text_color(h.task.title, done ? UI_COLOR_MUTED : UI_COLOR_TEXT);
         if ((lv_obj_get_style_text_decor(h.task.title, LV_PART_MAIN) != LV_TEXT_DECOR_NONE) != done)
@@ -111,7 +110,7 @@ void scr_today_set(const snap_t *s, int64_t now)
     if (prog) snprintf(t, sizeof t, "%d / %d done", s->today_done, s->today_total);
     ui_set_text(h.unread.right, prog ? t : "");
     lv_obj_set_hidden(h.ring.obj, !prog);
-    ui_arc_set(&h.ring, prog ? s->today_done * 100 / s->today_total : 0, COLOR_TASK, COLOR_TASK_TRACK);
+    ui_arc_set(&h.ring, prog ? s->today_done * 100 / s->today_total : 0, UI_COLOR_TASK, UI_COLOR_TASK_TRACK);
     restack();
 }
 

@@ -52,17 +52,22 @@ static void test_buttons(void)
 {
     btn_ctx_t b = {0};
     CHECK_EQ(btn_feed(&b, true, false, 100), 0);
-    CHECK_EQ(btn_feed(&b, false, false, 300), BTN_TOP);
+    CHECK_EQ(btn_feed(&b, true, false, 120), 0);                /* 20 ms: the other key may still join */
+    CHECK_EQ(btn_feed(&b, true, false, 140), BTN_TOP);          /* 40 ms alone: the click, while the key is still down */
+    CHECK_EQ(btn_feed(&b, true, false, 200), 0);                /* once */
+    CHECK_EQ(btn_feed(&b, false, false, 300), 0);               /* the release adds nothing */
     CHECK_EQ(btn_feed(&b, false, true, 1000), 0);
-    CHECK_EQ(btn_feed(&b, false, false, 1100), BTN_LOW);
+    CHECK_EQ(btn_feed(&b, false, false, 1020), BTN_LOW);        /* a press shorter than 40 ms clicks at its release */
     CHECK_EQ(btn_feed(&b, true, false, 2000), 0);
-    CHECK_EQ(btn_feed(&b, false, false, 2501), 0);              /* a long press is not a click */
+    CHECK_EQ(btn_feed(&b, true, false, 2600), BTN_TOP);         /* a long press clicks too, at once */
+    CHECK_EQ(btn_feed(&b, false, false, 2601), 0);
     CHECK_EQ(btn_feed(&b, true, false, 3000), 0);
-    CHECK_EQ(btn_feed(&b, true, true, 3100), 0);                /* the combo started */
-    CHECK_EQ(btn_feed(&b, false, true, 3200), 0);
-    CHECK_EQ(btn_feed(&b, false, false, 3300), 0);              /* neither release counts */
+    CHECK_EQ(btn_feed(&b, true, true, 3020), 0);                /* the combo started within 40 ms */
+    CHECK_EQ(btn_feed(&b, true, true, 3200), 0);
+    CHECK_EQ(btn_feed(&b, false, true, 3300), 0);
+    CHECK_EQ(btn_feed(&b, false, false, 3400), 0);              /* neither key ever clicks */
     CHECK_EQ(btn_feed(&b, true, false, 4000), 0);
-    CHECK_EQ(btn_feed(&b, false, false, 4100), BTN_TOP);        /* and it re-arms */
+    CHECK_EQ(btn_feed(&b, false, false, 4030), BTN_TOP);        /* and it re-arms */
 }
 
 /* A key level counts only after 3 equal polls in a row: a bounce cannot make a second click. */

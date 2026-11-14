@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
+from app.companion.character import CharacterStatusOut
 from app.companion.hub import hub
 from app.companion.models import CompanionState
 from app.companion.state import locked_state, log_command, queue_command
@@ -105,6 +106,7 @@ class DeviceStateOut(BaseModel):
     lost_mode: dict | None
     ice: dict | None
     last_metrics: dict | None
+    character: CharacterStatusOut | None = None
     last_wifi_scan: dict | None
     # v1.1
     contacts: dict | None = None
@@ -158,6 +160,7 @@ async def _send_or_queue(db: AsyncSession, user: User, board: Device, name: str,
     if name == "lost_mode":  # since is server-set: kept while lost mode stays on, new when it goes on, gone when it goes off
         previous = getattr(row, field) or {}
         if args["on"]:
+            row.character_json = None  # a lost board does not expose a stale private reason
             args["since"] = previous["since"] if previous.get("on") and previous.get("since") else datetime.now(UTC).isoformat()
     setattr(row, field, args)
     command = queue_command(row, name, args)
@@ -212,7 +215,9 @@ async def get_device(target=Depends(target_board), db: AsyncSession = Depends(ge
     return DeviceStateOut(
         device_id=board.id, display_name=board.display_name, online=hub.is_online(board.id), last_seen_at=board.last_seen_at,
         fw_version=state and state.fw_version, public_key=board.public_key, lost_mode=state and state.lost_mode_json,
-        ice=state and state.ice_json, last_metrics=state and state.last_metrics_json, last_wifi_scan=state and state.last_wifi_scan_json,
+        ice=state and state.ice_json, last_metrics=state and state.last_metrics_json,
+        character=state and state.character_seq >= 0 and not (state.lost_mode_json or {}).get("on") and state.character_json or None,
+        last_wifi_scan=state and state.last_wifi_scan_json,
         contacts=state and state.contacts_json, wifi=state and state.wifi_json, battery=_battery(state and state.last_metrics_json),
         settings=state and state.settings_json and {"brightness": state.settings_json["brightness"]}, command_log=(state and state.command_log_json) or [])
 

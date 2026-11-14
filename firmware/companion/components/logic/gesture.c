@@ -4,7 +4,6 @@
 #define TAP_MOVE_PX 20
 #define SWIPE_MS 600
 #define SWIPE_MIN_PX 60
-#define CLICK_MS 500
 
 gesture_t gesture_feed(gesture_ctx_t *g, bool touched, int16_t x, int16_t y, uint32_t now_ms)
 {
@@ -29,10 +28,14 @@ ui_btn_t btn_feed(btn_ctx_t *b, bool top, bool low, uint32_t now_ms)
     ui_btn_t out = 0;
     bool was = b->top || b->low, now = top || low;
     if (top && low) b->tainted = true;
-    if (!was && now) b->t0 = now_ms;
+    if (!was && now) { b->t0 = now_ms; b->fired = false; }
+    if (now && !b->tainted && !b->fired && now_ms - b->t0 >= BTN_PRESS_MS) { /* held alone long enough: act now, not at the release */
+        out = top ? BTN_TOP : BTN_LOW;
+        b->fired = true;
+    }
     if (was && !now) {
-        if (!b->tainted && now_ms - b->t0 <= CLICK_MS) out = b->top ? BTN_TOP : BTN_LOW;
-        b->tainted = false;
+        if (!b->tainted && !b->fired) out = b->top ? BTN_TOP : BTN_LOW; /* a press shorter than BTN_PRESS_MS */
+        b->tainted = b->fired = false;
     }
     b->top = top;
     b->low = low;

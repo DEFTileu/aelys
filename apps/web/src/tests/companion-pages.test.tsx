@@ -104,6 +104,34 @@ describe('Devices list', () => {
 })
 
 describe('Aelys overview', () => {
+  it('shows the current reason and a recent reaction without presenting offline or lost data as current', async () => {
+    const timestamp = new Date().toISOString()
+    const character = { current: { mood: 'calm', reason: 'calm', reported_at: timestamp },
+      recent: { mood: 'joy', reason: 'task_done', reported_at: timestamp } }
+    m.state.mockResolvedValue(baseState({ character } as Partial<CompanionState>))
+    await mount(`?section=devices&device=${ID}&page=overview`)
+    expect(host.textContent).toContain('Calm')
+    expect(host.textContent).toContain('Task completed')
+    expect(host.textContent).toContain('Recent reaction')
+    act(() => root.unmount()); document.body.innerHTML = ''
+    m.state.mockResolvedValue(baseState({ online: false, character } as Partial<CompanionState>))
+    await mount(`?section=devices&device=${ID}&page=overview`)
+    expect(host.textContent).not.toContain('Recent reaction')
+    expect(host.textContent).not.toContain('Task completed')
+    act(() => root.unmount()); document.body.innerHTML = ''
+    m.state.mockResolvedValue(baseState({ lost_mode: LOST_ON, character } as Partial<CompanionState>))
+    await mount(`?section=devices&device=${ID}&page=overview`)
+    expect(host.textContent).not.toContain('Task completed')
+  })
+  it('does not show stale reactions or unknown codes', async () => {
+    const character = { current: { mood: 'not-a-mood', reason: 'calm', reported_at: new Date().toISOString() },
+      recent: { mood: 'joy', reason: 'task_done', reported_at: new Date(Date.now() - 301_000).toISOString() } }
+    m.state.mockResolvedValue(baseState({ character } as Partial<CompanionState>))
+    await mount(`?section=devices&device=${ID}&page=overview`)
+    expect(host.textContent).not.toContain('not-a-mood')
+    expect(host.textContent).not.toContain('Recent reaction')
+    expect(host.textContent).not.toContain('Task completed')
+  })
   it('shows the device facts and quick actions', async () => {
     await mount(`?section=devices&device=${ID}&page=overview`)
     const text = host.textContent!

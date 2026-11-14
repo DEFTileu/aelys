@@ -56,6 +56,9 @@ export interface CompanionCommandLogEntry {
   error_code: string | null
 }
 
+export interface CharacterObservation { mood: string; reason: string; reported_at: string }
+export interface CompanionCharacter { current: CharacterObservation; recent: CharacterObservation | null }
+
 export interface CompanionState {
   device_id: string
   display_name: string
@@ -67,6 +70,8 @@ export interface CompanionState {
   lost_mode: LostMode | null
   ice: Ice | null
   last_metrics: CompanionMetrics | null
+  /** Absent on older servers. */
+  character?: CompanionCharacter | null
   last_wifi_scan: { networks: WifiScanNetwork[] } | null
   contacts: { phone?: string; telegram?: string } | null
   wifi: { saved: string[]; current: string | null } | null
@@ -80,3 +85,6 @@ type LostFields = Omit<LostMode, 'since' | 'on'>
 export type LostBody = (LostFields & { on: true; reauth?: undefined }) | (LostFields & { on: false; reauth: CompanionReauth })
 export type IceBody = Ice
 export interface CommandResult { command_id: string }
+
+/** `name` is null while weather is off; `updated` stays null until the server has fetched a first forecast. */
+export interface CompanionWeather { name: string | null; lat: number | null; lon: number | null; updated: string | null }

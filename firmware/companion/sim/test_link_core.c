@@ -136,8 +136,23 @@ static void test_snapshot_save_throttle(void)
     CHECK(link_snap_save_due(true, true, false, 0));                         /* lost mode: flash never keeps the older data */
 }
 
+static void test_identity_transition_discards_old_actions(void)
+{
+    link_acts_t t; link_acts_init(&t);
+    CHECK(link_acts_add(&t, ID[0], ACT_TASK_COMPLETE, "old-task", 0));
+    link_acts_sent(&t, ID[0], 1);
+    CHECK(link_acts_add(&t, ID[1], ACT_NOTIFICATION_READ, "old-notice", 2));
+    link_acts_discard_all(&t);
+    CHECK_EQ(t.n, 0); CHECK(link_acts_next_unsent(&t) == NULL);
+    act_kind_t kind = ACT_FOCUS_STOP;
+    CHECK(!link_acts_done(&t, ID[0], &kind)); CHECK_EQ(kind, ACT_FOCUS_STOP);
+    CHECK(link_acts_add(&t, ID[2], ACT_TASK_COMPLETE, "new-task", 3));
+    CHECK(!strcmp(link_acts_next_unsent(&t)->id, ID[2]));
+}
+
 int main(void)
 {
+    test_identity_transition_discards_old_actions();
     test_http_verdict_reads_401_bodies();
     test_snapshot_save_throttle();
     test_table_holds_four_and_answers_by_id();

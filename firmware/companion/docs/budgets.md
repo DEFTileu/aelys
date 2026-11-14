@@ -58,3 +58,35 @@ acceptance remain pending.
 - Exploratory desktop benchmark: 10,000 same-state snapshot events using real simulator/LVGL code, comparing `b74e72c` screen logic with the change. Home: 3.06 → 0.03 µs/event; ICE: 2.24 → 0.02 µs/event. These are synthetic host timings, not board fps or input latency.
 - Read-only board capture after a reset: `paired=1`; initial sign-in attempts returned DNS error `0x8001` (before a TLS handshake). A later sample at app time 122205 ms reported `wifi_ip=1`, free internal heap 63815 B, cumulative minimum 30548 B, largest block 31744 B, fps 5.1, worst refresh 16141 µs, `boot_ms=1757`, `heap_at_connect_min=75607`, `tls_fail=0`, `hwm_ws=0`. No further sign-in error appeared in that capture window. Wi-Fi connectivity alone does not confirm the WebSocket state. These figures describe the **previously flashed image**, not the new face or these host changes, and do not satisfy the ONLINE heap or new-face acceptance gates.
 - No application was flashed, and no sound, account action, Wi-Fi setting, pairing or NVS state was changed. The inherited seven-file `CONFIG_AELYS_PERF_PROBE` harness remains uncommitted and was not used for these readings. Cause of the earlier 22672 B heap minimum, new-face performance, online/TLS frame times, synthetic swipe latency and the memory-tuning experiments remain **PENDING**. Do not begin app/menu work based on these host timings.
+
+## Character v2 larger Home face (host only)
+
+The Home face box is now 390×221 px (130% of 300×170); the 70×100 px
+calm eyes become approximately 91×130 px. The clock and agenda remain in the
+centred stack, and the Wi-Fi line moves down on the welcome layout to clear its
+two-line hint. The host suite checks circular clipping and layout; these are not
+measurements of the device.
+
+A same-tree simulator comparison changed only Home face scale. With the
+**disabled-by-default** sparse-screen-switch experiment enabled, the fixed
+Home/Today navigation fixture transferred 154692–156980 pixels per switch at
+100%, versus 178584–183844 at 130%; one full display is 217156 pixels. This
+confirms increased host transfer area, not device latency, fps or causation of
+any board-frame failure. The host traffic regression guard now requires a switch
+below 7/8 of a full screen instead of 3/4; pixel-exact redraw checks remain.
+Sparse switching stays disabled because the prior board experiment did not
+establish a benefit. Frame rate, swipe latency, `heap_int` and `heap_int_min`
+with the enlarged face remain **PENDING board**.
+
+The flow expression now uses a software-rendered 22 px eye shadow, with its
+style properties reserved at face creation; simulator tests check redraw
+correctness and no added local style properties during animation. This does
+not measure draw-task allocation or render time on the device. Flow's frame
+latency and internal heap impact remain **PENDING board**; the 30 fps face
+budget must be checked with the glow visible.
+
+Celebration adds one reusable LVGL drawing object and six small animation
+states per face. Confetti uses bounded dirty regions and allocates no new local
+style properties during the host animation test; the existing LVGL allocator
+is configured for PSRAM on the board. Actual allocation totals, internal heap
+and frame time during celebration remain **PENDING board**.

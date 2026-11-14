@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #include "board.h"
 #include "board_pins.h"
@@ -11,6 +12,7 @@
 #include "driver/gpio.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -33,13 +35,15 @@ static TaskHandle_t starter;
 static lv_display_t *disp;
 
 static SemaphoreHandle_t te_sem, dma_sem;
-static volatile bool dma_busy;
+static _Atomic bool dma_busy;
 static bool need_te;       /* the next flush is the first of a frame */
 static bool frame_flushed; /* this refresh sent something to the panel */
 
 /* frame statistics: the window being filled, and the last full window */
 static int64_t win_start, refr_start;
 static uint32_t win_frames, win_worst;
+/* shortcut: plain counters, read-and-reset from the metrics task; a frame lost to the race only skews one log line */
+static volatile uint32_t sec_frames, sec_worst;
 static volatile uint32_t out_fps_x10, out_worst_us, last_flush_end_us, first_flush_end_us;
 
 #ifdef CONFIG_AELYS_PERF_PROBE
@@ -87,7 +91,7 @@ static void IRAM_ATTR te_isr(void *arg)
 static bool IRAM_ATTR color_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *ev, void *ctx)
 {
     BaseType_t woken = pdFALSE;
-    dma_busy = false;
+    atomic_store_explicit(&dma_busy, false, memory_order_release);
     xSemaphoreGiveFromISR(dma_sem, &woken);
     return woken == pdTRUE;
 }
@@ -106,25 +110,32 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 #endif
     }
     frame_flushed = true;
-    dma_busy = true;
+    atomic_store_explicit(&dma_busy, true, memory_order_release);
     if (esp_lcd_panel_draw_bitmap(board_panel(), a->x1, a->y1, a->x2 + 1, a->y2 + 1, px) != ESP_OK) {
 #ifdef CONFIG_AELYS_PERF_PROBE
         pr_transfer_failed = true;
 #endif
-        dma_busy = false; /* a lost strip beats a frozen UI */
+        /* A failed submission need not prove that no DMA references remain.
+         * Do not return a buffer of uncertain ownership to LVGL. */
+        ESP_LOGW(TAG, "display submission failed; restarting");
+        esp_restart();
     }
 }
 
 /* LVGL clears its own "flushing" flag once this returns. Loop: dma_sem may hold a stale give. */
 static void flush_wait(lv_display_t *d)
 {
-    while (dma_busy) {
+    while (atomic_load_explicit(&dma_busy, memory_order_acquire)) {
         if (xSemaphoreTake(dma_sem, pdMS_TO_TICKS(100)) != pdTRUE) {
+            /* Completion can race the semaphore timeout. */
+            if (!atomic_load_explicit(&dma_busy, memory_order_acquire)) break;
 #ifdef CONFIG_AELYS_PERF_PROBE
             pr_transfer_failed = true;
 #endif
-            ESP_LOGW(TAG, "flush wait timeout");
-            break;
+            /* Once this deadline check sees an active transfer, restart even
+             * if the completion arrives during logging: recovery is committed. */
+            ESP_LOGW(TAG, "flush wait timeout; restarting");
+            esp_restart(); /* never release an in-flight DMA buffer to LVGL */
         }
     }
 }
@@ -179,6 +190,8 @@ static void disp_event(lv_event_t *e)
         if (!first_flush_end_us) first_flush_end_us = (uint32_t)now;
         win_frames++;
         if ((uint32_t)(now - refr_start) > win_worst) win_worst = (uint32_t)(now - refr_start);
+        sec_frames++;
+        if ((uint32_t)(now - refr_start) > sec_worst) sec_worst = (uint32_t)(now - refr_start);
 #ifdef CONFIG_AELYS_PERF_PROBE
         perf_probe_frame(&pr, (uint32_t)refr_start, (uint32_t)now, (uint32_t)pr_te_us, probe_screen());
 #endif
@@ -313,6 +326,12 @@ uint32_t lv_port_last_flush_end_us(void) { return last_flush_end_us; }
 uint32_t lv_port_first_flush_end_us(void) { return first_flush_end_us; }
 
 void lv_port_set_handler(void (*fn)(const ui_event_t *)) { ev_handler = fn; }
+
+void lv_port_frame_take(uint32_t *frames, uint32_t *worst_us)
+{
+    *frames = sec_frames; *worst_us = sec_worst;
+    sec_frames = sec_worst = 0;
+}
 
 void lv_port_frame_stats(uint32_t *fps_x10, uint32_t *worst_us)
 {

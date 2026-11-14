@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|weather|weather_empty|weather_stale|weather_hot|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -7,6 +7,7 @@
 #include <time.h>
 #include "bmp.h"
 #include "sim_display.h"
+#include "sim_cues.h"
 #include "owner.h"
 #include "snap_fixture.h"
 #include "ui.h"
@@ -66,7 +67,86 @@ static void cyr_owner(owner_info_t *o)
     strcpy(o->message, "\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8 \xD0\xBD\xD0\xB0\xD1\x88\xD0\xBB\xD0\xB8, \xD0\xBF\xD0\xBE\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xBD\xD0\xB8\xD1\x82\xD0\xB5");
 }
 
+static const char *demo_version(void) { return "0.1.0"; }
+static bool demo_battery(uint8_t *pct, bool *charging) { *pct = 87; *charging = true; return true; }
+static void demo_ignore_brightness(uint8_t pct) { (void)pct; }
+static void demo_ignore_level(bool on) { (void)on; }
+static const ui_settings_hooks_t demo_hooks = { demo_ignore_brightness, demo_ignore_level, demo_version, demo_battery };
+
 static void post_ev(uint8_t type, uint8_t d0) { sim_post(type, &d0, 1); }
+static bool accept_action(act_kind_t k, const char *id) { (void)k; (void)id; return true; }
+
+static uint32_t shot_r; /* what the games draw as their random number */
+static uint32_t shot_rand(void) { return shot_r; }
+static void steps(uint32_t ms) { for (uint32_t t = 0; t < ms; t += 33) sim_step(33); } /* one frame at a time: the maze moves by what elapsed between ticks */
+static void games_swipe(uint8_t type, int n)
+{
+    for (int i = 0; i < n; i++) {
+        sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+        sim_post(type, NULL, 0);
+        sim_step(200);
+    }
+}
+static void games_tilt(int g_x, int g_y) /* gravity along the screen axes, thousandths of a g */
+{
+    int16_t x = (int16_t)(g_x * 16384 / 1000), y = (int16_t)(g_y * 16384 / 1000);
+    sim_post(UI_EV_LEVEL, (const uint8_t[]){ 0, 0, (uint8_t)x, (uint8_t)((uint16_t)x >> 8), (uint8_t)y, (uint8_t)((uint16_t)y >> 8) }, 6);
+}
+
+/* "games" is the hub on the first game, "games_hub<n>" the hub on game n, "games_<game>[_<state>]" the game after a few plays. */
+static void games_shot(const char *shot)
+{
+    static const char *const games[] = { "ask", "coin", "dice", "react", "maze" };
+    const char *w = shot + 5;
+    if (*w == '_') w++;
+    int idx = 0;
+    ui_set_random(shot_rand);
+    if (!strncmp(w, "hub", 3)) idx = w[3] - '0';
+    else for (int i = 0; i < 5; i++) if (!strncmp(w, games[i], strlen(games[i]))) idx = i;
+    const char *state = !strncmp(w, "hub", 3) || !*w ? "" : strchr(w, '_') ? strchr(w, '_') + 1 : "";
+    post_ev(UI_EV_BTN, BTN_TOP);                 /* the menu, the wheel to Games (two turns back round the wheel), open it */
+    games_swipe(UI_EV_SWIPE_RIGHT, 2);
+    post_ev(UI_EV_BTN, BTN_TOP);
+    games_swipe(UI_EV_SWIPE_LEFT, idx);
+    if (!*w || !strncmp(w, "hub", 3)) return;
+    post_ev(UI_EV_BTN, BTN_TOP);                 /* open the game */
+    const uint8_t tap[4] = { 233, 0, 233, 0 };
+    sim_post(UI_EV_TOUCH, tap, 4); /* a tap only counts on the screen the touch began on */
+    if (idx == 0 && *state) {                    /* Ask Aelys: "Looks good to me" */
+        shot_r = 3;
+        sim_post(UI_EV_TAP, tap, 4);
+        if (!strcmp(state, "answer")) sim_step(1300);
+    } else if (idx == 1 && *state) {             /* Coin: Tails, or half way */
+        shot_r = 1u << 16;
+        sim_post(UI_EV_TAP, tap, 4);
+        if (!strcmp(state, "flip")) sim_step(250); else sim_step(1000);
+    } else if (idx == 1) {
+        shot_r = 0;
+        sim_post(UI_EV_TAP, tap, 4);
+        sim_step(1000);
+    } else if (idx == 2 && *state) {             /* Dice: a 5, or while they roll */
+        shot_r = 4;
+        sim_post(UI_EV_TAP, tap, 4);
+        if (!strcmp(state, "roll")) sim_step(120); else sim_step(1000);
+    } else if (idx == 3 && *state) {             /* Reaction: wait 2 s */
+        shot_r = 500;
+        sim_post(UI_EV_TAP, tap, 4);
+        if (!strcmp(state, "early")) { sim_step(300); sim_post(UI_EV_TAP, tap, 4); }
+        else if (strcmp(state, "wait")) {
+            sim_step(2100);
+            if (!strcmp(state, "done")) { sim_step(214); sim_post(UI_EV_TAP, tap, 4); }
+        }
+    } else if (idx == 4) {                       /* Maze: right, down, left, down, right is the way home; "games_maze" stops half way */
+        bool done = !strcmp(state, "done");
+        games_tilt(350, 0); steps(3000);
+        games_tilt(0, 350); steps(done ? 3000 : 1500);
+        if (done) {
+            games_tilt(-350, 0); steps(3000);
+            games_tilt(0, 350); steps(3000);
+            games_tilt(350, 0); steps(3000);
+        }
+    }
+}
 
 /* The companion screens, fed with the made-up fixture of snap_fixture.h (14:32, UTC). */
 static int companion_shot(const char *shot)
@@ -91,7 +171,36 @@ static int companion_shot(const char *shot)
         fx_post(&s, 0);
         return 0;
     }
+    if (!strcmp(shot, "calendar") || !strcmp(shot, "calendar_list")) { /* the design's "In 25 min" */
+        s.event.starts = FX_NOW + 25 * 60;
+        s.event.ends = FX_NOW + 85 * 60;
+    }
+    if (!strcmp(shot, "calendar_list")) {
+        fx_lists(&s);
+        s.events[0].starts = s.event.starts; s.events[0].ends = s.event.ends;
+        s.events[1].starts = FX_NOW + 150 * 60; s.events[1].ends = s.events[1].starts + 30 * 60;
+    }
+    if (!strncmp(shot, "weather", 7) && strcmp(shot, "weather_empty")) fx_weather(&s);
+    if (!strcmp(shot, "weather_stale")) s.weather.updated = FX_NOW - 3 * 3600 - 20 * 60; /* the design's day: 11:12 */
+    if (!strcmp(shot, "weather_hot")) { s.weather.temp = 24; s.weather.hi = 27; s.weather.lo = 14; s.weather.code = 2; s.weather.n_hours = 4; }
+    if (!strcmp(shot, "tasks_list")) fx_lists(&s);
+    if (!strcmp(shot, "calendar_empty")) s.has_event = false;
+    if (!strcmp(shot, "tasks_empty")) { s.has_task = false; s.today_done = s.today_total = 8; }
     fx_post(&s, 1);
+    if (!strncmp(shot, "character_", 10)) {
+        post_ev(UI_EV_WIFI, UI_WIFI_ONLINE);
+        if (!strcmp(shot, "character_sleep")) {
+            const uint8_t night[] = {23, 0}; sim_post(UI_EV_TIME, night, 2);
+            sim_step(601000);
+        } else if (!strcmp(shot, "character_reconnected")) {
+            post_ev(UI_EV_LINK, LINK_UI_OFFLINE); post_ev(UI_EV_LINK, LINK_UI_ONLINE);
+        } else if (!strcmp(shot, "character_tap") || !strcmp(shot, "character_surprise")) {
+            if (!strcmp(shot, "character_surprise")) sim_step(301000);
+            const uint8_t point[] = {233, 0, 233, 0};
+            sim_post(UI_EV_TOUCH, point, 4); sim_post(UI_EV_TAP, point, 4); sim_post(UI_EV_RELEASE, NULL, 0);
+        } else return -1;
+        return 0;
+    }
     if (!strcmp(shot, "today")) sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
     else if (!strcmp(shot, "inbox")) {
         sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
@@ -100,14 +209,109 @@ static int companion_shot(const char *shot)
         sim_post(UI_EV_TAP, tap, 4);
     }
     else if (!strncmp(shot, "focus_", 6)) sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+    else if (!strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder")) {
+        post_ev(UI_EV_BTN, BTN_TOP);
+        if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Ask Aelys, which has no screen yet, and open it */
+            for (int i = 0; i < 6; i++) {
+                sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+                sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+                sim_step(200);
+            }
+            post_ev(UI_EV_BTN, BTN_TOP);
+        }
+    }
+    else if (!strcmp(shot, "timer_set") || !strcmp(shot, "timer_running") || !strcmp(shot, "timer_done") || !strcmp(shot, "stopwatch")) {
+        post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Timer, open it */
+        for (int i = 0; i < 2; i++) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            sim_step(200);
+        }
+        post_ev(UI_EV_BTN, BTN_TOP);
+        if (!strcmp(shot, "stopwatch")) {
+            for (int i = 0; i < 3; i++) { /* 5 min -> 3 -> 1 -> Stopwatch */
+                sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+                sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
+            }
+            post_ev(UI_EV_BTN, BTN_TOP);
+            for (int i = 0; i < 4; i++) { /* laps at 38.9, 41.2, 36.0 s, then the watch runs on */
+                sim_step(i == 0 ? 38900 : i == 1 ? 41200 : 36000);
+                if (i < 3) sim_post(UI_EV_TAP, (const uint8_t[]){ 233, 0, 0x09, 1 }, 4); /* (233, 265): the pill, below the digits */
+            }
+        } else if (strcmp(shot, "timer_set")) {
+            post_ev(UI_EV_BTN, BTN_TOP);
+            sim_step(strcmp(shot, "timer_done") ? 76000 : 301000); /* 5 min: 3:44 left, or over */
+        }
+    }
+    else if (!strncmp(shot, "settings", 8)) { /* the menu, the wheel one item back to Settings, open it */
+        ui_set_settings_hooks(&demo_hooks);
+        ui_wifi_names_t *n = tribuf_back(&ui_wifi_tb);
+        memset(n, 0, sizeof *n);
+        n->n = 3;
+        strcpy(n->ssid[0], "Home"); strcpy(n->ssid[1], "Office"); strcpy(n->ssid[2], "Phone hotspot");
+        tribuf_publish(&ui_wifi_tb);
+        uint8_t wifi[34] = { UI_WIFI_ONLINE, 'H', 'o', 'm', 'e' };
+        sim_post(UI_EV_WIFI, wifi, sizeof wifi);
+        if (!strcmp(shot, "settings_wifi_wrong")) post_ev(UI_EV_WIFI, UI_WIFI_BAD_PASSWORD);
+        ui_settings_init(60, !strcmp(shot, "settings_level"), false);
+        post_ev(UI_EV_BTN, BTN_TOP);
+        sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+        sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
+        sim_step(200);
+        post_ev(UI_EV_BTN, BTN_TOP);
+        if (!strcmp(shot, "settings_level")) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0); /* Sleep and Sounds are skipped: the highlight lands on Always level */
+        } else if (strcmp(shot, "settings")) {
+            for (int i = 0; i < (strcmp(shot, "settings_about") ? 2 : 3); i++) {
+                sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+                sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            }
+            post_ev(UI_EV_BTN, BTN_TOP);
+        }
+    }
+    else if (!strncmp(shot, "games", 5)) games_shot(shot);
+    else if (!strcmp(shot, "calendar") || !strcmp(shot, "calendar_empty") || !strcmp(shot, "calendar_list")) {
+        post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Calendar, open it */
+        for (int i = 0; i < 3; i++) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            sim_step(200);
+        }
+        post_ev(UI_EV_BTN, BTN_TOP);
+    }
+    else if (!strncmp(shot, "weather", 7)) { /* the menu, the wheel to Weather, open it */
+        post_ev(UI_EV_BTN, BTN_TOP);
+        for (int i = 0; i < 5; i++) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            sim_step(200);
+        }
+        post_ev(UI_EV_BTN, BTN_TOP);
+    }
+    else if (!strcmp(shot, "notice_popup") || !strcmp(shot, "notice_telegram")) { /* a notice the board has not seen, over the home screen */
+        bool tg = !strcmp(shot, "notice_telegram");
+        post_ev(UI_EV_WIFI, UI_WIFI_ONLINE);
+        memmove(&s.notices[1], &s.notices[0], 3 * sizeof s.notices[0]);
+        fx_notice(&s.notices[0], "n-9", tg ? "telegram.message" : "calendar.reminder", tg ? "Hidden name and text" : "Design review", FX_NOW);
+        s.n_notices = 4;
+        if (tg) s.other_unread = 3;
+        fx_post(&s, 1);
+    }
+    else if (!strncmp(shot, "tasks", 5)) {
+        ui_set_action_sink(accept_action);
+        post_ev(UI_EV_BTN, BTN_TOP); /* the menu, then Tasks */
+        post_ev(UI_EV_BTN, BTN_TOP);
+        if (!strcmp(shot, "tasks_done")) post_ev(UI_EV_BTN, BTN_TOP); /* Done: ticked, waiting for the next snapshot */
+    }
     else if (strcmp(shot, "aelys")) return -1;
     return 0;
 }
 
 static int screen_shot(const char *shot)
 {
-    if (!strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
-        !strncmp(shot, "focus_", 6))
+    if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
+        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "weather", 7) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6) || !strncmp(shot, "settings", 8) || !strncmp(shot, "games", 5))
         return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };
@@ -145,21 +349,69 @@ static int screen_shot(const char *shot)
     return -1;
 }
 
+static character_cue_t cue_name(const char *name)
+{
+    if (!strcmp(name, "joy")) return CUE_JOY;
+    if (!strcmp(name, "elation")) return CUE_ELATION;
+    if (!strcmp(name, "surprise")) return CUE_SURPRISE;
+    if (!strcmp(name, "fright")) return CUE_FRIGHT;
+    if (!strcmp(name, "tender")) return CUE_TENDER;
+    return CUE_NONE;
+}
+static const char *cue_output;
+static int cue_written;
+static void write_event_cue(character_cue_t cue)
+{
+    FILE *f = fopen(cue_output, "wb");
+    if (!f) { cue_written = -1; return; }
+    int error = sim_cue_write_wav(f, cue);
+    if (fclose(f)) error = -1;
+    cue_written = error ? -1 : 1;
+}
+
 int main(int argc, char **argv)
 {
-    const char *shot = NULL, *out = NULL;
+    const char *shot = NULL, *out = NULL, *cue = NULL, *event_cue = NULL;
+    int hour = 14;
     int scale = 100, at = 100; /* at: ms of animation before the shot */
     for (int i = 1; i + 1 < argc; i += 2) {
         if (!strcmp(argv[i], "--shot")) shot = argv[i + 1];
         else if (!strcmp(argv[i], "--out")) out = argv[i + 1];
         else if (!strcmp(argv[i], "--scale")) scale = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "--at")) at = atoi(argv[i + 1]);
-        else shot = NULL;
+        else if (!strcmp(argv[i], "--cue")) cue = argv[i + 1];
+        else if (!strcmp(argv[i], "--event-cue")) event_cue = argv[i + 1];
+        else if (!strcmp(argv[i], "--hour")) hour = atoi(argv[i + 1]);
+        else return 2;
     }
-    if (!shot || !out || scale <= 0) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
+    if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
+        fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
+                        "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);
         return 2;
+    }
+    if (cue) {
+        character_cue_t kind = cue_name(cue);
+        if (kind == CUE_NONE) return 2;
+        FILE *f = fopen(out, "wb");
+        if (!f) return 1;
+        int result = sim_cue_write_wav(f, kind);
+        if (fclose(f)) result = -1;
+        return result ? 1 : 0;
+    }
+    if (event_cue) {
+        if (strcmp(event_cue, "task-complete")) return 2;
+        sim_init(); ui_setup(); ui_set_clock(fx_clock);
+        uint8_t hm[] = {(uint8_t)hour, 0}, online = LINK_UI_ONLINE;
+        sim_post(UI_EV_TIME, hm, 2); sim_post(UI_EV_LINK, &online, 1);
+        snap_t snap; fx_snap(&snap); fx_post(&snap, 1);
+        cue_output = out; cue_written = 0; ui_set_character_cue_sink(write_event_cue);
+        const uint8_t action[] = {ACT_TASK_COMPLETE, 1};
+        sim_post(UI_EV_ACTION, action, sizeof action);
+        ui_set_character_cue_sink(NULL);
+        if (cue_written == 0) { fprintf(stderr, "cue suppressed\n"); return 3; }
+        return cue_written < 0 ? 1 : 0;
     }
 
     sim_init();

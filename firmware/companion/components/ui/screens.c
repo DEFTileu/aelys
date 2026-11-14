@@ -1,4 +1,4 @@
-/* Screen switching: home, Today, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
+/* Screen switching: home, the menu wheel and its placeholder, Settings (with Wi-Fi and About), Today, Tasks, Timer, Calendar, Games, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
  * one active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress and a toast
  * sits on top. The latest snapshot (ui_snap_tb) is rendered into the visible screen on entry, on events that can change
  * it and once a second (relative times, the focus countdown, the "due within 60 min" mood). Hidden screens do no layout. */
@@ -6,34 +6,58 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include "motion.h"
 #include "ui_screens_priv.h"
 
 #define ICE_TIMEOUT_MS 15000
 #define PAIRED_SHOW_MS 2000
 #define INBOX_TIMEOUT_MS 15000
 #define HOLD_STOP_MS 800
-#define HAPPY_MS 3000
+#define LEVEL_HOLD_MS 1000 /* a finger held this long on the home face turns "always level" on or off */
+#define DOUBLE_TAP_MS 500  /* a second tap on her face this soon tickles her */
+#define POKES_MS 3000      /* four taps within this annoy her */
+#define REACTION_MS 3000
+#define SURPRISE_IDLE_MS 300000u /* provisional: five minutes */
+#define NIGHT_IDLE_MS 600000u    /* provisional: ten minutes */
+#define IDLE_MAX_MS 3600000u     /* saturation at the boredom threshold */
 
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
+tribuf_t ui_wifi_tb;
+static ui_wifi_names_t *wifi_buf; /* 3 slots from the LVGL allocator, like snap_buf */
 tribuf_t ui_snap_tb;
-static snap_t *snap_buf; /* 3 slots, from the LVGL allocator (PSRAM on the board): 3.3 KB that internal RAM can spare */
+static snap_t *snap_buf; /* 3 slots, from the LVGL allocator (PSRAM on the board): 6.7 KB (2240 B each) that internal RAM can spare */
 
-static const snap_t empty_snap; /* before the first publish, or when the buffer could not be allocated */
+const snap_t ui_empty_snap; /* before the first publish, or when the buffer could not be allocated; screens also draw their first frame from it (snap_t is 2 KB: never a local) */
 
 static struct {
     scr_t cur, down_scr; /* down_scr: the screen showing when the current touch began */
 #ifdef CONFIG_AELYS_PERF_PROBE
     bool probe_touch_active, probe_combo_active;
 #endif
-    bool lost, happy, have_time, find; /* find: the "Here I am!" overlay is up */
+    character_result_t character_result;
+    character_state_t character;
+    bool snap_valid, touch_after_idle, touch_character_valid;
+    bool face_down;      /* the board lies screen down (UI_EV_MOTION): she sleeps */
+    uint32_t tap_ms[4];  /* the last taps on her face, newest first, 0 = none: a double tap tickles, four in a row annoy her */
+    uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
+    bool link_was_offline, link_has_history;
+    bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
-    lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *happy_timer, *tick_timer;
+    lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *reaction_timer, *tick_timer, *level_timer;
+    bool level_on;       /* "always level": saved by main through the settings hook; ui_settings_init() sets it at boot */
+    bool sound_on;       /* the "Sounds" switch, the same way */
+    void (*sound_sink)(uint8_t sfx);
+    int16_t level_angle; /* the newest UI_EV_LEVEL, applied only while level_on */
     const snap_t *snap;  /* the newest published snapshot; unchanged until the next tribuf_latest() */
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
-    char done_id[40];    /* optimistic marks: task.complete / notification.read sent for these ids */
+    char done_id[5][40]; /* optimistic marks: task.complete / notification.read sent for these ids */
+    char pend_done[5][40]; /* ids of task.complete still unanswered, oldest first (same shortcut as pend_read) */
     char read_id[5][40];
+    char seen_id[8][40]; /* notice ids that already had their pop-up (or were there at boot); RAM only */
+    uint8_t seen_next;
+    bool notice_base;    /* the first snapshot after boot (or an owner change) only fills seen_id */
     char pend_read[5][40]; /* ids of notification.read still unanswered, oldest first: UI_EV_ACTION carries no target */
     bool (*sink)(act_kind_t, const char *);
     void (*find_stop)(void);
@@ -108,6 +132,27 @@ void ui_stack(lv_obj_t *const o[], const uint8_t gap[], int n, int32_t area_y, i
 }
 
 scr_t ui_current_screen(void) { return g.cur; }
+bool ui_level_on(void) { return g.level_on; }
+bool ui_paired(void) { return g.link != LINK_UI_UNPAIRED; }
+void ui_level_set(bool on, bool notify)
+{
+    g.level_on = on;
+    scr_home_set_level(on ? g.level_angle : 0);
+    if (notify) scr_settings_level_changed(on);
+}
+bool ui_sound_on(void) { return g.sound_on; }
+void ui_sound_set(bool on, bool notify)
+{
+    g.sound_on = on;
+    if (notify) scr_settings_sound_changed(on);
+}
+void ui_set_sound_sink(void (*sink)(uint8_t sfx)) { g.sound_sink = sink; }
+void ui_sound(sfx_t s)
+{
+    bool night = g.have_time && (g.hh >= 22 || g.hh < 7);
+    if (g.sound_on && g.sound_sink && !night && !g.lost && !g.find && s != SFX_NONE) g.sound_sink((uint8_t)s);
+}
+character_result_t ui_character_last(void) { return g.character_result; }
 
 void ui_set_text(lv_obj_t *label, const char *txt)
 {
@@ -120,7 +165,14 @@ void ui_text_color(lv_obj_t *o, uint32_t c)
     if (!lv_color_eq(lv_obj_get_style_text_color(o, LV_PART_MAIN), n)) lv_obj_set_style_text_color(o, n, 0);
 }
 
+static void (*character_status_sink)(character_mood_t, character_reason_t, uint32_t, uint32_t);
+void ui_set_character_status_sink(void (*sink)(character_mood_t, character_reason_t, uint32_t, uint32_t)) { character_status_sink = sink; }
+void ui_set_lost_revision(uint32_t rev) { g.lost_rev = rev; }
 void ui_set_action_sink(bool (*sink)(act_kind_t, const char *)) { g.sink = sink; }
+#ifndef ESP_PLATFORM
+static void (*character_cue_sink)(character_cue_t cue);
+void ui_set_character_cue_sink(void (*sink)(character_cue_t cue)) { character_cue_sink = sink; }
+#endif
 void ui_set_clock(int64_t (*now)(void)) { g.clock = now; }
 void ui_set_find_stop(void (*stop)(void)) { g.find_stop = stop; }
 
@@ -139,7 +191,12 @@ void ui_fmt_hm(char out[8], int64_t epoch)
     snprintf(out, 8, "%02d:%02d", tm.tm_hour % 100, tm.tm_min % 100);
 }
 
-bool ui_marked_done(const char *id) { return id[0] && !strcmp(g.done_id, id); }
+bool ui_marked_done(const char *id)
+{
+    for (int i = 0; i < 5; i++)
+        if (id[0] && !strcmp(g.done_id[i], id)) return true;
+    return false;
+}
 
 bool ui_marked_read(const char *id)
 {
@@ -309,6 +366,7 @@ static void toast(const char *txt)
 {
     if (toast_ok()) scr_toast_show(txt);
 }
+void ui_toast(const char *txt) { toast(txt); }
 
 /* Bytes of an event payload from off up to the first NUL, cut to cap - 1; a short event gives "". */
 static void ev_str(char *dst, size_t cap, const ui_event_t *ev, size_t off)
@@ -352,8 +410,64 @@ static void inbox_timeout(lv_timer_t *t)
     if (g.cur == SCR_INBOX && next != g.cur) show(next);
 }
 
+/* ---- the side keys: a short line at each key on the right edge, with what it does here (design: "Menu" / "Back") ---- */
+#define KEY_TOP_Y0 97   /* the ticks point along the radius at the keys: about 2 and 4 o'clock */
+#define KEY_LOW_Y0 351
+static struct { lv_obj_t *top, *low, *tick[2]; } keys;
+
+static void key_tick_draw(lv_event_t *e)
+{
+    lv_area_t a;
+    lv_obj_get_coords(lv_event_get_target_obj(e), &a);
+    bool low = lv_event_get_user_data(e) != NULL;
+    lv_draw_line_dsc_t l;
+    lv_draw_line_dsc_init(&l);
+    l.color = lv_color_hex(low ? UI_COLOR_MUTED : UI_COLOR_ACCENT);
+    l.width = 4;
+    l.round_start = l.round_end = true;
+    l.p1.x = a.x1 + 2; l.p1.y = low ? a.y2 - 2 : a.y1 + 2;
+    l.p2.x = a.x2 - 2; l.p2.y = low ? a.y1 + 2 : a.y2 - 2;
+    lv_draw_line(lv_event_get_layer(e), &l);
+}
+
+static void keys_create(lv_obj_t *root)
+{
+    keys.top = ui_label(root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_set_pos(keys.top, 394 - 90, 98); /* where Focus, Timer, Tasks and Games put their own top-key word */
+    keys.low = ui_label(root, &inter_16, UI_COLOR_MUTED, 90, 1, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_set_pos(keys.low, 394 - 90, 346);
+    lv_label_set_text(keys.low, "Back");
+    for (int i = 0; i < 2; i++) {
+        keys.tick[i] = ui_plain(root, 14, 20);
+        lv_obj_set_pos(keys.tick[i], 406, i ? KEY_LOW_Y0 : KEY_TOP_Y0);
+        lv_obj_set_user_flag(keys.tick[i], 1, true); /* custom paint, see invalidate_painted() */
+        lv_obj_add_event_cb(keys.tick[i], key_tick_draw, LV_EVENT_DRAW_MAIN, i ? (void *)1 : NULL);
+    }
+}
+
+/* What each key does on screen s. Screens that change their top word with their state draw it themselves (top_own). */
+static void keys_update(scr_t s)
+{
+    if (!keys.top) return;
+    bool top_own = s == SCR_FOCUS || s == SCR_TIMER || s == SCR_TASKS || s == SCR_GAMES;
+    const char *top = s == SCR_HOME || s == SCR_TODAY ? "Menu" : s == SCR_MENU ? "Open" : NULL;
+    top_own |= s == SCR_SETTINGS; /* the top key selects a row there: the tick alone, the word would touch the first row */
+    /* Today's low key goes home, but home and Today keep the same marks: a swipe between them redraws only the painted parts,
+     * and more changed areas than LVGL keeps (32) would redraw the whole screen */
+    bool low = !g.lost && s != SCR_TODAY && screen_next_btn(s, false, BTN_LOW) != s;
+    /* where the content reaches the key (the Settings rows, the hourly weather, the maze) only the tick shows */
+    bool low_word = low && s != SCR_SETTINGS && s != SCR_WEATHER && s != SCR_GAMES;
+    if (g.lost || s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) top = NULL, top_own = false;
+    if (top) ui_set_text(keys.top, top);
+    lv_obj_set_hidden(keys.top, !top);
+    lv_obj_set_hidden(keys.tick[0], !top && !top_own);
+    lv_obj_set_hidden(keys.low, !low_word);
+    lv_obj_set_hidden(keys.tick[1], !low);
+}
+
 static void show(scr_t s)
 {
+    keys_update(s); /* before a sparse switch turns invalidation off */
 #ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
     bool sparse = (g.cur == SCR_HOME || g.cur == SCR_TODAY) && (s == SCR_HOME || s == SCR_TODAY) &&
                   g.scr[g.cur] && g.cur != s;
@@ -367,6 +481,7 @@ static void show(scr_t s)
     for (int i = 0; i < SCR_COUNT; i++)
         if (g.scr[i]) lv_obj_set_hidden(g.scr[i], i != (int)s);
     g.cur = s;
+    scr_games_visible(s == SCR_GAMES);
 #ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
     if (sparse) {
         render();
@@ -377,7 +492,8 @@ static void show(scr_t s)
 #endif
     scr_hold_set(0);
     stop_timer(&g.hold_timer);
-    if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) scr_toast_hide();
+    stop_timer(&g.level_timer);
+    if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) { scr_toast_hide(); scr_notice_hide(); }
     if (s != SCR_LOST) scr_lost_hide_hint();
     if (s == SCR_ICE) arm_timer(&g.ice_timer, ice_timeout, ICE_TIMEOUT_MS);
     else stop_timer(&g.ice_timer);
@@ -405,17 +521,58 @@ bool ui_probe_swipe(void)
 }
 #endif
 
+static uint32_t idle_advance(uint32_t now_ms)
+{
+    uint32_t delta = now_ms - g.idle_sample_ms;
+    g.idle_sample_ms = now_ms;
+    if (delta >= IDLE_MAX_MS - g.idle_elapsed_ms) g.idle_elapsed_ms = IDLE_MAX_MS;
+    else g.idle_elapsed_ms += delta;
+    return g.idle_elapsed_ms;
+}
+
+static void update_character(void)
+{
+    bool link_known = g.link == LINK_UI_ONLINE || g.link == LINK_UI_OFFLINE;
+    uint32_t now_ms = lv_tick_get();
+    character_inputs_t inputs = ui_character_inputs(g.snap_valid ? g.snap : NULL, ui_now(), g.have_time, g.hh,
+                                                    link_known, g.link == LINK_UI_ONLINE, g.snap_ms, now_ms);
+    uint32_t idle_ms = idle_advance(now_ms);
+    inputs.idle_known = true;
+    inputs.idle_seconds = idle_ms / 1000u;
+    inputs.no_touch_at_night = idle_ms >= NIGHT_IDLE_MS;
+    inputs.face_down_known = true;
+    inputs.face_down = g.face_down;
+    g.character_result = character_select(&g.character, &inputs, now_ms);
+    if (character_status_sink) character_status_sink(g.character_result.mood, g.character_result.why, g.lost_rev, g.character_identity);
+#ifndef ESP_PLATFORM
+    if (character_cue_sink && g.character_result.cue != CUE_NONE) character_cue_sink(g.character_result.cue);
+#endif
+}
+
 /* Only the visible screen needs labels and layout. The snapshot itself stays current even while a card hides it. */
 static void render(void)
 {
-    const snap_t *s = g.snap ? g.snap : &empty_snap;
+    const snap_t *s = g.snap ? g.snap : &ui_empty_snap;
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
+    update_character();
     switch (g.cur) {
-    case SCR_HOME: scr_home_set_snap(s, now, ui_mood_for(s, now, !offline, g.happy), offline); break;
+    case SCR_HOME: {
+        scr_home_set_snap(s, now, mood_from_character(g.character_result.mood), offline);
+        break;
+    }
     case SCR_TODAY: scr_today_set(s, now); break;
+    case SCR_TASKS: scr_tasks_set(s, now, offline); break;
     case SCR_FOCUS: scr_focus_set(s, g.snap_ms, lv_tick_get()); break;
     case SCR_INBOX: scr_inbox_set(s, now); break;
+    case SCR_TIMER: scr_timer_set(); break;
+    case SCR_CALENDAR: scr_calendar_set(s, now); break;
+    case SCR_WEATHER: scr_weather_set(s, now); break;
+    case SCR_MENU: scr_menu_set(s); break;
+    case SCR_SETTINGS: scr_settings_set(); break;
+    case SCR_WIFI: scr_wifinets_set(); break;
+    case SCR_ABOUT: scr_about_set(); break;
+    case SCR_PLACEHOLDER: scr_placeholder_set(); break;
     default: break; /* lost mode, ICE and pairing have their own event-driven data */
     }
 }
@@ -423,14 +580,28 @@ static void render(void)
 static void tick_timer_cb(lv_timer_t *t)
 {
     (void)t;
+    idle_advance(lv_tick_get());
     render();
 }
 
-static void happy_timeout(lv_timer_t *t)
+static void reaction_timeout(lv_timer_t *t)
 {
     (void)t;
-    g.happy_timer = NULL;
-    g.happy = false;
+    g.reaction_timer = NULL;
+    render();
+}
+
+/* A reaction of hers (character.c picks whether it wins over what she shows now), for its three seconds. */
+static void react(character_event_t e)
+{
+    static const uint8_t voice[CHAR_EVENT_COUNT] = {
+        [CHAR_EVENT_SHAKE] = SFX_DIZZY, [CHAR_EVENT_FALL] = SFX_EEK, [CHAR_EVENT_LIFT] = SFX_HUH, [CHAR_EVENT_WAKE] = SFX_WAKE,
+        [CHAR_EVENT_TOUCH] = SFX_HUH, [CHAR_EVENT_ATTENTION] = SFX_TAP, [CHAR_EVENT_DOUBLE_TOUCH] = SFX_GIGGLE, [CHAR_EVENT_POKES] = SFX_GRUMBLE,
+    };
+    if (character_event(&g.character, e, lv_tick_get())) {
+        arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+        ui_sound((sfx_t)voice[e]); /* only a reaction that shows makes a sound */
+    }
     render();
 }
 
@@ -440,6 +611,14 @@ static bool act(act_kind_t k, const char *target)
     if (g.sink && g.sink(k, target)) return true;
     toast("No connection");
     return false;
+}
+
+static void level_hold_timeout(lv_timer_t *t)
+{
+    (void)t;
+    g.level_timer = NULL;
+    if (g.cur != SCR_HOME || g.lost || g.find) return;
+    ui_level_set(!g.level_on, true);
 }
 
 static void hold_timeout(lv_timer_t *t)
@@ -470,14 +649,54 @@ static void read_answered(bool ok)
         if (id[0] && !strcmp(g.read_id[i], id)) g.read_id[i][0] = 0;
 }
 
+/* Is this id the next task or in today's list? */
+static bool snap_open_task(const snap_t *s, const char *id)
+{
+    if (!id[0]) return false;
+    if (s->has_task && !strcmp(s->task.id, id)) return true;
+    for (int i = 0; i < s->n_tasks && i < SNAP_MAX_TASKS; i++)
+        if (!strcmp(s->tasks[i].id, id)) return true;
+    return false;
+}
+
 /* A fresh snapshot: marks for things the server no longer lists are dropped. */
 static void prune_marks(const snap_t *s)
 {
-    if (!s->has_task || strcmp(s->task.id, g.done_id)) g.done_id[0] = 0;
+    for (int i = 0; i < 5; i++) if (!snap_open_task(s, g.done_id[i])) g.done_id[i][0] = 0;
     for (int i = 0; i < 5; i++) {
         bool listed = false;
         for (int n = 0; n < s->n_notices && n < 5; n++) listed = listed || !strcmp(s->notices[n].id, g.read_id[i]);
         if (!listed) g.read_id[i][0] = 0;
+    }
+}
+
+static bool notice_seen(const char *id)
+{
+    for (int i = 0; i < 8; i++)
+        if (!strcmp(g.seen_id[i], id)) return true;
+    return false;
+}
+
+/* A snapshot with a notice id not seen before pops the newest of the new ones up, once. The first snapshot after boot (the cached one,
+ * or the live one if there is no cache) only records its ids. The ids are not kept anywhere but here. */
+static void notice_check(const snap_t *s)
+{
+    const snap_notice_t *newest = NULL;
+    for (int i = 0; i < s->n_notices && i < 5; i++) {
+        const snap_notice_t *n = &s->notices[i];
+        if (!n->id[0] || notice_seen(n->id)) continue;
+        snprintf(g.seen_id[g.seen_next], sizeof g.seen_id[0], "%s", n->id);
+        g.seen_next = (g.seen_next + 1) % 8;
+        if (!newest || n->created > newest->created) newest = n;
+    }
+    bool base = !g.notice_base;
+    g.notice_base = true;
+    if (base || !newest || !toast_ok()) return;
+    scr_notice_show(newest, s->other_unread);
+    ui_sound(SFX_NOTIFY);
+    if (character_event(&g.character, CHAR_EVENT_NOTIFICATION, lv_tick_get())) {
+        update_character();
+        arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
     }
 }
 
@@ -492,34 +711,87 @@ void ui_setup(void)
     g.scr[SCR_LOST] = scr_lost_create(root);
     g.scr[SCR_ICE] = scr_ice_create(root);
     g.scr[SCR_PAIR] = scr_pair_create(root);
+    g.scr[SCR_MENU] = scr_menu_create(root);
+    g.scr[SCR_PLACEHOLDER] = scr_placeholder_create(root);
+    g.scr[SCR_TASKS] = scr_tasks_create(root);
+    g.scr[SCR_TIMER] = scr_timer_create(root);
+    g.scr[SCR_CALENDAR] = scr_calendar_create(root);
+    g.scr[SCR_SETTINGS] = scr_settings_create(root);
+    g.scr[SCR_WIFI] = scr_wifinets_create(root);
+    g.scr[SCR_ABOUT] = scr_about_create(root);
+    g.scr[SCR_GAMES] = scr_games_create(root);
+    g.scr[SCR_WEATHER] = scr_weather_create(root);
     scr_hold_create(root);
+    scr_notice_create(root);
+    keys_create(root);
     scr_toast_create(root);
     scr_find_create(root); /* last: on top of the toast and every screen */
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
     tribuf_init(&ui_owner_tb, &owner_buf[0], &owner_buf[1], &owner_buf[2]);
     snap_buf = lv_malloc_zeroed(3 * sizeof *snap_buf); /* zeroed: no snapshot yet */
     if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
+    wifi_buf = lv_malloc_zeroed(3 * sizeof *wifi_buf);
+    ui_wifi_tb = (tribuf_t){ 0 }; /* a second ui_setup() (host tests) must not keep slots of the old buffer */
+    if (wifi_buf) tribuf_init(&ui_wifi_tb, &wifi_buf[0], &wifi_buf[1], &wifi_buf[2]);
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
-    g.lost = g.happy = g.have_time = g.find = false;
+    g.lost = g.have_time = g.find = false;
+    g.lost_rev = g.character_identity = 0;
+    g.snap_valid = false; g.touch_after_idle = false; g.touch_character_valid = false;
+    g.idle_sample_ms = lv_tick_get(); g.idle_elapsed_ms = 0;
+    character_init(&g.character);
+    g.character_result = (character_result_t){CHAR_CALM, WHY_CALM, CUE_NONE};
     scr_find_show(false);
-    g.link = LINK_UI_UNPAIRED;
+    g.link = LINK_UI_UNPAIRED; g.link_was_offline = g.link_has_history = false;
     g.snap = snap_buf ? tribuf_latest(&ui_snap_tb, NULL) : NULL;
-    g.done_id[0] = 0;
+    memset(g.done_id, 0, sizeof g.done_id);
+    memset(g.pend_done, 0, sizeof g.pend_done);
     memset(g.read_id, 0, sizeof g.read_id);
     memset(g.pend_read, 0, sizeof g.pend_read);
+    memset(g.seen_id, 0, sizeof g.seen_id);
+    g.seen_next = 0;
+    g.notice_base = false;
     if (!g.tick_timer) g.tick_timer = lv_timer_create(tick_timer_cb, 1000, NULL);
     show(SCR_HOME);
 }
 
+/* Complete the task in slot k of the Tasks screen (0 = the big one; the list when the server sent one, else the next task; -1 = the next task
+ * itself, as the Today screen shows it): once per id, ticked at once, taken back if the server says no (on_action_result). */
+static void complete_task(int k)
+{
+    const snap_t *s = g.snap ? g.snap : &ui_empty_snap;
+    const snap_task_t *t = k < 0 ? (s->has_task ? &s->task : NULL) : s->n_tasks ? (k < s->n_tasks ? &s->tasks[k] : NULL) : (k == 0 && s->has_task ? &s->task : NULL);
+    if (!t || !t->id[0] || ui_marked_done(t->id) || !act(ACT_TASK_COMPLETE, t->id)) return;
+    for (int i = 0; i < 5; i++)
+        if (!g.done_id[i][0]) { snprintf(g.done_id[i], sizeof g.done_id[0], "%s", t->id); break; }
+    for (int i = 0; i < 5; i++)
+        if (!g.pend_done[i][0]) { snprintf(g.pend_done[i], sizeof g.pend_done[0], "%s", t->id); break; }
+    render();
+}
+
+/* The answer to the oldest open task.complete: its id (the mark stays on success until a snapshot drops it, goes on failure). */
+static void task_answered(bool ok, char id[40])
+{
+    snprintf(id, 40, "%s", g.pend_done[0]);
+    memmove(g.pend_done[0], g.pend_done[1], sizeof g.pend_done - sizeof g.pend_done[0]);
+    memset(g.pend_done[4], 0, sizeof g.pend_done[4]);
+    if (ok) return;
+    for (int i = 0; i < 5; i++)
+        if (id[0] && !strcmp(g.done_id[i], id)) g.done_id[i][0] = 0;
+}
+
 static void on_tap(int32_t x, int32_t y, scr_t *next)
 {
-    const snap_t *s = g.snap ? g.snap : &empty_snap;
+    const snap_t *s = g.snap ? g.snap : &ui_empty_snap;
     tap_hit_t hit = TAP_OUTSIDE;
     int row = -1;
+    if (scr_notice_hit(x, y)) { /* the pop-up takes the tap: it opens the Inbox */
+        scr_notice_hide();
+        *next = screen_next_notice(g.cur, g.lost);
+        return;
+    }
     if (g.cur == SCR_TODAY) {
         hit = scr_today_hit(x, y);
-        if (hit == TAP_ROW && s->has_task && !ui_marked_done(s->task.id) && act(ACT_TASK_COMPLETE, s->task.id))
-            snprintf(g.done_id, sizeof g.done_id, "%s", s->task.id);
+        if (hit == TAP_ROW) complete_task(-1);
     } else if (g.cur == SCR_INBOX) {
         row = scr_inbox_hit(x, y);
         hit = row >= 0 ? TAP_ROW : TAP_OUTSIDE;
@@ -528,8 +800,22 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
             if (!ui_marked_read(id) && act(ACT_NOTIFICATION_READ, id)) mark_read(id);
         }
         arm_timer(&g.inbox_timer, inbox_timeout, INBOX_TIMEOUT_MS); /* a touch in the inbox restarts the 15 s */
+    } else if (g.cur == SCR_TASKS) {
+        int slot = scr_tasks_hit(x, y);
+        if (slot >= 0) complete_task(slot);
+    } else if (g.cur == SCR_TIMER) {
+        scr_timer_tap(x, y);
+    } else if (g.cur == SCR_GAMES) {
+        scr_games_tap();
     } else if (g.cur == SCR_FOCUS && scr_focus_view() == FV_NONE) {
         act(ACT_FOCUS_START, NULL);
+    } else if (g.cur == SCR_SETTINGS) {
+        *next = screen_next_open(g.cur, g.lost, scr_settings_tap(x, y));
+        return;
+    } else if (g.cur == SCR_MENU && scr_menu_hit(x, y)) {
+        *next = screen_next_open(g.cur, g.lost, scr_menu_target());
+        if (*next != g.cur) ui_sound(SFX_OPEN);
+        return;
     }
     *next = screen_next_tap(g.cur, g.lost, hit);
 }
@@ -537,15 +823,22 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
 static void on_action_result(const ui_event_t *ev)
 {
     if (ev->len < 2) return;
+    char answered[40] = "";
     if (ev->data[0] == ACT_NOTIFICATION_READ) read_answered(ev->data[1] != 0);
+    if (ev->data[0] == ACT_TASK_COMPLETE) task_answered(ev->data[1] != 0, answered);
     if (ev->data[1]) {
         if (ev->data[0] == ACT_TASK_COMPLETE) { /* Aelys cheers for 3 s */
-            g.happy = true;
-            arm_timer(&g.happy_timer, happy_timeout, HAPPY_MS);
+            bool last = g.snap_valid && g.snap && g.snap->today_total > 0 &&
+                        (g.snap->today_done >= g.snap->today_total ||
+                         (g.snap->today_done >= 0 && g.snap->today_done + 1 == g.snap->today_total &&
+                          snap_open_task(g.snap, answered)));
+            bool accepted = character_event(&g.character, last ? CHAR_EVENT_LAST_TASK : CHAR_EVENT_TASK_DONE, lv_tick_get());
+            update_character(); /* deliver a host cue at the event, even off Home */
+            if (accepted) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+            ui_sound(last ? SFX_ALL_DONE : SFX_DONE);
         }
         return;
     }
-    if (ev->data[0] == ACT_TASK_COMPLETE) g.done_id[0] = 0; /* the tick was optimistic: take it back */
     const char *err = ev->len >= 3 ? (const char *)&ev->data[2] : "";
     toast(!strncmp(err, "OFFLINE", 8) ? "No connection" : "Didn't work \xE2\x80\x94 try again");
 }
@@ -567,7 +860,39 @@ void ui_handle_event(const ui_event_t *ev)
     if (ev->type == UI_EV_COMBO_PROGRESS) g.probe_combo_active = ev->len && ev->data[0];
     if (ev->type == UI_EV_COMBO_FIRE) g.probe_combo_active = false;
 #endif
+    if (ev->type == UI_EV_LEVEL) {
+        if (ev->len < 2) return;
+        g.level_angle = (int16_t)(ev->data[0] | ev->data[1] << 8);
+        if (ev->len >= 6) scr_games_tilt((int16_t)(ev->data[2] | ev->data[3] << 8), (int16_t)(ev->data[4] | ev->data[5] << 8));
+        if (g.level_on) scr_home_set_level(g.level_angle);
+        return;
+    }
+    if (ev->type == UI_EV_MOTION) {
+        if (ev->len < 1 || g.lost) return;
+        uint8_t m = ev->data[0];
+        if (m == MOTION_FACE_DOWN || m == MOTION_FACE_UP) g.face_down = m == MOTION_FACE_DOWN;
+        if (m == MOTION_FACE_DOWN) ui_sound(SFX_SLEEP);
+        if (m != MOTION_FACE_DOWN) { idle_advance(lv_tick_get()); g.idle_elapsed_ms = 0; } /* someone is handling her */
+        if (m == MOTION_SHAKE) react(CHAR_EVENT_SHAKE);
+        else if (m == MOTION_FALL) react(CHAR_EVENT_FALL);
+        else if (m == MOTION_LIFT) react(CHAR_EVENT_LIFT);
+        else if (m == MOTION_FACE_UP) react(CHAR_EVENT_WAKE);
+        else render();
+        return;
+    }
     scr_t next = g.cur;
+    if (ev->type == UI_EV_TOUCH) {
+        g.touch_character_valid = ev->len >= 4 && !g.find && !g.lost && g.cur == SCR_HOME;
+    }
+    if (ev->type == UI_EV_TOUCH && ev->len >= 4) {
+        uint32_t now_ms = lv_tick_get();
+        g.touch_after_idle = idle_advance(now_ms) >= SURPRISE_IDLE_MS;
+        g.idle_elapsed_ms = 0;
+        if (!g.find && !g.lost && g.cur == SCR_HOME) render();
+    } else if (ev->type == UI_EV_BTN && ev->len >= 1) {
+        idle_advance(lv_tick_get());
+        g.idle_elapsed_ms = 0;
+    }
     if (g.find && ends_find(ev)) {
         g.find = false;
         scr_find_show(false);
@@ -585,7 +910,20 @@ void ui_handle_event(const ui_event_t *ev)
         }
         return;
     case UI_EV_WIFI:
-        if (ev->len >= 1) scr_home_set_wifi(ev->data[0]);
+        if (ev->len >= 1) {
+            char cur[33];
+            ev_str(cur, sizeof cur, ev, 1);
+            scr_home_set_wifi(ev->data[0]);
+            scr_settings_set_wifi(ev->data[0], cur);
+            if (g.cur == SCR_SETTINGS || g.cur == SCR_WIFI) render();
+        }
+        return;
+    case UI_EV_WIFI_LIST:
+        if (g.cur == SCR_WIFI) render();
+        return;
+    case UI_EV_BRIGHTNESS:
+        if (ev->len >= 1) scr_settings_note_brightness(ev->data[0]); /* the panel was set by main */
+        if (g.cur == SCR_SETTINGS) render();
         return;
     case UI_EV_WIFI_ADD: {
         if (ev->len >= 1 && ev->data[0] == 3) { scr_wifi_card_hide(); return; } /* the attempt never ran */
@@ -608,19 +946,33 @@ void ui_handle_event(const ui_event_t *ev)
         const snap_t *p = tribuf_latest(&ui_snap_tb, &fresh);
         if (fresh) {
             g.snap = p;
+            g.snap_valid = true;
             g.snap_ms = lv_tick_get();
             prune_marks(p);
+            notice_check(p);
         }
         render();
         return;
     }
-    case UI_EV_LINK:
+    case UI_EV_LINK: {
         if (ev->len < 1) return;
-        g.link = ev->data[0];
+        uint8_t next_link = ev->data[0];
+        bool reconnected = next_link == LINK_UI_ONLINE && g.link_was_offline && !g.lost;
+        if ((next_link == LINK_UI_OFFLINE && g.link_has_history) ||
+            (next_link == LINK_UI_CONNECTING && g.link == LINK_UI_ONLINE)) g.link_was_offline = true;
+        if (next_link == LINK_UI_ONLINE) { g.link_was_offline = false; g.link_has_history = true; }
+        else if (next_link == LINK_UI_UNPAIRED) g.link_was_offline = g.link_has_history = false;
+        g.link = next_link;
+        if (reconnected) {
+            bool accepted = character_event(&g.character, CHAR_EVENT_RECONNECTED, lv_tick_get());
+            update_character();
+            if (accepted) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+        }
         scr_home_set_paired(ev->data[0] != LINK_UI_UNPAIRED);
         scr_home_set_welcome(ev->data[0] == LINK_UI_UNPAIRED);
         render();
         return;
+    }
     case UI_EV_PAIR: {
         if (ev->len < 1) return;
         ui_pair_t what = (ui_pair_t)ev->data[0];
@@ -646,7 +998,7 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_FIND:
         if (ev->len < 1) return;
         g.find = ev->data[0] != 0;
-        if (g.find) scr_toast_hide(); /* a toast or the Wi-Fi card must not come out from under the overlay when it ends */
+        if (g.find) { scr_toast_hide(); scr_notice_hide(); } /* a toast or the Wi-Fi card must not come out from under the overlay when it ends */
         scr_find_show(g.find);
         return;
     case UI_EV_COMBO_PROGRESS:
@@ -655,7 +1007,28 @@ void ui_handle_event(const ui_event_t *ev)
         return;
     case UI_EV_LOST:
         if (ev->len < 1) return;
-        g.lost = ev->data[0] != 0;
+        {
+            uint32_t rev = ev->len >= 5 ? (uint32_t)ev->data[1] | ((uint32_t)ev->data[2] << 8) |
+                              ((uint32_t)ev->data[3] << 16) | ((uint32_t)ev->data[4] << 24) : g.lost_rev;
+            uint32_t identity = ev->len >= 9 ? (uint32_t)ev->data[5] | ((uint32_t)ev->data[6] << 8) |
+                                   ((uint32_t)ev->data[7] << 16) | ((uint32_t)ev->data[8] << 24) : g.character_identity;
+            if (identity != g.character_identity) {
+                g.snap_valid = false;
+                g.snap = &ui_empty_snap; /* never derive the next owner's state from the previous snapshot */
+                memset(g.done_id, 0, sizeof g.done_id);
+                memset(g.pend_done, 0, sizeof g.pend_done);
+                memset(g.read_id, 0, sizeof g.read_id);
+                memset(g.pend_read, 0, sizeof g.pend_read);
+                memset(g.seen_id, 0, sizeof g.seen_id);
+                g.notice_base = false;
+                scr_notice_hide();
+            }
+            if (g.lost != (ev->data[0] != 0) || rev != g.lost_rev || identity != g.character_identity)
+                character_init(&g.character); /* do not replay a pre-transition reaction */
+            g.lost = ev->data[0] != 0;
+            g.lost_rev = rev;
+            g.character_identity = identity;
+        }
         if (g.cur == SCR_ICE) return; /* the card stays open; dismissing it picks the right screen */
         next = screen_next(g.cur, g.lost, UI_EV_LOST);
         break;
@@ -664,32 +1037,69 @@ void ui_handle_event(const ui_event_t *ev)
         /* Focus paused: a finger held 800 ms stops the session (UI_EV_RELEASE or any gesture cancels it) */
         if (!g.lost && g.cur == SCR_FOCUS && scr_focus_view() == FV_PAUSED)
             arm_timer(&g.hold_timer, hold_timeout, HOLD_STOP_MS);
+        if (!g.lost && g.cur == SCR_HOME) arm_timer(&g.level_timer, level_hold_timeout, LEVEL_HOLD_MS);
         next = screen_next(g.cur, g.lost, UI_EV_TOUCH);
         break;
     case UI_EV_RELEASE:
+        g.touch_character_valid = false;
         stop_timer(&g.hold_timer);
+        stop_timer(&g.level_timer);
         return;
-    case UI_EV_TAP:
+    case UI_EV_TAP: {
+        bool physical_home_tap = g.touch_character_valid;
+        g.touch_character_valid = false;
         stop_timer(&g.hold_timer);
+        stop_timer(&g.level_timer);
         /* a touch that began on another screen (it closed the ICE card) is not a tap on this one */
         if (g.lost && g.cur == SCR_LOST && g.down_scr == SCR_LOST) scr_lost_show_hint();
         if (g.lost || ev->len < 4 || g.down_scr != g.cur) return;
         on_tap((int32_t)(ev->data[0] | ev->data[1] << 8), (int32_t)(ev->data[2] | ev->data[3] << 8), &next);
+        if (g.cur == SCR_HOME && next == SCR_HOME && physical_home_tap) {
+            uint32_t now_ms = lv_tick_get();
+            memmove(&g.tap_ms[1], &g.tap_ms[0], sizeof g.tap_ms - sizeof *g.tap_ms);
+            g.tap_ms[0] = now_ms | 1;
+            character_event_t e = g.tap_ms[3] && now_ms - g.tap_ms[3] <= POKES_MS        ? CHAR_EVENT_POKES
+                                  : g.tap_ms[1] && now_ms - g.tap_ms[1] <= DOUBLE_TAP_MS ? CHAR_EVENT_DOUBLE_TOUCH
+                                  : g.touch_after_idle                                  ? CHAR_EVENT_TOUCH
+                                                                                        : CHAR_EVENT_ATTENTION;
+            if (e == CHAR_EVENT_POKES) memset(g.tap_ms, 0, sizeof g.tap_ms);
+            react(e);
+        }
         break;
+    }
     case UI_EV_SWIPE_LEFT:
     case UI_EV_SWIPE_RIGHT:
         stop_timer(&g.hold_timer);
+        stop_timer(&g.level_timer);
         if (g.down_scr != g.cur) return;
         if (g.cur == SCR_LOST) scr_lost_show_hint();
         next = screen_next(g.cur, g.lost, (ui_event_type_t)ev->type);
+        if (g.cur == SCR_MENU && !g.lost) { /* the wheel turns: swipe left = next item */
+            int dir = ev->type == UI_EV_SWIPE_LEFT ? 1 : -1;
+            /* below the centre the icons travel the other way round the ring, so they follow the finger there too */
+            if (ev->len >= 4 && (ev->data[2] | ev->data[3] << 8) > UI_SCREEN_SIZE / 2) dir = -dir;
+            scr_menu_step(dir);
+            render();
+        }
+        if (g.cur == SCR_TIMER && !g.lost) scr_timer_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
+        if (g.cur == SCR_SETTINGS && !g.lost) scr_settings_step(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
+        if (g.cur == SCR_GAMES && !g.lost) scr_games_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         break;
     case UI_EV_BTN:
         if (g.cur == SCR_LOST && ev->len >= 1) scr_lost_show_hint();
         if (g.lost || ev->len < 1) return;
+        if (ev->data[0] == BTN_LOW && scr_notice_visible()) { scr_notice_hide(); return; } /* the low key dismisses the pop-up, nothing else */
         if (ev->data[0] == BTN_TOP && g.cur == SCR_FOCUS) {
             act(scr_focus_top_action(), NULL);
         }
-        next = screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
+        if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task(0);
+        if (ev->data[0] == BTN_TOP && g.cur == SCR_TIMER) scr_timer_top();
+        if (ev->data[0] == BTN_TOP && g.cur == SCR_GAMES) scr_games_top();
+        if (ev->data[0] == BTN_LOW && g.cur == SCR_GAMES && scr_games_back()) return; /* out of a game, back to the hub */
+        next = g.cur == SCR_MENU && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_menu_target())
+             : g.cur == SCR_SETTINGS && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_settings_top())
+                                                               : screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
+        if (g.cur == SCR_MENU && ev->data[0] == BTN_TOP && next != g.cur) ui_sound(SFX_OPEN);
         break;
     case UI_EV_ACTION:
         if (!g.lost) {

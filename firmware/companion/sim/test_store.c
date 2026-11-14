@@ -327,6 +327,15 @@ static void fill_snap(snap_t *s)
     strcpy(s->notices[1].id, "n-2"); strcpy(s->notices[1].kind, "calendar.reminder"); strcpy(s->notices[1].title, "Design review");
     s->notices[1].created = 1794493000;
     s->focus.status = FOCUS_PAUSED; strcpy(s->focus.id, "f-3"); strcpy(s->focus.mode, "pomodoro"); s->focus.elapsed_s = 1072;
+    s->n_tasks = 2;
+    strcpy(s->tasks[0].id, "t-101"); strcpy(s->tasks[0].title, "Ship pairing ADR"); s->tasks[0].due = 1794506400;
+    strcpy(s->tasks[1].id, "t-102"); strcpy(s->tasks[1].title, "Reply to Dana"); s->tasks[1].due = 1794500000;
+    s->n_events = 2;
+    strcpy(s->events[0].id, "e-22"); strcpy(s->events[0].title, "Design review"); s->events[0].starts = 1794499200; s->events[0].has_end = true;
+    s->events[0].ends = 1794501000;
+    strcpy(s->events[1].id, "e-23"); strcpy(s->events[1].title, "Holiday"); s->events[1].starts = 1794520000; s->events[1].all_day = true;
+    s->weather = (snap_weather_t){ .updated = 1794493000, .present = true, .temp = -3, .hi = -1, .lo = -8, .code = 71, .n_hours = 2,
+                                   .hours = { { 16, 71, -4 }, { 17, 3, -5 } } };
 }
 
 static void test_snap_roundtrip(void)
@@ -349,6 +358,11 @@ static void test_snap_roundtrip(void)
     CHECK(strcmp(out.notices[1].kind, "calendar.reminder") == 0);
     CHECK_EQ(out.focus.status, FOCUS_PAUSED);
     CHECK_EQ(out.focus.elapsed_s, 1072);
+    CHECK_EQ(out.n_tasks, 2);
+    CHECK(strcmp(out.tasks[1].title, "Reply to Dana") == 0 && out.tasks[1].due == 1794500000);
+    CHECK_EQ(out.n_events, 2);
+    CHECK(strcmp(out.events[0].title, "Design review") == 0 && out.events[0].ends == 1794501000 && out.events[0].has_end);
+    CHECK(out.events[1].all_day && !out.events[1].has_end);
 
     memset(&out, 0xAA, sizeof out);                    /* failures leave *out alone */
     buf[10] ^= 1;                                      /* CRC */
@@ -380,6 +394,114 @@ static void test_snap_overlong_and_bad_counts_are_made_safe(void)
     buf[1 + offsetof(snap_t, focus.status)] = 7;
     reseal(buf, sizeof buf);
     CHECK(!store_decode_snap(buf, sizeof buf, &out));
+    store_encode_snap(&in, buf, sizeof buf);
+    buf[1 + offsetof(snap_t, n_tasks)] = SNAP_MAX_TASKS + 1; /* more list entries than the arrays hold */
+    reseal(buf, sizeof buf);
+    CHECK(!store_decode_snap(buf, sizeof buf, &out));
+    store_encode_snap(&in, buf, sizeof buf);
+    buf[1 + offsetof(snap_t, n_events)] = SNAP_MAX_EVENTS + 1;
+    reseal(buf, sizeof buf);
+    CHECK(!store_decode_snap(buf, sizeof buf, &out));
+    store_encode_snap(&in, buf, sizeof buf);
+    memset(buf + 1 + offsetof(snap_t, events[1].title), 'W', sizeof in.events[1].title + 5); /* a list string must still end */
+    reseal(buf, sizeof buf);
+    CHECK(store_decode_snap(buf, sizeof buf, &out));
+    CHECK(memchr(out.events[1].title, 0, sizeof out.events[1].title) != NULL);
+}
+
+#define TEST_OWNER_LEN 65
+#define TEST_BOUND_BLOB (1 + TEST_OWNER_LEN + sizeof(snap_t) + 4)
+
+static void test_owned_snapshot(void)
+{
+    snap_t in, out, sentinel;
+    uint8_t owner[TEST_OWNER_LEN] = {4, 1}, other[TEST_OWNER_LEN] = {4, 2};
+    uint8_t b[TEST_BOUND_BLOB + 1], canonical[TEST_BOUND_BLOB];
+    fill_snap(&in);
+    memset(b, 0xa5, sizeof b);
+    size_t n = store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB);
+    CHECK_EQ(n, 1 + 65 + 2272 + 4);
+    if (n != TEST_BOUND_BLOB) return;
+    CHECK_EQ(b[0], STORE_SNAP_OWNED_VERSION);
+    CHECK_EQ(b[0], 4);
+    CHECK(memcmp(b + 1, owner, 65) == 0);
+    CHECK_EQ(b[TEST_BOUND_BLOB], 0xa5);
+    CHECK(store_decode_snap_owned(b, n, owner, &out));
+    CHECK_EQ(out.generated, in.generated);
+    CHECK(strcmp(out.task.title, in.task.title) == 0);
+    CHECK_EQ(out.focus.elapsed_s, in.focus.elapsed_s);
+    CHECK_EQ(out.n_tasks, 2);
+    CHECK(strcmp(out.tasks[0].id, "t-101") == 0 && strcmp(out.events[1].title, "Holiday") == 0 && out.events[1].all_day);
+    CHECK(out.weather.present && out.weather.temp == -3 && out.weather.hi == -1 && out.weather.lo == -8 && out.weather.code == 71);
+    CHECK(out.weather.updated == 1794493000 && out.weather.n_hours == 2 && out.weather.hours[1].hour == 17 && out.weather.hours[1].temp == -5);
+    memcpy(canonical, b, n);
+    /* Deliberately dirty structure padding and the unused tail of a string. */
+    ((uint8_t *)&in)[offsetof(snap_t, task) + offsetof(snap_task_t, title) + sizeof in.task.title] = 0xcc;
+    in.task.id[10] = 'X';
+    in.weather.hours[4] = (snap_hour_t){ 9, 9, 9 };    /* an hour past the count */
+    in.tasks[0].title[40] = 'Y';                       /* the same for a list string's tail and an entry past the count */
+    strcpy(in.tasks[4].title, "unused entry"); strcpy(in.events[3].title, "unused entry");
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB), n);
+    CHECK(memcmp(b, canonical, n) == 0);
+
+    memset(&sentinel, 0xa5, sizeof sentinel);
+    memcpy(&out, &sentinel, sizeof out);
+#define REJECT(expr) do { CHECK(!(expr)); CHECK(memcmp(&out, &sentinel, sizeof out) == 0); } while (0)
+    REJECT(store_decode_snap_owned(b, n, other, &out));
+    memcpy(other, owner, sizeof other); other[64] ^= 1;
+    REJECT(store_decode_snap_owned(b, n, other, &out));
+    REJECT(store_decode_snap_owned(b, n, NULL, &out));
+    REJECT(store_decode_snap_owned(NULL, n, owner, &out));
+    REJECT(store_decode_snap_owned(b, n - 1, owner, &out));
+    REJECT(store_decode_snap_owned(b, n + 1, owner, &out));
+    CHECK(!store_decode_snap_owned(b, n, owner, NULL));
+    b[n - 1] ^= 1; REJECT(store_decode_snap_owned(b, n, owner, &out)); b[n - 1] ^= 1;
+    b[1] ^= 1; REJECT(store_decode_snap_owned(b, n, owner, &out)); b[1] ^= 1;
+    b[1] ^= 1; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + 10] ^= 1; REJECT(store_decode_snap_owned(b, n, owner, &out)); b[1 + 65 + 10] ^= 1;
+    b[0] = 2; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out)); /* the version before the lists */
+    b[0] = 3; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out)); /* the version before the weather */
+    b[0] = 5; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, weather.present)] = 2; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, weather.n_hours)] = SNAP_MAX_HOURS + 1; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, n_notices)] = 6; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, focus.status)] = 9; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, has_task)] = 2; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, n_tasks)] = SNAP_MAX_TASKS + 1; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, n_events)] = SNAP_MAX_EVENTS + 1; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, events[1].all_day)] = 2; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    uint8_t legacy[STORE_SNAP_BLOB];
+    CHECK_EQ(store_encode_snap(&in, legacy, sizeof legacy), sizeof legacy);
+    REJECT(store_decode_snap_owned(legacy, sizeof legacy, owner, &out));
+#undef REJECT
+    memset(b, 0xa5, sizeof b);
+    CHECK_EQ(store_encode_snap_owned(&in, NULL, b, TEST_BOUND_BLOB), 0);
+    CHECK_EQ(store_encode_snap_owned(NULL, owner, b, TEST_BOUND_BLOB), 0);
+    CHECK_EQ(store_encode_snap_owned(&in, owner, NULL, TEST_BOUND_BLOB), 0);
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB - 1), 0);
+    in.n_notices = 6;
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB), 0);
+    in.n_notices = 0; in.focus.status = 9;
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB), 0);
+    for (size_t i = 0; i < sizeof b; i++) CHECK_EQ(b[i], 0xa5);
 }
 
 static void test_settings_roundtrip_and_bounds(void)
@@ -406,6 +528,38 @@ static void test_settings_roundtrip_and_bounds(void)
     CHECK(out.brightness == 35 && out.rev == 7);         /* untouched by every failure */
 }
 
+static void test_ui_prefs_roundtrip_and_bounds(void)
+{
+    ui_prefs_t in = { .level_on = true }, out = { 0 }; uint8_t buf[STORE_UI_BLOB];
+    size_t n = store_encode_ui(&in, buf, sizeof buf);
+    CHECK_EQ(n, sizeof buf);
+    CHECK_EQ(buf[0], STORE_UI_VERSION);
+    CHECK(store_decode_ui(buf, n, &out) && out.level_on);
+    in.level_on = false;
+    store_encode_ui(&in, buf, sizeof buf);
+    CHECK(store_decode_ui(buf, n, &out) && !out.level_on);
+    CHECK_EQ(store_encode_ui(&in, buf, n - 1), 0);       /* too small */
+    buf[1] = 2; reseal(buf, n);                          /* a valid CRC does not make 2 a flag */
+    CHECK(!store_decode_ui(buf, n, &out));
+    buf[1] = 1; buf[2] ^= 1;
+    CHECK(!store_decode_ui(buf, n, &out));               /* corrupt */
+    store_encode_ui(&in, buf, sizeof buf);
+    buf[0] = 3; reseal(buf, n);
+    CHECK(!store_decode_ui(buf, n, &out));               /* another version */
+    CHECK(!store_decode_ui(buf, n - 1, &out));
+    CHECK(!out.level_on);                                /* untouched by every failure: still the last good value (off) */
+
+    in = (ui_prefs_t){ .level_on = false, .sound_on = true };
+    n = store_encode_ui(&in, buf, sizeof buf);
+    CHECK(store_decode_ui(buf, n, &out) && out.sound_on && !out.level_on);
+    buf[2] = 2; reseal(buf, n);
+    CHECK(!store_decode_ui(buf, n, &out));               /* 2 is no flag for the sounds either */
+    uint8_t v1[1 + 1 + 4] = { 1, 1 };                    /* saved by the firmware before the sounds */
+    reseal(v1, sizeof v1);
+    out.sound_on = true;
+    CHECK(store_decode_ui(v1, sizeof v1, &out) && out.level_on && !out.sound_on);
+}
+
 int main(void)
 {
     test_crc32_known_vector();
@@ -425,8 +579,10 @@ int main(void)
     test_lost_roundtrip();
     test_ice_rev_survives_the_owner_blob();
     test_pair_roundtrip_and_corrupt();
+    test_owned_snapshot();
     test_snap_roundtrip();
     test_snap_overlong_and_bad_counts_are_made_safe();
     test_settings_roundtrip_and_bounds();
+    test_ui_prefs_roundtrip_and_bounds();
     return g_failed ? 1 : 0;
 }

@@ -156,12 +156,15 @@ static void handle_pair(const improv_frame_t *f)
         if (net_lost_on()) { pair_drop(); err = IMPROV_ERR_LOST_MODE; break; }
         if (n != 1 || !improv_is_uuid(s[0])) { err = IMPROV_ERR_INVALID_RPC; break; }
         if (!pair.active || !pair.coded) { err = IMPROV_ERR_NOT_PENDING; break; }
-        if (identity_pair_commit(s[0]) != ESP_OK) { err = IMPROV_ERR_UNKNOWN; break; } /* pending stays: retry */
+        link_pair_result_t committed = link_pair_commit(s[0]);
+        if (committed != LINK_PAIR_OK) {
+            err = committed == LINK_PAIR_BUSY ? IMPROV_ERR_PAIR_BUSY : committed == LINK_PAIR_LOST ? IMPROV_ERR_LOST_MODE : IMPROV_ERR_UNKNOWN;
+            break; /* pending stays for a retry unless lost mode takes effect */
+        }
         explicit_bzero(pair.secret, sizeof pair.secret);
         pair.active = pair.coded = false;
         post_pair(PAIR_UI_DONE, NULL);
         send_result(cmd, NULL, 0);
-        link_notify_paired(); /* resets the stored command revisions and signs in with the new identity */
         ESP_LOGW(TAG, "paired");
         break;
     }

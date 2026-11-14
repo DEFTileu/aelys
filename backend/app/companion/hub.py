@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from weakref import WeakValueDictionary
 
 from app.core import db as database
 from app.core.models import CalendarEvent, FocusSession, Notification, SyncChange, Task
@@ -45,9 +46,17 @@ class CompanionHub:
     def __init__(self) -> None:
         self.debounce = DEBOUNCE_SECONDS  # tests shrink this
         self._connections: dict[str, _Connection] = {}
+        self._connection_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
         self._pending: dict[str, asyncio.Task[None]] = {}  # owners inside their debounce window
         self._background: set[asyncio.Task[None]] = set()
         self._owner_locks: dict[str, asyncio.Lock] = {}  # build + send as one unit keeps an older snapshot from landing last
+
+    def connection_lock(self, device_id: str) -> asyncio.Lock:
+        lock = self._connection_locks.get(device_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._connection_locks[device_id] = lock
+        return lock
 
     def register(self, device_id: str, owner_id: str, send: Send, close: Close | None = None) -> Callable[[], None]:
         connection = _Connection(device_id, owner_id, send, close)
@@ -64,6 +73,9 @@ class CompanionHub:
 
     def is_online(self, device_id: str) -> bool:
         return device_id in self._connections
+
+    def online_owners(self) -> set[str]:
+        return {c.owner_id for c in self._connections.values()}
 
     async def send_to_device(self, device_id: str, message: dict) -> bool:
         connection = self._connections.get(device_id)
@@ -132,7 +144,12 @@ class CompanionHub:
                 return False
             # lazy: snapshot imports domains, which import this hub
             from app.companion.snapshot import build_snapshot, for_device
+            from app.companion.weather import refresh_if_due
 
+            try:
+                await refresh_if_due(owner_id, datetime.now(UTC))  # at most one fetch per 30 minutes; a failure keeps the cache
+            except Exception as exc:  # noqa: BLE001 - weather must never stop a push
+                logger.warning("companion weather refresh failed owner=%s reason=%s", owner_id, type(exc).__name__)
             try:
                 async with database.SessionLocal() as db:
                     snapshot = await asyncio.wait_for(build_snapshot(db, owner_id, datetime.now(UTC)), BUILD_TIMEOUT_SECONDS)

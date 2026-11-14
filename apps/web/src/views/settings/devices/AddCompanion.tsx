@@ -18,6 +18,7 @@ const errorCode = (e: unknown) => e instanceof ApiError || e instanceof Companio
 function describe(e: unknown): string {
   const code = errorCode(e)
   if (code === 'LOST_MODE') return LOST
+  if (code === 'PAIR_BUSY') return 'Aelys is busy and pairing could not be completed. Try again.'
   if (code === 'NOT_AELYS') return 'This USB device is not Aelys. Choose the Aelys port.'
   if (code === 'TIMEOUT' || code === 'DISCONNECTED') return 'Aelys did not answer. Check the USB cable and try again.'
   if (code === 'BAD_ARGS') return 'Aelys could not accept that. Check the values and try again.'
@@ -44,14 +45,17 @@ export function AddCompanion({ onDone }: { onDone?: () => void } = {}) {
   const serial = useRef<CompanionSerial | null>(null)
   const secret = useRef('') // lives only here; never logged, dropped on unmount
   const pairingId = useRef('')
+  const approvedDeviceId = useRef('')
+  const commitUncertain = useRef(false)
   const boxes = useRef<(HTMLInputElement | null)[]>([])
   const mounted = useRef(true)
 
-  const drop = async () => { const s = serial.current; serial.current = null; secret.current = ''; await s?.close().catch(() => undefined) }
+  const drop = async () => { const s = serial.current; serial.current = null; secret.current = ''; approvedDeviceId.current = ''; commitUncertain.current = false; await s?.close().catch(() => undefined) }
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; void drop() } }, [])
   // After every await: if the page was left meanwhile, release the port and stop.
   const live = async <T,>(work: Promise<T>): Promise<T> => {
-    const value = await work
+    let value: T
+    try { value = await work } catch (e) { if (!mounted.current) { await drop(); throw GONE } throw e }
     if (!mounted.current) { await drop(); throw GONE }
     return value
   }
@@ -66,6 +70,8 @@ export function AddCompanion({ onDone }: { onDone?: () => void } = {}) {
   // Steps 1-2 silently: the board makes a key, the backend opens a pairing, the board shows the code.
   const begin = async () => {
     const s = serial.current!
+    approvedDeviceId.current = ''
+    commitUncertain.current = false
     secret.current = newPairingSecret()
     const publicKey = await live(s.pairBegin(secret.current, apiUrl.href))
     const { pairing_id } = await live(sha256Hex(secret.current).then((hash) => companion.requestPairing(hash, publicKey)))
@@ -97,22 +103,41 @@ export function AddCompanion({ onDone }: { onDone?: () => void } = {}) {
     try { await begin() } catch (e) { await fail(e, true) }
   }
 
-  // PAIR_COMMIT may time out after the board did take the pairing: ask it before retrying once.
+  // A busy gate is temporary; all attempts use the already approved device.
   const commit = async (deviceId: string) => {
     const s = serial.current!
-    try { return await live(s.pairCommit(deviceId)) } catch (e) {
-      if (errorCode(e) !== 'TIMEOUT') throw e
+    let timeouts = 0
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try { return await live(s.pairCommit(deviceId)) } catch (e) {
+        const code = errorCode(e)
+        if (code === 'TIMEOUT' || (code === 'NOT_PENDING' && commitUncertain.current)) {
+          if (code === 'TIMEOUT') { timeouts++; commitUncertain.current = true }
+          const status = await live(s.pairStatus().catch((statusError: unknown) => {
+            if (errorCode(statusError) === 'LOST_MODE') throw statusError
+            return null
+          }))
+          if (status?.paired && status.deviceId?.toLowerCase() === deviceId) return
+          if (code === 'NOT_PENDING') {
+            if (!status) throw new CompanionError('TIMEOUT')
+            throw e
+          }
+          if (attempt === 3 || timeouts === 2) throw e
+        } else if (code === 'PAIR_BUSY' && attempt < 3) {
+          await live(new Promise<void>((resolve) => setTimeout(resolve, 500)))
+        } else throw e
+      }
     }
-    const status = await live(s.pairStatus().catch(() => ({ paired: false, deviceId: undefined as string | undefined })))
-    if (status.paired && status.deviceId?.toLowerCase() === deviceId) return
-    return live(s.pairCommit(deviceId))
   }
 
   const pair = async () => {
     setError(''); setBusy(true)
-    let deviceId: string
+    let deviceId = approvedDeviceId.current
     try {
-      deviceId = (await live(companion.approve(pairingId.current, secret.current, digits.join('')))).device_id.toLowerCase() // the board only takes lowercase UUIDs
+      if (!deviceId) {
+        deviceId = (await live(companion.approve(pairingId.current, secret.current, digits.join('')))).device_id.toLowerCase() // the board only takes lowercase UUIDs
+        approvedDeviceId.current = deviceId
+        secret.current = ''
+      }
     } catch (e) {
       const code = errorCode(e)
       if (e === GONE) return fail(e, true)
@@ -122,10 +147,12 @@ export function AddCompanion({ onDone }: { onDone?: () => void } = {}) {
     }
     try { await commit(deviceId) } catch (e) {
       if (e === GONE) return fail(e, true)
+      if (errorCode(e) === 'PAIR_BUSY' || errorCode(e) === 'TIMEOUT') return fail(e, false)
       if (errorCode(e) === 'LOST_MODE') return fail(e, true)
       return restart('Aelys lost the pairing. Starting again.') // the approved device on the backend stays unused
     }
-    secret.current = ''
+    approvedDeviceId.current = ''
+    commitUncertain.current = false
     try {
       const state = await live(serial.current!.state().catch(() => 'authorized'))
       if (state === 'provisioned') await finish('Aelys is already online')
@@ -173,7 +200,7 @@ export function AddCompanion({ onDone }: { onDone?: () => void } = {}) {
           {stage === 'code' &&
             <form className="dv-form" onSubmit={(e) => { e.preventDefault(); if (ready && !busy) void pair() }}>
             <div className="dv-digits" onPaste={onPaste}>
-              {digits.map((d, i) => <input key={i} ref={(el) => { boxes.current[i] = el }} className="dv-digit" inputMode="numeric" autoComplete="one-time-code" aria-label={`Digit ${i + 1}`} value={d} disabled={busy} onChange={(e) => setDigit(i, e.target.value)} onKeyDown={(e) => onKey(i, e)} />)}
+              {digits.map((d, i) => <input key={i} ref={(el) => { boxes.current[i] = el }} className="dv-digit" inputMode="numeric" autoComplete="one-time-code" aria-label={`Digit ${i + 1}`} value={d} disabled={busy || !!approvedDeviceId.current} onChange={(e) => setDigit(i, e.target.value)} onKeyDown={(e) => onKey(i, e)} />)}
             </div>
             <div className="dv-actions"><button type="submit" className="st-btn st-btn--primary" disabled={busy || !ready}>Pair</button></div>
             </form>}

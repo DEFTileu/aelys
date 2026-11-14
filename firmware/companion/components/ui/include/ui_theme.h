@@ -18,6 +18,9 @@
 #define UI_COLOR_RULE    0x23202B
 #define UI_COLOR_ORBIT_OFF 0x2B2836
 #define UI_COLOR_QR_LIGHT  0xF1EEF6
+#define UI_COLOR_TASK       0x7FA8F5 /* module colour of tasks */
+#define UI_COLOR_TASK_TRACK 0x141B2A
+#define UI_COLOR_CHECK      0x6A4CF2 /* filled tick box */
 
 /* lv_font_conv 1.5.2 emits non-const font structs for LVGL 9 (see fonts/README.md) */
 #define UI_FONT_DECLARE(name) extern lv_font_t name

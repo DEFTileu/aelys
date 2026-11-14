@@ -11,6 +11,233 @@ static const face_eye_t *eye(mood_t m, int side) { return &face_mood_def(m)->eye
     CHECK_EQ(e_->star_x, X); CHECK_EQ(e_->star_y, Y); CHECK_EQ(e_->star, S); } while (0)
 #define NEAR(a, b, tol) CHECK(labs((long)(a) - (long)(b)) <= (tol))
 
+/* Independent inverse-x bisection reference for CSS ease. Host only. */
+static double reference_css_ease(double x)
+{
+    double low = 0.0, high = 1.0;
+    for (int i = 0; i < 48; i++) {
+        double t = (low + high) / 2.0, v = 1.0 - t;
+        double bx = 3.0*v*v*t*0.25 + 3.0*v*t*t*0.25 + t*t*t;
+        if (bx < x) low = t; else high = t;
+    }
+    double t = (low + high) / 2.0, v = 1.0 - t;
+    return 3.0*v*v*t*0.1 + 3.0*v*t*t + t*t*t;
+}
+
+static double reference_css_in_out(double x)
+{
+    double low = 0.0, high = 1.0;
+    for (int i = 0; i < 48; i++) {
+        double t = (low + high) / 2.0, v = 1.0 - t;
+        double bx = 3.0*v*v*t*0.42 + 3.0*v*t*t*0.58 + t*t*t;
+        if (bx < x) low = t; else high = t;
+    }
+    double t = (low + high) / 2.0, v = 1.0 - t;
+    return 3.0*v*t*t + t*t*t;
+}
+
+static double reference_css_out(double x)
+{
+    double low = 0.0, high = 1.0;
+    for (int i = 0; i < 48; i++) {
+        double t = (low + high) / 2.0, v = 1.0 - t;
+        double bx = 3.0*v*t*t*0.58 + t*t*t;
+        if (bx < x) low = t; else high = t;
+    }
+    double t = (low + high) / 2.0, v = 1.0 - t;
+    return 3.0*v*t*t + t*t*t;
+}
+
+static void test_group_ease_out_css(void)
+{
+    for (uint32_t ms = 720; ms <= 960; ++ms) {
+        face_group_t g = face_group_at(MOT_POP, ms);
+        int32_t expected = (int32_t)(1000.0 + 160.0 * reference_css_out((ms - 720) / 240.0));
+        NEAR(g.sc, expected, 2);
+    }
+    for (uint32_t ms = 0; ms <= 144; ++ms) {
+        face_group_t g = face_group_at(MOT_JUMP, ms);
+        int32_t expected = (int32_t)(-2200.0 * reference_css_out(ms / 144.0));
+        NEAR(g.ty, expected, 8);
+    }
+    for (uint32_t ms = 960; ms <= 1200; ++ms) {
+        face_group_t g = face_group_at(MOT_POP, ms);
+        int32_t expected = (int32_t)(1160.0 - 80.0 * reference_css_out((ms - 960) / 240.0));
+        NEAR(g.sc, expected, 2);
+    }
+    for (uint32_t ms = 2040; ms <= 2400; ++ms) {
+        face_group_t g = face_group_at(MOT_POP, ms);
+        int32_t expected = (int32_t)(1080.0 - 80.0 * reference_css_out((ms - 2040) / 360.0));
+        NEAR(g.sc, expected, 2);
+    }
+    for (uint32_t ms = 144; ms <= 360; ++ms) {
+        face_group_t g = face_group_at(MOT_JUMP, ms);
+        int32_t expected = (int32_t)(-2200.0 + 2200.0 * reference_css_out((ms - 144) / 216.0));
+        NEAR(g.ty, expected, 8);
+    }
+    CHECK_EQ(face_group_at(MOT_POP, 2400).sc, 1000);
+    CHECK_EQ(face_group_at(MOT_JUMP, 1800).ty, 0);
+}
+
+static void test_double_blink_css(void)
+{
+    const mood_t moods[] = { MOOD_ATTENTION, MOOD_RECONNECTED };
+    for (unsigned i = 0; i < sizeof moods / sizeof *moods; ++i) {
+        const face_mood_t *m = face_mood_def(moods[i]);
+        uint32_t period = m->blink_ms;
+        for (uint32_t ms = 0; ms < period; ++ms) {
+            double p = (double)ms / period, value = 1000.0;
+            if (p >= 0.70 && p < 0.73)
+                value = 1000.0 - 920.0 * reference_css_ease((p - 0.70) / 0.03);
+            else if (p >= 0.73 && p < 0.78)
+                value = 80.0 + 920.0 * reference_css_ease((p - 0.73) / 0.05);
+            else if (p >= 0.78 && p < 0.81)
+                value = 1000.0 - 920.0 * reference_css_ease((p - 0.78) / 0.03);
+            else if (p >= 0.81)
+                value = 80.0 + 920.0 * reference_css_ease((p - 0.81) / 0.19);
+            int32_t expected = (int32_t)(value + 0.5);
+            NEAR(face_eye_openness(m,0,ms), expected, 4);
+            NEAR(face_eye_openness(m,1,ms), expected, 4);
+            CHECK_EQ(face_eye_openness(m,0,ms), face_eye_openness(m,0,ms + period));
+        }
+    }
+}
+
+static void test_character_motion_design(void)
+{
+    const struct { mood_t mood; uint32_t period; uint32_t time; int tx, ty, rot, scale; } cases[] = {
+        {MOOD_ELATION,1200,300,0,-1400,-600,1000}, {MOOD_PANIC,220,55,-400,100,0,1000},
+        {MOOD_ANTICIPATION,2600,1430,1400,-1000,0,1000}, {MOOD_THINKING,3400,0,-600,-800,0,1000},
+        {MOOD_FRIGHTENED,1800,144,0,-2200,0,1100}, {MOOD_TICKLED,200,100,0,-300,0,1000},
+        {MOOD_BORED,7000,1750,0,400,0,1000}, {MOOD_MISSED,4400,880,-2400,0,0,1000},
+        {MOOD_MISCHIEF,3000,0,0,0,-700,1000},
+    };
+    for (unsigned i = 0; i < sizeof cases / sizeof *cases; i++) {
+        face_motion_t motion = (face_motion_t)face_mood_def(cases[i].mood)->motion;
+        CHECK_EQ(face_motion_period(motion), cases[i].period);
+        face_group_t g = face_group_at(motion, cases[i].time);
+        NEAR(g.tx, cases[i].tx, 10); NEAR(g.ty, cases[i].ty, 10);
+        NEAR(g.rot, cases[i].rot, 10); NEAR(g.sc, cases[i].scale, 2);
+    }
+    /* Later global @keyframes drift in the design overrides the earlier one. */
+    face_group_t drift = face_group_at(MOT_DRIFT, 0);
+    CHECK_EQ(drift.tx, -1200); CHECK_EQ(drift.ty, 400);
+    drift = face_group_at(MOT_DRIFT, 3500);
+    CHECK_EQ(drift.tx, 1200); CHECK_EQ(drift.ty, 400);
+    drift = face_group_at(MOT_DRIFT, 5250);
+    NEAR(drift.tx, 0, 10); CHECK_EQ(drift.ty, 400);
+    drift = face_group_at(MOT_DRIFT, 7000);
+    CHECK_EQ(drift.tx, -1200); CHECK_EQ(drift.ty, 400);
+    for (uint32_t phase = 0; phase <= 500; phase++) {
+        drift = face_group_at(MOT_DRIFT, phase * 7);
+        int32_t expected = (int32_t)(-1200.0 + 2400.0 * reference_css_in_out(phase / 500.0));
+        NEAR(drift.tx, expected, 5);
+        CHECK_EQ(drift.ty, 400);
+    }
+    for (uint32_t ms = 0; ms <= 3500; ms++) {
+        drift = face_group_at(MOT_DRIFT, ms);
+        int32_t expected = (int32_t)(-1200.0 + 2400.0 * reference_css_in_out(ms / 3500.0));
+        NEAR(drift.tx, expected, 7); /* <0.07 px including time/curve rounding */
+    }
+    const mood_t base_blink_moods[] = { MOOD_PANIC, MOOD_BASHFUL, MOOD_MISSED };
+    const uint32_t blink_times[] = { 0, 4680, 4800, 4850, 5000 };
+    for (unsigned m = 0; m < sizeof base_blink_moods / sizeof *base_blink_moods; ++m) {
+        const face_mood_t *mood = face_mood_def(base_blink_moods[m]);
+        CHECK_EQ(mood->blink_ms, 5000);
+        for (unsigned t = 0; t < sizeof blink_times / sizeof *blink_times; ++t)
+            for (int side = 0; side < 2; ++side)
+                CHECK_EQ(face_eye_openness(mood, side, blink_times[t]), face_blink_x1000(5000, blink_times[t]));
+    }
+    CHECK_EQ(face_eye_openness(face_mood_def(MOOD_BORED),0,4800),80);
+    CHECK_EQ(face_eye_openness(face_mood_def(MOOD_BORED),1,4800),80);
+    face_group_t tilted = face_group_at(MOT_TILT, 136);
+    NEAR(tilted.tx, -36, 3); NEAR(tilted.rot, -20, 3);
+    face_group_t hop = face_group_at(MOT_HOP, 125);
+    NEAR(hop.ty, -129, 3);
+    CHECK(face_mood_def(MOOD_ELATION)->confetti);
+    face_confetti_state_t cf = face_confetti_at(0, 400);
+    CHECK_EQ(cf.opacity, 255); CHECK_EQ(cf.dy100, 0);
+    cf = face_confetti_at(400, 400); CHECK_EQ(cf.opacity, 0); CHECK_EQ(cf.dy100, -2000);
+    cf = face_confetti_at(670, 400); CHECK_EQ(cf.opacity, 255); CHECK_EQ(cf.dy100, 100); CHECK_EQ(cf.angle, 45);
+    cf = face_confetti_at(2200, 400); CHECK_EQ(cf.opacity, 0); CHECK_EQ(cf.dy100, -2000);
+    CHECK_EQ(face_mood_def(MOOD_FLOW)->glow_width, 22);
+    CHECK_EQ(face_mood_def(MOOD_RELIEF)->lid, LID_RELAX);
+    CHECK_EQ(face_relax_lid_y100(0), 0);
+    CHECK_EQ(face_relax_lid_y100(1600), 800);
+    CHECK_EQ(face_relax_lid_y100(3200), 0);
+    const face_mood_t *a = face_mood_def(MOOD_ATTENTION);
+    CHECK_EQ(face_eye_openness(a,0,2100),1000); CHECK_EQ(face_eye_openness(a,0,2190),80);
+    CHECK_EQ(face_eye_openness(a,0,2340),1000); CHECK_EQ(face_eye_openness(a,0,2430),80);
+    const face_mood_t *wink = face_mood_def(MOOD_MISCHIEF);
+    CHECK_EQ(face_eye_openness(wink,0,2280),1000); CHECK_EQ(face_eye_openness(wink,1,2280),100);
+    /* Chrome CSS ease reference: cheeky wink at 1836 ms and 2550 ms. */
+    NEAR(face_eye_openness(wink,1,1836), 833, 3);
+    NEAR(face_eye_openness(wink,1,2550), 141, 3);
+    CHECK_EQ(face_eye_openness(wink,0,1836),1000);
+    NEAR(face_eye_openness(wink,0,4680),728,4);
+    NEAR(face_eye_openness(wink,0,4850),456,4);
+    CHECK_EQ(face_eye_openness(wink,0,4800),80); /* inherited 5-second blink */
+    CHECK_EQ(face_eye_openness(wink,0,5000),1000);
+    CHECK_EQ(face_eye_openness(wink,1,4800),1000);
+    CHECK_EQ(face_eye_openness(wink,1,1800),1000);
+    CHECK_EQ(face_eye_openness(wink,1,2040),100);
+    CHECK_EQ(face_eye_openness(wink,1,3000),1000);
+    /* Independent cubic-bezier(.25,.1,.25,1) samples over both segments. */
+    const struct { uint32_t ms; int32_t expected; } wink_curve[] = {
+        {1830,877}, {1860,632}, {1890,419}, {1920,278}, {1950,189},
+        {1980,136}, {2010,108}, {2520,100}, {2580,223}, {2640,468},
+        {2700,681}, {2760,822}, {2820,911}, {2880,964}, {2940,992}
+    };
+    for (unsigned i = 0; i < sizeof wink_curve / sizeof *wink_curve; i++) {
+        NEAR(face_eye_openness(wink,1,wink_curve[i].ms), wink_curve[i].expected, 4);
+        CHECK_EQ(face_eye_openness(wink,1,wink_curve[i].ms + 3000),
+                 face_eye_openness(wink,1,wink_curve[i].ms));
+    }
+    for (uint32_t ms = 1800; ms <= 2040; ms++) {
+        double expected = 1000.0 - 900.0 * reference_css_ease((ms - 1800) / 240.0);
+        NEAR(face_eye_openness(wink,1,ms), (int32_t)(expected + 0.5), 4);
+    }
+    for (uint32_t ms = 2520; ms < 3000; ms++) {
+        double expected = 100.0 + 900.0 * reference_css_ease((ms - 2520) / 480.0);
+        NEAR(face_eye_openness(wink,1,ms), (int32_t)(expected + 0.5), 4);
+    }
+    for (uint32_t phase = 600; phase <= 680; phase++) {
+        double value = 1000.0 - 900.0 * reference_css_ease((phase - 600) / 80.0);
+        NEAR(face_eye_openness(wink,1,phase * 3), (int32_t)(value + 0.5), 4);
+    }
+    for (uint32_t phase = 840; phase < 1000; phase++) {
+        double value = 100.0 + 900.0 * reference_css_ease((phase - 840) / 160.0);
+        NEAR(face_eye_openness(wink,1,phase * 3), (int32_t)(value + 0.5), 4);
+    }
+    for (uint32_t t = 1801; t <= 2040; t++)
+        CHECK(face_eye_openness(wink,1,t) <= face_eye_openness(wink,1,t-1));
+    for (uint32_t t = 2521; t < 3000; t++)
+        CHECK(face_eye_openness(wink,1,t) >= face_eye_openness(wink,1,t-1));
+    const face_mood_t *wake = face_mood_def(MOOD_WAKING);
+    CHECK_EQ(face_eye_openness(wake,0,0),100); CHECK_EQ(face_eye_openness(wake,0,1650),1120);
+    CHECK_EQ(face_eye_openness(wake,1,2100),1000);
+}
+
+static void test_all_character_rows(void)
+{
+    CHECK_EQ(CHAR_MOOD_COUNT, 32);
+    for (int m = 0; m < CHAR_MOOD_COUNT; m++) {
+        mood_t mapped = mood_from_character((character_mood_t)m);
+        CHECK(mapped >= 0 && mapped < MOOD_COUNT);
+        for (int k = 0; k < m; k++) CHECK(mapped != mood_from_character((character_mood_t)k));
+    }
+    CHECK_EQ(mood_from_character(CHAR_MOOD_COUNT), MOOD_CALM);
+    CHECK_EQ(MOOD_COUNT, 32);
+    for (int m = 0; m < MOOD_COUNT; m++) {
+        const face_mood_t *row = face_mood_def((mood_t)m);
+        CHECK(row != NULL);
+        CHECK(mood_name((mood_t)m)[0] != '?');
+        for (int side = 0; side < 2; side++) {
+            CHECK(row->eye[side].w > 0 && row->eye[side].h > 0);
+            CHECK(row->eye[side].x >= 0 && row->eye[side].x + row->eye[side].w <= FACE_W);
+        }
+    }
+}
 static void test_eyes(void)
 {
     for (int s = 0; s < 2; s++) {
@@ -35,7 +262,7 @@ static void test_eyes(void)
     EYE_IS(MOOD_CURIOUS, 0, 58, 46, 70, 84, 35);
     EYE_IS(MOOD_CURIOUS, 1, 172, 26, 70, 112, 35);
     STAR_IS(MOOD_CURIOUS, 1, 38, 14, 20);
-    for (int m = 0; m < MOOD_COUNT; m++) {
+    for (int m = 0; m <= MOOD_OFFLINE; m++) {
         int none = m == MOOD_SLEEPING || m == MOOD_DIZZY || m == MOOD_OFFLINE;
         CHECK_EQ(eye(m, 0)->star == 0, none);
         CHECK_EQ(eye(m, 1)->star == 0, none);
@@ -119,7 +346,7 @@ static void test_motion_and_blink(void)
     CHECK_EQ(face_blink_x1000(5000, 4600), 1000);
     CHECK_EQ(face_blink_x1000(5000, 4800), 80);
     CHECK_EQ(face_blink_x1000(5000, 5000), 1000);
-    NEAR(face_blink_x1000(5000, 4725), 540, 60);
+    NEAR(face_blink_x1000(5000, 4725), 262, 4);
     CHECK_EQ(face_blink_x1000(8000, 7680), 80);
     CHECK_EQ(face_blink_x1000(0, 123), 1000);
 }
@@ -199,6 +426,10 @@ static void test_images(void)
 
 int main(void)
 {
+    test_double_blink_css();
+    test_group_ease_out_css();
+    test_character_motion_design();
+    test_all_character_rows();
     test_eyes();
     test_lids();
     test_motion_and_blink();

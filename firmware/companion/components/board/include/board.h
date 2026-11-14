@@ -45,6 +45,11 @@ uint32_t lv_port_first_flush_end_us(void);
  * init error but starts the task anyway with whatever worked. */
 esp_err_t board_input_start(void);
 
+/* QMI8658 accelerometer (probes 0x6B then 0x6A). ESP_ERR_NOT_FOUND when absent: then reads return false.
+ * Raw axes in the chip frame, +-2 g full scale; mapping to screen axes is the caller's (level.h). */
+esp_err_t board_imu_init(void);
+bool board_imu_read(int16_t *ax, int16_t *ay, int16_t *az);
+
 /* "Find Aelys": plays the 2 kHz beep pattern (200 ms on / 200 ms off, beep.h) through the ES8311 and the speaker for duration_ms, at most 60 s.
  * Returns at once: an `audio` task (priority 3) is created for it and deleted when the sound ends; the codec, the I2S channel and the amplifier
  * exist only while it plays, so nothing is held at idle. On success it posts UI_EV_FIND data[0] = 1 (the overlay); when the sound ends for any
@@ -57,9 +62,16 @@ esp_err_t board_audio_beep(uint32_t duration_ms);
 /* Ends the sound within about 10 ms. Non-blocking, safe from any task (the ui task calls it on a tap) while the audio task runs; a no-op when
  * nothing plays. */
 void board_audio_stop(void);
+/* Call once at boot, before the tasks that use the two calls above and below start. */
+void board_audio_init(void);
+/* A short sound effect (sfx.h id), from the ui task. Never waits: dropped while "find me" beeps or while a sound is being torn down;
+ * a new one replaces the one playing. Shares the find beeps' audio task, codec and amplifier, which exist only while it plays. */
+void board_audio_sfx(uint8_t id);
 
 /* Rolling 5 s window: frames per second x10 and the longest single refresh in microseconds. */
 void lv_port_frame_stats(uint32_t *fps_x10, uint32_t *worst_us);
+/* Frames drawn and the longest one since the previous call, then resets both (the metrics task's per-second line). */
+void lv_port_frame_take(uint32_t *frames, uint32_t *worst_us);
 
 #ifdef CONFIG_AELYS_PERF_PROBE
 #include "perf_probe.h"

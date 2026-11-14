@@ -2,6 +2,7 @@
 #include "link_core.h"
 
 void link_acts_init(link_acts_t *t) { memset(t, 0, sizeof *t); }
+void link_acts_discard_all(link_acts_t *t) { memset(t, 0, sizeof *t); }
 
 bool link_acts_add(link_acts_t *t, const char id[37], act_kind_t k, const char *target, uint32_t now_ms)
 {

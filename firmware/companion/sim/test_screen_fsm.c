@@ -112,6 +112,52 @@ static void test_swipes_ignored_in_lost_mode(void)
     CHECK_EQ(screen_next_btn(SCR_TODAY, true, BTN_LOW), SCR_TODAY);
 }
 
+static void test_menu_opens_and_closes(void)
+{
+    CHECK_EQ(screen_next_btn(SCR_HOME, false, BTN_TOP), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_TODAY, false, BTN_TOP), SCR_MENU);        /* Today shows the same "Menu" key as home */
+    CHECK_EQ(screen_next_btn(SCR_TODAY, true, BTN_TOP), SCR_TODAY);
+    CHECK_EQ(screen_next_btn(SCR_MENU, false, BTN_LOW), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_MENU, false, BTN_TOP), SCR_MENU);        /* opening the item is screen_next_open() */
+    CHECK_EQ(screen_next_btn(SCR_PLACEHOLDER, false, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_PLACEHOLDER, false, BTN_TOP), SCR_PLACEHOLDER);
+    CHECK_EQ(screen_next_btn(SCR_TASKS, false, BTN_LOW), SCR_MENU);       /* Tasks goes back to the menu it was opened from */
+    CHECK_EQ(screen_next_btn(SCR_TASKS, false, BTN_TOP), SCR_TASKS);      /* the top key completes the task: the UI layer's */
+    CHECK_EQ(screen_next_btn(SCR_TASKS, true, BTN_LOW), SCR_TASKS);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_TASKS), SCR_TASKS);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_TIMER), SCR_TIMER);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_TIMER), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_TIMER, false, BTN_LOW), SCR_MENU);        /* Timer goes back to the menu it was opened from */
+    CHECK_EQ(screen_next_btn(SCR_TIMER, false, BTN_TOP), SCR_TIMER);       /* the top key is the UI layer's: start / pause */
+    CHECK_EQ(screen_next_btn(SCR_TIMER, true, BTN_LOW), SCR_TIMER);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_GAMES), SCR_GAMES);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_GAMES), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_GAMES, false, BTN_LOW), SCR_MENU);        /* Games: the UI layer first steps back from a game to the hub */
+    CHECK_EQ(screen_next_btn(SCR_GAMES, false, BTN_TOP), SCR_GAMES);
+    CHECK_EQ(screen_next_btn(SCR_GAMES, true, BTN_LOW), SCR_GAMES);
+    CHECK_EQ(screen_next(SCR_GAMES, false, UI_EV_SWIPE_LEFT), SCR_GAMES);  /* swipes turn the hub */
+    CHECK_EQ(screen_next(SCR_GAMES, true, UI_EV_LOST), SCR_LOST);
+    CHECK_EQ(screen_next_btn(SCR_FOCUS, false, BTN_TOP), SCR_FOCUS);      /* the focus key stays the focus action */
+    CHECK_EQ(screen_next_btn(SCR_ICE, false, BTN_TOP), SCR_ICE);
+    CHECK_EQ(screen_next_btn(SCR_PAIR, false, BTN_TOP), SCR_PAIR);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_FOCUS), SCR_FOCUS);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_PLACEHOLDER), SCR_PLACEHOLDER);
+    CHECK_EQ(screen_next_open(SCR_HOME, false, SCR_FOCUS), SCR_HOME);     /* only the menu opens items */
+    CHECK_EQ(screen_next(SCR_MENU, false, UI_EV_SWIPE_LEFT), SCR_MENU);   /* swipes turn the wheel, not the screen */
+    CHECK_EQ(screen_next(SCR_MENU, false, UI_EV_SWIPE_RIGHT), SCR_MENU);
+    CHECK_EQ(screen_next(SCR_MENU, false, UI_EV_COMBO_FIRE), SCR_ICE);
+}
+
+static void test_menu_never_opens_in_lost_mode(void)
+{
+    CHECK_EQ(screen_next_btn(SCR_HOME, true, BTN_TOP), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_LOST, true, BTN_TOP), SCR_LOST);
+    CHECK_EQ(screen_next_btn(SCR_MENU, true, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_FOCUS), SCR_MENU);
+    CHECK_EQ(screen_next(SCR_MENU, true, UI_EV_LOST), SCR_LOST);          /* lost mode switching on takes the menu away */
+    CHECK_EQ(screen_next(SCR_PLACEHOLDER, true, UI_EV_LOST), SCR_LOST);
+}
+
 static int terminated(const char *s, size_t cap) { return memchr(s, '\0', cap) != NULL; }
 
 static void test_owner_defaults(void)
@@ -148,6 +194,53 @@ static void test_find_overlay_does_not_leave_lost(void)
     CHECK_EQ(screen_next(SCR_ICE, true, UI_EV_FIND), SCR_ICE);
 }
 
+/* BTN_LOW leaves Calendar for the menu; a tap on the new-notice pop-up opens the Inbox from every everyday screen, never in lost mode. */
+static void test_calendar_and_notice_popup(void)
+{
+    CHECK_EQ(screen_next_btn(SCR_CALENDAR, false, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_CALENDAR, true, BTN_LOW), SCR_CALENDAR);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_CALENDAR), SCR_CALENDAR);
+    for (int s = 0; s < SCR_COUNT; s++) {
+        bool never = s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR;
+        CHECK_EQ(screen_next_notice((scr_t)s, false), never ? (scr_t)s : SCR_INBOX);
+        CHECK_EQ(screen_next_notice((scr_t)s, true), (scr_t)s);
+    }
+}
+
+/* Weather opens from the menu only, BTN_LOW goes back to it, and lost mode reaches none of that. */
+static void test_weather_screen(void)
+{
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_WEATHER), SCR_WEATHER);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_WEATHER), SCR_MENU);
+    CHECK_EQ(screen_next_open(SCR_HOME, false, SCR_WEATHER), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_WEATHER, false, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_WEATHER, false, BTN_TOP), SCR_WEATHER);
+    CHECK_EQ(screen_next_btn(SCR_WEATHER, true, BTN_LOW), SCR_WEATHER);
+    CHECK_EQ(screen_next(SCR_WEATHER, true, UI_EV_LOST), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_WEATHER, false, UI_EV_SWIPE_LEFT), SCR_WEATHER);
+    CHECK_EQ(screen_next(SCR_WEATHER, false, UI_EV_SWIPE_RIGHT), SCR_WEATHER);
+}
+
+static void test_settings_screens(void)
+{
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_SETTINGS), SCR_SETTINGS);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_SETTINGS), SCR_MENU);
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, false, SCR_WIFI), SCR_WIFI);
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, false, SCR_ABOUT), SCR_ABOUT);
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, true, SCR_WIFI), SCR_SETTINGS);
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, false, SCR_SETTINGS), SCR_SETTINGS);   /* a row that only toggles stays */
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, false, SCR_TASKS), SCR_SETTINGS);      /* only its own sub screens */
+    CHECK_EQ(screen_next_open(SCR_WIFI, false, SCR_ABOUT), SCR_WIFI);
+    CHECK_EQ(screen_next_btn(SCR_SETTINGS, false, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_WIFI, false, BTN_LOW), SCR_SETTINGS);
+    CHECK_EQ(screen_next_btn(SCR_ABOUT, false, BTN_LOW), SCR_SETTINGS);
+    CHECK_EQ(screen_next_btn(SCR_SETTINGS, false, BTN_TOP), SCR_SETTINGS);
+    CHECK_EQ(screen_next_btn(SCR_WIFI, true, BTN_LOW), SCR_WIFI);
+    CHECK_EQ(screen_next(SCR_SETTINGS, false, UI_EV_LOST), SCR_HOME);
+    CHECK_EQ(screen_next(SCR_WIFI, true, UI_EV_LOST), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_ABOUT, false, UI_EV_SWIPE_LEFT), SCR_ABOUT);
+}
+
 int main(void)
 {
     test_combo_opens_ice_from_home();
@@ -163,7 +256,12 @@ int main(void)
     test_swipe_cycle_today_home_focus();
     test_inbox_back();
     test_swipes_ignored_in_lost_mode();
+    test_menu_opens_and_closes();
+    test_menu_never_opens_in_lost_mode();
     test_owner_defaults();
     test_find_overlay_does_not_leave_lost();
+    test_calendar_and_notice_popup();
+    test_weather_screen();
+    test_settings_screens();
     return g_failed ? 1 : 0;
 }
