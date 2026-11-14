@@ -176,8 +176,8 @@ static void arc_draw(lv_event_t *e)
 }
 
 /* Conservative bands around the 225 px outer / 213 px inner arc, including AA.
- * Sixteen horizontal bands bound the circle with integer sqrt (outer 226, inner 211).
- * They cover 42801 pixels instead of a 466x466 bounding rectangle. USER_1 marks
+ * Coalesced horizontal bands conservatively cover the same circle as the original
+ * 30 rectangles, with fewer invalidations. USER_1 marks
  * this known custom ring; USER_2 marks other custom paints inside their object. */
 #ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
 static void invalidate_arc(lv_obj_t *o)
@@ -190,22 +190,14 @@ static void invalidate_arc(lv_obj_t *o)
         {357, 63, 409, 90},
         {37, 91, 77, 119},
         {389, 91, 429, 119},
-        {24, 120, 55, 147},
-        {411, 120, 442, 147},
-        {14, 148, 40, 175},
-        {426, 148, 452, 175},
-        {9, 176, 30, 203},
-        {436, 176, 457, 203},
-        {7, 204, 25, 232},
-        {441, 204, 459, 232},
-        {7, 233, 24, 260},
-        {442, 233, 459, 260},
-        {8, 261, 30, 288},
-        {436, 261, 458, 288},
-        {14, 289, 40, 316},
-        {426, 289, 452, 316},
-        {23, 317, 55, 345},
-        {411, 317, 443, 345},
+        {14, 120, 55, 175},
+        {411, 120, 452, 175},
+        {7, 176, 30, 232},
+        {436, 176, 459, 232},
+        {7, 233, 30, 288},
+        {436, 233, 459, 288},
+        {14, 289, 55, 345},
+        {411, 289, 452, 345},
         {37, 346, 76, 373},
         {390, 346, 429, 373},
         {56, 374, 106, 401},
