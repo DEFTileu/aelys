@@ -19,7 +19,7 @@ def test_existing_0057_database_gains_the_weather_table_and_keeps_the_owner(tmp_
         with engine.begin() as db:
             assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == alembic_head()
             assert db.scalar(sa.text("SELECT email FROM users WHERE id='preserved-owner'")) == "local"
-            db.execute(sa.text("INSERT INTO companion_weather (owner_id,name,lat,lon) VALUES ('preserved-owner','Testville',55.8,37.6)"))
+            db.execute(sa.text("INSERT INTO companion_weather (owner_id,name,lat,lon) VALUES ('preserved-owner','Testville',12.3,45.7)"))
         run_alembic(url, "downgrade", "0057_companion_character")
         assert not sa.inspect(engine).has_table("companion_weather")
         with engine.connect() as db:

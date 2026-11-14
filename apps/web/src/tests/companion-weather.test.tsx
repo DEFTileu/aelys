@@ -8,7 +8,7 @@ vi.mock('../lib/companion/api', () => ({ companion: { weather: m.weather, setWea
 vi.mock('../lib/weather', () => ({ searchCities: m.searchCities }))
 
 const OFF = { name: null, lat: null, lon: null, updated: null }
-const CITY = { id: 7, name: 'Testville', region: 'Testland', latitude: 55.8, longitude: 37.6, mode: 'city' as const }
+const CITY = { id: 7, name: 'Testville', region: 'Testland', latitude: 12.3, longitude: 45.7, mode: 'city' as const }
 let host: HTMLDivElement
 let root: ReturnType<typeof createRoot>
 const button = (text: string) => [...host.querySelectorAll('button')].find((b) => b.textContent?.includes(text))!
@@ -37,20 +37,20 @@ describe('Weather on Aelys', () => {
 
   it('searches with the app geocoder and sends the chosen city', async () => {
     m.searchCities.mockResolvedValue([CITY])
-    m.setWeather.mockResolvedValue({ name: 'Testville', lat: 55.8, lon: 37.6, updated: null })
+    m.setWeather.mockResolvedValue({ name: 'Testville', lat: 12.3, lon: 45.7, updated: null })
     await mount()
     await type(host.querySelector<HTMLInputElement>('input[type="search"]')!, 'Test')
     await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))); await settle()
     expect(m.searchCities).toHaveBeenCalledWith('Test')
     expect(host.querySelector('[aria-label="Matching cities"]')?.textContent).toContain('Testland')
     await act(async () => button('Use').click()); await settle()
-    expect(m.setWeather).toHaveBeenCalledWith({ name: 'Testville', lat: 55.8, lon: 37.6 })
+    expect(m.setWeather).toHaveBeenCalledWith({ name: 'Testville', lat: 12.3, lon: 45.7 })
     expect(host.textContent).toContain('Aelys shows the weather here')
     expect(host.querySelector('[aria-label="Matching cities"]')).toBeNull()
   })
 
   it('shows the saved city and turns weather off', async () => {
-    m.weather.mockResolvedValue({ name: 'Testville', lat: 55.8, lon: 37.6, updated: null })
+    m.weather.mockResolvedValue({ name: 'Testville', lat: 12.3, lon: 45.7, updated: null })
     m.clearWeather.mockResolvedValue(OFF)
     await mount()
     expect(host.textContent).toContain('Testville')

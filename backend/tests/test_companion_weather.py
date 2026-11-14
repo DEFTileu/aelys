@@ -64,7 +64,7 @@ async def owner_session(client):
 
 
 async def put_city(client, session, **body):
-    return await client.put(f"{B}/companion/weather", headers=bearer(session), json={"name": "Testville", "lat": 55.755, "lon": 37.617} | body)
+    return await client.put(f"{B}/companion/weather", headers=bearer(session), json={"name": "Testville", "lat": 12.345, "lon": 45.678} | body)
 
 
 async def snap(owner_id, now=NOW):
@@ -85,12 +85,12 @@ def test_parse_forecast_rounds_and_keeps_only_future_hours():
 async def test_put_rounds_coordinates_and_get_returns_them(client):
     session, _ = await owner_session(client)
     assert (await client.get(f"{B}/companion/weather", headers=bearer(session))).json() == {"name": None, "lat": None, "lon": None, "updated": None}
-    put = await put_city(client, session, name="  Testville  ", lat=-0.04, lon=37.649)
-    assert put.status_code == 200 and put.json() == {"name": "Testville", "lat": 0.0, "lon": 37.6, "updated": None}
+    put = await put_city(client, session, name="  Testville  ", lat=-0.04, lon=45.649)
+    assert put.status_code == 200 and put.json() == {"name": "Testville", "lat": 0.0, "lon": 45.6, "updated": None}
     assert (await client.get(f"{B}/companion/weather", headers=bearer(session))).json()["lat"] == 0.0
     async with db.SessionLocal() as s:
         row = await s.get(CompanionWeather, (await client.get(f"{B}/me", headers=bearer(session))).json()["id"])
-        assert (row.lat, row.lon) == (0.0, 37.6) and str(row.lat) == "0.0"  # never -0.0, never the precise value
+        assert (row.lat, row.lon) == (0.0, 45.6) and str(row.lat) == "0.0"  # never -0.0, never the precise value
 
 
 @pytest.mark.asyncio
@@ -141,7 +141,7 @@ async def test_fetch_sends_only_rounded_coordinates_and_fills_the_snapshot(clien
     session, owner_id = await owner_session(client)
     await put_city(client, session)
     assert await weather.refresh_if_due(owner_id, NOW)
-    assert fetches == [(55.8, 37.6)]
+    assert fetches == [(12.3, 45.7)]
     w = (await snap(owner_id)).weather
     assert (w.temp, w.code, w.hi, w.lo, w.updated) == (7, 61, 10, 0, NOW)
     assert [(h.h, h.t, h.c) for h in w.hours] == [(13, 13, 1), (14, 14, 2), (15, 15, 3), (16, 16, 0), (17, 17, 1)]  # the next 5 hours, city-local
@@ -159,10 +159,10 @@ async def test_cache_window_is_thirty_minutes(client, fetches):
     assert await weather.refresh_if_due(owner_id, NOW + timedelta(minutes=30))
     assert len(fetches) == 2
     # re-saving the same place does not reset the window; another place does
-    await put_city(client, session, name="Renamed", lat=55.76)
+    await put_city(client, session, name="Renamed", lat=12.34)
     assert not await weather.refresh_if_due(owner_id, NOW + timedelta(minutes=31)) and len(fetches) == 2
     await put_city(client, session, lat=10.0)
-    assert await weather.refresh_if_due(owner_id, NOW + timedelta(minutes=31)) and fetches[-1] == (10.0, 37.6)
+    assert await weather.refresh_if_due(owner_id, NOW + timedelta(minutes=31)) and fetches[-1] == (10.0, 45.7)
 
 
 @pytest.mark.asyncio
