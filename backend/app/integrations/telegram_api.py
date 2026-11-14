@@ -221,6 +221,9 @@ async def settings(body: SettingsIn, principal=Depends(current_principal), db: A
         values['pending_digest_on'] = None
         values['pending_digest_at'] = None
     claimed = await db.execute(update(TelegramIntegration).where(TelegramIntegration.id == item.id, TelegramIntegration.version == body.version).values(**values, version=TelegramIntegration.version + 1))
+    if int(getattr(claimed, 'rowcount', 0) or 0) == 1 and values.get('enabled') is False:
+        from .telegram_task_suggestions import invalidate_suggestions
+        await invalidate_suggestions(db, integration_id=item.id, at=now())
     await db.commit()
     if int(getattr(claimed, "rowcount", 0) or 0) != 1:
         raise service.error(409, "VERSION_CONFLICT", "Настройки уже изменились. Обновите подключение.")

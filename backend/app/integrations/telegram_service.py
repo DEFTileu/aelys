@@ -116,6 +116,8 @@ async def status(db: AsyncSession, owner_id: str) -> dict[str, Any]:
 
 
 async def clear_messages(db: AsyncSession, integration_id: str, connection_id: str | None = None) -> None:
+    from .telegram_task_suggestions import invalidate_suggestions
+    await invalidate_suggestions(db, integration_id=integration_id, connection_id=connection_id, at=now())
     commands = [TelegramBusinessCommand.integration_id == integration_id]
     if connection_id is not None:
         commands.append(TelegramBusinessCommand.business_connection_id == connection_id)
@@ -127,6 +129,10 @@ async def clear_messages(db: AsyncSession, integration_id: str, connection_id: s
 
 
 async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None:
+    from .telegram_task_suggestions import invalidate_suggestions
+    await invalidate_suggestions(db, integration_id=item.id, at=now())
+    item.task_suggestions_chat_id = None
+    item.task_suggestions_enabled_at = None
     from .telegram_avatar import forget
     forget(item.id)
     item.owner_name = None
@@ -138,6 +144,8 @@ async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None
 
 
 async def accept_connection(db: AsyncSession, item: TelegramIntegration, raw: dict[str, Any]) -> TelegramBusinessConnection | None:
+    from .telegram_task_suggestions import lock_integration
+    await lock_integration(db, item.id)
     user = mapping(raw.get("user"))
     connection_id = raw.get("id")
     if not isinstance(connection_id, str) or not 1 <= len(connection_id) <= 256 or not item.owner_telegram_id or user.get("id") != item.owner_telegram_id or not integer(raw.get("user_chat_id")):
@@ -179,6 +187,7 @@ async def verified_connection(db: AsyncSession, item: TelegramIntegration, clien
 
 async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: dict[str, Any], client: TelegramClient) -> str | None:
     """No raw update/body is persisted. Receipt + cursor commit with domain data."""
+    from .telegram_task_suggestions import invalidate_suggestions, lock_integration
     connection_raw = payload.get("business_connection")
     if isinstance(connection_raw, dict):
         await accept_connection(db, item, connection_raw)
@@ -221,12 +230,22 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
     connection = await verified_connection(db, item, client, connection_id)
     if connection is None:
         return None
+    await lock_integration(db, item.id)
+    if not item.enabled or item.deleted_at:
+        return None
     chat = mapping(raw.get("chat"))
     if chat.get("type") != "private" or not integer(chat.get("id")):
         return None
     if payload.get("deleted_business_messages"):
         ids = raw.get("message_ids")
         if isinstance(ids, list):
+            sources = list((await db.scalars(select(TelegramBusinessMessage.id).where(
+                TelegramBusinessMessage.integration_id == item.id,
+                TelegramBusinessMessage.business_connection_id == connection_id,
+                TelegramBusinessMessage.chat_id == chat['id'],
+                TelegramBusinessMessage.telegram_message_id.in_([value for value in ids[:1000] if integer(value)]),
+            ))).all())
+            await invalidate_suggestions(db, integration_id=item.id, source_ids=sources, at=now())
             await db.execute(update(TelegramBusinessCommand).where(
                 TelegramBusinessCommand.integration_id == item.id,
                 TelegramBusinessCommand.business_connection_id == connection_id,
@@ -278,6 +297,7 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
             reply_id = stored.reply_to_telegram_message_id
         if stored.deleted_at or (stored.text == text and stored.media_metadata == media_metadata and stored.reply_to_telegram_message_id == reply_id):
             return None
+        await invalidate_suggestions(db, integration_id=item.id, source_ids=[stored.id], at=now())
         stored.owner_note = None
         stored.media_metadata = media_metadata; stored.reply_to_telegram_message_id = reply_id
         stored.text = text; stored.edited_at = now(); stored.version += 1
@@ -286,6 +306,11 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
     else:
         stored = TelegramBusinessMessage(owner_id=item.owner_id, integration_id=item.id, business_connection_id=connection_id, chat_id=chat["id"], telegram_message_id=raw["message_id"], sender_id=sender["id"], chat_title=str(chat.get("first_name") or chat.get("title") or chat.get("username") or chat["id"])[:200], text=text, sent_at=sent_at, direction=direction, media_metadata=media_metadata, reply_to_telegram_message_id=reply_id)
         db.add(stored)
+        if (direction == 'inbound' and not media_metadata and not payload.get('edited_business_message')
+                and item.task_suggestions_chat_id == chat['id'] and item.task_suggestions_enabled_at
+                and sent_at >= utc(item.task_suggestions_enabled_at)):
+            from .telegram_task_suggestions import DAILY_LIMIT, daily_attempts
+            stored.task_suggestion_state = ('skipped_limit' if await daily_attempts(db, item.id, now()) >= DAILY_LIMIT else 'queued')
     await db.flush()
     if direction == "owner" and not forwarded and not payload.get("edited_business_message"):
         from .telegram_commands import enqueue_command
@@ -338,6 +363,10 @@ async def poll_once(integration_id: str, *, timeout: int = 20) -> int | None:
                         await db.rollback()
                         return None
                     await db.commit(); processed += 1
+                    callback = payload.get('callback_query')
+                    if isinstance(callback, dict):
+                        from .telegram_task_controls import handle_task_callback
+                        await handle_task_callback(db, item, callback, client)
                     if response_text and item.owner_telegram_id:
                         # Shortcut: confirmations are at-most-once. A failed send never
                         # rolls back capture or retries a committed update (no duplicates).
@@ -652,6 +681,8 @@ async def poll_integration_safely(integration_id: str) -> bool:
         await poll_once(integration_id)
         from .telegram_commands import command_iteration
         await command_iteration(integration_id)
+        from .telegram_task_suggestions import suggestion_iteration
+        await suggestion_iteration(integration_id)
         await auto_reply_once(integration_id)
         from .telegram_reminders import deliver_telegram_reminders
         await deliver_telegram_reminders(integration_id)
@@ -667,6 +698,11 @@ async def poll_integration_safely(integration_id: str) -> bool:
 async def connector_iteration() -> None:
     async with database.SessionLocal() as db:
         ids = list((await db.execute(select(TelegramIntegration.id).where(TelegramIntegration.enabled.is_(True), TelegramIntegration.encrypted_token.is_not(None)))).scalars())
+        # Acquire integration/source/action in order before draft recovery touches
+        # message rows. Include paused integrations in retention invalidation.
+        from .telegram_task_suggestions import invalidate_suggestions
+        for integration_id in (await db.scalars(select(TelegramIntegration.id).order_by(TelegramIntegration.id))).all():
+            await invalidate_suggestions(db, integration_id=integration_id, at=now(), before=now()-timedelta(days=7))
         # Failed workers never blindly re-send ambiguous deliveries.
         from .telegram_chat import recover_stale_sends
         await recover_stale_sends(db)

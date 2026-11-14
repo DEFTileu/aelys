@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .telegram_models import TelegramIntegration
 
-HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/new\n/remember <факт>\n/forget <ID или текст>\n/memory\n/help'
+HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/new\n/remember <факт>\n/forget <ID или текст>\n/memory\n/task_suggestions [status|on <chat_id>|off]\n/help'
 REMIND_HELP = 'Пример: /remind 18:00 Позвонить, /remind 2026-11-05 18:00 Встреча или /remind 2h Проверить. Укажите будущее время и текст до 300 символов.'
 BUSY_HELP = 'Пример: /busy 18:00 занят. Время HH:MM, текст от 1 до 200 символов.'
 
@@ -96,6 +96,9 @@ async def handle_owner_message(db: AsyncSession, item: TelegramIntegration, text
                 item.personal_conversation_id = conversation.id
                 item.version += 1
                 return 'Новая беседа начата.'
+            if command == '/task_suggestions':
+                from .telegram_task_controls import handle_task_suggestions
+                return await handle_task_suggestions(db, item, body, at)
             if command in {'/task', '/note'}:
                 if not body or not body.splitlines()[0].strip() or len(body.splitlines()[0]) > 300:
                     return 'Укажите заголовок от 1 до 300 символов, остальное — со следующей строки.'

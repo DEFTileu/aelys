@@ -2,8 +2,8 @@
 import sqlalchemy as sa
 from alembic import op
 
-revision = '0055_companion_character'
-down_revision = '0054_telegram_command_sessions'
+revision = '0057_companion_character'
+down_revision = '0056_telegram_task_suggestions'
 branch_labels = None
 depends_on = None
 

@@ -74,6 +74,16 @@ If Gmail OAuth is not in MVP, mail records may come from import; do not invent p
 `ai_runs(id,conversation_id,provider,model,status,token_counts,cost_estimate,started_at,completed_at,...)`.
 **Rule:** raw local agent session excerpt (if retrieved) must not be persisted in AI chat transcript unless user explicitly chose to retain it. Store redacted citation refs and response as allowed; audit content retention setting.
 
+### Implemented ai_actions — migration 0055
+
+Existing owner-scoped action proposals keep their tool arguments, preview,
+status and result in one row. Migration `0055_ai_action_sources` adds nullable
+`source_kind VARCHAR(40)`, `source_id VARCHAR(36)` and `expires_at TIMESTAMPTZ`.
+Legacy rows retain their payload/version with NULL metadata and no expiry.
+Source references are opaque application IDs, not a copy of the source message.
+No source-version, digest or separate receipt table is introduced. Expiry is
+enforced by shared approval; future connectors own eager source invalidation.
+
 ### agent_session_index (CLOUD ONLY)
 `id PK`, `owner_id`, `device_id`, `project_id NULL`, `adapter ENUM(claude_code,codex_cli)`, `opaque_local_session_ref`, `started_at`, `last_activity_at`, `message_count NULL`, `state`, `last_indexed_at`.
 No `prompt`, `messages`, `summary`, `embedding`, source code, absolute path, command history, transcript titles by default. Keep minimal cloud-safe metadata; encrypt/ref HMAC any local identifiers if linkable.
@@ -212,3 +222,12 @@ Mail formatting (2026-11-04): migration `0042_mail_html_body` adds nullable
 means legacy/not yet imported; empty string means imported with no usable HTML.
 The existing plaintext body, read flag, identity and versions remain. HTML is
 exposed only by owner-scoped detail reads, not list/page payloads.
+
+Telegram task suggestions (migration 0056): nullable integration-level
+`task_suggestions_chat_id BIGINT` and `task_suggestions_enabled_at TIMESTAMPTZ`
+select one chat and the opt-in boundary; nullable message-level
+`task_suggestion_state VARCHAR(24)` is an independent durable work claim. State
+writes preserve both message.version and updated_at. No source version, new
+queue/receipt table, message copy or sync/export resource is introduced.
+`AIRun.tool_scope_json` stores feature/integration/source IDs for daily attempt
+accounting; run audits survive restart without persisting the source text.

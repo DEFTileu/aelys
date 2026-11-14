@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, inspect, text
 
 
 def test_character_migration_preserves_existing_state(monkeypatch):
-    path = Path(__file__).parents[1] / 'alembic/versions/0055_companion_character.py'
+    path = Path(__file__).parents[1] / 'alembic/versions/0057_companion_character.py'
     spec = importlib.util.spec_from_file_location('character_migration', path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
@@ -27,7 +27,7 @@ def test_character_migration_preserves_existing_state(monkeypatch):
 
 def test_character_migration_preserves_partially_existing_columns(monkeypatch):
     """The legacy metadata bootstrap can have already created some new columns."""
-    path = Path(__file__).parents[1] / 'alembic/versions/0055_companion_character.py'
+    path = Path(__file__).parents[1] / 'alembic/versions/0057_companion_character.py'
     spec = importlib.util.spec_from_file_location('character_migration_partial', path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
@@ -46,7 +46,7 @@ def test_character_migration_preserves_partially_existing_columns(monkeypatch):
 
 
 def test_character_migration_preserves_all_existing_character_values(monkeypatch):
-    path = Path(__file__).parents[1] / 'alembic/versions/0055_companion_character.py'
+    path = Path(__file__).parents[1] / 'alembic/versions/0057_companion_character.py'
     spec = importlib.util.spec_from_file_location('character_migration_existing', path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)

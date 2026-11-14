@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+from collections.abc import Mapping
 from types import TracebackType
 from typing import Any, Self
 
@@ -14,6 +15,7 @@ _ALLOWED_UPDATES = (
     "business_message",
     "edited_business_message",
     "deleted_business_messages",
+    "callback_query",
 )
 
 
@@ -32,6 +34,36 @@ class _TelegramLogFilter(logging.Filter):
 _log_filter = _TelegramLogFilter()
 for _name in ("httpx", "httpcore", "httpcore.connection", "httpcore.http11", "httpcore.http2", "httpcore.proxy", "httpcore.socks_proxy"):
     logging.getLogger(_name).addFilter(_log_filter)
+
+
+def _inline_keyboard(value: Mapping[str, Any], *, allow_empty: bool = False) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != {"inline_keyboard"}:
+        raise ValueError("reply_markup must contain only inline_keyboard")
+    rows = value["inline_keyboard"]
+    if not isinstance(rows, list) or (not allow_empty and not rows) or len(rows) > 100:
+        raise ValueError("inline_keyboard must contain 1 to 100 rows")
+    buttons = 0
+    for row in rows:
+        if not isinstance(row, list) or not row or len(row) > 8:
+            raise ValueError("inline keyboard rows must contain 1 to 8 buttons")
+        for button in row:
+            if not isinstance(button, dict) or set(button) != {"text", "callback_data"}:
+                raise ValueError("buttons must contain only text and callback_data")
+            label, callback = button["text"], button["callback_data"]
+            if not isinstance(label, str) or not 1 <= len(label) <= 64:
+                raise ValueError("button text must contain 1 to 64 characters")
+            if not isinstance(callback, str):
+                raise TypeError("callback_data must be a string")
+            try:
+                callback_size = len(callback.encode("utf-8"))
+            except UnicodeEncodeError:
+                callback_size = 65
+            if not 1 <= callback_size <= 64:
+                raise ValueError("callback_data must contain 1 to 64 UTF-8 bytes")
+            buttons += 1
+            if buttons > 100:
+                raise ValueError("inline keyboard has too many buttons")
+    return dict(value)
 
 
 class TelegramError(Exception):
@@ -201,7 +233,7 @@ class TelegramClient:
 
     async def send_message(
         self, chat_id: int, text: str, *, business_connection_id: str | None = None,
-        reply_to_message_id: int | None = None,
+        reply_to_message_id: int | None = None, reply_markup: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not 1 <= len(text) <= 4096:
             raise ValueError("message text must contain 1 to 4096 characters")
@@ -212,7 +244,34 @@ class TelegramClient:
             payload["business_connection_id"] = business_connection_id
         if reply_to_message_id is not None:
             payload["reply_parameters"] = {"message_id": reply_to_message_id}
+        if reply_markup is not None:
+            payload["reply_markup"] = _inline_keyboard(reply_markup)
         return await self._object("sendMessage", payload)
+
+    async def answer_callback_query(self, query_id: str, text: str | None = None) -> bool:
+        if not isinstance(query_id, str) or not 1 <= len(query_id.encode("utf-8")) <= 256:
+            raise ValueError("query_id must contain 1 to 256 UTF-8 bytes")
+        payload: dict[str, Any] = {"callback_query_id": query_id}
+        if text is not None:
+            if not isinstance(text, str) or not 1 <= len(text) <= 200:
+                raise ValueError("callback text must contain 1 to 200 characters")
+            payload["text"] = text
+        result = await self._request("answerCallbackQuery", payload)
+        if type(result) is not bool:
+            raise TelegramError("invalid_response")
+        return result
+
+    async def edit_message_reply_markup(
+        self, chat_id: int, message_id: int, reply_markup: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if type(chat_id) is not int or chat_id == 0 or abs(chat_id) > 2**52:
+            raise ValueError("chat_id must be a bounded integer")
+        if type(message_id) is not int or message_id <= 0:
+            raise ValueError("message_id must be a positive integer")
+        keyboard = {"inline_keyboard": []} if reply_markup is None else _inline_keyboard(reply_markup, allow_empty=True)
+        return await self._object("editMessageReplyMarkup", {
+            "chat_id": chat_id, "message_id": message_id, "reply_markup": keyboard,
+        })
 
     async def edit_message_text(
         self, chat_id: int, message_id: int, text: str, *, business_connection_id: str

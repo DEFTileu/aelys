@@ -358,3 +358,69 @@ now also counts as a new incoming message and suppresses a stale text auto-reply
 Media generation is explicitly preview-only: no model analysis, transcription,
 new Business media send path or AI permissions are introduced. Forwarded media,
 video and other unsupported types remain outside this viewing slice.
+
+## Opt-in task suggestions — Task 2, 2026-11-14
+
+In the bound owner's private bot chat, `/task_suggestions` shows known Business
+chats and the selected chat, plus remaining extraction attempts today. It also
+shows current sent/no_candidate/failed/unknown/skipped_limit counts for messages
+ingested today (UTC), without source text or exception details.
+`/task_suggestions on <chat_id>` enables one known chat from this instant;
+`/task_suggestions off` disables extraction and invalidates pending proposals.
+Existing `/task` and Business `/ask`/`/search` keep their existing behavior.
+Auto-reply can remain disabled: suggestions never reply to the contact.
+
+Only newly received plain inbound text in this chat is eligible. Forwarded,
+media, bot and owner messages are excluded. An independent message state stores
+queued/generating/ready/sending/sent or a terminal outcome; updates preserve the
+message version and updated_at, so draft CAS and recovery remain independent.
+No TelegramBusinessCommand rows or new queue service are used.
+
+Extraction uses the configured BYOK provider, shared budget/timeout and untrusted
+text boundary, without tools, web search, private memory or other chats. A
+strict CreateTaskToolArgs JSON object (or null) proposes at most one task;
+project assignment is unavailable. Dates use the source message instant and
+owner timezone; unclear deadlines stay empty. The run audit records durable
+attempt/usage metadata, with a hidden conversation and no chat-message copy.
+An integration row lock serializes the limit of 20 attempts per UTC day;
+failed/interrupted calls count. Exhausted messages become skipped_limit and are
+not queued for tomorrow. Existing monthly provider budget also applies.
+
+A proposal is committed before its private inline card is sent. The owner can
+create or reject it there through the same action service as Web approvals.
+Callbacks verify the bound owner, private chat, bot identity and action
+provenance; callback data contains an operation and opaque action ID only.
+Repeated approval returns the existing task ID. Rejected, missing, stale and
+expired cards return a terminal explanation; they never execute a task again.
+The action/task/sync result commits before Telegram confirmation or keyboard
+removal. Expiration is 24 hours, shortened by the source's seven-day retention;
+a connector sweep expires pending proposals even without a button click.
+
+Source edit/delete/revoke, clearing, bot replacement, disconnect, pause and off
+invalidate pending actions atomically with the source change. Approval locks
+only its action row. Changes of source edited_at or opt-in/token/model settings
+while the model runs prevent a preview. Draft-only changes do not invalidate it.
+Pending invalidated payloads are erased; already approved owner tasks remain.
+
+A durable ready card can resume sending after a restart. Sending is claimed and
+committed before I/O; interrupted or ambiguous delivery becomes unknown and is
+never retried automatically. Interrupted generation becomes failed, without
+another model call. A card arriving after off is harmless: its pending action
+has already been invalidated. No production migration, live Telegram messages
+or opt-in settings are changed by automated validation. Live owner acceptance
+in one expressly selected chat remains separate from local deterministic tests.
+
+Task 2 review fixes (2026-11-14): retention/off/clear invalidation uses direct SQL
+state updates and an action-source subquery, with the integration lock retaining
+worker serialization. It does not materialize retained history IDs or lock
+already terminal message rows. A single standalone JSON code fence is accepted
+through the same normalizer as secretary drafts; strict schema checks still
+reject prose, multiple blocks and extra arguments. Disabled suggestions return
+before worker write locks or run-history scans. No schema migration was added.
+
+Live-smoke correction (2026-11-14): Telegram's `can_read_messages` grants marking
+messages as read, not delivery of Business updates. Suggestions therefore require
+an enabled owner-bound Business connection and explicit chat opt-in, independently
+of this optional mark-as-read flag. Disabling it does not invalidate a proposal;
+connection revocation/off still do. See the official
+[BusinessBotRights contract](https://core.telegram.org/bots/api#businessbotrights).

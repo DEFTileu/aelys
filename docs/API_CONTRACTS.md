@@ -707,6 +707,13 @@ there are no new endpoint permissions in the merge revision.
   with the owner's write scope (a repeat returns the stored result; a failure stores
   `result.error {code, message}` and status `failed`; rejected actions return 409).
   `POST /ai/actions/{id}/reject` is idempotent for rejected actions.
+  Shared approval/rejection also serves future connector callbacks without a
+  task-only execution path. Server-stored `expires_at` is checked after the
+  pending CAS acquires its row lock; expiration returns the same action shape
+  with status `failed` and `result.error.code=ACTION_EXPIRED`, without domain mutation.
+  Legacy NULL expiry remains valid. Source invalidators may win the same pending
+  CAS with status `failed`/`ACTION_SOURCE_STALE`; approval never reads connector
+  tables. Source metadata and expiry are internal, with no new request payload.
 - `ai.tool.requested` / `ai.tool.result` carry `label` ("Read your tasks"),
   `source` (`tasks|calendar|notes`) and, on results, `detail` ("6 tasks, 2 due this
   week"). `ai.run.completed` carries `input_tokens`, `output_tokens`, `estimated_cost`.
@@ -838,3 +845,11 @@ POST /api/v1/devices/{id}/revoke                # closes the open socket with 44
 `NOT_FOUND` (404, board unknown, revoked, or another owner's), `DEVICE_OFFLINE` (409),
 `UNAUTHORIZED` (401, revoked or unknown device at challenge), `VALIDATION_ERROR` (422).
 Action failures are reported in `action_result.error_code`, not as HTTP errors.
+
+Telegram private `/task_suggestions [status|on <chat_id>|off]` uses the verified
+owner command channel; no new REST endpoint or public StatusOut fields.
+Opt-in and callbacks are Telegram-only. Inline callback data is `ats:a:<UUID>`
+or `ats:r:<UUID>` (approve/reject), with identity and server-stored provenance
+checks; common action-service HTTP 404/409 errors become terminal private texts.
+The owner task result is committed before callback acknowledgement and keyboard
+removal. No callback arguments or scopes are accepted from the client.
