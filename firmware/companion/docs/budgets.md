@@ -73,6 +73,28 @@ time includes drawing and instrumentation; it is not a direct CPU profile.
 The extra timing calls affect this short probe, and Offline results must not be
 compared as if the network workload were identical.
 
+An experimental 22-region sparse redraw (`5403d57`) passed the host
+partial-vs-full framebuffer regression. An exhaustive comparison of the old
+30 ring rectangles with the 22 replacements found no uncovered pixels; the
+new set adds 3556 pixels. In roughly 320 seconds on the board it produced 306
+complete samples, 99 Online, and 174 successful switches; worst frame was
+42062 µs and worst switch 52736 µs, so both absolute budgets **FAIL**. Five
+complete histogram windows containing 149 switches gave p50 [25,30) ms,
+p90 [35,40) ms and p99 [50,55) ms. No queue or transfer failures were reported.
+
+A subsequent 310-second full-redraw control used the same branch, profiler,
+32 KiB cache and reconnect settings; its configuration differed only in the
+sparse flag. It had 310 complete samples, all Offline, and 163 successful
+switches; worst frame was 36710 µs and worst switch 52250 µs. Five complete
+windows with 150 switches gave p50 [35,40) ms, p90 [45,50) ms and p99
+[50,55) ms. In the first 60-second window of each run, when both were Offline,
+sparse p50/p90 were [20,25)/[30,35) ms versus [30,35)/[45,50) ms for full
+redraw (30 switches each). Network availability, snapshots and animation
+phases differed across runs, so these observations do not establish an Online
+speedup. The sparse experiment stays disabled by default pending matched
+Online testing, and does not close S1's performance gates. The board was
+returned to the normal sound/probe/chaos/sparse-off app and hash verified.
+
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
 Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line per period.
 
