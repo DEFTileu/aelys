@@ -48,3 +48,14 @@ including the 33000-row regression; all PostgreSQL variants ran. Final fixture
 with erased retained content also passed separately. Ruff, mypy (132 source
 files), Bandit, compileall, unchanged OpenAPI comparison and independent
 read-only review passed. The temporary cluster was stopped after validation.
+
+
+Rollout (2026-11-14): main integration 9440b27 deployed successfully to the
+existing Railway api service. Startup applied 0054→0055→0056; healthz returned ok.
+The first private status smoke exposed an incorrect permission assumption:
+can_read_messages means mark-as-read, not permission to receive incoming updates.
+Removed that extra gate while retaining enabled connection/owner/opt-in checks.
+Regression reproduced before fix; focused business/controls/suggestions 138 passed,
+full backend 1589 passed / 155 skipped / one existing warning (221.37s).
+Live proposal/button acceptance is still in progress; no sender content retained
+in this report.

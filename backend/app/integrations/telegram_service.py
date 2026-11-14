@@ -167,9 +167,6 @@ async def accept_connection(db: AsyncSession, item: TelegramIntegration, raw: di
     owner_name = owner_profile_name(user) if enabled else None
     if owner_name:
         item.owner_name = owner_name
-    if enabled and not rights.get('can_read_messages'):
-        from .telegram_task_suggestions import invalidate_suggestions
-        await invalidate_suggestions(db, integration_id=item.id, connection_id=connection_id, at=now())
     if not enabled:
         await clear_messages(db, item.id, connection_id)
     await db.flush()

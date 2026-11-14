@@ -124,7 +124,7 @@ def _eligible(item: TelegramIntegration | None, source: TelegramBusinessMessage 
 async def _connection(db: AsyncSession, item: TelegramIntegration, source: TelegramBusinessMessage) -> bool:
     row = await db.get(TelegramBusinessConnection, source.business_connection_id, populate_existing=True)
     return bool(row and row.enabled and row.integration_id == item.id and row.owner_id == item.owner_id
-                and row.telegram_user_id == item.owner_telegram_id and row.rights.get('can_read_messages') is True)
+                and row.telegram_user_id == item.owner_telegram_id)
 
 
 async def _state(db: AsyncSession, source_id: str, expected: str, state: str) -> bool:

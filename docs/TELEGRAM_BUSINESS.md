@@ -396,7 +396,7 @@ The action/task/sync result commits before Telegram confirmation or keyboard
 removal. Expiration is 24 hours, shortened by the source's seven-day retention;
 a connector sweep expires pending proposals even without a button click.
 
-Source edit/delete/revoke, loss of read permission, clearing, bot replacement, disconnect, pause and off
+Source edit/delete/revoke, clearing, bot replacement, disconnect, pause and off
 invalidate pending actions atomically with the source change. Approval locks
 only its action row. Changes of source edited_at or opt-in/token/model settings
 while the model runs prevent a preview. Draft-only changes do not invalidate it.
@@ -417,3 +417,10 @@ already terminal message rows. A single standalone JSON code fence is accepted
 through the same normalizer as secretary drafts; strict schema checks still
 reject prose, multiple blocks and extra arguments. Disabled suggestions return
 before worker write locks or run-history scans. No schema migration was added.
+
+Live-smoke correction (2026-11-14): Telegram's `can_read_messages` grants marking
+messages as read, not delivery of Business updates. Suggestions therefore require
+an enabled owner-bound Business connection and explicit chat opt-in, independently
+of this optional mark-as-read flag. Disabling it does not invalidate a proposal;
+connection revocation/off still do. See the official
+[BusinessBotRights contract](https://core.telegram.org/bots/api#businessbotrights).

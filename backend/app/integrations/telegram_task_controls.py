@@ -82,7 +82,6 @@ async def handle_task_suggestions(db: AsyncSession, item: TelegramIntegration, b
             TelegramBusinessConnection.owner_id == item.owner_id,
             TelegramBusinessConnection.telegram_user_id == item.owner_telegram_id,
             TelegramBusinessConnection.enabled.is_(True),
-            TelegramBusinessConnection.rights['can_read_messages'].as_boolean().is_(True),
         ).limit(1))).first()
         if not known:
             return 'Чат не найден среди доступных личных Business-чатов.'
@@ -120,7 +119,6 @@ async def _known_chats(db: AsyncSession, item: TelegramIntegration) -> list[int]
         TelegramBusinessConnection.owner_id == item.owner_id,
         TelegramBusinessConnection.telegram_user_id == item.owner_telegram_id,
         TelegramBusinessConnection.enabled.is_(True),
-        TelegramBusinessConnection.rights['can_read_messages'].as_boolean().is_(True),
     ).distinct().order_by(TelegramBusinessMessage.chat_id))).all()
     return sorted({int(row.chat_id) for row in rows})
 

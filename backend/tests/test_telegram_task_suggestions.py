@@ -517,7 +517,7 @@ async def test_expired_pending_actions_are_hidden_before_status_reply(setup, mon
     assert all(entry[0] == OWNER for entry in fake.sent)
 
 
-async def test_read_permission_revocation_invalidates_pending_proposal(setup, monkeypatch):
+async def test_mark_as_read_permission_change_preserves_pending_proposal(setup, monkeypatch):
     from app.ai.actions import approve_action
     _, sessions, fake, integration_id, _, _ = await enabled(setup, monkeypatch)
     await queued(sessions, integration_id, fake)
@@ -530,8 +530,8 @@ async def test_read_permission_revocation_invalidates_pending_proposal(setup, mo
     async with sessions() as db:
         action = (await db.execute(select(AIAction))).scalar_one()
         result = await approve_action(db, action.owner_id, action.id)
-        assert result.status == 'failed' and result.result_json['error']['code'] == 'ACTION_SOURCE_STALE'
-        assert await db.scalar(select(func.count()).select_from(Task)) == 0
+        assert result.status == 'approved'
+        assert await db.scalar(select(func.count()).select_from(Task)) == 1
 
 
 async def test_new_message_after_daily_cap_is_terminal_at_ingestion(setup, monkeypatch):
@@ -752,3 +752,32 @@ async def test_disabled_worker_does_not_write_or_query_run_history(setup, monkey
     # or scan run history, independent of the number of retained runs.
     assert all(statement.lstrip().upper().startswith('SELECT') for statement in statements)
     assert not any('ai_runs' in statement.lower() for statement in statements)
+
+
+async def test_live_business_opt_in_does_not_require_mark_as_read_permission(setup, monkeypatch):
+    from app.integrations.telegram_models import TelegramBusinessConnection
+    _, sessions, fake, integration_id, calls, _ = await enabled(setup, monkeypatch)
+    async with sessions() as db:
+        item = await db.get(TelegramIntegration, integration_id)
+        item.task_suggestions_chat_id = None
+        item.task_suggestions_enabled_at = None
+        connection = await db.get(TelegramBusinessConnection, 'business-1')
+        connection.rights = {'can_reply': True, 'can_read_messages': False}
+        await db.commit()
+    fake.remote_connection['rights']['can_read_messages'] = False
+    fake.updates = [{'update_id': 10, 'message': {'text': '/task_suggestions',
+        'from': {'id': OWNER, 'is_bot': False}, 'chat': {'type': 'private', 'id': OWNER}}}]
+    await service.poll_once(integration_id, timeout=0)
+    assert str(CUSTOMER) in fake.sent[-1][1]
+    fake.updates = [{'update_id': 11, 'message': {'text': f'/task_suggestions on {CUSTOMER}',
+        'from': {'id': OWNER, 'is_bot': False}, 'chat': {'type': 'private', 'id': OWNER}}}]
+    await service.poll_once(integration_id, timeout=0)
+    async with sessions() as db:
+        item = await db.get(TelegramIntegration, integration_id)
+        assert item.task_suggestions_chat_id == CUSTOMER
+        item.task_suggestions_enabled_at = now()-timedelta(seconds=2)
+        await db.commit()
+    await queued(sessions, integration_id, fake, update_id=20)
+    await iteration(integration_id)
+    assert len(calls) == 1 and fake.sent[-1][0] == OWNER
+    assert 'reply_markup' in fake.sent[-1][2]
