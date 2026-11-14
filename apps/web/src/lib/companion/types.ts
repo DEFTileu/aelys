@@ -85,3 +85,6 @@ type LostFields = Omit<LostMode, 'since' | 'on'>
 export type LostBody = (LostFields & { on: true; reauth?: undefined }) | (LostFields & { on: false; reauth: CompanionReauth })
 export type IceBody = Ice
 export interface CommandResult { command_id: string }
+
+/** `name` is null while weather is off; `updated` stays null until the server has fetched a first forecast. */
+export interface CompanionWeather { name: string | null; lat: number | null; lon: number | null; updated: string | null }

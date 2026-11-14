@@ -5,6 +5,7 @@ import { companion, reauth } from '../../../lib/companion/api'
 import type { CompanionState } from '../../../lib/companion/types'
 import { Card, Group, Row } from '../ui'
 import { ReauthSheet } from './ReauthSheet'
+import { WeatherOnAelys } from './WeatherOnAelys'
 
 const FAILED = 'Something went wrong. Check the connection and try again.'
 const DEBOUNCE_MS = 400
@@ -71,6 +72,7 @@ export function DeviceSettingsPage({ state, onUnpaired }: Props) {
       </Card>
       {error && <div className="st-error" role="alert">{error}</div>}
     </Group>
+    <Group title="Weather on Aelys"><WeatherOnAelys /></Group>
     <Group title="Notifications on Aelys">
       <Card><Row title="Tasks, Calendar, Focus" hint="Titles only · always"><Lock size={18} aria-hidden="true" className="dv-lockicon" /></Row></Card>
     </Group>

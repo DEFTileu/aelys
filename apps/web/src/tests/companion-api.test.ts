@@ -127,4 +127,12 @@ describe('companion client', () => {
     expect(request.mock.calls[1][1]).toMatchObject({ body: { secret: 's', sas: '123456' } })
     expect(request.mock.calls.every(([, o]) => o?.queueOnOffline === false)).toBe(true)
   })
+
+  it('maps the weather city routes and never queues them offline', async () => {
+    const request = spy()
+    await companion.weather(); await companion.setWeather({ name: 'Testville', lat: 55.8, lon: 37.6 }); await companion.clearWeather()
+    expect(request.mock.calls.map(([path, o]) => `${o?.method} ${path}`)).toEqual(['GET /api/v1/companion/weather', 'PUT /api/v1/companion/weather', 'DELETE /api/v1/companion/weather'])
+    expect(request.mock.calls[1][1]).toMatchObject({ body: { name: 'Testville', lat: 55.8, lon: 37.6 } })
+    expect(request.mock.calls.every(([, o]) => o?.queueOnOffline === false)).toBe(true)
+  })
 })

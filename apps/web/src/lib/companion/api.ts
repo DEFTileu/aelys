@@ -1,10 +1,10 @@
 import { getApiConfig, getSharedApiClient, signWithThisDevice } from '../api'
 import { loadNativeTransport, isNativeHost, nativeBackendOrigin } from '../nativeTransport'
-import type { CommandResult, CompanionDevice, CompanionReauth, CompanionState, IceBody, LostBody } from './types'
+import type { CommandResult, CompanionDevice, CompanionReauth, CompanionState, CompanionWeather, IceBody, LostBody } from './types'
 
 export { encryptWifi, newPairingSecret, sha256Hex } from './ecies'
 
-const send = <T>(path: string, method: 'GET' | 'POST' | 'PUT', body?: unknown) =>
+const send = <T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE', body?: unknown) =>
   getSharedApiClient().request<T>(`/api/v1${path}`, { method, body, queueOnOffline: false })
 /** Plan 2 answers command routes with `{id, delivered}`; the app only ever uses `command_id`. */
 const command = async (path: string, method: 'GET' | 'POST' | 'PUT', body?: unknown): Promise<CommandResult> => {
@@ -29,6 +29,10 @@ export const companion = {
   orderWifi: (id: string, ssids: string[]) => command(`${dev(id)}/wifi/order`, 'PUT', { ssids }),
   setSettings: (id: string, body: { brightness: number }) => command(`${dev(id)}/settings`, 'PUT', body),
   restart: (id: string) => command(`${dev(id)}/restart`, 'POST'),
+  /** The owner's weather city for the board (not per device); the server keeps coordinates rounded to 0.1 degree. */
+  weather: () => send<CompanionWeather>('/companion/weather', 'GET'),
+  setWeather: (body: { name: string; lat: number; lon: number }) => send<CompanionWeather>('/companion/weather', 'PUT', body),
+  clearWeather: () => send<CompanionWeather>('/companion/weather', 'DELETE'),
   unpair: (id: string, reauth: CompanionReauth) => send<void>(`${dev(id)}/unpair`, 'POST', { reauth }),
 }
 
