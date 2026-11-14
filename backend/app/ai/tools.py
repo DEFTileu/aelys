@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from .errors import ToolValidationError, redact_error
+from .errors import RunCancelled, ToolValidationError, redact_error
 from .models import PermissionContext, ToolCall
 from .policy import PolicyEngine
 
@@ -60,5 +60,7 @@ class ToolRegistry:
         args = self.validate(call)
         try:
             return await descriptor.handler(args)
+        except RunCancelled:
+            raise
         except Exception as exc:  # noqa: BLE001 - registered tool implementations cross a redaction boundary
             raise RuntimeError(f"tool failed: {redact_error(exc)}") from None

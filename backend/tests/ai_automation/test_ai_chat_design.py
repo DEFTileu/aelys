@@ -105,6 +105,116 @@ def payloads(events, kind):
     return [data for name, data in events if name == kind]
 
 
+async def test_web_search_available_without_personal_sources_and_visible_in_events(tmp_path, monkeypatch):
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.ai.models import Capability, ProviderKind, Usage
+
+    class SearchService:
+        models = (SimpleNamespace(capabilities=frozenset({Capability.TOOL_CALLING})),)
+        calls = 0
+        async def complete(self, run_id, request, messages, **kwargs):
+            self.calls += 1
+            if kwargs.get('web_search'):
+                response = SimpleNamespace(text='Fact', tool_calls=(), search_used=True, sources=('https://example.org/fact',))
+            elif self.calls == 1:
+                assert 'web_search' in {tool['name'] for tool in kwargs['tools']}
+                response = SimpleNamespace(text='', tool_calls=({'id':'s','name':'web_search','input':{'query':'weather now'}},))
+            else:
+                response = SimpleNamespace(text='Fact', tool_calls=())
+            return SimpleNamespace(provider=ProviderKind.CLAUDE, model='test', response=response,
+                                   usage=SimpleNamespace(usage=Usage(1,1), estimated_cost=Decimal('0.01')))
+
+    async with chat(tmp_path, monkeypatch, []) as (client, _, _):
+        monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: SearchService())
+        conversation = (await client.post('/api/v1/ai/conversations', json={'tool_scope': {'scopes': ['web.search']}})).json()
+        events = await run(client, conversation['id'], 'weather?', 'search')
+        requested = payloads(events, 'ai.tool.requested')[0]
+        assert 'weather now' in requested['label'] or 'weather now' in requested.get('detail', '')
+        assert 'https://example.org/fact' in ''.join(data['text'] for data in payloads(events, 'ai.text.delta'))
+        assert 'https://example.org/fact' not in str(payloads(events, 'ai.tool.result'))
+
+
+async def test_exhausted_search_budget_is_reported_in_web_chat(tmp_path, monkeypatch):
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.ai.models import Capability, ProviderKind, Usage
+
+    class SearchService:
+        models = (SimpleNamespace(capabilities=frozenset({Capability.TOOL_CALLING})),)
+        async def complete(self, run_id, request, messages, **kwargs):
+            assert not kwargs.get('web_search')
+            response = SimpleNamespace(text='', tool_calls=({'id':'s','name':'web_search','input':{'query':'weather'}},))
+            return SimpleNamespace(provider=ProviderKind.CLAUDE, model='test', response=response,
+                                   usage=SimpleNamespace(usage=Usage(1,1), estimated_cost=Decimal(100)))
+
+    async with chat(tmp_path, monkeypatch, []) as (client, _, _):
+        monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: SearchService())
+        conversation = (await client.post('/api/v1/ai/conversations', json={'tool_scope': {'scopes': ['web.search']}})).json()
+        events = await run(client, conversation['id'], 'weather?', 'budget-search')
+        assert payloads(events, 'ai.run.failed')[0]['code'] == 'BUDGET_EXCEEDED'
+
+
+async def test_unsupported_provider_does_not_receive_search_tool(tmp_path, monkeypatch):
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from app.ai.models import Capability, Usage
+    from app.core.models import AIProvider
+
+    class SearchService:
+        models = (SimpleNamespace(capabilities=frozenset({Capability.TOOL_CALLING})),)
+        async def complete(self, run_id, request, messages, **kwargs):
+            assert 'web_search' not in {tool['name'] for tool in kwargs['tools']}
+            return SimpleNamespace(provider=SimpleNamespace(value='other'), model='test',
+                response=SimpleNamespace(text='done', tool_calls=()),
+                usage=SimpleNamespace(usage=Usage(1,1), estimated_cost=Decimal(0)))
+
+    async with chat(tmp_path, monkeypatch, []) as (client, _, factory):
+        monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: SearchService())
+        conversation = (await client.post('/api/v1/ai/conversations', json={'tool_scope': {'scopes': ['tasks.read', 'web.search']}})).json()
+        created = await client.post('/api/v1/ai/runs', json={'conversation_id': conversation['id'],
+            'message':'hello', 'idempotency_key':'unsupported', 'routing': {'provider':'claude', 'model':'chat-model'}})
+        async with factory() as db_session:
+            provider = (await db_session.execute(select(AIProvider))).scalar_one()
+            provider.kind = 'other'
+            await db_session.commit()
+        events = parse((await client.get(f"/api/v1/ai/runs/{created.json()['id']}/events")).text)
+        assert payloads(events, 'ai.run.completed')
+
+
+async def test_web_search_is_not_offered_without_opt_in(tmp_path, monkeypatch):
+    replies = [[{'type': 'text', 'text': 'General answer'}]]
+    async with chat(tmp_path, monkeypatch, replies) as (client, script, _):
+        conversation = (await client.post('/api/v1/ai/conversations', json={})).json()
+        events = await run(client, conversation['id'], 'weather?', 'no-search')
+        assert payloads(events, 'ai.run.completed')
+        assert all(tool['name'] != 'web_search' for tool in script.requests[0]['tools'])
+        assert len(script.requests) == 1
+
+
+async def test_unsupported_provider_with_only_web_scope_returns_plain_answer(tmp_path, monkeypatch):
+    from app.core.models import AIProvider
+
+    async with chat(tmp_path, monkeypatch, [[{'type': 'text', 'text': 'unused'}]]) as (client, script, factory):
+        response = await client.post('/api/v1/ai/conversations', json={'tool_scope': {'scopes': ['web.search']}})
+        assert response.status_code == 200
+        created = await client.post('/api/v1/ai/runs', json={'conversation_id': response.json()['id'],
+            'message':'hello', 'idempotency_key':'unsupported-only', 'routing': {'provider':'claude', 'model':'chat-model'}})
+        async with factory() as db_session:
+            provider = (await db_session.execute(select(AIProvider))).scalar_one()
+            runtime = ai_api._service(provider, 'test-only-provider-key')
+            provider.kind = 'other'
+            await db_session.commit()
+        monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: runtime)
+        events = parse((await client.get(f"/api/v1/ai/runs/{created.json()['id']}/events")).text)
+        assert payloads(events, 'ai.run.completed')
+        assert ''.join(item['text'] for item in payloads(events, 'ai.text.delta')) == 'plain answer'
+        assert 'tools' not in script.requests[0]
+
+
 @pytest.mark.asyncio
 async def test_read_tools_follow_source_scopes_and_report_usage(tmp_path, monkeypatch):
     replies = [[tool_use("list_tasks", "c1")], [{"type": "text", "text": "You have one task."}]]

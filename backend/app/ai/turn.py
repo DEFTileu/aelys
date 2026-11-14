@@ -3,16 +3,35 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid5
 
-from .errors import BudgetExceeded, RunCancelled, ToolValidationError
+from .errors import (
+    BudgetExceeded,
+    ModelUnavailable,
+    ProviderError,
+    RunCancelled,
+    ToolValidationError,
+)
 from .execution import AIExecutionService
 from .models import ChatMessage, PermissionContext, RoutingRequest, ToolCall
 from .tools import ToolRegistry
+from .web_search import WebSearch
+
+_HTTP_URL = re.compile(r'https?://[^\s<>\[\]"\'()]+', re.IGNORECASE)
+
+
+def _filter_urls(value: str, allowed: tuple[str, ...] = ()) -> str:
+    def filter_match(match: re.Match[str]) -> str:
+        token = match.group()
+        url = token.rstrip('.,;:!?')
+        suffix = token[len(url):]
+        return (url if url in allowed else '[ссылка скрыта]') + suffix
+    return _HTTP_URL.sub(filter_match, value)
 
 
 @dataclass(frozen=True)
@@ -55,6 +74,9 @@ async def run_tool_turn(
     cost = Decimal(0)
     used_memory_refs: set[tuple[str, int]] = set()
     input_tokens = output_tokens = 0
+    search_count = 0
+    search_started = False
+    search_sources: list[str] = []
     schemas = tuple(schema for schema in registry.schemas()
                     if registry.descriptor(str(schema['name'])).required_scope in context.scopes)
 
@@ -65,6 +87,39 @@ async def run_tool_turn(
     async def emit(kind: str, **payload: Any) -> None:
         if on_event:
             await on_event(kind, {'run_id': str(run_id), **payload})
+
+    async def search(query: str) -> Mapping[str, Any]:
+        nonlocal cost, input_tokens, output_tokens
+        remaining = request.request_budget - cost
+        if remaining <= 0:
+            return {'error': 'BUDGET_EXCEEDED: Search budget exhausted', 'untrusted': True}
+        try:
+            result = await service.complete(uuid5(run_id, f'web-search:{search_count}'),
+                replace(request, request_budget=remaining, context_tokens=0),
+                (ChatMessage('system', 'Search the web for the query and summarize the results.'),
+                 ChatMessage('user', query)), tools=(), web_search=True)
+        except BudgetExceeded:
+            return {'error': 'BUDGET_EXCEEDED: Search budget exhausted', 'untrusted': True}
+        except (ProviderError, ModelUnavailable):
+            return {'error': 'SEARCH_UNAVAILABLE: Search provider failed', 'untrusted': True}
+        cost += result.usage.estimated_cost
+        input_tokens += result.usage.usage.input_tokens
+        output_tokens += result.usage.usage.output_tokens
+        if on_usage:
+            await on_usage(cost, input_tokens, output_tokens)
+        if not result.response.search_used or not result.response.sources:
+            return {'error': 'SEARCH_UNAVAILABLE: No search evidence', 'untrusted': True}
+        for source in result.response.sources:
+            if source not in search_sources and len(search_sources) < 5:
+                search_sources.append(source)
+        return {'text': _filter_urls(result.response.text[:1200]), 'sources': list(result.response.sources), 'untrusted': True}
+
+    try:
+        search_handler = registry.descriptor('web_search').handler
+    except ToolValidationError:
+        search_handler = None
+    if isinstance(search_handler, WebSearch):
+        search_handler.execute = search
 
     for step in range(1, max_steps + 1):
         await check()
@@ -79,11 +134,15 @@ async def run_tool_turn(
         current: list[str] = []
 
         # Bind this step's buffer explicitly; the callback only runs while this step's completion is awaited.
-        async def stream_text(delta: str, current: list[str] = current) -> None:
+        async def stream_text(delta: str, current: list[str] = current, search_started: bool = search_started) -> None:
             # The consumer sees the whole reply so far, joined across steps like the final text.
             current.append(delta)
             if on_text:
-                await on_text('\n'.join([*text, ''.join(current)]))
+                full = '\n'.join([*text, ''.join(current)])
+                if search_started:
+                    full = full[:full.rfind(' ') + 1]
+                    full = _filter_urls(full, tuple(search_sources))
+                await on_text(full)
 
         # Only streaming callers pass on_text, so existing services and fakes keep their signature.
         streaming: dict[str, Any] = {'on_text': stream_text} if on_text else {}
@@ -110,14 +169,37 @@ async def run_tool_turn(
                 continue
             seen.add(call.call_id)
             await check()
-            await emit('ai.tool.requested', tool=call.name, call_id=call.call_id)
+            is_search = call.name == 'web_search' and isinstance(search_handler, WebSearch)
             try:
-                output = await registry.invoke(call, context)
+                descriptor = registry.descriptor(call.name)
+            except ToolValidationError:
+                descriptor = None
+            write = bool(descriptor and (descriptor.required_scope.endswith('.write') or descriptor.required_scope in {'memory.remember', 'memory.forget'}))
+            if is_search:
+                registry.authorize(call, context)
+                search_started = True
+                search_count += 1
+            query = str(call.arguments.get('query', ''))[:300] if is_search else ''
+            await emit('ai.tool.requested', tool=call.name, call_id=call.call_id,
+                       **({'query': query} if is_search else {}))
+            output: Mapping[str, Any]
+            try:
+                if search_started and write:
+                    output = {'error': 'POLICY_DENIED: Repeat the write request in a new turn', 'untrusted': True}
+                elif is_search and search_count > 2:
+                    output = {'error': 'POLICY_DENIED: Search limit reached', 'untrusted': True}
+                else:
+                    output = await registry.invoke(call, context)
             except (ToolValidationError, RuntimeError) as error:
                 # Bad arguments or a stale id are the model's to fix; policy denials still end the run.
                 output = {'error': str(error)[:300], 'untrusted': True}
-            await emit('ai.tool.approved', tool=call.name, call_id=call.call_id)
-            await emit('ai.tool.result', tool=call.name, call_id=call.call_id, result=output)
+            if 'error' not in output:
+                await emit('ai.tool.approved', tool=call.name, call_id=call.call_id)
+            search_code = str(output.get('error', '')).split(':', 1)[0]
+            search_event = ({'error': search_code if search_code in {'POLICY_DENIED', 'BUDGET_EXCEEDED', 'SEARCH_UNAVAILABLE'} else 'TOOL_ERROR'} if 'error' in output else {'status': 'ok'}) if is_search else output
+            await emit('ai.tool.result', tool=call.name, call_id=call.call_id,
+                       result=search_event,
+                       **({'query': query} if is_search else {}))
             calls.append(call)
             outputs.append(ChatMessage('tool', json.dumps(output, ensure_ascii=False, default=str),
                                        untrusted=True, tool_call_id=call.call_id))
@@ -127,5 +209,12 @@ async def run_tool_turn(
         messages = (*messages, ChatMessage('assistant', result.response.text, memory_refs=completion_refs,
                                            tool_calls=tuple(calls)), *outputs)
     await check()
-    return ToolTurnResult('\n'.join(text), result.provider.value, result.model,
+    final_text = '\n'.join(text)
+    if search_started:
+        final_text = _filter_urls(final_text, tuple(search_sources))
+    if search_sources:
+        final_text += ('\n' if final_text else '') + 'Источники:\n' + '\n'.join(search_sources)
+    if search_started and on_text:
+        await on_text(final_text)
+    return ToolTurnResult(final_text, result.provider.value, result.model,
                           input_tokens, output_tokens, cost, step, bool(outputs and step == max_steps), tuple(sorted(used_memory_refs)))

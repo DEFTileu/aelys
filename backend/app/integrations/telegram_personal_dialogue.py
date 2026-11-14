@@ -290,6 +290,11 @@ async def _process(job_id: str) -> None:
                 ref.get('kind') != 'owner_memory_fact' or (isinstance(ref.get('id'), str) and type(ref.get('version')) is int and current_memory.get(ref['id']) == ref['version'])
                 for ref in (prior_message.source_refs_json or []) if isinstance(ref, dict)
             )]
+            # The list is newest first: an older user turn is answered only if
+            # its immediate newer neighbour is an assistant message.
+            prior = [entry for index, entry in enumerate(prior)
+                     if entry.role != 'user' or entry.id == message.id
+                     or (index > 0 and prior[index - 1].role == 'assistant')]
             memory_refs.update((ref['id'], ref['version']) for prior_message in prior
                                for ref in (prior_message.source_refs_json or [])
                                if isinstance(ref, dict) and ref.get('kind') == 'owner_memory_fact'
@@ -313,10 +318,14 @@ async def _process(job_id: str) -> None:
                 messages = (*messages, ChatMessage('user', job.quote, untrusted=True))
             from app.ai.personal_tools import personal_tool_registry
             registry = personal_tool_registry(db, owner_id, run_id, source_message_id=f'{integration_id}:{job.telegram_message_id or job.telegram_update_id}')
+            search_enabled = not file_turn and tools_supported and provider.kind in {'claude', 'openrouter'}
+            if search_enabled:
+                from app.ai.web_search import register_web_search
+                register_web_search(registry)
             projects = frozenset((await db.execute(select(Project.id).where(Project.owner_id == owner_id,
                                                                             Project.deleted_at.is_(None)))).scalars())
-            context = PermissionContext(actor=f'telegram-personal:{run_id}', scopes=scopes if tools_supported else frozenset(),
-                                        project_ids=projects, policy_id='telegram-owner')
+            context = PermissionContext(actor=f'telegram-personal:{run_id}', scopes=(scopes | frozenset({'web.search'}) if search_enabled else scopes) if tools_supported else frozenset(),
+                                        project_ids=projects, policy_id='telegram-owner', external_scopes=frozenset({'web.search'}) if search_enabled else frozenset())
             use_tools = bool(scopes) and tools_supported
             request = RoutingRequest(TaskKind.TOOL_ACTION if use_tools else TaskKind.UNKNOWN,
                                      required_capabilities=media_capabilities | (frozenset({Capability.TOOL_CALLING}) if use_tools else frozenset()),
@@ -347,6 +356,8 @@ async def _process(job_id: str) -> None:
                 await ai_api._persist_event(db, run_id,
                     f'event: {kind}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n')
                 await db.commit()  # includes successful tool mutation + shared change-log
+                if kind == 'ai.tool.requested' and payload.get('tool') == 'web_search':
+                    await _send_owner(integration_id, 'Поиск в вебе: ' + str(payload.get('query', '')))
 
             async def refresh_memory_messages(current: tuple[ChatMessage, ...]) -> tuple[ChatMessage, ...]:
                 ids = {fact_id for chat in current for fact_id, _ in chat.memory_refs}

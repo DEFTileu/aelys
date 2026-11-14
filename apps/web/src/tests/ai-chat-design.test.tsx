@@ -90,7 +90,7 @@ describe('chat list', () => {
 describe('What Aelys can see', () => {
   it('offers only real sources with switches and saves a toggle as scopes', async () => {
     await click(find('Plan for today', '.actual-ai__conversation-main'))
-    expect(switches()).toEqual({ Tasks: 'true', Calendar: 'true', Notes: 'false', 'Knowledge base': 'false' })
+    expect(switches()).toEqual({ Tasks: 'true', Calendar: 'true', Notes: 'false', 'Knowledge base': 'false', 'Web search': 'false' })
     expect(find('2 sources')).toBeTruthy()
     client.updateAIConversation.mockResolvedValue({ ...chats[1], tool_scope_json: { scopes: ['tasks.read', 'calendar.read', 'notes.read'] } })
     await click(side().querySelector<HTMLElement>('[aria-label="Notes"]')!)
@@ -100,7 +100,7 @@ describe('What Aelys can see', () => {
   it('opens the same list from the composer chip and says No sources when all are off', async () => {
     await click(find('3 sources'))
     const dialog = host.querySelector<HTMLElement>('[role=dialog][aria-label="What Aelys can see"]')!
-    expect(Object.keys(switches(dialog))).toEqual(['Tasks', 'Calendar', 'Notes', 'Knowledge base'])
+    expect(Object.keys(switches(dialog))).toEqual(['Tasks', 'Calendar', 'Notes', 'Knowledge base', 'Web search'])
     for (const name of ['Tasks', 'Calendar', 'Notes']) await click(dialog.querySelector<HTMLElement>(`[aria-label="${name}"]`)!)
     expect(find('No sources')).toBeTruthy()
   })
@@ -110,6 +110,22 @@ describe('What Aelys can see', () => {
     client.aiRunEvents.mockImplementation(async () => sse(['ai.run.completed', { run_id: 'run1' }]))
     await send('Hello')
     expect(client.updateAIConversation).toHaveBeenCalledWith('new', { scopes: ['tasks.read', 'calendar.read'] })
+  })
+  it('keeps web search off by default and saves the switch for a conversation', async () => {
+    await click(find('Plan for today', '.actual-ai__conversation-main'))
+    expect(switches()['Web search']).toBe('false')
+    client.updateAIConversation.mockResolvedValue({ ...chats[1], tool_scope_json: { scopes: ['tasks.read', 'calendar.read', 'web.search'] } })
+    await click(side().querySelector<HTMLElement>('[aria-label="Web search"]')!)
+    expect(client.updateAIConversation).toHaveBeenCalledWith('today', { scopes: ['tasks.read', 'calendar.read', 'web.search'] })
+    expect(switches()['Web search']).toBe('true')
+  })
+  it('saves web search enabled before the first message', async () => {
+    await click(find('3 sources'))
+    await click(host.querySelector<HTMLElement>('[role=dialog] [aria-label="Web search"]')!)
+    client.updateAIConversation.mockResolvedValue({ id: 'new', title: 'Hello', tool_scope_json: { scopes: ['tasks.read', 'calendar.read', 'notes.read', 'web.search'] } })
+    client.aiRunEvents.mockImplementation(async () => sse(['ai.run.completed', { run_id: 'run1' }]))
+    await send('Hello')
+    expect(client.updateAIConversation).toHaveBeenCalledWith('new', { scopes: ['tasks.read', 'calendar.read', 'notes.read', 'web.search'] })
   })
 })
 
@@ -126,6 +142,20 @@ describe('This chat', () => {
 })
 
 describe('run steps, action card and answer actions', () => {
+  it('shows a web search query for an unknown source and keeps it after reload', async () => {
+    client.aiRunEvents.mockImplementation(async () => sse(
+      ['ai.run.started', { run_id: 'run1', provider: 'claude', model: 'claude-sonnet-4-5' }],
+      ['ai.tool.requested', { tool: 'web_search', call_id: 's1', source: 'web', label: 'Поиск в вебе: погода' }],
+      ['ai.tool.result', { tool: 'web_search', call_id: 's1', source: 'web', label: 'Поиск в вебе: погода' }],
+      ['ai.text.delta', { text: 'Ответ' }],
+      ['ai.run.completed', { run_id: 'run1', input_tokens: 1, output_tokens: 1 }],
+    ))
+    await send('Какая погода?')
+    await vi.waitFor(() => expect(find('Поиск в вебе: погода')).toBeDefined())
+    client.aiMessages.mockResolvedValue([{ id: 'a1', role: 'assistant', content: 'Ответ', steps: [{ id: 's1', label: 'Поиск в вебе: погода', source: 'web' }] }])
+    await click(find('Plan for today', '.actual-ai__conversation-main'))
+    await vi.waitFor(() => expect(find('Поиск в вебе: погода')).toBeDefined())
+  })
   const run = () => sse(
     ['ai.run.started', { run_id: 'run1', provider: 'claude', model: 'claude-sonnet-4-5' }],
     ['ai.tool.requested', { tool: 'list_tasks', call_id: '1', source: 'tasks', label: 'Read your tasks' }],

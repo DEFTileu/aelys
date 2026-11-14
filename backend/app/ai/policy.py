@@ -25,7 +25,7 @@ class ServerPolicyEngine:
             raise PolicyDenied("policy expired")
         if tool.required_scope not in context.scopes:
             raise PolicyDenied("tool scope is not granted")
-        if tool.external_effect and not context.allow_external_effects:
+        if tool.external_effect and not context.allow_external_effects and tool.required_scope not in context.external_scopes:
             raise PolicyDenied("external effects require explicit permission")
         project_id = call.arguments.get("project_id")
         if project_id is not None and str(project_id) not in context.project_ids:

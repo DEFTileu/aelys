@@ -63,6 +63,25 @@ async def test_shared_turn_duplicate_call_id_never_replays_write():
     assert writes == [True] and result.steps == 2
 
 
+async def test_unknown_tool_is_returned_to_model_as_validation_error():
+    from app.ai.turn import run_tool_turn
+    registry = ToolRegistry(ServerPolicyEngine())
+    class Service:
+        calls = 0
+        async def complete(self, run_id, request, messages, **kwargs):
+            self.calls += 1
+            if self.calls == 2:
+                assert 'unknown tool' in messages[-1].content
+            return SimpleNamespace(provider=SimpleNamespace(value='claude'), model='test',
+                response=SimpleNamespace(text='done' if self.calls == 2 else '',
+                    tool_calls=({'id':'x','name':'unknown','input':{}},) if self.calls == 1 else ()),
+                usage=SimpleNamespace(usage=Usage(), estimated_cost=Decimal(0)))
+    result = await run_tool_turn(Service(), uuid4(), RoutingRequest(TaskKind.TOOL_ACTION),
+        (ChatMessage('user', 'hello'),), registry, PermissionContext(actor='owner'),
+        parse_call=lambda raw: ToolCall(raw['name'], raw['input'], raw['id']))
+    assert result.text == 'done'
+
+
 async def test_real_usage_tracker_charges_each_provider_completion():
     from app.ai.execution import AIExecutionService
     from app.ai.models import Capability, ModelSpec, ProviderKind, ProviderResponse

@@ -57,7 +57,13 @@ from .chat_support import (
 from .crypto import decrypt_secret, encrypt_secret
 from .defaults import FEATURES, stored_defaults
 from .egress import SensitiveDataBlocked
-from .errors import PolicyDenied, RunCancelled, ToolValidationError, redact_error
+from .errors import (
+    BudgetExceeded,
+    PolicyDenied,
+    RunCancelled,
+    ToolValidationError,
+    redact_error,
+)
 from .execution import Adapter, AIExecutionService
 from .http_transport import HttpxTransport
 from .knowledge import KnowledgeScope, context_messages, retrieve, validate_scope
@@ -157,9 +163,9 @@ class CreateNoteToolArgs(BaseModel):
     markdown_body: str = Field(default="", max_length=100_000)
     project_id: str | None = Field(default=None, max_length=36)
 
-# This is the server-registered, non-external AI policy. `tool_scope` is only a
-# request for a subset of this set; it cannot introduce a new permission.
-_REGISTERED_AI_TOOL_SCOPES = frozenset({"tasks.write", "notes.write"}) | READ_SCOPES
+# `tool_scope` requests only server-registered scopes; external effects still
+# require separate authorization from the policy engine.
+_REGISTERED_AI_TOOL_SCOPES = frozenset({"tasks.write", "notes.write", "web.search"}) | READ_SCOPES
 
 def _requested_tool_scopes(raw: Mapping[str, Any]) -> frozenset[str]:
     values = raw.get("scopes", [])
@@ -795,7 +801,10 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 chat_messages = (*chat_messages[:-1], *injected, last)
             requested_scopes = frozenset((item.tool_scope_json or {}).get("scopes", []))
             # Without a tool-calling model the chat keeps answering as plain text.
-            use_tools = bool(requested_scopes) and any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)
+            search_supported = provider.kind in {'claude', 'openrouter'} and any(Capability.TOOL_CALLING in spec.capabilities and (not requested_model or getattr(spec, 'model', requested_model) == requested_model) for spec in service.models)
+            search_enabled = search_supported and 'web.search' in requested_scopes
+            effective_scopes = requested_scopes if search_enabled else requested_scopes - {'web.search'}
+            use_tools = bool(effective_scopes) and any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)
             if knowledge_scope is None:
                 from app.integrations.telegram_models import TelegramIntegration
 
@@ -812,6 +821,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             if use_tools:
                 from .personal_tools import personal_tool_registry
                 registry = personal_tool_registry(db, user.id, run_id, memory_source="app_ai")
+                if search_enabled:
+                    from .web_search import register_web_search
+                    register_web_search(registry)
                 # The turn runs as a task feeding this queue, so steps and text reach the client as they happen.
                 live: asyncio.Queue[str | None] = asyncio.Queue()
                 sent = ""
@@ -828,6 +840,8 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                     nonlocal proposals
                     if kind in {"ai.tool.requested", "ai.tool.result"}:
                         payload = {**payload, **tool_meta(str(payload.get("tool", "")), payload.get("result") if kind == "ai.tool.result" else None)}
+                        if payload.get('tool') == 'web_search':
+                            payload = {**payload, 'label': 'Поиск в вебе: ' + str(payload.get('query', ''))}
                         call_id = str(payload.get("call_id", len(steps)))
                         # The answer keeps its steps so they still show after a reload.
                         steps[call_id] = {**steps.get(call_id, {}), "id": call_id, "label": str(payload["label"]), "state": "done",
@@ -840,7 +854,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 from app.integrations.telegram_personal_dialogue import owner_scopes
                 # Memory stays opt-in as in Telegram: only an explicit "remember"/"forget" exposes those tools.
                 memory_scopes = frozenset(scope for scope in owner_scopes(last_message.content) if scope.startswith("memory."))
-                context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes | WRITE_SCOPES | memory_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai")
+                context = PermissionContext(actor=f"ai:{run_id}", scopes=effective_scopes | WRITE_SCOPES | memory_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai", external_scopes=frozenset({'web.search'}) if search_enabled else frozenset())
                 tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget), effort=(item.tool_scope_json or {}).get("effort"))
                 async def account_tool_usage(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
                     item.cost_estimate = cost
@@ -958,11 +972,13 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             await db.rollback()
             await db.refresh(item)
             if item.status == "cancelled":
+                yield await emit("ai.run.cancelled", {"run_id": run_id})
                 return
-            failed=await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status!="cancelled").values(status="failed",completed_at=datetime.now(UTC)))
+            failed=await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==item.owner_id,AIRun.status!="cancelled").values(status="failed",completed_at=datetime.now(UTC)))
             await db.commit()
             if int(getattr(failed, "rowcount", 0) or 0) == 1:
-                yield await emit("ai.run.failed", {"run_id": run_id, "code": "AI_ERROR", "message": "Provider execution failed"})
+                code, message = ("BUDGET_EXCEEDED", "Configured AI budget is exhausted") if isinstance(error, BudgetExceeded) else ("AI_ERROR", "Provider execution failed")
+                yield await emit("ai.run.failed", {"run_id": run_id, "code": code, "message": message})
         finally:
             _active_cancellations.pop(run_id,None)
     return StreamingResponse(stream(),media_type="text/event-stream")

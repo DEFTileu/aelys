@@ -1,9 +1,11 @@
 """Real queue/worker boundary with mocked provider transport only."""
 import asyncio
+from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import ClassVar
 
+import pytest
 from app.ai import api as ai_api
 from app.ai.models import Capability, ProviderKind, Usage
 from app.core.models import (
@@ -56,6 +58,70 @@ class Service:
             await self.gate.wait()
         return SimpleNamespace(provider=ProviderKind.CLAUDE, model='test', response=self.response,
                                usage=SimpleNamespace(usage=Usage(5,2),estimated_cost=Decimal(0)))
+
+
+@pytest.mark.parametrize('old_text,answered,untrusted', [
+    ('Файл из Telegram. Ответь сводкой; действия выполняются только следующим сообщением владельца.', False, True),
+    ('Создай задачу про отчёт', False, False),
+    ('Какая сегодня дата?', True, False),
+])
+async def test_history_omits_unanswered_owner_turns_but_keeps_answered_pairs(setup, monkeypatch, old_text, answered, untrusted):
+    from app.integrations import telegram_personal_dialogue as dialogue
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+    async with sessions() as db:
+        item = await db.get(TelegramIntegration, integration_id)
+        conversation = AIConversation(owner_id=item.owner_id, title='Telegram assistant')
+        db.add(conversation); await db.flush()
+        item.personal_conversation_id = conversation.id
+        old = AIMessage(conversation_id=conversation.id, role='user', content=old_text,
+                        source_refs_json=[{'untrusted': untrusted}], created_at=now()-timedelta(minutes=2))
+        db.add(old); await db.flush()
+        if answered:
+            db.add(AIMessage(conversation_id=conversation.id, role='assistant', content='Сегодня суббота.',
+                             created_at=now()-timedelta(minutes=1)))
+        else:
+            db.add(AIRun(owner_id=item.owner_id, conversation_id=conversation.id, prompt_message_id=old.id,
+                         provider_id=item.provider_id, provider='claude', model='test', status='failed'))
+        await db.commit()
+    model = Service(); model.requests = []; model.response = SimpleNamespace(text='Ответ', tool_calls=())
+    monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: model)
+    fake.updates = [ordinary(1, 'Какие новости NASA?')]
+    await service.poll_once(integration_id, timeout=0)
+    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
+    history = [(message.role, message.content) for message in model.requests[0][0] if message.role != 'system']
+    assert history == ([("user", old_text), ("assistant", 'Сегодня суббота.')] if answered else []) + [('user', 'Какие новости NASA?')]
+
+
+async def test_owner_web_search_shows_query_and_cited_answer(setup, monkeypatch):
+    from app.integrations import telegram_personal_dialogue as dialogue
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+
+    class SearchService(Service):
+        def __init__(self): self.calls = 0
+        async def complete(self, run_id, request, messages, **kwargs):
+            self.calls += 1
+            if kwargs.get('web_search'):
+                assert any('current weather' in sent[1] for sent in fake.sent)
+                response = SimpleNamespace(text='Fact', tool_calls=(), search_used=True, sources=('https://example.org/fact',))
+            elif self.calls == 1:
+                assert 'web_search' in {tool['name'] for tool in kwargs['tools']}
+                response = SimpleNamespace(text='', tool_calls=({'id':'one','name':'web_search','input':{'query':'current weather'}},))
+            else:
+                response = SimpleNamespace(text='Fact', tool_calls=())
+            return SimpleNamespace(provider=ProviderKind.CLAUDE, model='test', response=response,
+                                   usage=SimpleNamespace(usage=Usage(5,2), estimated_cost=Decimal('0.01')))
+
+    monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: SearchService())
+    fake.updates = [ordinary(1, 'Какая сейчас погода?')]
+    await service.poll_once(integration_id, timeout=0)
+    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
+    sent = '\n'.join(value[1] for value in fake.sent)
+    assert 'current weather' in sent and 'https://example.org/fact' in sent
+    async with sessions() as db:
+        recorded = (await db.execute(select(AIRun))).scalar_one()
+        assert recorded.cost_estimate == Decimal('0.03')
 
 
 async def test_durable_poll_does_not_wait_for_long_turn(setup, monkeypatch):

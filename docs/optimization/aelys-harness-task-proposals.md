@@ -21,7 +21,8 @@ Task 2 validation (2026-11-14; Python from the shared virtualenv):
 - `ruff check backend/app backend/tests`, `mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs` (131 files), `bandit -q -r backend/app -ll`, compileall, OpenAPI comparison and diff whitespace checks passed.
 - Independent read-only review covered worker/invalidation and callback/transport fixes. Regressions for daily backlog, read-permission revocation, pending expiry and callback notification policy failed before their fixes, then passed.
 
-No production rollout or real chat opt-in.
+At the original Task 2 checkpoint, no production rollout or real chat opt-in
+had taken place; rollout evidence follows below.
 Decisions: approve never reads Telegram tables; suggestion state preserves
 message version/updated_at; TTL 24 hours bounded by source retention; expire
 pending proposals during connector iteration as well as button handling.
@@ -29,8 +30,9 @@ pending proposals during connector iteration as well as button handling.
 Delivery boundary: a card already handed off by the sending CAS can arrive after
 concurrent off/edit/purge. Keeping locks out of network I/O requires this honest
 at-most-once handoff. Its action is already stale; callback cannot create a task.
-This behavior is documented and tested. Remaining live acceptance: migrate/deploy,
-then opt in one owner-selected chat and check real private callbacks/model quality.
+This behavior is documented and tested. The original remaining acceptance was
+migrate/deploy, then opt in one owner-selected chat and check real private
+callbacks/model quality; see the rollout evidence below.
 
 
 Task 2 review follow-up (2026-11-14, after b3661a0): reproduced asyncpg's 32767
@@ -57,5 +59,17 @@ can_read_messages means mark-as-read, not permission to receive incoming updates
 Removed that extra gate while retaining enabled connection/owner/opt-in checks.
 Regression reproduced before fix; focused business/controls/suggestions 138 passed,
 full backend 1589 passed / 155 skipped / one existing warning (221.37s).
-Live proposal/button acceptance is still in progress; no sender content retained
-in this report.
+Permission correction a8417c3 subsequently deployed successfully; healthz returned
+ok. Live smoke used the existing Business connection and a second owner-controlled
+Telegram account, with one explicitly opted-in chat. Two actual incoming requests
+were processed by the configured model and produced private proposal cards.
+The owner pressed Create on the first card: the action became approved and exactly
+one matching live task existed (todo, version 1). Sending the private off command
+cleared opt-in and marked the second action failed with ACTION_SOURCE_STALE.
+After the owner pressed the stale card, its inline buttons were visibly removed;
+the action remained stale and no second task existed. The transient toast text
+was not observed manually; its exact wording is covered by the callback tests.
+Both button clicks were manual because native coordinate control returned
+noWindowsAvailable; message delivery, model extraction, callbacks and persistence
+used the real production path. Opt-in was restored to off after the smoke.
+No sender content, account/chat identifiers or credentials are retained here.
