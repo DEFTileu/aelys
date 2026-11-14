@@ -18,8 +18,8 @@
 #define STORE_PAIR_VERSION  1
 #define STORE_SETTINGS_VERSION 1
 #define STORE_UI_VERSION    1 /* the board's own UI choices (key "ui"); the server never writes it */
-#define STORE_SNAP_VERSION  2 /* legacy raw struct format; bump with any change to snap_t */
-#define STORE_SNAP_OWNED_VERSION 3 /* 3: tasks_today / events_upcoming; a v2 blob is ignored (length and version differ), never half-read */
+#define STORE_SNAP_VERSION  3 /* legacy raw struct format; bump with any change to snap_t */
+#define STORE_SNAP_OWNED_VERSION 4 /* 4: weather; 3: tasks_today / events_upcoming. An older blob is ignored (length and version differ), never half-read */
 #define STORE_SNAP_OWNER_LEN 65
 
 typedef struct { char ssid[33]; char pass[65]; } wifi_cred_t;

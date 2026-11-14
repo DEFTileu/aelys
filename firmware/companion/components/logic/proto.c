@@ -252,6 +252,34 @@ static void parse_events(const P *p, int o, snap_t *s)
     }
 }
 
+/* The optional weather object (server v1.3). One that does not validate is left out whole; one bad hour is skipped. Values are clamped
+ * to what the board can show: Celsius -99..99, WMO code 0..99. */
+static int8_t clamp_temp(int64_t v) { return (int8_t)(v < -99 ? -99 : v > 99 ? 99 : v); }
+
+static void parse_weather(const P *p, int o, snap_t *s)
+{
+    int v = find(p, o, "weather");
+    if (v < 0 || p->t[v].type != JSMN_OBJECT) return;
+    int64_t temp = 0, code = 0, hi = 0, lo = 0;
+    snap_weather_t w;
+    memset(&w, 0, sizeof w);
+    if (!get_int(p, v, "temp", &temp, S_REQ) || !get_int(p, v, "code", &code, S_REQ) || !get_int(p, v, "hi", &hi, S_REQ) ||
+        !get_int(p, v, "lo", &lo, S_REQ) || !get_time(p, v, "updated", &w.updated, S_REQ)) return;
+    w.temp = clamp_temp(temp); w.hi = clamp_temp(hi); w.lo = clamp_temp(lo);
+    w.code = (uint8_t)(code < 0 ? 0 : code > 99 ? 99 : code);
+    int h = find(p, v, "hours"), i = h + 1;
+    if (h >= 0 && p->t[h].type == JSMN_ARRAY) {
+        for (int k = 0; k < p->t[h].size && i < p->n && w.n_hours < SNAP_MAX_HOURS; k++, i = skip(p, i)) {
+            int64_t hour = 0, t = 0, c = 0;
+            if (p->t[i].type != JSMN_OBJECT || !get_int(p, i, "h", &hour, S_REQ) || !get_int(p, i, "t", &t, S_REQ) ||
+                !get_int(p, i, "c", &c, S_REQ) || hour < 0 || hour > 23) continue;
+            w.hours[w.n_hours++] = (snap_hour_t){ (uint8_t)hour, (uint8_t)(c < 0 ? 0 : c > 99 ? 99 : c), clamp_temp(t) };
+        }
+    }
+    w.present = true;
+    s->weather = w;
+}
+
 static bool parse_snapshot(const P *p, int root, snap_t *s)
 {
     int o = find(p, root, "snapshot"), v;
@@ -279,6 +307,7 @@ static bool parse_snapshot(const P *p, int root, snap_t *s)
     }
     parse_tasks(p, o, s);
     parse_events(p, o, s);
+    parse_weather(p, o, s);
     return true;
 }
 

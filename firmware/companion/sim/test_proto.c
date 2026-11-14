@@ -230,6 +230,51 @@ static void test_snapshot_lists(void)
     CHECK_EQ(strlen(g_m.u.snap.tasks[0].title) % 2, 0);
 }
 
+static void test_snapshot_weather(void)
+{
+    CHECK(parse_file("snapshot_v13"));
+    const snap_weather_t *w = &g_m.u.snap.weather;
+    CHECK(w->present && w->temp == -3 && w->code == 71 && w->hi == -1 && w->lo == -8);
+    CHECK_EQ(w->updated, iso("2026-11-13T09:30:00Z"));
+    CHECK_EQ(w->n_hours, 5);
+    CHECK(w->hours[0].hour == 16 && w->hours[0].temp == -4 && w->hours[0].code == 71 && w->hours[4].hour == 20 && w->hours[4].temp == -9 && w->hours[4].code == 0);
+    CHECK_EQ(g_m.u.snap.n_tasks, 3); /* the rest of the snapshot is read as before */
+
+    /* an older server, a null, a lost-mode snapshot: no weather, and the board keeps working */
+    CHECK(parse_file("snapshot_v12"));
+    CHECK(!g_m.u.snap.weather.present && g_m.u.snap.weather.n_hours == 0);
+    CHECK(parse_str(SNAP_HEAD "\"unread_count\":4,\"weather\":null}}"));
+    CHECK(!g_m.u.snap.weather.present && g_m.u.snap.unread == 4);
+
+    /* a weather object that does not validate is left out whole, never half-read; the snapshot is kept */
+    const char *bad[] = {
+        "\"weather\":{\"temp\":1,\"code\":0,\"hi\":2,\"lo\":0}",                                       /* no updated */
+        "\"weather\":{\"temp\":1,\"code\":0,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\"}",             /* no hi */
+        "\"weather\":{\"temp\":\"hot\",\"code\":0,\"hi\":2,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\"}",
+        "\"weather\":{\"temp\":1.5,\"code\":0,\"hi\":2,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\"}",   /* the server sends integers */
+        "\"weather\":{\"temp\":1,\"code\":0,\"hi\":2,\"lo\":0,\"updated\":\"yesterday\"}",
+        "\"weather\":[1,2]", "\"weather\":\"sunny\"" };
+    for (unsigned i = 0; i < sizeof bad / sizeof *bad; i++) {
+        char json[400];
+        snprintf(json, sizeof json, SNAP_HEAD "\"unread_count\":4,%s}}", bad[i]);
+        CHECK(parse_str(json));
+        CHECK(!g_m.u.snap.weather.present && g_m.u.snap.unread == 4);
+    }
+
+    /* no hours is fine; a bad hour is skipped and the good ones around it stay; past 5 the first ones count; values are clamped */
+    CHECK(parse_str(SNAP_HEAD "\"weather\":{\"temp\":500,\"code\":-4,\"hi\":-500,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\"}}}"));
+    CHECK(g_m.u.snap.weather.present && g_m.u.snap.weather.n_hours == 0 && g_m.u.snap.weather.temp == 99 && g_m.u.snap.weather.hi == -99 && g_m.u.snap.weather.code == 0);
+    CHECK(parse_str(SNAP_HEAD "\"weather\":{\"temp\":1,\"code\":999,\"hi\":2,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\",\"hours\":["
+                    "{\"h\":1,\"t\":1,\"c\":1},{\"h\":24,\"t\":1,\"c\":1},{\"h\":-1,\"t\":1,\"c\":1},{\"h\":2,\"c\":1},7,{\"h\":3,\"t\":3,\"c\":3},"
+                    "{\"h\":4,\"t\":4,\"c\":4},{\"h\":5,\"t\":5,\"c\":5},{\"h\":6,\"t\":6,\"c\":6},{\"h\":7,\"t\":7,\"c\":7}]}}}"));
+    w = &g_m.u.snap.weather;
+    CHECK(w->present && w->code == 99);
+    CHECK_EQ(w->n_hours, SNAP_MAX_HOURS);
+    CHECK(w->hours[0].hour == 1 && w->hours[1].hour == 3 && w->hours[4].hour == 6);
+    CHECK(parse_str(SNAP_HEAD "\"weather\":{\"temp\":1,\"code\":0,\"hi\":2,\"lo\":0,\"updated\":\"2026-11-13T09:30:00Z\",\"hours\":{\"h\":1}}}}"));
+    CHECK(g_m.u.snap.weather.present && g_m.u.snap.weather.n_hours == 0);
+}
+
 /* The most tokens a snapshot can use (every field of every object, 5 notices, a focus, both lists full) must fit the parser's token
  * table, or the whole frame would be rejected. Titles are short: the byte cap is the server's job (docs/companion-protocol.md). */
 static void test_fullest_snapshot_fits_the_token_table(void)
@@ -248,9 +293,13 @@ static void test_fullest_snapshot_fits_the_token_table(void)
     n += snprintf(json + n, sizeof json - (size_t)n, "],\"events_upcoming\":[");
     for (int i = 0; i < 4; i++)
         n += snprintf(json + n, sizeof json - (size_t)n, "%s{\"id\":\"e%d\",\"title\":\"E\",\"starts_at\":\"2026-11-13T10:00:00Z\",\"ends_at\":\"2026-11-13T11:00:00Z\",\"all_day\":false}", i ? "," : "", i);
-    snprintf(json + n, sizeof json - (size_t)n, "]}}");
+    n += snprintf(json + n, sizeof json - (size_t)n, "],\"weather\":{\"temp\":-3,\"code\":71,\"hi\":-1,\"lo\":-8,\"updated\":\"2026-11-13T09:30:00Z\",\"hours\":[");
+    for (int i = 0; i < 5; i++)
+        n += snprintf(json + n, sizeof json - (size_t)n, "%s{\"h\":%d,\"t\":-4,\"c\":71}", i ? "," : "", 16 + i);
+    snprintf(json + n, sizeof json - (size_t)n, "]}}}");
     CHECK(parse_str(json));
     CHECK(g_m.u.snap.n_notices == 5 && g_m.u.snap.n_tasks == 5 && g_m.u.snap.n_events == 4 && g_m.u.snap.focus.status == FOCUS_ACTIVE);
+    CHECK(g_m.u.snap.weather.present && g_m.u.snap.weather.n_hours == 5);
 }
 
 static void test_command_unknown_name_is_not_rejected(void)
@@ -670,6 +719,7 @@ int main(void)
     test_parses_every_contract_example();
     test_parses_v11_examples();
     test_snapshot_lists();
+    test_snapshot_weather();
     test_fullest_snapshot_fits_the_token_table();
     test_command_unknown_name_is_not_rejected();
     test_snapshot_nulls_and_missing_optional();

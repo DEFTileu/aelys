@@ -5,7 +5,7 @@
 _Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 49 + 97 + 65 + 97 + 2 * 33 + 2 * 17 + 2 * 24 + 2 + 4, "owner layout");
 _Static_assert(sizeof(wifi_list_t) == 1 + WIFI_MAX * (33 + 65), "wifi layout");
 _Static_assert(sizeof(pair_rec_t) == 40 + 129 + 32, "pair layout");
-_Static_assert(sizeof(snap_t) == 2240, "snap layout changed: bump STORE_SNAP_VERSION, then this number");
+_Static_assert(sizeof(snap_t) == 2272, "snap layout changed: bump STORE_SNAP_VERSION, then this number");
 
 uint32_t store_crc32(const uint8_t *p, size_t n)
 {
@@ -219,7 +219,8 @@ bool store_decode_snap(const uint8_t *buf, size_t len, snap_t *out)
     if (!p) return false;
     snap_t s;
     memcpy(&s, p, sizeof s);
-    if (s.n_notices > 5 || s.n_tasks > SNAP_MAX_TASKS || s.n_events > SNAP_MAX_EVENTS || s.focus.status > FOCUS_PAUSED) return false;
+    if (s.n_notices > 5 || s.n_tasks > SNAP_MAX_TASKS || s.n_events > SNAP_MAX_EVENTS || s.focus.status > FOCUS_PAUSED ||
+        s.weather.n_hours > SNAP_MAX_HOURS) return false;
     term_snap(&s);
     *out = s;
     return true;
@@ -261,6 +262,12 @@ static void snapshot_payload(uint8_t *p, const snap_t *s)
     }
     STRING(focus.id); SCALAR(focus.status); STRING(focus.mode); SCALAR(focus.started); SCALAR(focus.elapsed_s);
     SCALAR(n_tasks); SCALAR(n_events);
+    SCALAR(weather.updated); SCALAR(weather.present); SCALAR(weather.temp); SCALAR(weather.hi); SCALAR(weather.lo); SCALAR(weather.code);
+    SCALAR(weather.n_hours);
+    for (size_t i = 0; i < s->weather.n_hours && i < SNAP_MAX_HOURS; i++) { /* only the hours in use; the rest stays zero */
+        size_t base = offsetof(snap_t, weather.hours) + i * sizeof(snap_hour_t);
+        memcpy(p + base, &s->weather.hours[i], sizeof(snap_hour_t));
+    }
     for (size_t i = 0; i < s->n_tasks && i < SNAP_MAX_TASKS; i++) { /* only the entries in use; the rest stays zero */
         size_t base = offsetof(snap_t, tasks) + i * sizeof(snap_task_t);
         COPY_STRING(base + offsetof(snap_task_t, id), s->tasks[i].id);
@@ -303,7 +310,8 @@ bool store_decode_snap_owned(const uint8_t *buf, size_t len, const uint8_t *owne
     if (p[offsetof(snap_t, has_task)] > 1 || p[offsetof(snap_t, has_event)] > 1 ||
         p[offsetof(snap_t, event.all_day)] > 1 || p[offsetof(snap_t, event.has_end)] > 1 ||
         p[offsetof(snap_t, n_notices)] > 5 || p[offsetof(snap_t, focus.status)] > FOCUS_PAUSED ||
-        p[offsetof(snap_t, n_tasks)] > SNAP_MAX_TASKS || p[offsetof(snap_t, n_events)] > SNAP_MAX_EVENTS) return false;
+        p[offsetof(snap_t, n_tasks)] > SNAP_MAX_TASKS || p[offsetof(snap_t, n_events)] > SNAP_MAX_EVENTS ||
+        p[offsetof(snap_t, weather.present)] > 1 || p[offsetof(snap_t, weather.n_hours)] > SNAP_MAX_HOURS) return false;
     for (int i = 0; i < SNAP_MAX_EVENTS; i++) {
         size_t base = offsetof(snap_t, events) + i * sizeof(snap_event_t);
         if (p[base + offsetof(snap_event_t, all_day)] > 1 || p[base + offsetof(snap_event_t, has_end)] > 1) return false;
