@@ -438,3 +438,15 @@ assert. Diagnostic C assertions are not a release lifetime protocol. Delayed
 flush was simulated, but delayed draw execution, persistent OOM and real DMA
 were not tested. The full/partial oracle shares the renderer and is not a CSS
 fidelity reference. See ignored `borrowed-rotation/report.md` for details.
+
+An isolated successor distinguishes invalid input from a checked task-node
+allocation failure, so its tested face callback skips decoder fallback for an
+invalid stride. It also adds restrictions for the blender's signed offsets and
+moves its diagnostic pending count to task cleanup; a simulated unsupported
+software renderer exercised one failed-task cleanup. The targeted failure test
+and a 130% ASan/UBSan rotation case were independently rerun successfully;
+the imported logic archive was not instrumented and leak detection was disabled.
+This is not a per-source ownership or cancellation protocol. No borrowed draw
+task was deliberately held across source mutation or deletion, and a task that
+fails after successful submission has no visual recovery. The prototype remains
+unintegrated; see ignored `borrowed-retirement/report.md`.
