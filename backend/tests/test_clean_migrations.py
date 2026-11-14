@@ -12,6 +12,12 @@ from alembic.script import ScriptDirectory
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def alembic_head() -> str:
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "alembic"))
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
 def run_alembic(url: str, *args: str) -> None:
     env = os.environ | {"AELYS_DATABASE_URL": url, "AELYS_SECRET_KEY": "migration-test-key-" * 3,
                         "PYTHONPATH": str(ROOT)}
@@ -63,9 +69,7 @@ def test_clean_and_incremental_upgrade(backend: str, tmp_path: Path) -> None:
         assert any(fk["constrained_columns"] == ["session_id"] and fk["referred_table"] == "auth_sessions" for fk in gmail_fks)
         run_alembic(url, "upgrade", "head")
         run_alembic(url, "check")
-        config = Config(str(ROOT / "alembic.ini"))
-        config.set_main_option("script_location", str(ROOT / "alembic"))
-        head = ScriptDirectory.from_config(config).get_current_head()
+        head = alembic_head()
         with engine.connect() as connection:
             assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == head
             assert connection.scalar(sa.text("SELECT id FROM users WHERE id = 'migration-test-owner'")) == "migration-test-owner"

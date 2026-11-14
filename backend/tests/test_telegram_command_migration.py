@@ -1,6 +1,6 @@
 """Command queue migration preserves prior owner identity and can roll back."""
 import sqlalchemy as sa
-from test_clean_migrations import run_alembic
+from test_clean_migrations import alembic_head, run_alembic
 
 
 def test_commands_upgrade_downgrade_preserves_identity(tmp_path):
@@ -23,7 +23,7 @@ def test_commands_upgrade_downgrade_preserves_identity(tmp_path):
         assert any(index['name'] == 'ix_telegram_business_commands_session_id' for index in sa.inspect(engine).get_indexes('telegram_business_commands'))
         with engine.connect() as db:
             assert db.scalar(sa.text('SELECT id FROM users')) == 'retained'
-            assert db.scalar(sa.text('SELECT version_num FROM alembic_version')) == '0054_telegram_command_sessions'
+            assert db.scalar(sa.text('SELECT version_num FROM alembic_version')) == alembic_head()
         run_alembic(url, 'downgrade', '0052_telegram_owner_identity')
         assert not sa.inspect(engine).has_table('telegram_business_commands')
         run_alembic(url, 'upgrade', 'head')
