@@ -137,7 +137,7 @@ lv_obj_t *scr_home_create(lv_obj_t *parent)
     h.orbit = orbit_create(root, UI_SCREEN_SIZE);
     h.clock = ui_label(root, &inter_20, UI_COLOR_TEXT2, 160, 1, LV_TEXT_ALIGN_CENTER);
     h.mood = MOOD_CALM;
-    h.face = face_create(root, 130); /* 390x221 box, approximately 91x130 eyes */
+    h.face = face_create(root, 140); /* 420x238 box, about 98x140 eyes: the largest whose effects stay inside the circle */
     h.agenda = ui_label(root, &inter_20, UI_COLOR_SUBTLE, 300, 1, LV_TEXT_ALIGN_CENTER);
     h.hint = ui_label(root, &inter_16, UI_COLOR_SUBTLE, 260, 2, LV_TEXT_ALIGN_CENTER);
     lv_label_set_text(h.hint, "Connect me by USB and open Aelys web");

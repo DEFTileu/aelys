@@ -489,7 +489,7 @@ static void check_home_stack(bool welcome)
     lv_area_t c, f, a, h, w;
     lv_obj_get_coords(clock, &c); lv_obj_get_coords(face, &f); lv_obj_get_coords(agenda, &a);
     lv_obj_get_coords(hint, &h); lv_obj_get_coords(wifi, &w);
-    CHECK_EQ(lv_area_get_width(&f), 390); CHECK_EQ(lv_area_get_height(&f), 221);
+    CHECK_EQ(lv_area_get_width(&f), 420); CHECK_EQ(lv_area_get_height(&f), 238);
     CHECK(c.y2 < f.y1 && f.y2 < a.y1);
     if (welcome) CHECK(a.y2 < h.y1 && h.y2 < w.y1);
     else CHECK(a.y2 < w.y1);
