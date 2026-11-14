@@ -462,3 +462,16 @@ not execute the delayed task or test deletion, growth, cancellation, actual
 threading or hardware. A candidate immutable-generation and reference-counting
 protocol is described in ignored `borrowed-owner/INVESTIGATION.md`; it has not
 been implemented or validated.
+
+A further isolated host adapter copies source pixels into immutable generations
+and gives each tested queued task a reference. In one serial test an LVGL task
+remained waiting while its owner was replaced and deleted, then the software
+renderer produced the original pixels; staggered cleanup and selected failures
+were also exercised. The focused normal and ASan/UBSan binaries were rerun;
+leak detection was disabled. Independent review found that queued success does
+not report later rendering failure, in-progress teardown lacks a worker
+completion handshake, and the experimental ownership API permits unsafe copies
+and mismatched release callbacks. The adapter is not connected to the face,
+and concurrent workers, actual face deletion, failure recovery, and the
+separately flagged boundary issue remain open. See ignored
+`source-owner2/INVESTIGATION.md`.
