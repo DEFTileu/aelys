@@ -485,3 +485,22 @@ explicit, task retirement is not display/DMA delivery, and in-progress
 cancellation, concurrent workers, real allocation failures, automatic repair
 and actual face integration remain unverified. The separately flagged boundary
 investigation remains open. See ignored `source-outcome/REPORT.md`.
+
+A separate host-only relief experiment combined inherited blinking with an
+approximated, clipped elliptical lid. A partial/full redraw test was independently
+rerun successfully, but selected CSS comparisons differed notably during blink
+(about 22–29% foreground-union XOR at 100%, 21–24% at 130% for the sampled
+closing frames). Metrics mix timing, antialiasing and rendering differences and
+are not acceptance thresholds. The scanline version submitted up to 80 and 104
+lid rectangles per sampled full refresh at 100% and 130%; source inspection
+indicates each can allocate a draw task. These are not measured peak heap or
+board timing. It is not integrated. See ignored `relief-experiment/README.md`.
+
+Another isolated serialized ownership experiment tested opaque owners, waiting
+task cancellation and a post-queue dispatch failure. Three focused normal and
+ASan/UBSan tests were independently rerun; leak detection was disabled and a
+prebuilt logic archive was not instrumented. Independent review found a
+possible blocked parent layer after cancellation and gaps in failed-task
+retirement tests. The experiment remains unintegrated and is not evidence of
+asynchronous teardown, automatic recovery or display delivery. See ignored
+`source-outcome2/REPORT.md`.
