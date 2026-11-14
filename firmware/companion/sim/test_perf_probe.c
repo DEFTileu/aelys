@@ -54,6 +54,21 @@ static void test_attribution_tracks_each_maximum(void)
     CHECK_EQ(p.stats.sw_max_screen, 3); /* a faster action cannot overwrite attribution */
 }
 
+static void test_io_attribution_follows_maxima(void)
+{
+    perf_probe_t p; perf_probe_init(&p);
+    perf_probe_io_t first = { 100, 200, 1000, 3 }, second = { 400, 500, 2000, 5 };
+    perf_probe_swipe_begin(&p, 100, 200, true, 3);
+    perf_probe_frame_io(&p, 300, 30300, 5000, 3, &first);
+    CHECK_EQ(p.stats.worst_io.submit_us, 100);
+    CHECK_EQ(p.stats.worst_io.dma_wait_us, 200);
+    CHECK_EQ(p.stats.sw_max_io.pixels, 1000);
+    CHECK_EQ(p.stats.sw_max_io.flushes, 3);
+    perf_probe_frame_io(&p, 40000, 41000, 100, 3, &second);
+    CHECK_EQ(p.stats.worst_io.submit_us, 100);
+    CHECK_EQ(p.stats.sw_max_io.pixels, 1000);
+}
+
 static void test_failures_are_not_latency_samples(void)
 {
     perf_probe_t p;
@@ -173,6 +188,7 @@ int main(void)
 {
     test_latency_matches_a_completed_frame();
     test_attribution_tracks_each_maximum();
+    test_io_attribution_follows_maxima();
     test_failures_are_not_latency_samples();
     test_wrap_and_histogram_overflow();
     test_unread_windows_keep_cumulative_evidence();
