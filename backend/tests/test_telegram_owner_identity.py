@@ -12,7 +12,7 @@ from app.integrations import telegram_service as service
 from app.integrations.telegram_models import TelegramIntegration
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
-from test_clean_migrations import alembic_head, run_alembic
+from test_clean_migrations import migration_head, run_alembic
 
 OWNER_ID = 24680
 
@@ -209,6 +209,6 @@ def test_0052_migration_preserves_existing_integrations(tmp_path):
         with engine.connect() as connection:
             row = connection.execute(sa.text("SELECT instructions, last_update_id, version, owner_name FROM telegram_integrations WHERE id='preserved-integration'")).one()
             assert tuple(row) == ("encrypted-existing-instructions", 41, 6, None)
-            assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == alembic_head()
+            assert connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == migration_head()
     finally:
         engine.dispose()

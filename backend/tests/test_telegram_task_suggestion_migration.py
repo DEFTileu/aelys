@@ -1,7 +1,7 @@
 """Task suggestion settings and per-message state migrate without data loss."""
 
 import sqlalchemy as sa
-from test_clean_migrations import alembic_head, run_alembic
+from test_clean_migrations import run_alembic
 
 
 def test_task_suggestion_columns_upgrade_downgrade_preserve_legacy_rows(tmp_path):
@@ -50,9 +50,8 @@ def test_task_suggestion_columns_upgrade_downgrade_preserve_legacy_rows(tmp_path
                         'encrypted-message', CURRENT_TIMESTAMP, 'inbound', 'none')
             """))
 
-        run_alembic(url, "upgrade", "head")
-        run_alembic(url, "upgrade", "head")
-        run_alembic(url, "check")
+        run_alembic(url, "upgrade", "0056_telegram_task_suggestions")
+        run_alembic(url, "upgrade", "0056_telegram_task_suggestions")
         inspector = sa.inspect(engine)
         assert set(inspector.get_table_names()) == tables_before
         integration_columns = {
@@ -77,7 +76,7 @@ def test_task_suggestion_columns_upgrade_downgrade_preserve_legacy_rows(tmp_path
                 SELECT id, version, direction, text, task_suggestion_state
                 FROM telegram_business_messages WHERE id='message'
             """)).one() == ("message", 9, "inbound", "encrypted-message", None)
-            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == alembic_head()
+            assert db.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0056_telegram_task_suggestions"
 
         run_alembic(url, "downgrade", "0055_ai_action_sources")
         integration_columns = {

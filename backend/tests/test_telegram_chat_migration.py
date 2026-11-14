@@ -1,7 +1,7 @@
 """Upgrade a real pre-receipt schema without rewriting existing owner data."""
 
 import sqlalchemy as sa
-from test_clean_migrations import alembic_head, run_alembic
+from test_clean_migrations import migration_head, run_alembic
 
 
 def test_existing_0034_database_adds_chat_receipts_and_keeps_owner(tmp_path):
@@ -34,7 +34,7 @@ def test_existing_0034_database_adds_chat_receipts_and_keeps_owner(tmp_path):
             )
             assert (
                 db.scalar(sa.text("SELECT version_num FROM alembic_version"))
-                == alembic_head()
+                == migration_head()
             )
         run_alembic(url, "downgrade", "0034_google_calendar")
         assert not sa.inspect(engine).has_table("telegram_chat_sends")

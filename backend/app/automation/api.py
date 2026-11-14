@@ -49,7 +49,7 @@ from pydantic import (
     ValidationError,
 )
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -349,6 +349,7 @@ async def _claim_execution(
     rule_id: str,
     event_id: str,
     rate_limit: Mapping[str, int],
+    retry_failed: bool = True,
 ) -> ExecutionClaim | None:
     """Claim an event, retrying only durable failed receipts.
 
@@ -379,7 +380,7 @@ async def _claim_execution(
             .with_for_update()
         )
     ).scalar_one_or_none()
-    if prior is not None and prior.run_status != "failed":
+    if prior is not None and (prior.run_status != "failed" or not retry_failed):
         return None
 
     started_at = now()
@@ -797,25 +798,90 @@ async def dry_run(
     }
 
 
+async def _dispatch_outbox_rule(
+    db: AsyncSession, rule: AutomationRule, owner_id: str, event_id: str,
+    payload: dict[str, Any],
+) -> dict[str, str]:
+    # Claims and actions are one transaction; commit errors are never action failures.
+    try:
+        claim = await _claim_execution(
+            db, owner_id=owner_id, rule_id=rule.id, event_id=event_id,
+            rate_limit=_normalize_rate_limit(rule.rate_limit_json), retry_failed=False,
+        )
+        if claim is None:
+            result = {"rule_id": rule.id, "status": "duplicate"}
+        elif claim.status == "rate_limited":
+            result = {"rule_id": rule.id, "status": "rate_limited"}
+        else:
+            execution = claim.execution
+            try:
+                async with db.begin_nested():
+                    actions = _parse_actions(rule.actions_json, payload)
+                    registry = _build_action_registry(db, owner_id, event_id)
+                    for action in actions:
+                        project_id = await _require_action_scope(db, owner_id, action)
+                        await _authorize_action(registry=registry, action=action,
+                            policy_ref=rule.policy_ref, actor=f"automation:{rule.id}", project_id=project_id)
+                        await registry.invoke(
+                            ToolCall(action.kind, action.args.model_dump(mode="json", exclude_none=True)),
+                            _policy_context(rule.policy_ref, f"automation:{rule.id}", project_id),
+                        )
+            except Exception as exc:
+                cause: BaseException | None = exc
+                data_error = False
+                while cause is not None:
+                    if isinstance(cause, (IntegrityError, DataError)):
+                        data_error = True
+                        break
+                    if isinstance(cause, SQLAlchemyError):
+                        raise
+                    cause = cause.__cause__ or cause.__context__
+                execution.run_status = "failed"
+                if data_error:
+                    execution.error_code = "ACTION_FAILED"
+                elif isinstance(exc, PolicyDenied):
+                    execution.error_code = "POLICY_DENIED"
+                elif isinstance(exc, ToolValidationError):
+                    execution.error_code = "VALIDATION_ERROR"
+                elif isinstance(exc, HTTPException) and isinstance(exc.detail, dict):
+                    execution.error_code = str(exc.detail.get("code", "ACTION_FAILED"))[:80]
+                else:
+                    execution.error_code = "ACTION_FAILED"
+                execution.finished_at = now()
+                result = {"rule_id": rule.id, "status": "failed"}
+            else:
+                execution.run_status = "completed"
+                execution.finished_at = now()
+                result = {"rule_id": rule.id, "status": "completed"}
+    except BaseException:
+        await db.rollback()
+        raise
+    try:
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    return result
+
+
 async def dispatch_event(
     db: AsyncSession,
     owner_id: str,
     event_kind: str,
     event_id: str,
     payload: dict[str, Any],
+    *,
+    outbox: bool = False,
 ) -> list[dict[str, str]]:
-    rules = list(
-        (
-            await db.execute(
-                select(AutomationRule).where(
-                    AutomationRule.owner_id == owner_id,
-                    AutomationRule.enabled.is_(True),
-                    AutomationRule.deleted_at.is_(None),
-                    AutomationRule.trigger_kind == event_kind,
-                )
-            )
-        ).scalars()
+    query = select(AutomationRule).where(
+        AutomationRule.owner_id == owner_id,
+        AutomationRule.enabled.is_(True),
+        AutomationRule.deleted_at.is_(None),
+        AutomationRule.trigger_kind == event_kind,
     )
+    if outbox:
+        query = query.order_by(AutomationRule.id)
+    rules = list((await db.execute(query)).scalars())
     results: list[dict[str, str]] = []
 
     for rule in rules:
@@ -823,6 +889,10 @@ async def dispatch_event(
             payload.get(key) == value
             for key, value in rule.conditions_json.items()
         ):
+            continue
+
+        if outbox:
+            results.append(await _dispatch_outbox_rule(db, rule, owner_id, event_id, payload))
             continue
 
         execution: AutomationExecution | None = None
