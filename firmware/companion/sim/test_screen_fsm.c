@@ -185,6 +185,19 @@ static void test_find_overlay_does_not_leave_lost(void)
     CHECK_EQ(screen_next(SCR_ICE, true, UI_EV_FIND), SCR_ICE);
 }
 
+/* BTN_LOW leaves Calendar for the menu; a tap on the new-notice pop-up opens the Inbox from every everyday screen, never in lost mode. */
+static void test_calendar_and_notice_popup(void)
+{
+    CHECK_EQ(screen_next_btn(SCR_CALENDAR, false, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_CALENDAR, true, BTN_LOW), SCR_CALENDAR);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_CALENDAR), SCR_CALENDAR);
+    for (int s = 0; s < SCR_COUNT; s++) {
+        bool never = s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR;
+        CHECK_EQ(screen_next_notice((scr_t)s, false), never ? (scr_t)s : SCR_INBOX);
+        CHECK_EQ(screen_next_notice((scr_t)s, true), (scr_t)s);
+    }
+}
+
 int main(void)
 {
     test_combo_opens_ice_from_home();
@@ -204,5 +217,6 @@ int main(void)
     test_menu_never_opens_in_lost_mode();
     test_owner_defaults();
     test_find_overlay_does_not_leave_lost();
+    test_calendar_and_notice_popup();
     return g_failed ? 1 : 0;
 }

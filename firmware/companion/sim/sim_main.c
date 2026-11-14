@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -93,6 +93,11 @@ static int companion_shot(const char *shot)
         fx_post(&s, 0);
         return 0;
     }
+    if (!strcmp(shot, "calendar")) { /* the design's "In 25 min" */
+        s.event.starts = FX_NOW + 25 * 60;
+        s.event.ends = FX_NOW + 85 * 60;
+    }
+    if (!strcmp(shot, "calendar_empty")) s.has_event = false;
     if (!strcmp(shot, "tasks_empty")) { s.has_task = false; s.today_done = s.today_total = 8; }
     fx_post(&s, 1);
     if (!strncmp(shot, "character_", 10)) {
@@ -119,8 +124,8 @@ static int companion_shot(const char *shot)
     else if (!strncmp(shot, "focus_", 6)) sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
     else if (!strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder")) {
         post_ev(UI_EV_BTN, BTN_TOP);
-        if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Calendar and open it */
-            for (int i = 0; i < 3; i++) {
+        if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Weather and open it */
+            for (int i = 0; i < 5; i++) {
                 sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
                 sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
                 sim_step(200);
@@ -151,6 +156,24 @@ static int companion_shot(const char *shot)
             sim_step(strcmp(shot, "timer_done") ? 76000 : 301000); /* 5 min: 3:44 left, or over */
         }
     }
+    else if (!strcmp(shot, "calendar") || !strcmp(shot, "calendar_empty")) {
+        post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Calendar, open it */
+        for (int i = 0; i < 3; i++) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            sim_step(200);
+        }
+        post_ev(UI_EV_BTN, BTN_TOP);
+    }
+    else if (!strcmp(shot, "notice_popup") || !strcmp(shot, "notice_telegram")) { /* a notice the board has not seen, over the home screen */
+        bool tg = !strcmp(shot, "notice_telegram");
+        post_ev(UI_EV_WIFI, UI_WIFI_ONLINE);
+        memmove(&s.notices[1], &s.notices[0], 3 * sizeof s.notices[0]);
+        fx_notice(&s.notices[0], "n-9", tg ? "telegram.message" : "calendar.reminder", tg ? "Hidden name and text" : "Design review", FX_NOW);
+        s.n_notices = 4;
+        if (tg) s.other_unread = 3;
+        fx_post(&s, 1);
+    }
     else if (!strncmp(shot, "tasks", 5)) {
         ui_set_action_sink(accept_action);
         post_ev(UI_EV_BTN, BTN_TOP); /* the menu, then Tasks */
@@ -164,7 +187,7 @@ static int companion_shot(const char *shot)
 static int screen_shot(const char *shot)
 {
     if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
-        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6))
+        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6))
         return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };
@@ -238,7 +261,7 @@ int main(int argc, char **argv)
         else return 2;
     }
     if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
         fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
                         "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);

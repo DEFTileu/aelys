@@ -1,4 +1,4 @@
-/* Screen switching: home, the menu wheel and its placeholder, Today, Tasks, Timer, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
+/* Screen switching: home, the menu wheel and its placeholder, Today, Tasks, Timer, Calendar, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
  * one active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress and a toast
  * sits on top. The latest snapshot (ui_snap_tb) is rendered into the visible screen on entry, on events that can change
  * it and once a second (relative times, the focus countdown, the "due within 60 min" mood). Hidden screens do no layout. */
@@ -45,6 +45,9 @@ static struct {
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
     char done_id[40];    /* optimistic marks: task.complete / notification.read sent for these ids */
     char read_id[5][40];
+    char seen_id[8][40]; /* notice ids that already had their pop-up (or were there at boot); RAM only */
+    uint8_t seen_next;
+    bool notice_base;    /* the first snapshot after boot (or an owner change) only fills seen_id */
     char pend_read[5][40]; /* ids of notification.read still unanswered, oldest first: UI_EV_ACTION carries no target */
     bool (*sink)(act_kind_t, const char *);
     void (*find_stop)(void);
@@ -398,7 +401,7 @@ static void show(scr_t s)
     scr_hold_set(0);
     stop_timer(&g.hold_timer);
     stop_timer(&g.level_timer);
-    if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) scr_toast_hide();
+    if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) { scr_toast_hide(); scr_notice_hide(); }
     if (s != SCR_LOST) scr_lost_hide_hint();
     if (s == SCR_ICE) arm_timer(&g.ice_timer, ice_timeout, ICE_TIMEOUT_MS);
     else stop_timer(&g.ice_timer);
@@ -469,6 +472,7 @@ static void render(void)
     case SCR_FOCUS: scr_focus_set(s, g.snap_ms, lv_tick_get()); break;
     case SCR_INBOX: scr_inbox_set(s, now); break;
     case SCR_TIMER: scr_timer_set(); break;
+    case SCR_CALENDAR: scr_calendar_set(s, now); break;
     case SCR_MENU: scr_menu_set(s); break;
     case SCR_PLACEHOLDER: scr_placeholder_set(); break;
     default: break; /* lost mode, ICE and pairing have their own event-driven data */
@@ -545,6 +549,35 @@ static void prune_marks(const snap_t *s)
     }
 }
 
+static bool notice_seen(const char *id)
+{
+    for (int i = 0; i < 8; i++)
+        if (!strcmp(g.seen_id[i], id)) return true;
+    return false;
+}
+
+/* A snapshot with a notice id not seen before pops the newest of the new ones up, once. The first snapshot after boot (the cached one,
+ * or the live one if there is no cache) only records its ids. The ids are not kept anywhere but here. */
+static void notice_check(const snap_t *s)
+{
+    const snap_notice_t *newest = NULL;
+    for (int i = 0; i < s->n_notices && i < 5; i++) {
+        const snap_notice_t *n = &s->notices[i];
+        if (!n->id[0] || notice_seen(n->id)) continue;
+        snprintf(g.seen_id[g.seen_next], sizeof g.seen_id[0], "%s", n->id);
+        g.seen_next = (g.seen_next + 1) % 8;
+        if (!newest || n->created > newest->created) newest = n;
+    }
+    bool base = !g.notice_base;
+    g.notice_base = true;
+    if (base || !newest || !toast_ok()) return;
+    scr_notice_show(newest, s->other_unread);
+    if (character_event(&g.character, CHAR_EVENT_NOTIFICATION, lv_tick_get())) {
+        update_character();
+        arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+    }
+}
+
 void ui_setup(void)
 {
     lv_obj_t *root = lv_screen_active();
@@ -560,7 +593,9 @@ void ui_setup(void)
     g.scr[SCR_PLACEHOLDER] = scr_placeholder_create(root);
     g.scr[SCR_TASKS] = scr_tasks_create(root);
     g.scr[SCR_TIMER] = scr_timer_create(root);
+    g.scr[SCR_CALENDAR] = scr_calendar_create(root);
     scr_hold_create(root);
+    scr_notice_create(root);
     scr_toast_create(root);
     scr_find_create(root); /* last: on top of the toast and every screen */
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
@@ -580,6 +615,9 @@ void ui_setup(void)
     g.done_id[0] = 0;
     memset(g.read_id, 0, sizeof g.read_id);
     memset(g.pend_read, 0, sizeof g.pend_read);
+    memset(g.seen_id, 0, sizeof g.seen_id);
+    g.seen_next = 0;
+    g.notice_base = false;
     if (!g.tick_timer) g.tick_timer = lv_timer_create(tick_timer_cb, 1000, NULL);
     show(SCR_HOME);
 }
@@ -598,6 +636,11 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
     const snap_t *s = g.snap ? g.snap : &empty_snap;
     tap_hit_t hit = TAP_OUTSIDE;
     int row = -1;
+    if (scr_notice_hit(x, y)) { /* the pop-up takes the tap: it opens the Inbox */
+        scr_notice_hide();
+        *next = screen_next_notice(g.cur, g.lost);
+        return;
+    }
     if (g.cur == SCR_TODAY) {
         hit = scr_today_hit(x, y);
         if (hit == TAP_ROW) complete_task();
@@ -722,6 +765,7 @@ void ui_handle_event(const ui_event_t *ev)
             g.snap_valid = true;
             g.snap_ms = lv_tick_get();
             prune_marks(p);
+            notice_check(p);
         }
         render();
         return;
@@ -770,7 +814,7 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_FIND:
         if (ev->len < 1) return;
         g.find = ev->data[0] != 0;
-        if (g.find) scr_toast_hide(); /* a toast or the Wi-Fi card must not come out from under the overlay when it ends */
+        if (g.find) { scr_toast_hide(); scr_notice_hide(); } /* a toast or the Wi-Fi card must not come out from under the overlay when it ends */
         scr_find_show(g.find);
         return;
     case UI_EV_COMBO_PROGRESS:
@@ -790,6 +834,9 @@ void ui_handle_event(const ui_event_t *ev)
                 g.done_id[0] = 0;
                 memset(g.read_id, 0, sizeof g.read_id);
                 memset(g.pend_read, 0, sizeof g.pend_read);
+                memset(g.seen_id, 0, sizeof g.seen_id);
+                g.notice_base = false;
+                scr_notice_hide();
             }
             if (g.lost != (ev->data[0] != 0) || rev != g.lost_rev || identity != g.character_identity)
                 character_init(&g.character); /* do not replay a pre-transition reaction */
@@ -846,6 +893,7 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_BTN:
         if (g.cur == SCR_LOST && ev->len >= 1) scr_lost_show_hint();
         if (g.lost || ev->len < 1) return;
+        if (ev->data[0] == BTN_LOW && scr_notice_visible()) { scr_notice_hide(); return; } /* the low key dismisses the pop-up, nothing else */
         if (ev->data[0] == BTN_TOP && g.cur == SCR_FOCUS) {
             act(scr_focus_top_action(), NULL);
         }

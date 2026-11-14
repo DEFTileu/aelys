@@ -904,6 +904,10 @@ static void test_inbox_shot(void)
     CHECK(shows_text(scr, "Tasks \xC2\xB7 1 h ago") && shows_text(scr, "Calendar \xC2\xB7 2 h ago"));
     CHECK(!shows_text(scr, "from other apps"));      /* v1: hidden */
     CHECK_EQ(missing_glyphs(scr), 0);
+    CHECK(scr_notice_visible());                     /* two ids are new: the pop-up is over the inbox, the low key dismisses it first */
+    btn(BTN_LOW);
+    CHECK(!scr_notice_visible());
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
     btn(BTN_LOW);
     swipe(UI_EV_SWIPE_LEFT);
     fresh_fx();
@@ -1274,17 +1278,25 @@ static void test_menu_wheel(void)
     CHECK_EQ(ui_current_screen(), SCR_MENU);
     swipe(UI_EV_SWIPE_LEFT);
     sim_step(300);
-    CHECK(shows_text(scr, "Calendar") && shows_text(scr, "Coming soon"));
+    CHECK(shows_text(scr, "Calendar") && !shows_text(scr, "Coming soon"));
+    tap_at(233, 73);                                 /* Calendar has its screen */
+    CHECK_EQ(ui_current_screen(), SCR_CALENDAR);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    swipe(UI_EV_SWIPE_LEFT);
+    swipe(UI_EV_SWIPE_LEFT);                         /* past Inbox */
+    sim_step(300);
+    CHECK(shows_text(scr, "Weather") && shows_text(scr, "Coming soon"));
     tap_at(233, 73);                                 /* an item without a screen: the placeholder */
     CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
     sim_step(100);
-    CHECK(shows_text(scr, "Calendar") && shows_text(scr, "Coming soon"));
+    CHECK(shows_text(scr, "Weather") && shows_text(scr, "Coming soon"));
     check_inside_min("menu placeholder", 500);
     btn(BTN_TOP);
     CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_MENU);
-    for (int i = 0; i < 5; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    for (int i = 0; i < 3; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
     btn(BTN_TOP);                                    /* Settings */
     CHECK_EQ(scr_menu_selected(), 8);
     CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
@@ -1648,6 +1660,243 @@ static void test_timer_screen(void)
     CHECK_EQ(ui_current_screen(), SCR_LOST);
     post_lost(0);
     while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+}
+
+static void find_ev(int on);
+static int64_t cal_now;
+static int64_t cal_clock(void) { return cal_now; }
+static void cal_at(int64_t now) { cal_now = now; sim_step(1100); } /* the screen follows the clock once a second */
+
+static int lit_inside(void)
+{
+    int out, in;
+    count_lit(&out, &in);
+    return in;
+}
+
+static void test_calendar_screen(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    ui_set_clock(cal_clock);
+    cal_now = FX_NOW;
+    fresh_fx();                                      /* Design review 16:00 - 16:30, the clock at 14:32 */
+    btn(BTN_TOP);
+    for (int i = 0; i < 9 && scr_menu_selected() != 3; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_CALENDAR);
+    sim_step(100);
+    CHECK(shows_text(scr, "Design review") && shows_text(scr, "16:00 - 16:30") && shows_text(scr, "in 1 h 28 min"));
+    check_inside("calendar (far)");
+    int lit_far = lit_inside();
+
+    cal_at(FX_H(16, 0) - 25 * 60);
+    CHECK(shows_text(scr, "in 25 min"));
+    check_inside("calendar (in 25 min)");
+    int lit_near = lit_inside();
+    CHECK(lit_near > lit_far);                       /* the ring has begun to fill */
+    cal_at(FX_H(16, 0) - 45);
+    CHECK(shows_text(scr, "in 45 s"));
+    cal_at(FX_H(16, 0) - 44);
+    CHECK(shows_text(scr, "in 44 s"));               /* once a second in the last minute */
+    cal_at(FX_H(16, 0) + 20);
+    CHECK(shows_text(scr, "now"));
+    check_inside("calendar (now)");
+    int lit_full = lit_inside();
+    CHECK(lit_full > lit_near);                      /* a closed ring */
+    cal_at(FX_H(16, 0) + 10 * 60);
+    CHECK(shows_text(scr, "started 10 min ago"));
+    check_inside("calendar (started)");
+    CHECK(lit_inside() > lit_near);
+    cal_at(FX_H(16, 30) + 5 * 60);
+    CHECK(shows_text(scr, "ended 5 min ago"));
+    cal_now = 0;                                     /* no clock yet: the times stay, the relative line and the ring go */
+    sim_step(1100);
+    CHECK(shows_text(scr, "16:00 - 16:30") && !shows_text(scr, "ended 5 min ago") && !shows_text(scr, "in 1 h 28 min"));
+    check_inside_min("calendar (no clock)", 500);
+    CHECK(lit_inside() < lit_full);
+
+    cal_now = FX_NOW;
+    fx.event.all_day = true;
+    post_fx();
+    sim_step(1100);
+    CHECK(shows_text(scr, "All day") && shows_text(scr, "Today"));
+    check_inside("calendar (all day)");
+    fx.event.all_day = false;
+    fx.event.has_end = false;
+    post_fx();
+    sim_step(1100);
+    CHECK(shows_text(scr, "16:00") && !shows_text(scr, "16:00 - 16:30"));
+    fx.event.has_end = true;
+    memset(fx.event.title, 'W', 64);                 /* the widest title: three lines, cut with dots */
+    fx.event.title[64] = 0;
+    post_fx();
+    sim_step(1100);
+    check_inside("calendar (64 W)");
+    strcpy(fx.event.title, "\xD0\x9F\xD0\xBE\xD0\xB4\xD0\xB3\xD0\xBE\xD1\x82\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C \xD0\xBE\xD1\x82\xD1\x87\xD1\x91\xD1\x82 \xD0\xBF\xD0\xBE \xD0\xBF\xD1\x80\xD0\xBE\xD0\xB5\xD0\xBA\xD1\x82\xD1\x83 Q4 ABC");
+    post_fx();
+    sim_step(1100);
+    check_inside("calendar (cyrillic)");
+    CHECK_EQ(missing_glyphs(scr), 0);
+
+    fx.has_event = false;                            /* nothing left today */
+    post_fx();
+    sim_step(1100);
+    CHECK(shows_text(scr, "No more events today") && !shows_text(scr, "16:00 - 16:30"));
+    check_inside_min("calendar (empty)", 300);
+    fx.generated = 0;
+    post_fx();
+    sim_step(1100);
+    CHECK(shows_text(scr, "No data yet"));
+
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    btn(BTN_TOP);                                    /* back in, then lost mode takes it away */
+    CHECK_EQ(ui_current_screen(), SCR_CALENDAR);
+    post_lost(1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_lost(0);
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+    ui_set_clock(fx_clock);
+    fresh_fx();
+}
+
+static bool screen_has_text_containing(lv_obj_t *obj, const char *part)
+{
+    if (lv_obj_check_type(obj, &lv_label_class) && lv_obj_is_visible(obj) && strstr(lv_label_get_text(obj), part)) return true;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++)
+        if (screen_has_text_containing(lv_obj_get_child(obj, i), part)) return true;
+    return false;
+}
+
+static void notice_snap(const char *id, const char *kind, const char *title)
+{
+    fx_snap(&fx);
+    memmove(&fx.notices[1], &fx.notices[0], 3 * sizeof fx.notices[0]); /* the new one on top, newest first */
+    fx_notice(&fx.notices[0], id, kind, title, FX_NOW);
+    fx.n_notices = 4;
+    post_fx();
+}
+
+static void test_notice_popup(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    ui_set_character_status_sink(capture_status);
+    sink.accept = true;
+    fresh_fx();                                      /* n-1, n-2, n-3 are already known */
+    CHECK(!scr_notice_visible());
+    post_fx();
+    CHECK(!scr_notice_visible());                    /* the same ids again: nothing */
+
+    notice_snap("n-9", "task.reminder", "Water the plants");
+    CHECK(scr_notice_visible());
+    CHECK(shows_text(scr, "Tasks") && shows_text(scr, "Water the plants"));
+    check_inside("notice pop-up");
+    CHECK_EQ(reported_why, WHY_NOTIFICATION);        /* the face turns curious */
+    CHECK_EQ(reported_mood, CHAR_CURIOUS);
+    notice_snap("n-9", "task.reminder", "Water the plants");
+    sim_step(5000);
+    CHECK(scr_notice_visible());                     /* 6 s in all, and the same id does not restart it */
+    sim_step(1200);
+    CHECK(!scr_notice_visible());
+    CHECK(!shows_text(scr, "Water the plants"));
+    notice_snap("n-9", "task.reminder", "Water the plants");
+    CHECK(!scr_notice_visible());                    /* seen: never again */
+
+    notice_snap("n-10", "calendar.reminder", "Design review");   /* a tap opens the Inbox */
+    CHECK(scr_notice_visible() && shows_text(scr, "Calendar"));
+    check_inside("notice pop-up (calendar)");
+    tap_at(233, 90);
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    CHECK(!scr_notice_visible());
+    sink.n = 0;
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK_EQ(sink.n, 0);                             /* the tap on the card marked nothing read */
+
+    notice_snap("n-11", "focus.done", "Session done");  /* the low key dismisses it and does nothing else */
+    CHECK(scr_notice_visible());
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    check_inside("notice pop-up over the menu");
+    btn(BTN_LOW);
+    CHECK(!scr_notice_visible());
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* Telegram: the app and a count, never a name or text. Other apps' unread count is the count. */
+    fx_snap(&fx);
+    fx.other_unread = 3;
+    fx.n_notices = 4;
+    memmove(&fx.notices[1], &fx.notices[0], 3 * sizeof fx.notices[0]);
+    fx_notice(&fx.notices[0], "n-20", "telegram.message", "Secret Person: meet at 5", FX_NOW);
+    post_fx();
+    CHECK(scr_notice_visible());
+    CHECK(shows_text(scr, "Telegram") && shows_text(scr, "3 new messages"));
+    CHECK(!screen_has_text_containing(scr, "Secret") && !screen_has_text_containing(scr, "meet at"));
+    check_inside("notice pop-up (Telegram)");
+    btn(BTN_LOW);
+    fx.other_unread = 1;
+    fx_notice(&fx.notices[0], "n-21", "Telegram", "Xqz", FX_NOW);
+    post_fx();
+    CHECK(shows_text(scr, "1 new message") && !screen_has_text_containing(scr, "Xqz"));
+    btn(BTN_LOW);
+    fx.other_unread = 2;
+    fx_notice(&fx.notices[0], "n-22", "mail.new", "A private subject", FX_NOW); /* an unknown kind: count only too */
+    post_fx();
+    CHECK(shows_text(scr, "Notification") && shows_text(scr, "2 new messages") && !screen_has_text_containing(scr, "private"));
+    btn(BTN_LOW);
+
+    /* two new ids at once: the newest by `created` wins, both count as seen */
+    fx_snap(&fx);
+    fx.n_notices = 5;
+    memmove(&fx.notices[2], &fx.notices[0], 3 * sizeof fx.notices[0]);
+    fx_notice(&fx.notices[0], "n-30", "task.reminder", "Older one", FX_NOW - 60);
+    fx_notice(&fx.notices[1], "n-31", "task.reminder", "Newer one", FX_NOW - 5);
+    post_fx();
+    CHECK(shows_text(scr, "Newer one") && !shows_text(scr, "Older one"));
+    btn(BTN_LOW);
+    notice_snap("n-30", "task.reminder", "Older one");
+    CHECK(!scr_notice_visible());
+
+    /* not over lost mode, the find overlay or the ICE card; going there takes a showing pop-up away */
+    notice_snap("n-40", "task.reminder", "Shown then lost");
+    CHECK(scr_notice_visible());
+    post_lost(1);
+    CHECK(!scr_notice_visible());
+    notice_snap("n-41", "task.reminder", "While lost");
+    CHECK(!scr_notice_visible());
+    post_lost(0);
+    CHECK(!scr_notice_visible());                    /* seen while lost: not shown late */
+    find_ev(1);
+    notice_snap("n-42", "task.reminder", "While finding");
+    CHECK(!scr_notice_visible());
+    find_ev(0);
+    post(UI_EV_COMBO_FIRE);
+    notice_snap("n-43", "task.reminder", "Over ICE");
+    CHECK(!scr_notice_visible());
+    post(UI_EV_TOUCH);
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+
+    /* a boot: the cached snapshot only records its ids */
+    const uint8_t owner_change[] = { 0, 0, 0, 0, 0, 123, 0, 0, 0 };
+    sim_post(UI_EV_LOST, owner_change, sizeof owner_change);
+    fx_snap(&fx);
+    fx_post(&fx, 0);
+    sim_step(100);
+    CHECK(!scr_notice_visible());                    /* the cache has n-1..n-3 */
+    fx_post(&fx, 1);
+    CHECK(!scr_notice_visible());
+    notice_snap("n-50", "task.reminder", "After the cache");
+    CHECK(scr_notice_visible());
+    btn(BTN_LOW);
+
+    ui_set_character_status_sink(NULL);
+    fresh_fx();
 }
 
 static void test_lost_hint_toast_shot(void)
@@ -2067,6 +2316,8 @@ int main(void)
     test_menu_wheel();
     test_tasks_screen();
     test_timer_screen();
+    test_calendar_screen();
+    test_notice_popup();
     test_lost_hint_toast_shot();
     test_wifi_toast_shots();
     test_find_overlay_shot();

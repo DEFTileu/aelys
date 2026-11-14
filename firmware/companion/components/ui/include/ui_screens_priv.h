@@ -79,6 +79,20 @@ act_kind_t scr_focus_top_action(void);                     /* what the top key /
 lv_obj_t *scr_inbox_create(lv_obj_t *parent);
 void scr_inbox_set(const snap_t *s, int64_t now);
 int scr_inbox_hit(int32_t x, int32_t y);                   /* row index or -1 */
+/* The look of a notice kind ("Tasks", tile and dot colours); false for a kind without a title on the board (Telegram, other apps). */
+bool ui_notice_style(const char *kind, const char **name, uint32_t *bg, uint32_t *fg);
+
+/* scr_calendar.c (design "Календарь · следующее"): the one next event, relative to the clock; ring over the last 60 min before the start */
+lv_obj_t *scr_calendar_create(lv_obj_t *parent);
+void scr_calendar_set(const snap_t *s, int64_t now);
+
+/* scr_notice.c (designs "Уведомление · всплывает", "Уведомление · Telegram"): the new-notice card, 6 s, over everyday screens only. A kind
+ * without a title on the board (Telegram, others) shows its name and `count` instead of the title. */
+lv_obj_t *scr_notice_create(lv_obj_t *parent);
+void scr_notice_show(const snap_notice_t *n, int count);
+void scr_notice_hide(void);                                /* at once, timer stopped */
+bool scr_notice_visible(void);
+bool scr_notice_hit(int32_t x, int32_t y);                 /* a touch on the card (a little around it) */
 
 /* scr_menu.c: the menu wheel and the shared "Coming soon" screen. The item table (name, colour, target screen) is items[] there. */
 lv_obj_t *scr_menu_create(lv_obj_t *parent);

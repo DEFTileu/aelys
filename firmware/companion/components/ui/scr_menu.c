@@ -29,7 +29,7 @@ static const menu_item_t items[N_ITEMS] = {
     { "Tasks",     0x7FA8F5, SCR_TASKS },
     { "Focus",     0xF6907F, SCR_FOCUS },
     { "Timer",     0xF6907F, SCR_TIMER },
-    { "Calendar",  0xFF8A84, SCR_PLACEHOLDER },
+    { "Calendar",  0xFF8A84, SCR_CALENDAR },
     { "Inbox",     0xB9A8FF, SCR_INBOX },
     { "Weather",   0x7FA8F5, SCR_PLACEHOLDER },
     { "Ask Aelys", 0xB9A8FF, SCR_PLACEHOLDER },
