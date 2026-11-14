@@ -36,7 +36,7 @@ def coarse(value: float) -> float:
 
 
 async def _get_json(lat: float, lon: float) -> dict:
-    params = {"latitude": lat, "longitude": lon, "timezone": "auto", "forecast_days": 2, "current": "temperature_2m,weather_code",
+    params: dict[str, str | float | int] = {"latitude": lat, "longitude": lon, "timezone": "auto", "forecast_days": 2, "current": "temperature_2m,weather_code",
               "hourly": "temperature_2m,weather_code", "daily": "temperature_2m_max,temperature_2m_min"}
     async with httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS) as client:
         response = await client.get(FORECAST_URL, params=params)
@@ -88,9 +88,9 @@ async def refresh_if_due(owner_id: str, now: datetime) -> bool:
 
 def snapshot_view(row: CompanionWeather | None, now: datetime) -> dict | None:
     """The `weather` object for the snapshot, or None when there is no city, no data, or only day-old data."""
-    forecast = row and row.forecast_json
-    if not forecast or row.fetched_at is None:
+    if row is None or not row.forecast_json or row.fetched_at is None:
         return None
+    forecast = row.forecast_json
     fetched = row.fetched_at if row.fetched_at.tzinfo else row.fetched_at.replace(tzinfo=UTC)
     if now - fetched > MAX_AGE:
         return None
