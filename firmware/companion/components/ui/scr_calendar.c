@@ -1,26 +1,47 @@
 /* Calendar (design "Календарь · следующее"): the next event large, a coral ring that fills over the last 60 minutes before it starts
  * (full once it has started), the relative line on top ("in 25 min", "now", "started 10 min ago"), the title (up to 3 lines) and
- * "16:00 - 17:00" or "All day". The board only gets one event, so there is no list of the rest of the day and no tomorrow row.
+ * "16:00 - 17:00" or "All day". With the server's events_upcoming (v1.2) the title is cut to 2 lines and up to 3 more upcoming
+ * events follow as rows (time, title), a "Tomorrow" label above the first one that is tomorrow's; events that already ended are left out
+ * of the rows (and the first one still to come is the large one). Without the list (older server) it is the one-event view.
  * render() runs once a second for the visible screen and only changed labels or ring steps redraw: the text moves once a minute,
  * once a second in the last minute before the start.
  * Deviations: the relative line is not upper-cased and not letter-spaced; no location after the time (the snapshot has none);
  * a plain hyphen between the times (the fonts have no en dash). */
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "ui_screens_priv.h"
 
 #define TEXT_W 280
 #define RING_WINDOW_S 3600
 #define COLOR_EVENT 0xFF8A84
 #define COLOR_EVENT_TRACK 0x2A1618
+#define ROWS (SNAP_MAX_EVENTS - 1)
+#define ROW_W 300
+#define ROW_H 34
+#define TIME_W 66
 
-static struct { lv_obj_t *root, *eb, *title, *when; ui_arc_t ring; } c;
+static struct {
+    lv_obj_t *root, *eb, *title, *when, *head;
+    struct { lv_obj_t *row, *time, *title; } r[ROWS];
+    ui_arc_t ring;
+} c;
 
-static void restack(void)
+/* Does epoch t fall on the local day after now's? Needs the clock (now > 0). */
+static bool is_tomorrow(int64_t t, int64_t now)
 {
-    lv_obj_t *col[] = { c.eb, c.title, c.when };
-    const uint8_t gap[] = { 0, 6, 8 };
-    ui_stack(col, gap, 3, 0, UI_SCREEN_SIZE, -1);
+    time_t a = (time_t)now, b = (time_t)t;
+    struct tm today, then;
+    if (now <= 0 || t <= 0 || !localtime_r(&a, &today) || !localtime_r(&b, &then)) return false;
+    today.tm_mday += 1;
+    today.tm_isdst = -1;
+    if (mktime(&today) == (time_t)-1) return false; /* normalises to tomorrow's date */
+    return then.tm_year == today.tm_year && then.tm_yday == today.tm_yday;
+}
+
+static bool ended(const snap_event_t *e, int64_t now)
+{
+    return now > 0 && (e->has_end ? now >= e->ends : now >= e->starts + 3600);
 }
 
 /* "45 s", "25 min", "2 h 5 min", "2 h", "3 d" */
@@ -41,12 +62,21 @@ void scr_calendar_set(const snap_t *s, int64_t now)
     uint32_t title_color = UI_COLOR_TEXT;
     int pct = 0;
     bool ring = false;
-    if (s->has_event) {
-        const snap_event_t *e = &s->event;
+    const snap_event_t *e = NULL, *rows[ROWS];
+    int n_rows = 0;
+    if (s->n_events > 0) {
+        int first = 0;
+        while (first < s->n_events - 1 && ended(&s->events[first], now)) first++;
+        e = &s->events[first];
+        for (int i = first + 1; i < s->n_events && n_rows < ROWS; i++)
+            if (!ended(&s->events[i], now)) rows[n_rows++] = &s->events[i];
+    } else if (s->has_event) e = &s->event;
+    bool big_tomorrow = e && is_tomorrow(e->starts, now);
+    if (e) {
         snprintf(title, sizeof title, "%s", e->title);
         if (e->all_day) {
             snprintf(when, sizeof when, "All day");
-            if (now > 0) snprintf(eb, sizeof eb, "Today");
+            if (now > 0) snprintf(eb, sizeof eb, big_tomorrow ? "Tomorrow" : "Today");
         } else {
             char a[8], b[8];
             ui_fmt_hm(a, e->starts);
@@ -81,12 +111,33 @@ void scr_calendar_set(const snap_t *s, int64_t now)
     lv_obj_set_hidden(c.eb, !eb[0]);
     ui_set_text(c.title, title);
     ui_text_color(c.title, title_color);
-    lv_obj_set_height(c.title, ui_text_height(title, &inter_28, TEXT_W, 3));
+    lv_obj_set_height(c.title, ui_text_height(title, &inter_28, TEXT_W, n_rows ? 2 : 3));
     ui_set_text(c.when, when);
     lv_obj_set_hidden(c.when, !when[0]);
     lv_obj_set_hidden(c.ring.obj, !ring);
     ui_arc_set(&c.ring, pct, COLOR_EVENT, COLOR_EVENT_TRACK);
-    restack();
+
+    lv_obj_t *col[3 + 1 + ROWS] = { c.eb, c.title, c.when };
+    uint8_t gap[3 + 1 + ROWS] = { 0, 6, 8 };
+    int n = 3;
+    bool head = false;
+    for (int i = 0; i < ROWS; i++) {
+        lv_obj_set_hidden(c.r[i].row, i >= n_rows);
+        if (i >= n_rows) continue;
+        const snap_event_t *k = rows[i];
+        if (!head && !big_tomorrow && is_tomorrow(k->starts, now)) { /* the first of tomorrow's: a label above it */
+            head = true;
+            col[n] = c.head; gap[n++] = 14;
+        }
+        char tm[8];
+        if (k->all_day) snprintf(tm, sizeof tm, "All day"); else ui_fmt_hm(tm, k->starts);
+        ui_set_text(c.r[i].time, tm);
+        ui_set_text(c.r[i].title, k->title);
+        gap[n] = n == 3 ? 14 : col[n - 1] == c.head ? 2 : 0; /* 14 after the big block; tight under a label or another row */
+        col[n++] = c.r[i].row;
+    }
+    lv_obj_set_hidden(c.head, !head);
+    ui_stack(col, gap, n, 0, UI_SCREEN_SIZE, -1);
 }
 
 lv_obj_t *scr_calendar_create(lv_obj_t *parent)
@@ -97,6 +148,18 @@ lv_obj_t *scr_calendar_create(lv_obj_t *parent)
     c.eb = ui_label(c.root, &inter_16, COLOR_EVENT, 260, 1, LV_TEXT_ALIGN_CENTER);
     c.title = ui_label(c.root, &inter_28, UI_COLOR_TEXT, TEXT_W, 3, LV_TEXT_ALIGN_CENTER);
     c.when = ui_label(c.root, &inter_20, UI_COLOR_SUBTLE, TEXT_W, 1, LV_TEXT_ALIGN_CENTER);
-    scr_calendar_set(&(snap_t){ 0 }, 0);
+    c.head = ui_label(c.root, &inter_16, COLOR_EVENT, ROW_W, 1, LV_TEXT_ALIGN_LEFT);
+    lv_label_set_text(c.head, "Tomorrow");
+    lv_obj_set_hidden(c.head, true);
+    for (int i = 0; i < ROWS; i++) {
+        lv_obj_t *r = ui_plain(c.root, ROW_W, ROW_H);
+        c.r[i].row = r;
+        lv_obj_set_hidden(r, true);
+        c.r[i].time = ui_label(r, &inter_16, UI_COLOR_SUBTLE, TIME_W, 1, LV_TEXT_ALIGN_LEFT);
+        lv_obj_set_pos(c.r[i].time, 0, (ROW_H - lv_font_get_line_height(&inter_16)) / 2);
+        c.r[i].title = ui_label(r, &inter_20, UI_COLOR_TEXT, ROW_W - TIME_W - 8, 1, LV_TEXT_ALIGN_LEFT);
+        lv_obj_set_pos(c.r[i].title, TIME_W + 8, (ROW_H - lv_font_get_line_height(&inter_20)) / 2);
+    }
+    scr_calendar_set(&ui_empty_snap, 0);
     return c.root;
 }

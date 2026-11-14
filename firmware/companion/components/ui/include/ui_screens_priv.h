@@ -107,7 +107,8 @@ void scr_placeholder_set(void);                            /* shows the selected
 /* scr_tasks.c (design "Задачи · сегодня", one task at a time): the next task, today's progress, the check that completes it */
 lv_obj_t *scr_tasks_create(lv_obj_t *parent);
 void scr_tasks_set(const snap_t *s, int64_t now, bool offline);
-bool scr_tasks_hit(int32_t x, int32_t y);                  /* a tap on the check (or close to it) */
+int scr_tasks_hit(int32_t x, int32_t y);                   /* a tap on a check (or close to it): its slot (0 = the big one, 1.. = the rows), else -1 */
+extern const snap_t ui_empty_snap;                         /* all zero; a screen's first draw uses it, so no 2 KB snap_t sits on a task stack */
 
 /* scr_timer.c (design "Таймер · идёт / время вышло", "Секундомер"): one screen, a timer (presets by swipe) and a stopwatch (the last
  * item of the same swipe). The state lives here and runs on lv_tick_get(), so it carries on while another screen shows. */

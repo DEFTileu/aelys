@@ -8,7 +8,7 @@
 #include "codec_util.h"
 #include "proto.h"
 
-static proto_msg_t g_m; /* ~1.1 KB: static, like the firmware does */
+static proto_msg_t g_m; /* ~2.3 KB: static, like the firmware does */
 
 static int64_t iso(const char *s)
 {
