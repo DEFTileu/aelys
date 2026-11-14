@@ -31,8 +31,8 @@ static const char *TAG = "input";
 #define SLOW_PASSES 5 /* every 20 ms: PMIC edges, and the release check while a finger is down */
 #define IMU_PASSES  25 /* every 100 ms: accelerometer for the level face */
 /* Chip axes to screen axes (x right, y down). shortcut: set from one upright sample; recheck if the face turns the wrong way. */
-#define IMU_SCREEN_X(ax, ay) (ax)
-#define IMU_SCREEN_Y(ax, ay) (ay)
+#define IMU_SCREEN_X(ax, ay) (-(ay)) /* chip -y is screen right: the plain mapping showed the face 90 degrees clockwise */
+#define IMU_SCREEN_Y(ax, ay) (ax)
 
 /* AXP2101 registers (datasheet / XPowersLib) */
 #define AXP_PWRKEY_TIMES 0x27 /* [5:4] IRQ time, [3:2] power-on time, [1:0] power-off time: 4/6/8/10 s */

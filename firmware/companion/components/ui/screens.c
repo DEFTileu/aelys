@@ -12,6 +12,7 @@
 #define PAIRED_SHOW_MS 2000
 #define INBOX_TIMEOUT_MS 15000
 #define HOLD_STOP_MS 800
+#define LEVEL_HOLD_MS 1000 /* a finger held this long on the home face turns "always level" on or off */
 #define REACTION_MS 3000
 #define SURPRISE_IDLE_MS 300000u /* provisional: five minutes */
 #define NIGHT_IDLE_MS 600000u    /* provisional: ten minutes */
@@ -37,7 +38,9 @@ static struct {
     bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
-    lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *reaction_timer, *tick_timer;
+    lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *reaction_timer, *tick_timer, *level_timer;
+    bool level_on;       /* off at boot. shortcut: not saved, a reboot turns it off; move to settings (S6) */
+    int16_t level_angle; /* the newest UI_EV_LEVEL, applied only while level_on */
     const snap_t *snap;  /* the newest published snapshot; unchanged until the next tribuf_latest() */
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
     char done_id[40];    /* optimistic marks: task.complete / notification.read sent for these ids */
@@ -393,6 +396,7 @@ static void show(scr_t s)
 #endif
     scr_hold_set(0);
     stop_timer(&g.hold_timer);
+    stop_timer(&g.level_timer);
     if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) scr_toast_hide();
     if (s != SCR_LOST) scr_lost_hide_hint();
     if (s == SCR_ICE) arm_timer(&g.ice_timer, ice_timeout, ICE_TIMEOUT_MS);
@@ -486,6 +490,15 @@ static bool act(act_kind_t k, const char *target)
     if (g.sink && g.sink(k, target)) return true;
     toast("No connection");
     return false;
+}
+
+static void level_hold_timeout(lv_timer_t *t)
+{
+    (void)t;
+    g.level_timer = NULL;
+    if (g.cur != SCR_HOME || g.lost || g.find) return;
+    g.level_on = !g.level_on;
+    scr_home_set_level(g.level_on ? g.level_angle : 0);
 }
 
 static void hold_timeout(lv_timer_t *t)
@@ -624,7 +637,9 @@ void ui_handle_event(const ui_event_t *ev)
     if (ev->type == UI_EV_COMBO_FIRE) g.probe_combo_active = false;
 #endif
     if (ev->type == UI_EV_LEVEL) {
-        if (ev->len >= 2) scr_home_set_level((int16_t)(ev->data[0] | ev->data[1] << 8));
+        if (ev->len < 2) return;
+        g.level_angle = (int16_t)(ev->data[0] | ev->data[1] << 8);
+        if (g.level_on) scr_home_set_level(g.level_angle);
         return;
     }
     scr_t next = g.cur;
@@ -766,16 +781,19 @@ void ui_handle_event(const ui_event_t *ev)
         /* Focus paused: a finger held 800 ms stops the session (UI_EV_RELEASE or any gesture cancels it) */
         if (!g.lost && g.cur == SCR_FOCUS && scr_focus_view() == FV_PAUSED)
             arm_timer(&g.hold_timer, hold_timeout, HOLD_STOP_MS);
+        if (!g.lost && g.cur == SCR_HOME) arm_timer(&g.level_timer, level_hold_timeout, LEVEL_HOLD_MS);
         next = screen_next(g.cur, g.lost, UI_EV_TOUCH);
         break;
     case UI_EV_RELEASE:
         g.touch_character_valid = false;
         stop_timer(&g.hold_timer);
+        stop_timer(&g.level_timer);
         return;
     case UI_EV_TAP: {
         bool physical_home_tap = g.touch_character_valid;
         g.touch_character_valid = false;
         stop_timer(&g.hold_timer);
+        stop_timer(&g.level_timer);
         /* a touch that began on another screen (it closed the ICE card) is not a tap on this one */
         if (g.lost && g.cur == SCR_LOST && g.down_scr == SCR_LOST) scr_lost_show_hint();
         if (g.lost || ev->len < 4 || g.down_scr != g.cur) return;
@@ -791,6 +809,7 @@ void ui_handle_event(const ui_event_t *ev)
     case UI_EV_SWIPE_LEFT:
     case UI_EV_SWIPE_RIGHT:
         stop_timer(&g.hold_timer);
+        stop_timer(&g.level_timer);
         if (g.down_scr != g.cur) return;
         if (g.cur == SCR_LOST) scr_lost_show_hint();
         next = screen_next(g.cur, g.lost, (ui_event_type_t)ev->type);

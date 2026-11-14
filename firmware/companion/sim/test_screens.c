@@ -509,6 +509,18 @@ static void test_home_larger_face(void)
     scr_home_set_welcome(false);
 }
 
+static int32_t home_max_rotation(void) /* largest |rotation| among the home screen's children */
+{
+    lv_obj_t *root = scr_home_root();
+    int32_t m = 0;
+    for (uint32_t i = 0; root && i < lv_obj_get_child_count(root); i++) {
+        int32_t r = lv_obj_get_style_transform_rotation(lv_obj_get_child(root, (int32_t)i), 0);
+        if (r < 0) r = -r;
+        if (r > m) m = r;
+    }
+    return m;
+}
+
 static void test_level_event_turns_home_faces_only(void)
 {
     CHECK_EQ(ui_current_screen(), SCR_HOME);
@@ -523,8 +535,19 @@ static void test_level_event_turns_home_faces_only(void)
     ui_event_t ev = {.type = UI_EV_LEVEL, .len = 2, .data = {(uint8_t)a, (uint8_t)((uint16_t)a >> 8)}};
     ui_handle_event(&ev);
     CHECK_EQ(ui_current_screen(), SCR_HOME); /* a tilt never changes the screen */
-    ev.data[0] = 0; ev.data[1] = 0;
+    CHECK_EQ(home_max_rotation(), 0);        /* off by default: the tilt is only remembered */
+
+    ui_event_t touch = {.type = UI_EV_TOUCH, .len = 4, .data = {233, 0, 233, 0}};
+    ui_event_t lift = {.type = UI_EV_RELEASE, .len = 1, .data = {0}};
+    ui_handle_event(&touch); sim_step(500); ui_handle_event(&lift); sim_step(700);
+    CHECK_EQ(home_max_rotation(), 0);        /* a short hold does nothing */
+    ui_handle_event(&touch); sim_step(1100); ui_handle_event(&lift);
+    CHECK_EQ(home_max_rotation(), 450);      /* a 1 s hold turns it on with the remembered tilt */
+    a = 300; ev.data[0] = (uint8_t)a; ev.data[1] = (uint8_t)((uint16_t)a >> 8);
     ui_handle_event(&ev);
+    CHECK_EQ(home_max_rotation(), 300);
+    ui_handle_event(&touch); sim_step(1100); ui_handle_event(&lift);
+    CHECK_EQ(home_max_rotation(), 0);        /* and the next one turns it off, face straight again */
     CHECK_EQ(ui_current_screen(), SCR_HOME);
 }
 
