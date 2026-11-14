@@ -177,6 +177,7 @@ bool board_probe_input_busy(void) { return atomic_load(&pr_input_busy); }
  * no synthetic TOUCH, RELEASE or user gesture ever enters the action handlers. */
 static void probe_swipe(void)
 {
+#ifdef CONFIG_AELYS_PROBE_AUTO_SWIPE
     static uint32_t last_ms;
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
     if (now - last_ms < 2000) return;
@@ -185,6 +186,7 @@ static void probe_swipe(void)
     ui_event_t ev = {.type = BOARD_UI_EV_PERF, .len = sizeof posted_us};
     memcpy(ev.data, &posted_us, sizeof posted_us);
     lv_port_post(&ev); /* the port counts a refused enqueue; there is no partial touch to leave behind */
+#endif
 }
 #endif
 
