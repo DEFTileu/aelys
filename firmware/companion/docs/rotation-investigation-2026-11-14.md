@@ -224,6 +224,24 @@ Do not use the sampled margin as a production guarantee without establishing a
 bound for the pinned fixed-point calculations and a fallback or tiling policy.
 The ignored `bounds-transform/NOTES.md` records the cases and commands.
 
+A later host-only integration prototype rendered actual spring-driven eyes,
+highlights and lids in global passes, then used the LVGL software transform.
+Mischief visibly tilted. At 100% and 130%, six combinations of scale and
+injected bitmap-allocation failure each compared 720 partial-buffer frames to
+full redraws without differences; both tested allocation failures showed the
+fallback face and later retried successfully. This covers the explicit bitmap
+allocations, not LVGL decoder or draw-task allocation failures.
+
+The prototype is not enabled: its full-image invalidation exceeds the existing
+face damage bound, its two 494 × 325 ARGB surfaces cost 1,284,400 bytes at
+130% before alignment, and rotated output can still be clipped. The copied
+simulator suite passed 33/34 tests; `test_face_moods` failed, including the
+damage bound and assertions requiring independent review after object
+reparenting. Unsupported primitives use the original unrotated renderer.
+The diagnostic source, fault tests and results are in the ignored
+`rotation-next/` ledger directory. Full design fidelity, failure lifecycle,
+device memory and frame timing remain unverified.
+
 In the current single UI task and software renderer, source inspection shows
 that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
 Updating the source later from the serialized UI task, outside refresh, then
