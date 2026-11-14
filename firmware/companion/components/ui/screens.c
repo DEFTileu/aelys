@@ -490,6 +490,7 @@ static void render(void)
     case SCR_INBOX: scr_inbox_set(s, now); break;
     case SCR_TIMER: scr_timer_set(); break;
     case SCR_CALENDAR: scr_calendar_set(s, now); break;
+    case SCR_WEATHER: scr_weather_set(s, now); break;
     case SCR_MENU: scr_menu_set(s); break;
     case SCR_SETTINGS: scr_settings_set(); break;
     case SCR_WIFI: scr_wifinets_set(); break;
@@ -627,6 +628,7 @@ void ui_setup(void)
     g.scr[SCR_WIFI] = scr_wifinets_create(root);
     g.scr[SCR_ABOUT] = scr_about_create(root);
     g.scr[SCR_GAMES] = scr_games_create(root);
+    g.scr[SCR_WEATHER] = scr_weather_create(root);
     scr_hold_create(root);
     scr_notice_create(root);
     scr_toast_create(root);

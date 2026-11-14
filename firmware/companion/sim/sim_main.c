@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|weather|weather_empty|weather_stale|weather_hot|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -180,6 +180,9 @@ static int companion_shot(const char *shot)
         s.events[0].starts = s.event.starts; s.events[0].ends = s.event.ends;
         s.events[1].starts = FX_NOW + 150 * 60; s.events[1].ends = s.events[1].starts + 30 * 60;
     }
+    if (!strncmp(shot, "weather", 7) && strcmp(shot, "weather_empty")) fx_weather(&s);
+    if (!strcmp(shot, "weather_stale")) s.weather.updated = FX_NOW - 3 * 3600 - 20 * 60; /* the design's day: 11:12 */
+    if (!strcmp(shot, "weather_hot")) { s.weather.temp = 24; s.weather.hi = 27; s.weather.lo = 14; s.weather.code = 2; s.weather.n_hours = 4; }
     if (!strcmp(shot, "tasks_list")) fx_lists(&s);
     if (!strcmp(shot, "calendar_empty")) s.has_event = false;
     if (!strcmp(shot, "tasks_empty")) { s.has_task = false; s.today_done = s.today_total = 8; }
@@ -208,8 +211,8 @@ static int companion_shot(const char *shot)
     else if (!strncmp(shot, "focus_", 6)) sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
     else if (!strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder")) {
         post_ev(UI_EV_BTN, BTN_TOP);
-        if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Weather and open it */
-            for (int i = 0; i < 5; i++) {
+        if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Ask Aelys, which has no screen yet, and open it */
+            for (int i = 0; i < 6; i++) {
                 sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
                 sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
                 sim_step(200);
@@ -277,6 +280,15 @@ static int companion_shot(const char *shot)
         }
         post_ev(UI_EV_BTN, BTN_TOP);
     }
+    else if (!strncmp(shot, "weather", 7)) { /* the menu, the wheel to Weather, open it */
+        post_ev(UI_EV_BTN, BTN_TOP);
+        for (int i = 0; i < 5; i++) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            sim_step(200);
+        }
+        post_ev(UI_EV_BTN, BTN_TOP);
+    }
     else if (!strcmp(shot, "notice_popup") || !strcmp(shot, "notice_telegram")) { /* a notice the board has not seen, over the home screen */
         bool tg = !strcmp(shot, "notice_telegram");
         post_ev(UI_EV_WIFI, UI_WIFI_ONLINE);
@@ -299,7 +311,7 @@ static int companion_shot(const char *shot)
 static int screen_shot(const char *shot)
 {
     if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
-        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6) || !strncmp(shot, "settings", 8) || !strncmp(shot, "games", 5))
+        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "weather", 7) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6) || !strncmp(shot, "settings", 8) || !strncmp(shot, "games", 5))
         return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };

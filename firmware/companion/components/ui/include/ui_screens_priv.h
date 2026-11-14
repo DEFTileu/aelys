@@ -86,6 +86,11 @@ bool ui_notice_style(const char *kind, const char **name, uint32_t *bg, uint32_t
 lv_obj_t *scr_calendar_create(lv_obj_t *parent);
 void scr_calendar_set(const snap_t *s, int64_t now);
 
+/* scr_weather.c (design "Погода · сейчас и по часам"): the snapshot's weather - glyph, temperature, condition, high / low, the next hours */
+lv_obj_t *scr_weather_create(lv_obj_t *parent);
+void scr_weather_set(const snap_t *s, int64_t now);
+void scr_weather_summary(const snap_t *s, char *out, size_t cap); /* one line for the menu: "-3 C Â· Light snow", or "" without weather */
+
 /* scr_notice.c (designs "Уведомление · всплывает", "Уведомление · Telegram"): the new-notice card, 6 s, over everyday screens only. A kind
  * without a title on the board (Telegram, others) shows its name and `count` instead of the title. */
 lv_obj_t *scr_notice_create(lv_obj_t *parent);

@@ -205,6 +205,20 @@ static void test_calendar_and_notice_popup(void)
     }
 }
 
+/* Weather opens from the menu only, BTN_LOW goes back to it, and lost mode reaches none of that. */
+static void test_weather_screen(void)
+{
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_WEATHER), SCR_WEATHER);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_WEATHER), SCR_MENU);
+    CHECK_EQ(screen_next_open(SCR_HOME, false, SCR_WEATHER), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_WEATHER, false, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_WEATHER, false, BTN_TOP), SCR_WEATHER);
+    CHECK_EQ(screen_next_btn(SCR_WEATHER, true, BTN_LOW), SCR_WEATHER);
+    CHECK_EQ(screen_next(SCR_WEATHER, true, UI_EV_LOST), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_WEATHER, false, UI_EV_SWIPE_LEFT), SCR_WEATHER);
+    CHECK_EQ(screen_next(SCR_WEATHER, false, UI_EV_SWIPE_RIGHT), SCR_WEATHER);
+}
+
 static void test_settings_screens(void)
 {
     CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_SETTINGS), SCR_SETTINGS);
@@ -245,6 +259,7 @@ int main(void)
     test_owner_defaults();
     test_find_overlay_does_not_leave_lost();
     test_calendar_and_notice_popup();
+    test_weather_screen();
     test_settings_screens();
     return g_failed ? 1 : 0;
 }

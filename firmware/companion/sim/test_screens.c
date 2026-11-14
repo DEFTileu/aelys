@@ -1286,17 +1286,24 @@ static void test_menu_wheel(void)
     swipe(UI_EV_SWIPE_LEFT);
     swipe(UI_EV_SWIPE_LEFT);                         /* past Inbox */
     sim_step(300);
-    CHECK(shows_text(scr, "Weather") && shows_text(scr, "Coming soon"));
+    CHECK(shows_text(scr, "Weather") && !shows_text(scr, "Coming soon"));
+    tap_at(233, 73);                                 /* Weather has its screen */
+    CHECK_EQ(ui_current_screen(), SCR_WEATHER);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    swipe(UI_EV_SWIPE_LEFT);
+    sim_step(300);
+    CHECK(shows_text(scr, "Ask Aelys") && shows_text(scr, "Coming soon"));
     tap_at(233, 73);                                 /* an item without a screen: the placeholder */
     CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
     sim_step(100);
-    CHECK(shows_text(scr, "Weather") && shows_text(scr, "Coming soon"));
+    CHECK(shows_text(scr, "Ask Aelys") && shows_text(scr, "Coming soon"));
     check_inside_min("menu placeholder", 500);
     btn(BTN_TOP);
     CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_MENU);
-    for (int i = 0; i < 3; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    for (int i = 0; i < 2; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
     btn(BTN_TOP);                                    /* Settings has its screen */
     CHECK_EQ(scr_menu_selected(), 8);
     CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
@@ -2374,6 +2381,80 @@ static void notice_snap(const char *id, const char *kind, const char *title)
     post_fx();
 }
 
+/* Weather: the empty state, the full view, the stale view (over 2 h old: no hours, "Updated HH:MM"), nothing redrawn while idle,
+ * the menu's sub line, and never reachable in lost mode. */
+static void open_weather(void)
+{
+    btn(BTN_TOP);
+    for (int i = 0; i < 9 && scr_menu_selected() != 5; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_WEATHER);
+    sim_step(100);
+}
+
+static void test_weather_screen(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    ui_set_clock(cal_clock);
+    cal_now = FX_NOW;
+    fresh_fx();                                      /* no weather: an older server, or no city set in the app */
+    open_weather();
+    CHECK(shows_text(scr, "No weather yet") && shows_text(scr, "Set a city in the app"));
+    check_inside("weather (empty)");
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_WEATHER);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    CHECK(shows_text(scr, "Weather") && !shows_text(scr, "Coming soon") && !shows_text(scr, "-3 C \xC2\xB7 Light snow"));
+    btn(BTN_LOW);
+
+    fx_weather(&fx);                                 /* -3, Light snow, H -1 L -8; 15:00 - 19:00; fetched 5 minutes ago */
+    post_fx();
+    btn(BTN_TOP);
+    CHECK(shows_text(scr, "-3 C \xC2\xB7 Light snow"));  /* the menu's sub line */
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_WEATHER);
+    sim_step(100);
+    CHECK(!shows_text(scr, "No weather yet"));
+    CHECK(shows_text(scr, "3") && shows_text(scr, "Light snow") && shows_text(scr, "H -1  L -8"));
+    CHECK(shows_text(scr, "15:00") && shows_text(scr, "17:00") && shows_text(scr, "19:00"));
+    CHECK(shows_text(scr, "-4") && shows_text(scr, "-6") && shows_text(scr, "-8"));
+    CHECK(!shows_text(scr, "Updated 14:27"));
+    check_inside("weather (snow)");
+    sim_step(1000);                                  /* a second tick changes nothing: no redraw while idle */
+    uint32_t n = sim_flushes();
+    sim_step(1000); sim_step(1000); sim_step(1000);
+    CHECK_EQ(sim_flushes(), n);
+
+    cal_at(FX_NOW + 2 * 3600 - 5 * 60);              /* exactly 2 h old: still fresh */
+    CHECK(shows_text(scr, "19:00") && !shows_text(scr, "Updated 14:27"));
+    cal_at(FX_NOW + 2 * 3600);                       /* 2 h 5 min old: stale */
+    CHECK(shows_text(scr, "Updated 14:27") && !shows_text(scr, "15:00") && shows_text(scr, "Light snow"));
+    check_inside("weather (stale)");
+    cal_now = 0;                                     /* no clock: nothing can be judged stale */
+    sim_step(1100);
+    CHECK(!shows_text(scr, "Updated 14:27") && shows_text(scr, "15:00"));
+
+    fx_weather(&fx);                                 /* positive, fewer hours, another glyph */
+    fx.weather.temp = 24; fx.weather.hi = 27; fx.weather.lo = 14; fx.weather.code = 2; fx.weather.n_hours = 2;
+    cal_now = FX_NOW;
+    post_fx();
+    CHECK(shows_text(scr, "Partly cloudy") && shows_text(scr, "H 27  L 14") && shows_text(scr, "16:00") && !shows_text(scr, "17:00"));
+    check_inside("weather (24)");
+    fx.weather.present = false;                      /* the server dropped it (city removed): back to the empty state */
+    post_fx();
+    CHECK(shows_text(scr, "No weather yet") && !shows_text(scr, "Partly cloudy"));
+
+    fx_weather(&fx);                                 /* lost mode takes the screen, and the weather stays out of reach */
+    post_fx();
+    post_lost(1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_lost(0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
 static void test_notice_popup(void)
 {
     lv_obj_t *scr = lv_screen_active();
@@ -2916,6 +2997,7 @@ int main(void)
     test_calendar_screen();
     test_games_screens();
     test_calendar_list();
+    test_weather_screen();
     test_notice_popup();
     test_lost_hint_toast_shot();
     test_wifi_toast_shots();
