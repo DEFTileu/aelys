@@ -526,4 +526,7 @@ refreshing display. Five focused lifecycle tests and the shutdown sanitizer
 case were independently rerun. The in-progress state is simulated, leak
 checking is disabled and an imported archive is uninstrumented; real
 concurrency, worker shutdown, display/DMA completion and product integration
-remain unproven. See ignored `source-shutdown/REPORT.md`.
+remain unproven. A subsequent source review found that face update and deletion
+still use a global pending-task guard, so unrelated standalone work can trip it
+even under serialized access; this was not reproduced. See ignored
+`source-shutdown/REPORT.md`.
