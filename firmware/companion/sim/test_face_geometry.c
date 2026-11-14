@@ -36,6 +36,49 @@ static double reference_css_in_out(double x)
     return 3.0*v*t*t + t*t*t;
 }
 
+static double reference_css_out(double x)
+{
+    double low = 0.0, high = 1.0;
+    for (int i = 0; i < 48; i++) {
+        double t = (low + high) / 2.0, v = 1.0 - t;
+        double bx = 3.0*v*t*t*0.58 + t*t*t;
+        if (bx < x) low = t; else high = t;
+    }
+    double t = (low + high) / 2.0, v = 1.0 - t;
+    return 3.0*v*t*t + t*t*t;
+}
+
+static void test_group_ease_out_css(void)
+{
+    for (uint32_t ms = 720; ms <= 960; ++ms) {
+        face_group_t g = face_group_at(MOT_POP, ms);
+        int32_t expected = (int32_t)(1000.0 + 160.0 * reference_css_out((ms - 720) / 240.0));
+        NEAR(g.sc, expected, 2);
+    }
+    for (uint32_t ms = 0; ms <= 144; ++ms) {
+        face_group_t g = face_group_at(MOT_JUMP, ms);
+        int32_t expected = (int32_t)(-2200.0 * reference_css_out(ms / 144.0));
+        NEAR(g.ty, expected, 8);
+    }
+    for (uint32_t ms = 960; ms <= 1200; ++ms) {
+        face_group_t g = face_group_at(MOT_POP, ms);
+        int32_t expected = (int32_t)(1160.0 - 80.0 * reference_css_out((ms - 960) / 240.0));
+        NEAR(g.sc, expected, 2);
+    }
+    for (uint32_t ms = 2040; ms <= 2400; ++ms) {
+        face_group_t g = face_group_at(MOT_POP, ms);
+        int32_t expected = (int32_t)(1080.0 - 80.0 * reference_css_out((ms - 2040) / 360.0));
+        NEAR(g.sc, expected, 2);
+    }
+    for (uint32_t ms = 144; ms <= 360; ++ms) {
+        face_group_t g = face_group_at(MOT_JUMP, ms);
+        int32_t expected = (int32_t)(-2200.0 + 2200.0 * reference_css_out((ms - 144) / 216.0));
+        NEAR(g.ty, expected, 8);
+    }
+    CHECK_EQ(face_group_at(MOT_POP, 2400).sc, 1000);
+    CHECK_EQ(face_group_at(MOT_JUMP, 1800).ty, 0);
+}
+
 static void test_double_blink_css(void)
 {
     const mood_t moods[] = { MOOD_ATTENTION, MOOD_RECONNECTED };
@@ -384,6 +427,7 @@ static void test_images(void)
 int main(void)
 {
     test_double_blink_css();
+    test_group_ease_out_css();
     test_character_motion_design();
     test_all_character_rows();
     test_eyes();

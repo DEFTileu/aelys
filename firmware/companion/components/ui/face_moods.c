@@ -152,6 +152,22 @@ static int32_t group_ease(int32_t u)
     return (samples[i] * (20u - remainder) + samples[i + 1] * remainder + 10u) / 20u;
 }
 
+/* CSS ease-out = cubic-bezier(0,0,.58,1), sampled every 2%.
+ * Rounded integer interpolation is within 0.9 permille at integer inputs. */
+static int32_t group_ease_out(int32_t u)
+{
+    static const uint16_t samples[] = {
+        0,34,66,98,130,161,191,221,251,280,308,337,364,392,419,445,471,
+        497,522,547,571,595,618,641,663,685,706,727,747,766,785,803,
+        821,838,855,870,885,900,913,926,938,949,959,968,976,983,989,
+        994,997,999,1000
+    };
+    if (u <= 0) return 0;
+    if (u >= 1000) return 1000;
+    unsigned i = (unsigned)u / 20u, remainder = (unsigned)u % 20u;
+    return (samples[i] * (20u - remainder) + samples[i + 1] * remainder + 10u) / 20u;
+}
+
 /* ---- eye group (.ey) keyframes ---- */
 typedef struct { int16_t t, tx, ty, rot, sc; } kf_t; /* t permille of the loop; px, px, deg, permille */
 typedef struct { uint16_t period; uint8_t easing, n; kf_t k[9]; } motion_t; /* 0 ease-in-out, 1 out, 2 linear */
@@ -205,7 +221,7 @@ face_group_t face_group_at(face_motion_t m, uint32_t t_ms)
     const kf_t *a = &mo->k[i], *b = &mo->k[i + 1];
     int32_t u = (int32_t)((p - (uint64_t)a->t * mo->period) * 1000u /
                           ((uint64_t)(b->t - a->t) * mo->period));
-    int32_t e = mo->easing == 2 ? u : mo->easing == 1 ? ease_out(u) : group_ease(u);
+    int32_t e = mo->easing == 2 ? u : mo->easing == 1 ? group_ease_out(u) : group_ease(u);
     g.tx = a->tx * 100 + (b->tx - a->tx) * e / 10;
     g.ty = a->ty * 100 + (b->ty - a->ty) * e / 10;
     g.rot = a->rot * 100 + (b->rot - a->rot) * e / 10;
