@@ -10,11 +10,50 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.core.models import AIAction, Task
+from app.core.models import AIAction, AIMessage, AIRun, Task
 from fastapi import HTTPException
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .models import ChatMessage
 from .tools import ToolRegistry
+
+
+async def conversation_history(
+    db: AsyncSession, owner_id: str, conversation_id: str, current: AIMessage, *, limit: int,
+) -> tuple[ChatMessage, ...]:
+    """Collect persisted turns up to the current question, excluding unfinished runs."""
+    from .memory import active_memory_versions
+
+    prior = list((await db.scalars(select(AIMessage).where(
+        AIMessage.conversation_id == conversation_id,
+        AIMessage.role.in_(["user", "assistant"]),
+        or_(AIMessage.created_at < current.created_at,
+            and_(AIMessage.created_at == current.created_at, AIMessage.id <= current.id)),
+    ).order_by(AIMessage.created_at.desc(), AIMessage.id.desc()).limit(limit))).all())
+    refs = {ref["id"] for entry in prior for ref in (entry.source_refs_json or [])
+            if isinstance(ref, dict) and ref.get("kind") == "owner_memory_fact" and isinstance(ref.get("id"), str)}
+    versions = await active_memory_versions(db, owner_id, set(sorted(refs)[:200]))
+    prior = [entry for entry in prior if entry.id == current.id or all(
+        ref.get("kind") != "owner_memory_fact" or
+        (isinstance(ref.get("id"), str) and type(ref.get("version")) is int and versions.get(ref["id"]) == ref["version"])
+        for ref in (entry.source_refs_json or []) if isinstance(ref, dict))]
+    ids = [entry.id for entry in prior if entry.role == "user" and entry.id != current.id]
+    run_rows = (await db.execute(select(AIRun.prompt_message_id, AIRun.status).where(
+        AIRun.owner_id == owner_id, AIRun.conversation_id == conversation_id, AIRun.prompt_message_id.in_(ids)))).all()
+    statuses: dict[str, set[str]] = {}
+    for prompt_id, status in run_rows:
+        if prompt_id is not None:
+            statuses.setdefault(prompt_id, set()).add(status)
+    prior = [entry for entry in prior if entry.role != "user" or entry.id == current.id
+             or entry.id not in statuses or "completed" in statuses[entry.id]]
+    return tuple(ChatMessage(entry.role, entry.content,
+        untrusted=any(ref.get("untrusted") is True for ref in (entry.source_refs_json or []) if isinstance(ref, dict)),
+        memory_refs=tuple((ref["id"], ref["version"]) for ref in (entry.source_refs_json or [])
+                          if isinstance(ref, dict) and ref.get("kind") == "owner_memory_fact"
+                          and isinstance(ref.get("id"), str) and type(ref.get("version")) is int))
+        for entry in reversed(prior))
+
 
 READ_SCOPES = frozenset({"tasks.read", "calendar.read", "notes.read", "knowledge.read"})
 DEFAULT_SCOPES = ("calendar.read", "notes.read", "tasks.read")

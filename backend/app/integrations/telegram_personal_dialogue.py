@@ -279,27 +279,11 @@ async def _process(job_id: str) -> None:
                     mime = 'application/pdf' if media.kind == 'pdf' else 'image/jpeg'
                     media_content = (MediaContent(mime, data, 'input.pdf' if media.kind == 'pdf' else 'photo.jpg'),)
                 del data
-            prior = list((await db.execute(select(AIMessage).where(
-                AIMessage.conversation_id == conversation_id, AIMessage.role.in_(['user','assistant']),
-            ).order_by(AIMessage.created_at.desc(), AIMessage.id.desc()).limit(20))).scalars())
+            from app.ai.chat_support import conversation_history
             from app.ai.memory import active_memory_versions
-            provenance_ids = {ref['id'] for prior_message in prior for ref in (prior_message.source_refs_json or [])
-                              if isinstance(ref, dict) and ref.get('kind') == 'owner_memory_fact' and isinstance(ref.get('id'), str)}
-            current_memory = await active_memory_versions(db, owner_id, set(sorted(provenance_ids)[:200]))
-            prior = [prior_message for prior_message in prior if all(
-                ref.get('kind') != 'owner_memory_fact' or (isinstance(ref.get('id'), str) and type(ref.get('version')) is int and current_memory.get(ref['id']) == ref['version'])
-                for ref in (prior_message.source_refs_json or []) if isinstance(ref, dict)
-            )]
-            # The list is newest first: an older user turn is answered only if
-            # its immediate newer neighbour is an assistant message.
-            prior = [entry for index, entry in enumerate(prior)
-                     if entry.role != 'user' or entry.id == message.id
-                     or (index > 0 and prior[index - 1].role == 'assistant')]
-            memory_refs.update((ref['id'], ref['version']) for prior_message in prior
-                               for ref in (prior_message.source_refs_json or [])
-                               if isinstance(ref, dict) and ref.get('kind') == 'owner_memory_fact'
-                               and isinstance(ref.get('id'),str) and type(ref.get('version')) is int)
-            messages = (ChatMessage('system', system_prompt(owner_timezone(item.timezone), tools=True, channel='telegram')), *(ChatMessage(m.role, m.content, untrusted=any(ref.get('untrusted') is True for ref in (m.source_refs_json or []) if isinstance(ref, dict)), memory_refs=tuple((ref['id'],ref['version']) for ref in (m.source_refs_json or []) if isinstance(ref, dict) and ref.get('kind') == 'owner_memory_fact' and isinstance(ref.get('id'),str) and type(ref.get('version')) is int)) for m in reversed(prior)))
+            history = await conversation_history(db, owner_id, conversation_id, message, limit=20)
+            memory_refs.update(ref for entry in history for ref in entry.memory_refs)
+            messages = (ChatMessage('system', system_prompt(owner_timezone(item.timezone), tools=True, channel='telegram')), *history)
             if not file_turn:
                 from app.ai.memory import select_relevant_facts
                 facts = await select_relevant_facts(db, owner_id, trusted_text[:2000])

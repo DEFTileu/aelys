@@ -748,12 +748,8 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 yield await emit("ai.run.failed", {"run_id": run_id, "code": "BUDGET_EXCEEDED", "message": "Configured monthly AI budget is exhausted"})
                 return
             request=RoutingRequest(TaskKind.UNKNOWN,privacy=PrivacyClass.PERSONAL,manual_model=requested_model,request_budget=min(Decimal(100), remaining_budget),effort=(item.tool_scope_json or {}).get("effort"))
-            prior = list((await db.execute(select(AIMessage).where(
-                AIMessage.conversation_id == item.conversation_id,
-                AIMessage.created_at <= last_message.created_at,
-                AIMessage.role.in_(["user", "assistant"]),
-            ).order_by(AIMessage.created_at.desc()).limit(100))).scalars())
-            chat_messages = tuple(ChatMessage(message.role, message.content) for message in reversed(prior))
+            from .chat_support import conversation_history
+            chat_messages = await conversation_history(db, user.id, item.conversation_id, last_message, limit=100)
             source_refs: list[dict] = []
             knowledge_scope = (item.tool_scope_json or {}).get("knowledge")
             if knowledge_scope is not None:
@@ -891,13 +887,16 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                     return
                 item.token_counts={"input":result.input_tokens,"output":result.output_tokens}; item.cost_estimate=result.cost
                 reply = result.text or (f"Prepared {proposals} change{'s' * (proposals != 1)} for your approval." if proposals else "")
+                completed = await db.execute(update(AIRun).where(AIRun.id==run_id, AIRun.owner_id==user.id, AIRun.status=="running").values(status="completed", completed_at=datetime.now(UTC), token_counts=item.token_counts, cost_estimate=item.cost_estimate))
+                if int(getattr(completed, "rowcount", 0) or 0) != 1:
+                    raise RunCancelled("run cancelled")
                 if reply or steps:
                     answer = AIMessage(conversation_id=item.conversation_id, role="assistant", content=reply, steps_json=list(steps.values()))
                     db.add(answer)
                     await db.flush()
                     await db.execute(update(AIAction).where(AIAction.run_id == run_id, AIAction.owner_id == user.id).values(message_id=answer.id))
                     await db.execute(update(AIConversation).where(AIConversation.id == item.conversation_id).values(updated_at=datetime.now(UTC)))
-                await db.execute(update(AIRun).where(AIRun.id==run_id,AIRun.owner_id==user.id,AIRun.status=="running").values(status="completed",completed_at=datetime.now(UTC),token_counts=item.token_counts,cost_estimate=item.cost_estimate)); await db.commit()
+                await db.commit()
                 yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.text), "input_tokens": result.input_tokens, "output_tokens": result.output_tokens, "estimated_cost": str(result.cost)})
                 return
             failure_event: str | None = None
