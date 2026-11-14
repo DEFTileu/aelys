@@ -327,6 +327,9 @@ static void layout_eyes(face_t *f, uint32_t t)
             place(f->ring[side], x1, y1, x2 - x1, y2 - y1);
             int16_t a = (int16_t)(t % 1000 * 360 / 1000); /* one turn a second, the right eye the other way */
             if (side) a = (int16_t)((360 - a) % 360);
+            /* A circular ring keeps its shape under group rotation, but its
+             * opening must turn along with the rest of the eye group. */
+            a = (int16_t)((a + g.rot / 100 + 360) % 360);
             if (a != f->ring_a[side]) {
                 f->ring_a[side] = a;
                 lv_obj_invalidate(f->ring[side]);

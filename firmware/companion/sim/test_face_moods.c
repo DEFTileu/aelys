@@ -498,6 +498,29 @@ static void test_worried_lids_close_and_reopen_at_home_scale(void)
     gone(f);
 }
 
+static void test_dizzy_rings_follow_group_rotation(void)
+{
+    lv_obj_t *f=face_create(lv_screen_active(),100);
+    lv_obj_set_pos(f,HX,HY);
+    face_set_mood(f,MOOD_DIZZY); /* at t=0, group angle is -9 degrees */
+    lv_obj_update_layout(f); lv_refr_now(NULL);
+    for (int side=0;side<2;++side) {
+        lv_area_t a; lv_obj_get_coords(lv_obj_get_child(f,4+side),&a);
+        int cx=(a.x1+a.x2+1)/2, cy=(a.y1+a.y2+1)/2;
+        /* 41 degrees lies inside the tilted arc, but outside an unrotated arc. */
+        CHECK(lit(cx+24,cy+21));
+    }
+    sim_step(800); lv_refr_now(NULL); lv_obj_update_layout(f); /* group angle +9°, opposite ring spins */
+    lv_area_t a;
+    lv_obj_get_coords(lv_obj_get_child(f,4),&a);
+    int cx=(a.x1+a.x2+1)/2, cy=(a.y1+a.y2+1)/2;
+    CHECK(dark(cx+29,cy-12));
+    lv_obj_get_coords(lv_obj_get_child(f,5),&a);
+    cx=(a.x1+a.x2+1)/2; cy=(a.y1+a.y2+1)/2;
+    CHECK(dark(cx-16,cy+27));
+    gone(f);
+}
+
 static void test_asymmetric_wink_and_wake(void)
 {
     lv_obj_t *f = show(MOOD_MISCHIEF, 100, HX, HY, 100);
@@ -564,5 +587,6 @@ int main(void)
     test_highlight_compresses_with_blink();
     test_worried_lid_follows_blink();
     test_worried_lids_close_and_reopen_at_home_scale();
+    test_dizzy_rings_follow_group_rotation();
     return g_failed ? 1 : 0;
 }
