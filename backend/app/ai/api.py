@@ -687,6 +687,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
     conversation = await db.get(AIConversation, item.conversation_id)
     last_message=await db.get(AIMessage, item.prompt_message_id) if item.prompt_message_id else None
     async def stream():
+        owner_id = user.id
         async def emit(event_type: str, payload: Mapping[str, Any]) -> str:
             wire = f"event: {event_type}\ndata: {json.dumps(payload, separators=(',', ':'), ensure_ascii=False)}\n\n"
             result = await _persist_event(db, run_id, wire)
@@ -889,6 +890,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 reply = result.text or (f"Prepared {proposals} change{'s' * (proposals != 1)} for your approval." if proposals else "")
                 completed = await db.execute(update(AIRun).where(AIRun.id==run_id, AIRun.owner_id==user.id, AIRun.status=="running").values(status="completed", completed_at=datetime.now(UTC), token_counts=item.token_counts, cost_estimate=item.cost_estimate))
                 if int(getattr(completed, "rowcount", 0) or 0) != 1:
+                    await db.rollback()
+                    await db.execute(update(AIAction).where(AIAction.run_id == run_id, AIAction.owner_id == owner_id).values(message_id=None))
+                    await db.commit()
                     raise RunCancelled("run cancelled")
                 if reply or steps:
                     answer = AIMessage(conversation_id=item.conversation_id, role="assistant", content=reply, steps_json=list(steps.values()))
@@ -956,7 +960,6 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 if item.status == "cancelled":
                     raise RunCancelled("run cancelled")
         except RunCancelled:
-            owner_id = user.id
             await db.rollback()
             await db.execute(update(AIRun).where(
                 AIRun.id == run_id, AIRun.owner_id == owner_id,

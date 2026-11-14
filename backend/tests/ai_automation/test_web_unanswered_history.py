@@ -52,7 +52,7 @@ async def test_tool_completion_race_does_not_save_answer_or_link_action(tmp_path
         async with factory() as db:
             assert not (await db.scalars(select(AIMessage).where(AIMessage.role == 'assistant'))).all()
             actions = (await db.scalars(select(AIAction).where(AIAction.run_id == run_id))).all()
-            assert all(action.message_id is None or action.message_id == created.json()['prompt_message_id'] for action in actions)
+            assert actions and all(action.message_id is None for action in actions)
 
 
 @pytest.mark.asyncio
