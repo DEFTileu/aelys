@@ -530,3 +530,13 @@ remain unproven. A subsequent source review found that face update and deletion
 still use a global pending-task guard, so unrelated standalone work can trip it
 even under serialized access; this was not reproduced. See ignored
 `source-shutdown/REPORT.md`.
+
+A phase-aligned relief comparison found that the selected 4,720 ms host capture
+actually used its last layout from 4,710 ms. Aligning the CSS phases reduced
+foreground-union XOR from 21.839% to 10.557% at 100% scale, and from 23.580%
+to 11.452% at 130%. At the sampled 4,800 ms closure, both clocks aligned and a
+substantial difference remained. An altered circular-pill control changed the
+result in both directions, so timing and corner geometry do not by themselves
+explain all differences. These threshold-sensitive metrics include browser and
+RGB565 rasterization and are not acceptance criteria. Three diagnostic tests
+were independently rerun; see ignored `relief-phase/PHASE-REPORT.md`.
