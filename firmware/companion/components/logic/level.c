@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 #define FLAT_RATIO 0.35f /* in-plane gravity below 35 % of the total: lying flat, keep the angle */
-#define SMOOTH     0.25f /* low-pass step per sample */
+#define SMOOTH     0.5f  /* low-pass step per 20 ms sample: a 90 degree flip settles in about 0.12 s */
 #define DEADBAND10 20    /* ignore changes under 2 degrees: no shimmer when held still */
 
 static int32_t wrap10(int32_t a)

@@ -16,7 +16,7 @@ int main(void)
     CHECK_EQ(level_update(&s, 17, 1000), 0);             /* ~1 degree: deadband, no shimmer */
     int32_t a = level_update(&s, 1000, 0);               /* jump to 90: smoothed, not instant */
     CHECK(a > 0 && a < 900);
-    for (int i = 0; i < 40; i++) a = level_update(&s, 1000, 0);
+    for (int i = 0; i < 8; i++) a = level_update(&s, 1000, 0); /* 8 samples = 160 ms */
     CHECK(a > 880 && a <= 900);                          /* settles within the deadband */
 
     level_t w = {0};                                     /* wraps the short way across 180 */

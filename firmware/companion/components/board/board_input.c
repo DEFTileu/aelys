@@ -29,7 +29,7 @@ static const char *TAG = "input";
 
 #define POLL_MS     4 /* loop period: INT level, BOOT key, combo */
 #define SLOW_PASSES 5 /* every 20 ms: PMIC edges, and the release check while a finger is down */
-#define IMU_PASSES  25 /* every 100 ms: accelerometer for the level face */
+#define IMU_PASSES  5  /* every 20 ms: accelerometer for the level face, so a quick flip is followed at once */
 /* Chip axes to screen axes (x right, y down). shortcut: set from one upright sample; recheck if the face turns the wrong way. */
 #define IMU_SCREEN_X(ax, ay) (-(ay)) /* chip -y is screen right: the plain mapping showed the face 90 degrees clockwise */
 #define IMU_SCREEN_Y(ax, ay) (ax)
