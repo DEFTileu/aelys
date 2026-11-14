@@ -501,6 +501,9 @@ task cancellation and a post-queue dispatch failure. Three focused normal and
 ASan/UBSan tests were independently rerun; leak detection was disabled and a
 prebuilt logic archive was not instrumented. Independent review found a
 possible blocked parent layer after cancellation and gaps in failed-task
-retirement tests. The experiment remains unintegrated and is not evidence of
-asynchronous teardown, automatic recovery or display delivery. See ignored
+retirement tests. A subsequent host fix requests dispatch and adds a parent/child
+regression plus failed-task lifetime tests; four focused normal and ASan/UBSan
+checks were independently rerun. Leak detection remained disabled and a logic
+archive was not instrumented. The experiment remains unintegrated and is not
+evidence of asynchronous teardown, automatic recovery or display delivery. See ignored
 `source-outcome2/REPORT.md`.
