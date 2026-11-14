@@ -1,11 +1,12 @@
 /* Menu wheel (design "Меню · колесо приложений") and the shared "Coming soon" screen.
  * Nine round items sit on a ring of 160 px around the centre, 40 degrees apart; the selected one is at 12 o'clock inside an accent
  * ring and named in the centre. A swipe turns the wheel by one item (a 160 ms animation of the item positions, nothing is rotated
- * or cached as a layer). Deviations: no icon font, so an item shows its initial in the module colour; the sub line is live for
- * Tasks, Timer and Inbox, "Coming soon" for items without a screen and empty for the rest.
+ * or cached as a layer). Each item shows the design's icon (A8 image, img_menu_icons.c, recoloured with the module colour). Deviation:
+ * the sub line is live for Tasks, Timer and Inbox, "Coming soon" for items without a screen and empty for the rest.
  *
  * To give an item its real screen change its `target` in items[] below, nothing else. */
 #include <stdio.h>
+#include "ui_menu_icons.h"
 #include "ui_screens_priv.h"
 
 #define N_ITEMS 9
@@ -36,6 +37,8 @@ static const menu_item_t items[N_ITEMS] = {
     { "Games",     0x5FD7A8, SCR_PLACEHOLDER },
     { "Settings",  0xA6A0B2, SCR_PLACEHOLDER },
 };
+
+_Static_assert(MENU_ICON_COUNT == N_ITEMS, "one icon per menu item");
 
 static struct {
     lv_obj_t *root, *item[N_ITEMS], *name, *sub;
@@ -122,9 +125,11 @@ lv_obj_t *scr_menu_create(lv_obj_t *parent)
         lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(c, lv_color_hex(COLOR_ITEM_BG), 0);
-        lv_obj_t *l = ui_label(c, &inter_28, items[i].color, ITEM_D, 1, LV_TEXT_ALIGN_CENTER);
-        char ini[2] = { items[i].name[0], 0 };
-        lv_label_set_text(l, ini);
+        lv_obj_t *l = lv_image_create(c);
+        lv_obj_set_clickable(l, false);
+        lv_image_set_src(l, &menu_icon[i]);
+        lv_obj_set_style_image_recolor(l, lv_color_hex(items[i].color), 0);
+        lv_obj_set_style_image_recolor_opa(l, LV_OPA_COVER, 0);
         lv_obj_center(l);
         m.item[i] = c;
     }
