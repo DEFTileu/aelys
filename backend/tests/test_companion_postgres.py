@@ -195,7 +195,7 @@ async def test_character_migration_preserves_existing_postgres_row(postgres, mon
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
 
-    path = Path(__file__).parents[1] / 'alembic/versions/0055_companion_character.py'
+    path = Path(__file__).parents[1] / 'alembic/versions/0057_companion_character.py'
     spec = importlib.util.spec_from_file_location('character_migration_postgres', path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
