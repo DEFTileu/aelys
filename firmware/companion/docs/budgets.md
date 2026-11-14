@@ -42,8 +42,14 @@ comparisons. A separate 65-second task sample placed UI on core 1 and link and
 input on core 0; tcpip was unpinned. In six roughly 10-second intervals, UI
 runtime was 0.434–0.633 seconds; these averages do not explain worst-frame
 latency. The task affinity field does not establish where unpinned tasks ran.
-Sanitized samples and the summary script are in the local S1 ledger, not in
-the repository.
+A follow-up 130-second attribution probe on `d688d04` recorded 120 complete
+samples, 109 Online. Its worst frame was 39640 µs on Today. The longest of
+69 synthetic switches was 49221 µs, also to Today: 14509 µs queued, 36 µs
+waiting for refresh, and 34676 µs in the frame, including 12806 µs waiting for
+TE. The separately observed maximum non-TE frame time was 27356 µs on Today.
+These are maxima from one short run, not proof of a root cause; added probe
+logging and different network conditions affect comparisons. Sanitized samples
+and the summary script are in the local S1 ledger, not in the repository.
 
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
 Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line per period.
