@@ -17,12 +17,16 @@
 #define STORE_LOST_VERSION  2
 #define STORE_PAIR_VERSION  1
 #define STORE_SETTINGS_VERSION 1
+#define STORE_UI_VERSION    1 /* the board's own UI choices (key "ui"); the server never writes it */
 #define STORE_SNAP_VERSION  1 /* legacy raw struct format; bump with any change to snap_t */
 #define STORE_SNAP_OWNED_VERSION 2
 #define STORE_SNAP_OWNER_LEN 65
 
 typedef struct { char ssid[33]; char pass[65]; } wifi_cred_t;
 typedef struct { uint8_t n; wifi_cred_t net[WIFI_MAX]; } wifi_list_t;
+
+/* What the owner picks on the board itself (Settings screen). Grow it only by bumping STORE_UI_VERSION. */
+typedef struct { bool level_on; } ui_prefs_t;
 
 /* The companion pairing: who this board is to the backend, and its P-256 private scalar. */
 typedef struct { char device_id[40]; char api_url[129]; uint8_t priv[32]; } pair_rec_t;
@@ -34,6 +38,8 @@ typedef struct { char device_id[40]; char api_url[129]; uint8_t priv[32]; } pair
 #define STORE_LOST_BLOB  (1 + STORE_LOST_PAYLOAD + 4)
 #define STORE_SETTINGS_PAYLOAD (1 + sizeof(uint32_t)) /* brightness, rev */
 #define STORE_SETTINGS_BLOB (1 + STORE_SETTINGS_PAYLOAD + 4)
+#define STORE_UI_PAYLOAD 1 /* level_on */
+#define STORE_UI_BLOB (1 + STORE_UI_PAYLOAD + 4)
 #define STORE_PAIR_BLOB  (1 + sizeof(pair_rec_t) + 4)
 #define STORE_SNAP_BLOB  (1 + sizeof(snap_t) + 4)
 #define STORE_SNAP_OWNED_BLOB (1 + STORE_SNAP_OWNER_LEN + sizeof(snap_t) + 4)
@@ -49,6 +55,8 @@ size_t store_encode_lost(const lost_state_t *in, uint8_t *buf, size_t cap);
 bool   store_decode_lost(const uint8_t *buf, size_t len, lost_state_t *out);
 size_t store_encode_settings(const settings_t *in, uint8_t *buf, size_t cap);
 bool   store_decode_settings(const uint8_t *buf, size_t len, settings_t *out); /* also false if brightness is outside 5..100 */
+size_t store_encode_ui(const ui_prefs_t *in, uint8_t *buf, size_t cap);
+bool   store_decode_ui(const uint8_t *buf, size_t len, ui_prefs_t *out); /* also false if the flag is not 0 or 1 */
 size_t store_encode_pair(const pair_rec_t *in, uint8_t *buf, size_t cap);
 bool   store_decode_pair(const uint8_t *buf, size_t len, pair_rec_t *out);
 size_t store_encode_snap(const snap_t *in, uint8_t *buf, size_t cap);

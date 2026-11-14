@@ -475,6 +475,28 @@ static void test_settings_roundtrip_and_bounds(void)
     CHECK(out.brightness == 35 && out.rev == 7);         /* untouched by every failure */
 }
 
+static void test_ui_prefs_roundtrip_and_bounds(void)
+{
+    ui_prefs_t in = { .level_on = true }, out = { 0 }; uint8_t buf[STORE_UI_BLOB];
+    size_t n = store_encode_ui(&in, buf, sizeof buf);
+    CHECK_EQ(n, sizeof buf);
+    CHECK_EQ(buf[0], STORE_UI_VERSION);
+    CHECK(store_decode_ui(buf, n, &out) && out.level_on);
+    in.level_on = false;
+    store_encode_ui(&in, buf, sizeof buf);
+    CHECK(store_decode_ui(buf, n, &out) && !out.level_on);
+    CHECK_EQ(store_encode_ui(&in, buf, n - 1), 0);       /* too small */
+    buf[1] = 2; reseal(buf, n);                          /* a valid CRC does not make 2 a flag */
+    CHECK(!store_decode_ui(buf, n, &out));
+    buf[1] = 1; buf[2] ^= 1;
+    CHECK(!store_decode_ui(buf, n, &out));               /* corrupt */
+    store_encode_ui(&in, buf, sizeof buf);
+    buf[0] = 2; reseal(buf, n);
+    CHECK(!store_decode_ui(buf, n, &out));               /* another version */
+    CHECK(!store_decode_ui(buf, n - 1, &out));
+    CHECK(!out.level_on);                                /* untouched by every failure: still the last good value (off) */
+}
+
 int main(void)
 {
     test_crc32_known_vector();
@@ -498,5 +520,6 @@ int main(void)
     test_snap_roundtrip();
     test_snap_overlong_and_bad_counts_are_made_safe();
     test_settings_roundtrip_and_bounds();
+    test_ui_prefs_roundtrip_and_bounds();
     return g_failed ? 1 : 0;
 }

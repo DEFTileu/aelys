@@ -114,6 +114,20 @@ bool store_decode_settings(const uint8_t *buf, size_t len, settings_t *out)
     return true;
 }
 
+size_t store_encode_ui(const ui_prefs_t *in, uint8_t *buf, size_t cap)
+{
+    uint8_t p[STORE_UI_PAYLOAD] = { in->level_on ? 1 : 0 };
+    return seal(STORE_UI_VERSION, p, sizeof p, buf, cap);
+}
+
+bool store_decode_ui(const uint8_t *buf, size_t len, ui_prefs_t *out)
+{
+    const uint8_t *p = unseal(STORE_UI_VERSION, buf, len, STORE_UI_PAYLOAD);
+    if (!p || p[0] > 1) return false;
+    out->level_on = p[0] == 1;
+    return true;
+}
+
 size_t store_encode_pair(const pair_rec_t *in, uint8_t *buf, size_t cap)
 {
     return seal(STORE_PAIR_VERSION, in, sizeof *in, buf, cap);
