@@ -269,7 +269,7 @@ describe('Wi-Fi add network', () => {
   })
   it('add network encrypts and never sends the password in clear', async () => {
     await open(); await fill('Office', PASSWORD)
-    await click(button('Send to Aelys')); await settle()
+    await sendIt() /* wait for the request: the encryption runs on WebCrypto's own thread, a fixed settle() lost the race in CI */
     expect(m.addWifi).toHaveBeenCalledTimes(1)
     const [id, blob] = m.addWifi.mock.calls[0]!
     expect(id).toBe(ID)
