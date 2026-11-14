@@ -117,7 +117,20 @@ bool scr_menu_hit(int32_t x, int32_t y)
 {
     int32_t cx = UI_SCREEN_SIZE / 2, dx = x - cx, dy = y - (cx - RING_R);
     int32_t ex = x - cx, ey = y - cx;
-    return dx * dx + dy * dy <= (SEL_D / 2) * (SEL_D / 2) || ex * ex + ey * ey <= CENTRE_HIT_R * CENTRE_HIT_R;
+    if (dx * dx + dy * dy <= (SEL_D / 2) * (SEL_D / 2) || ex * ex + ey * ey <= CENTRE_HIT_R * CENTRE_HIT_R) return true;
+    /* any other icon: select it at once (the wheel jumps there) and report a hit, so a tap opens it without swiping */
+    for (int i = 0; i < N_ITEMS; i++) {
+        int32_t ix = x - (lv_obj_get_x(m.item[i]) + ITEM_D / 2), iy = y - (lv_obj_get_y(m.item[i]) + ITEM_D / 2);
+        if (i == m.sel || ix * ix + iy * iy > (ITEM_D / 2 + 6) * (ITEM_D / 2 + 6)) continue;
+        int d = ((i - m.sel) % N_ITEMS + N_ITEMS) % N_ITEMS;
+        if (d > N_ITEMS / 2) d -= N_ITEMS;            /* the short way round */
+        lv_anim_delete(m.root, turn_cb);
+        m.sel = i;
+        m.goal += d * STEP_DEG;
+        place(m.goal);
+        return true;
+    }
+    return false;
 }
 
 lv_obj_t *scr_menu_create(lv_obj_t *parent)

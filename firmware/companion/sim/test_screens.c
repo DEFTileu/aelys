@@ -1267,11 +1267,14 @@ static void test_menu_wheel(void)
     btn(BTN_LOW);
     btn(BTN_TOP);
     CHECK_EQ(ui_current_screen(), SCR_MENU);
-    tap_at(40, 233);                                 /* an unselected item does nothing */
+    tap_at(40, 233);                                 /* between two icons: nothing */
     CHECK_EQ(ui_current_screen(), SCR_MENU);
-    swipe(UI_EV_SWIPE_LEFT);
+    tap_at(336, 110);                                /* another icon opens at once, no swipe: Timer, next to Focus */
+    CHECK_EQ(ui_current_screen(), SCR_TIMER);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
     sim_step(300);
-    CHECK(shows_text(scr, "Timer") && !shows_text(scr, "Coming soon"));
+    CHECK(shows_text(scr, "Timer") && !shows_text(scr, "Coming soon")); /* the wheel stays on it */
     tap_at(233, 73);                                 /* the selected item itself: Timer */
     CHECK_EQ(ui_current_screen(), SCR_TIMER);
     btn(BTN_LOW);

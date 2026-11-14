@@ -105,7 +105,7 @@ void scr_menu_set(const snap_t *s);                        /* name and sub line 
 void scr_menu_step(int dir);                               /* turn the wheel one item: dir > 0 next (swipe left), < 0 previous; wraps */
 int scr_menu_selected(void);                               /* index of the selected item */
 scr_t scr_menu_target(void);                               /* the screen the selected item opens */
-bool scr_menu_hit(int32_t x, int32_t y);                   /* a tap on the selected item or the centre */
+bool scr_menu_hit(int32_t x, int32_t y);                   /* a tap on the centre or any item (which it selects) */
 lv_obj_t *scr_placeholder_create(lv_obj_t *parent);
 void scr_placeholder_set(void);                            /* shows the selected menu item's name */
 
