@@ -446,6 +446,9 @@ moves its diagnostic pending count to task cleanup; a simulated unsupported
 software renderer exercised one failed-task cleanup. The targeted failure test
 and a 130% ASan/UBSan rotation case were independently rerun successfully;
 the imported logic archive was not instrumented and leak detection was disabled.
+Independent review confirmed the two tested corrections but found that the
+blender can form an out-of-object pointer after its final row with a minimally
+sized padded buffer, and that invalid input has no automatic redraw repair.
 This is not a per-source ownership or cancellation protocol. No borrowed draw
 task was deliberately held across source mutation or deletion, and a task that
 fails after successful submission has no visual recovery. The prototype remains
