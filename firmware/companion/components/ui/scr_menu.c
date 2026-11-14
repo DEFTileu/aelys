@@ -35,7 +35,7 @@ static const menu_item_t items[N_ITEMS] = {
     { "Weather",   0x7FA8F5, SCR_PLACEHOLDER },
     { "Ask Aelys", 0xB9A8FF, SCR_PLACEHOLDER },
     { "Games",     0x5FD7A8, SCR_PLACEHOLDER },
-    { "Settings",  0xA6A0B2, SCR_PLACEHOLDER },
+    { "Settings",  0xA6A0B2, SCR_SETTINGS },
 };
 
 _Static_assert(MENU_ICON_COUNT == N_ITEMS, "one icon per menu item");
@@ -79,6 +79,7 @@ static void sub_text(char *out, size_t cap, int i, const snap_t *s)
     else if (items[i].target == SCR_TASKS && s->today_total > 0) snprintf(out, cap, "%d / %d done", s->today_done, s->today_total);
     else if (items[i].target == SCR_TIMER) scr_timer_summary(out, cap);
     else if (items[i].target == SCR_INBOX) snprintf(out, cap, "%d new", s->unread > 0 ? s->unread : 0);
+    else if (items[i].target == SCR_SETTINGS) snprintf(out, cap, "Brightness \xC2\xB7 Wi-Fi");
 }
 
 void scr_menu_set(const snap_t *s)

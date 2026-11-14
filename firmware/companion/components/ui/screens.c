@@ -1,4 +1,4 @@
-/* Screen switching: home, the menu wheel and its placeholder, Today, Tasks, Timer, Calendar, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
+/* Screen switching: home, the menu wheel and its placeholder, Settings (with Wi-Fi and About), Today, Tasks, Timer, Calendar, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
  * one active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress and a toast
  * sits on top. The latest snapshot (ui_snap_tb) is rendered into the visible screen on entry, on events that can change
  * it and once a second (relative times, the focus countdown, the "due within 60 min" mood). Hidden screens do no layout. */
@@ -20,6 +20,8 @@
 
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
+tribuf_t ui_wifi_tb;
+static ui_wifi_names_t *wifi_buf; /* 3 slots from the LVGL allocator, like snap_buf */
 tribuf_t ui_snap_tb;
 static snap_t *snap_buf; /* 3 slots, from the LVGL allocator (PSRAM on the board): 3.3 KB that internal RAM can spare */
 
@@ -39,7 +41,7 @@ static struct {
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
     lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *reaction_timer, *tick_timer, *level_timer;
-    bool level_on;       /* off at boot. shortcut: not saved, a reboot turns it off; move to settings (S6) */
+    bool level_on;       /* "always level": saved by main through the settings hook; ui_settings_init() sets it at boot */
     int16_t level_angle; /* the newest UI_EV_LEVEL, applied only while level_on */
     const snap_t *snap;  /* the newest published snapshot; unchanged until the next tribuf_latest() */
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
@@ -122,6 +124,14 @@ void ui_stack(lv_obj_t *const o[], const uint8_t gap[], int n, int32_t area_y, i
 }
 
 scr_t ui_current_screen(void) { return g.cur; }
+bool ui_level_on(void) { return g.level_on; }
+bool ui_paired(void) { return g.link != LINK_UI_UNPAIRED; }
+void ui_level_set(bool on, bool notify)
+{
+    g.level_on = on;
+    scr_home_set_level(on ? g.level_angle : 0);
+    if (notify) scr_settings_level_changed(on);
+}
 character_result_t ui_character_last(void) { return g.character_result; }
 
 void ui_set_text(lv_obj_t *label, const char *txt)
@@ -474,6 +484,9 @@ static void render(void)
     case SCR_TIMER: scr_timer_set(); break;
     case SCR_CALENDAR: scr_calendar_set(s, now); break;
     case SCR_MENU: scr_menu_set(s); break;
+    case SCR_SETTINGS: scr_settings_set(); break;
+    case SCR_WIFI: scr_wifinets_set(); break;
+    case SCR_ABOUT: scr_about_set(); break;
     case SCR_PLACEHOLDER: scr_placeholder_set(); break;
     default: break; /* lost mode, ICE and pairing have their own event-driven data */
     }
@@ -506,8 +519,7 @@ static void level_hold_timeout(lv_timer_t *t)
     (void)t;
     g.level_timer = NULL;
     if (g.cur != SCR_HOME || g.lost || g.find) return;
-    g.level_on = !g.level_on;
-    scr_home_set_level(g.level_on ? g.level_angle : 0);
+    ui_level_set(!g.level_on, true);
 }
 
 static void hold_timeout(lv_timer_t *t)
@@ -594,6 +606,9 @@ void ui_setup(void)
     g.scr[SCR_TASKS] = scr_tasks_create(root);
     g.scr[SCR_TIMER] = scr_timer_create(root);
     g.scr[SCR_CALENDAR] = scr_calendar_create(root);
+    g.scr[SCR_SETTINGS] = scr_settings_create(root);
+    g.scr[SCR_WIFI] = scr_wifinets_create(root);
+    g.scr[SCR_ABOUT] = scr_about_create(root);
     scr_hold_create(root);
     scr_notice_create(root);
     scr_toast_create(root);
@@ -602,6 +617,9 @@ void ui_setup(void)
     tribuf_init(&ui_owner_tb, &owner_buf[0], &owner_buf[1], &owner_buf[2]);
     snap_buf = lv_malloc_zeroed(3 * sizeof *snap_buf); /* zeroed: no snapshot yet */
     if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
+    wifi_buf = lv_malloc_zeroed(3 * sizeof *wifi_buf);
+    ui_wifi_tb = (tribuf_t){ 0 }; /* a second ui_setup() (host tests) must not keep slots of the old buffer */
+    if (wifi_buf) tribuf_init(&ui_wifi_tb, &wifi_buf[0], &wifi_buf[1], &wifi_buf[2]);
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
     g.lost = g.have_time = g.find = false;
     g.lost_rev = g.character_identity = 0;
@@ -658,6 +676,9 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
         scr_timer_tap(x, y);
     } else if (g.cur == SCR_FOCUS && scr_focus_view() == FV_NONE) {
         act(ACT_FOCUS_START, NULL);
+    } else if (g.cur == SCR_SETTINGS) {
+        *next = screen_next_open(g.cur, g.lost, scr_settings_tap(x, y));
+        return;
     } else if (g.cur == SCR_MENU && scr_menu_hit(x, y)) {
         *next = screen_next_open(g.cur, g.lost, scr_menu_target());
         return;
@@ -739,7 +760,20 @@ void ui_handle_event(const ui_event_t *ev)
         }
         return;
     case UI_EV_WIFI:
-        if (ev->len >= 1) scr_home_set_wifi(ev->data[0]);
+        if (ev->len >= 1) {
+            char cur[33];
+            ev_str(cur, sizeof cur, ev, 1);
+            scr_home_set_wifi(ev->data[0]);
+            scr_settings_set_wifi(ev->data[0], cur);
+            if (g.cur == SCR_SETTINGS || g.cur == SCR_WIFI) render();
+        }
+        return;
+    case UI_EV_WIFI_LIST:
+        if (g.cur == SCR_WIFI) render();
+        return;
+    case UI_EV_BRIGHTNESS:
+        if (ev->len >= 1) scr_settings_note_brightness(ev->data[0]); /* the panel was set by main */
+        if (g.cur == SCR_SETTINGS) render();
         return;
     case UI_EV_WIFI_ADD: {
         if (ev->len >= 1 && ev->data[0] == 3) { scr_wifi_card_hide(); return; } /* the attempt never ran */
@@ -889,6 +923,7 @@ void ui_handle_event(const ui_event_t *ev)
             render();
         }
         if (g.cur == SCR_TIMER && !g.lost) scr_timer_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
+        if (g.cur == SCR_SETTINGS && !g.lost) scr_settings_step(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         break;
     case UI_EV_BTN:
         if (g.cur == SCR_LOST && ev->len >= 1) scr_lost_show_hint();
@@ -900,7 +935,8 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task();
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TIMER) scr_timer_top();
         next = g.cur == SCR_MENU && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_menu_target())
-                                                          : screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
+             : g.cur == SCR_SETTINGS && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_settings_top())
+                                                               : screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
         break;
     case UI_EV_ACTION:
         if (!g.lost) {

@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include "ui_events.h"
 
-typedef enum { SCR_HOME, SCR_ICE, SCR_LOST, SCR_TODAY, SCR_FOCUS, SCR_INBOX, SCR_PAIR, SCR_MENU, SCR_PLACEHOLDER, SCR_TASKS, SCR_TIMER, SCR_CALENDAR, SCR_COUNT } scr_t;
+typedef enum { SCR_HOME, SCR_ICE, SCR_LOST, SCR_TODAY, SCR_FOCUS, SCR_INBOX, SCR_PAIR, SCR_MENU, SCR_PLACEHOLDER, SCR_TASKS, SCR_TIMER, SCR_CALENDAR, SCR_SETTINGS, SCR_WIFI, SCR_ABOUT, SCR_COUNT } scr_t;
 
 /* Next screen for an event. `lost_mode` is the lost-mode flag AFTER the event: for UI_EV_LOST it
  * is the new value (on -> SCR_LOST, off -> SCR_HOME).
@@ -25,10 +25,10 @@ scr_t screen_next_pair(scr_t cur, bool lost_mode, ui_pair_t what);
  * and on expiry calls screen_next_btn(SCR_INBOX, lost_mode, BTN_LOW). */
 typedef enum { TAP_OUTSIDE, TAP_UNREAD_ROW, TAP_ROW } tap_hit_t; /* where a tap landed on the current screen */
 scr_t screen_next_tap(scr_t cur, bool lost_mode, tap_hit_t hit);  /* TODAY + unread row -> INBOX; INBOX + outside the rows -> TODAY */
-scr_t screen_next_btn(scr_t cur, bool lost_mode, ui_btn_t btn);   /* BTN_LOW: TODAY/FOCUS -> HOME, INBOX -> TODAY, MENU -> HOME, PLACEHOLDER, TASKS, TIMER and CALENDAR -> MENU; BTN_TOP: HOME -> MENU */
+scr_t screen_next_btn(scr_t cur, bool lost_mode, ui_btn_t btn);   /* BTN_LOW: TODAY/FOCUS -> HOME, INBOX -> TODAY, MENU -> HOME, PLACEHOLDER, TASKS, TIMER and CALENDAR -> MENU, SETTINGS -> MENU, WIFI and ABOUT -> SETTINGS; BTN_TOP: HOME -> MENU */
 
 /* The menu wheel (SCR_MENU) opens from HOME with BTN_TOP. Its swipes turn the wheel inside the UI layer (screen_next() leaves
- * them alone); the top key and a tap on the selected item open `target`, the screen the menu table names for it. Lost mode: never. */
+ * them alone); the top key and a tap on the selected item open `target`, the screen the menu table names for it. Lost mode: never. Settings opens its Wi-Fi and About screens the same way. */
 scr_t screen_next_open(scr_t cur, bool lost_mode, scr_t target);
 
 /* A tap on the new-notice pop-up opens the Inbox from any everyday screen (home, menu and the apps). Lost mode, the ICE card and the

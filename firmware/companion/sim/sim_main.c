@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -66,6 +66,12 @@ static void cyr_owner(owner_info_t *o)
     strcpy(o->med_note, "\xD0\x90\xD0\xBB\xD0\xBB\xD0\xB5\xD1\x80\xD0\xB3\xD0\xB8\xD1\x8F: \xD0\xBF\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x86\xD0\xB8\xD0\xBB\xD0\xBB\xD0\xB8\xD0\xBD");
     strcpy(o->message, "\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8 \xD0\xBD\xD0\xB0\xD1\x88\xD0\xBB\xD0\xB8, \xD0\xBF\xD0\xBE\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xBD\xD0\xB8\xD1\x82\xD0\xB5");
 }
+
+static const char *demo_version(void) { return "0.1.0"; }
+static bool demo_battery(uint8_t *pct, bool *charging) { *pct = 87; *charging = true; return true; }
+static void demo_ignore_brightness(uint8_t pct) { (void)pct; }
+static void demo_ignore_level(bool on) { (void)on; }
+static const ui_settings_hooks_t demo_hooks = { demo_ignore_brightness, demo_ignore_level, demo_version, demo_battery };
 
 static void post_ev(uint8_t type, uint8_t d0) { sim_post(type, &d0, 1); }
 static bool accept_action(act_kind_t k, const char *id) { (void)k; (void)id; return true; }
@@ -156,6 +162,33 @@ static int companion_shot(const char *shot)
             sim_step(strcmp(shot, "timer_done") ? 76000 : 301000); /* 5 min: 3:44 left, or over */
         }
     }
+    else if (!strncmp(shot, "settings", 8)) { /* the menu, the wheel one item back to Settings, open it */
+        ui_set_settings_hooks(&demo_hooks);
+        ui_wifi_names_t *n = tribuf_back(&ui_wifi_tb);
+        memset(n, 0, sizeof *n);
+        n->n = 3;
+        strcpy(n->ssid[0], "Home"); strcpy(n->ssid[1], "Office"); strcpy(n->ssid[2], "Phone hotspot");
+        tribuf_publish(&ui_wifi_tb);
+        uint8_t wifi[34] = { UI_WIFI_ONLINE, 'H', 'o', 'm', 'e' };
+        sim_post(UI_EV_WIFI, wifi, sizeof wifi);
+        if (!strcmp(shot, "settings_wifi_wrong")) post_ev(UI_EV_WIFI, UI_WIFI_BAD_PASSWORD);
+        ui_settings_init(60, !strcmp(shot, "settings_level"));
+        post_ev(UI_EV_BTN, BTN_TOP);
+        sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+        sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
+        sim_step(200);
+        post_ev(UI_EV_BTN, BTN_TOP);
+        if (!strcmp(shot, "settings_level")) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0); /* Sleep and Sounds are skipped: the highlight lands on Always level */
+        } else if (strcmp(shot, "settings")) {
+            for (int i = 0; i < (strcmp(shot, "settings_about") ? 2 : 3); i++) {
+                sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+                sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            }
+            post_ev(UI_EV_BTN, BTN_TOP);
+        }
+    }
     else if (!strcmp(shot, "calendar") || !strcmp(shot, "calendar_empty")) {
         post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Calendar, open it */
         for (int i = 0; i < 3; i++) {
@@ -187,7 +220,7 @@ static int companion_shot(const char *shot)
 static int screen_shot(const char *shot)
 {
     if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
-        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6))
+        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6) || !strncmp(shot, "settings", 8))
         return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };
@@ -261,7 +294,7 @@ int main(int argc, char **argv)
         else return 2;
     }
     if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
         fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
                         "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);

@@ -6,6 +6,7 @@
 #include "character.h"
 #include "proto.h"
 #include "snap.h"
+#include "store_codec.h"
 #include "tribuf.h"
 #include "ui_events.h"
 
@@ -47,6 +48,21 @@ extern tribuf_t ui_owner_tb; /* owner_info_t */
  * and a producer must not publish. */
 extern tribuf_t ui_snap_tb; /* snap_t */
 void ui_handle_event(const ui_event_t *ev);
+/* The saved Wi-Fi network names for the Settings screen, in priority order, names only (never passwords). The net task fills
+ * tribuf_back(&ui_wifi_tb), calls tribuf_publish() and posts UI_EV_WIFI_LIST; the UI reads tribuf_latest() whenever the Wi-Fi screen shows,
+ * so a dropped event only delays the refresh to the next second. Valid after ui_setup(); if the allocation failed slot[0] is NULL and a producer must not publish. */
+typedef struct { uint8_t n; char ssid[WIFI_MAX][33]; } ui_wifi_names_t;
+extern tribuf_t ui_wifi_tb; /* ui_wifi_names_t */
+/* What the Settings screen asks of the board. All run in the ui task and must not block: no flash, no I2C waits beyond the PMIC read. */
+typedef struct {
+    void (*brightness)(uint8_t pct); /* the owner picked a step: set the panel now, save later */
+    void (*level)(bool on);          /* the "always level" switch changed (by Settings or the 1 s hold): save later */
+    const char *(*version)(void);    /* firmware version text */
+    bool (*battery)(uint8_t *pct, bool *charging); /* false: no battery or the gauge does not answer */
+} ui_settings_hooks_t;
+void ui_set_settings_hooks(const ui_settings_hooks_t *h); /* h must outlive the UI; NULL hooks show empty values */
+/* The saved choices at boot (ui task, after ui_setup(); does not call the hooks): brightness percent and "always level". */
+void ui_settings_init(uint8_t brightness_pct, bool level_on);
 /* The action hook (main passes link_post_action): false = refused, and the UI shows "No connection". */
 void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
 /* Runs in the UI task; sink must be non-blocking. */

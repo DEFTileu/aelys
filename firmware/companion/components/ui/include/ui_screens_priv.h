@@ -119,6 +119,23 @@ void scr_timer_tap(int32_t x, int32_t y);                  /* the same as the to
 void scr_timer_summary(char *out, size_t cap);             /* one line for the menu: "04:12 left", "Paused", "Time's up" or "" */
 void ui_toast(const char *txt);                            /* screens.c: toast() for screens that expire on their own */
 
+/* scr_settings.c (designs "Настройки", "Wi-Fi · сохранённые сети"): the list and the Wi-Fi and About screens it opens */
+lv_obj_t *scr_settings_create(lv_obj_t *parent);
+lv_obj_t *scr_wifinets_create(lv_obj_t *parent);
+lv_obj_t *scr_about_create(lv_obj_t *parent);
+void scr_settings_set(void);
+void scr_wifinets_set(void);
+void scr_about_set(void);
+void scr_settings_step(int dir);                           /* the highlight to the next (dir > 0, swipe left) or previous enabled row; wraps */
+scr_t scr_settings_top(void);                              /* the top key on the highlighted row: the screen to open (SCR_SETTINGS = stay) */
+scr_t scr_settings_tap(int32_t x, int32_t y);              /* a tap on a row: selects and acts like the top key */
+void scr_settings_note_brightness(uint8_t pct);            /* UI_EV_BRIGHTNESS */
+void scr_settings_set_wifi(uint8_t state, const char *cur); /* UI_EV_WIFI: ui_wifi_state_t and the network in use ("" = none) */
+void scr_settings_level_changed(bool on);                  /* tells the board (hook) that the switch changed */
+bool ui_level_on(void);                                    /* screens.c: "always level" */
+void ui_level_set(bool on, bool notify);                   /* turn it on or off; notify: also tell the board to save it */
+bool ui_paired(void);                                      /* screens.c: the board is paired with the server */
+
 /* orbit.c: task dots on a ring. total == 0 draws 8 dim placeholder dots (nothing paired yet). */
 lv_obj_t *orbit_create(lv_obj_t *parent, int32_t size);
 void orbit_set(lv_obj_t *orbit, int done, int total);

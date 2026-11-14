@@ -1297,10 +1297,11 @@ static void test_menu_wheel(void)
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_MENU);
     for (int i = 0; i < 3; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
-    btn(BTN_TOP);                                    /* Settings */
+    btn(BTN_TOP);                                    /* Settings has its screen */
     CHECK_EQ(scr_menu_selected(), 8);
-    CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
+    CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
     btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
     swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT);
     sim_step(300);
     CHECK_EQ(scr_menu_selected(), 4);
@@ -1338,6 +1339,195 @@ static void open_tasks(void)
     btn(BTN_TOP);
     CHECK_EQ(ui_current_screen(), SCR_TASKS);
     sim_step(100);
+}
+
+/* ---- Settings: brightness, always level, Wi-Fi (view only), About ---- */
+
+static struct { int brightness_n, level_n; uint8_t pct; bool level; } hk;
+static void hk_brightness(uint8_t p) { hk.brightness_n++; hk.pct = p; }
+static void hk_level(bool on) { hk.level_n++; hk.level = on; }
+static const char *hk_version(void) { return "9.9.9"; }
+static bool hk_battery(uint8_t *p, bool *charging) { *p = 42; *charging = false; return true; }
+static const ui_settings_hooks_t test_hooks = { hk_brightness, hk_level, hk_version, hk_battery };
+
+_Static_assert(sizeof(ui_wifi_names_t) == 1 + WIFI_MAX * 33, "the UI copy of the Wi-Fi list holds names only: no password field");
+
+static void post_wifi_names(int n, const char *const names[])
+{
+    ui_wifi_names_t *w = tribuf_back(&ui_wifi_tb);
+    memset(w, 0, sizeof *w);
+    w->n = (uint8_t)n;
+    for (int i = 0; i < n; i++) snprintf(w->ssid[i], sizeof w->ssid[i], "%s", names[i]);
+    tribuf_publish(&ui_wifi_tb);
+    post(UI_EV_WIFI_LIST);
+}
+
+static void post_wifi_in_use(uint8_t state, const char *ssid)
+{
+    uint8_t d[34] = { state };
+    snprintf((char *)d + 1, 33, "%s", ssid);
+    sim_post(UI_EV_WIFI, d, sizeof d);
+}
+
+static void settings_open(void)
+{
+    btn(BTN_TOP);                                    /* the menu, the wheel round to Settings (it keeps its place), open it */
+    for (int i = 0; i < 9 && scr_menu_selected() != 8; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    CHECK_EQ(scr_menu_selected(), 8);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
+}
+
+static void test_settings_screens(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    sink.n = 0;
+    sink.accept = true;
+    memset(&hk, 0, sizeof hk);
+    ui_set_settings_hooks(&test_hooks);
+    ui_settings_init(60, false);
+    CHECK_EQ(hk.level_n, 0);                         /* the boot values are not "changes" */
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    settings_open();
+    sim_step(100);
+    CHECK(shows_text(scr, "SETTINGS") && shows_text(scr, "Brightness") && shows_text(scr, "60%"));
+    CHECK(shows_text(scr, "Sleep after") && shows_text(scr, "Sounds") && shows_text(scr, "Always level") && shows_text(scr, "About"));
+    check_inside("settings");
+
+    /* brightness: the top key steps 60 -> 80 -> 100 -> 20, each one goes to the hook */
+    btn(BTN_TOP);
+    CHECK_EQ(hk.pct, 80); CHECK_EQ(hk.brightness_n, 1);
+    btn(BTN_TOP); btn(BTN_TOP);
+    CHECK_EQ(hk.pct, 20); CHECK_EQ(hk.brightness_n, 3);
+    sim_step(100);
+    CHECK(shows_text(scr, "20%"));
+    check_inside("settings (20 %)");
+    uint8_t server = 35;                             /* the server's change (main set the panel and hands the event on) */
+    sim_post(UI_EV_BRIGHTNESS, &server, 1);
+    sim_step(100);
+    CHECK(shows_text(scr, "35%"));
+    CHECK_EQ(hk.brightness_n, 3);                    /* not echoed back to the board: it would save it twice */
+    btn(BTN_TOP);
+    CHECK_EQ(hk.pct, 40);                            /* the next step above 35 */
+    lv_obj_t *pctl = find_label(scr, "40%");
+    CHECK(pctl != NULL);
+    if (pctl) {                                      /* a tap on the bar: the step under the finger (bar is x 243..327) */
+        lv_area_t a;
+        lv_obj_get_coords(pctl, &a);
+        tap_at(319, (a.y1 + a.y2) / 2);
+        CHECK_EQ(hk.pct, 100);
+        tap_at(248, (a.y1 + a.y2) / 2);
+        CHECK_EQ(hk.pct, 20);
+    }
+    int n = hk.brightness_n;
+    tap_label("Sleep after");                        /* a row the firmware has no setting for does nothing */
+    tap_label("Sounds");
+    CHECK_EQ(hk.brightness_n, n); CHECK_EQ(hk.level_n, 0);
+    CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
+
+    /* always level: Sleep and Sounds are skipped, the switch flips and the home faces follow the tilt */
+    swipe(UI_EV_SWIPE_LEFT);
+    btn(BTN_TOP);
+    CHECK_EQ(hk.level_n, 1); CHECK(hk.level && ui_level_on());
+    check_inside("settings (level on)");
+    int16_t tilt = -450;
+    ui_event_t ev = {.type = UI_EV_LEVEL, .len = 2, .data = {(uint8_t)tilt, (uint8_t)((uint16_t)tilt >> 8)}};
+    ui_handle_event(&ev);
+    btn(BTN_LOW); btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK_EQ(home_max_rotation(), 450);              /* on at once, with the remembered tilt */
+    ui_event_t touch = {.type = UI_EV_TOUCH, .len = 4, .data = {233, 0, 233, 0}};
+    ui_event_t lift = {.type = UI_EV_RELEASE, .len = 1, .data = {0}};
+    ui_handle_event(&touch); sim_step(1100); ui_handle_event(&lift);
+    CHECK_EQ(hk.level_n, 2); CHECK(!hk.level && !ui_level_on()); /* the 1 s hold goes to the same hook ... */
+    CHECK_EQ(home_max_rotation(), 0);
+    settings_open();
+    tap_label("Always level");                       /* ... and the switch shows it, a tap flips it too */
+    CHECK_EQ(hk.level_n, 3); CHECK(hk.level);
+    CHECK_EQ(home_max_rotation(), 450);              /* the hidden home faces already follow the tilt */
+    tap_label("Always level");
+    CHECK_EQ(hk.level_n, 4); CHECK(!hk.level);
+    CHECK_EQ(home_max_rotation(), 0);
+    CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
+
+    /* Wi-Fi: view only, names in priority order, the network in use is "Connected" */
+    const char *three[] = { "Home", "Office", "Phone hotspot" };
+    post_wifi_names(3, three);
+    post_wifi_in_use(UI_WIFI_ONLINE, "Office");
+    sim_step(100);
+    CHECK(shows_text(scr, "Office"));                /* the row value in the list */
+    tap_label("Wi-Fi");
+    CHECK_EQ(ui_current_screen(), SCR_WIFI);
+    sim_step(100);
+    CHECK(shows_text(scr, "Home") && shows_text(scr, "Office") && shows_text(scr, "Phone hotspot"));
+    CHECK(shows_text(scr, "WI-FI") && shows_text(scr, "Connected") && shows_text(scr, "Add networks in Aelys"));
+    CHECK(shows_text(scr, "1") && shows_text(scr, "2") && shows_text(scr, "3"));
+    check_inside("wifi list");
+    post_wifi_in_use(UI_WIFI_BAD_PASSWORD, "");
+    sim_step(100);
+    CHECK(shows_text(scr, "WI-FI \xC2\xB7 WRONG PASSWORD") && !shows_text(scr, "Connected"));
+    post_wifi_in_use(UI_WIFI_CONNECTING, "");
+    sim_step(100);
+    CHECK(shows_text(scr, "WI-FI \xC2\xB7 CONNECTING"));
+    CHECK_EQ(sink.n, 0);                             /* looking at networks sends nothing */
+    char wide[WIFI_MAX][33];
+    const char *five[WIFI_MAX];
+    for (int i = 0; i < WIFI_MAX; i++) { memset(wide[i], 'W', 32); wide[i][32] = 0; five[i] = wide[i]; }
+    post_wifi_names(WIFI_MAX, five);
+    post_wifi_in_use(UI_WIFI_ONLINE, wide[2]);
+    sim_step(100);
+    check_inside("wifi list (5 long names)");
+    post_wifi_names(0, NULL);
+    sim_step(1100);                                  /* the once-a-second refresh picks it up even without the event */
+    CHECK(shows_text(scr, "No saved networks"));
+    check_inside_min("wifi list (empty)", 500);
+    btn(BTN_TOP);                                    /* the top key does nothing here */
+    CHECK_EQ(ui_current_screen(), SCR_WIFI);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
+
+    /* About: firmware, battery, pairing */
+    link_state(LINK_UI_UNPAIRED);
+    tap_label("About");
+    CHECK_EQ(ui_current_screen(), SCR_ABOUT);
+    sim_step(100);
+    CHECK(shows_text(scr, "ABOUT") && shows_text(scr, "9.9.9") && shows_text(scr, "42%") && shows_text(scr, "Not paired"));
+    check_inside("about");
+    link_state(LINK_UI_ONLINE);
+    sim_step(1100);
+    CHECK(shows_text(scr, "Paired") && !shows_text(scr, "Not paired"));
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
+    swipe(UI_EV_SWIPE_RIGHT);                        /* back to Always level, then Brightness */
+    swipe(UI_EV_SWIPE_RIGHT);
+    swipe(UI_EV_SWIPE_RIGHT);
+    sim_step(100);
+    btn(BTN_TOP);
+    CHECK_EQ(hk.pct, 40);                            /* the highlight wrapped round to Brightness */
+    CHECK_EQ(sink.n, 0);                             /* nothing here talks to the server */
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* lost mode: unreachable, and switching it on takes an open settings screen away */
+    post_lost(1);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_lost(0);
+    settings_open();
+    post_lost(1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    n = hk.brightness_n;
+    btn(BTN_TOP);
+    tap_at(233, 233);
+    CHECK_EQ(hk.brightness_n, n);
+    post_lost(0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    ui_set_settings_hooks(NULL);
+    ui_settings_init(100, false);
+    sink.accept = false;
+    fresh_fx();
 }
 
 static void test_tasks_screen(void)
@@ -2314,6 +2504,7 @@ int main(void)
     test_idle_screens_do_not_redraw();
     test_gestures_and_lost_mode();
     test_menu_wheel();
+    test_settings_screens();
     test_tasks_screen();
     test_timer_screen();
     test_calendar_screen();

@@ -198,6 +198,26 @@ static void test_calendar_and_notice_popup(void)
     }
 }
 
+static void test_settings_screens(void)
+{
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_SETTINGS), SCR_SETTINGS);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_SETTINGS), SCR_MENU);
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, false, SCR_WIFI), SCR_WIFI);
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, false, SCR_ABOUT), SCR_ABOUT);
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, true, SCR_WIFI), SCR_SETTINGS);
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, false, SCR_SETTINGS), SCR_SETTINGS);   /* a row that only toggles stays */
+    CHECK_EQ(screen_next_open(SCR_SETTINGS, false, SCR_TASKS), SCR_SETTINGS);      /* only its own sub screens */
+    CHECK_EQ(screen_next_open(SCR_WIFI, false, SCR_ABOUT), SCR_WIFI);
+    CHECK_EQ(screen_next_btn(SCR_SETTINGS, false, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_WIFI, false, BTN_LOW), SCR_SETTINGS);
+    CHECK_EQ(screen_next_btn(SCR_ABOUT, false, BTN_LOW), SCR_SETTINGS);
+    CHECK_EQ(screen_next_btn(SCR_SETTINGS, false, BTN_TOP), SCR_SETTINGS);
+    CHECK_EQ(screen_next_btn(SCR_WIFI, true, BTN_LOW), SCR_WIFI);
+    CHECK_EQ(screen_next(SCR_SETTINGS, false, UI_EV_LOST), SCR_HOME);
+    CHECK_EQ(screen_next(SCR_WIFI, true, UI_EV_LOST), SCR_LOST);
+    CHECK_EQ(screen_next(SCR_ABOUT, false, UI_EV_SWIPE_LEFT), SCR_ABOUT);
+}
+
 int main(void)
 {
     test_combo_opens_ice_from_home();
@@ -218,5 +238,6 @@ int main(void)
     test_owner_defaults();
     test_find_overlay_does_not_leave_lost();
     test_calendar_and_notice_popup();
+    test_settings_screens();
     return g_failed ? 1 : 0;
 }
