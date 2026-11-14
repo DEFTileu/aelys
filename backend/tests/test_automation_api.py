@@ -296,3 +296,21 @@ async def test_failed_execution_is_audited_retryable_and_rolls_back_partial_acti
         assert (
             await session.scalar(select(func.count()).select_from(Notification)) == 0
         )
+
+
+@pytest.mark.asyncio
+async def test_rule_responses_expose_public_field_names(automation_client):
+    client, _ = automation_client
+    headers = await _owner(client)
+    created = await client.post("/api/v1/automations", json=_rule(), headers=headers)
+    listed = (await client.get("/api/v1/automations", headers=headers)).json()[0]
+    patched = await client.patch(
+        f"/api/v1/automations/{created.json()['id']}",
+        json={"enabled": False},
+        headers=headers,
+    )
+    for body in (created.json(), listed, patched.json()):
+        assert [action["kind"] for action in body["actions"]] == ["create_task"]
+        assert body["conditions"] == {}
+        assert body["rate_limit"] == {}
+        assert not any(key.endswith("_json") for key in body)

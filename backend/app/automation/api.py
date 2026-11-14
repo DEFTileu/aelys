@@ -628,21 +628,31 @@ async def recent_runs(
     ]
 
 
+def _public_rule(item: AutomationRule) -> dict[str, Any]:
+    """Public rule shape: clients read `actions`, not the `actions_json` column."""
+    return {
+        "id": item.id, "owner_id": item.owner_id, "version": item.version,
+        "created_at": item.created_at, "updated_at": item.updated_at,
+        "name": item.name, "enabled": item.enabled, "trigger_kind": item.trigger_kind,
+        "conditions": item.conditions_json, "actions": item.actions_json,
+        "policy_ref": item.policy_ref, "rate_limit": item.rate_limit_json,
+    }
+
+
 @router.get("/automations")
 async def list_rules(
     principal=Depends(current_principal), db: AsyncSession = Depends(get_db)
 ):
     user, _ = principal
-    return list(
-        (
-            await db.execute(
-                select(AutomationRule).where(
-                    AutomationRule.owner_id == user.id,
-                    AutomationRule.deleted_at.is_(None),
-                )
+    rows = (
+        await db.execute(
+            select(AutomationRule).where(
+                AutomationRule.owner_id == user.id,
+                AutomationRule.deleted_at.is_(None),
             )
-        ).scalars()
-    )
+        )
+    ).scalars()
+    return [_public_rule(row) for row in rows]
 
 
 @router.post("/automations")
@@ -669,7 +679,7 @@ async def create_rule(
     db.add(item)
     await db.commit()
     await db.refresh(item)
-    return item
+    return _public_rule(item)
 
 
 @router.patch("/automations/{rule_id}")
@@ -699,7 +709,7 @@ async def update_rule(
         item.rate_limit_json = _normalize_rate_limit(body.rate_limit)
     await db.commit()
     await db.refresh(item)
-    return item
+    return _public_rule(item)
 
 
 @router.delete("/automations/{rule_id}")
