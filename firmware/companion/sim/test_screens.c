@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include "check.h"
+#include "motion.h"
 #include "sim_display.h"
 #include "snap_fixture.h"
 #include "src/misc/lv_text_private.h" /* lv_text_encoded_next */
@@ -690,6 +691,55 @@ static void test_character_tap_and_idle(void)
     CHECK_EQ(ui_character_last().mood, CHAR_BORED);
     CHECK_EQ(ui_character_last().why, WHY_BORED);
     touch_at(233, 233); post(UI_EV_RELEASE); fresh_fx();
+}
+
+static void motion(motion_event_t m) { uint8_t v = (uint8_t)m; sim_post(UI_EV_MOTION, &v, 1); }
+
+/* Her body and her face: shaking, falling, picking up, lying face down; a double tap and a run of pokes. */
+static void test_character_body_and_taps(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    uint8_t day[] = {14, 32}; sim_post(UI_EV_TIME, day, 2);
+    sim_step(3100);
+    motion(MOTION_SHAKE);
+    CHECK_EQ(ui_character_last().mood, CHAR_DIZZY); CHECK_EQ(ui_character_last().why, WHY_SHAKE);
+    CHECK_EQ(scr_home_mood(), MOOD_DIZZY);
+    tap_at(233, 233);                                         /* a tap does not cut a body reaction short */
+    CHECK_EQ(ui_character_last().mood, CHAR_DIZZY);
+    sim_step(3100);
+    CHECK(ui_character_last().mood != CHAR_DIZZY);            /* and it wears off */
+    motion(MOTION_FALL);
+    CHECK_EQ(scr_home_mood(), MOOD_FRIGHTENED);
+    sim_step(3100);
+    motion(MOTION_LIFT);
+    CHECK_EQ(ui_character_last().mood, CHAR_ATTENTION); CHECK_EQ(ui_character_last().why, WHY_LIFT);
+    sim_step(3100);
+
+    motion(MOTION_FACE_DOWN);
+    CHECK_EQ(ui_character_last().mood, CHAR_SLEEPING); CHECK_EQ(ui_character_last().why, WHY_FACE_DOWN);
+    sim_step(60000);
+    CHECK_EQ(scr_home_mood(), MOOD_SLEEPING);                 /* asleep for as long as she lies face down */
+    motion(MOTION_FACE_UP);
+    CHECK_EQ(ui_character_last().mood, CHAR_WAKING); CHECK_EQ(scr_home_mood(), MOOD_WAKING);
+    sim_step(3100);
+    CHECK(ui_character_last().mood != CHAR_SLEEPING);
+
+    tap_at(233, 233);
+    CHECK_EQ(ui_character_last().mood, CHAR_ATTENTION);
+    sim_step(200);
+    tap_at(233, 233);                                         /* a second tap soon after tickles */
+    CHECK_EQ(ui_character_last().mood, CHAR_TICKLED); CHECK_EQ(scr_home_mood(), MOOD_TICKLED);
+    sim_step(800);
+    tap_at(233, 233);
+    sim_step(800);
+    tap_at(233, 233);                                         /* the fourth within 3 s annoys her */
+    CHECK_EQ(ui_character_last().mood, CHAR_IRRITATED); CHECK_EQ(scr_home_mood(), MOOD_ANNOYED);
+    sim_step(3100);
+    tap_at(233, 233);                                         /* the count starts over */
+    CHECK_EQ(ui_character_last().mood, CHAR_ATTENTION);
+    sim_step(3100);
+    uint8_t bad = 0; sim_post(UI_EV_MOTION, &bad, 0);         /* malformed: ignored */
+    fresh_fx();
 }
 
 static void test_reconnect_does_not_interrupt_task_reaction(void)
@@ -2983,6 +3033,7 @@ int main(void)
     test_identity_change_drops_old_snapshot_before_reporting();
     test_character_cue_delivery();
     test_character_tap_and_idle();
+    test_character_body_and_taps();
     test_reconnect_does_not_interrupt_task_reaction();
     test_character_reconnected();
     test_character_home_integration();

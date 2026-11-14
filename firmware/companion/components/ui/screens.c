@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include "motion.h"
 #include "ui_screens_priv.h"
 
 #define ICE_TIMEOUT_MS 15000
@@ -13,6 +14,8 @@
 #define INBOX_TIMEOUT_MS 15000
 #define HOLD_STOP_MS 800
 #define LEVEL_HOLD_MS 1000 /* a finger held this long on the home face turns "always level" on or off */
+#define DOUBLE_TAP_MS 500  /* a second tap on her face this soon tickles her */
+#define POKES_MS 3000      /* four taps within this annoy her */
 #define REACTION_MS 3000
 #define SURPRISE_IDLE_MS 300000u /* provisional: five minutes */
 #define NIGHT_IDLE_MS 600000u    /* provisional: ten minutes */
@@ -35,6 +38,8 @@ static struct {
     character_result_t character_result;
     character_state_t character;
     bool snap_valid, touch_after_idle, touch_character_valid;
+    bool face_down;      /* the board lies screen down (UI_EV_MOTION): she sleeps */
+    uint32_t tap_ms[4];  /* the last taps on her face, newest first, 0 = none: a double tap tickles, four in a row annoy her */
     uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
     bool link_was_offline, link_has_history;
     bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
@@ -465,6 +470,8 @@ static void update_character(void)
     inputs.idle_known = true;
     inputs.idle_seconds = idle_ms / 1000u;
     inputs.no_touch_at_night = idle_ms >= NIGHT_IDLE_MS;
+    inputs.face_down_known = true;
+    inputs.face_down = g.face_down;
     g.character_result = character_select(&g.character, &inputs, now_ms);
     if (character_status_sink) character_status_sink(g.character_result.mood, g.character_result.why, g.lost_rev, g.character_identity);
 #ifndef ESP_PLATFORM
@@ -511,6 +518,13 @@ static void reaction_timeout(lv_timer_t *t)
 {
     (void)t;
     g.reaction_timer = NULL;
+    render();
+}
+
+/* A reaction of hers (character.c picks whether it wins over what she shows now), for its three seconds. */
+static void react(character_event_t e)
+{
+    if (character_event(&g.character, e, lv_tick_get())) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
     render();
 }
 
@@ -772,6 +786,18 @@ void ui_handle_event(const ui_event_t *ev)
         if (g.level_on) scr_home_set_level(g.level_angle);
         return;
     }
+    if (ev->type == UI_EV_MOTION) {
+        if (ev->len < 1 || g.lost) return;
+        uint8_t m = ev->data[0];
+        if (m == MOTION_FACE_DOWN || m == MOTION_FACE_UP) g.face_down = m == MOTION_FACE_DOWN;
+        if (m != MOTION_FACE_DOWN) { idle_advance(lv_tick_get()); g.idle_elapsed_ms = 0; } /* someone is handling her */
+        if (m == MOTION_SHAKE) react(CHAR_EVENT_SHAKE);
+        else if (m == MOTION_FALL) react(CHAR_EVENT_FALL);
+        else if (m == MOTION_LIFT) react(CHAR_EVENT_LIFT);
+        else if (m == MOTION_FACE_UP) react(CHAR_EVENT_WAKE);
+        else render();
+        return;
+    }
     scr_t next = g.cur;
     if (ev->type == UI_EV_TOUCH) {
         g.touch_character_valid = ev->len >= 4 && !g.find && !g.lost && g.cur == SCR_HOME;
@@ -947,10 +973,15 @@ void ui_handle_event(const ui_event_t *ev)
         if (g.lost || ev->len < 4 || g.down_scr != g.cur) return;
         on_tap((int32_t)(ev->data[0] | ev->data[1] << 8), (int32_t)(ev->data[2] | ev->data[3] << 8), &next);
         if (g.cur == SCR_HOME && next == SCR_HOME && physical_home_tap) {
-            bool accepted = character_event(&g.character, g.touch_after_idle ? CHAR_EVENT_TOUCH : CHAR_EVENT_ATTENTION, lv_tick_get());
-            update_character();
-            if (accepted) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
-            render();
+            uint32_t now_ms = lv_tick_get();
+            memmove(&g.tap_ms[1], &g.tap_ms[0], sizeof g.tap_ms - sizeof *g.tap_ms);
+            g.tap_ms[0] = now_ms | 1;
+            character_event_t e = g.tap_ms[3] && now_ms - g.tap_ms[3] <= POKES_MS        ? CHAR_EVENT_POKES
+                                  : g.tap_ms[1] && now_ms - g.tap_ms[1] <= DOUBLE_TAP_MS ? CHAR_EVENT_DOUBLE_TOUCH
+                                  : g.touch_after_idle                                  ? CHAR_EVENT_TOUCH
+                                                                                        : CHAR_EVENT_ATTENTION;
+            if (e == CHAR_EVENT_POKES) memset(g.tap_ms, 0, sizeof g.tap_ms);
+            react(e);
         }
         break;
     }

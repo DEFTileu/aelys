@@ -19,6 +19,7 @@
 #include "esp_timer.h"
 #include "gesture.h"
 #include "level.h"
+#include "motion.h"
 #include "pwrkey.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -203,6 +204,7 @@ static void input_task(void *arg)
     pwrkey_reset(&pwrkey);
     gesture_ctx_t gctx = {0};
     level_t lvl = {0};
+    motion_t mot = {0};
     int32_t lvl_sent = 0, tilt_x_sent = 0, tilt_y_sent = 0; /* the tilt the maze last heard */
     btn_ctx_t bctx = {0};
     debounce_t boot_deb = {0}; /* for the click only: the combo has its own 2 s timing */
@@ -298,6 +300,11 @@ static void input_task(void *arg)
         if (pass % IMU_PASSES == 0 && board_imu_read(&ax, &ay, &az)) {
             int32_t tx = IMU_SCREEN_X(ax, ay), ty = IMU_SCREEN_Y(ax, ay);
             int32_t a = level_update_3d(&lvl, tx, ty, az);
+            motion_event_t me = motion_update(&mot, ax, ay, az, (uint32_t)(esp_timer_get_time() / 1000));
+            if (me != MOTION_NONE) {
+                if (!post(UI_EV_MOTION, me)) ESP_LOGW(TAG, "motion %d dropped: ui queue full", me);
+                else ESP_LOGW(TAG, "motion %d", me);
+            }
             if (tx > INT16_MAX) tx = INT16_MAX; /* chip -y of -32768 */
             if (abs(tx - tilt_x_sent) >= TILT_STEP || abs(ty - tilt_y_sent) >= TILT_STEP || a != lvl_sent) {
                 ui_event_t ev = {.type = UI_EV_LEVEL, .len = 6,

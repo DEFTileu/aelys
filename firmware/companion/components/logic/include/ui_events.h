@@ -25,6 +25,7 @@ typedef enum {
     UI_EV_BRIGHTNESS,   /* [0] = percent 5..100. main sets the panel (its SPI device belongs to the ui task) and then hands the event on, so Settings shows it */
     UI_EV_LEVEL,        /* [0..1] = int16 LE, eye rotation in tenths of a degree that keeps the face level (level.h). Optional [2..3], [4..5] = int16 LE gravity along the screen x (right) and y (down), 16384 counts = 1 g, for the tilt maze */
     UI_EV_WIFI_LIST,    /* the saved network names changed: they are in ui_wifi_tb (names only, never passwords) */
+    UI_EV_MOTION,       /* [0] = motion_event_t (motion.h): a shake, fall or pick-up, or the board turned face down / back up */
 } ui_event_type_t;
 
 typedef struct {

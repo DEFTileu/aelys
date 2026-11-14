@@ -51,7 +51,7 @@ foreach(t test_face_transform test_face_raster_visual test_face_moods test_face_
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
-foreach(t test_combo test_pwrkey test_screen_fsm test_store test_improv test_codec_util test_tribuf test_owner test_proto test_link_fsm test_link_core test_gesture test_beep test_perf_probe test_timer_core test_character test_character_report test_face_raster test_face_spring test_level test_games_core)
+foreach(t test_combo test_pwrkey test_screen_fsm test_store test_improv test_codec_util test_tribuf test_owner test_proto test_link_fsm test_link_core test_gesture test_beep test_perf_probe test_timer_core test_character test_character_report test_face_raster test_face_spring test_level test_games_core test_motion)
     add_executable(${t} ${t}.c)
     target_compile_options(${t} PRIVATE -Wall -Wextra)
     target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main) # example owner contacts
