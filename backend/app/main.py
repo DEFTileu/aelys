@@ -16,7 +16,7 @@ from .agents.api import router as agents_router
 from .ai.api import router as ai_router
 from .ai.memory_api import router as memory_router
 from .automation.api import router as automation_router
-from .automation.hooks import wait_for_automations
+from .automation.hooks import automation_loop, wait_for_automations
 from .companion.api import router as companion_router
 from .companion.channel import router as companion_channel_router
 from .companion.hub import hub, install_change_listeners
@@ -44,12 +44,13 @@ async def lifespan(app: FastAPI):
     install_change_listeners()
     worker = asyncio.create_task(connector_loop(), name="telegram-business")
     reminders = asyncio.create_task(reminder_loop(), name="english-reminders")
+    automations = asyncio.create_task(automation_loop(), name="automation-outbox")
     try:
         yield
     finally:
         await hub.wait_idle(timeout=5)  # board pushes in flight must not outlive the loop
         await wait_for_automations()
-        for task in (worker, reminders):
+        for task in (worker, reminders, automations):
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task

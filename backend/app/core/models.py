@@ -339,6 +339,18 @@ class AutomationExecution(Base):
     __tablename__ = "automation_executions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid); owner_id: Mapped[str] = mapped_column(String(36)); rule_id: Mapped[str] = mapped_column(String(36)); event_id: Mapped[str] = mapped_column(String(100)); run_status: Mapped[str] = mapped_column(String(30)); attempt: Mapped[int] = mapped_column(Integer, default=1); started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now); finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); error_code: Mapped[str | None] = mapped_column(String(80)); __table_args__ = (UniqueConstraint("rule_id", "event_id", name="uq_automation_event"),)
 
+class AutomationOutbox(Base):
+    __tablename__ = "automation_outbox"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(80), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    __table_args__ = (UniqueConstraint("owner_id", "kind", "event_id", name="uq_automation_outbox_event"), Index("ix_automation_outbox_due", "available_at", "created_at", "id"))
+
 class SyncChange(Base):
     __tablename__ = "sync_changes"
     seq: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True); owner_id: Mapped[str] = mapped_column(String(36), index=True); resource_kind: Mapped[str] = mapped_column(String(40)); resource_id: Mapped[str] = mapped_column(String(36)); version: Mapped[int] = mapped_column(Integer); operation: Mapped[str] = mapped_column(String(20)); payload: Mapped[dict] = mapped_column(JSON, default=dict); committed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
