@@ -186,6 +186,12 @@ private allocation details and is not enabled in the firmware. The one-shot
 handoff, task ownership, target allocation and all drawing allocations still
 need validation; it does not make LVGL startup or rendering OOM-safe.
 
+A thread-local host variant prevented 10,000 unrelated same-size allocations
+from another thread from consuming the reserve, but an unrelated same-size
+allocation on the registering thread still consumed it. Thread identity and
+size alone therefore do not prove the handoff reaches the intended call. This
+variant remains a host experiment, not a firmware allocator change.
+
 Another host spike called the pinned LVGL software transform directly with
 caller-owned straight-ARGB8888 source and destination buffers. At four tested
 angles (3.5°, 9°, −9° and −3.7°), whole-frame and 32-row clipped calls were
@@ -269,6 +275,37 @@ The variant still needs a proven transformed bound, complete allocation and
 lifetime checks, visual comparison and board measurements. Its extra bitmap
 scans and 1.28 MB buffer cost are not yet measured on the device. Source and
 limits are recorded in the ignored `rotation-damage/` ledger directory.
+
+An additional synthetic host benchmark timed only the software transform, not
+rendering or device execution. In one 120-iteration run, a 494 × 325 buffer
+averaged 2,242 μs per transform versus 1,188 μs for 390 × 221 and 852 μs for
+300 × 200. Content and dimensions differ, so these figures only illustrate
+host scaling; they do not establish board frame rate. The runner is in the
+ignored `rotation-timing/` directory.
+
+A compact host variant uses the descriptor and inverse-sampler bounds to size
+separate source and destination buffers. In a synthetic retained-root test,
+130% Home and 50% Pair faces retained 355,428 requested bitmap bytes together,
+versus 1,474,412 in the older host prototype; both released those allocations
+on deletion. Another 130% transition sequence peaked at 506,529 live requested
+bytes including buffer growth, with 2,923,762 cumulative requested bytes over
+18 allocations. These exclude LVGL allocations and allocator overhead and do
+not bound other histories. The copied suite passed 40/40 but omitted owner,
+screen-FSM and board-port tests; six scale/fault variants each passed 720
+partial/full comparisons. A padded reference matched 279 sampled rotated frames
+at each scale. Fragmentation, asynchronous lifetime, complete OOM recovery,
+visual fidelity and hardware performance remain open. Details and the 29 sampled
+allocation-failure positions are in the ignored `rotation-compact/` ledger.
+
+A separate host visual probe found a renderer-switch discontinuity: in a
+forced worried-blink stress frame, changing group angle from −0.09° to −0.10°
+changed 11.5% of the foreground-union silhouette (RGB mean error 20.3/255).
+Worried does not naturally rotate in the current table, so this is a controlled
+counterfactual, not an observed normal animation. The probe also measured
+differences during actual rotating moods; those include intended rotation and
+are not automatically defects. Neither partial/full equality nor similarity to
+the old unrotated renderer proves design fidelity. See the ignored
+`rotation-fidelity/REPORT.md` for sampling, metrics and limitations.
 
 In the current single UI task and software renderer, source inspection shows
 that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
