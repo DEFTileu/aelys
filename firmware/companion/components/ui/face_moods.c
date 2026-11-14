@@ -195,14 +195,37 @@ face_group_t face_group_at(face_motion_t m, uint32_t t_ms)
     return g;
 }
 
-/* CSS: @keyframes blink 0/93/100 % = scaleY 1, 96 % = .08, ease-in-out per segment. */
+/* CSS ease = cubic-bezier(.25,.1,.25,1), sampled at 2% intervals.
+ * Linear interpolation is within 1.3 permille of the ideal curve for each
+ * integer-permille input; the table and arithmetic need no heap or float. */
+static int32_t wink_ease(int32_t u)
+{
+    static const uint16_t samples[] = {
+        0,10,24,43,66,95,128,165,206,250,295,341,386,430,473,513,552,
+        588,621,653,683,710,736,760,782,802,822,839,856,871,885,898,
+        910,921,931,941,949,957,964,970,976,981,985,989,992,994,996,
+        998,999,1000,1000
+    };
+    if (u <= 0) return 0;
+    if (u >= 1000) return 1000;
+    unsigned i = (unsigned)u / 20u, remainder = (unsigned)u % 20u;
+    return (samples[i] * (20u - remainder) + samples[i + 1] * remainder + 10u) / 20u;
+}
+
+/* CSS blink uses ease independently between keyframes. */
 int32_t face_blink_x1000(uint32_t period_ms, uint32_t t_ms)
 {
     if (!period_ms) return 1000;
-    int32_t p = (int32_t)(t_ms % period_ms * 1000 / period_ms);
-    if (p < 930) return 1000;
-    if (p < 960) return 1000 - 920 * ease((p - 930) * 1000 / 30) / 1000;
-    return 80 + 920 * ease((p - 960) * 1000 / 40) / 1000;
+    uint64_t p = (uint64_t)(t_ms % period_ms) * 1000u;
+    uint64_t start = (uint64_t)period_ms * 930u;
+    uint64_t closed = (uint64_t)period_ms * 960u;
+    if (p < start) return 1000;
+    if (p < closed) {
+        int32_t u = (int32_t)((p - start) * 1000u / ((uint64_t)period_ms * 30u));
+        return 1000 - 920 * wink_ease(u) / 1000;
+    }
+    int32_t u = (int32_t)((p - closed) * 1000u / ((uint64_t)period_ms * 40u));
+    return 80 + 920 * wink_ease(u) / 1000;
 }
 
 static int32_t interpolate(int32_t p, int32_t a, int32_t b, int32_t from, int32_t to, bool out)
@@ -210,6 +233,12 @@ static int32_t interpolate(int32_t p, int32_t a, int32_t b, int32_t from, int32_
     int32_t u = (p - a) * 1000 / (b - a);
     int32_t e = out ? ease_out(u) : ease(u);
     return from + (to - from) * e / 1000;
+}
+
+static int32_t interpolate_wink(uint64_t p, uint64_t a, uint64_t b, int32_t from, int32_t to)
+{
+    int32_t u = (int32_t)((p - a) * 1000u / (b - a));
+    return from + (to - from) * wink_ease(u) / 1000;
 }
 
 int32_t face_eye_openness(const face_mood_t *m, int side, uint32_t t_ms)
@@ -224,10 +253,15 @@ int32_t face_eye_openness(const face_mood_t *m, int side, uint32_t t_ms)
         return interpolate(p,810,1000,80,1000,false);
     }
     if (m->blink_style == BLINK_WINK) {
-        if (!side || p < 600) return 1000;
-        if (p < 680) return interpolate(p,600,680,1000,100,false);
-        if (p < 840) return 100;
-        return interpolate(p,840,1000,100,1000,false);
+        /* The design overrides the right eye only; the left keeps its base blink. */
+        if (!side) return face_blink_x1000(5000, t_ms);
+        uint64_t phase = (uint64_t)(t_ms % m->blink_ms) * 1000u;
+        uint64_t period = m->blink_ms;
+        if (phase < period * 600u) return 1000;
+        if (phase < period * 680u)
+            return interpolate_wink(phase, period * 600u, period * 680u, 1000, 100);
+        if (phase < period * 840u) return 100;
+        return interpolate_wink(phase, period * 840u, period * 1000u, 100, 1000);
     }
     if (m->blink_style == BLINK_WAKE) {
         if (p < 350) return 100;

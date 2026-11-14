@@ -48,6 +48,7 @@ typedef struct {
     face_eye_t current_eye[2];
     bool eye_initialized, drawn;
     uint32_t spring_time;
+    uint32_t left_blink_t0, right_blink_t0; /* inherited blink phases */
     uint32_t t0, due3;   /* start of the mood's loops (ms), next frame due (1/3 ms) */
 } face_t;
 
@@ -312,7 +313,13 @@ static void layout_eyes(face_t *f, uint32_t t)
 
     for (int side = 0; side < 2; side++) {
         const face_eye_t *e = &f->current_eye[side];
-        int32_t blink = face_eye_openness(m, side, t);
+        bool base_left = side == 0 &&
+                         ((m->blink_style == BLINK_STANDARD && m->blink_ms == 5000) ||
+                          m->blink_style == BLINK_WINK);
+        bool base_right = side == 1 && m->blink_style == BLINK_STANDARD && m->blink_ms == 5000;
+        int32_t blink = base_left ? face_blink_x1000(5000, lv_tick_get() - f->left_blink_t0) :
+                        base_right ? face_blink_x1000(5000, lv_tick_get() - f->right_blink_t0) :
+                                     face_eye_openness(m, side, t);
         /* CSS blink: scaleY about 50 % 60 % of the eye */
         int32_t w100 = e->w * 100, h100 = e->h * blink / 10;
         int32_t top100 = e->y * 100 + e->h * 60 * (1000 - blink) / 1000;
@@ -631,8 +638,17 @@ void face_set_mood(lv_obj_t *face, mood_t m)
 {
     face_t *f = face ? lv_obj_get_user_data(face) : NULL;
     if (!f || !face_mood_def(m)) return;
-    f->m = face_mood_def(m);
+    const face_mood_t *next = face_mood_def(m);
+    bool old_base_left = f->m && ((f->m->blink_style == BLINK_STANDARD && f->m->blink_ms == 5000) ||
+                                  f->m->blink_style == BLINK_WINK);
+    bool new_base_left = (next->blink_style == BLINK_STANDARD && next->blink_ms == 5000) ||
+                         next->blink_style == BLINK_WINK;
+    bool old_base_right = f->m && f->m->blink_style == BLINK_STANDARD && f->m->blink_ms == 5000;
+    bool new_base_right = next->blink_style == BLINK_STANDARD && next->blink_ms == 5000;
+    f->m = next;
     f->t0 = lv_tick_get();
+    if (!old_base_left || !new_base_left) f->left_blink_t0 = f->t0;
+    if (!old_base_right || !new_base_right) f->right_blink_t0 = f->t0;
     f->due3 = f->t0 * 3;
     f->spring_time = f->t0;
     if (!f->eye_initialized || !f->drawn) eye_step(f, 0, true);

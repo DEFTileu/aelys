@@ -458,7 +458,7 @@ static void test_highlight_compresses_with_blink(void)
 static void test_worried_lid_follows_blink(void)
 {
     lv_obj_t *f = show(MOOD_WORRIED, 100, HX, HY, 100);
-    sim_step(4630); /* during closing, eye and lid should both compress */
+    sim_step(4596); /* near one-third openness with CSS ease */
     lv_refr_now(NULL);
     lv_obj_update_layout(f);
     lv_area_t eye; lv_obj_get_coords(lv_obj_get_child(f, 0), &eye);
@@ -486,7 +486,7 @@ static void test_worried_lids_close_and_reopen_at_home_scale(void)
         CHECK(dark(cx, a.y1 + 1));
         CHECK(lit(cx, a.y1 + 6));
     }
-    sim_step(100); /* reopening */
+    sim_step(60); /* near half openness while reopening with CSS ease */
     lv_refr_now(NULL);
     lv_obj_update_layout(f);
     for (int side = 0; side < 2; ++side) {
@@ -547,6 +547,28 @@ static void test_star_disappears_after_transition_to_no_star(void)
     gone(face);
 }
 
+static void test_inherited_blink_phase(void)
+{
+    lv_obj_t *face = show(MOOD_CALM,100,HX,HY,100);
+    sim_step(4680); lv_obj_update_layout(face);
+    lv_obj_t *left = lv_obj_get_child(face,0);
+    int before = lv_obj_get_height(left);
+    CHECK(before < 60);
+    lv_obj_t *right = lv_obj_get_child(face,1);
+    int right_before = lv_obj_get_height(right);
+    CHECK(right_before < 60);
+    face_set_mood(face,MOOD_WORRIED); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left),before);
+    CHECK_EQ(lv_obj_get_height(right),right_before);
+    face_set_mood(face,MOOD_CALM); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(right),right_before);
+    face_set_mood(face,MOOD_MISCHIEF); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left),before);
+    face_set_mood(face,MOOD_CALM); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left),before);
+    gone(face);
+}
+
 static void test_smooth_eye_transition(void)
 {
     lv_obj_t *face = face_create(lv_screen_active(), 100);
@@ -576,6 +598,7 @@ int main(void)
     test_asymmetric_wink_and_wake();
     test_star_disappears_after_transition_to_no_star();
     test_smooth_eye_transition();
+    test_inherited_blink_phase();
     test_shapes();
     test_inside_screen_and_own_area();
     test_partial_redraw_each_frame();
