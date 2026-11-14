@@ -91,7 +91,6 @@ void scr_home_set_tasks(int done, int total);
 void scr_home_set_wifi(uint8_t state); /* ui_wifi_state_t */
 void scr_home_set_paired(bool on);    /* paired: no "Not paired yet" line while there are no tasks */
 void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline); /* orbit, face mood and the "Offline" view */
-void scr_home_set_level(int32_t angle10); /* keeps both home faces level (face_set_level) */
 void scr_home_set_welcome(bool on);   /* first boot: "Hi, I'm Aelys / Connect me by USB ..." instead of the agenda line */
 
 lv_obj_t *scr_lost_create(lv_obj_t *parent);

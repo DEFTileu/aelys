@@ -509,25 +509,6 @@ static void test_home_larger_face(void)
     scr_home_set_welcome(false);
 }
 
-static void test_level_event_turns_home_faces_only(void)
-{
-    CHECK_EQ(ui_current_screen(), SCR_HOME);
-    lv_obj_t *face = face_create(lv_screen_active(), 50);
-    face_set_level(face, 900);
-    CHECK_EQ(lv_obj_get_style_transform_rotation(face, 0), 900);
-    face_set_level(face, 0);
-    CHECK_EQ(lv_obj_get_style_transform_rotation(face, 0), 0);
-    lv_obj_delete(face);
-
-    int16_t a = -450;
-    ui_event_t ev = {.type = UI_EV_LEVEL, .len = 2, .data = {(uint8_t)a, (uint8_t)((uint16_t)a >> 8)}};
-    ui_handle_event(&ev);
-    CHECK_EQ(ui_current_screen(), SCR_HOME); /* a tilt never changes the screen */
-    ev.data[0] = 0; ev.data[1] = 0;
-    ui_handle_event(&ev);
-    CHECK_EQ(ui_current_screen(), SCR_HOME);
-}
-
 static void test_all_large_home_moods(void)
 {
     CHECK_EQ(ui_current_screen(), SCR_HOME);
@@ -1587,7 +1568,6 @@ int main(void)
     test_first_boot_welcome();
     test_companion_setup();
     test_home_larger_face();
-    test_level_event_turns_home_faces_only();
     test_all_large_home_moods();
     test_character_status_while_home_hidden();
     test_lost_mode_discards_old_reaction_before_publishing_new_revision();

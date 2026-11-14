@@ -334,11 +334,11 @@ void app_main(void)
     berr = lv_port_start(boot_ui_setup);
     if (berr != ESP_OK) halt("ui start", berr);
 
-    int16_t ax, ay, az; /* before the input task, which reads it for the level face; one boot sample shows the axes */
-    if (board_imu_init() == ESP_OK && board_imu_read(&ax, &ay, &az))
-        ESP_LOGW(TAG, "imu: ax=%d ay=%d az=%d", ax, ay, az);
     esp_err_t err = board_input_start();
     if (err != ESP_OK) ESP_LOGE(TAG, "input start: %s", esp_err_to_name(err));
+    int16_t ax, ay, az; /* one boot sample, so a board log shows the IMU answers and its axis orientation */
+    if (board_imu_init() == ESP_OK && board_imu_read(&ax, &ay, &az))
+        ESP_LOGW(TAG, "imu: ax=%d ay=%d az=%d", ax, ay, az);
 
 #ifndef CONFIG_AELYS_NO_WIFI
     static const net_store_t nstore = {.load = store_load_wifi, .save = store_save_wifi, .lost_on = lost_is_on};

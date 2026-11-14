@@ -634,14 +634,6 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
     return root;
 }
 
-void face_set_level(lv_obj_t *face, int32_t angle10)
-{
-    if (!face || lv_obj_get_style_transform_rotation(face, 0) == angle10) return;
-    lv_obj_set_style_transform_pivot_x(face, lv_pct(50), 0);
-    lv_obj_set_style_transform_pivot_y(face, lv_pct(50), 0);
-    lv_obj_set_style_transform_rotation(face, angle10, 0);
-}
-
 void face_set_mood(lv_obj_t *face, mood_t m)
 {
     face_t *f = face ? lv_obj_get_user_data(face) : NULL;

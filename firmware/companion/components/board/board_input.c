@@ -17,7 +17,6 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "gesture.h"
-#include "level.h"
 #include "pwrkey.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -29,10 +28,6 @@ static const char *TAG = "input";
 
 #define POLL_MS     4 /* loop period: INT level, BOOT key, combo */
 #define SLOW_PASSES 5 /* every 20 ms: PMIC edges, and the release check while a finger is down */
-#define IMU_PASSES  25 /* every 100 ms: accelerometer for the level face */
-/* Chip axes to screen axes (x right, y down). shortcut: set from one upright sample; recheck if the face turns the wrong way. */
-#define IMU_SCREEN_X(ax, ay) (ax)
-#define IMU_SCREEN_Y(ax, ay) (ay)
 
 /* AXP2101 registers (datasheet / XPowersLib) */
 #define AXP_PWRKEY_TIMES 0x27 /* [5:4] IRQ time, [3:2] power-on time, [1:0] power-off time: 4/6/8/10 s */
@@ -200,8 +195,6 @@ static void input_task(void *arg)
     combo_reset(&combo);
     pwrkey_reset(&pwrkey);
     gesture_ctx_t gctx = {0};
-    level_t lvl = {0};
-    int32_t lvl_sent = 0;
     btn_ctx_t bctx = {0};
     debounce_t boot_deb = {0}; /* for the click only: the combo has its own 2 s timing */
     bool moved_sent = false;   /* UI_EV_RELEASE already sent for this touch because the finger moved */
@@ -291,22 +284,6 @@ static void input_task(void *arg)
             ice_open = true;
             ice_open_ms = (uint32_t)(esp_timer_get_time() / 1000);
 #endif
-        }
-        int16_t ax, ay, az;
-        if (pass % IMU_PASSES == 0 && board_imu_read(&ax, &ay, &az)) {
-            int32_t a = level_update_3d(&lvl, IMU_SCREEN_X(ax, ay), IMU_SCREEN_Y(ax, ay), az);
-            if (a != lvl_sent) {
-                ui_event_t ev = {.type = UI_EV_LEVEL, .len = 2, .data = {(uint8_t)a, (uint8_t)((uint16_t)a >> 8)}};
-                if (lv_port_post(&ev)) {
-                    lvl_sent = a; /* a full queue retries on the next sample */
-                    static int64_t logged_us;
-                    int64_t now_us = esp_timer_get_time();
-                    if (now_us - logged_us >= 1000000) { /* at most once a second, only while turning */
-                        logged_us = now_us;
-                        ESP_LOGW(TAG, "level %ld from ax=%d ay=%d az=%d", (long)a, ax, ay, az);
-                    }
-                }
-            }
         }
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
         tap_poll();
