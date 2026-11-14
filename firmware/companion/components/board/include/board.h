@@ -65,6 +65,8 @@ void board_audio_stop(void);
 
 /* Rolling 5 s window: frames per second x10 and the longest single refresh in microseconds. */
 void lv_port_frame_stats(uint32_t *fps_x10, uint32_t *worst_us);
+/* Frames drawn and the longest one since the previous call, then resets both (the metrics task's per-second line). */
+void lv_port_frame_take(uint32_t *frames, uint32_t *worst_us);
 
 #ifdef CONFIG_AELYS_PERF_PROBE
 #include "perf_probe.h"

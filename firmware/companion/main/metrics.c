@@ -33,7 +33,13 @@ static void metrics_task(void *arg)
 {
     (void)arg;
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(period_ms));
+        /* every second: frames actually drawn, only while something moves (2+ frames), to read the real rate */
+        for (uint32_t waited = 0; waited < period_ms; waited += 1000) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            uint32_t frames, worst;
+            lv_port_frame_take(&frames, &worst);
+            if (frames >= 2) ESP_LOGW(TAG, "fps1s frames=%u worst_us=%u", (unsigned)frames, (unsigned)worst);
+        }
         uint32_t fps_x10 = 0, worst_us = 0;
         lv_port_frame_stats(&fps_x10, &worst_us);
         esp_netif_ip_info_t ip = {0};

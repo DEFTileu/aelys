@@ -42,6 +42,8 @@ static bool frame_flushed; /* this refresh sent something to the panel */
 /* frame statistics: the window being filled, and the last full window */
 static int64_t win_start, refr_start;
 static uint32_t win_frames, win_worst;
+/* shortcut: plain counters, read-and-reset from the metrics task; a frame lost to the race only skews one log line */
+static volatile uint32_t sec_frames, sec_worst;
 static volatile uint32_t out_fps_x10, out_worst_us, last_flush_end_us, first_flush_end_us;
 
 #ifdef CONFIG_AELYS_PERF_PROBE
@@ -188,6 +190,8 @@ static void disp_event(lv_event_t *e)
         if (!first_flush_end_us) first_flush_end_us = (uint32_t)now;
         win_frames++;
         if ((uint32_t)(now - refr_start) > win_worst) win_worst = (uint32_t)(now - refr_start);
+        sec_frames++;
+        if ((uint32_t)(now - refr_start) > sec_worst) sec_worst = (uint32_t)(now - refr_start);
 #ifdef CONFIG_AELYS_PERF_PROBE
         perf_probe_frame(&pr, (uint32_t)refr_start, (uint32_t)now, (uint32_t)pr_te_us, probe_screen());
 #endif
@@ -322,6 +326,12 @@ uint32_t lv_port_last_flush_end_us(void) { return last_flush_end_us; }
 uint32_t lv_port_first_flush_end_us(void) { return first_flush_end_us; }
 
 void lv_port_set_handler(void (*fn)(const ui_event_t *)) { ev_handler = fn; }
+
+void lv_port_frame_take(uint32_t *frames, uint32_t *worst_us)
+{
+    *frames = sec_frames; *worst_us = sec_worst;
+    sec_frames = sec_worst = 0;
+}
 
 void lv_port_frame_stats(uint32_t *fps_x10, uint32_t *worst_us)
 {
