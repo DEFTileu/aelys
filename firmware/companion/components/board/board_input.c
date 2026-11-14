@@ -255,6 +255,7 @@ static void input_task(void *arg)
         if (pend_gest != GEST_NONE) {
             ui_event_t ev = {.type = pend_gest == GEST_TAP ? UI_EV_TAP : pend_gest == GEST_SWIPE_LEFT ? UI_EV_SWIPE_LEFT : UI_EV_SWIPE_RIGHT};
             if (pend_gest == GEST_TAP) { ev.len = 4; ev.data[0] = gctx.x; ev.data[1] = gctx.x >> 8; ev.data[2] = gctx.y; ev.data[3] = gctx.y >> 8; }
+            else { ev.len = 4; ev.data[0] = gctx.x0; ev.data[1] = gctx.x0 >> 8; ev.data[2] = gctx.y0; ev.data[3] = gctx.y0 >> 8; } /* where the swipe began */
             if (lv_port_post(&ev)) pend_gest = GEST_NONE;
         }
         if (release_pending && pend_gest == GEST_NONE && post(UI_EV_RELEASE, 0)) release_pending = false;

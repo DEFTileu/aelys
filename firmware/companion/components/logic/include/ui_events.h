@@ -13,7 +13,7 @@ typedef enum {
     UI_EV_TICK,
     /* appended by the companion link: never renumber the values above */
     UI_EV_TAP,          /* x, y: uint16 LE, as UI_EV_TOUCH */
-    UI_EV_SWIPE_LEFT,
+    UI_EV_SWIPE_LEFT,   /* optional x, y: uint16 LE, where the finger landed (the menu wheel turns the other way below its centre) */
     UI_EV_SWIPE_RIGHT,
     UI_EV_SNAPSHOT,     /* [0] = 1 live / 0 cached; the data is in ui_snap_tb */
     UI_EV_LINK,         /* [0] = ui_link_state_t */

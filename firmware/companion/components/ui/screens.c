@@ -410,8 +410,64 @@ static void inbox_timeout(lv_timer_t *t)
     if (g.cur == SCR_INBOX && next != g.cur) show(next);
 }
 
+/* ---- the side keys: a short line at each key on the right edge, with what it does here (design: "Menu" / "Back") ---- */
+#define KEY_TOP_Y0 97   /* the ticks point along the radius at the keys: about 2 and 4 o'clock */
+#define KEY_LOW_Y0 351
+static struct { lv_obj_t *top, *low, *tick[2]; } keys;
+
+static void key_tick_draw(lv_event_t *e)
+{
+    lv_area_t a;
+    lv_obj_get_coords(lv_event_get_target_obj(e), &a);
+    bool low = lv_event_get_user_data(e) != NULL;
+    lv_draw_line_dsc_t l;
+    lv_draw_line_dsc_init(&l);
+    l.color = lv_color_hex(low ? UI_COLOR_MUTED : UI_COLOR_ACCENT);
+    l.width = 4;
+    l.round_start = l.round_end = true;
+    l.p1.x = a.x1 + 2; l.p1.y = low ? a.y2 - 2 : a.y1 + 2;
+    l.p2.x = a.x2 - 2; l.p2.y = low ? a.y1 + 2 : a.y2 - 2;
+    lv_draw_line(lv_event_get_layer(e), &l);
+}
+
+static void keys_create(lv_obj_t *root)
+{
+    keys.top = ui_label(root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_set_pos(keys.top, 394 - 90, 98); /* where Focus, Timer, Tasks and Games put their own top-key word */
+    keys.low = ui_label(root, &inter_16, UI_COLOR_MUTED, 90, 1, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_set_pos(keys.low, 394 - 90, 346);
+    lv_label_set_text(keys.low, "Back");
+    for (int i = 0; i < 2; i++) {
+        keys.tick[i] = ui_plain(root, 14, 20);
+        lv_obj_set_pos(keys.tick[i], 406, i ? KEY_LOW_Y0 : KEY_TOP_Y0);
+        lv_obj_set_user_flag(keys.tick[i], 1, true); /* custom paint, see invalidate_painted() */
+        lv_obj_add_event_cb(keys.tick[i], key_tick_draw, LV_EVENT_DRAW_MAIN, i ? (void *)1 : NULL);
+    }
+}
+
+/* What each key does on screen s. Screens that change their top word with their state draw it themselves (top_own). */
+static void keys_update(scr_t s)
+{
+    if (!keys.top) return;
+    bool top_own = s == SCR_FOCUS || s == SCR_TIMER || s == SCR_TASKS || s == SCR_GAMES;
+    const char *top = s == SCR_HOME || s == SCR_TODAY ? "Menu" : s == SCR_MENU ? "Open" : NULL;
+    top_own |= s == SCR_SETTINGS; /* the top key selects a row there: the tick alone, the word would touch the first row */
+    /* Today's low key goes home, but home and Today keep the same marks: a swipe between them redraws only the painted parts,
+     * and more changed areas than LVGL keeps (32) would redraw the whole screen */
+    bool low = !g.lost && s != SCR_TODAY && screen_next_btn(s, false, BTN_LOW) != s;
+    /* where the content reaches the key (the Settings rows, the hourly weather, the maze) only the tick shows */
+    bool low_word = low && s != SCR_SETTINGS && s != SCR_WEATHER && s != SCR_GAMES;
+    if (g.lost || s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) top = NULL, top_own = false;
+    if (top) ui_set_text(keys.top, top);
+    lv_obj_set_hidden(keys.top, !top);
+    lv_obj_set_hidden(keys.tick[0], !top && !top_own);
+    lv_obj_set_hidden(keys.low, !low_word);
+    lv_obj_set_hidden(keys.tick[1], !low);
+}
+
 static void show(scr_t s)
 {
+    keys_update(s); /* before a sparse switch turns invalidation off */
 #ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
     bool sparse = (g.cur == SCR_HOME || g.cur == SCR_TODAY) && (s == SCR_HOME || s == SCR_TODAY) &&
                   g.scr[g.cur] && g.cur != s;
@@ -667,6 +723,7 @@ void ui_setup(void)
     g.scr[SCR_WEATHER] = scr_weather_create(root);
     scr_hold_create(root);
     scr_notice_create(root);
+    keys_create(root);
     scr_toast_create(root);
     scr_find_create(root); /* last: on top of the toast and every screen */
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
@@ -1018,7 +1075,10 @@ void ui_handle_event(const ui_event_t *ev)
         if (g.cur == SCR_LOST) scr_lost_show_hint();
         next = screen_next(g.cur, g.lost, (ui_event_type_t)ev->type);
         if (g.cur == SCR_MENU && !g.lost) { /* the wheel turns: swipe left = next item */
-            scr_menu_step(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
+            int dir = ev->type == UI_EV_SWIPE_LEFT ? 1 : -1;
+            /* below the centre the icons travel the other way round the ring, so they follow the finger there too */
+            if (ev->len >= 4 && (ev->data[2] | ev->data[3] << 8) > UI_SCREEN_SIZE / 2) dir = -dir;
+            scr_menu_step(dir);
             render();
         }
         if (g.cur == SCR_TIMER && !g.lost) scr_timer_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);

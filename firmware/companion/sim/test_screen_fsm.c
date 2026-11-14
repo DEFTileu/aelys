@@ -115,6 +115,8 @@ static void test_swipes_ignored_in_lost_mode(void)
 static void test_menu_opens_and_closes(void)
 {
     CHECK_EQ(screen_next_btn(SCR_HOME, false, BTN_TOP), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_TODAY, false, BTN_TOP), SCR_MENU);        /* Today shows the same "Menu" key as home */
+    CHECK_EQ(screen_next_btn(SCR_TODAY, true, BTN_TOP), SCR_TODAY);
     CHECK_EQ(screen_next_btn(SCR_MENU, false, BTN_LOW), SCR_HOME);
     CHECK_EQ(screen_next_btn(SCR_MENU, false, BTN_TOP), SCR_MENU);        /* opening the item is screen_next_open() */
     CHECK_EQ(screen_next_btn(SCR_PLACEHOLDER, false, BTN_LOW), SCR_MENU);

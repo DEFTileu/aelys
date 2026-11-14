@@ -451,6 +451,14 @@ static void swipe(uint8_t type)
     post(UI_EV_RELEASE);
 }
 
+static void swipe_at(uint8_t type, int x, int y) /* as the board posts it: with where the finger landed */
+{
+    uint8_t d[4] = { (uint8_t)x, (uint8_t)(x >> 8), (uint8_t)y, (uint8_t)(y >> 8) };
+    touch_at(x, y);
+    sim_post(type, d, 4);
+    post(UI_EV_RELEASE);
+}
+
 static void btn(ui_btn_t b) { uint8_t v = (uint8_t)b; sim_post(UI_EV_BTN, &v, 1); }
 static void link_state(uint8_t st) { sim_post(UI_EV_LINK, &st, 1); }
 
@@ -1428,6 +1436,18 @@ static void test_menu_wheel(void)
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_MENU);
     swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT);
+    sim_step(300);
+    CHECK_EQ(scr_menu_selected(), 4);
+    swipe_at(UI_EV_SWIPE_LEFT, 233, 120);              /* above the centre: left is the next item, as before */
+    sim_step(300);
+    CHECK_EQ(scr_menu_selected(), 5);
+    swipe_at(UI_EV_SWIPE_LEFT, 233, 380);              /* below it the icons run the other way, so left goes back */
+    sim_step(300);
+    CHECK_EQ(scr_menu_selected(), 4);
+    swipe_at(UI_EV_SWIPE_RIGHT, 233, 380);
+    sim_step(300);
+    CHECK_EQ(scr_menu_selected(), 5);
+    swipe_at(UI_EV_SWIPE_RIGHT, 233, 120);
     sim_step(300);
     CHECK_EQ(scr_menu_selected(), 4);
     btn(BTN_TOP);
