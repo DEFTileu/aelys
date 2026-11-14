@@ -290,6 +290,11 @@ async def _process(job_id: str) -> None:
                 ref.get('kind') != 'owner_memory_fact' or (isinstance(ref.get('id'), str) and type(ref.get('version')) is int and current_memory.get(ref['id']) == ref['version'])
                 for ref in (prior_message.source_refs_json or []) if isinstance(ref, dict)
             )]
+            # The list is newest first: an older user turn is answered only if
+            # its immediate newer neighbour is an assistant message.
+            prior = [entry for index, entry in enumerate(prior)
+                     if entry.role != 'user' or entry.id == message.id
+                     or (index > 0 and prior[index - 1].role == 'assistant')]
             memory_refs.update((ref['id'], ref['version']) for prior_message in prior
                                for ref in (prior_message.source_refs_json or [])
                                if isinstance(ref, dict) and ref.get('kind') == 'owner_memory_fact'
