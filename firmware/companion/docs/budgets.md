@@ -25,14 +25,25 @@ worst refresh was 47632 µs and maximum synthetic switch latency 51744 µs
 across 158 successful switches. Both timing budgets **FAIL** in that run.
 Because network conditions differ, the two runs do not establish a causal
 cache-size improvement or comparable Online heap. The earlier 32 KiB Online
-measurements remain historical; a comparable 32 KiB Online probe and a day-long heap
-measurement remain **PENDING**. Afterward, an ordinary 32 KiB build with probe,
+measurements remain historical; a day-long heap measurement remains
+**PENDING**. Afterward, an ordinary 32 KiB build with probe,
 chaos and physical sound off was app-flashed and hash-verified; Aelys displayed
 the companion Online. Its three minute samples each reported `heap_int=96739`
 and `heap_int_min=63476` bytes (`wifi_ip=1`, `tls_fail=0`). This is a short
 checkpoint rather than day-long acceptance; the ordinary 64 and 32 KiB samples
-were taken at different times and on adjacent commits. Sanitized samples and
-the summary script are in the local S1 ledger, not in the repository.
+were taken at different times and on adjacent commits. A subsequent 310-second
+probe32 repetition captured 286 complete samples, 222 Online. Online heap was
+84147–84339 bytes and the boot minimum was 50912 bytes. Its cumulative worst
+refresh was 51017 µs and its maximum synthetic switch was 55546 µs across 156
+successful switches; both timing budgets still **FAIL**. No queue or transfer
+failures were reported, and `tls_fail` was zero in 31 complete metrics lines.
+Different connection histories and natural workload variation limit causal
+comparisons. A separate 65-second task sample placed UI on core 1 and link and
+input on core 0; tcpip was unpinned. In six roughly 10-second intervals, UI
+runtime was 0.434–0.633 seconds; these averages do not explain worst-frame
+latency. The task affinity field does not establish where unpinned tasks ran.
+Sanitized samples and the summary script are in the local S1 ledger, not in
+the repository.
 
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
 Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line per period.
