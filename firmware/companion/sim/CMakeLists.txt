@@ -47,8 +47,6 @@ target_link_libraries(companion_sim PRIVATE simlib)
 
 enable_testing()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_test(NAME test_probe_swipe_mode COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_probe_swipe_mode.py)
-set_tests_properties(test_probe_swipe_mode PROPERTIES TIMEOUT 10)
 add_test(NAME test_silent_board COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_silent_board.py)
 set_tests_properties(test_silent_board PROPERTIES TIMEOUT 10)
 foreach(t test_face_moods test_face_geometry test_bmp test_mood_rules test_screens test_screen_damage)

@@ -40,12 +40,6 @@ menu "Aelys companion"
         help
             Checks the device key, SAS and Wi-Fi decryption against generated vectors, in RAM only
             (never writes NVS), and logs "identity selftest PASS" or FAIL.
-    config AELYS_PROBE_AUTO_SWIPE
-        bool "Generate synthetic navigation during the performance probe"
-        depends on AELYS_PERF_PROBE
-        default y
-        help
-            Disable for passive face-only measurements; never triggers account actions.
     config AELYS_PERF_PROBE
         bool "Performance probe (bench only)"
         depends on !FREERTOS_SMP && !FREERTOS_UNICORE && FREERTOS_RUN_TIME_COUNTER_TYPE_U64 && FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER
