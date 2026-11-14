@@ -47,13 +47,13 @@ static void metrics_task(void *arg)
         if (sta) esp_netif_get_ip_info(sta, &ip);
         ESP_LOGW(TAG,
                  "metrics heap_int=%u heap_int_min=%u largest=%u psram=%u fps=%u.%u worst_us=%u hwm_ui=%u hwm_net=%u "
-                 "hwm_in=%u battery=%d hwm_link=%u hwm_ws=%u boot_ms=%u wifi_ip=%d heap_at_connect_min=%u tls_fail=%u",
+                 "hwm_in=%u battery=%d hwm_link=%u hwm_ws=%u hwm_tmr=%u boot_ms=%u wifi_ip=%d heap_at_connect_min=%u tls_fail=%u",
                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                  (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM), (unsigned)(fps_x10 / 10), (unsigned)(fps_x10 % 10),
                  (unsigned)worst_us, (unsigned)stack_free("ui"), (unsigned)stack_free("net"), (unsigned)stack_free("input"), battery_pct(),
-                 (unsigned)stack_free("link"), (unsigned)link_ws_stack_free_min(),
+                 (unsigned)stack_free("link"), (unsigned)link_ws_stack_free_min(), (unsigned)stack_free("esp_timer"),
                  (unsigned)(lv_port_first_flush_end_us() / 1000), ip.ip.addr != 0, (unsigned)link_heap_at_connect_min(),
                  (unsigned)link_tls_failures());
     }
