@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from weakref import WeakValueDictionary
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from weakref import WeakValueDictionary
 
 from app.core import db as database
 from app.core.models import CalendarEvent, FocusSession, Notification, SyncChange, Task

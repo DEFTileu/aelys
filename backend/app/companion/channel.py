@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from app.companion.actions import ActionIn, run_action
-from app.companion.character import CharacterStateIn, REACTION_REASONS
+from app.companion.character import REACTION_REASONS, CharacterStateIn
 from app.companion.hub import hub
 from app.companion.state import locked_state, record_ack, valid_command
 from app.core import db as core_db

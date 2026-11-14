@@ -6,10 +6,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
+from app.companion.character import CharacterStatusOut
 from app.companion.hub import hub
 from app.companion.models import CompanionState
 from app.companion.state import locked_state, log_command, queue_command
-from app.companion.character import CharacterStatusOut
 from app.core.db import get_db
 from app.core.device_auth import _aware, trusted_device, verify_signature
 from app.core.models import Device, DeviceChallenge, User, now
