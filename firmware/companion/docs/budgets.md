@@ -1,5 +1,39 @@
 # Firmware budgets (spec §4.6)
 
+## Paired-board continuation (2026-11-14)
+
+Measured on S1 `5af7fa4` with physical sound disabled. The owner-authorized
+app-only flashes were hash-verified; no Wi-Fi configuration was changed.
+The ordinary 64 KiB cache build (`f17cac4`, probe and chaos off) reported
+`heap_int=64747` and `heap_int_min=31488` bytes in each of five minute samples;
+the device was shown Online in Aelys. The steady free-heap target of 80 KB
+therefore **FAILS** for this configuration and observation window.
+
+A 310-second, instrumented 64 KiB cache run had 289 complete numerical samples,
+233 of them Online. Online free heap was 51871–52403 bytes; the minimum since
+boot was 18880 bytes. Its cumulative worst refresh was 52401 µs and maximum
+synthetic screen-switch latency was 55767 µs across 157 successful switches:
+the 25 ms refresh and 50 ms switch budgets both **FAIL**. No queue/transfer
+failures were reported; `tls_fail` was zero in all 31 complete metrics lines.
+The probe adds overhead, forces a reconnect every 60 seconds, and includes
+startup and screen transitions in cumulative maxima; incomplete serial lines
+were excluded. The figures do not establish sustained face FPS.
+
+A similarly instrumented 32 KiB cache run had 309 samples, all without Wi-Fi
+or Online status. Free heap was 96559–96631 bytes, minimum since boot 56736;
+worst refresh was 47632 µs and maximum synthetic switch latency 51744 µs
+across 158 successful switches. Both timing budgets **FAIL** in that run.
+Because network conditions differ, the two runs do not establish a causal
+cache-size improvement or comparable Online heap. The earlier 32 KiB Online
+measurements remain historical; a comparable 32 KiB Online probe and a day-long heap
+measurement remain **PENDING**. Afterward, an ordinary 32 KiB build with probe,
+chaos and physical sound off was app-flashed and hash-verified; Aelys displayed
+the companion Online. Its three minute samples each reported `heap_int=96739`
+and `heap_int_min=63476` bytes (`wifi_ip=1`, `tls_fail=0`). This is a short
+checkpoint rather than day-long acceptance; the ordinary 64 and 32 KiB samples
+were taken at different times and on adjacent commits. Sanitized samples and
+the summary script are in the local S1 ledger, not in the repository.
+
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
 Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line per period.
 
