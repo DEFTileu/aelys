@@ -1,9 +1,0 @@
-# Bench-only: avoid the much larger cost of placing all LVGL fast functions in IRAM.
-[mapping:aelys_lvgl_hot]
-archive: liblvgl__lvgl.a
-entries:
-    lv_draw_sw_arc:lv_draw_sw_arc (noflash_text)
-    lv_draw_sw_mask:lv_draw_mask_radius (noflash_text)
-    lv_draw_sw_mask:lv_draw_mask_angle (noflash_text)
-    lv_draw_sw_mask:lv_draw_mask_line (noflash_text)
-    lv_draw_sw_blend_to_rgb565:lv_draw_sw_blend_color_to_rgb565 (noflash_text)
