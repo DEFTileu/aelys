@@ -2,7 +2,7 @@
  * Nine round items sit on a ring of 160 px around the centre, 40 degrees apart; the selected one is at 12 o'clock inside an accent
  * ring and named in the centre. A swipe turns the wheel by one item (a 160 ms animation of the item positions, nothing is rotated
  * or cached as a layer). Each item shows the design's icon (A8 image, img_menu_icons.c, recoloured with the module colour). Deviation:
- * the sub line is live for Tasks, Timer and Inbox, "Coming soon" for items without a screen and empty for the rest.
+ * the sub line is live for Tasks, Timer and Inbox ("5 games" for Games), "Coming soon" for items without a screen and empty for the rest.
  *
  * To give an item its real screen change its `target` in items[] below, nothing else. */
 #include <stdio.h>
@@ -34,7 +34,7 @@ static const menu_item_t items[N_ITEMS] = {
     { "Inbox",     0xB9A8FF, SCR_INBOX },
     { "Weather",   0x7FA8F5, SCR_PLACEHOLDER },
     { "Ask Aelys", 0xB9A8FF, SCR_PLACEHOLDER },
-    { "Games",     0x5FD7A8, SCR_PLACEHOLDER },
+    { "Games",     0x5FD7A8, SCR_GAMES },
     { "Settings",  0xA6A0B2, SCR_PLACEHOLDER },
 };
 
@@ -78,6 +78,7 @@ static void sub_text(char *out, size_t cap, int i, const snap_t *s)
     if (items[i].target == SCR_PLACEHOLDER) snprintf(out, cap, "Coming soon");
     else if (items[i].target == SCR_TASKS && s->today_total > 0) snprintf(out, cap, "%d / %d done", s->today_done, s->today_total);
     else if (items[i].target == SCR_TIMER) scr_timer_summary(out, cap);
+    else if (items[i].target == SCR_GAMES) snprintf(out, cap, "5 games");
     else if (items[i].target == SCR_INBOX) snprintf(out, cap, "%d new", s->unread > 0 ? s->unread : 0);
 }
 

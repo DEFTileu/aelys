@@ -1,4 +1,4 @@
-/* Screen switching: home, the menu wheel and its placeholder, Today, Tasks, Timer, Calendar, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
+/* Screen switching: home, the menu wheel and its placeholder, Today, Tasks, Timer, Calendar, Games, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
  * one active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress and a toast
  * sits on top. The latest snapshot (ui_snap_tb) is rendered into the visible screen on entry, on events that can change
  * it and once a second (relative times, the focus countdown, the "due within 60 min" mood). Hidden screens do no layout. */
@@ -390,6 +390,7 @@ static void show(scr_t s)
     for (int i = 0; i < SCR_COUNT; i++)
         if (g.scr[i]) lv_obj_set_hidden(g.scr[i], i != (int)s);
     g.cur = s;
+    scr_games_visible(s == SCR_GAMES);
 #ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
     if (sparse) {
         render();
@@ -594,6 +595,7 @@ void ui_setup(void)
     g.scr[SCR_TASKS] = scr_tasks_create(root);
     g.scr[SCR_TIMER] = scr_timer_create(root);
     g.scr[SCR_CALENDAR] = scr_calendar_create(root);
+    g.scr[SCR_GAMES] = scr_games_create(root);
     scr_hold_create(root);
     scr_notice_create(root);
     scr_toast_create(root);
@@ -656,6 +658,8 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
         if (scr_tasks_hit(x, y)) complete_task();
     } else if (g.cur == SCR_TIMER) {
         scr_timer_tap(x, y);
+    } else if (g.cur == SCR_GAMES) {
+        scr_games_tap();
     } else if (g.cur == SCR_FOCUS && scr_focus_view() == FV_NONE) {
         act(ACT_FOCUS_START, NULL);
     } else if (g.cur == SCR_MENU && scr_menu_hit(x, y)) {
@@ -706,6 +710,7 @@ void ui_handle_event(const ui_event_t *ev)
     if (ev->type == UI_EV_LEVEL) {
         if (ev->len < 2) return;
         g.level_angle = (int16_t)(ev->data[0] | ev->data[1] << 8);
+        if (ev->len >= 6) scr_games_tilt((int16_t)(ev->data[2] | ev->data[3] << 8), (int16_t)(ev->data[4] | ev->data[5] << 8));
         if (g.level_on) scr_home_set_level(g.level_angle);
         return;
     }
@@ -889,6 +894,7 @@ void ui_handle_event(const ui_event_t *ev)
             render();
         }
         if (g.cur == SCR_TIMER && !g.lost) scr_timer_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
+        if (g.cur == SCR_GAMES && !g.lost) scr_games_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         break;
     case UI_EV_BTN:
         if (g.cur == SCR_LOST && ev->len >= 1) scr_lost_show_hint();
@@ -899,6 +905,8 @@ void ui_handle_event(const ui_event_t *ev)
         }
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task();
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TIMER) scr_timer_top();
+        if (ev->data[0] == BTN_TOP && g.cur == SCR_GAMES) scr_games_top();
+        if (ev->data[0] == BTN_LOW && g.cur == SCR_GAMES && scr_games_back()) return; /* out of a game, back to the hub */
         next = g.cur == SCR_MENU && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_menu_target())
                                                           : screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
         break;

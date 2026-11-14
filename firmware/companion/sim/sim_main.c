@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -69,6 +69,78 @@ static void cyr_owner(owner_info_t *o)
 
 static void post_ev(uint8_t type, uint8_t d0) { sim_post(type, &d0, 1); }
 static bool accept_action(act_kind_t k, const char *id) { (void)k; (void)id; return true; }
+
+static uint32_t shot_r; /* what the games draw as their random number */
+static uint32_t shot_rand(void) { return shot_r; }
+static void steps(uint32_t ms) { for (uint32_t t = 0; t < ms; t += 33) sim_step(33); } /* one frame at a time: the maze moves by what elapsed between ticks */
+static void games_swipe(uint8_t type, int n)
+{
+    for (int i = 0; i < n; i++) {
+        sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+        sim_post(type, NULL, 0);
+        sim_step(200);
+    }
+}
+static void games_tilt(int g_x, int g_y) /* gravity along the screen axes, thousandths of a g */
+{
+    int16_t x = (int16_t)(g_x * 16384 / 1000), y = (int16_t)(g_y * 16384 / 1000);
+    sim_post(UI_EV_LEVEL, (const uint8_t[]){ 0, 0, (uint8_t)x, (uint8_t)((uint16_t)x >> 8), (uint8_t)y, (uint8_t)((uint16_t)y >> 8) }, 6);
+}
+
+/* "games" is the hub on the first game, "games_hub<n>" the hub on game n, "games_<game>[_<state>]" the game after a few plays. */
+static void games_shot(const char *shot)
+{
+    static const char *const games[] = { "ask", "coin", "dice", "react", "maze" };
+    const char *w = shot + 5;
+    if (*w == '_') w++;
+    int idx = 0;
+    ui_set_random(shot_rand);
+    if (!strncmp(w, "hub", 3)) idx = w[3] - '0';
+    else for (int i = 0; i < 5; i++) if (!strncmp(w, games[i], strlen(games[i]))) idx = i;
+    const char *state = !strncmp(w, "hub", 3) || !*w ? "" : strchr(w, '_') ? strchr(w, '_') + 1 : "";
+    post_ev(UI_EV_BTN, BTN_TOP);                 /* the menu, the wheel to Games (two turns back round the wheel), open it */
+    games_swipe(UI_EV_SWIPE_RIGHT, 2);
+    post_ev(UI_EV_BTN, BTN_TOP);
+    games_swipe(UI_EV_SWIPE_LEFT, idx);
+    if (!*w || !strncmp(w, "hub", 3)) return;
+    post_ev(UI_EV_BTN, BTN_TOP);                 /* open the game */
+    const uint8_t tap[4] = { 233, 0, 233, 0 };
+    sim_post(UI_EV_TOUCH, tap, 4); /* a tap only counts on the screen the touch began on */
+    if (idx == 0 && *state) {                    /* Ask Aelys: "Looks good to me" */
+        shot_r = 3;
+        sim_post(UI_EV_TAP, tap, 4);
+        if (!strcmp(state, "answer")) sim_step(1300);
+    } else if (idx == 1 && *state) {             /* Coin: Tails, or half way */
+        shot_r = 1u << 16;
+        sim_post(UI_EV_TAP, tap, 4);
+        if (!strcmp(state, "flip")) sim_step(250); else sim_step(1000);
+    } else if (idx == 1) {
+        shot_r = 0;
+        sim_post(UI_EV_TAP, tap, 4);
+        sim_step(1000);
+    } else if (idx == 2 && *state) {             /* Dice: a 5, or while they roll */
+        shot_r = 4;
+        sim_post(UI_EV_TAP, tap, 4);
+        if (!strcmp(state, "roll")) sim_step(120); else sim_step(1000);
+    } else if (idx == 3 && *state) {             /* Reaction: wait 2 s */
+        shot_r = 500;
+        sim_post(UI_EV_TAP, tap, 4);
+        if (!strcmp(state, "early")) { sim_step(300); sim_post(UI_EV_TAP, tap, 4); }
+        else if (strcmp(state, "wait")) {
+            sim_step(2100);
+            if (!strcmp(state, "done")) { sim_step(214); sim_post(UI_EV_TAP, tap, 4); }
+        }
+    } else if (idx == 4) {                       /* Maze: right, down, left, down, right is the way home; "games_maze" stops half way */
+        bool done = !strcmp(state, "done");
+        games_tilt(350, 0); steps(3000);
+        games_tilt(0, 350); steps(done ? 3000 : 1500);
+        if (done) {
+            games_tilt(-350, 0); steps(3000);
+            games_tilt(0, 350); steps(3000);
+            games_tilt(350, 0); steps(3000);
+        }
+    }
+}
 
 /* The companion screens, fed with the made-up fixture of snap_fixture.h (14:32, UTC). */
 static int companion_shot(const char *shot)
@@ -156,6 +228,7 @@ static int companion_shot(const char *shot)
             sim_step(strcmp(shot, "timer_done") ? 76000 : 301000); /* 5 min: 3:44 left, or over */
         }
     }
+    else if (!strncmp(shot, "games", 5)) games_shot(shot);
     else if (!strcmp(shot, "calendar") || !strcmp(shot, "calendar_empty")) {
         post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Calendar, open it */
         for (int i = 0; i < 3; i++) {
@@ -187,7 +260,7 @@ static int companion_shot(const char *shot)
 static int screen_shot(const char *shot)
 {
     if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
-        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6))
+        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "games", 5) || !strncmp(shot, "focus_", 6))
         return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };
@@ -261,7 +334,7 @@ int main(int argc, char **argv)
         else return 2;
     }
     if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
         fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
                         "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);

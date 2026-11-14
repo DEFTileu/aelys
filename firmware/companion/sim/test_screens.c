@@ -1674,6 +1674,244 @@ static int lit_inside(void)
     return in;
 }
 
+/* ---- Games ---- */
+static uint32_t game_r;
+static uint32_t game_rand(void) { return game_r; }
+static void tilt(int milli_gx, int milli_gy) /* UI_EV_LEVEL with the gravity, thousandths of a g */
+{
+    int16_t x = (int16_t)(milli_gx * 16384 / 1000), y = (int16_t)(milli_gy * 16384 / 1000);
+    uint8_t d[6] = { 0, 0, (uint8_t)x, (uint8_t)((uint16_t)x >> 8), (uint8_t)y, (uint8_t)((uint16_t)y >> 8) };
+    sim_post(UI_EV_LEVEL, d, 6);
+}
+static void frames(uint32_t ms) { for (uint32_t t = 0; t < ms; t += 33) sim_step(33); } /* the maze steps by what elapsed between ticks */
+
+/* Home -> menu -> Games (the hub). */
+static void open_games(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    btn(BTN_TOP);
+    for (int i = 0; i < 9 && scr_menu_selected() != 7; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    CHECK_EQ(scr_menu_selected(), 7);
+    sim_step(100);
+    CHECK(shows_text(lv_screen_active(), "Games") && shows_text(lv_screen_active(), "5 games") && !shows_text(lv_screen_active(), "Coming soon"));
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_GAMES);
+}
+
+/* From the menu (the wheel on Games): the hub, turned to game n, and open it. */
+static void open_game(int n)
+{
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_GAMES);
+    for (int i = 0; i < 5 && scr_games_selected() != n; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(100); }
+    CHECK_EQ(scr_games_selected(), n);
+    btn(BTN_TOP);
+}
+
+static void back_to_menu(void)
+{
+    btn(BTN_LOW); /* out of a game: the hub */
+    CHECK_EQ(ui_current_screen(), SCR_GAMES);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+}
+
+static void test_games_screens(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    ui_set_random(game_rand);
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+    open_games();
+
+    /* the hub: swipes turn through the five games, round and round; an idle hub redraws nothing */
+    const char *names[] = { "Ask Aelys", "Coin", "Dice", "Reaction", "Tilt Maze" };
+    for (int i = 0; i < 5; i++) {
+        CHECK(see(names[i]) && shows_text(scr, "Games") && shows_text(scr, "Open"));
+        check_inside("games hub");
+        swipe(UI_EV_SWIPE_LEFT);
+    }
+    CHECK(see("Ask Aelys"));
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("Tilt Maze"));
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK(see("Ask Aelys"));
+    sim_step(100);
+    uint32_t n0 = sim_flushes();
+    sim_step(3000);
+    CHECK_EQ(sim_flushes(), n0);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    btn(BTN_TOP);
+    CHECK(see("Ask Aelys"));                                         /* re-entering opens the hub, on the game left on */
+    btn(BTN_LOW);
+
+    /* Ask Aelys: tap, a thinking face, an answer; never the same one twice running */
+    open_game(0);
+    CHECK(see("Think of a question") && shows_text(scr, "Tap for an answer"));
+    check_inside("ask (idle)");
+    game_r = 3;
+    tap_at(233, 233);
+    CHECK(see("Hmm\xE2\x80\xA6"));
+    check_inside("ask (thinking)");
+    tap_at(233, 233);                                                /* a tap while it thinks does nothing; the answer is drawn when it is ready */
+    sim_step(1200);
+    CHECK(see("Looks good to me") && shows_text(scr, "Tap to ask again"));
+    check_inside("ask (answer)");
+    tap_at(233, 233);
+    CHECK(see("Hmm\xE2\x80\xA6"));
+    game_r = 3;                                                      /* the same draw again: the next answer instead */
+    sim_step(1200);
+    CHECK(see("Why not?"));
+    btn(BTN_TOP);                                                    /* the top key plays too */
+    sim_step(1200);
+    CHECK(!see("Why not?") && !shows_text(scr, "Hmm\xE2\x80\xA6"));
+    check_inside("ask (again)");
+    back_to_menu();
+
+    /* Coin */
+    open_game(1);
+    CHECK(see("Heads") && shows_text(scr, "Tap to flip"));
+    check_inside("coin (heads)");
+    game_r = 1u << 16;
+    tap_at(233, 233);
+    sim_step(400);
+    CHECK(see("Flipping\xE2\x80\xA6"));
+    check_inside("coin (flipping)");
+    sim_step(1000);
+    CHECK(see("Tails") && !shows_text(scr, "Flipping\xE2\x80\xA6"));
+    check_inside("coin (tails)");
+    game_r = 0;
+    btn(BTN_TOP);
+    sim_step(1000);
+    CHECK(see("Heads"));
+    game_r = 0;
+    tap_at(233, 233);                                                /* heads again: it still spins and lands */
+    sim_step(1000);
+    CHECK(see("Heads"));
+    n0 = sim_flushes();
+    sim_step(2000);
+    CHECK_EQ(sim_flushes(), n0);                                     /* a coin at rest costs nothing */
+    back_to_menu();
+
+    /* Dice */
+    open_game(2);
+    CHECK(see("Roll the dice"));
+    check_inside("dice (new)");
+    game_r = 4;
+    tap_at(233, 233);
+    sim_step(300);
+    CHECK(see("Rolling\xE2\x80\xA6"));
+    sim_step(1000);
+    CHECK(see("Rolled 5"));
+    check_inside("dice (5)");
+    for (unsigned r = 0; r < 6; r++) {                               /* every face lands */
+        char want[16];
+        game_r = r;
+        btn(BTN_TOP);
+        sim_step(1000);
+        snprintf(want, sizeof want, "Rolled %u", r + 1);
+        CHECK(see(want));
+        check_inside("dice (all)");
+    }
+    n0 = sim_flushes();
+    sim_step(2000);
+    CHECK_EQ(sim_flushes(), n0);
+    back_to_menu();
+
+    /* Reaction: 1.5-4 s wait, green, tap; early taps; the best of the session */
+    open_game(3);
+    CHECK(see("Tap to start") && shows_text(scr, "Reaction"));
+    check_inside("reaction (idle)");
+    game_r = 500;                                                    /* wait 2 s */
+    tap_at(233, 233);
+    CHECK(see("Wait\xE2\x80\xA6") && shows_text(scr, "Get ready"));
+    check_inside("reaction (wait)");
+    sim_step(1700);                                                  /* 140 ms since the tap: the screen turns at 2000 */
+    CHECK(see("Wait\xE2\x80\xA6") && !shows_text(scr, "Tap!"));
+    n0 = sim_flushes();
+    sim_step(50);
+    CHECK_EQ(sim_flushes(), n0);                                     /* waiting redraws nothing */
+    sim_step(100);
+    CHECK(see("Tap!") && !shows_text(scr, "Wait\xE2\x80\xA6"));   /* it turned 30 ms ago ... */
+    check_inside("reaction (go)");                                   /* ... and this frame is 100 ms on, so 140 ms have passed since */
+    sim_step(110);
+    tap_at(233, 233);                                                /* exactly 250 ms after the screen turned */
+    CHECK(see("250") && shows_text(scr, "ms") && shows_text(scr, "Best 250 ms"));
+    check_inside("reaction (done)");
+    tap_at(233, 233);                                                /* again, and tapping before the green is "Too soon" */
+    sim_step(300);
+    tap_at(233, 233);
+    CHECK(see("Too soon") && shows_text(scr, "Tap to retry"));
+    check_inside("reaction (too soon)");
+    sim_step(10000);                                                 /* the abandoned wait never turns green */
+    CHECK(see("Too soon") && !shows_text(scr, "Tap!"));
+    tap_at(233, 233);
+    sim_step(2100);
+    CHECK(see("Tap!"));
+    sim_step(140);
+    btn(BTN_TOP);                                                    /* the top key taps as well: a better time */
+    CHECK(see("180") && shows_text(scr, "Best 180 ms"));
+    tap_at(233, 233);
+    sim_step(2100);
+    CHECK(see("Tap!"));
+    sim_step(360);
+    tap_at(233, 233);
+    CHECK(see("400") && shows_text(scr, "Best 180 ms"));            /* a worse one does not take the record */
+    tap_at(233, 233);                                                /* leave in the middle of a wait: it is dropped */
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_GAMES);
+    sim_step(10000);
+    CHECK_EQ(ui_current_screen(), SCR_GAMES);
+    CHECK(see("Reaction") && shows_text(scr, "Best 180 ms"));        /* the hub shows the record */
+    btn(BTN_TOP);
+    CHECK(see("Tap to start") && shows_text(scr, "Best 180 ms") && !shows_text(scr, "Tap!"));
+    back_to_menu();
+
+    /* Tilt maze: a board lying flat costs nothing; tilting rolls the ball, the walls stop it, the far corner wins */
+    open_game(4);
+    CHECK(see("Tilt to roll"));
+    check_inside("maze (start)");
+    sim_step(100);
+    n0 = sim_flushes();
+    tilt(20, -30);                                                   /* inside the dead zone */
+    frames(2000);
+    CHECK_EQ(sim_flushes(), n0);
+    tilt(350, 0);
+    frames(3000);
+    CHECK(see("0:02") || shows_text(scr, "0:03"));                   /* the clock started with the first movement */
+    check_inside("maze (rolling)");
+    tilt(0, 350); frames(3000);
+    tilt(-350, 0); frames(3000);
+    tilt(0, 350); frames(3000);
+    tilt(350, 0); frames(3000);
+    CHECK(see("Tilt to roll"));
+    check_inside("maze (done)");
+    sim_step(100);
+    n0 = sim_flushes();
+    frames(2000);
+    CHECK_EQ(sim_flushes(), n0);                                     /* a finished maze costs nothing */
+    btn(BTN_TOP);                                                    /* restart: the ball is back at the start, the best time stays */
+    tilt(0, 0);
+    frames(500);
+    check_inside("maze (restart)");
+    back_to_menu();
+
+    /* lost mode takes the screen away; coming back opens the hub */
+    open_game(3);
+    game_r = 0;
+    tap_at(233, 233);
+    post_lost(1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    sim_step(5000);
+    post_lost(0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    btn(BTN_TOP);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_GAMES);
+    CHECK(see("Reaction") && shows_text(scr, "Open"));
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+}
+
 static void test_calendar_screen(void)
 {
     lv_obj_t *scr = lv_screen_active();
@@ -2317,6 +2555,7 @@ int main(void)
     test_tasks_screen();
     test_timer_screen();
     test_calendar_screen();
+    test_games_screens();
     test_notice_popup();
     test_lost_hint_toast_shot();
     test_wifi_toast_shots();
