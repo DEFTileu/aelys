@@ -416,3 +416,23 @@ borrowed lifetime, asynchronous execution, dispatch guards, multi-strip
 failure and recovery, real rotation frames, broader LVGL OOM behavior and target
 performance remain unproven. See ignored `borrowed-task/report.md` for test
 configurations, source and reproduction instructions.
+
+A subsequent isolated integration combines this borrowed task with the
+spring-driven rotating-pill prototype. It checks buffer alignment, stride,
+capacity and arithmetic before queueing, restricts the tested software target
+formats, and appends its experimental task type. A serialized host protocol
+asserts that face buffers are not mutated during refresh and counts tasks that
+execute. In 12 sampled scale/fault cases, each 720 partial frames matched full
+redraws; selected one-shot submission failures in multi-strip refreshes used
+the decoded-image fallback. One 130% fault case was independently rerun. The
+copied suite passed 41/41, excluding owner/contact and board-port tests. A
+sanitizer run covered copied LVGL and the test, but the imported logic archive
+was not instrumented and leak detection was disabled.
+
+This is still not safe to integrate: submission may succeed before dispatch
+fails; the global counter cannot retire cancelled or never-executed tasks;
+other draw units are not excluded; and the fallback itself can allocate and
+assert. Diagnostic C assertions are not a release lifetime protocol. Delayed
+flush was simulated, but delayed draw execution, persistent OOM and real DMA
+were not tested. The full/partial oracle shares the renderer and is not a CSS
+fidelity reference. See ignored `borrowed-rotation/report.md` for details.
