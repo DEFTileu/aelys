@@ -52,5 +52,6 @@ typedef struct {
 } character_state_t;
 typedef struct { character_mood_t mood; character_reason_t why; character_cue_t cue; } character_result_t;
 void character_init(character_state_t *state);
-void character_event(character_state_t *state, character_event_t event, uint32_t now_ms);
+/* Returns false when an invalid or lower-priority event is suppressed. */
+bool character_event(character_state_t *state, character_event_t event, uint32_t now_ms);
 character_result_t character_select(character_state_t *state, const character_inputs_t *inputs, uint32_t now_ms);

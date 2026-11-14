@@ -532,7 +532,8 @@ static void capture_cue(character_cue_t cue) { cue_count++; last_cue = cue; }
 static character_mood_t reported_mood;
 static character_reason_t reported_why;
 static uint32_t reported_rev;
-static void capture_status(character_mood_t mood, character_reason_t why, uint32_t rev, uint32_t identity) { (void)identity; reported_rev = rev; reported_mood = mood; reported_why = why; }
+static unsigned status_count;
+static void capture_status(character_mood_t mood, character_reason_t why, uint32_t rev, uint32_t identity) { (void)identity; ++status_count; reported_rev = rev; reported_mood = mood; reported_why = why; }
 static void test_character_status_while_home_hidden(void)
 {
     fresh_fx(); ui_set_character_status_sink(capture_status);
@@ -630,16 +631,47 @@ static void test_character_tap_and_idle(void)
     touch_at(233, 233); post(UI_EV_RELEASE); fresh_fx();
 }
 
+static void test_reconnect_does_not_interrupt_task_reaction(void)
+{
+    fresh_fx(); sim_step(3100);
+    ui_set_character_cue_sink(capture_cue); cue_count = 0;
+    ui_set_character_status_sink(capture_status); status_count = 0;
+    action_result(ACT_TASK_COMPLETE, true, NULL);
+    CHECK_EQ(ui_character_last().why, WHY_TASK_DONE);
+    CHECK_EQ(cue_count, 1);
+    sim_step(1100); link_state(LINK_UI_OFFLINE); link_state(LINK_UI_CONNECTING); link_state(LINK_UI_ONLINE);
+    CHECK_EQ(ui_character_last().why, WHY_TASK_DONE);
+    CHECK_EQ(cue_count, 1);
+    sim_step(1400); /* run the periodic tick 500 ms before the task's deadline */
+    unsigned before_deadline = status_count;
+    sim_step(500); /* only the original reaction timer is due */
+    CHECK(status_count > before_deadline);
+    CHECK(ui_character_last().why != WHY_TASK_DONE);
+    CHECK(ui_character_last().why != WHY_RECONNECTED);
+    CHECK_EQ(cue_count, 1);
+    ui_set_character_status_sink(NULL); ui_set_character_cue_sink(NULL); fresh_fx();
+}
+
 static void test_character_reconnected(void)
 {
     fresh_fx(); sim_step(3100);
     link_state(LINK_UI_OFFLINE); CHECK_EQ(ui_character_last().mood, CHAR_OFFLINE);
-    link_state(LINK_UI_ONLINE);
+    link_state(LINK_UI_CONNECTING); link_state(LINK_UI_ONLINE);
     CHECK_EQ(ui_character_last().mood, CHAR_RECONNECTED);
     CHECK_EQ(ui_character_last().why, WHY_RECONNECTED);
     CHECK_EQ(scr_home_mood(), MOOD_RECONNECTED);
     link_state(LINK_UI_ONLINE); sim_step(3100);
     CHECK(ui_character_last().mood != CHAR_RECONNECTED);
+    link_state(LINK_UI_CONNECTING); link_state(LINK_UI_ONLINE); /* reauthentication */
+    CHECK_EQ(ui_character_last().why, WHY_RECONNECTED);
+    sim_step(3100);
+    link_state(LINK_UI_OFFLINE); link_state(LINK_UI_UNPAIRED);
+    link_state(LINK_UI_CONNECTING); link_state(LINK_UI_OFFLINE); /* first login failed */
+    link_state(LINK_UI_CONNECTING); link_state(LINK_UI_ONLINE); /* first success */
+    CHECK(ui_character_last().why != WHY_RECONNECTED);
+    link_state(LINK_UI_UNPAIRED); link_state(LINK_UI_OFFLINE); /* connecting update was dropped */
+    link_state(LINK_UI_CONNECTING); link_state(LINK_UI_ONLINE);
+    CHECK(ui_character_last().why != WHY_RECONNECTED);
     fresh_fx();
 }
 
@@ -1531,6 +1563,7 @@ int main(void)
     test_identity_change_drops_old_snapshot_before_reporting();
     test_character_cue_delivery();
     test_character_tap_and_idle();
+    test_reconnect_does_not_interrupt_task_reaction();
     test_character_reconnected();
     test_character_home_integration();
     test_last_task_reaction();

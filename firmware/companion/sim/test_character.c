@@ -119,6 +119,35 @@ static void test_all_events(void)
     expect(&s, &i, 2, CHAR_DIZZY, WHY_SHAKE);
     expect(&s, &i, 3000, CHAR_CALM, WHY_CALM);
 }
+/* Background reconnect must not interrupt an immediately visible task reaction. */
+static void test_reconnect_does_not_interrupt_task(void)
+{
+    character_state_t s; character_inputs_t i = normal();
+    character_init(&s);
+    character_event(&s, CHAR_EVENT_TASK_DONE, 0);
+    CHECK_EQ(character_select(&s, &i, 0).cue, CUE_JOY);
+    character_event(&s, CHAR_EVENT_RECONNECTED, 1000);
+    expect(&s, &i, 1000, CHAR_JOY, WHY_TASK_DONE);
+    CHECK_EQ(character_select(&s, &i, 1000).cue, CUE_NONE);
+    expect(&s, &i, 3000, CHAR_CALM, WHY_CALM);
+    character_event(&s, CHAR_EVENT_RECONNECTED, 3001);
+    expect(&s, &i, 3001, CHAR_RECONNECTED, WHY_RECONNECTED);
+    character_event(&s, CHAR_EVENT_TASK_DONE, 3002);
+    expect(&s, &i, 3002, CHAR_JOY, WHY_TASK_DONE);
+    character_event(&s, CHAR_EVENT_TOUCH, 3003);
+    expect(&s, &i, 3003, CHAR_SURPRISED, WHY_TOUCH);
+
+    const character_event_t tasks[] = {CHAR_EVENT_TASK_DONE, CHAR_EVENT_LAST_TASK, CHAR_EVENT_TASK_NEAR_DEADLINE};
+    const character_reason_t reasons[] = {WHY_TASK_DONE, WHY_LAST_TASK, WHY_TASK_NEAR_DEADLINE};
+    for (unsigned n = 0; n < sizeof tasks / sizeof *tasks; ++n) {
+        character_init(&s);
+        CHECK(character_event(&s, tasks[n], UINT32_MAX - 1000u));
+        CHECK(!character_event(&s, CHAR_EVENT_RECONNECTED, 0));
+        CHECK_EQ(character_select(&s, &i, 0).why, reasons[n]);
+        CHECK(character_event(&s, CHAR_EVENT_RECONNECTED, 2000));
+        CHECK_EQ(character_select(&s, &i, 2000).why, WHY_RECONNECTED);
+    }
+}
 static void test_cue_mapping(void)
 {
     const character_event_t events[] = {CHAR_EVENT_TASK_DONE, CHAR_EVENT_LAST_TASK, CHAR_EVENT_TOUCH,
@@ -141,4 +170,4 @@ static void test_idle_rotation(void)
     CHECK(first != second); i.idle_seconds = 120;
     CHECK(character_select(&s, &i, 120000).mood != second);
 }
-int main(void) { test_cue_mapping(); test_remaining_rules(); test_all_events(); test_idle_rotation(); test_priorities(); test_boundaries_and_unknown(); test_events_and_sounds(); return g_failed ? 1 : 0; }
+int main(void) { test_reconnect_does_not_interrupt_task(); test_cue_mapping(); test_remaining_rules(); test_all_events(); test_idle_rotation(); test_priorities(); test_boundaries_and_unknown(); test_events_and_sounds(); return g_failed ? 1 : 0; }

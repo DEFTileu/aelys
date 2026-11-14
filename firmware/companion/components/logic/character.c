@@ -35,13 +35,19 @@ void character_init(character_state_t *s)
     if (s) memset(s, 0, sizeof *s);
 }
 
-void character_event(character_state_t *s, character_event_t e, uint32_t now)
+bool character_event(character_state_t *s, character_event_t e, uint32_t now)
 {
-    if (!s || e <= CHAR_EVENT_NONE || e >= CHAR_EVENT_COUNT) return;
+    if (!s || e <= CHAR_EVENT_NONE || e >= CHAR_EVENT_COUNT) return false;
     /* A body reaction must not be displaced by a lower-priority tap. */
     if (s->event_pending && s->event > CHAR_EVENT_NONE && s->event < CHAR_EVENT_COUNT &&
-        (uint32_t)(now - s->event_at_ms) < REACTION_MS && EVENTS[s->event].body && !EVENTS[e].body) return;
+        (uint32_t)(now - s->event_at_ms) < REACTION_MS) {
+        if (EVENTS[s->event].body && !EVENTS[e].body) return false;
+        /* A passive link transition should not erase an ongoing task celebration. */
+        if (e == CHAR_EVENT_RECONNECTED && (s->event == CHAR_EVENT_TASK_DONE ||
+            s->event == CHAR_EVENT_LAST_TASK || s->event == CHAR_EVENT_TASK_NEAR_DEADLINE)) return false;
+    }
     s->event = e; s->event_at_ms = now; s->event_pending = true; s->cue_pending = true;
+    return true;
 }
 
 static character_result_t result(character_mood_t mood, character_reason_t why)

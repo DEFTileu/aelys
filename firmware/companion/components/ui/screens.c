@@ -33,6 +33,7 @@ static struct {
     character_state_t character;
     bool snap_valid, touch_after_idle, touch_character_valid;
     uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
+    bool link_was_offline, link_has_history;
     bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
@@ -552,7 +553,7 @@ void ui_setup(void)
     character_init(&g.character);
     g.character_result = (character_result_t){CHAR_CALM, WHY_CALM, CUE_NONE};
     scr_find_show(false);
-    g.link = LINK_UI_UNPAIRED;
+    g.link = LINK_UI_UNPAIRED; g.link_was_offline = g.link_has_history = false;
     g.snap = snap_buf ? tribuf_latest(&ui_snap_tb, NULL) : NULL;
     g.done_id[0] = 0;
     memset(g.read_id, 0, sizeof g.read_id);
@@ -594,9 +595,9 @@ static void on_action_result(const ui_event_t *ev)
                         (g.snap->today_done >= g.snap->today_total ||
                          (g.snap->today_done >= 0 && g.snap->today_done + 1 == g.snap->today_total &&
                           g.snap->has_task && g.done_id[0] && !strcmp(g.done_id, g.snap->task.id)));
-            character_event(&g.character, last ? CHAR_EVENT_LAST_TASK : CHAR_EVENT_TASK_DONE, lv_tick_get());
+            bool accepted = character_event(&g.character, last ? CHAR_EVENT_LAST_TASK : CHAR_EVENT_TASK_DONE, lv_tick_get());
             update_character(); /* deliver a host cue at the event, even off Home */
-            arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+            if (accepted) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
         }
         return;
     }
@@ -684,12 +685,17 @@ void ui_handle_event(const ui_event_t *ev)
     }
     case UI_EV_LINK: {
         if (ev->len < 1) return;
-        bool reconnected = g.link == LINK_UI_OFFLINE && ev->data[0] == LINK_UI_ONLINE && !g.lost;
-        g.link = ev->data[0];
+        uint8_t next_link = ev->data[0];
+        bool reconnected = next_link == LINK_UI_ONLINE && g.link_was_offline && !g.lost;
+        if ((next_link == LINK_UI_OFFLINE && g.link_has_history) ||
+            (next_link == LINK_UI_CONNECTING && g.link == LINK_UI_ONLINE)) g.link_was_offline = true;
+        if (next_link == LINK_UI_ONLINE) { g.link_was_offline = false; g.link_has_history = true; }
+        else if (next_link == LINK_UI_UNPAIRED) g.link_was_offline = g.link_has_history = false;
+        g.link = next_link;
         if (reconnected) {
-            character_event(&g.character, CHAR_EVENT_RECONNECTED, lv_tick_get());
+            bool accepted = character_event(&g.character, CHAR_EVENT_RECONNECTED, lv_tick_get());
             update_character();
-            arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+            if (accepted) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
         }
         scr_home_set_paired(ev->data[0] != LINK_UI_UNPAIRED);
         scr_home_set_welcome(ev->data[0] == LINK_UI_UNPAIRED);
@@ -768,9 +774,9 @@ void ui_handle_event(const ui_event_t *ev)
         if (g.lost || ev->len < 4 || g.down_scr != g.cur) return;
         on_tap((int32_t)(ev->data[0] | ev->data[1] << 8), (int32_t)(ev->data[2] | ev->data[3] << 8), &next);
         if (g.cur == SCR_HOME && next == SCR_HOME && physical_home_tap) {
-            character_event(&g.character, g.touch_after_idle ? CHAR_EVENT_TOUCH : CHAR_EVENT_ATTENTION, lv_tick_get());
+            bool accepted = character_event(&g.character, g.touch_after_idle ? CHAR_EVENT_TOUCH : CHAR_EVENT_ATTENTION, lv_tick_get());
             update_character();
-            arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+            if (accepted) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
             render();
         }
         break;
