@@ -475,3 +475,13 @@ and mismatched release callbacks. The adapter is not connected to the face,
 and concurrent workers, actual face deletion, failure recovery, and the
 separately flagged boundary issue remain open. See ignored
 `source-owner2/INVESTIGATION.md`.
+
+An isolated follow-up added a task-outcome handle to the serialized host
+ownership experiment. Focused tests reported renderer rejection, explicit
+retry with visible pixels, successful task cleanup and cancellation of a
+waiting task after owner deletion. The focused tests were independently rerun;
+no full suite or sanitizer run was performed for this iteration. The retry is
+explicit, task retirement is not display/DMA delivery, and in-progress
+cancellation, concurrent workers, real allocation failures, automatic repair
+and actual face integration remain unverified. The separately flagged boundary
+investigation remains open. See ignored `source-outcome/REPORT.md`.
