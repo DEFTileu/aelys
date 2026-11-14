@@ -21,7 +21,7 @@
 - Residual injection risk: the write barrier lasts only for this turn. Web-derived text in a saved assistant answer can re-enter the next turn's context, where writes are again allowed; addressing cross-turn taint is outside H3 and must be stated in the final report.
 - After a web search, hide `http://` and `https://` URLs not in provider sources in streamed and final answers; remove URLs from the search summary sent to the model, and append at most five sources. Bare domains are not filtered and remain a residual limitation.
 - Scope classification tests must cover every scope in the personal registry, including `web.search`; adding an unclassified scope fails the test. Denied calls never emit `ai.tool.approved`.
-- Web chat enables the tool loop even with no selected personal sources and has no separate search switch; the owner explicitly accepts this behavior. Search has a two-per-turn limit and monthly budget. The fixed search surcharge does not alone represent the full token-inclusive cost.
+- Web chat offers search only when the owner enables the per-conversation source switch, off by default. Search has a two-per-turn limit and monthly budget. The fixed search surcharge does not alone represent the full token-inclusive cost.
 
 ## Task 1: Tool isolation, policy and budget (one vertical slice)
 
@@ -39,9 +39,9 @@
 **Files:** `backend/app/integrations/telegram_personal_dialogue.py`, `backend/app/ai/{api,chat_support,turn}.py`; `backend/tests/test_telegram_personal_dialogue.py`, `backend/tests/ai_automation/test_ai_api.py`, `apps/web/src/tests/ai-chat-design.test.tsx` as needed.
 
 - [ ] Write synthetic-provider end-to-end tests for both channels: question → tool → final answer with URLs appended by server from validated `response.sources`, never model-extracted links; persist/display the same answer and test streamed output/replay.
-- [ ] Enable search scope and tool loop even with no selected personal data scopes, only for supported provider/model; preserve media, Knowledge and existing authorization behavior. Search sub-call contains none of these contexts.
+- [ ] Enable search and its tool loop only when the conversation switch is on and the provider/model is supported; preserve media, Knowledge and existing authorization behavior. Search sub-call contains none of these contexts.
 - [ ] Test malicious RU/KK/EN web results requesting task/note/reminder/memory writes or secrets: no writes, action proposals or new scopes; cover same completion batch, failed search and next step.
-- [ ] Test unknown/absent source in live and saved Web events and owner-visible `Поиск в вебе: <query>` in both channels; verify web results are absent from persisted tool events. Validate no third search, overlong query, unsupported provider, or budget-exhausted provider call.
+- [ ] Test live and saved Web events and owner-visible `Поиск в вебе: <query>` in both channels; verify web results are absent from persisted tool events. Validate no third search, overlong query, unsupported provider, or budget-exhausted provider call.
 - [ ] Test “search and set a reminder”: after a denied write or third search the run continues, delivers source links and asks to repeat the deferred request; no write occurs.
 - [ ] Run existing Business secretary, command and task-extraction tests unchanged; run relevant Web chat tests. Keep owner-facing budget/search errors understandable.
 

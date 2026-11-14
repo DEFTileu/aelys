@@ -1,7 +1,7 @@
 import type { AIConversation, AIRunStep } from '@aelys/shared'
-import { BookOpen, Calendar, ChartColumn, MapPin, MessageCircle, Mail, NotebookText, Sparkles, SquareCheck, Wallet, type AelysIconComponent } from '../../icons'
+import { BookOpen, Calendar, ChartColumn, MapPin, MessageCircle, Mail, NotebookText, Search, Sparkles, SquareCheck, Wallet, type AelysIconComponent } from '../../icons'
 
-export type SourceId = 'tasks' | 'calendar' | 'notes' | 'knowledge'
+export type SourceId = 'tasks' | 'calendar' | 'notes' | 'knowledge' | 'web'
 export interface SourceDef { readonly id: SourceId; readonly scope: string; readonly name: string; readonly Icon: AelysIconComponent; readonly color: string; readonly soft: string; readonly on: string; readonly off: string; readonly step: string }
 /** Only sources with a real backend read tool; Mail and Finances are deliberately absent. */
 export const SOURCES: readonly SourceDef[] = [
@@ -9,6 +9,7 @@ export const SOURCES: readonly SourceDef[] = [
   { id: 'calendar', scope: 'calendar.read', name: 'Calendar', Icon: Calendar, color: '#D93636', soft: '#FDE8E7', on: 'Can read your events', off: 'Not shared in this chat', step: 'Read calendar' },
   { id: 'notes', scope: 'notes.read', name: 'Notes', Icon: NotebookText, color: '#B36B00', soft: '#FDF1D9', on: 'Can search your notes', off: 'Not shared in this chat', step: 'Searched notes' },
   { id: 'knowledge', scope: 'knowledge.read', name: 'Knowledge base', Icon: BookOpen, color: '#6A4CF2', soft: '#EEE8FD', on: 'Can search your documents', off: 'Not shared in this chat', step: 'Searched knowledge base' },
+  { id: 'web', scope: 'web.search', name: 'Поиск в вебе', Icon: Search, color: '#2F6FE4', soft: '#E4EEFD', on: 'Разрешён в этой беседе', off: 'Выключен в этой беседе', step: 'Поиск в вебе' },
 ]
 export const DEFAULT_SOURCES: readonly SourceId[] = ['tasks', 'calendar', 'notes']
 const KNOWN_SCOPES = new Set(SOURCES.map((item) => item.scope))

@@ -163,9 +163,9 @@ class CreateNoteToolArgs(BaseModel):
     markdown_body: str = Field(default="", max_length=100_000)
     project_id: str | None = Field(default=None, max_length=36)
 
-# This is the server-registered, non-external AI policy. `tool_scope` is only a
-# request for a subset of this set; it cannot introduce a new permission.
-_REGISTERED_AI_TOOL_SCOPES = frozenset({"tasks.write", "notes.write"}) | READ_SCOPES
+# `tool_scope` requests only server-registered scopes; external effects still
+# require separate authorization from the policy engine.
+_REGISTERED_AI_TOOL_SCOPES = frozenset({"tasks.write", "notes.write", "web.search"}) | READ_SCOPES
 
 def _requested_tool_scopes(raw: Mapping[str, Any]) -> frozenset[str]:
     values = raw.get("scopes", [])
@@ -802,7 +802,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             requested_scopes = frozenset((item.tool_scope_json or {}).get("scopes", []))
             # Without a tool-calling model the chat keeps answering as plain text.
             search_supported = provider.kind in {'claude', 'openrouter'} and any(Capability.TOOL_CALLING in spec.capabilities and (not requested_model or getattr(spec, 'model', requested_model) == requested_model) for spec in service.models)
-            use_tools = (bool(requested_scopes) or search_supported) and any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)
+            search_enabled = search_supported and 'web.search' in requested_scopes
+            effective_scopes = requested_scopes if search_enabled else requested_scopes - {'web.search'}
+            use_tools = bool(effective_scopes) and any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)
             if knowledge_scope is None:
                 from app.integrations.telegram_models import TelegramIntegration
 
@@ -819,7 +821,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             if use_tools:
                 from .personal_tools import personal_tool_registry
                 registry = personal_tool_registry(db, user.id, run_id, memory_source="app_ai")
-                if search_supported:
+                if search_enabled:
                     from .web_search import register_web_search
                     register_web_search(registry)
                 # The turn runs as a task feeding this queue, so steps and text reach the client as they happen.
@@ -852,7 +854,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 from app.integrations.telegram_personal_dialogue import owner_scopes
                 # Memory stays opt-in as in Telegram: only an explicit "remember"/"forget" exposes those tools.
                 memory_scopes = frozenset(scope for scope in owner_scopes(last_message.content) if scope.startswith("memory."))
-                context = PermissionContext(actor=f"ai:{run_id}", scopes=requested_scopes | WRITE_SCOPES | memory_scopes | (frozenset({'web.search'}) if search_supported else frozenset()), project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai", external_scopes=frozenset({'web.search'}) if search_supported else frozenset())
+                context = PermissionContext(actor=f"ai:{run_id}", scopes=effective_scopes | WRITE_SCOPES | memory_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai", external_scopes=frozenset({'web.search'}) if search_enabled else frozenset())
                 tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget), effort=(item.tool_scope_json or {}).get("effort"))
                 async def account_tool_usage(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
                     item.cost_estimate = cost
