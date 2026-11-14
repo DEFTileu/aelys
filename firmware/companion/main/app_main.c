@@ -3,10 +3,12 @@
 #include "beep.h"
 #include "board.h"
 #include "codec_util.h"
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_psram.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "sdkconfig.h"
 #include "identity.h"
 #include "link.h"
@@ -15,6 +17,7 @@
 #include "owner.h"
 #include "store_nvs.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "ui.h"
 #ifdef CONFIG_AELYS_PERF_PROBE
@@ -34,7 +37,91 @@ static const char *TAG = "companion";
 static owner_info_t owner;
 static lost_state_t lost;
 static settings_t settings;
+static ui_prefs_t prefs; /* "always level": written by persist_cb only once the UI runs */
 static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi, home shows the welcome */
+
+/* What the owner picks on the Settings screen. The hooks run in the ui task and only set the panel and arm a timer; the flash writes
+ * happen 1.5 s after the last change in the esp_timer task (no new task, and a burst of taps writes once).
+ * settings_mu keeps `settings` consistent between that callback and the link task (CMD_SETTINGS, unpair, rev reset): the ui task never
+ * takes it. Brightness rule: a local step is saved into the same blob WITHOUT changing settings.rev, so a server command with a newer rev
+ * still wins (it also drops a local save that is still pending), and an old or repeated rev is stale and leaves the local step alone. */
+static SemaphoreHandle_t settings_mu;
+static esp_timer_handle_t persist_timer;
+static volatile uint8_t local_pct;
+static volatile bool local_pending, level_pending, level_want;
+
+static void persist_cb(void *arg)
+{
+    (void)arg;
+    if (local_pending) {
+        local_pending = false;
+        xSemaphoreTake(settings_mu, portMAX_DELAY);
+        if (local_pct != settings.brightness) {
+            settings.brightness = local_pct; /* rev stays */
+            if (store_save_settings(&settings) != ESP_OK) ESP_LOGW(TAG, "brightness not saved");
+        }
+        xSemaphoreGive(settings_mu);
+    }
+    if (level_pending) {
+        level_pending = false;
+        prefs.level_on = level_want;
+        if (store_save_ui(&prefs) != ESP_OK) ESP_LOGW(TAG, "level switch not saved");
+    }
+}
+
+static void persist_soon(void)
+{
+    esp_timer_stop(persist_timer); /* ESP_ERR_INVALID_STATE when idle: fine */
+    esp_timer_start_once(persist_timer, 1500 * 1000);
+}
+
+static void ui_brightness(uint8_t pct)
+{
+    if (board_display_set_brightness(pct) != ESP_OK) ESP_LOGW(TAG, "brightness %d%% not applied", pct);
+    local_pct = pct;
+    local_pending = true;
+    persist_soon();
+}
+
+static void ui_level(bool on)
+{
+    level_want = on;
+    level_pending = true;
+    persist_soon();
+}
+
+#ifndef CONFIG_AELYS_NO_WIFI
+/* The net task's load and save of the Wi-Fi list also hand the Settings screen a copy of the NAMES (never the passwords): it is the only
+ * producer of ui_wifi_tb (net_start runs the load before the net task exists, the saves run in it). A dropped event only delays the
+ * refresh: the Wi-Fi screen reads the newest copy every second while it shows. */
+static void publish_wifi_names(const wifi_list_t *l)
+{
+    if (!ui_wifi_tb.slot[0]) return;
+    ui_wifi_names_t *w = tribuf_back(&ui_wifi_tb);
+    memset(w, 0, sizeof *w);
+    w->n = l->n > WIFI_MAX ? WIFI_MAX : l->n;
+    for (int i = 0; i < w->n; i++) strlcpy(w->ssid[i], l->net[i].ssid, sizeof w->ssid[i]);
+    tribuf_publish(&ui_wifi_tb);
+    lv_port_post(&(ui_event_t){.type = UI_EV_WIFI_LIST});
+}
+
+static void net_load_wifi(wifi_list_t *l)
+{
+    store_load_wifi(l);
+    publish_wifi_names(l);
+}
+
+static esp_err_t net_save_wifi(const wifi_list_t *l)
+{
+    esp_err_t e = store_save_wifi(l);
+    if (e == ESP_OK) publish_wifi_names(l);
+    return e;
+}
+#endif
+
+static const char *fw_version(void) { return esp_app_get_description()->version; }
+
+static const ui_settings_hooks_t settings_hooks = {.brightness = ui_brightness, .level = ui_level, .version = fw_version, .battery = board_battery};
 
 static bool lost_is_on(void) { return lost.on; }
 #ifndef CONFIG_AELYS_NO_WIFI
@@ -85,7 +172,12 @@ static void unpair_board(void)
     if (!saved("unpair wipe", store_erase_device_data())) ESP_LOGE(TAG, "unpair: some data may remain in flash"); /* Wi-Fi list, owner, lost, settings, snap */
     owner_defaults(&owner);
     memset(&lost, 0, sizeof lost);
+    xSemaphoreTake(settings_mu, portMAX_DELAY);
+    local_pending = false;
     settings_defaults(&settings);
+    xSemaphoreGive(settings_mu);
+    memset(&prefs, 0, sizeof prefs); /* the wipe erased the "ui" blob too; a level switch still pending would write it back, so drop it */
+    level_pending = false;
 }
 
 /* Wi-Fi commands. wifi_add switches the board's network, which drops the channel: its ack is queued in RAM and goes out after the
@@ -177,9 +269,12 @@ static void on_command(const proto_msg_t *m)
         break;
     }
     case CMD_SETTINGS: {
+        xSemaphoreTake(settings_mu, portMAX_DELAY);
         uint32_t prev = settings.rev;
         bool applied = settings_apply(&settings, m->u.cmd.a.settings.brightness, m->u.cmd.a.settings.rev);
+        if (applied) local_pending = false; /* the newer server value replaces a local step not saved yet */
         bool ok = !applied || saved("settings", store_save_settings(&settings));
+        xSemaphoreGive(settings_mu);
         if (applied) post_ui((ui_event_t){.type = UI_EV_BRIGHTNESS, .len = 1, .data = {settings.brightness}}); /* the ui task owns the panel's SPI device */
         ack(id, cmd_settle(applied, ok, &settings.rev, prev));
         break;
@@ -246,27 +341,35 @@ static void reset_revs(void)
 {
     owner.ice_rev = 0;
     lost.rev = 0;
+    xSemaphoreTake(settings_mu, portMAX_DELAY);
     settings.rev = 0;
+    xSemaphoreGive(settings_mu);
     uint32_t identity = link_character_new_identity();
     post_ui((ui_event_t){.type = UI_EV_LOST, .len = 9, .data = {lost.on, 0, 0, 0, 0,
         (uint8_t)identity, (uint8_t)(identity >> 8), (uint8_t)(identity >> 16), (uint8_t)(identity >> 24)}});
+    xSemaphoreTake(settings_mu, portMAX_DELAY);
     esp_err_t e1 = store_save_owner(&owner), e2 = store_save_lost(&lost), e3 = store_save_settings(&settings); /* all three are tried */
+    xSemaphoreGive(settings_mu);
     if (e1 != ESP_OK || e2 != ESP_OK || e3 != ESP_OK) ESP_LOGW(TAG, "rev reset not fully saved (owner %s, lost %s, settings %s)",
                                                                 esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(e3));
 }
 #endif
 
-/* Every UI event, in the ui task: the brightness one is the only thing that touches the panel's SPI device outside a flush. */
+/* Every UI event, in the ui task: the server's brightness one sets the panel's SPI device outside a flush (the Settings hook does the same
+ * for the owner's own step), then goes on to the UI so the Settings screen shows it. */
 static void on_ui_event(const ui_event_t *ev)
 {
-    if (ev->type != UI_EV_BRIGHTNESS) { ui_handle_event(ev); return; }
-    if (ev->len >= 1 && board_display_set_brightness(ev->data[0]) != ESP_OK) ESP_LOGW(TAG, "brightness %d%% not applied", ev->data[0]);
+    if (ev->type == UI_EV_BRIGHTNESS && ev->len >= 1 && board_display_set_brightness(ev->data[0]) != ESP_OK)
+        ESP_LOGW(TAG, "brightness %d%% not applied", ev->data[0]);
+    ui_handle_event(ev);
 }
 
 /* Runs in the ui task (LVGL lock held) before the first frame. */
 static void boot_ui_setup(void)
 {
     ui_setup();
+    ui_set_settings_hooks(&settings_hooks);
+    ui_settings_init(settings.brightness, prefs.level_on); /* the panel itself was set from settings.brightness before the UI started */
 #ifdef CONFIG_AELYS_PERF_PROBE
     lv_port_probe_set_ui(ui_probe_swipe, probe_screen);
 #endif
@@ -313,6 +416,10 @@ void app_main(void)
     store_load_owner(&owner);
     store_load_lost(&lost);
     store_load_settings(&settings);
+    store_load_ui(&prefs);
+    settings_mu = xSemaphoreCreateMutex();
+    const esp_timer_create_args_t pargs = {.callback = persist_cb, .name = "persist"};
+    if (!settings_mu || esp_timer_create(&pargs, &persist_timer) != ESP_OK) halt("settings init", ESP_ERR_NO_MEM);
     if (board_display_set_brightness(settings.brightness) != ESP_OK) ESP_LOGW(TAG, "brightness %d%% not applied", settings.brightness);
 #ifdef CONFIG_AELYS_IDENTITY_SELFTEST
     identity_selftest();
@@ -341,7 +448,7 @@ void app_main(void)
     if (err != ESP_OK) ESP_LOGE(TAG, "input start: %s", esp_err_to_name(err));
 
 #ifndef CONFIG_AELYS_NO_WIFI
-    static const net_store_t nstore = {.load = store_load_wifi, .save = store_save_wifi, .lost_on = lost_is_on};
+    static const net_store_t nstore = {.load = net_load_wifi, .save = net_save_wifi, .lost_on = lost_is_on};
     err = net_start(&nstore);
     if (err != ESP_OK) ESP_LOGE(TAG, "net start: %s", esp_err_to_name(err));
     ESP_LOGW(TAG, "wifi started: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));

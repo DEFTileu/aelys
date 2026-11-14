@@ -42,6 +42,7 @@ static int64_t next_try_us;
 static uint32_t backoff_ms = BACKOFF_MIN_MS;
 static bool attempting, abort_req;
 static uint8_t want_state = UI_WIFI_OFFLINE, posted_state = 0xFF;
+static char posted_cur[33];             /* the network name that went out with the last UI_EV_WIFI */
 static char cur_buf[2][33];             /* the network in use ("" offline): the net task fills the idle slot, then flips cur_i (readers: other tasks) */
 static atomic_int cur_i;
 static void set_cur(const char *ssid)
@@ -75,9 +76,11 @@ void net_wifi_abort(void) { abort_req = true; }
 void net_housekeeping(void)
 {
     net_time_tick();
-    if (want_state != posted_state) {
-        ui_event_t ev = {.type = UI_EV_WIFI, .len = 1, .data = {want_state}};
-        if (lv_port_post(&ev)) posted_state = want_state;
+    const char *cur = net_wifi_current_ssid();
+    if (want_state != posted_state || strcmp(cur, posted_cur) != 0) { /* the name follows the state by a moment: it is posted again once it is set */
+        ui_event_t ev = {.type = UI_EV_WIFI, .len = 34, .data = {want_state}};
+        strlcpy((char *)&ev.data[1], cur, 33); /* for the Settings screen; the home screen reads only data[0] */
+        if (lv_port_post(&ev)) { posted_state = want_state; strlcpy(posted_cur, cur, sizeof posted_cur); }
     }
 }
 
