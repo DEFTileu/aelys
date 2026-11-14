@@ -1,13 +1,13 @@
 /* Games (design "Игры"): a hub and five small games, one screen. Swipe turns the hub between Ask Aelys, Coin, Dice, Reaction and the
  * Tilt Maze, a tap or the top key opens one, the low key goes back to the hub and then to the menu. In a game a tap (or the top key) plays:
  *   Ask Aelys  a "thinking" face for a second, then one of twelve short answers;
- *   Coin       flips (the coin squashes edge-on and back a few times) and shows Heads or Tails;
- *   Dice       the faces flick past, slower and slower, and stop on 1..6;
+ *   Coin       a plain 100 tenge coin (gold ring, silver centre) flips edge-on a few times: Heads is the emblem, Tails the 100;
+ *   Dice       the faces flick past, slower and slower, and stop on 1..6 (no caption: the spots say it);
  *   Reaction   wait 1.5-4 s, the screen turns green, tap: the time in ms and the best of this session; too early is "Too soon";
  *   Tilt Maze  the ball follows the board's tilt (UI_EV_LEVEL's gravity x/y) to the ring in the far corner; the time of the best run is kept.
  * The rules and the physics are in games_core.c (host-tested); this file draws them. Nothing here sounds, listens or touches the network.
  * Objects are created once. The only timer is paused unless a wait, a thought or the maze runs; the coin and the dice use one lv_anim each.
- * Deviations from the design: a tap replaces "shake" (the board's shake gesture does not exist yet), the coin's star is an outline, no noise meter
+ * Deviations from the design: a tap replaces "shake" (the board's shake gesture does not exist yet), the coin is a plain 100 tenge instead of a star, no noise meter
  * (it would need the microphone). */
 #include <stdio.h>
 #include <string.h>
@@ -22,7 +22,10 @@ typedef enum { G_ASK, G_COIN, G_DICE, G_REACT, G_MAZE, G_COUNT } game_t;
 #define COLOR_WALL 0x3A3546
 #define COLOR_COIN 0xE9BD66
 #define COLOR_COIN_RIM 0xD9A64A
-#define COLOR_COIN_INK 0x7A5714
+#define COLOR_SILVER 0xCDD0D5
+#define COLOR_SILVER_RIM 0x9CA1A8
+#define COLOR_SILVER_INK 0x4E535B
+#define SILVER_D 108 /* the coin's silver centre */
 #define COLOR_DIE 0xF1EEF6
 #define COLOR_PIP 0x1C1B22
 #define COLOR_GREEN 0x5FD7A8
@@ -48,7 +51,7 @@ static const struct { const char *name, *sub; uint32_t color; } info[G_COUNT] = 
 
 static struct {
     lv_obj_t *root, *eb, *big, *sub, *note, *hint, *dot[G_COUNT], *hub[G_COUNT];
-    lv_obj_t *face, *coin, *disc, *star, *tail, *die, *pip[7], *go, *rx_ms, *board, *ball;
+    lv_obj_t *face, *coin, *disc, *silver, *emblem, *tail, *die, *pip[7], *go, *rx_ms, *board, *ball;
     lv_timer_t *tm;
     game_t sel;
     bool open;
@@ -132,8 +135,11 @@ static void draw_dice(unsigned face)
 
 static void draw_coin(bool tails, int32_t h)
 {
-    if (lv_obj_get_height(s.disc) != h) lv_obj_set_height(s.disc, h);
-    lv_obj_set_hidden(s.star, tails || h < 90);
+    if (lv_obj_get_height(s.disc) != h) {
+        lv_obj_set_height(s.disc, h);
+        lv_obj_set_height(s.silver, h * SILVER_D / COIN_D);
+    }
+    lv_obj_set_hidden(s.emblem, tails || h < 90);
     lv_obj_set_hidden(s.tail, !tails || h < 90);
 }
 
@@ -184,10 +190,7 @@ static void redraw(void)
         else compose(NULL, 0, s.coin, s.tails ? "Tails" : "Heads", &inter_40, UI_COLOR_TEXT, "Tap to flip", NULL, "Flip", col);
         break;
     case G_DICE: {
-        char t[16];
-        snprintf(t, sizeof t, "Rolled %u", s.face_up);
-        if (s.rolling) compose(NULL, 0, s.die, "Rolling\xE2\x80\xA6", &inter_40, UI_COLOR_MUTED, "Tap to roll", NULL, "Roll", col);
-        else compose(NULL, 0, s.die, s.face_up ? t : "Roll the dice", &inter_40, UI_COLOR_TEXT, "Tap to roll", NULL, "Roll", col);
+        compose(NULL, 0, s.die, NULL, NULL, 0, "Tap to roll", NULL, "Roll", col);
         break;
     }
     case G_REACT:
@@ -444,8 +447,8 @@ static lv_obj_t *hub_icon(lv_obj_t *parent, game_t g)
         break;
     }
     case G_COIN:
-        disc(disc(h, 76, COLOR_COIN_RIM, 0, 0), 56, COLOR_COIN, 0, 0);
-        disc(h, 18, COLOR_COIN_INK, 0, 0);
+        disc(disc(h, 76, COLOR_COIN_RIM, 0, 0), 64, COLOR_COIN, 0, 0);
+        disc(h, 42, COLOR_SILVER, 0, 0);
         break;
     case G_DICE: {
         lv_obj_t *d = shape(h, 72, 72, 16, COLOR_DIE);
@@ -472,20 +475,39 @@ static lv_obj_t *hub_icon(lv_obj_t *parent, game_t g)
     return h;
 }
 
-static void star_draw(lv_event_t *e) /* the heads side: a four-pointed star in the design's polygon, as an outline */
+static void emblem_draw(lv_event_t *e) /* Heads: the coat of arms boiled down to a shanyrak (a ring with a cross) in a ring of rays */
 {
-    static const int8_t pt[9][2] = { { 32, 0 }, { 39, 25 }, { 64, 32 }, { 39, 39 }, { 32, 64 }, { 25, 39 }, { 0, 32 }, { 25, 25 }, { 32, 0 } };
     lv_area_t a;
     lv_obj_get_coords(lv_event_get_target_obj(e), &a);
+    lv_layer_t *layer = lv_event_get_layer(e);
+    int32_t cx = (a.x1 + a.x2) / 2, cy = (a.y1 + a.y2) / 2;
+    lv_draw_arc_dsc_t r;
+    lv_draw_arc_dsc_init(&r);
+    r.color = lv_color_hex(COLOR_SILVER_INK);
+    r.center.x = cx;
+    r.center.y = cy;
+    r.radius = 20;
+    r.width = 4;
+    r.start_angle = 0;
+    r.end_angle = 360;
+    lv_draw_arc(layer, &r);
     lv_draw_line_dsc_t l;
     lv_draw_line_dsc_init(&l);
-    l.color = lv_color_hex(COLOR_COIN_INK);
-    l.width = 6;
+    l.color = r.color;
+    l.width = 4;
     l.round_start = l.round_end = true;
-    for (int i = 0; i < 8; i++) {
-        l.p1.x = a.x1 + pt[i][0]; l.p1.y = a.y1 + pt[i][1];
-        l.p2.x = a.x1 + pt[i + 1][0]; l.p2.y = a.y1 + pt[i + 1][1];
-        lv_draw_line(lv_event_get_layer(e), &l);
+    for (int k = 0; k < 2; k++) { /* the cross inside the ring */
+        int32_t d = k ? -12 : 12;
+        l.p1.x = cx - 12; l.p1.y = cy - d;
+        l.p2.x = cx + 12; l.p2.y = cy + d;
+        lv_draw_line(layer, &l);
+    }
+    l.width = 3;
+    for (int k = 0; k < 16; k++) { /* the rays */
+        int32_t sn = lv_trigo_sin((int16_t)(k * 360 / 16)), cs = lv_trigo_cos((int16_t)(k * 360 / 16));
+        l.p1.x = cx + cs * 27 / LV_TRIGO_SIN_MAX; l.p1.y = cy + sn * 27 / LV_TRIGO_SIN_MAX;
+        l.p2.x = cx + cs * 40 / LV_TRIGO_SIN_MAX; l.p2.y = cy + sn * 40 / LV_TRIGO_SIN_MAX;
+        lv_draw_line(layer, &l);
     }
 }
 
@@ -505,18 +527,27 @@ lv_obj_t *scr_games_create(lv_obj_t *parent)
     /* Ask Aelys: the face at the design's 0.55 zoom */
     s.face = face_create(s.root, 55);
     face_set_mood(s.face, MOOD_CURIOUS);
-    /* Coin: a gold disc that squashes edge-on while it spins, with a star (heads) or a 1 (tails) */
+    /* Coin: a plain 100 tenge, a gold ring round a silver centre, that squashes edge-on while it spins; the emblem (heads) or 100 (tails) */
     s.coin = ui_plain(s.root, COIN_D, COIN_D);
     s.disc = shape(s.coin, COIN_D, COIN_D, LV_RADIUS_CIRCLE, COLOR_COIN);
     lv_obj_set_style_border_width(s.disc, 10, 0);
     lv_obj_set_style_border_color(s.disc, lv_color_hex(COLOR_COIN_RIM), 0);
     lv_obj_center(s.disc);
-    s.star = ui_plain(s.disc, 64, 64);
-    lv_obj_set_user_flag(s.star, 1, true); /* custom paint, see invalidate_painted() in screens.c */
-    lv_obj_add_event_cb(s.star, star_draw, LV_EVENT_DRAW_MAIN, NULL);
-    lv_obj_center(s.star);
-    s.tail = ui_label(s.disc, &inter_40, COLOR_COIN_INK, 60, 1, LV_TEXT_ALIGN_CENTER);
-    lv_label_set_text(s.tail, "1");
+    s.silver = shape(s.disc, SILVER_D, SILVER_D, LV_RADIUS_CIRCLE, COLOR_SILVER);
+    lv_obj_set_style_border_width(s.silver, 3, 0);
+    lv_obj_set_style_border_color(s.silver, lv_color_hex(COLOR_SILVER_RIM), 0);
+    lv_obj_center(s.silver);
+    s.emblem = ui_plain(s.silver, 84, 84);
+    lv_obj_set_user_flag(s.emblem, 1, true); /* custom paint, see invalidate_painted() in screens.c */
+    lv_obj_add_event_cb(s.emblem, emblem_draw, LV_EVENT_DRAW_MAIN, NULL);
+    lv_obj_center(s.emblem);
+    s.tail = ui_plain(s.silver, 100, 72);
+    lv_obj_t *num = ui_label(s.tail, &inter_40, COLOR_SILVER_INK, 100, 1, LV_TEXT_ALIGN_CENTER);
+    lv_label_set_text(num, "100");
+    lv_obj_align(num, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_t *cur = ui_label(s.tail, &inter_16, COLOR_SILVER_INK, 100, 1, LV_TEXT_ALIGN_CENTER);
+    lv_label_set_text(cur, "TENGE");
+    lv_obj_align(cur, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_center(s.tail);
     lv_obj_set_hidden(s.tail, true);
     /* Dice: a light rounded square with seven spots, shown as the face needs */

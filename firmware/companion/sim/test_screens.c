@@ -384,6 +384,14 @@ static void test_first_boot_welcome(void)
 
 /* ---- companion screens: Today, Aelys offline, Focus, Inbox, actions ---- */
 
+static int pips_shown(lv_obj_t *obj) /* the dice's visible spots: 26 px circles (PIP_D in scr_games.c) */
+{
+    if (lv_obj_is_hidden(obj)) return 0;
+    int n = lv_obj_get_width(obj) == 26 && lv_obj_get_height(obj) == 26 && lv_obj_get_style_radius(obj, 0) == LV_RADIUS_CIRCLE;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) n += pips_shown(lv_obj_get_child(obj, (int32_t)i));
+    return n;
+}
+
 static lv_obj_t *find_label(lv_obj_t *obj, const char *txt)
 {
     if (lv_obj_check_type(obj, &lv_label_class) && !strcmp(lv_label_get_text(obj), txt) && lv_obj_is_visible(obj)) return obj;
@@ -2093,22 +2101,20 @@ static void test_games_screens(void)
 
     /* Dice */
     open_game(2);
-    CHECK(see("Roll the dice"));
+    CHECK(see("Tap to roll") && !shows_text(scr, "Roll the dice"));
     check_inside("dice (new)");
     game_r = 4;
     tap_at(233, 233);
     sim_step(300);
-    CHECK(see("Rolling\xE2\x80\xA6"));
     sim_step(1000);
-    CHECK(see("Rolled 5"));
+    CHECK_EQ(pips_shown(scr), 5);
+    CHECK(!shows_text(scr, "Rolled 5"));                             /* no caption: the spots say it */
     check_inside("dice (5)");
     for (unsigned r = 0; r < 6; r++) {                               /* every face lands */
-        char want[16];
         game_r = r;
         btn(BTN_TOP);
         sim_step(1000);
-        snprintf(want, sizeof want, "Rolled %u", r + 1);
-        CHECK(see(want));
+        CHECK_EQ(pips_shown(scr), (int)r + 1);
         check_inside("dice (all)");
     }
     n0 = sim_flushes();
