@@ -84,6 +84,12 @@ static void offline_restack(void)
     ui_stack(col, gap, 4, 0, UI_SCREEN_SIZE, -1);
 }
 
+void scr_home_set_level(int32_t angle10)
+{
+    face_set_level(h.face, angle10);
+    face_set_level(h.off_face, angle10);
+}
+
 void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline)
 {
     if (mood != h.mood) { h.mood = mood; face_set_mood(h.face, mood); }

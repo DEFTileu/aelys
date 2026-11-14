@@ -623,6 +623,10 @@ void ui_handle_event(const ui_event_t *ev)
     if (ev->type == UI_EV_COMBO_PROGRESS) g.probe_combo_active = ev->len && ev->data[0];
     if (ev->type == UI_EV_COMBO_FIRE) g.probe_combo_active = false;
 #endif
+    if (ev->type == UI_EV_LEVEL) {
+        if (ev->len >= 2) scr_home_set_level((int16_t)(ev->data[0] | ev->data[1] << 8));
+        return;
+    }
     scr_t next = g.cur;
     if (ev->type == UI_EV_TOUCH) {
         g.touch_character_valid = ev->len >= 4 && !g.find && !g.lost && g.cur == SCR_HOME;
