@@ -540,3 +540,13 @@ result in both directions, so timing and corner geometry do not by themselves
 explain all differences. These threshold-sensitive metrics include browser and
 RGB565 rasterization and are not acceptance criteria. Three diagnostic tests
 were independently rerun; see ignored `relief-phase/PHASE-REPORT.md`.
+
+A separate browser Canvas control drew the relief eye and elliptical lid under
+one transform and compared them with phase-aligned CSS. At the sampled 130%
+closing and closed frames, foreground-union XOR was 3.660% and 10.657%,
+compared with 11.452% and 20.776% for the existing host prototype. Some open
+100% samples became worse. Browser rendering and small silhouettes confound
+these measurements; they are not approved thresholds or an LVGL implementation.
+Two saved-evidence tests were independently rerun. Transition rendering,
+distinct phase origins, partial redraw and target costs remain untested. See
+ignored `relief-contour/CONTOUR-REPORT.md`.
