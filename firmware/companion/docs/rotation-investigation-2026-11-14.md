@@ -419,8 +419,10 @@ configurations, source and reproduction instructions.
 
 A subsequent isolated integration combines this borrowed task with the
 spring-driven rotating-pill prototype. It checks buffer alignment, stride,
-capacity and arithmetic before queueing, restricts the tested software target
-formats, and appends its experimental task type. A serialized host protocol
+capacity and some arithmetic before queueing, restricts the tested software target
+formats, and appends its experimental task type. Independent review found the
+checks do not bound the blender's signed stride and row-offset arithmetic; a
+rejected invalid source can also be passed to the decoder fallback. A serialized host protocol
 asserts that face buffers are not mutated during refresh and counts tasks that
 execute. In 12 sampled scale/fault cases, each 720 partial frames matched full
 redraws; selected one-shot submission failures in multi-strip refreshes used
