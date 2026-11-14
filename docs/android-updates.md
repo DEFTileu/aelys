@@ -102,3 +102,21 @@ The remaining checks are manual gates; initial installation/launch, manifest
 generation and unit tests do not establish end-to-end update acceptance or a
 working published release channel. Existing user-data retention across a future
 update has not been independently inspected.
+
+### Android backend configuration correction, 2026-11-13
+
+The first APK build command omitted `VITE_API_BASE_URL`, leaving the shared
+web default `/api/v1`; on Android that resolves to the phone's loopback and is
+rejected by the native HTTPS policy. Process-launch evidence alone did not
+prove workspace connectivity. Phase 8 installer/onboarding follow-up: the
+mobile build command now supplies the same existing hosted HTTPS backend as
+`scripts/build-mac-app.sh`, with an explicit self-hosted override and fail-closed
+validation. No server, CORS, cleartext, or certificate settings were relaxed.
+
+The optimized APK was rebuilt, signed with the existing local development key,
+and installed using `adb install -r`. On the SM-S721B, the authenticated Home
+screen displayed existing tasks after replacement and again after force-stop
+and relaunch. This establishes this device's startup/connectivity recovery,
+not full domain/sync/update acceptance. Android script tests: 13 passed;
+web typecheck and actual arm64 release build passed. The corrective build wrapper
+and two regression tests are in `apps/mobile/scripts/build-android*.mjs`.

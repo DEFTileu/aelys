@@ -17,6 +17,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ui.h"
+#ifdef CONFIG_AELYS_PERF_PROBE
+#include "ui_screens_priv.h"
+static uint32_t probe_screen(void) { return (uint32_t)ui_current_screen(); }
+#endif
 
 #define FW_VERSION "0.1.0"
 
@@ -249,6 +253,9 @@ static void on_ui_event(const ui_event_t *ev)
 static void boot_ui_setup(void)
 {
     ui_setup();
+#ifdef CONFIG_AELYS_PERF_PROBE
+    lv_port_probe_set_ui(ui_probe_swipe, probe_screen);
+#endif
     ui_set_find_stop(board_audio_stop); /* a tap or key while "Here I am!" shows ends the beeps */
 #ifndef CONFIG_AELYS_NO_WIFI
     ui_set_action_sink(link_post_action); /* taps and keys on Today, Focus and Inbox become actions for the server */

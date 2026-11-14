@@ -5,6 +5,19 @@ Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line p
 
 Status: **PASS**, **FAIL** (reported, not tuned away), **PENDING** (needs a measurement not yet taken).
 
+**Latest paired-board checkpoint:** [2026-11-13 measurements](performance-2026-11-13.md).
+The historical baseline rows below do not close current acceptance. The latest
+310 s baseline reached 38.065 ms per refresh and 51.357 ms post-to-DMA (**FAIL**
+against 25/50 ms). A sparse Home/Today redraw experiment reached 44.981/52.869 ms
+and remains disabled; its smaller pixel transfer did not establish a board
+speed benefit. Different DNS/online histories limit causal comparisons. The
+earlier 32 KB probe's minimum since boot was
+50472 B, versus 18348 B with 64 KB. A normal 32 KB image is checked separately;
+it reported 96095 B free internal heap and 62828 B minimum since boot after
+channel establishment (four once-per-minute records). `boot_ms=1774` is a
+current **FAIL** against 1500 ms. Day-long online heap and 30-minute reconnect
+acceptance remain pending.
+
 | Budget (§4.6) | Target | Measured | Status | How measured |
 |---|---|---|---|---|
 | Animations | 60 fps, synced with TE; worst frame <= 25 ms | Bouncing-circle bench (display bring-up): 59.9 fps, worst 16.7-16.9 ms. Two-button hold ring: ~48 fps, worst 35-42 ms (accepted for v1). Idle home: fps 2.7-5.4, worst 15.5-18.9 ms | PASS (hold ring excepted) | Bench numbers from the display bring-up; the hold-ring miss is a recorded v1 exception. |
@@ -13,7 +26,8 @@ Status: **PASS**, **FAIL** (reported, not tuned away), **PENDING** (needs a meas
 | Free internal heap in ONLINE (minimum) | >= 80 KB | ONLINE steady sampled minimum: 96967 B (60 samples at 10 s over a 10-minute online run, wifi_ip=1). Cumulative `heap_int_min` since boot: 62208 B, reached within ~12 s of Wi-Fi bring-up. | PASS (ONLINE steady sampled minimum; a day-long run not done) | `heap_int` samples from `metrics`. Cumulative `heap_int_min` is reported separately below. |
 | App internal RAM without Wi-Fi | <= 100 KB | 78760 B (76.9 KiB) = 322347 B free at `app_main` start minus 243587 B steady free after full init | PASS | No-Wi-Fi scratch build (`CONFIG_AELYS_NO_WIFI=y`, defaults outside the repo, app-only flash). |
 | Free internal heap at reconnect | >= 16 KB largest internal block before every TLS connect (the link waits up to 10 s for it); `heap_at_connect_min` and `tls_fail` = 0 over a 30-min chaos run (60 s reconnect) | First real runs (2026-11-13, HEAD b56e97b, 2.4 GHz hotspot, no chaos run yet): 2 TLS connects to production (challenge, check) at `heap_int` 75431-75847 B, `largest` 31744 B (>= 16 KB at every connect); `tls_fail` 0; cumulative `heap_int_min` 36436 B was already reached before the first TLS and did not move after it; steady `heap_int` 75.4 KB after the handshakes (no leak seen). Link task stack: 3436 B free of 8192 after two sign-ins. | PARTIAL (30-min chaos run still PENDING; steady `heap_int` 75.4 KB is below the 80 KB ONLINE budget with the link, F8 and F9 in the image) | `link connect heap_int=... largest=...` WARN line before every TLS connect; metrics `heap_at_connect_min`, `tls_fail`, `hwm_link`, `hwm_ws`. Scratch build with `CONFIG_AELYS_LINK_CHAOS_S=60` and `CONFIG_AELYS_METRICS_PERIOD_S=10`. |
-| Image size | <= 2 MB | 1 446 982 B (1.38 MB, with the link and the websocket client), 65 % of the 4 MB app slot free | PASS | `idf.py size`. |
+| Image size | <= 2 MB | 1 541 210 B (1.47 MB) with the new face: +8 712 B over the 1 532 498 B of the same tree before it (face code and A8 shapes +9.1 KB, the six unused bold "!?z" fonts gone). The 2026-11-13 reading was 1 446 982 B before the link and websocket client. | PASS | `idf.py size`. |
+| Face motion cost (new gradient-eye face) | idle home 60 fps budget unchanged; worst frame <= 25 ms with the face animating, also while a TLS reconnect runs | Host sim only so far: a face at rest redraws nothing (calm holds still for 2.5 s of its look loop, a hidden face never draws); a moving face only invalidates its own box plus 30 px of overhang, for every mood over 12 s (`test_face_moods`). On the board PENDING (Task F1 step 5: the board was unavailable) | PENDING | Board: `metrics` fps and worst frame on home for 5 minutes, and frame times during a reconnect. |
 | Touch -> swipe changes screen (Today / Aelys / Focus) | <= 50 ms | PENDING: Task F8 board step (the board was unavailable) | PENDING | Same method as the ICE tap row; a swipe fires at the lift. |
 | Idle fps with the companion screens | unchanged from idle home | Host sim: Today and Inbox draw nothing between snapshots (`test_idle_screens_do_not_redraw`); on the board PENDING | PENDING | `metrics` fps on Today, Focus and Aelys. |
 
@@ -35,3 +49,12 @@ Status: **PASS**, **FAIL** (reported, not tuned away), **PENDING** (needs a meas
 
 - At the WARN default, the INFO lines `online (network N)` and `offline, retry in ... ms` are hidden. The metrics field `wifi_ip` covers the online state.
 - One incident during measurements: the board's USB went silent (no output, esptool sync failed, port still enumerated, display kept running, no core dump). It recovered after an owner power-cycle and has not been reproduced since.
+
+## Continuation checkpoint (2026-11-13, host changes only)
+
+- Task P1: periodic and snapshot rendering now updates only the visible Home / Today / Focus / Inbox screen. Entry refreshes it from the current snapshot and clock before its first frame; a hidden Focus does not update its countdown labels or layout. Host regressions cover elapsed time on return, paused-key actions, and snapshots arriving under the ICE card. This removes redundant work; ESP32 frame-time and heap improvements are **not yet measured**.
+- Task F1 review fixes: a face hidden for more than nine days resumes its animation, including across the 32-bit millisecond clock wrap. Pixel-exact redraw coverage now checks every 5 ms over 12 s for all 14 moods; removing a burst-line invalidation was detected at 630 ms (112 differing pixels). The oracle restores the partial framebuffer after each comparison so it cannot repair stale pixels for the next check.
+- Validation: `cmake -S sim -B sim/build && cmake --build sim/build -j 8 && ctest --test-dir sim/build --output-on-failure` passed 19/19 tests (10.97 s); `idf.py build size` passed with `CONFIG_AELYS_PERF_PROBE` off, image 1541262 B (under 2 MB); `git diff --check` passed. This is host/build evidence only.
+- Exploratory desktop benchmark: 10,000 same-state snapshot events using real simulator/LVGL code, comparing `b74e72c` screen logic with the change. Home: 3.06 → 0.03 µs/event; ICE: 2.24 → 0.02 µs/event. These are synthetic host timings, not board fps or input latency.
+- Read-only board capture after a reset: `paired=1`; initial sign-in attempts returned DNS error `0x8001` (before a TLS handshake). A later sample at app time 122205 ms reported `wifi_ip=1`, free internal heap 63815 B, cumulative minimum 30548 B, largest block 31744 B, fps 5.1, worst refresh 16141 µs, `boot_ms=1757`, `heap_at_connect_min=75607`, `tls_fail=0`, `hwm_ws=0`. No further sign-in error appeared in that capture window. Wi-Fi connectivity alone does not confirm the WebSocket state. These figures describe the **previously flashed image**, not the new face or these host changes, and do not satisfy the ONLINE heap or new-face acceptance gates.
+- No application was flashed, and no sound, account action, Wi-Fi setting, pairing or NVS state was changed. The inherited seven-file `CONFIG_AELYS_PERF_PROBE` harness remains uncommitted and was not used for these readings. Cause of the earlier 22672 B heap minimum, new-face performance, online/TLS frame times, synthetic swipe latency and the memory-tuning experiments remain **PENDING**. Do not begin app/menu work based on these host timings.

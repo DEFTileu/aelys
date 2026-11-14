@@ -1,27 +1,53 @@
-/* Mood table: ported 1:1 from MOODS in the design's CompanionFace.dc.html (scale 1 = 280x160). */
+/* Mood table and animation curves, ported from the design's face CSS (ACTUAL AELYS Companion, CompanionFace):
+ * the .e eye boxes and lids per mood, the `.ey` group keyframes (look, hop, sway, breathe, jit, sink, pop, tilt,
+ * wobble, huff) and the effect loops (twinkle, drip, zz, burst, d3). Integer math only. */
 #include "ui_face_priv.h"
 
-/* w, h, dx, dy, r_pct, lid_pct, tilt, smile, hollow */
-#define EYE(...) { __VA_ARGS__ }
-#define BOTH(...) .eye = { EYE(__VA_ARGS__), EYE(__VA_ARGS__) }
+/* x, y, w, h, radius, star x, star y, star edge [, lid cut y (tenths of px), lid slope (permille)] */
+#define E(...) { __VA_ARGS__, 0, 0 }
+#define EL(...) { __VA_ARGS__ }
+#define STD 38, 14, 20 /* the highlight: left 38, top 14, 20 px */
+#define NOSTAR 0, 0, 0
+/* Rotated lids: the black box (118 wide, rotated 16 / 18 deg about its middle) cuts the eye along its bottom
+ * edge. At the eye's middle that edge is lid_bottom_from_centre / cos(angle) below the box's centre:
+ * worried -7 + 31/cos16 = 25.3, sad -4 + 26/cos16 = 23.1, annoyed 26/cos18 = 27.3; slope = tan(angle). */
 
 static const face_mood_t MOODS[MOOD_COUNT] = {
-    [MOOD_CALM]      = { BOTH(70, 104, 0, 0, 46, 0, 0, false, false), .blink = true },
-    [MOOD_HAPPY]     = { BOTH(78, 98, 0, 0, 50, 0, 0, true, false), .blink = true },
-    [MOOD_PROUD]     = { BOTH(80, 96, 0, 0, 50, 0, 0, true, false), .blink = true, .sparkle = true },
-    [MOOD_FOCUSED]   = { BOTH(84, 40, 0, 0, 40, 0, 0, false, false), .blink = true },
-    [MOOD_WORRIED]   = { BOTH(64, 102, 0, 0, 46, 24, -16, false, false), .blink = true, .sweat = true },
-    [MOOD_SAD]       = { BOTH(64, 86, 0, 10, 46, 32, -18, false, false), .blink = true },
-    [MOOD_SURPRISED] = { BOTH(86, 124, 0, 0, 50, 0, 0, false, false), .blink = true, .glyph = '!' },
-    [MOOD_CURIOUS]   = { .eye = { EYE(70, 104, 14, 0, 46, 0, 0, false, false),
-                                  EYE(70, 82, 14, 0, 46, 0, 0, false, false) },
-                         .blink = true, .glyph = '?' },
-    [MOOD_SLEEPY]    = { BOTH(76, 100, 0, 0, 46, 58, 0, false, false), .blink = true },
-    [MOOD_SLEEPING]  = { BOTH(84, 12, 0, 12, 50, 0, 0, false, false), .zz = true },
-    [MOOD_DIZZY]     = { BOTH(70, 70, 0, 0, 50, 0, 0, false, true) },
-    [MOOD_ANNOYED]   = { BOTH(80, 100, 0, 0, 40, 46, 9, false, false), .blink = true },
-    [MOOD_LOVE]      = { BOTH(72, 104, 0, 0, 50, 0, 0, false, false), .blink = true, .cheeks = true },
-    [MOOD_OFFLINE]   = { BOTH(44, 44, 0, -6, 50, 0, 0, false, false), .dots = true },
+    [MOOD_CALM] = { .eye = { E(58, 35, 70, 100, 35, STD), E(172, 35, 70, 100, 35, STD) },
+                    .kind = EYE_PILL, .motion = MOT_LOOK, .blink_ms = 5000 },
+    [MOOD_HAPPY] = { .eye = { E(58, 35, 70, 100, 35, STD), E(172, 35, 70, 100, 35, STD) },
+                     .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_HOP },
+    [MOOD_PROUD] = { .eye = { E(58, 35, 70, 100, 35, STD), E(172, 35, 70, 100, 35, STD) },
+                     .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_HOP_SLOW,
+                     .n_spark = 3, .spark = { { 14, 18, 26, 0 }, { 262, 4, 26, 600 }, { 268, 118, 20, 1200 } } },
+    [MOOD_FOCUSED] = { .eye = { E(58, 63, 70, 44, 22, 40, 8, 14), E(172, 63, 70, 44, 22, 40, 8, 14) },
+                       .kind = EYE_PILL, .motion = MOT_BREATHE, .blink_ms = 8000 },
+    [MOOD_WORRIED] = { .eye = { EL(58, 42, 70, 92, 35, STD, 253, -287), EL(172, 42, 70, 92, 35, STD, 253, 287) },
+                       .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_JIT, .blink_ms = 5000,
+                       .drop = true, .drop_at = { 256, 26, 16, 0 }, .drop_ms = 2400 },
+    [MOOD_SAD] = { .eye = { EL(58, 56, 70, 80, 35, STD, 231, -287), EL(172, 56, 70, 80, 35, STD, 231, 287) },
+                   .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SINK, .blink_ms = 6000,
+                   .drop = true, .drop_at = { 84, 132, 16, 0 }, .drop_ms = 3200 },
+    [MOOD_SURPRISED] = { .eye = { E(51, 30, 84, 110, 42, 46, 14, 20), E(165, 30, 84, 110, 42, 46, 14, 20) },
+                         .kind = EYE_PILL, .motion = MOT_POP, .blink_ms = 5000,
+                         .n_line = 3, .line = { { 252, 12, 40, 0 }, { 270, 42, 70, 0 }, { 230, 0, 12, 0 } } },
+    [MOOD_CURIOUS] = { .eye = { E(58, 46, 70, 84, 35, STD), E(172, 26, 70, 112, 35, STD) },
+                       .kind = EYE_PILL, .motion = MOT_TILT, .blink_ms = 5000 },
+    /* the lid is 96 px tall and slides from -56 % to -30 % of that: its bottom edge goes 42.2 -> 67.2 px */
+    [MOOD_SLEEPY] = { .eye = { EL(58, 42, 70, 96, 35, STD, 422, 0), EL(172, 42, 70, 96, 35, STD, 422, 0) },
+                      .kind = EYE_PILL, .lid = LID_DROOP, .motion = MOT_SINK_SLOW },
+    [MOOD_SLEEPING] = { .eye = { E(58, 76, 70, 28, 35, NOSTAR), E(172, 76, 70, 28, 35, NOSTAR) },
+                        .kind = EYE_ARC, .border = 7, .color = 0x8F70F7, .motion = MOT_BREATHE,
+                        .n_zz = 2, .zz = { { 238, 56, 30, 0 }, { 264, 28, 22, 1600 } } },
+    [MOOD_DIZZY] = { .eye = { E(55, 47, 76, 76, 38, NOSTAR), E(169, 47, 76, 76, 38, NOSTAR) },
+                     .kind = EYE_RING, .border = 12, .color = 0xA98CFB, .motion = MOT_WOBBLE },
+    [MOOD_ANNOYED] = { .eye = { EL(58, 54, 70, 76, 35, STD, 273, 325), EL(172, 54, 70, 76, 35, STD, 273, -325) },
+                       .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_HUFF, .blink_ms = 6000 },
+    [MOOD_LOVE] = { .eye = { E(58, 35, 70, 100, 35, STD), E(172, 35, 70, 100, 35, STD) },
+                    .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_SWAY, .cheeks = true,
+                    .n_heart = 2, .heart = { { 258, 20, 24, 0 }, { 16, 34, 24, 1400 } } },
+    [MOOD_OFFLINE] = { .eye = { E(79, 66, 28, 28, 14, NOSTAR), E(193, 66, 28, 28, 14, NOSTAR) },
+                       .kind = EYE_DOT, .color = 0x4A4554, .motion = MOT_NONE, .dots = true },
 };
 
 static const char *const NAMES[MOOD_COUNT] = {
@@ -39,33 +65,127 @@ const char *mood_name(mood_t m)
     return (unsigned)m < MOOD_COUNT ? NAMES[m] : "?";
 }
 
-static int32_t px(int32_t v, int32_t s100) { return (v * s100 + (v < 0 ? -50 : 50)) / 100; }
+/* CSS ease-in-out per keyframe interval (smoothstep is within a few percent of cubic-bezier(.42,0,.58,1)),
+ * ease-out and ease-in. All take and give permille. */
+static int32_t ease(int32_t u) { return u * u * (3000 - 2 * u) / 1000000; }
+static int32_t ease_out(int32_t u) { return 1000 - (1000 - u) * (1000 - u) / 1000; }
+static int32_t ease_in(int32_t u) { return u * u / 1000; }
 
-face_rect_t face_eye_rect(const face_eye_t *e, int side, int32_t s100, int32_t blink_x1000)
+/* ---- eye group (.ey) keyframes ---- */
+typedef struct { int16_t t, tx, ty, rot, sc; } kf_t; /* t permille of the loop; px, px, deg, permille */
+typedef struct { uint16_t period; bool out; uint8_t n; kf_t k[9]; } motion_t;
+#define K(t, tx, ty, rot) { t, tx, ty, rot, 1000 }
+#define KS(t, sc) { t, 0, 0, 0, sc }
+
+static const motion_t MOTION[MOT_COUNT] = {
+    [MOT_NONE] = { 0, false, 0, { { 0 } } },
+    [MOT_LOOK] = { 9000, false, 8, { K(0, 0, 0, 0), K(280, 0, 0, 0), K(340, -14, 2, 0), K(500, -14, 2, 0),
+                                     K(560, 12, -4, 0), K(720, 12, -4, 0), K(780, 0, 0, 0), K(1000, 0, 0, 0) } },
+    [MOT_HOP] = { 1000, false, 3, { K(0, 0, 0, 0), K(500, 0, -10, 0), K(1000, 0, 0, 0) } },
+    [MOT_HOP_SLOW] = { 1600, false, 3, { K(0, 0, 0, 0), K(500, 0, -10, 0), K(1000, 0, 0, 0) } },
+    [MOT_SWAY] = { 3000, false, 3, { K(0, 0, 0, -4), K(500, 0, 0, 4), K(1000, 0, 0, -4) } },
+    [MOT_BREATHE] = { 4000, false, 3, { KS(0, 1000), KS(500, 1050), KS(1000, 1000) } },
+    [MOT_JIT] = { 1400, false, 4, { K(0, 0, 0, 0), K(250, -3, 0, 0), K(750, 3, 0, 0), K(1000, 0, 0, 0) } },
+    [MOT_SINK] = { 4000, false, 3, { K(0, 0, 0, 0), K(500, 0, 6, 0), K(1000, 0, 0, 0) } },
+    [MOT_SINK_SLOW] = { 4500, false, 3, { K(0, 0, 0, 0), K(500, 0, 6, 0), K(1000, 0, 0, 0) } },
+    [MOT_POP] = { 2400, true, 6, { KS(0, 1000), KS(300, 1000), KS(400, 1160), KS(500, 1080), KS(850, 1080),
+                                   KS(1000, 1000) } },
+    [MOT_TILT] = { 4000, false, 6, { K(0, 0, 0, 0), K(300, -14, 0, -8), K(450, -14, 0, -8), K(650, 14, -4, 6),
+                                     K(800, 14, -4, 6), K(1000, 0, 0, 0) } },
+    [MOT_WOBBLE] = { 1600, false, 3, { K(0, 0, 0, -9), K(500, 0, 0, 9), K(1000, 0, 0, -9) } },
+    [MOT_HUFF] = { 3000, false, 9, { K(0, 0, 0, 0), K(200, 0, 0, 0), K(300, 16, 0, 0), K(600, 16, 0, 0),
+                                     K(640, 12, 0, 0), K(680, 18, 0, 0), K(720, 14, 0, 0), K(850, 0, 0, 0),
+                                     K(1000, 0, 0, 0) } },
+};
+
+uint32_t face_motion_period(face_motion_t m) { return (unsigned)m < MOT_COUNT ? MOTION[m].period : 0; }
+
+face_group_t face_group_at(face_motion_t m, uint32_t t_ms)
 {
-    int32_t cx = 140 + (side ? 66 : -66) + e->dx, cy = 80 + e->dy;
-    int32_t h2 = e->h * blink_x1000; /* height in x1000 units */
-    face_rect_t r;
-    r.w = px(e->w, s100);
-    r.h = (h2 * s100 + 50000) / 100000;
-    if (r.h < 1) r.h = 1;
-    r.x = px(cx * 2 - e->w, s100) / 2; /* rounded to the same px as the browser's left = cx - w/2 */
-    r.cx = px(cx, s100);
-    r.cy = px(cy, s100);
-    r.y = r.cy - r.h / 2;
-    return r;
+    face_group_t g = { 0, 0, 0, 1000 };
+    if ((unsigned)m >= MOT_COUNT || !MOTION[m].period) return g;
+    const motion_t *mo = &MOTION[m];
+    int32_t p = (int32_t)(t_ms % mo->period * 1000 / mo->period);
+    int i = 0;
+    while (i + 2 < mo->n && p > mo->k[i + 1].t) i++;
+    const kf_t *a = &mo->k[i], *b = &mo->k[i + 1];
+    int32_t u = (p - a->t) * 1000 / (b->t - a->t);
+    int32_t e = mo->out ? ease_out(u) : ease(u);
+    g.tx = a->tx * 100 + (b->tx - a->tx) * e / 10;
+    g.ty = a->ty * 100 + (b->ty - a->ty) * e / 10;
+    g.rot = a->rot * 100 + (b->rot - a->rot) * e / 10;
+    g.sc = a->sc + (b->sc - a->sc) * e / 1000;
+    return g;
 }
 
-/* CSS: @keyframes cfBlink 0/92/100 % = 1, 95 % = .08, ease-in-out per segment, 5.2 s cycle. */
-int32_t face_blink_x1000(uint32_t t_ms)
+/* CSS: @keyframes blink 0/93/100 % = scaleY 1, 96 % = .08, ease-in-out per segment. */
+int32_t face_blink_x1000(uint32_t period_ms, uint32_t t_ms)
 {
-    int32_t p = (int32_t)((t_ms % 5200) * 1000 / 5200); /* permille of the cycle */
-    int64_t u;                                          /* progress through the active segment */
-    if (p < 920) return 1000;
-    if (p < 950) {
-        u = (p - 920) * 1000 / 30;
-        return (int32_t)(1000 - (920 * (3 * u * u - 2 * u * u * u / 1000) / 1000) / 1000);
-    }
-    u = (p - 950) * 1000 / 50;
-    return (int32_t)(80 + (920 * (3 * u * u - 2 * u * u * u / 1000) / 1000) / 1000);
+    if (!period_ms) return 1000;
+    int32_t p = (int32_t)(t_ms % period_ms * 1000 / period_ms);
+    if (p < 930) return 1000;
+    if (p < 960) return 1000 - 920 * ease((p - 930) * 1000 / 30) / 1000;
+    return 80 + 920 * ease((p - 960) * 1000 / 40) / 1000;
+}
+
+/* ---- effect loops ---- */
+static int32_t phase(uint32_t t_ms, uint32_t period, uint32_t delay) /* permille, delayed start */
+{
+    return (int32_t)((t_ms + period - delay % period) % period * 1000 / period);
+}
+
+/* @keyframes zz: opacity 0 -> 1 at 30 % -> 0; translate (0,10) -> (16,-34) over the whole loop */
+face_fx_state_t face_fx_rise(uint32_t t_ms, uint32_t period_ms, uint32_t delay_ms)
+{
+    int32_t p = phase(t_ms, period_ms, delay_ms), e = ease(p);
+    face_fx_state_t s;
+    s.op = p < 300 ? 255 * ease(p * 1000 / 300) / 1000 : 255 - 255 * ease((p - 300) * 1000 / 700) / 1000;
+    s.dx = 1600 * e / 1000;
+    s.dy = 1000 - 4400 * e / 1000;
+    s.k = 1000;
+    return s;
+}
+
+/* @keyframes drip (ease-in): opacity 0 -> 1 at 25 % -> 0; translate (0,-4) -> (0,34) */
+face_fx_state_t face_fx_drip(uint32_t t_ms, uint32_t period_ms)
+{
+    int32_t p = (int32_t)(t_ms % period_ms * 1000 / period_ms);
+    face_fx_state_t s;
+    s.op = p < 250 ? 255 * ease_in(p * 4) / 1000 : 255 - 255 * ease_in((p - 250) * 1000 / 750) / 1000;
+    s.dx = 0;
+    s.dy = -400 + 3800 * ease_in(p) / 1000;
+    s.k = 1000;
+    return s;
+}
+
+/* @keyframes tw 1.8 s: scale .2 -> 1 at 50 % -> .2, opacity the same (the 45 degree turn is left out) */
+face_fx_state_t face_fx_twinkle(uint32_t t_ms, uint32_t delay_ms)
+{
+    int32_t p = phase(t_ms, 1800, delay_ms);
+    int32_t e = ease(p < 500 ? p * 2 : (1000 - p) * 2);
+    face_fx_state_t s = { 255 * e / 1000, 0, 0, 200 + 800 * e / 1000 };
+    return s;
+}
+
+/* @keyframes burst 2.4 s: 0-30 % hidden and short (scale 1 .3), 42 % full, 80 % gone */
+face_fx_state_t face_fx_burst(uint32_t t_ms)
+{
+    int32_t p = (int32_t)(t_ms % 2400 * 1000 / 2400);
+    face_fx_state_t s = { 0, 0, 0, 1000 };
+    if (p < 300) s.k = 300;
+    else if (p < 420) {
+        int32_t e = ease_out((p - 300) * 1000 / 120);
+        s.op = 255 * e / 1000;
+        s.k = 300 + 700 * e / 1000;
+    } else if (p < 800) s.op = 255 - 255 * ease_out((p - 420) * 1000 / 380) / 1000;
+    return s;
+}
+
+/* @keyframes d3 1.5 s, dots 0.25 s apart: dim, accent at 30 %, dim again by 60 % */
+int32_t face_fx_dot(uint32_t t_ms, int index)
+{
+    int32_t p = phase(t_ms, 1500, (uint32_t)index * 250);
+    if (p < 300) return 255 * ease(p * 1000 / 300) / 1000;
+    if (p < 600) return 255 - 255 * ease((p - 300) * 1000 / 300) / 1000;
+    return 0;
 }

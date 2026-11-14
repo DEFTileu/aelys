@@ -1,4 +1,10 @@
 menu "Aelys companion"
+    config AELYS_SPARSE_SCREEN_SWITCH
+        bool "Invalidate painted regions for Home/Today navigation (experimental)"
+        default n
+        help
+            Keep normal screen rendering as the fallback until the same-workload
+            probe validates the smaller dirty regions on the board.
     config AELYS_TZ
         string "POSIX time zone"
         default "<+05>-5"
@@ -29,4 +35,15 @@ menu "Aelys companion"
         help
             Checks the device key, SAS and Wi-Fi decryption against generated vectors, in RAM only
             (never writes NVS), and logs "identity selftest PASS" or FAIL.
+    config AELYS_PERF_PROBE
+        bool "Performance probe (bench only)"
+        depends on !FREERTOS_SMP && !FREERTOS_UNICORE && FREERTOS_RUN_TIME_COUNTER_TYPE_U64 && FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER
+        select FREERTOS_USE_TRACE_FACILITY
+        select FREERTOS_VTASKLIST_INCLUDE_COREID
+        default n
+        help
+            Bench-only task and UI diagnostics. First enable FreeRTOS runtime
+            statistics, the ESP timer and the 64-bit runtime counter; Kconfig choice
+            members cannot be selected by another symbol. Adds a 4096-byte
+            task stack and static snapshot storage. Never use in release builds.
 endmenu

@@ -1,7 +1,7 @@
 /* Screen switching: home, Today, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
  * one active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress and a toast
- * sits on top. The snapshot (ui_snap_tb) is rendered into every screen by render(), on each event that can change it and
- * once a second (relative times, the focus countdown, the "due within 60 min" mood). */
+ * sits on top. The latest snapshot (ui_snap_tb) is rendered into the visible screen on entry, on events that can change
+ * it and once a second (relative times, the focus countdown, the "due within 60 min" mood). Hidden screens do no layout. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +23,9 @@ static const snap_t empty_snap; /* before the first publish, or when the buffer 
 
 static struct {
     scr_t cur, down_scr; /* down_scr: the screen showing when the current touch began */
+#ifdef CONFIG_AELYS_PERF_PROBE
+    bool probe_touch_active, probe_combo_active;
+#endif
     bool lost, happy, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
@@ -172,12 +175,73 @@ static void arc_draw(lv_event_t *e)
     lv_draw_arc(lv_event_get_layer(e), &d);
 }
 
+/* Conservative bands around the 225 px outer / 213 px inner arc, including AA.
+ * Sixteen horizontal bands bound the circle with integer sqrt (outer 226, inner 211).
+ * They cover 42801 pixels instead of a 466x466 bounding rectangle. USER_1 marks
+ * this known custom ring; USER_2 marks other custom paints inside their object. */
+#ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
+static void invalidate_arc(lv_obj_t *o)
+{
+    static const lv_area_t bands[] = {
+        {125, 7, 341, 34},
+        {85, 35, 161, 62},
+        {305, 35, 381, 62},
+        {57, 63, 109, 90},
+        {357, 63, 409, 90},
+        {37, 91, 77, 119},
+        {389, 91, 429, 119},
+        {24, 120, 55, 147},
+        {411, 120, 442, 147},
+        {14, 148, 40, 175},
+        {426, 148, 452, 175},
+        {9, 176, 30, 203},
+        {436, 176, 457, 203},
+        {7, 204, 25, 232},
+        {441, 204, 459, 232},
+        {7, 233, 24, 260},
+        {442, 233, 459, 260},
+        {8, 261, 30, 288},
+        {436, 261, 458, 288},
+        {14, 289, 40, 316},
+        {426, 289, 452, 316},
+        {23, 317, 55, 345},
+        {411, 317, 443, 345},
+        {37, 346, 76, 373},
+        {390, 346, 429, 373},
+        {56, 374, 106, 401},
+        {360, 374, 410, 401},
+        {82, 402, 155, 429},
+        {311, 402, 384, 429},
+        {122, 430, 344, 458},
+    };
+    lv_area_t box;
+    lv_obj_get_coords(o, &box);
+    for (unsigned i = 0; i < sizeof bands / sizeof bands[0]; i++) {
+        lv_area_t a = {bands[i].x1 + box.x1, bands[i].y1 + box.y1,
+                       bands[i].x2 + box.x1, bands[i].y2 + box.y1};
+        lv_obj_invalidate_area(o, &a);
+    }
+}
+
+static void invalidate_painted(lv_obj_t *o)
+{
+    if (!lv_obj_is_visible(o)) return;
+    if (lv_obj_get_user_flag(o, 0)) { invalidate_arc(o); return; }
+    if (!lv_obj_check_type(o, &lv_obj_class) || lv_obj_get_user_flag(o, 1) ||
+        lv_obj_get_style_bg_opa(o, 0) > LV_OPA_TRANSP || lv_obj_get_style_border_width(o, 0) > 0)
+        lv_obj_invalidate(o);
+    for (uint32_t i = 0; i < lv_obj_get_child_count(o); i++)
+        invalidate_painted(lv_obj_get_child(o, (int32_t)i));
+}
+#endif
+
 void ui_arc_create(ui_arc_t *a, lv_obj_t *parent)
 {
     a->obj = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
     a->pct = 0;
     a->fg = UI_COLOR_ACCENT;
     a->track = UI_COLOR_ORBIT_OFF;
+    lv_obj_set_user_flag(a->obj, 0, true);
     lv_obj_add_event_cb(a->obj, arc_draw, LV_EVENT_DRAW_MAIN, a);
 }
 
@@ -214,6 +278,7 @@ lv_obj_t *ui_check_create(lv_obj_t *parent, int32_t d)
     lv_obj_set_style_radius(c, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(c, 2, 0);
     lv_obj_t *t = ui_plain(c, d - 4, d - 4); /* inside the border */
+    lv_obj_set_user_flag(t, 1, true);
     lv_obj_add_event_cb(t, tick_draw, LV_EVENT_DRAW_MAIN, NULL);
     ui_check_set(c, false, 0);
     return c;
@@ -289,9 +354,27 @@ static void inbox_timeout(lv_timer_t *t)
 
 static void show(scr_t s)
 {
+#ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
+    bool sparse = (g.cur == SCR_HOME || g.cur == SCR_TODAY) && (s == SCR_HOME || s == SCR_TODAY) &&
+                  g.scr[g.cur] && g.cur != s;
+    lv_display_t *d = lv_display_get_default();
+    if (sparse) {
+        lv_obj_update_layout(g.scr[g.cur]);
+        invalidate_painted(g.scr[g.cur]); /* clear the old visible pixels, while it is still visible */
+        lv_display_enable_invalidation(d, false);
+    }
+#endif
     for (int i = 0; i < SCR_COUNT; i++)
         if (g.scr[i]) lv_obj_set_hidden(g.scr[i], i != (int)s);
     g.cur = s;
+#ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
+    if (sparse) {
+        render();
+        lv_obj_update_layout(g.scr[s]);
+        lv_display_enable_invalidation(d, true);
+        invalidate_painted(g.scr[s]);
+    }
+#endif
     scr_hold_set(0);
     stop_timer(&g.hold_timer);
     if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) scr_toast_hide();
@@ -301,6 +384,10 @@ static void show(scr_t s)
     if (s == SCR_INBOX) arm_timer(&g.inbox_timer, inbox_timeout, INBOX_TIMEOUT_MS);
     else stop_timer(&g.inbox_timer);
     if (s != SCR_PAIR) stop_timer(&g.paired_timer);
+#ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
+    if (!sparse)
+#endif
+        render(); /* refresh before the first frame, including time spent away and snapshots received while hidden */
 }
 
 static void set_owner(const owner_info_t *o)
@@ -309,16 +396,28 @@ static void set_owner(const owner_info_t *o)
     scr_ice_set_owner(o);
 }
 
-/* Draw the newest snapshot into every screen. Idempotent and cheap: widgets only change when their text or colour does. */
+#ifdef CONFIG_AELYS_PERF_PROBE
+bool ui_probe_swipe(void)
+{
+    if (g.lost || g.find || g.probe_touch_active || g.probe_combo_active || (g.cur != SCR_HOME && g.cur != SCR_TODAY)) return false;
+    show(g.cur == SCR_HOME ? SCR_TODAY : SCR_HOME);
+    return true;
+}
+#endif
+
+/* Only the visible screen needs labels and layout. The snapshot itself stays current even while a card hides it. */
 static void render(void)
 {
     const snap_t *s = g.snap ? g.snap : &empty_snap;
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
-    scr_home_set_snap(s, now, ui_mood_for(s, now, !offline, g.happy), offline);
-    scr_today_set(s, now);
-    scr_focus_set(s, g.snap_ms, lv_tick_get());
-    scr_inbox_set(s, now);
+    switch (g.cur) {
+    case SCR_HOME: scr_home_set_snap(s, now, ui_mood_for(s, now, !offline, g.happy), offline); break;
+    case SCR_TODAY: scr_today_set(s, now); break;
+    case SCR_FOCUS: scr_focus_set(s, g.snap_ms, lv_tick_get()); break;
+    case SCR_INBOX: scr_inbox_set(s, now); break;
+    default: break; /* lost mode, ICE and pairing have their own event-driven data */
+    }
 }
 
 static void tick_timer_cb(lv_timer_t *t)
@@ -409,7 +508,6 @@ void ui_setup(void)
     memset(g.read_id, 0, sizeof g.read_id);
     memset(g.pend_read, 0, sizeof g.pend_read);
     if (!g.tick_timer) g.tick_timer = lv_timer_create(tick_timer_cb, 1000, NULL);
-    render();
     show(SCR_HOME);
 }
 
@@ -463,6 +561,12 @@ static bool ends_find(const ui_event_t *ev)
 
 void ui_handle_event(const ui_event_t *ev)
 {
+#ifdef CONFIG_AELYS_PERF_PROBE
+    if (ev->type == UI_EV_TOUCH) g.probe_touch_active = true;
+    if (ev->type == UI_EV_RELEASE && (!ev->len || !ev->data[0])) g.probe_touch_active = false;
+    if (ev->type == UI_EV_COMBO_PROGRESS) g.probe_combo_active = ev->len && ev->data[0];
+    if (ev->type == UI_EV_COMBO_FIRE) g.probe_combo_active = false;
+#endif
     scr_t next = g.cur;
     if (g.find && ends_find(ev)) {
         g.find = false;

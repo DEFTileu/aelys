@@ -5,6 +5,7 @@
  * BOOT + PWR held COMBO_HOLD_MS opens the ICE card; the PMIC's own long-press power-off is pushed
  * out to 10 s so the 2 s hold can never power the board off. */
 #include <stdint.h>
+#include <string.h>
 
 #include "board.h"
 #include "board_pins.h"
@@ -169,6 +170,24 @@ static void tap_poll(void)
 }
 #endif
 
+#ifdef CONFIG_AELYS_PERF_PROBE
+static _Atomic bool pr_input_busy = true; /* fail closed until the input task has sampled hardware */
+bool board_probe_input_busy(void) { return atomic_load(&pr_input_busy); }
+/* A single diagnostic request. The UI task validates its screen/input state;
+ * no synthetic TOUCH, RELEASE or user gesture ever enters the action handlers. */
+static void probe_swipe(void)
+{
+    static uint32_t last_ms;
+    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+    if (now - last_ms < 2000) return;
+    last_ms = now;
+    uint32_t posted_us = (uint32_t)esp_timer_get_time();
+    ui_event_t ev = {.type = BOARD_UI_EV_PERF, .len = sizeof posted_us};
+    memcpy(ev.data, &posted_us, sizeof posted_us);
+    lv_port_post(&ev); /* the port counts a refused enqueue; there is no partial touch to leave behind */
+}
+#endif
+
 static void input_task(void *arg)
 {
     combo_t combo;
@@ -181,6 +200,9 @@ static void input_task(void *arg)
     bool moved_sent = false;   /* UI_EV_RELEASE already sent for this touch because the finger moved */
     gesture_t pend_gest = GEST_NONE; /* a tap or swipe the ui queue had no room for yet */
     bool was_touched = false, fire_pending = false, release_pending = false;
+#ifdef CONFIG_AELYS_PERF_PROBE
+    bool probe_physical_touch = false;
+#endif
     int shown = 0; /* the last progress percent the ui was told about */
     uint32_t pass = 0;
     TickType_t wake = xTaskGetTickCount();
@@ -195,10 +217,14 @@ static void input_task(void *arg)
             uint32_t t0 = (uint32_t)esp_timer_get_time();
 #endif
             bool down = touch_down(&x, &y);
+#ifdef CONFIG_AELYS_PERF_PROBE
+            probe_physical_touch = down;
+            if (down) atomic_store(&pr_input_busy, true); /* before attempting any queue post */
+#endif
             gesture_t gs = gesture_feed(&gctx, down, (int16_t)x, (int16_t)y, (uint32_t)(esp_timer_get_time() / 1000));
             if (gs != GEST_NONE) pend_gest = gs;
             /* a finger that moved 20 px is no hold: tell the ui as if it had lifted (the real lift sends one more, harmless) */
-            if (down && !moved_sent && gesture_moved(&gctx)) moved_sent = post(UI_EV_RELEASE, -1);
+            if (down && !moved_sent && gesture_moved(&gctx)) moved_sent = post(UI_EV_RELEASE, 1);
             if (!down) moved_sent = false;
             if (!down) {
                 release_pending = release_pending || was_touched; /* the ui hears the lift after the gesture */
@@ -220,7 +246,7 @@ static void input_task(void *arg)
             if (pend_gest == GEST_TAP) { ev.len = 4; ev.data[0] = gctx.x; ev.data[1] = gctx.x >> 8; ev.data[2] = gctx.y; ev.data[3] = gctx.y >> 8; }
             if (lv_port_post(&ev)) pend_gest = GEST_NONE;
         }
-        if (release_pending && pend_gest == GEST_NONE && post(UI_EV_RELEASE, -1)) release_pending = false;
+        if (release_pending && pend_gest == GEST_NONE && post(UI_EV_RELEASE, 0)) release_pending = false;
 
         if (axp && slow) {
             uint8_t sts;
@@ -261,6 +287,11 @@ static void input_task(void *arg)
         }
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
         tap_poll();
+#endif
+#ifdef CONFIG_AELYS_PERF_PROBE
+        atomic_store(&pr_input_busy, !touch || probe_physical_touch || boot || pwr ||
+                     pend_gest != GEST_NONE || release_pending || fire_pending);
+        probe_swipe();
 #endif
         xTaskDelayUntil(&wake, pdMS_TO_TICKS(POLL_MS));
     }

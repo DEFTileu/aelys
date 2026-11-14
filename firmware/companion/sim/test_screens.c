@@ -42,15 +42,18 @@ static void count_lit(int *outside, int *inside)
         }
 }
 
-static void check_inside(const char *what)
+/* min_lit: something was drawn. The offline view is two dim 28 px dots and some text, so it asks for less. */
+static void check_inside_min(const char *what, int min_lit)
 {
     int out, in;
     sim_step(100);
     count_lit(&out, &in);
     if (out) fprintf(stderr, "%s: %d lit pixels outside radius %d\n", what, out, R);
     CHECK_EQ(out, 0);
-    CHECK(in > 2000); /* something was drawn */
+    CHECK(in > min_lit);
 }
+
+static void check_inside(const char *what) { check_inside_min(what, 2000); }
 
 static void test_flow(void)
 {
@@ -427,6 +430,7 @@ static void tap_label(const char *txt)
     CHECK(l != NULL);
     if (!l) return;
     lv_area_t a;
+    lv_obj_update_layout(l); /* a real tap follows a frame; freshly opened screens now lay out on entry */
     lv_obj_get_coords(l, &a);
     tap_at((a.x1 + a.x2) / 2, (a.y1 + a.y2) / 2);
 }
@@ -657,7 +661,7 @@ static void test_offline_shot(void)
     post_fx();
     link_state(LINK_UI_OFFLINE);
     sim_step(100);
-    check_inside("offline (no data)");
+    check_inside_min("offline (no data)", 1000);
     CHECK(shows_text(scr, "Offline") && !shows_text(scr, "Showing data from --:--"));
     link_state(LINK_UI_ONLINE);
     fresh_fx();
@@ -745,6 +749,66 @@ static void test_focus_shots(void)
 
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
+    fresh_fx();
+}
+
+/* Hidden countdowns must do no label/layout work; opening one uses the latest snapshot and elapsed time. */
+static void test_hidden_focus_refreshes_on_entry(void)
+{
+    swipe(UI_EV_SWIPE_LEFT);
+    focus_snap(FOCUS_ACTIVE, "pomodoro", 545);
+    lv_obj_t *digits = find_label(lv_screen_active(), "15:55");
+    CHECK(digits != NULL);
+    if (!digits) return;
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sim_step(5000);
+    CHECK(!strcmp(lv_label_get_text(digits), "15:55"));
+
+    focus_snap(FOCUS_ACTIVE, "pomodoro", 60);
+    sim_step(3000);
+    CHECK(!strcmp(lv_label_get_text(digits), "15:55"));
+    swipe(UI_EV_SWIPE_LEFT);
+    sim_step(20);
+    CHECK(shows_text(lv_screen_active(), "23:57"));
+    CHECK(shows_text(lv_screen_active(), "Pause"));
+    sim_step(1000);
+    CHECK(shows_text(lv_screen_active(), "23:56"));
+    swipe(UI_EV_SWIPE_RIGHT);
+    focus_snap(FOCUS_PAUSED, "pomodoro", 1072);
+    swipe(UI_EV_SWIPE_LEFT);
+    sink.n = 0;
+    btn(BTN_TOP); /* actions must use the just-opened view, rather than its old active state */
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(sink.kind, ACT_FOCUS_RESUME);
+    swipe(UI_EV_SWIPE_RIGHT);
+    fresh_fx();
+}
+
+static void test_snapshot_received_under_card_is_shown_on_entry(void)
+{
+    post(UI_EV_COMBO_FIRE);
+    CHECK_EQ(ui_current_screen(), SCR_ICE);
+    strcpy(fx.task.title, "Updated while hidden");
+    fx.today_done = 7;
+    fx.today_total = 9;
+    fx.unread = 4;
+    strcpy(fx.notices[0].title, "Newest reminder");
+    post_fx();
+    post(UI_EV_TOUCH);
+    sim_step(20);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK(shows_text(lv_screen_active(), "2 left today"));
+    swipe(UI_EV_SWIPE_RIGHT);
+    sim_step(20);
+    CHECK(shows_text(lv_screen_active(), "Updated while hidden"));
+    CHECK(shows_text(lv_screen_active(), "7 / 9 done"));
+    tap_label("4 new");
+    sim_step(20);
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    CHECK(shows_text(lv_screen_active(), "Newest reminder"));
+    btn(BTN_LOW);
+    swipe(UI_EV_SWIPE_LEFT);
     fresh_fx();
 }
 
@@ -1195,6 +1259,49 @@ static void test_find_overlay_in_lost_mode(void)
     CHECK(!shows_text(scr, title));
 }
 
+static void test_probe_never_sends_actions(void)
+{
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+    post(UI_EV_RELEASE);
+    sink.n = 0;
+    CHECK(ui_probe_swipe());
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    CHECK(ui_probe_swipe());
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    post_progress(50);
+    CHECK(!ui_probe_swipe()); /* never move the screen under the two-button hold ring */
+    post_progress(0);
+    touch_at(233, 233);
+    CHECK(!ui_probe_swipe());
+    uint8_t still_down = 1;
+    sim_post(UI_EV_RELEASE, &still_down, 1); /* movement cancels a hold, but is not a physical lift */
+    CHECK(!ui_probe_swipe());
+    post(UI_EV_RELEASE);
+    swipe(UI_EV_SWIPE_LEFT);
+    focus_snap(FOCUS_PAUSED, "pomodoro", 1072);
+    CHECK(!ui_probe_swipe());
+    sim_step(900);
+    CHECK_EQ(sink.n, 0); /* a refused probe never arms hold-to-stop */
+    swipe(UI_EV_SWIPE_RIGHT);
+    post(UI_EV_COMBO_FIRE);
+    CHECK(!ui_probe_swipe());
+    post(UI_EV_TOUCH);
+    post(UI_EV_RELEASE);
+    post_lost(1);
+    CHECK(!ui_probe_swipe());
+    post_lost(0);
+    post_pair(PAIR_UI_CODE, "482913");
+    CHECK(!ui_probe_swipe());
+    post_pair(PAIR_UI_HIDE, NULL);
+    uint8_t on = 1, off = 0;
+    sim_post(UI_EV_FIND, &on, 1);
+    CHECK(!ui_probe_swipe());
+    sim_post(UI_EV_FIND, &off, 1);
+    CHECK_EQ(sink.n, 0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    fresh_fx();
+}
+
 int main(void)
 {
     sim_init();
@@ -1216,6 +1323,8 @@ int main(void)
     test_inbox_shot();
     test_offline_shot();
     test_focus_shots();
+    test_hidden_focus_refreshes_on_entry();
+    test_snapshot_received_under_card_is_shown_on_entry();
     test_failed_read_clears_only_that_notice();
     test_done_ring_is_closed();
     test_idle_screens_do_not_redraw();
@@ -1224,5 +1333,6 @@ int main(void)
     test_wifi_toast_shots();
     test_find_overlay_shot();
     test_find_overlay_in_lost_mode();
+    test_probe_never_sends_actions();
     return g_failed ? 1 : 0;
 }
