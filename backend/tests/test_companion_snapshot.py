@@ -129,7 +129,7 @@ async def test_snapshot_route_companion_only(client):
     token = await companion_token(client, key, device_id)
     ok = await client.get(f'{B}/companion/snapshot', headers={'Authorization': f'Bearer {token}'})
     assert ok.status_code == 200, ok.text
-    assert set(ok.json()) == {'generated_at', 'next_task', 'overdue_count', 'next_event', 'unread_count', 'notices', 'focus', 'today_done', 'today_total', 'other_unread_count'}
+    assert set(ok.json()) == {'generated_at', 'next_task', 'overdue_count', 'next_event', 'unread_count', 'notices', 'focus', 'today_done', 'today_total', 'other_unread_count', 'tasks_today', 'events_upcoming'}
 
 
 @pytest.mark.asyncio
@@ -225,3 +225,75 @@ async def test_long_titles_are_clipped_and_the_whole_frame_stays_under_4_kb(owne
 @pytest.mark.asyncio
 async def test_short_titles_are_untouched(owner):
     assert (await snapshot(owner, [Task(owner_id=owner, title='ж' * 80, due_at=NOW + timedelta(hours=1), status='todo')])).next_task.title == 'ж' * 80
+
+
+@pytest.mark.asyncio
+async def test_tasks_today_are_open_due_today_or_overdue_upcoming_first_and_capped(owner):
+    def task(title, due, status='todo', **kw):
+        return Task(owner_id=owner, title=title, due_at=NOW + timedelta(hours=due), status=status, **kw)  # NOW is 09:30 UTC; today ends in 14.5 h
+    rows = [task('t5', 5), task('t2', 2), task('t3', 3), task('t4', 4), task('t6', 6), task('t7', 7), task('late', -3), task('later', -9),
+            task('tomorrow', 15), task('done', 1, 'done'), task('cancelled', 1, 'cancelled'), task('gone', 1, deleted_at=NOW), Task(owner_id=owner, title='no due')]
+    snap = await snapshot(owner, rows)
+    assert [t.title for t in snap.tasks_today] == ['t2', 't3', 't4', 't5', 't6']  # capped at 5; overdue ones do not crowd the upcoming out
+    assert snap.next_task.id == snap.tasks_today[0].id and snap.tasks_today[0].due_at == NOW + timedelta(hours=2)
+    async with db.SessionLocal() as session:
+        for row in rows[:5]:
+            await session.delete(await session.get(Task, row.id))
+        await session.commit()
+    snap = await snapshot(owner)
+    assert [t.title for t in snap.tasks_today] == ['t7', 'later', 'late']  # then overdue, oldest first
+    assert snap.overdue_count == 2 and snap.next_task.title == 't7'
+
+
+@pytest.mark.asyncio
+async def test_tasks_today_follows_the_owners_time_zone(owner):
+    from app.integrations.telegram_models import TelegramIntegration
+    rows = [Task(owner_id=owner, title='evening', due_at=NOW + timedelta(hours=12)), Task(owner_id=owner, title='tomorrow', due_at=NOW + timedelta(hours=16))]
+    assert [t.title for t in (await snapshot(owner, rows)).tasks_today] == ['evening']  # the UTC day ends 14.5 h after 09:30
+    async with db.SessionLocal() as session:
+        session.add(TelegramIntegration(owner_id=owner, bot_id=1, bot_username='b', bot_name='b', business_capable=False, encrypted_token='x', owner_telegram_id=1, timezone='Asia/Almaty'))
+        await session.commit()  # 14:30 local: the day ends 9.5 h from now
+        snap = await build_snapshot(session, owner, NOW)
+    assert snap.tasks_today == []
+
+
+@pytest.mark.asyncio
+async def test_events_upcoming_run_to_the_end_of_tomorrow_and_lead_with_next_event(owner):
+    def event(title, hours, minutes=30, **kw):
+        start = NOW + timedelta(hours=hours)
+        return CalendarEvent(owner_id=owner, title=title, starts_at=start, ends_at=start + timedelta(minutes=minutes), **kw)
+    rows = [event('c', 3), event('a', 1), event('b', 2), event('d', 20), event('e', 30), event('day after', 40), event('next week', 100),
+            event('holiday', -9, 24 * 60, all_day=True), event('gone', 4, deleted_at=NOW)]  # the holiday began 00:30 and is still on
+    snap = await snapshot(owner, rows)
+    assert [e.title for e in snap.events_upcoming] == ['a', 'holiday', 'b', 'c']  # next_event first (a timed one beats all-day), then time order, max 4
+    assert snap.next_event.title == 'a' and snap.events_upcoming[0].id == snap.next_event.id and snap.events_upcoming[1].all_day
+    async with db.SessionLocal() as session:
+        for row in rows[:5] + rows[7:8]:
+            await session.delete(await session.get(CalendarEvent, row.id))
+        await session.commit()
+    assert [e.title for e in (await snapshot(owner)).events_upcoming] == []  # 'day after' (+40 h) is past the end of tomorrow
+
+
+@pytest.mark.asyncio
+async def test_lists_are_empty_for_another_owner(client, owner):
+    other = await claim_owner_user(client)
+    start = NOW + timedelta(hours=1)
+    snap = await snapshot(other, [Task(owner_id=owner, title='mine', due_at=start), CalendarEvent(owner_id=owner, title='mine', starts_at=start, ends_at=start + timedelta(hours=1))])
+    assert snap.tasks_today == [] and snap.events_upcoming == []
+    assert 'mine' not in snap.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_list_titles_are_clipped_and_a_full_cyrillic_snapshot_fits_one_frame(owner):
+    long = 'Я' * 120
+    rows = [Task(owner_id=owner, title=long, due_at=NOW + timedelta(hours=h + 1), description='SECRET-NOTE') for h in range(5)]
+    rows += [CalendarEvent(owner_id=owner, title=long, starts_at=NOW + timedelta(hours=h + 1), ends_at=NOW + timedelta(hours=h + 2), description='SECRET-NOTE') for h in range(4)]
+    rows += [Notification(owner_id=owner, kind='calendar.' + 'k' * 14, title=long, created_at=NOW - timedelta(minutes=i)) for i in range(5)]
+    snap = await snapshot(owner, rows)
+    assert all(len(t.title) == 80 and t.title.endswith('…') for t in snap.tasks_today + snap.events_upcoming)
+    wire = json.dumps({'type': 'snapshot', 'snapshot': snap.model_dump(mode='json')}, separators=(',', ':'), ensure_ascii=False).encode()
+    assert len(wire) <= 4096 and 'SECRET' not in wire.decode()
+    # the lists shrank to fit (events first); the v1 fields are intact
+    assert snap.next_task and snap.next_event and len(snap.notices) == 5
+    assert len(snap.events_upcoming) < 4 and snap.tasks_today
+    assert snap.next_task.id == snap.tasks_today[0].id and snap.next_event.id == snap.events_upcoming[0].id

@@ -9947,6 +9947,51 @@
         ],
         "title": "ChallengeResponse"
       },
+      "CharacterObservation": {
+        "properties": {
+          "mood": {
+            "type": "string",
+            "title": "Mood"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "reported_at": {
+            "type": "string",
+            "title": "Reported At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mood",
+          "reason",
+          "reported_at"
+        ],
+        "title": "CharacterObservation"
+      },
+      "CharacterStatusOut": {
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/CharacterObservation"
+          },
+          "recent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CharacterObservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "current"
+        ],
+        "title": "CharacterStatusOut"
+      },
       "ChatOut": {
         "properties": {
           "business_connection_id": {
@@ -10134,6 +10179,22 @@
           "other_unread_count": {
             "type": "integer",
             "title": "Other Unread Count"
+          },
+          "tasks_today": {
+            "items": {
+              "$ref": "#/components/schemas/SnapTask"
+            },
+            "type": "array",
+            "title": "Tasks Today",
+            "default": []
+          },
+          "events_upcoming": {
+            "items": {
+              "$ref": "#/components/schemas/SnapEvent"
+            },
+            "type": "array",
+            "title": "Events Upcoming",
+            "default": []
           }
         },
         "type": "object",
@@ -10879,6 +10940,16 @@
               }
             ],
             "title": "Last Metrics"
+          },
+          "character": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CharacterStatusOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "last_wifi_scan": {
             "anyOf": [
