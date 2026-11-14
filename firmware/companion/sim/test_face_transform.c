@@ -72,6 +72,64 @@ static void test_expanded_rotation(void)
     CHECK(!memcmp(before,output,sizeof before));
 }
 
+static void test_rotated_bounds_contain_pixels(void)
+{
+    static uint32_t input[40*40], output[160*160];
+    for (unsigned i=0;i<40u*40u;++i) input[i]=0xffffffffu;
+    uint32_t random=0x142857u;
+    for (int n=0;n<240;++n) {
+        random=random*1664525u+1013904223u; uint32_t w=1+random%40;
+        random=random*1664525u+1013904223u; uint32_t h=1+random%40;
+        random=random*1664525u+1013904223u; int px=(int)(random%w);
+        random=random*1664525u+1013904223u; int py=(int)(random%h);
+        random=random*1664525u+1013904223u; int angle=(int)(random%7199)-3599;
+        face_raster_bounds_t bound;
+        face_raster_surface_t s={.pixels=input,.width=w,.height=h,.stride=40,.capacity=40u*40u};
+        face_raster_surface_t d={.pixels=output,.width=160,.height=160,.stride=160,.capacity=160u*160u};
+        CHECK(face_lvgl_rotation_bounds(w,h,px,py,angle,&bound));
+        CHECK(face_lvgl_rotate_region(&s,&d,px,py,angle,-80,-80));
+        for (int y=0;y<160;++y) for (int x=0;x<160;++x)
+            if (output[y*160+x]>>24)
+                CHECK((x-80)>=bound.left && (x-80)<bound.right && (y-80)>=bound.top && (y-80)<bound.bottom);
+    }
+    face_raster_surface_t small={.pixels=input,.width=8,.height=6,.stride=40,.capacity=40u*40u};
+    face_raster_surface_t tile={.pixels=output,.width=64,.height=64,.stride=64,.capacity=160u*160u};
+    for (int pivot=0;pivot<2;++pivot) for (int angle=0;angle<3600;++angle) {
+        int px=pivot?7:0, py=pivot?5:0;
+        face_raster_bounds_t bound;
+        CHECK(face_lvgl_rotation_bounds(8,6,px,py,angle,&bound));
+        if (angle) {
+            face_raster_bounds_t equivalent;
+            CHECK(face_lvgl_rotation_bounds(8,6,px,py,angle-3600,&equivalent));
+            CHECK(!memcmp(&bound,&equivalent,sizeof bound));
+        }
+        CHECK(face_lvgl_rotate_region(&small,&tile,px,py,angle,-24,-24));
+        for (int y=0;y<64;++y) for (int x=0;x<64;++x)
+            if (output[y*64+x]>>24)
+                CHECK((x-24)>=bound.left && (x-24)<bound.right && (y-24)>=bound.top && (y-24)<bound.bottom);
+    }
+    face_raster_bounds_t b={7,8,9,10};
+    CHECK(face_lvgl_rotation_bounds(40,20,5,9,0,&b));
+    CHECK_EQ(b.left,0); CHECK_EQ(b.top,0); CHECK_EQ(b.right,40); CHECK_EQ(b.bottom,20);
+    face_raster_bounds_t saved=b;
+    CHECK(!face_lvgl_rotation_bounds(513,20,5,9,0,&b));
+    CHECK(!face_lvgl_rotation_bounds(40,20,40,9,0,&b));
+    CHECK(!face_lvgl_rotation_bounds(40,20,5,9,3600,&b));
+    CHECK(!memcmp(&b,&saved,sizeof b));
+
+    /* Known visible pixel two rows outside LVGL's forward corner rectangle. */
+    static uint32_t large[467*457], column[71];
+    for (unsigned i=0;i<467u*457u;++i) large[i]=0xffffffffu;
+    face_raster_surface_t s={.pixels=large,.width=467,.height=457,.stride=467,.capacity=467u*457u};
+    face_raster_surface_t d={.pixels=column,.width=1,.height=71,.stride=1,.capacity=71};
+    CHECK(face_lvgl_rotation_bounds(467,457,83,0,529,&b));
+    CHECK(face_lvgl_rotate_region(&s,&d,83,0,529,-50,511));
+    CHECK(column[70]>>24);
+    CHECK(-50>=b.left && -50<b.right && 581>=b.top && 581<b.bottom);
+    CHECK(face_lvgl_rotation_bounds(512,512,511,0,-1350,&b));
+    CHECK(1200>=b.left && 1200<b.right && 0>=b.top && 0<b.bottom);
+}
+
 int main(void)
 {
     sim_init(); sim_partial();
@@ -124,5 +182,6 @@ int main(void)
     CHECK(!memcmp(before,dest,sizeof dest));
     lv_obj_delete(image);
     test_expanded_rotation();
+    test_rotated_bounds_contain_pixels();
     return g_failed ? 1 : 0;
 }

@@ -20,3 +20,9 @@ bool face_lvgl_rotate(const face_raster_surface_t *src, face_raster_surface_t *d
 bool face_lvgl_rotate_region(const face_raster_surface_t *src, face_raster_surface_t *dst,
                              int32_t pivot_x, int32_t pivot_y, int32_t angle10,
                              int32_t origin_x, int32_t origin_y);
+
+/* Conservative half-open bound of every potentially nontransparent output
+ * pixel, in source coordinates. It may exceed the adapter's output limits;
+ * invalid inputs and unsupported LVGL configurations leave out unchanged. */
+bool face_lvgl_rotation_bounds(uint32_t width, uint32_t height, int32_t pivot_x, int32_t pivot_y,
+                               int32_t angle10, face_raster_bounds_t *out);
