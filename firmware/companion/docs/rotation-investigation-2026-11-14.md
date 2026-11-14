@@ -352,3 +352,45 @@ theft, fail-stop mismatch handling and the successful registration/deletion
 case. Correct target ABI, configuration, ISR exclusion, ownership, lifetime
 and all other LVGL allocation failures require separate proof. None of these
 experiments is integrated into the firmware.
+
+## Delayed flush and builtin decoder wrapper probes
+
+An isolated host harness held the submitted RGB565 display buffer until a
+simulated flush-wait or explicit completion. At 100% and 130%, respectively,
+112/112 and 131/131 submitted transfers completed with no detected changes to
+pending pixels. Updating, deleting and recreating the face, and invalidating it
+while a transfer was pending each matched a forced full redraw. Deletion
+poisoned and freed the two tracked eye bitmaps while an eye-window transfer was
+pending. A deliberate display-buffer corruption was detected by the negative
+control. `RENDER_READY` occurred with a transfer pending 13 times at each scale:
+it is not a DMA completion fence. Under the tested serialized software-renderer
+schedule, the results support a source-bitmap lifetime fence at refresh return;
+they do not prove asynchronous renderer, concurrent mutation, actual DMA,
+missing completion, cache coherency or board behavior. See ignored
+`lifecycle-delay/README.md` for the harness and limitations.
+
+Another host-only diagnostic wrapped the existing builtin decoder callbacks,
+for one exact prepared-buffer pointer, avoiding a new decoder registration and
+allocation for the tested open/close. Existing A8 decoding and a partial display
+redraw also passed, with and without selected cache settings. This global hook
+is not integrated and is not safe as written: a higher-priority decoder can
+claim the source first (demonstrated), pre-existing cache entries can bypass the
+wrapper, and callback replacement, open sessions and multiple source lifetimes
+need serialization and quiescence. Review also found unresolved buffer ownership
+and `ALLOCATED`-flag, stride-alignment, and retained get-area callback hazards.
+The diagnostic's static buffer and single-source tests do not prove those cases.
+The diagnostic alone passed ASan/UBSan with prebuilt LVGL uninstrumented and
+leak detection disabled. See ignored `decoder-wrap/README.md` for details; this
+does not make ordinary LVGL drawing or other decoding allocations recoverable.
+
+An eye-only CSS comparison sampled three mood switches at 100% and 130%,
+using the continuous-raster host prototype. Calm-to-curious CSS changes the
+eye dimensions immediately, whereas the host interpolates the numeric
+geometry; the objective explicitly requires per-frame springs, so the CSS
+class-switch instant is not by itself an instruction to remove interpolation.
+A separate measured difference is the wink and group-motion easing: at the
+sampled mischief wink onset, CSS scaleY was 0.833 and the host openness was
+0.946; animation phase and renderer differences also affect the pictures. All
+66 sampled host frames used the bitmap path, but finite samples do not cover
+fallback or every transition. The comparison is descriptive, not an approved
+pixel threshold; see ignored `design-transition/README.md` and its frames.
