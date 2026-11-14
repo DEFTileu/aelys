@@ -394,3 +394,25 @@ sampled mischief wink onset, CSS scaleY was 0.833 and the host openness was
 66 sampled host frames used the bitmap path, but finite samples do not cover
 fallback or every transition. The comparison is descriptive, not an approved
 pixel threshold; see ignored `design-transition/README.md` and its frames.
+
+## Borrowed bitmap draw-task experiment
+
+A separate host-only LVGL 9.6 source copy adds an ordered software draw task
+for a caller-owned, already-decoded ARGB bitmap. It uses the captured task
+clip and the software blend path without registering or opening an image
+decoder. Task creation makes one checked LVGL allocation; the ordinary task
+path retains its malloc assertion. In seven synthetic cases, the result matched
+ordinary decoded-image rendering for selected full and partial buffers, clips,
+overlays and intermediate layers in RGB565, RGB565-swapped and ARGB8888.
+Swapped rendering was enabled locally for the test, not verified on hardware.
+Injected failure of the new task allocation left tested queues unchanged; it
+omitted the image and is not a complete fallback policy. Forty-one observed
+borrowed blends made zero allocator calls, not a claim about all refresh costs.
+
+The test and an ASan/UBSan build instrumenting both LVGL and the harness were
+independently rerun successfully; leak detection was disabled. This is an
+unintegrated private LVGL patch, not a complete S2 solution: buffer capacity,
+borrowed lifetime, asynchronous execution, dispatch guards, multi-strip
+failure and recovery, real rotation frames, broader LVGL OOM behavior and target
+performance remain unproven. See ignored `borrowed-task/report.md` for test
+configurations, source and reproduction instructions.
