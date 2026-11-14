@@ -225,7 +225,8 @@ static void on_command(const proto_msg_t *m)
 /* Lost mode shows no cached data. A session that was running before the power cut is not running now: drop it. */
 static bool load_snap(snap_t *s)
 {
-    if (lost.on || !store_load_snap(s)) return false;
+    uint8_t active_pub[STORE_SNAP_OWNER_LEN];
+    if (lost.on || identity_active_pub(active_pub) != ESP_OK || !store_load_snap(s, active_pub)) return false;
     s->focus.status = FOCUS_NONE;
     return true;
 }
@@ -233,7 +234,11 @@ static void erase_snap(void)
 {
     if (store_erase_snap() != ESP_OK) ESP_LOGW(TAG, "cached snapshot not erased"); /* flash may keep the old owner's data */
 }
-static void save_snap(const snap_t *s) { store_save_snap(s); }
+static void save_snap(const snap_t *s)
+{
+    uint8_t active_pub[STORE_SNAP_OWNER_LEN];
+    if (identity_active_pub(active_pub) == ESP_OK) store_save_snap(s, active_pub);
+}
 static const char *contact_phone(void) { return owner.phone; }
 static const char *contact_telegram(void) { return owner.telegram; }
 /* A new pairing or a wipe: the next account's rev counters start again, or its lost_mode/ice_update would be dropped as stale. */

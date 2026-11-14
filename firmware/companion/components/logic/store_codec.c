@@ -1,7 +1,7 @@
 #include <string.h>
 #include "store_codec.h"
 
-/* No padding anywhere, so the in-memory layout is the blob layout. */
+/* Legacy blobs use in-memory layouts; the owned snapshot zeros its padding. */
 _Static_assert(sizeof(owner_info_t) == 33 + 24 + 33 + 49 + 97 + 65 + 97 + 2 * 33 + 2 * 17 + 2 * 24 + 2 + 4, "owner layout");
 _Static_assert(sizeof(wifi_list_t) == 1 + WIFI_MAX * (33 + 65), "wifi layout");
 _Static_assert(sizeof(pair_rec_t) == 40 + 129 + 32, "pair layout");
@@ -197,6 +197,72 @@ bool store_decode_snap(const uint8_t *buf, size_t len, snap_t *out)
     snap_t s;
     memcpy(&s, p, sizeof s);
     if (s.n_notices > 5 || s.focus.status > FOCUS_PAUSED) return false;
+    TERM(s.task.id); TERM(s.task.title); TERM(s.event.id); TERM(s.event.title);
+    TERM(s.focus.id); TERM(s.focus.mode);
+    for (int i = 0; i < 5; i++) { TERM(s.notices[i].id); TERM(s.notices[i].kind); TERM(s.notices[i].title); }
+    *out = s;
+    return true;
+}
+
+/* Write members individually: snap_t contains alignment padding, which must not
+ * become persisted data. Strings are terminated and their unused tails zeroed. */
+static void snapshot_payload(uint8_t *p, const snap_t *s)
+{
+    memset(p, 0, sizeof *s);
+#define SCALAR(f) memcpy(p + offsetof(snap_t, f), &s->f, sizeof s->f)
+#define STRING(f) do { \
+    size_t i = 0; \
+    while (i + 1 < sizeof s->f && s->f[i]) { \
+        p[offsetof(snap_t, f) + i] = (uint8_t)s->f[i]; i++; \
+    } \
+} while (0)
+    SCALAR(generated); SCALAR(has_task); SCALAR(has_event);
+    STRING(task.id); STRING(task.title); SCALAR(task.due);
+    STRING(event.id); STRING(event.title); SCALAR(event.starts); SCALAR(event.ends);
+    SCALAR(event.all_day); SCALAR(event.has_end);
+    SCALAR(overdue); SCALAR(unread); SCALAR(other_unread); SCALAR(today_done); SCALAR(today_total);
+    SCALAR(n_notices);
+    for (size_t i = 0; i < 5; i++) {
+        size_t base = offsetof(snap_t, notices) + i * sizeof(snap_notice_t);
+#define NOTICE_STRING(f) do { \
+        size_t j = 0; \
+        while (j + 1 < sizeof s->notices[i].f && s->notices[i].f[j]) { \
+            p[base + offsetof(snap_notice_t, f) + j] = (uint8_t)s->notices[i].f[j]; j++; \
+        } \
+    } while (0)
+        NOTICE_STRING(id); NOTICE_STRING(kind); NOTICE_STRING(title);
+#undef NOTICE_STRING
+        memcpy(p + base + offsetof(snap_notice_t, created), &s->notices[i].created, sizeof s->notices[i].created);
+    }
+    STRING(focus.id); SCALAR(focus.status); STRING(focus.mode); SCALAR(focus.started); SCALAR(focus.elapsed_s);
+#undef STRING
+#undef SCALAR
+}
+
+size_t store_encode_snap_owned(const snap_t *in, const uint8_t *owner, uint8_t *buf, size_t cap)
+{
+    if (!in || !owner || !buf || cap < STORE_SNAP_OWNED_BLOB ||
+        in->n_notices > 5 || in->focus.status > FOCUS_PAUSED) return 0;
+    buf[0] = STORE_SNAP_OWNED_VERSION;
+    memcpy(buf + 1, owner, STORE_SNAP_OWNER_LEN);
+    snapshot_payload(buf + 1 + STORE_SNAP_OWNER_LEN, in);
+    uint32_t crc = store_crc32(buf, STORE_SNAP_OWNED_BLOB - 4);
+    for (int i = 0; i < 4; i++) buf[STORE_SNAP_OWNED_BLOB - 4 + i] = (uint8_t)(crc >> (8 * i));
+    return STORE_SNAP_OWNED_BLOB;
+}
+
+bool store_decode_snap_owned(const uint8_t *buf, size_t len, const uint8_t *owner, snap_t *out)
+{
+    if (!owner || !out) return false;
+    const uint8_t *p = unseal(STORE_SNAP_OWNED_VERSION, buf, len, STORE_SNAP_OWNER_LEN + sizeof(snap_t));
+    if (!p || memcmp(p, owner, STORE_SNAP_OWNER_LEN) != 0) return false;
+    p += STORE_SNAP_OWNER_LEN;
+    /* Validate boolean representations before copying them into a C bool. */
+    if (p[offsetof(snap_t, has_task)] > 1 || p[offsetof(snap_t, has_event)] > 1 ||
+        p[offsetof(snap_t, event.all_day)] > 1 || p[offsetof(snap_t, event.has_end)] > 1 ||
+        p[offsetof(snap_t, n_notices)] > 5 || p[offsetof(snap_t, focus.status)] > FOCUS_PAUSED) return false;
+    snap_t s;
+    memcpy(&s, p, sizeof s);
     TERM(s.task.id); TERM(s.task.title); TERM(s.event.id); TERM(s.event.title);
     TERM(s.focus.id); TERM(s.focus.mode);
     for (int i = 0; i < 5; i++) { TERM(s.notices[i].id); TERM(s.notices[i].kind); TERM(s.notices[i].title); }

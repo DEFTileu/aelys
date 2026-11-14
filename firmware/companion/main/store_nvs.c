@@ -141,20 +141,21 @@ static esp_err_t erase_key(const char *key)
 
 esp_err_t store_erase_pair(void) { return erase_key("pair"); }
 
-bool store_load_snap(snap_t *s)
+bool store_load_snap(snap_t *s, const uint8_t owner[STORE_SNAP_OWNER_LEN])
 {
-    uint8_t *b = malloc(STORE_SNAP_BLOB); /* ~1.1 KB, only while reading */
+    uint8_t *b = malloc(STORE_SNAP_OWNED_BLOB);
     if (!b) return false;
-    bool ok = read_blob("snap", b, STORE_SNAP_BLOB) == STORE_SNAP_BLOB && store_decode_snap(b, STORE_SNAP_BLOB, s);
+    bool ok = read_blob("snap", b, STORE_SNAP_OWNED_BLOB) == STORE_SNAP_OWNED_BLOB &&
+              store_decode_snap_owned(b, STORE_SNAP_OWNED_BLOB, owner, s);
     free(b);
     return ok;
 }
 
-esp_err_t store_save_snap(const snap_t *s)
+esp_err_t store_save_snap(const snap_t *s, const uint8_t owner[STORE_SNAP_OWNER_LEN])
 {
-    uint8_t *b = malloc(STORE_SNAP_BLOB);
+    uint8_t *b = malloc(STORE_SNAP_OWNED_BLOB);
     if (!b) return ESP_ERR_NO_MEM;
-    size_t n = store_encode_snap(s, b, STORE_SNAP_BLOB);
+    size_t n = store_encode_snap_owned(s, owner, b, STORE_SNAP_OWNED_BLOB);
     esp_err_t err = n ? write_blob("snap", b, n) : ESP_ERR_INVALID_SIZE;
     free(b);
     return err;

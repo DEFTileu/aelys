@@ -76,6 +76,7 @@ static atomic_bool act_queued;
 static volatile uint32_t heap_conn_min, tls_fail;
 static uint32_t backoff_deadline, connect_deadline, open_ms, last_hb, last_metrics, last_snap_save, net_ups, reconnects;
 static bool stable_sent, net_up, snap_dirty, wipe_retry;
+static bool snapshot_notify_pending, snapshot_notify_live; /* link task only */
 static uint32_t seen_seq;             /* paired_seq the task has acted on */
 static uint32_t login_seq;            /* identity that obtained the pending token */
 static uint8_t ui_posted;
@@ -126,9 +127,13 @@ static uint8_t ui_state(link_state_t s)
     }
 }
 
-static void ui_post(const ui_event_t *ev)
+static bool ui_post(const ui_event_t *ev)
 {
-    for (int i = 0; i < 5 && !lv_port_post(ev); i++) vTaskDelay(pdMS_TO_TICKS(10));
+    for (int i = 0; i < 5; i++) {
+        if (lv_port_post(ev)) return true;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return false;
 }
 
 static void sync_ui(void)
@@ -152,7 +157,8 @@ static void publish_snapshot(const snap_t *s, bool live)
     memcpy(tribuf_back(&ui_snap_tb), s, sizeof *s);
     tribuf_publish(&ui_snap_tb);
     ui_event_t ev = {.type = UI_EV_SNAPSHOT, .len = 1, .data = {live}};
-    ui_post(&ev);
+    snapshot_notify_live = live;
+    snapshot_notify_pending = !ui_post(&ev);
 }
 
 /* ------------------------------------------------------------------ sending */
@@ -504,6 +510,11 @@ static void handle_paired(void)
     xSemaphoreGive(act_mu);
     wipe_retry = false; /* a wipe of the old identity must not eat the new one */
     n_held = 0;
+    /* Never persist or publish a snapshot received under the old identity. */
+    memset(&link_mem->snap, 0, sizeof link_mem->snap);
+    link_mem->snap.other_unread = link_mem->snap.today_done = link_mem->snap.today_total = -1;
+    snap_dirty = false; last_snap_save = 0;
+    publish_snapshot(&link_mem->snap, false);
     if (link_deps.reset_revs) link_deps.reset_revs(); /* new account: its revisions start again */
     dispatch(LE_PAIRED, 0);
     xSemaphoreTake(act_mu, portMAX_DELAY);
@@ -611,13 +622,24 @@ static void tick(void)
     size_t k = link_acts_expire(&acts, ms(), ctx.expired);
     xSemaphoreGive(act_mu);
     for (size_t i = 0; i < k; i++) post_action_result(ctx.expired[i].kind, false, ctx.expired[i].sent ? "TIMEOUT" : "OFFLINE");
-    if (link_deps.save_snap &&
+    /* Capture and save under the pairing barrier, so the current identity cannot
+       change between selecting the snapshot and tagging/writing its owner. */
+    xSemaphoreTake(pair_send_mu, portMAX_DELAY);
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    bool save_allowed = !pair_transition_pending;
+    xSemaphoreGive(act_mu);
+    if (save_allowed && link_deps.save_snap &&
         link_snap_save_due(snap_dirty, link_deps.lost_on && link_deps.lost_on(), last_snap_save == 0, (uint32_t)(ms() - last_snap_save))) {
         snap_dirty = false;
         last_snap_save = ms() | 1u; /* 0 means never */
         link_deps.save_snap(&link_mem->snap);
     }
+    xSemaphoreGive(pair_send_mu);
     if (wipe_retry) try_wipe();
+    if (snapshot_notify_pending) {
+        ui_event_t ev = {.type = UI_EV_SNAPSHOT, .len = 1, .data = {snapshot_notify_live}};
+        if (lv_port_post(&ev)) snapshot_notify_pending = false;
+    }
     sync_ui();
 }
 
@@ -631,7 +653,7 @@ static void link_task(void *arg)
     atomic_store_explicit(&probe_state, (int)fsm.st, memory_order_relaxed);
 #endif
     ui_posted = paired ? LINK_UI_OFFLINE : LINK_UI_UNPAIRED; /* what app_main already showed at boot */
-    if (link_deps.load_snap && link_deps.load_snap(&link_mem->snap)) publish_snapshot(&link_mem->snap, false);
+    if (paired && link_deps.load_snap && link_deps.load_snap(&link_mem->snap)) publish_snapshot(&link_mem->snap, false);
     ESP_LOGW(TAG, "link started: paired=%d", paired);
     atomic_store_explicit(&link_task_ready, true, memory_order_release);
     for (;;) {

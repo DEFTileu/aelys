@@ -24,8 +24,8 @@ esp_err_t store_erase_pair(void);                /* ESP_OK also when there was n
 
 /* The last companion snapshot, shown until the server sends a fresh one. A raw struct dump (store_codec): [version][snap_t][CRC32]; a
  * blob from a different snap_t layout (size or version) is ignored, never half-read. */
-bool store_load_snap(snap_t *s);                 /* false if absent, corrupt or from another layout; *s untouched */
-esp_err_t store_save_snap(const snap_t *s);
+bool store_load_snap(snap_t *s, const uint8_t owner[STORE_SNAP_OWNER_LEN]);                 /* false if absent, corrupt or from another layout; *s untouched */
+esp_err_t store_save_snap(const snap_t *s, const uint8_t owner[STORE_SNAP_OWNER_LEN]);
 esp_err_t store_erase_snap(void);                /* ESP_OK also when there was none */
 
 /* Unpair command: erases the Wi-Fi list, owner, lost, settings and snap blobs (the pairing goes through identity_wipe). The only

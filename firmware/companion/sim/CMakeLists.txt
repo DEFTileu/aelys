@@ -100,7 +100,7 @@ foreach(harness lifecycle inbound)
         ${CMAKE_CURRENT_SOURCE_DIR}/../components/identity/include)
     target_link_libraries(pairing_gate_${harness} PRIVATE logic Threads::Threads)
 endforeach()
-foreach(scenario sent unsent completed expired inflight admission admission-first lost-on lost-missing startup-pair startup-failure login-pair-connect)
+foreach(scenario sent unsent completed expired inflight admission admission-first lost-on lost-missing startup-pair startup-failure login-pair-connect cache-dirty cache-save-race cache-unpaired ui-clear-retry)
     add_test(NAME pairing_gate_lifecycle_${scenario} COMMAND pairing_gate_lifecycle ${scenario})
     set_tests_properties(pairing_gate_lifecycle_${scenario} PROPERTIES TIMEOUT 15)
 endforeach()
@@ -108,3 +108,16 @@ foreach(scenario command result snapshot)
     add_test(NAME pairing_gate_inbound_${scenario} COMMAND pairing_gate_inbound ${scenario})
     set_tests_properties(pairing_gate_inbound_${scenario} PROPERTIES TIMEOUT 15)
 endforeach()
+
+# Exercise the real NVS adapter and snapshot codec against a host-only RAM fake.
+add_executable(test_owned_nvs
+    owned_nvs/test.c
+    ../main/store_nvs.c
+    ../components/logic/store_codec.c)
+target_include_directories(test_owned_nvs PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/owned_nvs/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../main
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/logic/include)
+target_compile_definitions(test_owned_nvs PRIVATE explicit_bzero=owned_nvs_explicit_bzero)
+target_compile_options(test_owned_nvs PRIVATE -Wall -Wextra)
+add_test(NAME test_owned_nvs COMMAND test_owned_nvs)

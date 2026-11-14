@@ -382,6 +382,75 @@ static void test_snap_overlong_and_bad_counts_are_made_safe(void)
     CHECK(!store_decode_snap(buf, sizeof buf, &out));
 }
 
+#define TEST_OWNER_LEN 65
+#define TEST_BOUND_BLOB (1 + TEST_OWNER_LEN + sizeof(snap_t) + 4)
+
+static void test_owned_snapshot(void)
+{
+    snap_t in, out, sentinel;
+    uint8_t owner[TEST_OWNER_LEN] = {4, 1}, other[TEST_OWNER_LEN] = {4, 2};
+    uint8_t b[TEST_BOUND_BLOB + 1], canonical[TEST_BOUND_BLOB];
+    fill_snap(&in);
+    memset(b, 0xa5, sizeof b);
+    size_t n = store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB);
+    CHECK_EQ(n, 1 + 65 + 1088 + 4);
+    if (n != TEST_BOUND_BLOB) return;
+    CHECK_EQ(b[0], 2);
+    CHECK(memcmp(b + 1, owner, 65) == 0);
+    CHECK_EQ(b[TEST_BOUND_BLOB], 0xa5);
+    CHECK(store_decode_snap_owned(b, n, owner, &out));
+    CHECK_EQ(out.generated, in.generated);
+    CHECK(strcmp(out.task.title, in.task.title) == 0);
+    CHECK_EQ(out.focus.elapsed_s, in.focus.elapsed_s);
+    memcpy(canonical, b, n);
+    /* Deliberately dirty structure padding and the unused tail of a string. */
+    ((uint8_t *)&in)[offsetof(snap_t, task) + offsetof(snap_task_t, title) + sizeof in.task.title] = 0xcc;
+    in.task.id[10] = 'X';
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB), n);
+    CHECK(memcmp(b, canonical, n) == 0);
+
+    memset(&sentinel, 0xa5, sizeof sentinel);
+    memcpy(&out, &sentinel, sizeof out);
+#define REJECT(expr) do { CHECK(!(expr)); CHECK(memcmp(&out, &sentinel, sizeof out) == 0); } while (0)
+    REJECT(store_decode_snap_owned(b, n, other, &out));
+    memcpy(other, owner, sizeof other); other[64] ^= 1;
+    REJECT(store_decode_snap_owned(b, n, other, &out));
+    REJECT(store_decode_snap_owned(b, n, NULL, &out));
+    REJECT(store_decode_snap_owned(NULL, n, owner, &out));
+    REJECT(store_decode_snap_owned(b, n - 1, owner, &out));
+    REJECT(store_decode_snap_owned(b, n + 1, owner, &out));
+    CHECK(!store_decode_snap_owned(b, n, owner, NULL));
+    b[n - 1] ^= 1; REJECT(store_decode_snap_owned(b, n, owner, &out)); b[n - 1] ^= 1;
+    b[1] ^= 1; REJECT(store_decode_snap_owned(b, n, owner, &out)); b[1] ^= 1;
+    b[1] ^= 1; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + 10] ^= 1; REJECT(store_decode_snap_owned(b, n, owner, &out)); b[1 + 65 + 10] ^= 1;
+    b[0] = 3; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, n_notices)] = 6; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, focus.status)] = 9; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, has_task)] = 2; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    uint8_t legacy[STORE_SNAP_BLOB];
+    CHECK_EQ(store_encode_snap(&in, legacy, sizeof legacy), sizeof legacy);
+    REJECT(store_decode_snap_owned(legacy, sizeof legacy, owner, &out));
+#undef REJECT
+    memset(b, 0xa5, sizeof b);
+    CHECK_EQ(store_encode_snap_owned(&in, NULL, b, TEST_BOUND_BLOB), 0);
+    CHECK_EQ(store_encode_snap_owned(NULL, owner, b, TEST_BOUND_BLOB), 0);
+    CHECK_EQ(store_encode_snap_owned(&in, owner, NULL, TEST_BOUND_BLOB), 0);
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB - 1), 0);
+    in.n_notices = 6;
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB), 0);
+    in.n_notices = 0; in.focus.status = 9;
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB), 0);
+    for (size_t i = 0; i < sizeof b; i++) CHECK_EQ(b[i], 0xa5);
+}
+
 static void test_settings_roundtrip_and_bounds(void)
 {
     settings_t in = { .brightness = 35, .rev = 7 }, out = { 0 }; uint8_t buf[STORE_SETTINGS_BLOB];
@@ -425,6 +494,7 @@ int main(void)
     test_lost_roundtrip();
     test_ice_rev_survives_the_owner_blob();
     test_pair_roundtrip_and_corrupt();
+    test_owned_snapshot();
     test_snap_roundtrip();
     test_snap_overlong_and_bad_counts_are_made_safe();
     test_settings_roundtrip_and_bounds();

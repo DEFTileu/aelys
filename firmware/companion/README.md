@@ -36,7 +36,7 @@ Pairing steps are refused in lost mode (error 0x80). Details: `docs/companion-pr
 
 ## The link
 
-`components/link` signs in by the device key (challenge, signature, login; no refresh token, so it signs in again when the access token expires) and keeps one `wss` channel to `/api/v1/devices/channel`. Commands with a `rev` (`lost_mode`, `ice_update`, `settings`) apply only when the `rev` is newer than the stored one, and are always acked. The pairing is wiped only when a challenge answers 401 `UNAUTHORIZED`; every other failure (DNS, TLS, 429, 5xx, close 4401/4403) only backs off. State is cached in NVS and shown offline. Contract: `docs/companion-protocol.md`.
+`components/link` signs in by the device key (challenge, signature, login; no refresh token, so it signs in again when the access token expires) and keeps one `wss` channel to `/api/v1/devices/channel`. Commands with a `rev` (`lost_mode`, `ice_update`, `settings`) apply only when the `rev` is newer than the stored one, and are always acked. The pairing is wiped only when a challenge answers 401 `UNAUTHORIZED`; every other failure (DNS, TLS, 429, 5xx, close 4401/4403) only backs off. State is cached in NVS and shown offline only when the cache identifies the active pairing key. Legacy snapshots without an owner tag are ignored until a fresh snapshot is received; the old blob is not erased by this upgrade. Contract: `docs/companion-protocol.md`.
 
 ## Device commands
 

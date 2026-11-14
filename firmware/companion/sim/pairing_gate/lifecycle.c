@@ -25,15 +25,28 @@ static size_t qhead, qtail;
 static char captured[8][1024], captured_owner[8][40];
 static size_t capture_n;
 static int resets;
+static bool ui_queue_full;
+static int snapshot_posts, snapshot_rejected;
+static ui_event_t last_snapshot_event;
+static snap_t ui_snapshot_slots[3];
 static pthread_mutex_t action_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
 static unsigned mutex_creations;
+static pthread_mutex_t extra_mutexes[4] = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER };
 static pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t gate_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t gate_cond = PTHREAD_COND_INITIALIZER;
 static bool block_send, send_entered, release_send, commit_done, block_commit, commit_entered, release_commit;
 static bool watch_action_wait, action_waiting;
 static size_t commit_capture_count;
+/* The cache fake models one durable flash slot, with explicit save/commit ordering. */
+static snap_t cached_snapshot;
+static char cached_owner[40];
+static bool cache_present;
+static int cache_saves, cache_loads, old_snapshot_saved_as_new;
+static bool pause_save, save_entered, release_save, save_finished;
+static bool pair_finished, pair_waiting, commit_during_save;
+static pair_result_t concurrent_pair_result;
 static _Thread_local bool admission_thread;
 static bool pause_admission, admission_locked, release_admission;
 static void lock(pthread_mutex_t *m) { assert(pthread_mutex_lock(m)==0); }
@@ -62,12 +75,17 @@ int xTaskCreatePinnedToCore(void (*fn)(void *), const char *name, unsigned stack
 QueueHandle_t xQueueCreate(unsigned n, unsigned s) { assert(n <= 32 && s == sizeof(lq_t)); return queue_items; }
 int xQueueSend(QueueHandle_t qh, const void *p, unsigned t) { (void)qh;(void)t; lock(&queue_mutex); assert(qtail < 32); queue_items[qtail++] = *(const lq_t *)p; unlock(&queue_mutex); return pdTRUE; }
 int xQueueReceive(QueueHandle_t qh, void *p, unsigned t) { if (stop_task_at_receive) { stop_task_at_receive=false; longjmp(task_started,1); } (void)qh;(void)t; lock(&queue_mutex); if (qhead == qtail) { unlock(&queue_mutex); return 0; } *(lq_t *)p = queue_items[qhead++]; unlock(&queue_mutex); return pdTRUE; }
-SemaphoreHandle_t xSemaphoreCreateMutex(void) { return mutex_creations++ == 0 ? &action_mutex : &send_mutex; }
+SemaphoreHandle_t xSemaphoreCreateMutex(void) {
+    unsigned n=mutex_creations++;
+    assert(n < 6);
+    return n==0 ? &action_mutex : n==1 ? &send_mutex : &extra_mutexes[n-2];
+}
 int xSemaphoreTake(SemaphoreHandle_t s, unsigned t) {
     int r=pthread_mutex_trylock(s);
     if (r == EBUSY) {
         lock(&gate_mutex);
         if (s == &action_mutex && watch_action_wait) { action_waiting=true; signal_gate(); }
+        if (pause_save) { pair_waiting=true; signal_gate(); }
         unlock(&gate_mutex);
         if (t==0) return 0;
         assert(t==portMAX_DELAY); lock(s);
@@ -86,12 +104,19 @@ const char *esp_err_to_name(esp_err_t e) { (void)e; return "stub"; }
 #if !defined(__APPLE__)
 size_t strlcpy(char *d,const char *s,size_t cap) { size_t n=strlen(s); if(cap){size_t k=n<cap-1?n:cap-1; memcpy(d,s,k); d[k]=0;} return n; }
 #endif
-bool lv_port_post(const ui_event_t *e) { (void)e; return true; }
+bool lv_port_post(const ui_event_t *e) {
+    if (ui_queue_full) {
+        if (e->type==UI_EV_SNAPSHOT) snapshot_rejected++;
+        return false;
+    }
+    if (e->type==UI_EV_SNAPSHOT) { snapshot_posts++; last_snapshot_event=*e; }
+    return true;
+}
 bool board_battery(uint8_t *p, bool *c) { (void)p;(void)c; return false; }
 bool identity_paired(void) { return paired; }
 esp_err_t identity_pair_commit(const char *id) {
     lock(&gate_mutex);
-    commit_entered=true; signal_gate();
+    commit_entered=true; if (pause_save && !save_finished) commit_during_save=true; signal_gate();
     if (block_commit) await_gate(&release_commit);
     strlcpy(device,id,sizeof device); commit_capture_count=capture_n; commit_done=true; signal_gate();
     unlock(&gate_mutex); return ESP_OK;
@@ -119,6 +144,38 @@ bool link_ws_send(const char *json,size_t n) {
 }
 void link_cmd_handle(const proto_msg_t *m,bool ok) { (void)m;(void)ok; }
 static void reset_revs(void) { resets++; }
+static void save_snapshot(const snap_t *snap) {
+    lock(&gate_mutex);
+    if (pause_save) { save_entered=true; signal_gate(); await_gate(&release_save); }
+    if (!strcmp(device,"new-device") && snap->unread==37) old_snapshot_saved_as_new++;
+    cached_snapshot=*snap; strlcpy(cached_owner,device,sizeof cached_owner); cache_present=true;
+    cache_saves++; save_finished=true; signal_gate();
+    unlock(&gate_mutex);
+}
+static bool load_snapshot(snap_t *snap) {
+    lock(&gate_mutex);
+    cache_loads++;
+    bool found=paired && cache_present && !strcmp(cached_owner,device);
+    if (found) *snap=cached_snapshot;
+    unlock(&gate_mutex);
+    return found;
+}
+static void erase_snapshot(void) {
+    lock(&gate_mutex); cache_present=false; memset(&cached_snapshot,0,sizeof cached_snapshot); cached_owner[0]=0; unlock(&gate_mutex);
+}
+static void receive_snapshot(void) {
+    const char *frame="{\"type\":\"snapshot\",\"snapshot\":{\"generated_at\":\"2026-11-13T09:30:00Z\",\"unread_count\":37}}";
+    strlcpy(link_mem->rx[0],frame,sizeof link_mem->rx[0]);
+    assert(link_q_post(LQ_WS_FRAME,link_ws_gen(),0,(int)strlen(frame)));
+    lq_t e; assert(xQueueReceive(q,&e,0) && e.kind==LQ_WS_FRAME); handle_q(&e);
+    assert(link_mem->snap.unread==37 && snap_dirty);
+}
+static void *save_tick(void *arg) { (void)arg; tick(); return NULL; }
+static void *race_pair(void *arg) {
+    (void)arg; pair_result_t result=link_pair_commit("new-device");
+    lock(&gate_mutex); concurrent_pair_result=result; pair_finished=true; signal_gate(); unlock(&gate_mutex);
+    return NULL;
+}
 static void pump(void) { lq_t e; while(xQueueReceive(q,&e,0)) handle_q(&e); tick(); }
 static void ready(void) { char json[128]; snprintf(json,sizeof json,"{\"type\":\"ready\",\"device_id\":\"%s\"}",device); strlcpy(link_mem->rx[0],json,sizeof link_mem->rx[0]); assert(link_q_post(LQ_WS_FRAME,link_ws_gen(),0,(int)strlen(json))); pump(); assert(fsm.st==LS_ONLINE); }
 static void result(const char *id) { char json[160]; snprintf(json,sizeof json,"{\"type\":\"action_result\",\"id\":\"%s\",\"ok\":true}",id); strlcpy(link_mem->rx[0],json,sizeof link_mem->rx[0]); assert(link_q_post(LQ_WS_FRAME,link_ws_gen(),0,(int)strlen(json))); pump(); }
@@ -182,6 +239,15 @@ static void concurrency_case(const char *name) {
 }
 int main(int argc,char **argv) {
     assert(argc==2);
+    if (!strcmp(argv[1],"cache-unpaired")) {
+        paired=false; cached_snapshot.unread=37; cache_present=true; strlcpy(cached_owner,"old-device",sizeof cached_owner);
+        link_deps_t deps={.load_snap=load_snapshot,.lost_on=fake_lost_on};
+        assert(link_start(&deps)==ESP_OK && created_task);
+        if (setjmp(task_started)==0) { stop_task_at_receive=true; created_task(NULL); assert(!"task returned"); }
+        printf("cache-unpaired: load calls=%d, in-memory unread=%d\n",cache_loads,link_mem->snap.unread);
+        if (cache_loads || link_mem->snap.unread) { puts("RED: unpaired startup loaded a cached snapshot"); return 1; }
+        puts("PASS"); free(link_mem); return 0;
+    }
     startup_case=!strcmp(argv[1],"startup-pair") || !strcmp(argv[1],"startup-failure");
     if (startup_case) {
         alarm(10);
@@ -235,14 +301,78 @@ int main(int argc,char **argv) {
         puts("PASS: old websocket not opened after pairing");
         free(link_mem); return 0;
     }
+    bool ui_clear_retry=!strcmp(argv[1],"ui-clear-retry");
+    if (ui_clear_retry) tribuf_init(&ui_snap_tb,&ui_snapshot_slots[0],&ui_snapshot_slots[1],&ui_snapshot_slots[2]);
+    bool cache_dirty=!strcmp(argv[1],"cache-dirty"), cache_race=!strcmp(argv[1],"cache-save-race");
     bool unsent=!strcmp(argv[1],"unsent"), completed=!strcmp(argv[1],"completed"), expired=!strcmp(argv[1],"expired");
     bool lost_case=!strcmp(argv[1],"lost-on") || !strcmp(argv[1],"lost-missing");
     bool concurrent=!strcmp(argv[1],"inflight") || !strcmp(argv[1],"admission") || !strcmp(argv[1],"admission-first");
-    assert(unsent || completed || expired || concurrent || lost_case || !strcmp(argv[1],"sent"));
-    link_deps_t deps={.reset_revs=reset_revs, .lost_on=fake_lost_on}; assert(link_start(&deps)==ESP_OK);
+    assert(unsent || completed || expired || concurrent || lost_case || cache_dirty || cache_race || ui_clear_retry || !strcmp(argv[1],"sent"));
+    link_deps_t deps={.reset_revs=reset_revs, .lost_on=fake_lost_on, .save_snap=save_snapshot, .erase_snap=erase_snapshot}; assert(link_start(&deps)==ESP_OK);
     assert(created_task);
     if (setjmp(task_started)==0) { stop_task_at_receive=true; created_task(NULL); assert(!"task returned"); }
     pump(); assert(fsm.st==LS_CONNECT); ready();
+    if (ui_clear_retry) {
+        receive_snapshot();
+        assert(snapshot_posts==1 && last_snapshot_event.data[0]==1);
+        bool fresh=false; const snap_t *shown=tribuf_latest(&ui_snap_tb,&fresh);
+        assert(fresh && shown->unread==37);
+        ui_queue_full=true;
+        assert(link_pair_commit("new-device")==PAIR_SUCCESS);
+        pump(); /* All synchronous posting attempts see a full UI queue. */
+        assert(snapshot_rejected>0 && snapshot_posts==1);
+        /* Keep the queue full across subsequent link-task ticks as well. */
+        for (int i=0;i<10;i++) { now_ms+=100; tick(); }
+        assert(snapshot_posts==1);
+        ui_queue_full=false;
+        for (int i=0;i<20 && snapshot_posts==1;i++) { now_ms+=100; tick(); }
+        shown=tribuf_latest(&ui_snap_tb,&fresh);
+        bool empty=shown->unread==0 && shown->generated==0 && !shown->has_task && !shown->has_event &&
+                   shown->n_notices==0 && shown->focus.status==FOCUS_NONE;
+        printf("ui-clear-retry: rejected=%d accepted-after-recovery=%d fresh=%d empty=%d unread=%d\n",
+               snapshot_rejected,snapshot_posts-1,fresh,empty,shown->unread);
+        if (snapshot_posts==1 || last_snapshot_event.data[0]!=0 || !fresh || !empty) {
+            puts("RED: pairing clear was not delivered with the newest empty snapshot after queue recovery"); return 1;
+        }
+        puts("PASS"); free(link_mem); return 0;
+    }
+    if (cache_dirty || cache_race) {
+        /* Establish that the durable old-owner record is loadable before re-pairing. */
+        cached_snapshot.unread=37; cache_present=true;
+        strlcpy(cached_owner,"old-device",sizeof cached_owner);
+        snap_t loaded={0}; assert(load_snapshot(&loaded) && loaded.unread==37);
+        receive_snapshot(); /* Real parser creates a dirty old-owner snapshot. */
+        if (cache_dirty) {
+            assert(link_pair_commit("new-device")==PAIR_SUCCESS);
+            pump(); /* Includes pairing notification and a save-eligible tick. */
+            bool visible=load_snapshot(&loaded);
+            printf("cache-dirty: identity=%s memory unread=%d old record visible=%d saves=%d dirty=%d old saved as new=%d\n",
+                   device,link_mem->snap.unread,visible,cache_saves,snap_dirty,old_snapshot_saved_as_new);
+            if (link_mem->snap.unread || visible || snap_dirty || old_snapshot_saved_as_new) {
+                puts("RED: old-owner snapshot survived in memory, was loadable, or was saved under new identity"); return 1;
+            }
+            puts("PASS"); free(link_mem); return 0;
+        }
+        pthread_t saver, pairer; alarm(10);
+        lock(&gate_mutex); pause_save=true; unlock(&gate_mutex);
+        assert(pthread_create(&saver,NULL,save_tick,NULL)==0);
+        lock(&gate_mutex); await_gate(&save_entered); unlock(&gate_mutex);
+        assert(pthread_create(&pairer,NULL,race_pair,NULL)==0);
+        lock(&gate_mutex);
+        while (!pair_finished && !pair_waiting && !commit_entered) assert(pthread_cond_wait(&gate_cond,&gate_mutex)==0);
+        release_save=true; signal_gate(); unlock(&gate_mutex);
+        assert(pthread_join(saver,NULL)==0 && pthread_join(pairer,NULL)==0);
+        printf("cache-save-race: commit during paused save=%d pair result=%d saves=%d\n",
+               commit_during_save,concurrent_pair_result,cache_saves);
+        if (commit_during_save) { puts("RED: identity commit entered before old save completed"); return 1; }
+        assert(concurrent_pair_result==PAIR_SUCCESS || concurrent_pair_result==PAIR_BUSY_ERROR);
+        if (concurrent_pair_result==PAIR_BUSY_ERROR) assert(link_pair_commit("new-device")==PAIR_SUCCESS);
+        pump();
+        bool visible=load_snapshot(&loaded);
+        printf("cache-save-race: old record visible=%d old saved as new=%d\n",visible,old_snapshot_saved_as_new);
+        if (visible || old_snapshot_saved_as_new) { puts("RED: old snapshot was loadable or saved under new identity"); return 1; }
+        puts("PASS"); alarm(0); free(link_mem); return 0;
+    }
     if (lost_case) {
         assert(link_post_action(ACT_FOCUS_START,NULL)); pump(); assert(acts.n==1);
         if (!strcmp(argv[1],"lost-on")) lost_mode=true; else link_deps.lost_on=NULL;

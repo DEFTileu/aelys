@@ -25,6 +25,9 @@ const char *identity_device_id(void);  /* "" when unpaired */
 const char *identity_api_url(void);    /* "" when unpaired */
 /* Copies device id and api_url under the lock. ESP_ERR_INVALID_STATE when unpaired (outputs untouched). */
 esp_err_t identity_ids(char device_id[40], char url[129]);
+/* Copy the active uncompressed P-256 public point; pending pairings are ignored.
+ * ESP_ERR_INVALID_STATE when unpaired (output untouched), ESP_ERR_INVALID_ARG for NULL output. */
+esp_err_t identity_active_pub(uint8_t out[65]);
 /* Public key (uncompressed point, base64url, 87 chars + NUL) of the pending key during pairing, else of the current key. */
 esp_err_t identity_pub_b64(char out[88]);
 /* New key in RAM only. ESP_ERR_INVALID_ARG unless api_url starts with "https://" and is <= 128 chars. */

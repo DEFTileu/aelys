@@ -17,7 +17,9 @@
 #define STORE_LOST_VERSION  2
 #define STORE_PAIR_VERSION  1
 #define STORE_SETTINGS_VERSION 1
-#define STORE_SNAP_VERSION  1 /* bump with any change to snap_t: a raw struct dump, so the layout is the format */
+#define STORE_SNAP_VERSION  1 /* legacy raw struct format; bump with any change to snap_t */
+#define STORE_SNAP_OWNED_VERSION 2
+#define STORE_SNAP_OWNER_LEN 65
 
 typedef struct { char ssid[33]; char pass[65]; } wifi_cred_t;
 typedef struct { uint8_t n; wifi_cred_t net[WIFI_MAX]; } wifi_list_t;
@@ -34,6 +36,7 @@ typedef struct { char device_id[40]; char api_url[129]; uint8_t priv[32]; } pair
 #define STORE_SETTINGS_BLOB (1 + STORE_SETTINGS_PAYLOAD + 4)
 #define STORE_PAIR_BLOB  (1 + sizeof(pair_rec_t) + 4)
 #define STORE_SNAP_BLOB  (1 + sizeof(snap_t) + 4)
+#define STORE_SNAP_OWNED_BLOB (1 + STORE_SNAP_OWNER_LEN + sizeof(snap_t) + 4)
 
 uint32_t store_crc32(const uint8_t *p, size_t n); /* IEEE 802.3, crc32("123456789") = 0xCBF43926 */
 
@@ -50,6 +53,13 @@ size_t store_encode_pair(const pair_rec_t *in, uint8_t *buf, size_t cap);
 bool   store_decode_pair(const uint8_t *buf, size_t len, pair_rec_t *out);
 size_t store_encode_snap(const snap_t *in, uint8_t *buf, size_t cap);
 bool   store_decode_snap(const uint8_t *buf, size_t len, snap_t *out); /* also false if a count or status is out of range */
+
+/* Owner-bound v2 retains the snap_t field layout (bump its version if that changes).
+ * Pass the exact 65-byte active public key, or NULL when unpaired. The caller
+ * supplies a validated active key. NULL inputs, short buffers and invalid snapshot
+ * counts/status fail without modifying the output; decode accepts only v2. */
+size_t store_encode_snap_owned(const snap_t *in, const uint8_t *owner, uint8_t *buf, size_t cap);
+bool   store_decode_snap_owned(const uint8_t *buf, size_t len, const uint8_t *owner, snap_t *out);
 
 /* Replaces the password of an existing SSID in place; otherwise appends, dropping the oldest
  * (index 0) when full. Returns false (list unchanged) if ssid is empty or ssid/pass do not fit. */
