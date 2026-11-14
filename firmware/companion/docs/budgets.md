@@ -89,10 +89,14 @@ switches; worst frame was 36710 µs and worst switch 52250 µs. Five complete
 windows with 150 switches gave p50 [35,40) ms, p90 [45,50) ms and p99
 [50,55) ms. In the first 60-second window of each run, when both were Offline,
 sparse p50/p90 were [20,25)/[30,35) ms versus [30,35)/[45,50) ms for full
-redraw (30 switches each). Network availability, snapshots and animation
-phases differed across runs, so these observations do not establish an Online
-speedup. The sparse experiment stays disabled by default pending matched
-Online testing, and does not close S1's performance gates. The board was
+redraw (30 switches each). A conservative sampled-Online analysis retained only
+single completed switches between consecutive, complete Online records with
+unchanged error counters: 110 baseline samples had p50/p90 30593/43354 µs;
+48 sparse samples had 30153/43688 µs. State was sampled, not continuously
+observed, and the baseline lacked the later I/O instrumentation; differing
+network availability, snapshots, animation phases and sample sizes limit the
+comparison. An Online improvement was not established, so the experimental
+band change was removed; it does not close S1's performance gates. The board was
 returned to the normal sound/probe/chaos/sparse-off app and hash verified.
 
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
