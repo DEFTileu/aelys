@@ -9,6 +9,9 @@ typedef struct { char id[40]; char kind[24]; char title[65]; int64_t created; } 
 typedef enum { FOCUS_NONE, FOCUS_ACTIVE, FOCUS_PAUSED } focus_status_t;
 typedef struct { char id[40]; uint8_t status; char mode[16]; int64_t started; int32_t elapsed_s; } snap_focus_t;
 
+#define SNAP_MAX_TASKS 5  /* tasks_today: open tasks due today or overdue (server v1.2) */
+#define SNAP_MAX_EVENTS 4 /* events_upcoming: from now to the end of tomorrow (server v1.2) */
+
 typedef struct {
     int64_t generated;
     bool has_task, has_event;
@@ -20,4 +23,7 @@ typedef struct {
     uint8_t n_notices;
     snap_notice_t notices[5];
     snap_focus_t focus;              /* status FOCUS_NONE when the server sent none */
+    uint8_t n_tasks, n_events;       /* 0 = the server sent no list (v1, or nothing in it): screens fall back to task / event above */
+    snap_task_t tasks[SNAP_MAX_TASKS];
+    snap_event_t events[SNAP_MAX_EVENTS];
 } snap_t;

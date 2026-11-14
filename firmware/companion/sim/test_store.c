@@ -327,6 +327,13 @@ static void fill_snap(snap_t *s)
     strcpy(s->notices[1].id, "n-2"); strcpy(s->notices[1].kind, "calendar.reminder"); strcpy(s->notices[1].title, "Design review");
     s->notices[1].created = 1794493000;
     s->focus.status = FOCUS_PAUSED; strcpy(s->focus.id, "f-3"); strcpy(s->focus.mode, "pomodoro"); s->focus.elapsed_s = 1072;
+    s->n_tasks = 2;
+    strcpy(s->tasks[0].id, "t-101"); strcpy(s->tasks[0].title, "Ship pairing ADR"); s->tasks[0].due = 1794506400;
+    strcpy(s->tasks[1].id, "t-102"); strcpy(s->tasks[1].title, "Reply to Dana"); s->tasks[1].due = 1794500000;
+    s->n_events = 2;
+    strcpy(s->events[0].id, "e-22"); strcpy(s->events[0].title, "Design review"); s->events[0].starts = 1794499200; s->events[0].has_end = true;
+    s->events[0].ends = 1794501000;
+    strcpy(s->events[1].id, "e-23"); strcpy(s->events[1].title, "Holiday"); s->events[1].starts = 1794520000; s->events[1].all_day = true;
 }
 
 static void test_snap_roundtrip(void)
@@ -349,6 +356,11 @@ static void test_snap_roundtrip(void)
     CHECK(strcmp(out.notices[1].kind, "calendar.reminder") == 0);
     CHECK_EQ(out.focus.status, FOCUS_PAUSED);
     CHECK_EQ(out.focus.elapsed_s, 1072);
+    CHECK_EQ(out.n_tasks, 2);
+    CHECK(strcmp(out.tasks[1].title, "Reply to Dana") == 0 && out.tasks[1].due == 1794500000);
+    CHECK_EQ(out.n_events, 2);
+    CHECK(strcmp(out.events[0].title, "Design review") == 0 && out.events[0].ends == 1794501000 && out.events[0].has_end);
+    CHECK(out.events[1].all_day && !out.events[1].has_end);
 
     memset(&out, 0xAA, sizeof out);                    /* failures leave *out alone */
     buf[10] ^= 1;                                      /* CRC */
@@ -380,6 +392,19 @@ static void test_snap_overlong_and_bad_counts_are_made_safe(void)
     buf[1 + offsetof(snap_t, focus.status)] = 7;
     reseal(buf, sizeof buf);
     CHECK(!store_decode_snap(buf, sizeof buf, &out));
+    store_encode_snap(&in, buf, sizeof buf);
+    buf[1 + offsetof(snap_t, n_tasks)] = SNAP_MAX_TASKS + 1; /* more list entries than the arrays hold */
+    reseal(buf, sizeof buf);
+    CHECK(!store_decode_snap(buf, sizeof buf, &out));
+    store_encode_snap(&in, buf, sizeof buf);
+    buf[1 + offsetof(snap_t, n_events)] = SNAP_MAX_EVENTS + 1;
+    reseal(buf, sizeof buf);
+    CHECK(!store_decode_snap(buf, sizeof buf, &out));
+    store_encode_snap(&in, buf, sizeof buf);
+    memset(buf + 1 + offsetof(snap_t, events[1].title), 'W', sizeof in.events[1].title + 5); /* a list string must still end */
+    reseal(buf, sizeof buf);
+    CHECK(store_decode_snap(buf, sizeof buf, &out));
+    CHECK(memchr(out.events[1].title, 0, sizeof out.events[1].title) != NULL);
 }
 
 #define TEST_OWNER_LEN 65
@@ -393,19 +418,23 @@ static void test_owned_snapshot(void)
     fill_snap(&in);
     memset(b, 0xa5, sizeof b);
     size_t n = store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB);
-    CHECK_EQ(n, 1 + 65 + 1088 + 4);
+    CHECK_EQ(n, 1 + 65 + 2240 + 4);
     if (n != TEST_BOUND_BLOB) return;
-    CHECK_EQ(b[0], 2);
+    CHECK_EQ(b[0], 3);
     CHECK(memcmp(b + 1, owner, 65) == 0);
     CHECK_EQ(b[TEST_BOUND_BLOB], 0xa5);
     CHECK(store_decode_snap_owned(b, n, owner, &out));
     CHECK_EQ(out.generated, in.generated);
     CHECK(strcmp(out.task.title, in.task.title) == 0);
     CHECK_EQ(out.focus.elapsed_s, in.focus.elapsed_s);
+    CHECK_EQ(out.n_tasks, 2);
+    CHECK(strcmp(out.tasks[0].id, "t-101") == 0 && strcmp(out.events[1].title, "Holiday") == 0 && out.events[1].all_day);
     memcpy(canonical, b, n);
     /* Deliberately dirty structure padding and the unused tail of a string. */
     ((uint8_t *)&in)[offsetof(snap_t, task) + offsetof(snap_task_t, title) + sizeof in.task.title] = 0xcc;
     in.task.id[10] = 'X';
+    in.tasks[0].title[40] = 'Y';                       /* the same for a list string's tail and an entry past the count */
+    strcpy(in.tasks[4].title, "unused entry"); strcpy(in.events[3].title, "unused entry");
     CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB), n);
     CHECK(memcmp(b, canonical, n) == 0);
 
@@ -425,7 +454,8 @@ static void test_owned_snapshot(void)
     b[1] ^= 1; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out));
     memcpy(b, canonical, n);
     b[1 + 65 + 10] ^= 1; REJECT(store_decode_snap_owned(b, n, owner, &out)); b[1 + 65 + 10] ^= 1;
-    b[0] = 3; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out));
+    b[0] = 2; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out)); /* the version before the lists */
+    b[0] = 4; reseal(b, n); REJECT(store_decode_snap_owned(b, n, owner, &out));
     memcpy(b, canonical, n);
     b[1 + 65 + offsetof(snap_t, n_notices)] = 6; reseal(b, n);
     REJECT(store_decode_snap_owned(b, n, owner, &out));
@@ -435,6 +465,16 @@ static void test_owned_snapshot(void)
     memcpy(b, canonical, n);
     b[1 + 65 + offsetof(snap_t, has_task)] = 2; reseal(b, n);
     REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, n_tasks)] = SNAP_MAX_TASKS + 1; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, n_events)] = SNAP_MAX_EVENTS + 1; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
+    b[1 + 65 + offsetof(snap_t, events[1].all_day)] = 2; reseal(b, n);
+    REJECT(store_decode_snap_owned(b, n, owner, &out));
+    memcpy(b, canonical, n);
     uint8_t legacy[STORE_SNAP_BLOB];
     CHECK_EQ(store_encode_snap(&in, legacy, sizeof legacy), sizeof legacy);
     REJECT(store_decode_snap_owned(legacy, sizeof legacy, owner, &out));

@@ -17,8 +17,8 @@
 #define STORE_LOST_VERSION  2
 #define STORE_PAIR_VERSION  1
 #define STORE_SETTINGS_VERSION 1
-#define STORE_SNAP_VERSION  1 /* legacy raw struct format; bump with any change to snap_t */
-#define STORE_SNAP_OWNED_VERSION 2
+#define STORE_SNAP_VERSION  2 /* legacy raw struct format; bump with any change to snap_t */
+#define STORE_SNAP_OWNED_VERSION 3 /* 3: tasks_today / events_upcoming; a v2 blob is ignored (length and version differ), never half-read */
 #define STORE_SNAP_OWNER_LEN 65
 
 typedef struct { char ssid[33]; char pass[65]; } wifi_cred_t;
