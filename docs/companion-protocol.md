@@ -178,6 +178,7 @@ Snapshot schema (`CompanionSnapshot`):
 | `notices` | `SnapNotice[]` | Max 5, newest first. Only kinds `task.*`, `calendar.*`, `focus.*`. |
 | `focus` | `SnapFocus \| null` | Only when status is `active` or `paused`. |
 | `tasks_today`, `events_upcoming` | arrays | v1.2, see "Snapshot lists (v1.2)". |
+| `weather` | `SnapWeather` | v1.3, see "Weather (v1.3)". Left out entirely when there is none. |
 
 - Every `title` is at most 80 characters (cut with a trailing `…`).
 - `SnapTask`: `id` str, `title` str, `due_at` datetime.
@@ -353,6 +354,42 @@ and hides entries whose time has passed locally.
 ```json
 {"tasks_today": [{"id": "t-101", "title": "Submit report", "due_at": "2026-11-13T12:00:00Z"}], "events_upcoming": [{"id": "e-22", "title": "Standup", "starts_at": "2026-11-13T10:00:00Z", "ends_at": "2026-11-13T10:15:00Z", "all_day": false}]}
 ```
+
+### Weather (v1.3)
+
+`snapshot` may carry one optional `weather` object. The key is **absent** (not
+`null`) when the owner has not set a city, when no forecast has been fetched yet,
+when the cached forecast is over 24 hours old, and in lost mode; a board must
+treat a missing key as "no weather". An older board ignores it.
+
+| Field | Type | Notes |
+|---|---|---|
+| `temp` | int | Degrees Celsius now (rounded). |
+| `code` | int | WMO weather code now. |
+| `hi`, `lo` | int | Today's high and low, Celsius. |
+| `hours` | `{"h": int, "t": int, "c": int}[]` | Max 5 upcoming hours: `h` is the **city's local** hour 0-23, `t` Celsius, `c` WMO code. Hours already past are left out, so it can hold fewer than 5. |
+| `updated` | datetime | UTC, when the server fetched the forecast. The board shows "Updated HH:MM" when this is over 2 hours old. |
+
+The owner picks a city in the app; the server stores its name (max 64
+characters) and coordinates **rounded to 0.1 degree (about 10 km)**, never a
+precise position, and fetches the forecast from Open-Meteo (no key) at most once
+per 30 minutes per owner, with a 10 second timeout. A failed fetch keeps the last
+good forecast and never delays or breaks a snapshot. It works while the owner's
+Mac is off. The board never learns the city name or the coordinates. Without a
+city nothing is fetched. The weather counts towards the 3900-byte cap (about 200
+bytes).
+```json
+{"weather": {"temp": -3, "code": 71, "hi": -1, "lo": -8, "hours": [{"h": 16, "t": -4, "c": 71}, {"h": 17, "t": -5, "c": 3}], "updated": "2026-11-13T09:30:00Z"}}
+```
+
+Owner routes (owner devices only, like the other companion routes; a companion
+principal gets `403 DEVICE_SCOPE_DENIED`):
+
+| Route | Body | Result |
+|---|---|---|
+| `GET /api/v1/companion/weather` | none | `{"name", "lat", "lon", "updated"}`; all `null` while weather is off, `updated` `null` until the first fetch. |
+| `PUT /api/v1/companion/weather` | `{"name": str (1..64), "lat": -90..90, "lon": -180..180}` | Stores the city (coordinates rounded to 0.1) and pushes a snapshot to the owner's online boards. Saving the same place again keeps the cache and the 30-minute window. `422` for out-of-range values. |
+| `DELETE /api/v1/companion/weather` | none | Turns weather off and forgets the city and the cached forecast. |
 
 `command` args that grow (all new fields have defaults, so v1 requests work):
 

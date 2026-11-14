@@ -74,6 +74,9 @@ class CompanionHub:
     def is_online(self, device_id: str) -> bool:
         return device_id in self._connections
 
+    def online_owners(self) -> set[str]:
+        return {c.owner_id for c in self._connections.values()}
+
     async def send_to_device(self, device_id: str, message: dict) -> bool:
         connection = self._connections.get(device_id)
         if connection is None:
@@ -141,7 +144,12 @@ class CompanionHub:
                 return False
             # lazy: snapshot imports domains, which import this hub
             from app.companion.snapshot import build_snapshot, for_device
+            from app.companion.weather import refresh_if_due
 
+            try:
+                await refresh_if_due(owner_id, datetime.now(UTC))  # at most one fetch per 30 minutes; a failure keeps the cache
+            except Exception as exc:  # noqa: BLE001 - weather must never stop a push
+                logger.warning("companion weather refresh failed owner=%s reason=%s", owner_id, type(exc).__name__)
             try:
                 async with database.SessionLocal() as db:
                     snapshot = await asyncio.wait_for(build_snapshot(db, owner_id, datetime.now(UTC)), BUILD_TIMEOUT_SECONDS)

@@ -44,12 +44,14 @@ async def lifespan(app: FastAPI):
     install_change_listeners()
     worker = asyncio.create_task(connector_loop(), name="telegram-business")
     reminders = asyncio.create_task(reminder_loop(), name="english-reminders")
+    from .companion.weather import refresh_loop
+    weather = asyncio.create_task(refresh_loop(), name="companion-weather")
     try:
         yield
     finally:
         await hub.wait_idle(timeout=5)  # board pushes in flight must not outlive the loop
         await wait_for_automations()
-        for task in (worker, reminders):
+        for task in (worker, reminders, weather):
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task

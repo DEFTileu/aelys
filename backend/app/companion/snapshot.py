@@ -6,14 +6,16 @@ from datetime import UTC, datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from app.companion.models import CompanionWeather
 from app.companion.state import lost_mode_on
+from app.companion.weather import snapshot_view
 from app.core.models import CalendarEvent, FocusSession, Notification, Task
 from app.domains.api import focus_elapsed
 from app.domains.briefings import TERMINAL_TASK_STATUSES
 from app.domains.google_calendar_projection import project_google_calendar_events
 from app.domains.recurrence import utc
 from app.integrations.telegram_models import TelegramIntegration
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_serializer
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
@@ -78,6 +80,21 @@ class SnapFocus(_Utc):
     elapsed_seconds: int
 
 
+class SnapHour(BaseModel):
+    h: int  # the city's local hour, 0-23
+    t: int  # degrees Celsius
+    c: int  # WMO weather code
+
+
+class SnapWeather(_Utc):
+    temp: int  # degrees Celsius now
+    code: int  # WMO weather code now
+    hi: int  # today's high and low
+    lo: int
+    hours: list[SnapHour]  # the next hours, max 5
+    updated: datetime  # when the forecast was fetched
+
+
 class CompanionSnapshot(_Utc):
     generated_at: datetime
     next_task: SnapTask | None
@@ -91,6 +108,14 @@ class CompanionSnapshot(_Utc):
     other_unread_count: int  # unread notifications of kinds the board may not name
     tasks_today: list[SnapTask] = []  # v1.2: open tasks due today or overdue, upcoming first; max 5
     events_upcoming: list[SnapEvent] = []  # v1.2: events from now through the end of tomorrow; max 4
+    weather: SnapWeather | None = None  # v1.3: only when the owner set a city and a forecast is cached; otherwise the key is left out
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_weather(self, handler):
+        data = handler(self)
+        if data.get("weather") is None:
+            data.pop("weather", None)
+        return data
 
 
 DONE_STATUSES = ("done", "completed", "complete")
@@ -129,7 +154,7 @@ async def for_device(db: AsyncSession, snapshot: CompanionSnapshot, device_id: s
     if not await lost_mode_on(db, device_id):
         return snapshot
     return snapshot.model_copy(update={"next_task": None, "next_event": None, "notices": [], "focus": None, "overdue_count": 0, "today_done": 0, "today_total": 0,
-                                               "tasks_today": [], "events_upcoming": []})
+                                               "tasks_today": [], "events_upcoming": [], "weather": None})
 
 
 async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> CompanionSnapshot:
@@ -186,4 +211,5 @@ async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> Comp
         generated_at=now, next_task=SnapTask.model_validate(next_task) if next_task else None, overdue_count=overdue,
         next_event=next_event, unread_count=unread_count, notices=[SnapNotice.model_validate(n) for n in notices if n.kind.startswith(ALLOWED_NOTICE_PREFIXES)], focus=focus,
         today_done=today_done, today_total=today_total, other_unread_count=other_unread,
-        tasks_today=[SnapTask.model_validate(t) for t in tasks_today], events_upcoming=upcoming))
+        tasks_today=[SnapTask.model_validate(t) for t in tasks_today], events_upcoming=upcoming,
+        weather=snapshot_view(await db.get(CompanionWeather, owner_id), now)))
