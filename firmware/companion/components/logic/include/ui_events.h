@@ -23,7 +23,7 @@ typedef enum {
     UI_EV_WIFI_ADD,     /* [0] = 0 connecting / 1 connected / 2 failed / 3 take the card off (the attempt never ran), [1..33] = SSID, [34..59] = previous SSID (25 bytes, UTF-8 safe) */
     UI_EV_RELEASE,      /* hold cancelled: optional [0]=1 finger moved but remains down, [0]=0 physical lift (legacy no payload also lift). After TAP/SWIPE at lift, or alone; may come twice per touch. */
     UI_EV_BRIGHTNESS,   /* [0] = percent 5..100. Handled by main (the panel's SPI device belongs to the ui task), never reaches ui_handle_event */
-    UI_EV_LEVEL,        /* [0..1] = int16 LE, eye rotation in tenths of a degree that keeps the face level (level.h) */
+    UI_EV_LEVEL,        /* [0..1] = int16 LE, eye rotation in tenths of a degree that keeps the face level (level.h). Optional [2..3], [4..5] = int16 LE gravity along the screen x (right) and y (down), 16384 counts = 1 g, for the tilt maze */
 } ui_event_type_t;
 
 typedef struct {
