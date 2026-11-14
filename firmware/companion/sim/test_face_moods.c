@@ -186,8 +186,7 @@ static void test_inside_screen_and_own_area(void)
         }
         CHECK(lit_px > 500);
         CHECK_EQ(outside, 0);                                      /* nothing outside the 466 px circle */
-        if (m == MOOD_BASHFUL) CHECK(!g_inv_set); /* design specifies no animation */
-        else CHECK(g_inv_set);
+        CHECK(g_inv_set); /* every mood has motion or blinking during this window */
         /* A moving face only redraws its box plus 30 px of overhang. */
         if (g_inv_set) {
             int margin = m == MOOD_ELATION ? 40 : 30;
@@ -221,7 +220,7 @@ static void test_partial_redraw_each_frame(void)
                 break;
             }
         }
-        if (m == MOOD_BASHFUL) CHECK_EQ(flushed, 0); else CHECK(flushed > 0);
+        CHECK(flushed > 0);
         gone(f);
     }
     lv_timer_set_period(anim, LV_DEF_REFR_PERIOD);
@@ -263,6 +262,14 @@ static void test_rest_is_free(void)
     n = sim_flushes();
     for (int i = 0; i < 625; i++) sim_step(16);                    /* 10 s: every loop would have moved */
     CHECK_EQ(sim_flushes(), n);
+    gone(f);
+
+    f = show(MOOD_BASHFUL, 100, HX, HY, 100);
+    n = sim_flushes();
+    for (int i = 0; i < 250; i++) sim_step(16); /* stationary before the first blink */
+    CHECK_EQ(sim_flushes(), n);
+    for (int i = 0; i < 50; i++) sim_step(16); /* inherited blink updates the face */
+    CHECK(sim_flushes() > n);
     gone(f);
 }
 
@@ -557,6 +564,12 @@ static void test_inherited_blink_phase(void)
     lv_obj_t *right = lv_obj_get_child(face,1);
     int right_before = lv_obj_get_height(right);
     CHECK(right_before < 60);
+    const mood_t inherited[] = { MOOD_PANIC, MOOD_BASHFUL, MOOD_MISSED };
+    for (unsigned i = 0; i < sizeof inherited / sizeof *inherited; ++i) {
+        face_set_mood(face,inherited[i]); lv_obj_update_layout(face);
+        CHECK_EQ(lv_obj_get_height(left),before);
+        CHECK_EQ(lv_obj_get_height(right),right_before);
+    }
     face_set_mood(face,MOOD_BORED); lv_obj_update_layout(face);
     CHECK_EQ(lv_obj_get_height(left),before);
     CHECK_EQ(lv_obj_get_height(right),right_before);

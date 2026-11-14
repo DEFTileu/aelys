@@ -96,6 +96,15 @@ static void test_character_motion_design(void)
         int32_t expected = (int32_t)(-1200.0 + 2400.0 * reference_css_in_out(ms / 3500.0));
         NEAR(drift.tx, expected, 7); /* <0.07 px including time/curve rounding */
     }
+    const mood_t base_blink_moods[] = { MOOD_PANIC, MOOD_BASHFUL, MOOD_MISSED };
+    const uint32_t blink_times[] = { 0, 4680, 4800, 4850, 5000 };
+    for (unsigned m = 0; m < sizeof base_blink_moods / sizeof *base_blink_moods; ++m) {
+        const face_mood_t *mood = face_mood_def(base_blink_moods[m]);
+        CHECK_EQ(mood->blink_ms, 5000);
+        for (unsigned t = 0; t < sizeof blink_times / sizeof *blink_times; ++t)
+            for (int side = 0; side < 2; ++side)
+                CHECK_EQ(face_eye_openness(mood, side, blink_times[t]), face_blink_x1000(5000, blink_times[t]));
+    }
     CHECK_EQ(face_eye_openness(face_mood_def(MOOD_BORED),0,4800),80);
     CHECK_EQ(face_eye_openness(face_mood_def(MOOD_BORED),1,4800),80);
     face_group_t tilted = face_group_at(MOT_TILT, 136);
