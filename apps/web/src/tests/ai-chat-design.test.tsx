@@ -90,7 +90,7 @@ describe('chat list', () => {
 describe('What Aelys can see', () => {
   it('offers only real sources with switches and saves a toggle as scopes', async () => {
     await click(find('Plan for today', '.actual-ai__conversation-main'))
-    expect(switches()).toEqual({ Tasks: 'true', Calendar: 'true', Notes: 'false', 'Knowledge base': 'false', 'Поиск в вебе': 'false' })
+    expect(switches()).toEqual({ Tasks: 'true', Calendar: 'true', Notes: 'false', 'Knowledge base': 'false', 'Web search': 'false' })
     expect(find('2 sources')).toBeTruthy()
     client.updateAIConversation.mockResolvedValue({ ...chats[1], tool_scope_json: { scopes: ['tasks.read', 'calendar.read', 'notes.read'] } })
     await click(side().querySelector<HTMLElement>('[aria-label="Notes"]')!)
@@ -100,7 +100,7 @@ describe('What Aelys can see', () => {
   it('opens the same list from the composer chip and says No sources when all are off', async () => {
     await click(find('3 sources'))
     const dialog = host.querySelector<HTMLElement>('[role=dialog][aria-label="What Aelys can see"]')!
-    expect(Object.keys(switches(dialog))).toEqual(['Tasks', 'Calendar', 'Notes', 'Knowledge base', 'Поиск в вебе'])
+    expect(Object.keys(switches(dialog))).toEqual(['Tasks', 'Calendar', 'Notes', 'Knowledge base', 'Web search'])
     for (const name of ['Tasks', 'Calendar', 'Notes']) await click(dialog.querySelector<HTMLElement>(`[aria-label="${name}"]`)!)
     expect(find('No sources')).toBeTruthy()
   })
@@ -113,15 +113,15 @@ describe('What Aelys can see', () => {
   })
   it('keeps web search off by default and saves the switch for a conversation', async () => {
     await click(find('Plan for today', '.actual-ai__conversation-main'))
-    expect(switches()['Поиск в вебе']).toBe('false')
+    expect(switches()['Web search']).toBe('false')
     client.updateAIConversation.mockResolvedValue({ ...chats[1], tool_scope_json: { scopes: ['tasks.read', 'calendar.read', 'web.search'] } })
-    await click(side().querySelector<HTMLElement>('[aria-label="Поиск в вебе"]')!)
+    await click(side().querySelector<HTMLElement>('[aria-label="Web search"]')!)
     expect(client.updateAIConversation).toHaveBeenCalledWith('today', { scopes: ['tasks.read', 'calendar.read', 'web.search'] })
-    expect(switches()['Поиск в вебе']).toBe('true')
+    expect(switches()['Web search']).toBe('true')
   })
   it('saves web search enabled before the first message', async () => {
     await click(find('3 sources'))
-    await click(host.querySelector<HTMLElement>('[role=dialog] [aria-label="Поиск в вебе"]')!)
+    await click(host.querySelector<HTMLElement>('[role=dialog] [aria-label="Web search"]')!)
     client.updateAIConversation.mockResolvedValue({ id: 'new', title: 'Hello', tool_scope_json: { scopes: ['tasks.read', 'calendar.read', 'notes.read', 'web.search'] } })
     client.aiRunEvents.mockImplementation(async () => sse(['ai.run.completed', { run_id: 'run1' }]))
     await send('Hello')

@@ -9,7 +9,7 @@ export const SOURCES: readonly SourceDef[] = [
   { id: 'calendar', scope: 'calendar.read', name: 'Calendar', Icon: Calendar, color: '#D93636', soft: '#FDE8E7', on: 'Can read your events', off: 'Not shared in this chat', step: 'Read calendar' },
   { id: 'notes', scope: 'notes.read', name: 'Notes', Icon: NotebookText, color: '#B36B00', soft: '#FDF1D9', on: 'Can search your notes', off: 'Not shared in this chat', step: 'Searched notes' },
   { id: 'knowledge', scope: 'knowledge.read', name: 'Knowledge base', Icon: BookOpen, color: '#6A4CF2', soft: '#EEE8FD', on: 'Can search your documents', off: 'Not shared in this chat', step: 'Searched knowledge base' },
-  { id: 'web', scope: 'web.search', name: 'Поиск в вебе', Icon: Search, color: '#2F6FE4', soft: '#E4EEFD', on: 'Разрешён в этой беседе', off: 'Выключен в этой беседе', step: 'Поиск в вебе' },
+  { id: 'web', scope: 'web.search', name: 'Web search', Icon: Search, color: '#2F6FE4', soft: '#E4EEFD', on: 'Can search the web', off: 'Off in this chat', step: 'Searched the web' },
 ]
 export const DEFAULT_SOURCES: readonly SourceId[] = ['tasks', 'calendar', 'notes']
 const KNOWN_SCOPES = new Set(SOURCES.map((item) => item.scope))
