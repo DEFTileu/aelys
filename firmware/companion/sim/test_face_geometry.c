@@ -36,6 +36,30 @@ static double reference_css_in_out(double x)
     return 3.0*v*t*t + t*t*t;
 }
 
+static void test_double_blink_css(void)
+{
+    const mood_t moods[] = { MOOD_ATTENTION, MOOD_RECONNECTED };
+    for (unsigned i = 0; i < sizeof moods / sizeof *moods; ++i) {
+        const face_mood_t *m = face_mood_def(moods[i]);
+        uint32_t period = m->blink_ms;
+        for (uint32_t ms = 0; ms < period; ++ms) {
+            double p = (double)ms / period, value = 1000.0;
+            if (p >= 0.70 && p < 0.73)
+                value = 1000.0 - 920.0 * reference_css_ease((p - 0.70) / 0.03);
+            else if (p >= 0.73 && p < 0.78)
+                value = 80.0 + 920.0 * reference_css_ease((p - 0.73) / 0.05);
+            else if (p >= 0.78 && p < 0.81)
+                value = 1000.0 - 920.0 * reference_css_ease((p - 0.78) / 0.03);
+            else if (p >= 0.81)
+                value = 80.0 + 920.0 * reference_css_ease((p - 0.81) / 0.19);
+            int32_t expected = (int32_t)(value + 0.5);
+            NEAR(face_eye_openness(m,0,ms), expected, 4);
+            NEAR(face_eye_openness(m,1,ms), expected, 4);
+            CHECK_EQ(face_eye_openness(m,0,ms), face_eye_openness(m,0,ms + period));
+        }
+    }
+}
+
 static void test_character_motion_design(void)
 {
     const struct { mood_t mood; uint32_t period; uint32_t time; int tx, ty, rot, scale; } cases[] = {
@@ -350,6 +374,7 @@ static void test_images(void)
 
 int main(void)
 {
+    test_double_blink_css();
     test_character_motion_design();
     test_all_character_rows();
     test_eyes();
