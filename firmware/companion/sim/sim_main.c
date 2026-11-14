@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -171,10 +171,16 @@ static int companion_shot(const char *shot)
         fx_post(&s, 0);
         return 0;
     }
-    if (!strcmp(shot, "calendar")) { /* the design's "In 25 min" */
+    if (!strcmp(shot, "calendar") || !strcmp(shot, "calendar_list")) { /* the design's "In 25 min" */
         s.event.starts = FX_NOW + 25 * 60;
         s.event.ends = FX_NOW + 85 * 60;
     }
+    if (!strcmp(shot, "calendar_list")) {
+        fx_lists(&s);
+        s.events[0].starts = s.event.starts; s.events[0].ends = s.event.ends;
+        s.events[1].starts = FX_NOW + 150 * 60; s.events[1].ends = s.events[1].starts + 30 * 60;
+    }
+    if (!strcmp(shot, "tasks_list")) fx_lists(&s);
     if (!strcmp(shot, "calendar_empty")) s.has_event = false;
     if (!strcmp(shot, "tasks_empty")) { s.has_task = false; s.today_done = s.today_total = 8; }
     fx_post(&s, 1);
@@ -262,7 +268,7 @@ static int companion_shot(const char *shot)
         }
     }
     else if (!strncmp(shot, "games", 5)) games_shot(shot);
-    else if (!strcmp(shot, "calendar") || !strcmp(shot, "calendar_empty")) {
+    else if (!strcmp(shot, "calendar") || !strcmp(shot, "calendar_empty") || !strcmp(shot, "calendar_list")) {
         post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Calendar, open it */
         for (int i = 0; i < 3; i++) {
             sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
@@ -367,7 +373,7 @@ int main(int argc, char **argv)
         else return 2;
     }
     if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
         fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
                         "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);

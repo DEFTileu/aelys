@@ -177,6 +177,7 @@ Snapshot schema (`CompanionSnapshot`):
 | `unread_count` | int | Counts unread notifications of every kind. |
 | `notices` | `SnapNotice[]` | Max 5, newest first. Only kinds `task.*`, `calendar.*`, `focus.*`. |
 | `focus` | `SnapFocus \| null` | Only when status is `active` or `paused`. |
+| `tasks_today`, `events_upcoming` | arrays | v1.2, see "Snapshot lists (v1.2)". |
 
 - Every `title` is at most 80 characters (cut with a trailing `…`).
 - `SnapTask`: `id` str, `title` str, `due_at` datetime.
@@ -327,6 +328,30 @@ mode `today_done` and `today_total` are 0; `other_unread_count` keeps its value,
 like `unread_count`.
 ```json
 {"today_done": 2, "today_total": 5, "other_unread_count": 3}
+```
+
+### Snapshot lists (v1.2)
+
+`snapshot` gains two optional arrays, always present from a v1.2 server and
+simply absent from an older one (a board must treat a missing key as "no list"
+and fall back to `next_task` / `next_event`). `next_task` and `next_event` keep
+their v1 meaning for boards that do not read the lists.
+
+| Field | Type | Notes |
+|---|---|---|
+| `tasks_today` | `SnapTask[]` | Max 5 open tasks that are due today or overdue (not done, not cancelled, not deleted). Not yet due first, ordered by `due_at` then id, so the first entry is `next_task` when that is due today; then overdue tasks, oldest first. "Today" is the owner's local day, cut like `today_done`. |
+| `events_upcoming` | `SnapEvent[]` | Max 4 events (recurring ones expanded) that are on now or start before the end of the owner's tomorrow. The first entry is the same pick as `next_event` when that falls in the window (a timed event wins over an all-day one); the rest follow in start order. |
+
+Entries have the same shape and the same 80-character title cut as `SnapTask` /
+`SnapEvent`; descriptions, notes, attendees and locations are never sent. The
+whole snapshot is kept under 3900 bytes: if the lists would push it past that
+(for example with many long Cyrillic titles), entries are dropped from the end
+of `events_upcoming`, then of `tasks_today`, until it fits. In lost mode both
+lists are empty, like `next_task` and `next_event`. Like every time-based value
+they are not pushed when time passes; the board refreshes on the next snapshot
+and hides entries whose time has passed locally.
+```json
+{"tasks_today": [{"id": "t-101", "title": "Submit report", "due_at": "2026-11-13T12:00:00Z"}], "events_upcoming": [{"id": "e-22", "title": "Standup", "starts_at": "2026-11-13T10:00:00Z", "ends_at": "2026-11-13T10:15:00Z", "all_day": false}]}
 ```
 
 `command` args that grow (all new fields have defaults, so v1 requests work):

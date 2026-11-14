@@ -1527,6 +1527,104 @@ static void test_settings_screens(void)
     ui_set_settings_hooks(NULL);
     ui_settings_init(100, false);
     sink.accept = false;
+}
+
+static void test_tasks_list(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    sink.accept = true;
+    sink.n = 0;
+    fresh_fx();
+    fx_lists(&fx);                                   /* t-101 big; t-102, t-103, t-104 and an overdue t-100 as rows */
+    post_fx();
+    open_tasks();
+    check_inside("tasks list");
+    CHECK(shows_text(scr, "TASKS \xC2\xB7 5 / 8") && shows_text(scr, "Ship pairing ADR") && shows_text(scr, "Due 18:00") && shows_text(scr, "Done"));
+    CHECK(shows_text(scr, "Reply to Dana") && shows_text(scr, "15:30") && shows_text(scr, "Book dentist") && shows_text(scr, "17:00"));
+    CHECK(shows_text(scr, "Water the plants") && shows_text(scr, "Send invoice") && shows_text(scr, "09:00"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+
+    tap_at(233, 150);                                /* between the title and the check: nothing */
+    tap_at(300, 252);                                /* a row's title is not a target, only its check */
+    CHECK_EQ(sink.n, 0);
+    tap_at(121, 252);                                /* the first row's check */
+    CHECK_EQ(sink.n, 1);
+    CHECK_EQ(sink.kind, ACT_TASK_COMPLETE);
+    CHECK(!strcmp(sink.id, "t-102"));
+    CHECK(ui_marked_done("t-102") && !ui_marked_done("t-101"));
+    sim_step(100);
+    CHECK(shows_text(scr, "TASKS \xC2\xB7 6 / 8") && shows_text(scr, "Done"));
+    check_inside("tasks list (a row done)");
+    tap_at(121, 252);                                /* once per id */
+    CHECK_EQ(sink.n, 1);
+    tap_at(121, 366);                                /* the last row: the overdue one */
+    CHECK_EQ(sink.n, 2);
+    CHECK(!strcmp(sink.id, "t-100"));
+    sim_step(100);
+    CHECK(shows_text(scr, "TASKS \xC2\xB7 7 / 8"));
+
+    action_result(ACT_TASK_COMPLETE, false, "TIMEOUT"); /* the oldest open answer is t-102's: only its tick goes back */
+    sim_step(100);
+    CHECK(!ui_marked_done("t-102") && ui_marked_done("t-100"));
+    CHECK(shows_text(scr, "TASKS \xC2\xB7 6 / 8") && shows_text(scr, "Didn't work \xE2\x80\x94 try again"));
+    sim_step(2100);
+    action_result(ACT_TASK_COMPLETE, true, NULL);
+    CHECK(ui_marked_done("t-100"));
+    fx_snap(&fx); fx_lists(&fx);                     /* the next snapshot no longer lists t-100: its mark is dropped */
+    fx.n_tasks = 4;
+    post_fx();
+    CHECK(!ui_marked_done("t-100") && !shows_text(scr, "Send invoice"));
+    check_inside("tasks list (4 tasks)");
+
+    tap_at(233, 200);                                /* the big check */
+    CHECK_EQ(sink.n, 3);
+    CHECK(!strcmp(sink.id, "t-101"));
+    action_result(ACT_TASK_COMPLETE, false, "OFFLINE");
+    sim_step(2100);
+    btn(BTN_TOP);                                    /* the top key completes the big one too */
+    CHECK_EQ(sink.n, 4);
+    CHECK(!strcmp(sink.id, "t-101"));
+    action_result(ACT_TASK_COMPLETE, true, NULL);
+    fx_snap(&fx); fx_lists(&fx);                     /* the snapshot after it no longer lists t-101 */
+    memmove(&fx.tasks[0], &fx.tasks[1], 4 * sizeof fx.tasks[0]);
+    fx.n_tasks = 4;
+    fx.task = fx.tasks[0];                           /* next_task moves on as well */
+    post_fx();
+    CHECK(!ui_marked_done("t-101") && shows_text(scr, "Reply to Dana") && !shows_text(scr, "Ship pairing ADR"));
+    CHECK_EQ(sink.n, 4);
+
+    sink.accept = false;                             /* refused: no tick on a row */
+    tap_at(121, 252);
+    sim_step(100);
+    CHECK(!ui_marked_done("t-103") && shows_text(scr, "No connection"));
+    sink.accept = true;
+    sim_step(2100);
+
+    fx_snap(&fx); fx_lists(&fx);
+    fx.n_tasks = 1;                                  /* a list of one: the big task alone, no rows */
+    post_fx();
+    CHECK(shows_text(scr, "Ship pairing ADR") && !shows_text(scr, "Reply to Dana"));
+    fx_lists(&fx);                                   /* long titles in every row stay inside the circle */
+    strcpy(fx.tasks[0].title, "WWWWWWWWW WWWWWWWWW WWWWWWWWW WWWWWWWWW WWWWWWWWW");
+    for (int i = 1; i < 5; i++) memset(fx.tasks[i].title, 'W', 64), fx.tasks[i].title[64] = 0;
+    post_fx();
+    check_inside("tasks list (wide titles)");
+    strcpy(fx.tasks[1].title, "\xD0\x9F\xD0\xBE\xD0\xB4\xD0\xB3\xD0\xBE\xD1\x82\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C \xD0\xBE\xD1\x82\xD1\x87\xD1\x91\xD1\x82");
+    post_fx();
+    check_inside("tasks list (cyrillic)");
+    CHECK_EQ(missing_glyphs(scr), 0);
+
+    fx_snap(&fx);                                    /* the old server's snapshot: the one-task view again */
+    post_fx();
+    CHECK(shows_text(scr, "Ship pairing ADR") && shows_text(scr, "Due 18:00") && !shows_text(scr, "Reply to Dana"));
+    int n = sink.n;
+    tap_at(121, 252);                                /* where a row check was: nothing */
+    CHECK_EQ(sink.n, n);
+    tap_at(233, 280);                                /* the one-task check is where it was */
+    CHECK_EQ(sink.n, n + 1);
+    action_result(ACT_TASK_COMPLETE, false, "OFFLINE");
+    sim_step(2100);
+    btn(BTN_LOW);
     fresh_fx();
 }
 
@@ -2190,6 +2288,75 @@ static void test_calendar_screen(void)
     fresh_fx();
 }
 
+static void test_calendar_list(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    ui_set_clock(cal_clock);
+    cal_now = FX_NOW;
+    fresh_fx();
+    fx_lists(&fx);                                   /* 16:00 Design review, 17:30 Retro notes, tomorrow 09:30 Team sync and 11:00 Dentist */
+    post_fx();
+    btn(BTN_TOP);
+    for (int i = 0; i < 9 && scr_menu_selected() != 3; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_CALENDAR);
+    sim_step(1100);
+    CHECK(shows_text(scr, "Design review") && shows_text(scr, "16:00 - 16:30") && shows_text(scr, "in 1 h 28 min"));
+    CHECK(shows_text(scr, "17:30") && shows_text(scr, "Retro notes") && shows_text(scr, "Tomorrow"));
+    CHECK(shows_text(scr, "09:30") && shows_text(scr, "Team sync") && shows_text(scr, "11:00") && shows_text(scr, "Dentist"));
+    check_inside("calendar list");
+    CHECK_EQ(missing_glyphs(scr), 0);
+
+    cal_at(FX_H(18, 10));                            /* Design review and Retro notes are over: Team sync leads, tomorrow, no label */
+    CHECK(shows_text(scr, "Team sync") && shows_text(scr, "Dentist") && !shows_text(scr, "Retro notes") && !shows_text(scr, "Design review"));
+    CHECK(!shows_text(scr, "Tomorrow"));
+    check_inside("calendar list (all of tomorrow)");
+    cal_at(FX_H(16, 10));                            /* the first has started; the rest are unchanged */
+    CHECK(shows_text(scr, "started 10 min ago") && shows_text(scr, "Retro notes") && shows_text(scr, "Tomorrow"));
+    cal_at(FX_H(16, 40));                            /* the first just ended, the second is the large one */
+    CHECK(shows_text(scr, "Retro notes") && shows_text(scr, "in 50 min") && shows_text(scr, "17:30 - 18:00") && !shows_text(scr, "Design review"));
+    cal_at(FX_H(50, 0));                             /* everything is over: the last one, as the one-event view does */
+    CHECK(shows_text(scr, "Dentist") && shows_text(scr, "ended 14 h ago"));
+
+    cal_now = FX_NOW;
+    fx.n_events = 4;
+    fx.events[1].all_day = true;                     /* an all-day row says so instead of a time */
+    post_fx();
+    cal_at(FX_NOW);
+    CHECK(shows_text(scr, "All day") && shows_text(scr, "Retro notes"));
+    for (int i = 0; i < 4; i++) memset(fx.events[i].title, 'W', 64), fx.events[i].title[64] = 0; /* the widest titles */
+    post_fx();
+    cal_at(FX_NOW);
+    check_inside("calendar list (64 W)");
+    strcpy(fx.events[2].title, "\xD0\x9F\xD0\xBE\xD0\xB4\xD0\xB3\xD0\xBE\xD1\x82\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C \xD0\xBE\xD1\x82\xD1\x87\xD1\x91\xD1\x82");
+    post_fx();
+    cal_at(FX_NOW);
+    check_inside("calendar list (cyrillic)");
+    CHECK_EQ(missing_glyphs(scr), 0);
+
+    fx_snap(&fx); fx_lists(&fx);
+    fx.n_events = 1;                                 /* a list of one: no rows, no label */
+    post_fx();
+    cal_at(FX_NOW);
+    CHECK(shows_text(scr, "Design review") && !shows_text(scr, "Retro notes") && !shows_text(scr, "Tomorrow"));
+    fx_snap(&fx);                                    /* the old server's snapshot: the one-event view */
+    post_fx();
+    cal_at(FX_NOW);
+    CHECK(shows_text(scr, "Design review") && shows_text(scr, "16:00 - 16:30") && !shows_text(scr, "Retro notes"));
+    check_inside("calendar (no list)");
+
+    cal_now = 0;                                     /* no clock: times and rows stay, no label, no ended-filtering */
+    fx_lists(&fx);
+    post_fx();
+    sim_step(1100);
+    CHECK(shows_text(scr, "Retro notes") && shows_text(scr, "Team sync") && !shows_text(scr, "Tomorrow"));
+    check_inside_min("calendar list (no clock)", 500);
+
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+    ui_set_clock(fx_clock);
+    fresh_fx();
+}
+
 static bool screen_has_text_containing(lv_obj_t *obj, const char *part)
 {
     if (lv_obj_check_type(obj, &lv_label_class) && lv_obj_is_visible(obj) && strstr(lv_label_get_text(obj), part)) return true;
@@ -2744,9 +2911,11 @@ int main(void)
     test_menu_wheel();
     test_settings_screens();
     test_tasks_screen();
+    test_tasks_list();
     test_timer_screen();
     test_calendar_screen();
     test_games_screens();
+    test_calendar_list();
     test_notice_popup();
     test_lost_hint_toast_shot();
     test_wifi_toast_shots();

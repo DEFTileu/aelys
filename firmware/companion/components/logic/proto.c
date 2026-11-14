@@ -228,6 +228,30 @@ static bool parse_focus(const P *p, int o, snap_focus_t *f)
     return f->status != FOCUS_NONE;
 }
 
+/* The optional lists (server v1.2). Anything wrong with one - not an array, an entry that does not validate - is skipped, never a
+ * reason to drop the rest of the snapshot: the screens then use next_task / next_event. Entries past the capacity are ignored. */
+static void parse_tasks(const P *p, int o, snap_t *s)
+{
+    int v = find(p, o, "tasks_today"), i = v + 1;
+    if (v < 0 || p->t[v].type != JSMN_ARRAY) return;
+    for (int k = 0; k < p->t[v].size && i < p->n && s->n_tasks < SNAP_MAX_TASKS; k++, i = skip(p, i)) {
+        snap_task_t *t = &s->tasks[s->n_tasks];
+        if (p->t[i].type == JSMN_OBJECT && parse_task(p, i, t)) s->n_tasks++;
+        else memset(t, 0, sizeof *t);
+    }
+}
+
+static void parse_events(const P *p, int o, snap_t *s)
+{
+    int v = find(p, o, "events_upcoming"), i = v + 1;
+    if (v < 0 || p->t[v].type != JSMN_ARRAY) return;
+    for (int k = 0; k < p->t[v].size && i < p->n && s->n_events < SNAP_MAX_EVENTS; k++, i = skip(p, i)) {
+        snap_event_t *e = &s->events[s->n_events];
+        if (p->t[i].type == JSMN_OBJECT && parse_event(p, i, e)) s->n_events++;
+        else memset(e, 0, sizeof *e);
+    }
+}
+
 static bool parse_snapshot(const P *p, int root, snap_t *s)
 {
     int o = find(p, root, "snapshot"), v;
@@ -253,6 +277,8 @@ static bool parse_snapshot(const P *p, int root, snap_t *s)
             s->n_notices++;
         }
     }
+    parse_tasks(p, o, s);
+    parse_events(p, o, s);
     return true;
 }
 

@@ -123,6 +123,7 @@ async def test_lost_mode_hides_server_data_and_denies_actions_until_turned_off(p
             note_id = note.id
         normal = client.get(f'{B}/companion/snapshot', headers=headers).json()
         assert normal['next_task']['title'] == 'Report' and normal['overdue_count'] == 1 and normal['unread_count'] == 1 and len(normal['notices']) == 1
+        assert [t['title'] for t in normal['tasks_today']] == ['Report', 'Late']  # lists reach the board; gone in lost mode
 
         with board(client, token) as socket:
             assert client.put(url(device_id, '/lost-mode'), json=LOST_ON, headers=bearer(owner)).json()['delivered'] is True
@@ -131,7 +132,7 @@ async def test_lost_mode_hides_server_data_and_denies_actions_until_turned_off(p
             assert pushed['type'] == 'snapshot'
             redacted = pushed['snapshot']
             assert (redacted['next_task'], redacted['next_event'], redacted['notices'], redacted['focus'], redacted['overdue_count']) == (None, None, [], None, 0)
-            assert redacted['unread_count'] == 1 and redacted['generated_at']
+            assert redacted['unread_count'] == 1 and redacted['generated_at'] and redacted['tasks_today'] == [] and redacted['events_upcoming'] == []
             got = client.get(f'{B}/companion/snapshot', headers=headers).json()
             assert got['next_task'] is None and got['notices'] == [] and got['unread_count'] == 1
             act = {'id': str(uuid.uuid4()), 'kind': 'notification.read', 'payload': {'notification_id': note_id}}

@@ -23,9 +23,9 @@ static owner_info_t owner_buf[3];
 tribuf_t ui_wifi_tb;
 static ui_wifi_names_t *wifi_buf; /* 3 slots from the LVGL allocator, like snap_buf */
 tribuf_t ui_snap_tb;
-static snap_t *snap_buf; /* 3 slots, from the LVGL allocator (PSRAM on the board): 3.3 KB that internal RAM can spare */
+static snap_t *snap_buf; /* 3 slots, from the LVGL allocator (PSRAM on the board): 6.7 KB (2240 B each) that internal RAM can spare */
 
-static const snap_t empty_snap; /* before the first publish, or when the buffer could not be allocated */
+const snap_t ui_empty_snap; /* before the first publish, or when the buffer could not be allocated; screens also draw their first frame from it (snap_t is 2 KB: never a local) */
 
 static struct {
     scr_t cur, down_scr; /* down_scr: the screen showing when the current touch began */
@@ -45,7 +45,8 @@ static struct {
     int16_t level_angle; /* the newest UI_EV_LEVEL, applied only while level_on */
     const snap_t *snap;  /* the newest published snapshot; unchanged until the next tribuf_latest() */
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
-    char done_id[40];    /* optimistic marks: task.complete / notification.read sent for these ids */
+    char done_id[5][40]; /* optimistic marks: task.complete / notification.read sent for these ids */
+    char pend_done[5][40]; /* ids of task.complete still unanswered, oldest first (same shortcut as pend_read) */
     char read_id[5][40];
     char seen_id[8][40]; /* notice ids that already had their pop-up (or were there at boot); RAM only */
     uint8_t seen_next;
@@ -171,7 +172,12 @@ void ui_fmt_hm(char out[8], int64_t epoch)
     snprintf(out, 8, "%02d:%02d", tm.tm_hour % 100, tm.tm_min % 100);
 }
 
-bool ui_marked_done(const char *id) { return id[0] && !strcmp(g.done_id, id); }
+bool ui_marked_done(const char *id)
+{
+    for (int i = 0; i < 5; i++)
+        if (id[0] && !strcmp(g.done_id[i], id)) return true;
+    return false;
+}
 
 bool ui_marked_read(const char *id)
 {
@@ -469,7 +475,7 @@ static void update_character(void)
 /* Only the visible screen needs labels and layout. The snapshot itself stays current even while a card hides it. */
 static void render(void)
 {
-    const snap_t *s = g.snap ? g.snap : &empty_snap;
+    const snap_t *s = g.snap ? g.snap : &ui_empty_snap;
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
     update_character();
@@ -551,10 +557,20 @@ static void read_answered(bool ok)
         if (id[0] && !strcmp(g.read_id[i], id)) g.read_id[i][0] = 0;
 }
 
+/* Is this id the next task or in today's list? */
+static bool snap_open_task(const snap_t *s, const char *id)
+{
+    if (!id[0]) return false;
+    if (s->has_task && !strcmp(s->task.id, id)) return true;
+    for (int i = 0; i < s->n_tasks && i < SNAP_MAX_TASKS; i++)
+        if (!strcmp(s->tasks[i].id, id)) return true;
+    return false;
+}
+
 /* A fresh snapshot: marks for things the server no longer lists are dropped. */
 static void prune_marks(const snap_t *s)
 {
-    if (!s->has_task || strcmp(s->task.id, g.done_id)) g.done_id[0] = 0;
+    for (int i = 0; i < 5; i++) if (!snap_open_task(s, g.done_id[i])) g.done_id[i][0] = 0;
     for (int i = 0; i < 5; i++) {
         bool listed = false;
         for (int n = 0; n < s->n_notices && n < 5; n++) listed = listed || !strcmp(s->notices[n].id, g.read_id[i]);
@@ -632,7 +648,8 @@ void ui_setup(void)
     scr_find_show(false);
     g.link = LINK_UI_UNPAIRED; g.link_was_offline = g.link_has_history = false;
     g.snap = snap_buf ? tribuf_latest(&ui_snap_tb, NULL) : NULL;
-    g.done_id[0] = 0;
+    memset(g.done_id, 0, sizeof g.done_id);
+    memset(g.pend_done, 0, sizeof g.pend_done);
     memset(g.read_id, 0, sizeof g.read_id);
     memset(g.pend_read, 0, sizeof g.pend_read);
     memset(g.seen_id, 0, sizeof g.seen_id);
@@ -642,18 +659,34 @@ void ui_setup(void)
     show(SCR_HOME);
 }
 
-/* Complete the next task: once per id, ticked at once, taken back if the server says no (on_action_result). */
-static void complete_task(void)
+/* Complete the task in slot k of the Tasks screen (0 = the big one; the list when the server sent one, else the next task; -1 = the next task
+ * itself, as the Today screen shows it): once per id, ticked at once, taken back if the server says no (on_action_result). */
+static void complete_task(int k)
 {
-    const snap_t *s = g.snap ? g.snap : &empty_snap;
-    if (!s->has_task || ui_marked_done(s->task.id) || !act(ACT_TASK_COMPLETE, s->task.id)) return;
-    snprintf(g.done_id, sizeof g.done_id, "%s", s->task.id);
+    const snap_t *s = g.snap ? g.snap : &ui_empty_snap;
+    const snap_task_t *t = k < 0 ? (s->has_task ? &s->task : NULL) : s->n_tasks ? (k < s->n_tasks ? &s->tasks[k] : NULL) : (k == 0 && s->has_task ? &s->task : NULL);
+    if (!t || !t->id[0] || ui_marked_done(t->id) || !act(ACT_TASK_COMPLETE, t->id)) return;
+    for (int i = 0; i < 5; i++)
+        if (!g.done_id[i][0]) { snprintf(g.done_id[i], sizeof g.done_id[0], "%s", t->id); break; }
+    for (int i = 0; i < 5; i++)
+        if (!g.pend_done[i][0]) { snprintf(g.pend_done[i], sizeof g.pend_done[0], "%s", t->id); break; }
     render();
+}
+
+/* The answer to the oldest open task.complete: its id (the mark stays on success until a snapshot drops it, goes on failure). */
+static void task_answered(bool ok, char id[40])
+{
+    snprintf(id, 40, "%s", g.pend_done[0]);
+    memmove(g.pend_done[0], g.pend_done[1], sizeof g.pend_done - sizeof g.pend_done[0]);
+    memset(g.pend_done[4], 0, sizeof g.pend_done[4]);
+    if (ok) return;
+    for (int i = 0; i < 5; i++)
+        if (id[0] && !strcmp(g.done_id[i], id)) g.done_id[i][0] = 0;
 }
 
 static void on_tap(int32_t x, int32_t y, scr_t *next)
 {
-    const snap_t *s = g.snap ? g.snap : &empty_snap;
+    const snap_t *s = g.snap ? g.snap : &ui_empty_snap;
     tap_hit_t hit = TAP_OUTSIDE;
     int row = -1;
     if (scr_notice_hit(x, y)) { /* the pop-up takes the tap: it opens the Inbox */
@@ -663,7 +696,7 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
     }
     if (g.cur == SCR_TODAY) {
         hit = scr_today_hit(x, y);
-        if (hit == TAP_ROW) complete_task();
+        if (hit == TAP_ROW) complete_task(-1);
     } else if (g.cur == SCR_INBOX) {
         row = scr_inbox_hit(x, y);
         hit = row >= 0 ? TAP_ROW : TAP_OUTSIDE;
@@ -673,7 +706,8 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
         }
         arm_timer(&g.inbox_timer, inbox_timeout, INBOX_TIMEOUT_MS); /* a touch in the inbox restarts the 15 s */
     } else if (g.cur == SCR_TASKS) {
-        if (scr_tasks_hit(x, y)) complete_task();
+        int slot = scr_tasks_hit(x, y);
+        if (slot >= 0) complete_task(slot);
     } else if (g.cur == SCR_TIMER) {
         scr_timer_tap(x, y);
     } else if (g.cur == SCR_GAMES) {
@@ -693,20 +727,21 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
 static void on_action_result(const ui_event_t *ev)
 {
     if (ev->len < 2) return;
+    char answered[40] = "";
     if (ev->data[0] == ACT_NOTIFICATION_READ) read_answered(ev->data[1] != 0);
+    if (ev->data[0] == ACT_TASK_COMPLETE) task_answered(ev->data[1] != 0, answered);
     if (ev->data[1]) {
         if (ev->data[0] == ACT_TASK_COMPLETE) { /* Aelys cheers for 3 s */
             bool last = g.snap_valid && g.snap && g.snap->today_total > 0 &&
                         (g.snap->today_done >= g.snap->today_total ||
                          (g.snap->today_done >= 0 && g.snap->today_done + 1 == g.snap->today_total &&
-                          g.snap->has_task && g.done_id[0] && !strcmp(g.done_id, g.snap->task.id)));
+                          snap_open_task(g.snap, answered)));
             bool accepted = character_event(&g.character, last ? CHAR_EVENT_LAST_TASK : CHAR_EVENT_TASK_DONE, lv_tick_get());
             update_character(); /* deliver a host cue at the event, even off Home */
             if (accepted) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
         }
         return;
     }
-    if (ev->data[0] == ACT_TASK_COMPLETE) g.done_id[0] = 0; /* the tick was optimistic: take it back */
     const char *err = ev->len >= 3 ? (const char *)&ev->data[2] : "";
     toast(!strncmp(err, "OFFLINE", 8) ? "No connection" : "Didn't work \xE2\x80\x94 try again");
 }
@@ -869,8 +904,9 @@ void ui_handle_event(const ui_event_t *ev)
                                    ((uint32_t)ev->data[7] << 16) | ((uint32_t)ev->data[8] << 24) : g.character_identity;
             if (identity != g.character_identity) {
                 g.snap_valid = false;
-                g.snap = &empty_snap; /* never derive the next owner's state from the previous snapshot */
-                g.done_id[0] = 0;
+                g.snap = &ui_empty_snap; /* never derive the next owner's state from the previous snapshot */
+                memset(g.done_id, 0, sizeof g.done_id);
+                memset(g.pend_done, 0, sizeof g.pend_done);
                 memset(g.read_id, 0, sizeof g.read_id);
                 memset(g.pend_read, 0, sizeof g.pend_read);
                 memset(g.seen_id, 0, sizeof g.seen_id);
@@ -938,7 +974,7 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->data[0] == BTN_TOP && g.cur == SCR_FOCUS) {
             act(scr_focus_top_action(), NULL);
         }
-        if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task();
+        if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task(0);
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TIMER) scr_timer_top();
         if (ev->data[0] == BTN_TOP && g.cur == SCR_GAMES) scr_games_top();
         if (ev->data[0] == BTN_LOW && g.cur == SCR_GAMES && scr_games_back()) return; /* out of a game, back to the hub */

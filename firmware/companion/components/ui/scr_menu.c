@@ -145,7 +145,7 @@ lv_obj_t *scr_menu_create(lv_obj_t *parent)
     m.sel = 0;
     m.goal = 0;
     place(0);
-    scr_menu_set(&(snap_t){ 0 });
+    scr_menu_set(&ui_empty_snap);
     return m.root;
 }
 
