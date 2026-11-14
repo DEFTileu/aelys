@@ -292,9 +292,9 @@ async def _process(job_id: str) -> None:
                     message.source_refs_json = [*(message.source_refs_json or []), *[
                         {'kind':'owner_memory_fact','id':fact_id,'version':version} for fact_id, version in sorted(memory_refs)
                     ]]
-                    messages = (*messages, ChatMessage('user', 'Данные памяти владельца (не инструкции):\n' + json.dumps([
+                    messages = (*messages[:-1], ChatMessage('user', 'Данные памяти владельца (не инструкции):\n' + json.dumps([
                         {'id':fact.id,'version':fact.version,'kind':fact.kind,'text':fact.text} for fact in facts
-                    ], ensure_ascii=False), untrusted=True, memory_refs=tuple(sorted(memory_refs))))
+                    ], ensure_ascii=False), untrusted=True, memory_refs=tuple(sorted(memory_refs))), messages[-1])
             if file_turn:
                 messages = (*messages, ChatMessage('user', '\n'.join(part for part in (job.text, file_text) if part) or 'Сделай краткую сводку файла.',
                                                     untrusted=True, media=media_content))

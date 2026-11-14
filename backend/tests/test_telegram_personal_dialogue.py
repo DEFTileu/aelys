@@ -395,3 +395,25 @@ async def test_draft_failure_turns_preview_off_but_still_replies(setup, monkeypa
     assert fake.sent[-1][1] == 'Сейчас посмотрю'
     async with sessions() as db:
         assert (await db.execute(select(TelegramPersonalJob))).scalar_one().state == 'done'
+
+
+async def test_owner_memory_is_placed_before_current_question(setup, monkeypatch):
+    from app.ai import memory
+    from app.integrations import telegram_personal_dialogue as dialogue
+
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+    async def facts(*args, **kwargs):
+        return [SimpleNamespace(id='fact-1', version=1, kind='preference', text='Likes tea')]
+    monkeypatch.setattr(memory, 'select_relevant_facts', facts)
+    async def versions(*args, **kwargs):
+        return {'fact-1': 1}
+    monkeypatch.setattr(memory, 'active_memory_versions', versions)
+    model = Service(); model.requests = []; model.response = SimpleNamespace(text='Ответ', tool_calls=())
+    monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: model)
+    fake.updates = [ordinary(1, 'Как дела?')]
+    await service.poll_once(integration_id, timeout=0)
+    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
+    messages = [message for message in model.requests[0][0] if message.role != 'system']
+    assert messages[-1].content == 'Как дела?'
+    assert 'Likes tea' in messages[-2].content and messages[-2].untrusted
