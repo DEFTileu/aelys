@@ -1,4 +1,4 @@
-/* Screen switching: home, the menu wheel and its placeholder, Today, Tasks, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
+/* Screen switching: home, the menu wheel and its placeholder, Today, Tasks, Timer, Focus, Inbox, lost mode, the ICE card and the pairing screen are full-size objects on the
  * one active LVGL screen, shown and hidden by screen_next(); one more overlay shows the both-buttons progress and a toast
  * sits on top. The latest snapshot (ui_snap_tb) is rendered into the visible screen on entry, on events that can change
  * it and once a second (relative times, the focus countdown, the "due within 60 min" mood). Hidden screens do no layout. */
@@ -328,6 +328,7 @@ static void toast(const char *txt)
 {
     if (toast_ok()) scr_toast_show(txt);
 }
+void ui_toast(const char *txt) { toast(txt); }
 
 /* Bytes of an event payload from off up to the first NUL, cut to cap - 1; a short event gives "". */
 static void ev_str(char *dst, size_t cap, const ui_event_t *ev, size_t off)
@@ -467,6 +468,7 @@ static void render(void)
     case SCR_TASKS: scr_tasks_set(s, now, offline); break;
     case SCR_FOCUS: scr_focus_set(s, g.snap_ms, lv_tick_get()); break;
     case SCR_INBOX: scr_inbox_set(s, now); break;
+    case SCR_TIMER: scr_timer_set(); break;
     case SCR_MENU: scr_menu_set(s); break;
     case SCR_PLACEHOLDER: scr_placeholder_set(); break;
     default: break; /* lost mode, ICE and pairing have their own event-driven data */
@@ -557,6 +559,7 @@ void ui_setup(void)
     g.scr[SCR_MENU] = scr_menu_create(root);
     g.scr[SCR_PLACEHOLDER] = scr_placeholder_create(root);
     g.scr[SCR_TASKS] = scr_tasks_create(root);
+    g.scr[SCR_TIMER] = scr_timer_create(root);
     scr_hold_create(root);
     scr_toast_create(root);
     scr_find_create(root); /* last: on top of the toast and every screen */
@@ -608,6 +611,8 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
         arm_timer(&g.inbox_timer, inbox_timeout, INBOX_TIMEOUT_MS); /* a touch in the inbox restarts the 15 s */
     } else if (g.cur == SCR_TASKS) {
         if (scr_tasks_hit(x, y)) complete_task();
+    } else if (g.cur == SCR_TIMER) {
+        scr_timer_tap(x, y);
     } else if (g.cur == SCR_FOCUS && scr_focus_view() == FV_NONE) {
         act(ACT_FOCUS_START, NULL);
     } else if (g.cur == SCR_MENU && scr_menu_hit(x, y)) {
@@ -836,6 +841,7 @@ void ui_handle_event(const ui_event_t *ev)
             scr_menu_step(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
             render();
         }
+        if (g.cur == SCR_TIMER && !g.lost) scr_timer_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         break;
     case UI_EV_BTN:
         if (g.cur == SCR_LOST && ev->len >= 1) scr_lost_show_hint();
@@ -844,6 +850,7 @@ void ui_handle_event(const ui_event_t *ev)
             act(scr_focus_top_action(), NULL);
         }
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task();
+        if (ev->data[0] == BTN_TOP && g.cur == SCR_TIMER) scr_timer_top();
         next = g.cur == SCR_MENU && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_menu_target())
                                                           : screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
         break;

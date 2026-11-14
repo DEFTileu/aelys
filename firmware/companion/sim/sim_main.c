@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -119,13 +119,36 @@ static int companion_shot(const char *shot)
     else if (!strncmp(shot, "focus_", 6)) sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
     else if (!strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder")) {
         post_ev(UI_EV_BTN, BTN_TOP);
-        if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Timer and open it */
-            for (int i = 0; i < 2; i++) {
+        if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Calendar and open it */
+            for (int i = 0; i < 3; i++) {
                 sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
                 sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
                 sim_step(200);
             }
             post_ev(UI_EV_BTN, BTN_TOP);
+        }
+    }
+    else if (!strcmp(shot, "timer_set") || !strcmp(shot, "timer_running") || !strcmp(shot, "timer_done") || !strcmp(shot, "stopwatch")) {
+        post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Timer, open it */
+        for (int i = 0; i < 2; i++) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            sim_step(200);
+        }
+        post_ev(UI_EV_BTN, BTN_TOP);
+        if (!strcmp(shot, "stopwatch")) {
+            for (int i = 0; i < 3; i++) { /* 5 min -> 3 -> 1 -> Stopwatch */
+                sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+                sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);
+            }
+            post_ev(UI_EV_BTN, BTN_TOP);
+            for (int i = 0; i < 4; i++) { /* laps at 38.9, 41.2, 36.0 s, then the watch runs on */
+                sim_step(i == 0 ? 38900 : i == 1 ? 41200 : 36000);
+                if (i < 3) sim_post(UI_EV_TAP, (const uint8_t[]){ 233, 0, 0x09, 1 }, 4); /* (233, 265): the pill, below the digits */
+            }
+        } else if (strcmp(shot, "timer_set")) {
+            post_ev(UI_EV_BTN, BTN_TOP);
+            sim_step(strcmp(shot, "timer_done") ? 76000 : 301000); /* 5 min: 3:44 left, or over */
         }
     }
     else if (!strncmp(shot, "tasks", 5)) {
@@ -141,7 +164,7 @@ static int companion_shot(const char *shot)
 static int screen_shot(const char *shot)
 {
     if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
-        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6))
+        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6))
         return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };
@@ -215,7 +238,7 @@ int main(int argc, char **argv)
         else return 2;
     }
     if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|tasks|tasks_done|tasks_empty|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
                 argv[0]);
         fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
                         "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);

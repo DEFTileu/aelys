@@ -2,7 +2,7 @@
  * Nine round items sit on a ring of 160 px around the centre, 40 degrees apart; the selected one is at 12 o'clock inside an accent
  * ring and named in the centre. A swipe turns the wheel by one item (a 160 ms animation of the item positions, nothing is rotated
  * or cached as a layer). Deviations: no icon font, so an item shows its initial in the module colour; the sub line is live for
- * Tasks and Inbox, "Coming soon" for items without a screen and empty for the rest.
+ * Tasks, Timer and Inbox, "Coming soon" for items without a screen and empty for the rest.
  *
  * To give an item its real screen change its `target` in items[] below, nothing else. */
 #include <stdio.h>
@@ -28,7 +28,7 @@ typedef struct {
 static const menu_item_t items[N_ITEMS] = {
     { "Tasks",     0x7FA8F5, SCR_TASKS },
     { "Focus",     0xF6907F, SCR_FOCUS },
-    { "Timer",     0xF6907F, SCR_PLACEHOLDER },
+    { "Timer",     0xF6907F, SCR_TIMER },
     { "Calendar",  0xFF8A84, SCR_PLACEHOLDER },
     { "Inbox",     0xB9A8FF, SCR_INBOX },
     { "Weather",   0x7FA8F5, SCR_PLACEHOLDER },
@@ -74,6 +74,7 @@ static void sub_text(char *out, size_t cap, int i, const snap_t *s)
     out[0] = 0;
     if (items[i].target == SCR_PLACEHOLDER) snprintf(out, cap, "Coming soon");
     else if (items[i].target == SCR_TASKS && s->today_total > 0) snprintf(out, cap, "%d / %d done", s->today_done, s->today_total);
+    else if (items[i].target == SCR_TIMER) scr_timer_summary(out, cap);
     else if (items[i].target == SCR_INBOX) snprintf(out, cap, "%d new", s->unread > 0 ? s->unread : 0);
 }
 

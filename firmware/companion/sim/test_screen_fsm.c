@@ -123,6 +123,11 @@ static void test_menu_opens_and_closes(void)
     CHECK_EQ(screen_next_btn(SCR_TASKS, false, BTN_TOP), SCR_TASKS);      /* the top key completes the task: the UI layer's */
     CHECK_EQ(screen_next_btn(SCR_TASKS, true, BTN_LOW), SCR_TASKS);
     CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_TASKS), SCR_TASKS);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_TIMER), SCR_TIMER);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_TIMER), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_TIMER, false, BTN_LOW), SCR_MENU);        /* Timer goes back to the menu it was opened from */
+    CHECK_EQ(screen_next_btn(SCR_TIMER, false, BTN_TOP), SCR_TIMER);       /* the top key is the UI layer's: start / pause */
+    CHECK_EQ(screen_next_btn(SCR_TIMER, true, BTN_LOW), SCR_TIMER);
     CHECK_EQ(screen_next_btn(SCR_FOCUS, false, BTN_TOP), SCR_FOCUS);      /* the focus key stays the focus action */
     CHECK_EQ(screen_next_btn(SCR_ICE, false, BTN_TOP), SCR_ICE);
     CHECK_EQ(screen_next_btn(SCR_PAIR, false, BTN_TOP), SCR_PAIR);

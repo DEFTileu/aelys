@@ -1267,18 +1267,25 @@ static void test_menu_wheel(void)
     CHECK_EQ(ui_current_screen(), SCR_MENU);
     swipe(UI_EV_SWIPE_LEFT);
     sim_step(300);
-    CHECK(shows_text(scr, "Timer") && shows_text(scr, "Coming soon"));
-    tap_at(233, 73);                                 /* the selected item itself: Timer has no screen yet */
+    CHECK(shows_text(scr, "Timer") && !shows_text(scr, "Coming soon"));
+    tap_at(233, 73);                                 /* the selected item itself: Timer */
+    CHECK_EQ(ui_current_screen(), SCR_TIMER);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    swipe(UI_EV_SWIPE_LEFT);
+    sim_step(300);
+    CHECK(shows_text(scr, "Calendar") && shows_text(scr, "Coming soon"));
+    tap_at(233, 73);                                 /* an item without a screen: the placeholder */
     CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
     sim_step(100);
-    CHECK(shows_text(scr, "Timer") && shows_text(scr, "Coming soon"));
+    CHECK(shows_text(scr, "Calendar") && shows_text(scr, "Coming soon"));
     check_inside_min("menu placeholder", 500);
     btn(BTN_TOP);
     CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_MENU);
-    for (int i = 0; i < 6; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
-    btn(BTN_TOP);                                    /* Inbox */
+    for (int i = 0; i < 5; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    btn(BTN_TOP);                                    /* Settings */
     CHECK_EQ(scr_menu_selected(), 8);
     CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
     btn(BTN_LOW);
@@ -1440,6 +1447,209 @@ static void test_tasks_screen(void)
 }
 
 /* Design "Режим потери · нажата кнопка": a key or a touch on the lost screen leaves lost mode alone and shows the hint for 2 s. */
+/* From Home to Timer through the menu (the wheel is wherever it was left). */
+static void open_timer(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    btn(BTN_TOP);
+    for (int i = 0; i < 9 && scr_menu_selected() != 2; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    CHECK_EQ(scr_menu_selected(), 2);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_TIMER);
+}
+
+/* A frame later (40 ms), is this text on the display? Only the first term of a check should call it. */
+static bool see(const char *txt)
+{
+    sim_step(40);
+    return shows_text(lv_screen_active(), txt);
+}
+
+/* Seconds left of the running timer, as the menu line says it ("MM:SS left"); -1 when it does not */
+static int left_secs(void)
+{
+    char t[24];
+    int m, s;
+    scr_timer_summary(t, sizeof t);
+    return sscanf(t, "%d:%d left", &m, &s) == 2 ? m * 60 + s : -1;
+}
+
+static void test_timer_screen(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+    open_timer();
+
+    /* Set: 5 min; swipes walk the presets 1 3 5 10 15 25 45 60 and the stopwatch, both ways round */
+    CHECK(see("05:00") && shows_text(scr, "Timer") && shows_text(scr, "Start") && shows_text(scr, "Swipe to change"));
+    check_inside("timer (set)");
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK(see("10:00"));
+    swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("03:00"));
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("01:00"));
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("Stopwatch"));                         /* before the 1 min preset: the stopwatch */
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("60:00"));                             /* ... and 60 min before that */
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK(see("Stopwatch"));
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK(see("01:00"));
+    for (int i = 0; i < 3; i++) swipe(UI_EV_SWIPE_LEFT);
+    CHECK(see("10:00"));                             /* 1 3 5 10 */
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("05:00"));
+
+    /* a tap anywhere starts it; the digits count down once a second; an idle Set screen redraws nothing */
+    sim_step(100);
+    uint32_t n0 = sim_flushes();
+    sim_step(1500);
+    CHECK_EQ(sim_flushes(), n0);
+    tap_at(233, 233);
+    sim_step(100);
+    CHECK(see("05:00") && shows_text(scr, "Pause") && shows_text(scr, "of 05:00"));
+    sim_step(3000);
+    CHECK(see("04:57"));
+    check_inside("timer (running)");
+    swipe(UI_EV_SWIPE_LEFT);                         /* a swipe does not touch a running timer */
+    CHECK(see("04:57") && shows_text(scr, "Pause"));
+
+    /* pause keeps what is left, resume goes on from it */
+    btn(BTN_TOP);
+    sim_step(100);
+    CHECK(see("Paused") && shows_text(scr, "Resume") && shows_text(scr, "04:57"));
+    sim_step(60000);
+    CHECK(see("04:57"));
+    check_inside("timer (paused)");
+    tap_at(233, 233);
+    sim_step(2100);
+    CHECK(see("Pause") && !shows_text(scr, "04:57"));
+
+    /* leave: the low key goes to the menu and the timer keeps running; the menu says how much is left */
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    sim_step(60000);
+    CHECK_EQ(left_secs(), 235);                      /* 297 - 2.2 - 60 */
+    CHECK(see("Timer"));
+    btn(BTN_LOW);                                    /* ... and so does going home */
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sim_step(150000);
+    CHECK_EQ(left_secs(), 85);
+    btn(BTN_TOP);
+    btn(BTN_TOP);                                    /* the wheel is still on Timer */
+    CHECK_EQ(ui_current_screen(), SCR_TIMER);
+    CHECK(see("01:25") || shows_text(scr, "01:24"));
+    btn(BTN_LOW); btn(BTN_LOW);
+
+    /* it ends while Home shows: a toast (no sound is possible here), gone after 2 s; Timer then opens on "Time's up" */
+    sim_step(84000);
+    CHECK(!see("Time's up"));
+    sim_step(1000);
+    CHECK(see("Time's up"));
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sim_step(3000);
+    CHECK(!see("Time's up"));
+    btn(BTN_TOP);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_TIMER);
+    CHECK(see("Time's up") && shows_text(scr, "00:00") && shows_text(scr, "Tap for +1 min") && shows_text(scr, "Stop"));
+    check_inside("timer (done)");
+    sim_step(500);
+    check_inside("timer (done, dim)");
+
+    /* Done: a tap adds a minute and runs again; its end shows Done again; the top key dismisses back to Set */
+    tap_at(233, 233);
+    sim_step(100);
+    CHECK(see("01:00") && shows_text(scr, "Pause") && shows_text(scr, "of 01:00"));
+    sim_step(61000);
+    CHECK(see("Time's up"));
+    btn(BTN_TOP);
+    sim_step(100);
+    CHECK(see("05:00") && shows_text(scr, "Start") && !shows_text(scr, "Time's up"));
+    sim_step(100);
+    n0 = sim_flushes();
+    sim_step(3000);
+    CHECK_EQ(sim_flushes(), n0);                     /* dismissed: no pulse, no redraw */
+
+    /* it ends while the menu shows: the line under "Timer" says so */
+    swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("01:00"));
+    btn(BTN_TOP);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    sim_step(61000);
+    CHECK(see("Time's up"));
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_TIMER);
+    btn(BTN_TOP);                                    /* dismiss */
+    swipe(UI_EV_SWIPE_LEFT); swipe(UI_EV_SWIPE_LEFT);
+
+    /* paused: a swipe goes back to Set */
+    tap_at(233, 233);
+    sim_step(1100);
+    tap_at(233, 233);
+    CHECK(see("Paused"));
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK(see("Start") && !shows_text(scr, "Paused"));
+
+    /* stopwatch: start, laps (the last three shown), stop, reset */
+    swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("Stopwatch") && shows_text(scr, "Tap to start") && shows_text(scr, "00:00"));
+    check_inside("stopwatch (idle)");
+    btn(BTN_TOP);
+    sim_step(38900);
+    tap_label("Lap");
+    sim_step(2300);
+    tap_label("Lap");
+    sim_step(4100);
+    tap_label("Lap");
+    sim_step(1000);
+    tap_label("Lap");
+    sim_step(100);
+    CHECK(see("Lap 4") && shows_text(scr, "Lap 3") && shows_text(scr, "Lap 2") && !shows_text(scr, "Lap 1"));
+    CHECK(shows_text(scr, "00:01.0") && shows_text(scr, "00:04.1") && shows_text(scr, "00:02.3") && !shows_text(scr, "00:38.9"));
+    CHECK(shows_text(scr, "00:46") && shows_text(scr, "Stop"));
+    check_inside("stopwatch (laps)");
+    swipe(UI_EV_SWIPE_LEFT);                         /* running: a swipe does nothing */
+    CHECK(see("Stopwatch"));
+    tap_at(233, 150);                                /* a tap away from the pill stops it */
+    CHECK(see("Reset") && shows_text(scr, "Start") && shows_text(scr, "Stopped \xC2\xB7 00:46.5"));
+    check_inside("stopwatch (stopped)");
+    sim_step(5000);
+    CHECK(see("Stopped \xC2\xB7 00:46.5"));          /* stopped: it does not move */
+    btn(BTN_LOW);
+    sim_step(1000);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_TIMER);
+    tap_label("Reset");
+    CHECK(see("Tap to start") && shows_text(scr, "00:00") && !shows_text(scr, "Lap 4"));
+    btn(BTN_TOP);                                    /* run it again, and leave: it counts on */
+    sim_step(61000);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    sim_step(30000);
+    btn(BTN_TOP);
+    CHECK(see("01:31") || shows_text(scr, "01:32"));
+    btn(BTN_TOP);
+    CHECK(see("Reset"));
+    swipe(UI_EV_SWIPE_LEFT);                         /* stopped: a swipe goes back to the presets */
+    CHECK(see("01:00"));
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK(see("Stopwatch") && shows_text(scr, "Reset")); /* ... and the stopped watch is still there */
+    swipe(UI_EV_SWIPE_LEFT);
+
+    /* lost mode: the screen goes away, nothing reaches the timer */
+    post_lost(1);
+    btn(BTN_TOP);
+    tap_at(233, 233);
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_lost(0);
+    while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
+}
+
 static void test_lost_hint_toast_shot(void)
 {
     lv_obj_t *scr = lv_screen_active();
@@ -1856,6 +2066,7 @@ int main(void)
     test_gestures_and_lost_mode();
     test_menu_wheel();
     test_tasks_screen();
+    test_timer_screen();
     test_lost_hint_toast_shot();
     test_wifi_toast_shots();
     test_find_overlay_shot();

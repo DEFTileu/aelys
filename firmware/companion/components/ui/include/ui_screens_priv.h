@@ -95,6 +95,16 @@ lv_obj_t *scr_tasks_create(lv_obj_t *parent);
 void scr_tasks_set(const snap_t *s, int64_t now, bool offline);
 bool scr_tasks_hit(int32_t x, int32_t y);                  /* a tap on the check (or close to it) */
 
+/* scr_timer.c (design "Таймер · идёт / время вышло", "Секундомер"): one screen, a timer (presets by swipe) and a stopwatch (the last
+ * item of the same swipe). The state lives here and runs on lv_tick_get(), so it carries on while another screen shows. */
+lv_obj_t *scr_timer_create(lv_obj_t *parent);
+void scr_timer_set(void);                                  /* render the state (the visible screen) */
+void scr_timer_swipe(int dir);                             /* dir > 0 swipe left: next preset / the stopwatch; paused timer: back to Set */
+void scr_timer_top(void);                                  /* the top key: start / pause / resume; stop on "Time's up"; stopwatch start / stop */
+void scr_timer_tap(int32_t x, int32_t y);                  /* the same as the top key, +1 min on "Time's up", Lap / Reset on the stopwatch pill */
+void scr_timer_summary(char *out, size_t cap);             /* one line for the menu: "04:12 left", "Paused", "Time's up" or "" */
+void ui_toast(const char *txt);                            /* screens.c: toast() for screens that expire on their own */
+
 /* orbit.c: task dots on a ring. total == 0 draws 8 dim placeholder dots (nothing paired yet). */
 lv_obj_t *orbit_create(lv_obj_t *parent, int32_t size);
 void orbit_set(lv_obj_t *orbit, int done, int total);

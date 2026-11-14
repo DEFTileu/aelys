@@ -41,7 +41,7 @@ scr_t screen_next_btn(scr_t cur, bool lost_mode, ui_btn_t btn)
     if (btn == BTN_TOP) return cur == SCR_HOME ? SCR_MENU : cur;
     if (btn != BTN_LOW) return cur;
     return cur == SCR_TODAY || cur == SCR_FOCUS || cur == SCR_MENU ? SCR_HOME
-         : cur == SCR_INBOX ? SCR_TODAY : cur == SCR_PLACEHOLDER || cur == SCR_TASKS ? SCR_MENU : cur;
+         : cur == SCR_INBOX ? SCR_TODAY : cur == SCR_PLACEHOLDER || cur == SCR_TASKS || cur == SCR_TIMER ? SCR_MENU : cur;
 }
 
 scr_t screen_next_open(scr_t cur, bool lost_mode, scr_t target)
