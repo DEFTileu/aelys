@@ -8,6 +8,107 @@ from app.ai.policy import ServerPolicyEngine
 from app.ai.tools import ToolDescriptor
 
 
+@pytest.mark.parametrize('error_name', ['ProviderError', 'ModelUnavailable'])
+async def test_search_provider_error_continues_without_sources_or_writes(error_name):
+    from types import SimpleNamespace
+
+    from app.ai.errors import ModelUnavailable, ProviderError
+    from app.ai.models import ChatMessage, RoutingRequest, TaskKind, Usage
+    from app.ai.tools import ToolRegistry
+    from app.ai.turn import run_tool_turn
+    from app.ai.web_search import register_web_search
+
+    registry = ToolRegistry(ServerPolicyEngine())
+    register_web_search(registry)
+    writes = []
+    async def write(args):
+        writes.append(args)
+        return {'id': 'created'}
+    registry.register(ToolDescriptor('create_task', '', 'tasks.write', lambda value: value, write))
+    class Service:
+        calls = 0
+        async def complete(self, run_id, request, messages, **kwargs):
+            if kwargs.get('web_search'):
+                raise {'ProviderError': ProviderError, 'ModelUnavailable': ModelUnavailable}[error_name]('synthetic provider failure')
+            self.calls += 1
+            if self.calls == 1:
+                response = SimpleNamespace(text='', tool_calls=(
+                    {'id': 's', 'name': 'web_search', 'input': {'query': 'today'}},
+                    {'id': 'w', 'name': 'create_task', 'input': {}},))
+            else:
+                assert 'SEARCH_UNAVAILABLE' in messages[-2].content
+                assert 'POLICY_DENIED' in messages[-1].content
+                response = SimpleNamespace(text='Search unavailable.', tool_calls=())
+            return SimpleNamespace(provider=SimpleNamespace(value='claude'), model='test', response=response,
+                                   usage=SimpleNamespace(usage=Usage(1, 1), estimated_cost=Decimal('0.01')))
+    events = []
+    async def event(kind, payload): events.append((kind, payload))
+    result = await run_tool_turn(Service(), uuid4(), RoutingRequest(TaskKind.TOOL_ACTION),
+        (ChatMessage('user', 'search'),), registry,
+        PermissionContext(actor='owner', scopes=frozenset({'web.search', 'tasks.write'}),
+                          external_scopes=frozenset({'web.search'})),
+        parse_call=lambda raw: ToolCall(raw['name'], raw['input'], raw['id']), on_event=event)
+    assert result.text == 'Search unavailable.' and 'Источники' not in result.text
+    assert writes == [] and result.cost == Decimal('0.02')
+    assert any(kind == 'ai.tool.result' and data['call_id'] == 's' and data['result']['error'] == 'SEARCH_UNAVAILABLE' for kind, data in events)
+    assert not any(kind == 'ai.tool.approved' and data['call_id'] == 's' for kind, data in events)
+
+
+async def test_cancelled_search_propagates_cancellation():
+    from types import SimpleNamespace
+
+    from app.ai.errors import RunCancelled
+    from app.ai.models import ChatMessage, RoutingRequest, TaskKind, Usage
+    from app.ai.tools import ToolRegistry
+    from app.ai.turn import run_tool_turn
+    from app.ai.web_search import register_web_search
+
+    class Service:
+        async def complete(self, run_id, request, messages, **kwargs):
+            if kwargs.get('web_search'):
+                raise RunCancelled('cancelled')
+            return SimpleNamespace(provider=SimpleNamespace(value='claude'), model='test',
+                response=SimpleNamespace(text='', tool_calls=({'id':'s','name':'web_search','input':{'query':'x'}},)),
+                usage=SimpleNamespace(usage=Usage(), estimated_cost=Decimal(0)))
+    registry = ToolRegistry(ServerPolicyEngine())
+    register_web_search(registry)
+    with pytest.raises(RunCancelled):
+        await run_tool_turn(Service(), uuid4(), RoutingRequest(TaskKind.TOOL_ACTION), (ChatMessage('user', 'x'),),
+            registry, PermissionContext(actor='owner', scopes=frozenset({'web.search'}), external_scopes=frozenset({'web.search'})),
+            parse_call=lambda raw: ToolCall(raw['name'], raw['input'], raw['id']))
+
+
+async def test_failed_search_still_counts_toward_limit():
+    from types import SimpleNamespace
+
+    from app.ai.errors import ProviderError
+    from app.ai.models import ChatMessage, RoutingRequest, TaskKind, Usage
+    from app.ai.tools import ToolRegistry
+    from app.ai.turn import run_tool_turn
+    from app.ai.web_search import register_web_search
+
+    class Service:
+        searches = 0
+        outer = 0
+        async def complete(self, run_id, request, messages, **kwargs):
+            if kwargs.get('web_search'):
+                self.searches += 1
+                raise ProviderError('failed')
+            self.outer += 1
+            calls = tuple({'id': str(n), 'name': 'web_search', 'input': {'query': str(n)}} for n in range(3)) if self.outer == 1 else ()
+            response = SimpleNamespace(text='done' if self.outer > 1 else '', tool_calls=calls)
+            return SimpleNamespace(provider=SimpleNamespace(value='claude'), model='test', response=response,
+                                   usage=SimpleNamespace(usage=Usage(), estimated_cost=Decimal(0)))
+    registry = ToolRegistry(ServerPolicyEngine()); register_web_search(registry)
+    service = Service(); events = []
+    async def event(kind, payload): events.append((kind, payload))
+    result = await run_tool_turn(service, uuid4(), RoutingRequest(TaskKind.TOOL_ACTION), (ChatMessage('user', 'x'),),
+        registry, PermissionContext(actor='owner', scopes=frozenset({'web.search'}), external_scopes=frozenset({'web.search'})),
+        parse_call=lambda raw: ToolCall(raw['name'], raw['input'], raw['id']), on_event=event)
+    assert service.searches == 2 and result.text == 'done'
+    assert any(kind == 'ai.tool.result' and data['call_id'] == '2' and data['result']['error'] == 'POLICY_DENIED' for kind, data in events)
+
+
 async def test_external_scope_authorizes_only_the_named_tool():
     from app.ai.errors import PolicyDenied
 

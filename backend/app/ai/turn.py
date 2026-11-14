@@ -10,7 +10,13 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid5
 
-from .errors import BudgetExceeded, RunCancelled, ToolValidationError
+from .errors import (
+    BudgetExceeded,
+    ModelUnavailable,
+    ProviderError,
+    RunCancelled,
+    ToolValidationError,
+)
 from .execution import AIExecutionService
 from .models import ChatMessage, PermissionContext, RoutingRequest, ToolCall
 from .tools import ToolRegistry
@@ -94,6 +100,8 @@ async def run_tool_turn(
                  ChatMessage('user', query)), tools=(), web_search=True)
         except BudgetExceeded:
             return {'error': 'BUDGET_EXCEEDED: Search budget exhausted', 'untrusted': True}
+        except (ProviderError, ModelUnavailable):
+            return {'error': 'SEARCH_UNAVAILABLE: Search provider failed', 'untrusted': True}
         cost += result.usage.estimated_cost
         input_tokens += result.usage.usage.input_tokens
         output_tokens += result.usage.usage.output_tokens
