@@ -408,7 +408,7 @@ int scr_games_selected(void) { return s.sel; }
 
 void scr_games_tilt(int32_t gx, int32_t gy)
 {
-    s.gx = gx;
+    s.gx = -gx; /* the level mapping's x points left on the board: checked by hand, the ball rolled the wrong way */
     s.gy = gy;
 }
 

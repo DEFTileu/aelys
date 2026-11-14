@@ -1972,9 +1972,9 @@ static int lit_inside(void)
 /* ---- Games ---- */
 static uint32_t game_r;
 static uint32_t game_rand(void) { return game_r; }
-static void tilt(int milli_gx, int milli_gy) /* UI_EV_LEVEL with the gravity, thousandths of a g */
+static void tilt(int milli_gx, int milli_gy) /* the ball rolls toward +x = right; UI_EV_LEVEL's x is the other way (scr_games_tilt) */
 {
-    int16_t x = (int16_t)(milli_gx * 16384 / 1000), y = (int16_t)(milli_gy * 16384 / 1000);
+    int16_t x = (int16_t)(-milli_gx * 16384 / 1000), y = (int16_t)(milli_gy * 16384 / 1000);
     uint8_t d[6] = { 0, 0, (uint8_t)x, (uint8_t)((uint16_t)x >> 8), (uint8_t)y, (uint8_t)((uint16_t)y >> 8) };
     sim_post(UI_EV_LEVEL, d, 6);
 }
