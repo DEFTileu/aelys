@@ -6,6 +6,9 @@
 #include <unistd.h>
 #include <setjmp.h>
 #include "link.c"
+
+/* Legacy test call sites do not inspect the returned UUID. */
+static bool post_test_action(act_kind_t kind, const char *target) { char id[37]; return link_post_action(kind, target, id); }
 #define PAIR_BUSY_ERROR LINK_PAIR_BUSY
 #define PAIR_SUCCESS LINK_PAIR_OK
 typedef link_pair_result_t pair_result_t;
@@ -27,7 +30,8 @@ static size_t capture_n;
 static int resets;
 static bool ui_queue_full;
 static int snapshot_posts, snapshot_rejected;
-static ui_event_t last_snapshot_event;
+static ui_event_t last_snapshot_event, last_action_event;
+static int action_posts;
 static snap_t ui_snapshot_slots[3];
 static pthread_mutex_t action_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -110,6 +114,7 @@ bool lv_port_post(const ui_event_t *e) {
         return false;
     }
     if (e->type==UI_EV_SNAPSHOT) { snapshot_posts++; last_snapshot_event=*e; }
+    if (e->type==UI_EV_ACTION) { action_posts++; last_action_event=*e; }
     return true;
 }
 bool board_battery(uint8_t *p, bool *c) { (void)p;(void)c; return false; }
@@ -182,12 +187,12 @@ static void result(const char *id) { char json[160]; snprintf(json,sizeof json,"
 /* Real link locks and pair entry point; the identity-store and socket boundaries are fakes. */
 static void *send_one(void *arg) { (void)arg; lq_t e; assert(xQueueReceive(q,&e,0)); assert(e.kind==LQ_ACTION); handle_q(&e); return NULL; }
 static void *pair_one(void *arg) { (void)arg; assert(link_pair_commit("new-device")==PAIR_SUCCESS); return NULL; }
-static void *admit_one(void *arg) { bool *accepted=arg; admission_thread=true; *accepted=link_post_action(ACT_FOCUS_START,NULL); return NULL; }
+static void *admit_one(void *arg) { bool *accepted=arg; admission_thread=true; *accepted=post_test_action(ACT_FOCUS_START,NULL); return NULL; }
 static void concurrency_case(const char *name) {
     pthread_t a, b;
     alarm(10);
     if (!strcmp(name,"inflight")) {
-        assert(link_post_action(ACT_FOCUS_START,NULL));
+        assert(post_test_action(ACT_FOCUS_START,NULL));
         lock(&gate_mutex); block_send=true; unlock(&gate_mutex);
         assert(pthread_create(&a,NULL,send_one,NULL)==0);
         lock(&gate_mutex); await_gate(&send_entered); unlock(&gate_mutex);
@@ -208,15 +213,15 @@ static void concurrency_case(const char *name) {
         lock(&gate_mutex); block_commit=true; unlock(&gate_mutex);
         assert(pthread_create(&a,NULL,pair_one,NULL)==0);
         lock(&gate_mutex); await_gate(&commit_entered); unlock(&gate_mutex);
-        bool accepted=link_post_action(ACT_FOCUS_START,NULL);
+        bool accepted=post_test_action(ACT_FOCUS_START,NULL);
         lock(&gate_mutex); assert(!accepted && !commit_done && !strcmp(device,"old-device"));
         printf("admission: identity commit paused; busy admission refused\n");
         release_commit=true; signal_gate(); unlock(&gate_mutex);
         assert(pthread_join(a,NULL)==0);
         assert(commit_done && acts.n==0 && capture_n==0);
-        assert(!link_post_action(ACT_FOCUS_START,NULL));
+        assert(!post_test_action(ACT_FOCUS_START,NULL));
         pump(); assert(fsm.st==LS_CONNECT); ready(); assert(capture_n==0);
-        assert(link_post_action(ACT_FOCUS_START,NULL));
+        assert(post_test_action(ACT_FOCUS_START,NULL));
         pump(); assert(capture_n==1 && !strcmp(captured_owner[0],"new-device"));
         printf("admission: retry accepted and sent after pair transition and new ready\n");
         puts("admission: no old action on new socket; PASS");
@@ -274,7 +279,7 @@ int main(int argc,char **argv) {
 
         }
         pump(); assert(fsm.st==LS_CONNECT); ready();
-        bool accepted=link_post_action(ACT_FOCUS_START,NULL);
+        bool accepted=post_test_action(ACT_FOCUS_START,NULL);
         printf("startup-pair: identity=%s online=%d action accepted=%d\n",device,fsm.st==LS_ONLINE,accepted);
         if (!accepted) { puts("RED: committed startup pairing leaves online action admission blocked"); return 1; }
         puts("PASS"); free(link_mem); return 0;
@@ -374,7 +379,7 @@ int main(int argc,char **argv) {
         puts("PASS"); alarm(0); free(link_mem); return 0;
     }
     if (lost_case) {
-        assert(link_post_action(ACT_FOCUS_START,NULL)); pump(); assert(acts.n==1);
+        assert(post_test_action(ACT_FOCUS_START,NULL)); pump(); assert(acts.n==1);
         if (!strcmp(argv[1],"lost-on")) lost_mode=true; else link_deps.lost_on=NULL;
         size_t old_tail=qtail, old_captures=capture_n;
         assert(link_pair_commit("new-device")==LINK_PAIR_LOST);
@@ -391,15 +396,39 @@ int main(int argc,char **argv) {
     }
     send_ok=!unsent;
     char id[37];
-    assert(link_post_action(ACT_FOCUS_START, NULL));
+    memset(id, 0, sizeof id);
+    assert(link_post_action(ACT_FOCUS_START, NULL, id));
     pump(); assert(acts.n==1);
-    strlcpy(id, acts.a[0].id, sizeof id);
+    assert(strlen(id)==36 && !strcmp(id, acts.a[0].id));
     printf("before re-pair: scenario=%s pending=%zu sent=%d captures=%zu id=%s\n",argv[1],acts.n,acts.a[0].sent,capture_n,id);
-    if(completed) { result(id); assert(acts.n==0); }
-    if(expired) { now_ms += LINK_ACT_TIMEOUT_MS; pump(); assert(acts.n==0); }
+    if(completed) {
+        /* The random fake repeats the same UUID: refusal must leave output untouched. */
+        char duplicate[37] = "unchanged";
+        assert(!link_post_action(ACT_FOCUS_STOP, NULL, duplicate));
+        assert(!strcmp(duplicate, "unchanged") && acts.n==1);
+        ui_queue_full=true;
+        result(id); assert(acts.n==1 && acts.a[0].result_pending && action_posts==0);
+        for (int i=0;i<3;i++) tick();
+        assert(acts.n==1 && action_posts==0);
+        lost_mode=true; ui_queue_full=false; tick();
+        assert(acts.n==1 && action_posts==0);
+        lost_mode=false; tick();
+        assert(acts.n==0 && action_posts==1 && last_action_event.len==62);
+        assert(last_action_event.data[0]==ACT_FOCUS_START && last_action_event.data[1]);
+        assert(!memcmp(&last_action_event.data[26],id,36));
+        tick(); assert(action_posts==1);
+    }
+    if(expired || unsent) {
+        ui_queue_full=true;
+        now_ms += LINK_ACT_TIMEOUT_MS; pump();
+        assert(acts.n==1 && acts.a[0].result_pending && action_posts==0);
+        assert(!strcmp((char *)&acts.a[0].result.data[2], "TIMEOUT"));
+        assert(!memcmp(&acts.a[0].result.data[26], id, 36));
+    }
     send_ok=true;
     assert(link_pair_commit("new-device")==PAIR_SUCCESS);
-    pump(); assert(fsm.st==LS_CONNECT); assert(resets==1); printf("after pair commit: pending=%zu new_socket=%s\n",acts.n,socket_device);
+    ui_queue_full=false;
+    pump(); assert(action_posts==0 || completed); assert(fsm.st==LS_CONNECT); assert(resets==1); printf("after pair commit: pending=%zu new_socket=%s\n",acts.n,socket_device);
     ready();
     printf("after new ready: pending=%zu captures=%zu\n",acts.n,capture_n);
     for(size_t i=0;i<capture_n;i++) printf("capture[%zu] identity=%s frame=%s\n",i,captured_owner[i],captured[i]);

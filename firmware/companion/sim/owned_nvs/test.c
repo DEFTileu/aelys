@@ -8,11 +8,13 @@
 static unsigned char saved[STORE_SNAP_OWNED_BLOB + 16], pending[sizeof saved];
 static size_t saved_len, pending_len;
 static int writes, commits, erases;
+static int flash_inits, flash_erases;
+static esp_err_t flash_init_result;
 static enum { NONE, OPEN_READ, OPEN_WRITE, GET, SET, COMMIT } fail;
 
 const char *esp_err_to_name(esp_err_t err) { (void)err; return "injected"; }
-esp_err_t nvs_flash_init(void) { return ESP_OK; }
-esp_err_t nvs_flash_erase(void) { ++erases; return ESP_FAIL; }
+esp_err_t nvs_flash_init(void) { ++flash_inits; return flash_init_result; }
+esp_err_t nvs_flash_erase(void) { ++flash_erases; return ESP_OK; }
 void owner_defaults(owner_info_t *o) { memset(o, 0, sizeof *o); }
 void settings_defaults(settings_t *s) { memset(s, 0, sizeof *s); }
 esp_err_t nvs_open(const char *ns, nvs_open_mode_t mode, nvs_handle_t *h) {
@@ -44,6 +46,17 @@ static void rejected_untouched(const unsigned char *owner) {
     CHECK(!store_load_snap(&out, owner)); CHECK(memcmp(&out, &before, sizeof out) == 0);
 }
 int main(void) {
+    const esp_err_t init_results[] = {ESP_OK, ESP_ERR_NVS_NO_FREE_PAGES,
+                                      ESP_ERR_NVS_NEW_VERSION_FOUND, ESP_FAIL};
+    for (size_t i = 0; i < sizeof init_results / sizeof init_results[0]; ++i) {
+        flash_init_result = init_results[i];
+        flash_inits = flash_erases = 0;
+        esp_err_t result = store_init();
+        CHECK(flash_erases == 0);
+        CHECK(flash_inits == 1);
+        CHECK(result == init_results[i]);
+    }
+    puts("PASS init returns success or original error without erasing");
     unsigned char a[STORE_SNAP_OWNER_LEN] = {4, 1}, b[STORE_SNAP_OWNER_LEN] = {4, 2};
     snap_t in = {0}, out;
     in.generated = 1794493920; in.has_task = true; strcpy(in.task.id, "task-a");

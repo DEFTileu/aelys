@@ -305,11 +305,10 @@ void app_main(void)
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     esp_err_t berr = board_init();
     if (berr != ESP_OK) halt("board_init", berr);
-    /* Load settings before the UI exists, and apply them inside the ui task right after ui_setup(), so
-     * the first frame is already the right screen (no home flash before lost mode). Empty or corrupt
-     * NVS gives the factory contacts and lost mode off; never a crash or a reboot. */
+    /* Load settings before UI startup so lost mode has no home flash.
+     * Unreadable NVS must not be treated as a fresh unpaired device. */
     esp_err_t nerr = store_init();
-    if (nerr != ESP_OK) ESP_LOGE(TAG, "nvs: %s (running on defaults)", esp_err_to_name(nerr));
+    if (nerr != ESP_OK) halt("store_init", nerr);
     store_load_owner(&owner);
     store_load_lost(&lost);
     store_load_settings(&settings);

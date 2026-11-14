@@ -46,7 +46,7 @@ extern tribuf_t ui_owner_tb; /* owner_info_t */
 extern tribuf_t ui_snap_tb; /* snap_t */
 void ui_handle_event(const ui_event_t *ev);
 /* The action hook (main passes link_post_action): false = refused, and the UI shows "No connection". */
-void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
+void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id, char out_id[37]));
 /* Runs in the UI task; sink must be non-blocking. */
 void ui_set_character_status_sink(void (*sink)(character_mood_t mood, character_reason_t why, uint32_t lost_rev, uint32_t identity));
 /* Called before registering the status sink during UI setup. */

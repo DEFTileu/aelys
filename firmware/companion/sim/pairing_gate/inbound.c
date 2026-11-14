@@ -7,6 +7,9 @@
 #include <setjmp.h>
 #include "link.c"
 
+/* Legacy test call sites do not inspect the returned UUID. */
+static bool post_test_action(act_kind_t kind, const char *target) { char id[37]; return link_post_action(kind, target, id); }
+
 static bool startup_case, fail_task_create, stop_task_at_receive;
 static link_pair_result_t startup_pair_result;
 static void (*created_task)(void *);
@@ -15,7 +18,9 @@ static uint32_t now_ms = 1000, generation;
 static char device[40] = "old-device";
 static char socket_device[40];
 static bool paired = true, send_ok = true;
-static bool fake_lost_on(void) { return false; }
+static bool lost_on;
+static int lookup_sends;
+static bool fake_lost_on(void) { return lost_on; }
 static lq_t queue_items[32];
 static size_t qhead, qtail;
 static char captured[8][1024], captured_owner[8][40];
@@ -105,6 +110,7 @@ uint32_t link_ws_last_rx_ms(void) { return now_ms; }
 bool link_ws_lost_frame(void) { return false; }
 void link_ws_slot_free(int slot) { (void)slot; freed_slots++; }
 bool link_ws_send(const char *json,size_t n) {
+    if (strstr(json,"\"type\":\"action_lookup\"")) lookup_sends++;
     if(!send_ok) return false;
     if(strstr(json,"\"type\":\"action\"")) {
         lock(&gate_mutex);
@@ -114,7 +120,7 @@ bool link_ws_send(const char *json,size_t n) {
     }
     return true;
 }
-void link_cmd_handle(const proto_msg_t *m,bool ok) { assert(m->type == MSG_COMMAND); command_calls++; command_parsed=ok; }
+void link_cmd_handle(const proto_msg_t *m,bool ok) { assert(m->type == MSG_COMMAND); command_calls++; command_parsed=ok; if (ok && m->u.cmd.name == CMD_LOST_MODE) lost_on = m->u.cmd.a.lost.on; }
 static void reset_revs(void) { resets++; }
 static void pump(void) { lq_t e; while(xQueueReceive(q,&e,0)) handle_q(&e); tick(); }
 static void ready(void) { char json[128]; snprintf(json,sizeof json,"{\"type\":\"ready\",\"device_id\":\"%s\"}",device); strlcpy(link_mem->rx[0],json,sizeof link_mem->rx[0]); assert(link_q_post(LQ_WS_FRAME,link_ws_gen(),0,(int)strlen(json))); pump(); assert(fsm.st==LS_ONLINE); }
@@ -138,7 +144,35 @@ int main(int argc,char **argv) {
     pump(); assert(fsm.st==LS_CONNECT); ready(); assert(!strcmp(socket_device,"old-device"));
     char frame[512], id[40]="";
     if (result_case) {
-        assert(link_post_action(ACT_FOCUS_START,NULL)); pump(); assert(acts.n==1);
+        /* A queued but never-attempted action cannot cross disconnect/reconnect. */
+        assert(post_test_action(ACT_FOCUS_START,NULL));
+        assert(acts.n==1 && !acts.a[0].ever_sent);
+        on_offline(); on_online(); pump();
+        assert(capture_n==0 && acts.n==0 && action_events==1);
+        action_events=0;
+        /* Process lost on/off before the queued action wake-up is handled. */
+        assert(post_test_action(ACT_FOCUS_START,NULL));
+        const char *lost_enable="{\"type\":\"command\",\"id\":\"lost\",\"name\":\"lost_mode\",\"args\":{\"on\":true}}";
+        const char *lost_disable="{\"type\":\"command\",\"id\":\"lost\",\"name\":\"lost_mode\",\"args\":{\"on\":false}}";
+        strlcpy(link_mem->rx[0],lost_enable,sizeof link_mem->rx[0]); handle_frame(0,(int)strlen(lost_enable));
+        assert(lost_on);
+        strlcpy(link_mem->rx[0],lost_disable,sizeof link_mem->rx[0]); handle_frame(0,(int)strlen(lost_disable));
+        assert(!lost_on); pump();
+        assert(capture_n==0 && acts.n==0 && action_events==1);
+        action_events=0; command_calls=0;
+        /* Legacy ready must never send a lookup; a capable ready may do so only outside lost mode. */
+        assert(post_test_action(ACT_FOCUS_START,NULL)); pump();
+        strlcpy(id, acts.a[0].id, sizeof id);
+        now_ms += LINK_ACT_TIMEOUT_MS; pump(); pump();
+        assert(action_events==1 && acts.n==1 && lookup_sends==0);
+        lost_on=true; lookup_supported=true; pump(); assert(lookup_sends==0);
+        lost_on=false; pump(); assert(lookup_sends==1);
+        snprintf(frame,sizeof frame,"{\"type\":\"action_lookup_result\",\"id\":\"%s\",\"found\":false}",id);
+        queue_frame(0,link_ws_gen(),frame); pump(); assert(acts.n==1 && action_events==1);
+        snprintf(frame,sizeof frame,"{\"type\":\"action_lookup_result\",\"id\":\"%s\",\"found\":true,\"ok\":true}",id);
+        queue_frame(0,link_ws_gen(),frame); pump(); assert(acts.n==0 && action_events==2);
+        action_events=0; capture_n=0;
+        assert(post_test_action(ACT_FOCUS_START,NULL)); pump(); assert(acts.n==1);
         strlcpy(id,acts.a[0].id,sizeof id);
         snprintf(frame,sizeof frame,"{\"type\":\"action_result\",\"id\":\"%s\",\"ok\":true}",id);
     } else if (cmd) {
@@ -153,8 +187,9 @@ int main(int argc,char **argv) {
     queue_frame(0,old_gen,frame); one_event(LQ_WS_FRAME);
     if (cmd) { assert(command_calls==1 && command_parsed); command_calls=0; }
     if (result_case) {
+        tick(); /* delivery is retried by the task tick */
         assert(action_events==1 && acts.n==0); action_events=0;
-        assert(link_post_action(ACT_FOCUS_START,NULL)); pump(); assert(acts.n==1 && !strcmp(id,acts.a[0].id));
+        assert(post_test_action(ACT_FOCUS_START,NULL)); pump(); assert(acts.n==1 && !strcmp(id,acts.a[0].id));
     }
     if (snap) {
         bool fresh=false; const snap_t *shown=tribuf_latest(&ui_snap_tb,&fresh);

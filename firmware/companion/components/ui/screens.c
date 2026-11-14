@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include "ui_screens_priv.h"
+#include "ui_action_ledger.h"
 
 #define ICE_TIMEOUT_MS 15000
 #define PAIRED_SHOW_MS 2000
@@ -42,8 +43,10 @@ static struct {
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
     char done_id[40];    /* optimistic marks: task.complete / notification.read sent for these ids */
     char read_id[5][40];
-    char pend_read[5][40]; /* ids of notification.read still unanswered, oldest first: UI_EV_ACTION carries no target */
-    bool (*sink)(act_kind_t, const char *);
+    char done_action[37], read_action[5][37], last_action[37];
+    ui_action_ledger_t *actions; /* LVGL allocator: PSRAM on the board */
+    bool action_fault;
+    bool (*sink)(act_kind_t, const char *, char out_id[37]);
     void (*find_stop)(void);
     int64_t (*clock)(void);
 } g;
@@ -132,7 +135,7 @@ void ui_text_color(lv_obj_t *o, uint32_t c)
 static void (*character_status_sink)(character_mood_t, character_reason_t, uint32_t, uint32_t);
 void ui_set_character_status_sink(void (*sink)(character_mood_t, character_reason_t, uint32_t, uint32_t)) { character_status_sink = sink; }
 void ui_set_lost_revision(uint32_t rev) { g.lost_rev = rev; }
-void ui_set_action_sink(bool (*sink)(act_kind_t, const char *)) { g.sink = sink; }
+void ui_set_action_sink(bool (*sink)(act_kind_t, const char *, char out_id[37])) { g.sink = sink; }
 #ifndef ESP_PLATFORM
 static void (*character_cue_sink)(character_cue_t cue);
 void ui_set_character_cue_sink(void (*sink)(character_cue_t cue)) { character_cue_sink = sink; }
@@ -480,13 +483,38 @@ static void reaction_timeout(lv_timer_t *t)
     render();
 }
 
-/* Send an action: a refused one (no pairing, offline, queue full) shows "No connection" at once. */
+/* Preflight, send and admission are serialized on the UI task. */
 static bool act(act_kind_t k, const char *target)
 {
-    if (g.sink && g.sink(k, target)) return true;
-    toast("No connection");
-    return false;
+    if (g.lost) return false;
+    ui_action_result_t pre = ui_action_ledger_can_admit(g.actions, k, target);
+    if (g.action_fault || pre != UI_ACTION_OK) {
+        toast(pre == UI_ACTION_DUPLICATE ? "Still waiting for confirmation" : "Action queue full");
+        return false;
+    }
+    char id[37] = {0};
+    if (!g.sink || !g.sink(k, target, id)) { toast("No connection"); return false; }
+    if (ui_action_ledger_admit(g.actions, id, k, target) != UI_ACTION_OK) {
+        /* A sent action without a usable fresh ID cannot safely be tracked. */
+        g.action_fault = true;
+        toast("Still waiting for confirmation");
+        return false;
+    }
+    memcpy(g.last_action, id, sizeof g.last_action);
+    return true;
 }
+
+#ifndef ESP_PLATFORM
+bool ui_test_action(act_kind_t k, const char *target) { return act(k, target); }
+void ui_test_reset_actions(void) { ui_action_ledger_init(g.actions, (ui_action_context_t){g.character_identity, g.lost_rev, g.lost}); g.action_fault = !g.actions; }
+/* Exercise the state left by a failed allocation without exhausting LVGL's heap. */
+void ui_test_action_allocation_fail(bool fail)
+{
+    if (fail) { lv_free(g.actions); g.actions = NULL; }
+    else if (!g.actions) g.actions = lv_malloc_zeroed(sizeof *g.actions);
+    ui_test_reset_actions();
+}
+#endif
 
 static void hold_timeout(lv_timer_t *t)
 {
@@ -498,22 +526,11 @@ static void hold_timeout(lv_timer_t *t)
 static void mark_read(const char *id)
 {
     for (int i = 0; i < 5; i++)
-        if (!g.read_id[i][0]) { snprintf(g.read_id[i], sizeof g.read_id[i], "%s", id); break; }
-    for (int i = 0; i < 5; i++)
-        if (!g.pend_read[i][0]) { snprintf(g.pend_read[i], sizeof g.pend_read[i], "%s", id); return; }
-}
-
-/* An answer to the oldest open notification.read; on failure only that notice loses its tick.
- * shortcut: assumes answers come in the order the reads were sent; upgrade by carrying the target id in UI_EV_ACTION. */
-static void read_answered(bool ok)
-{
-    char id[40];
-    snprintf(id, sizeof id, "%s", g.pend_read[0]);
-    memmove(g.pend_read[0], g.pend_read[1], sizeof g.pend_read - sizeof g.pend_read[0]);
-    memset(g.pend_read[4], 0, sizeof g.pend_read[4]);
-    if (ok) return;
-    for (int i = 0; i < 5; i++)
-        if (id[0] && !strcmp(g.read_id[i], id)) g.read_id[i][0] = 0;
+        if (!g.read_id[i][0]) {
+            snprintf(g.read_id[i], sizeof g.read_id[i], "%s", id);
+            memcpy(g.read_action[i], g.last_action, sizeof g.read_action[i]);
+            break;
+        }
 }
 
 /* A fresh snapshot: marks for things the server no longer lists are dropped. */
@@ -557,7 +574,9 @@ void ui_setup(void)
     g.snap = snap_buf ? tribuf_latest(&ui_snap_tb, NULL) : NULL;
     g.done_id[0] = 0;
     memset(g.read_id, 0, sizeof g.read_id);
-    memset(g.pend_read, 0, sizeof g.pend_read);
+    g.actions = lv_malloc_zeroed(sizeof *g.actions);
+    ui_action_ledger_init(g.actions, (ui_action_context_t){0});
+    g.action_fault = !g.actions;
     if (!g.tick_timer) g.tick_timer = lv_timer_create(tick_timer_cb, 1000, NULL);
     show(SCR_HOME);
 }
@@ -569,8 +588,10 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
     int row = -1;
     if (g.cur == SCR_TODAY) {
         hit = scr_today_hit(x, y);
-        if (hit == TAP_ROW && s->has_task && !ui_marked_done(s->task.id) && act(ACT_TASK_COMPLETE, s->task.id))
+        if (hit == TAP_ROW && s->has_task && !ui_marked_done(s->task.id) && act(ACT_TASK_COMPLETE, s->task.id)) {
             snprintf(g.done_id, sizeof g.done_id, "%s", s->task.id);
+            memcpy(g.done_action, g.last_action, sizeof g.done_action);
+        }
     } else if (g.cur == SCR_INBOX) {
         row = scr_inbox_hit(x, y);
         hit = row >= 0 ? TAP_ROW : TAP_OUTSIDE;
@@ -587,8 +608,30 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
 
 static void on_action_result(const ui_event_t *ev)
 {
-    if (ev->len < 2) return;
-    if (ev->data[0] == ACT_NOTIFICATION_READ) read_answered(ev->data[1] != 0);
+    if (!g.actions || g.action_fault || ev->len != 62) return;
+    char id[37]; memcpy(id, &ev->data[26], 36); id[36] = 0;
+    /* Kind is checked before settlement, so a malformed reply cannot consume it. */
+    ui_action_entry_t *match = NULL;
+    for (size_t i = 0; i < UI_ACTION_LEDGER_CAPACITY; ++i)
+        if (g.actions->occupied[i] && !memcmp(g.actions->entries[i].id, id, 37)) { match = &g.actions->entries[i]; break; }
+    if (!match || match->kind != ev->data[0]) return;
+    bool timeout = !ev->data[1] && !strncmp((const char *)&ev->data[2], "TIMEOUT", 8);
+    if (timeout) {
+        ui_action_ledger_timeout(g.actions, id);
+        if (match->generation == g.actions->generation && !g.lost)
+            toast("Still waiting for confirmation");
+        return;
+    }
+    ui_action_entry_t entry = *match;
+    ui_action_result_t result = ui_action_ledger_settle(g.actions, id, &entry);
+    if (result != UI_ACTION_OK && result != UI_ACTION_STALE) return;
+    ui_action_ledger_release(g.actions, id);
+    if (!ev->data[1] && entry.context.identity == g.character_identity && entry.kind == ACT_NOTIFICATION_READ)
+        for (int i = 0; i < 5; ++i)
+            if (!strcmp(g.read_id[i], entry.target) && !strcmp(g.read_action[i], entry.id)) g.read_id[i][0] = 0;
+    if (!ev->data[1] && entry.context.identity == g.character_identity && entry.kind == ACT_TASK_COMPLETE &&
+        !strcmp(g.done_id, entry.target) && !strcmp(g.done_action, entry.id)) g.done_id[0] = 0;
+    if (result == UI_ACTION_STALE) return;
     if (ev->data[1]) {
         if (ev->data[0] == ACT_TASK_COMPLETE) { /* Aelys cheers for 3 s */
             bool last = g.snap_valid && g.snap && g.snap->today_total > 0 &&
@@ -601,7 +644,6 @@ static void on_action_result(const ui_event_t *ev)
         }
         return;
     }
-    if (ev->data[0] == ACT_TASK_COMPLETE) g.done_id[0] = 0; /* the tick was optimistic: take it back */
     const char *err = ev->len >= 3 ? (const char *)&ev->data[2] : "";
     toast(!strncmp(err, "OFFLINE", 8) ? "No connection" : "Didn't work \xE2\x80\x94 try again");
 }
@@ -746,10 +788,14 @@ void ui_handle_event(const ui_event_t *ev)
                 g.snap = &empty_snap; /* never derive the next owner's state from the previous snapshot */
                 g.done_id[0] = 0;
                 memset(g.read_id, 0, sizeof g.read_id);
-                memset(g.pend_read, 0, sizeof g.pend_read);
+                /* Transport has fenced sends and retries for the old identity. */
+                g.action_fault = ui_action_ledger_reset_for_new_identity(g.actions, (ui_action_context_t){identity, rev, ev->data[0]}) != UI_ACTION_OK;
             }
-            if (g.lost != (ev->data[0] != 0) || rev != g.lost_rev || identity != g.character_identity)
+            if (g.lost != (ev->data[0] != 0) || rev != g.lost_rev || identity != g.character_identity) {
+                if (identity == g.character_identity && ui_action_ledger_transition(g.actions, (ui_action_context_t){identity, rev, ev->data[0]}) != UI_ACTION_OK)
+                    g.action_fault = true;
                 character_init(&g.character); /* do not replay a pre-transition reaction */
+            }
             g.lost = ev->data[0] != 0;
             g.lost_rev = rev;
             g.character_identity = identity;
@@ -800,7 +846,7 @@ void ui_handle_event(const ui_event_t *ev)
         next = screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
         break;
     case UI_EV_ACTION:
-        if (!g.lost) {
+        {
             on_action_result(ev);
             render();
         }

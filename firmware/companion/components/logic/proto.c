@@ -133,10 +133,11 @@ static bool get_bool(const P *p, int obj, const char *key, bool *dst, int fl) /*
     int v = find(p, obj, key);
     if (v < 0 || is_null(p, v)) return !(fl & S_REQ);
     if (p->t[v].type != JSMN_PRIMITIVE) return false;
-    char c = p->js[p->t[v].start];
-    if (c != 't' && c != 'f') return false;
-    *dst = c == 't';
-    return true;
+    size_t n = (size_t)(p->t[v].end - p->t[v].start);
+    const char *token = p->js + p->t[v].start;
+    if (n == 4 && memcmp(token, "true", 4) == 0) { *dst = true; return true; }
+    if (n == 5 && memcmp(token, "false", 5) == 0) { *dst = false; return true; }
+    return false;
 }
 
 /* integer field: absent or null -> *dst unchanged (false if S_REQ); not an integer -> false */
@@ -357,11 +358,20 @@ bool proto_parse(const char *json, size_t len, proto_msg_t *out)
         if (toks[toks[i].parent].type == JSMN_OBJECT && (toks[i].type != JSMN_STRING || toks[i].size != 1)) return false;
     }
     P p = { json, toks, n };
-    char type[16];
+    char type[32];
     if (!get_str(&p, 0, "type", type, sizeof type, S_REQ | S_TRUNC)) return false;
     msg_type_t t;
     if (strcmp(type, "ready") == 0) {
         if (!get_str(&p, 0, "device_id", out->id, sizeof out->id, S_REQ)) return false;
+        int caps = find(&p, 0, "capabilities");
+        if (caps >= 0) {
+            if (p.t[caps].type != JSMN_ARRAY) return false;
+            for (int i = caps + 1; i < n && p.t[i].parent == caps; i = skip(&p, i)) {
+                char cap[32];
+                if (jstr(&p, i, cap, sizeof cap) < 0) return false;
+                if (strcmp(cap, "action_lookup") == 0) out->u.ready.action_lookup = true;
+            }
+        }
         t = MSG_READY;
     } else if (strcmp(type, "heartbeat_ack") == 0) t = MSG_HB_ACK;
     else if (strcmp(type, "snapshot") == 0) {
@@ -372,6 +382,12 @@ bool proto_parse(const char *json, size_t len, proto_msg_t *out)
         if (!get_str(&p, 0, "id", out->id, sizeof out->id, S_REQ) || !get_bool(&p, 0, "ok", &out->u.result.ok, S_REQ) ||
             !get_str(&p, 0, "error_code", out->u.result.error, sizeof out->u.result.error, S_TRUNC)) return false;
         t = MSG_ACTION_RESULT;
+    } else if (strcmp(type, "action_lookup_result") == 0) {
+        if (!get_str(&p, 0, "id", out->id, sizeof out->id, S_REQ) ||
+            !get_bool(&p, 0, "found", &out->u.lookup.found, S_REQ) ||
+            (out->u.lookup.found && !get_bool(&p, 0, "ok", &out->u.lookup.ok, S_REQ)) ||
+            !get_str(&p, 0, "error_code", out->u.lookup.error, sizeof out->u.lookup.error, S_TRUNC)) return false;
+        t = MSG_ACTION_LOOKUP_RESULT;
     } else if (strcmp(type, "command") == 0) {
         return parse_command(&p, out);
     } else if (strcmp(type, "error") == 0) {
@@ -524,6 +540,14 @@ size_t proto_action(char *buf, size_t cap, const char id[37], act_kind_t k, cons
     if (tkey) { wr(&w, "\""); wr(&w, tkey); wr(&w, "\":"); wq(&w, target_id); }
     else if (k == ACT_FOCUS_START && focus_mode) { wr(&w, "\"mode\":"); wq(&w, focus_mode); }
     wr(&w, "}}");
+    return w_done(&w);
+}
+
+size_t proto_action_lookup(char *buf, size_t cap, const char *id)
+{
+    if (!id) return 0;
+    W w; w_init(&w, buf, cap);
+    wr(&w, "{\"type\":\"action_lookup\",\"id\":"); wq(&w, id); wr(&w, "}");
     return w_done(&w);
 }
 

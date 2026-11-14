@@ -73,7 +73,7 @@ async def state_of(device_id):
 async def test_ready_then_snapshot(paired):
     _, device_id, token = paired
     with TestClient(app) as client, client.websocket_connect(CHANNEL, headers=headers(token)) as socket:
-        assert socket.receive_json() == {'type': 'ready', 'device_id': device_id}
+        assert socket.receive_json() == {'type': 'ready', 'device_id': device_id, 'capabilities': ['action_lookup']}
         snapshot = socket.receive_json()
         assert snapshot['type'] == 'snapshot' and snapshot['snapshot']['next_task'] is None
         socket.send_json({'type': 'heartbeat'})

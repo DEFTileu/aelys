@@ -7,7 +7,7 @@
 #include "snap.h"
 #include "store_codec.h"
 
-/* nvs_flash_init(); erases only the nvs partition if it is full or from a newer IDF. */
+/* Initialize NVS without erasing; return the original error if initialization fails. */
 esp_err_t store_init(void);
 
 void store_load_owner(owner_info_t *o);          /* else owner_defaults() */

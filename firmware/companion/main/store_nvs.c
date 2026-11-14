@@ -11,13 +11,7 @@ static const char *TAG = "store";
 
 esp_err_t store_init(void)
 {
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "nvs partition unusable (%s), erasing it", esp_err_to_name(err));
-        err = nvs_flash_erase(); /* the nvs partition only, never the whole flash */
-        if (err == ESP_OK) err = nvs_flash_init();
-    }
-    return err;
+    return nvs_flash_init();
 }
 
 /* Reads a blob into buf; returns its length, 0 if absent or unreadable. */

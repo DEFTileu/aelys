@@ -12,13 +12,15 @@
 typedef enum { ACT_NOTIFICATION_READ, ACT_FOCUS_START, ACT_FOCUS_PAUSE, ACT_FOCUS_RESUME, ACT_FOCUS_STOP, ACT_TASK_COMPLETE } act_kind_t;
 typedef enum { CMD_LOST_MODE, CMD_PLAY_SOUND, CMD_ICE_UPDATE, CMD_WIFI_ADD, CMD_WIFI_SCAN, CMD_SETTINGS, CMD_WIFI_REMOVE,
                CMD_WIFI_ORDER, CMD_RESTART, CMD_UNPAIR, CMD_UNKNOWN } cmd_name_t;
-typedef enum { MSG_READY, MSG_HB_ACK, MSG_SNAPSHOT, MSG_ACTION_RESULT, MSG_COMMAND, MSG_ERROR, MSG_UNKNOWN } msg_type_t;
+typedef enum { MSG_READY, MSG_HB_ACK, MSG_SNAPSHOT, MSG_ACTION_RESULT, MSG_ACTION_LOOKUP_RESULT, MSG_COMMAND, MSG_ERROR, MSG_UNKNOWN } msg_type_t;
 
 typedef struct {
     msg_type_t type;
     char id[40]; /* action/command id; ready: device_id */
     union {
         snap_t snap;
+        struct { bool action_lookup; } ready;
+        struct { bool found, ok; char error[24]; } lookup;
         struct { bool ok; char error[24]; } result;
         struct { char code[32]; } error;
         struct {
@@ -63,6 +65,7 @@ bool proto_error_code(const char *json, size_t len, char code[32]);           /*
 size_t proto_heartbeat(char *buf, size_t cap);
 size_t proto_metrics(char *buf, size_t cap, const proto_metrics_t *m);
 size_t proto_action(char *buf, size_t cap, const char id[37], act_kind_t k, const char *target_id /* NULL for focus.* */, const char *focus_mode /* NULL = omit */);
+size_t proto_action_lookup(char *buf, size_t cap, const char *id);
 size_t proto_command_ack(char *buf, size_t cap, const char *id, bool ok, const char *error_code /* NULL when ok */);
 /* Drops hidden (empty) SSIDs; networks that do not fit are left out (the message stays valid JSON). */
 size_t proto_wifi_scan_result(char *buf, size_t cap, const char *id, const wifi_seen_t *nets, int n);

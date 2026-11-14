@@ -108,3 +108,9 @@ void scr_hold_set(int pct);
 lv_obj_t *scr_pair_create(lv_obj_t *parent);
 bool scr_pair_set_code(const char *digits); /* 6 ASCII digits; false (nothing changed) if one is not a digit */
 void scr_pair_set_done(void);               /* the "Paired" card */
+
+#ifndef ESP_PLATFORM
+/* Host tests submit through the same serialized action path as a gesture. */
+bool ui_test_action(act_kind_t k, const char *target);
+void ui_test_reset_actions(void);
+#endif

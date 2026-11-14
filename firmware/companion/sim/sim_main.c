@@ -11,6 +11,14 @@
 #include "owner.h"
 #include "snap_fixture.h"
 #include "ui.h"
+#include "ui_screens_priv.h"
+
+static bool cue_action_sink(act_kind_t kind, const char *target, char out_id[37])
+{
+    (void)kind; (void)target;
+    memcpy(out_id, "00000000-0000-4000-8000-000000000001", 37);
+    return true;
+}
 
 static int find_mood(const char *name)
 {
@@ -218,7 +226,10 @@ int main(int argc, char **argv)
         sim_post(UI_EV_TIME, hm, 2); sim_post(UI_EV_LINK, &online, 1);
         snap_t snap; fx_snap(&snap); fx_post(&snap, 1);
         cue_output = out; cue_written = 0; ui_set_character_cue_sink(write_event_cue);
-        const uint8_t action[] = {ACT_TASK_COMPLETE, 1};
+        ui_set_action_sink(cue_action_sink);
+        if (!ui_test_action(ACT_TASK_COMPLETE, snap.task.id)) return 1;
+        uint8_t action[62] = {ACT_TASK_COMPLETE, 1};
+        memcpy(action + 26, "00000000-0000-4000-8000-000000000001", 36);
         sim_post(UI_EV_ACTION, action, sizeof action);
         ui_set_character_cue_sink(NULL);
         if (cue_written == 0) { fprintf(stderr, "cue suppressed\n"); return 3; }

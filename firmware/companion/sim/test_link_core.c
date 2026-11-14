@@ -74,29 +74,23 @@ static void test_clock_wrap(void)
     CHECK_EQ(link_acts_expire(&t, 0xFFFFFF00u + 10000u, out), 1);
 }
 
-static void test_reconnect_resends_the_same_id_and_restarts_the_timeout(void)
+static void test_reconnect_never_resends_attempted_mutation(void)
 {
     link_acts_t t; link_acts_init(&t);
-    link_act_t out[LINK_ACT_MAX];
-    link_acts_add(&t, ID[0], ACT_TASK_COMPLETE, "t-1", 0);
-    link_acts_add(&t, ID[1], ACT_FOCUS_STOP, "", 0);
-    link_acts_sent(&t, ID[0], 1);
-    link_acts_sent(&t, ID[1], 2);
-    CHECK(link_acts_next_unsent(&t) == NULL);
-    link_acts_unsend_all(&t, 8000);                                     /* socket dropped */
-    const link_act_t *a = link_acts_next_unsent(&t);
-    CHECK(a && strcmp(a->id, ID[0]) == 0 && strcmp(a->target, "t-1") == 0);   /* same id, same payload */
-    CHECK_EQ(link_acts_expire(&t, 17999, out), 0);                      /* 10 s from the drop, not from the first send */
-    link_acts_sent(&t, ID[0], 9000);
-    link_acts_sent(&t, ID[1], 9000);
-    CHECK_EQ(link_acts_expire(&t, 18999, out), 0);
-    CHECK_EQ(link_acts_expire(&t, 19000, out), 2);
-    /* never reconnected: un-sent actions fail 10 s after the drop and say they were never sent */
-    link_acts_add(&t, ID[2], ACT_FOCUS_STOP, "", 0);
-    link_acts_sent(&t, ID[2], 0);
+    CHECK(link_acts_add(&t, ID[0], ACT_TASK_COMPLETE, "t-1", 0));
+    link_acts_attempted(&t, ID[0]); /* transport may have partially sent */
     link_acts_unsend_all(&t, 100);
-    CHECK_EQ(link_acts_expire(&t, 10100, out), 1);
-    CHECK(!out[0].sent);
+    CHECK(link_acts_next_unsent(&t) == NULL);
+    link_acts_stage_expired(&t, 10100);
+    CHECK(link_acts_pending_result(&t) != NULL);
+    CHECK(link_acts_delivered(&t, ID[0]));
+    CHECK_EQ(t.n, 1); /* UUID stays available for a late result */
+    link_acts_stage_expired(&t, 50000);
+    CHECK(link_acts_pending_result(&t) == NULL); /* no second timeout */
+    CHECK(link_acts_result(&t, ID[0], true, NULL));
+    CHECK(link_acts_pending_result(&t) && link_acts_pending_result(&t)->data[1]);
+    CHECK(link_acts_delivered(&t, ID[0]));
+    CHECK_EQ(t.n, 0);
 }
 
 static void test_does_not_fit_is_refused(void)
@@ -150,8 +144,96 @@ static void test_identity_transition_discards_old_actions(void)
     CHECK(!strcmp(link_acts_next_unsent(&t)->id, ID[2]));
 }
 
+static void test_correlated_results_wait_for_delivery(void)
+{
+    link_acts_t t; link_acts_init(&t);
+    CHECK(link_acts_add(&t, ID[0], ACT_FOCUS_START, NULL, 0));
+    CHECK(link_acts_add(&t, ID[1], ACT_TASK_COMPLETE, "task", 0));
+    link_acts_sent(&t, ID[0], 1); link_acts_sent(&t, ID[1], 1);
+    CHECK(link_acts_result(&t, ID[1], false, "DENIED"));
+    CHECK_EQ(t.n, 2);
+    const ui_event_t *e = link_acts_pending_result(&t);
+    CHECK(e && e->len == 62 && e->data[0] == ACT_TASK_COMPLETE && !e->data[1]);
+    CHECK(!strcmp((const char *)&e->data[2], "DENIED"));
+    CHECK(!memcmp(&e->data[26], ID[1], 36));
+    CHECK(!link_acts_result(&t, ID[1], true, NULL));
+    CHECK(link_acts_result(&t, ID[0], true, NULL));
+    CHECK(link_acts_delivered(&t, ID[1]));
+    e = link_acts_pending_result(&t);
+    CHECK(e && e->data[1] && !memcmp(&e->data[26], ID[0], 36));
+    CHECK(link_acts_delivered(&t, ID[0])); CHECK_EQ(t.n, 0);
+}
+
+static void test_timeout_remembers_send_across_disconnect(void)
+{
+    link_acts_t t; link_acts_init(&t);
+    CHECK(link_acts_add(&t, ID[0], ACT_FOCUS_START, NULL, 0));
+    CHECK(link_acts_add(&t, ID[1], ACT_FOCUS_STOP, NULL, 0));
+    CHECK(!link_acts_add(&t, ID[0], ACT_FOCUS_STOP, NULL, 0));
+    link_acts_attempted(&t, ID[0]); /* failed send may have transmitted bytes */
+    link_acts_unsend_all(&t, 100);
+    link_acts_stage_expired(&t, 10100);
+    const ui_event_t *e = link_acts_pending_result(&t);
+    CHECK(e && !strcmp((char *)&e->data[2], "TIMEOUT") && !memcmp(&e->data[26], ID[0], 36));
+    CHECK(link_acts_next_unsent(&t) == NULL);
+    CHECK(link_acts_delivered(&t, ID[0]));
+    e = link_acts_pending_result(&t);
+    CHECK(e && !strcmp((char *)&e->data[2], "OFFLINE") && !memcmp(&e->data[26], ID[1], 36));
+    link_acts_discard_all(&t); CHECK(link_acts_pending_result(&t) == NULL);
+}
+
+static void test_lookup_is_bounded_and_result_waits_behind_timeout(void)
+{
+    link_acts_t t; link_acts_init(&t);
+    CHECK(link_acts_add(&t, ID[0], ACT_FOCUS_START, NULL, 0));
+    link_acts_sent(&t, ID[0], 0);
+    link_acts_stage_expired(&t, LINK_ACT_TIMEOUT_MS);
+    CHECK(link_acts_next_lookup(&t, 10000));
+    link_acts_lookup_attempted(&t, ID[0], 10000);
+    CHECK(!link_acts_next_lookup(&t, 19999));
+    /* A full UI queue leaves timeout pending while the found receipt arrives. */
+    CHECK(link_acts_result(&t, ID[0], false, "DENIED"));
+    CHECK(!strcmp((const char *)&link_acts_pending_result(&t)->data[2], "TIMEOUT"));
+    CHECK(link_acts_delivered(&t, ID[0]));
+    CHECK(!strcmp((const char *)&link_acts_pending_result(&t)->data[2], "DENIED"));
+    CHECK(link_acts_delivered(&t, ID[0]) && t.n == 0);
+    CHECK(link_acts_add(&t, ID[1], ACT_FOCUS_STOP, NULL, 0));
+    link_acts_sent(&t, ID[1], 0); link_acts_stage_expired(&t, 10000);
+    CHECK(link_acts_delivered(&t, ID[1]));
+    for (unsigned i = 0; i < LINK_LOOKUP_MAX; i++) {
+        uint32_t now = 10000 + i * LINK_ACT_TIMEOUT_MS;
+        CHECK(link_acts_next_lookup(&t, now));
+        link_acts_lookup_attempted(&t, ID[1], now); /* unknown or lost reply */
+    }
+    CHECK(link_acts_next_lookup(&t, 100000)); /* an unknown receipt may appear later */
+    CHECK(t.n == 1 && !link_acts_pending_result(&t));
+    CHECK(link_acts_result(&t, ID[1], true, NULL)); /* late direct result */
+    CHECK(link_acts_delivered(&t, ID[1]) && !t.n);
+}
+
+static void test_disconnect_fences_unattempted_immediately(void)
+{
+    link_acts_t t; link_acts_init(&t);
+    CHECK(link_acts_add(&t, ID[0], ACT_FOCUS_START, NULL, 0));
+    CHECK(link_acts_add(&t, ID[1], ACT_FOCUS_STOP, NULL, 0));
+    link_acts_attempted(&t, ID[1]);
+    link_acts_unsend_all(&t, 100);
+    const ui_event_t *e = link_acts_pending_result(&t);
+    CHECK(e && !strcmp((const char *)&e->data[2], "OFFLINE") && !memcmp(&e->data[26], ID[0], 36));
+    CHECK(link_acts_next_unsent(&t) == NULL);
+    CHECK(link_acts_delivered(&t, ID[0]));
+    CHECK(t.n == 1 && t.a[0].ever_sent && !t.a[0].result_pending);
+    link_acts_stage_expired(&t, LINK_ACT_TIMEOUT_MS);
+    e = link_acts_pending_result(&t);
+    CHECK(e && !strcmp((const char *)&e->data[2], "TIMEOUT"));
+}
+
 int main(void)
 {
+    test_disconnect_fences_unattempted_immediately();
+    test_lookup_is_bounded_and_result_waits_behind_timeout();
+    test_correlated_results_wait_for_delivery();
+    test_timeout_remembers_send_across_disconnect();
     test_identity_transition_discards_old_actions();
     test_http_verdict_reads_401_bodies();
     test_snapshot_save_throttle();
@@ -160,7 +242,7 @@ int main(void)
     test_timeout_counts_from_the_last_send();
     test_expire_is_oldest_first_and_keeps_the_young();
     test_clock_wrap();
-    test_reconnect_resends_the_same_id_and_restarts_the_timeout();
+    test_reconnect_never_resends_attempted_mutation();
     test_does_not_fit_is_refused();
     return g_failed ? 1 : 0;
 }
