@@ -135,6 +135,15 @@ void scr_settings_level_changed(bool on);                  /* tells the board (h
 bool ui_level_on(void);                                    /* screens.c: "always level" */
 void ui_level_set(bool on, bool notify);                   /* turn it on or off; notify: also tell the board to save it */
 bool ui_paired(void);                                      /* screens.c: the board is paired with the server */
+/* scr_games.c (design "Игры"): the hub (Ask Aelys, Coin, Dice, Reaction, Tilt Maze) and the games; one screen, the state lives here */
+lv_obj_t *scr_games_create(lv_obj_t *parent);
+void scr_games_visible(bool on);                           /* shown / hidden: everything that runs stops, and it opens on the hub */
+void scr_games_swipe(int dir);                             /* hub: dir > 0 (swipe left) next game, < 0 previous; in a game nothing */
+void scr_games_top(void);                                  /* the top key: open the selected game / play */
+void scr_games_tap(void);                                  /* a tap: the same */
+bool scr_games_back(void);                                 /* the low key: true if it only went from a game back to the hub */
+int scr_games_selected(void);                              /* the hub's game, for host tests */
+void scr_games_tilt(int32_t gx, int32_t gy);               /* newest gravity along the screen x / y, 16384 = 1 g (UI_EV_LEVEL) */
 
 /* orbit.c: task dots on a ring. total == 0 draws 8 dim placeholder dots (nothing paired yet). */
 lv_obj_t *orbit_create(lv_obj_t *parent, int32_t size);

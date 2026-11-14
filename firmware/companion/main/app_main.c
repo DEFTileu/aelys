@@ -7,6 +7,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_psram.h"
+#include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "sdkconfig.h"
@@ -374,6 +375,7 @@ static void boot_ui_setup(void)
     lv_port_probe_set_ui(ui_probe_swipe, probe_screen);
 #endif
     ui_set_find_stop(board_audio_stop); /* a tap or key while "Here I am!" shows ends the beeps */
+    ui_set_random(esp_random); /* the games' dice, coin and answers */
 #ifndef CONFIG_AELYS_NO_WIFI
     ui_set_lost_revision(lost.rev);
     ui_set_character_status_sink(link_post_character);

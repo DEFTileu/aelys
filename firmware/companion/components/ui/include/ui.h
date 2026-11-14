@@ -78,6 +78,8 @@ void ui_set_character_cue_sink(void (*sink)(character_cue_t cue));
 void ui_set_find_stop(void (*stop)(void));
 /* Wall clock for "today", relative times and the mood (default: time(); returns 0 while the clock is not set). Host tests set it. */
 void ui_set_clock(int64_t (*now)(void));
+/* Random 32-bit values for the games (main passes esp_random). Without one a fixed xorshift sequence runs, so host tests are repeatable. NULL = that default. */
+void ui_set_random(uint32_t (*fn)(void));
 
 #ifdef __cplusplus
 }

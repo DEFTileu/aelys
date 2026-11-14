@@ -5,6 +5,7 @@
  * BOOT + PWR held COMBO_HOLD_MS opens the ICE card; the PMIC's own long-press power-off is pushed
  * out to 10 s so the 2 s hold can never power the board off. */
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "board.h"
@@ -30,6 +31,7 @@ static const char *TAG = "input";
 #define POLL_MS     4 /* loop period: INT level, BOOT key, combo */
 #define SLOW_PASSES 5 /* every 20 ms: PMIC edges, and the release check while a finger is down */
 #define IMU_PASSES  5  /* every 20 ms: accelerometer for the level face, so a quick flip is followed at once */
+#define TILT_STEP   256 /* counts (1/64 g, about 1 degree): a board lying still posts nothing, a tilting one at most every 20 ms */
 /* Chip axes to screen axes (x right, y down). shortcut: set from one upright sample; recheck if the face turns the wrong way. */
 #define IMU_SCREEN_X(ax, ay) (-(ay)) /* chip -y is screen right: the plain mapping showed the face 90 degrees clockwise */
 #define IMU_SCREEN_Y(ax, ay) (ax)
@@ -201,7 +203,7 @@ static void input_task(void *arg)
     pwrkey_reset(&pwrkey);
     gesture_ctx_t gctx = {0};
     level_t lvl = {0};
-    int32_t lvl_sent = 0;
+    int32_t lvl_sent = 0, tilt_x_sent = 0, tilt_y_sent = 0; /* the tilt the maze last heard */
     btn_ctx_t bctx = {0};
     debounce_t boot_deb = {0}; /* for the click only: the combo has its own 2 s timing */
     bool moved_sent = false;   /* UI_EV_RELEASE already sent for this touch because the finger moved */
@@ -294,11 +296,17 @@ static void input_task(void *arg)
         }
         int16_t ax, ay, az;
         if (pass % IMU_PASSES == 0 && board_imu_read(&ax, &ay, &az)) {
-            int32_t a = level_update_3d(&lvl, IMU_SCREEN_X(ax, ay), IMU_SCREEN_Y(ax, ay), az);
-            if (a != lvl_sent) {
-                ui_event_t ev = {.type = UI_EV_LEVEL, .len = 2, .data = {(uint8_t)a, (uint8_t)((uint16_t)a >> 8)}};
+            int32_t tx = IMU_SCREEN_X(ax, ay), ty = IMU_SCREEN_Y(ax, ay);
+            int32_t a = level_update_3d(&lvl, tx, ty, az);
+            if (tx > INT16_MAX) tx = INT16_MAX; /* chip -y of -32768 */
+            if (abs(tx - tilt_x_sent) >= TILT_STEP || abs(ty - tilt_y_sent) >= TILT_STEP || a != lvl_sent) {
+                ui_event_t ev = {.type = UI_EV_LEVEL, .len = 6,
+                                 .data = {(uint8_t)a, (uint8_t)((uint16_t)a >> 8), (uint8_t)tx, (uint8_t)((uint16_t)tx >> 8),
+                                          (uint8_t)ty, (uint8_t)((uint16_t)ty >> 8)}};
                 if (lv_port_post(&ev)) {
                     lvl_sent = a; /* a full queue retries on the next sample */
+                    tilt_x_sent = tx;
+                    tilt_y_sent = ty;
                     static int64_t logged_us;
                     int64_t now_us = esp_timer_get_time();
                     if (now_us - logged_us >= 1000000) { /* at most once a second, only while turning */
