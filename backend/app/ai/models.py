@@ -177,6 +177,7 @@ class PermissionContext:
     allow_external_effects: bool = False
     expires_at: datetime | None = None
     policy_id: str | None = None
+    external_scopes: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

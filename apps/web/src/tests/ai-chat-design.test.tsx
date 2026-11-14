@@ -126,6 +126,20 @@ describe('This chat', () => {
 })
 
 describe('run steps, action card and answer actions', () => {
+  it('shows a web search query for an unknown source and keeps it after reload', async () => {
+    client.aiRunEvents.mockImplementation(async () => sse(
+      ['ai.run.started', { run_id: 'run1', provider: 'claude', model: 'claude-sonnet-4-5' }],
+      ['ai.tool.requested', { tool: 'web_search', call_id: 's1', source: 'web', label: 'Поиск в вебе: погода' }],
+      ['ai.tool.result', { tool: 'web_search', call_id: 's1', source: 'web', label: 'Поиск в вебе: погода' }],
+      ['ai.text.delta', { text: 'Ответ' }],
+      ['ai.run.completed', { run_id: 'run1', input_tokens: 1, output_tokens: 1 }],
+    ))
+    await send('Какая погода?')
+    await vi.waitFor(() => expect(find('Поиск в вебе: погода')).toBeDefined())
+    client.aiMessages.mockResolvedValue([{ id: 'a1', role: 'assistant', content: 'Ответ', steps: [{ id: 's1', label: 'Поиск в вебе: погода', source: 'web' }] }])
+    await click(find('Plan for today', '.actual-ai__conversation-main'))
+    await vi.waitFor(() => expect(find('Поиск в вебе: погода')).toBeDefined())
+  })
   const run = () => sse(
     ['ai.run.started', { run_id: 'run1', provider: 'claude', model: 'claude-sonnet-4-5' }],
     ['ai.tool.requested', { tool: 'list_tasks', call_id: '1', source: 'tasks', label: 'Read your tasks' }],

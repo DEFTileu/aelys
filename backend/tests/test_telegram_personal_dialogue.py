@@ -58,6 +58,37 @@ class Service:
                                usage=SimpleNamespace(usage=Usage(5,2),estimated_cost=Decimal(0)))
 
 
+async def test_owner_web_search_shows_query_and_cited_answer(setup, monkeypatch):
+    from app.integrations import telegram_personal_dialogue as dialogue
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+
+    class SearchService(Service):
+        def __init__(self): self.calls = 0
+        async def complete(self, run_id, request, messages, **kwargs):
+            self.calls += 1
+            if kwargs.get('web_search'):
+                assert any('current weather' in sent[1] for sent in fake.sent)
+                response = SimpleNamespace(text='Fact', tool_calls=(), search_used=True, sources=('https://example.org/fact',))
+            elif self.calls == 1:
+                assert 'web_search' in {tool['name'] for tool in kwargs['tools']}
+                response = SimpleNamespace(text='', tool_calls=({'id':'one','name':'web_search','input':{'query':'current weather'}},))
+            else:
+                response = SimpleNamespace(text='Fact', tool_calls=())
+            return SimpleNamespace(provider=ProviderKind.CLAUDE, model='test', response=response,
+                                   usage=SimpleNamespace(usage=Usage(5,2), estimated_cost=Decimal('0.01')))
+
+    monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: SearchService())
+    fake.updates = [ordinary(1, 'Какая сейчас погода?')]
+    await service.poll_once(integration_id, timeout=0)
+    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
+    sent = '\n'.join(value[1] for value in fake.sent)
+    assert 'current weather' in sent and 'https://example.org/fact' in sent
+    async with sessions() as db:
+        recorded = (await db.execute(select(AIRun))).scalar_one()
+        assert recorded.cost_estimate == Decimal('0.03')
+
+
 async def test_durable_poll_does_not_wait_for_long_turn(setup, monkeypatch):
     from app.integrations import telegram_personal_dialogue as dialogue
     client, sessions, fake, integration_id = await bound(setup)
