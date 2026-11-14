@@ -507,3 +507,23 @@ checks were independently rerun. Leak detection remained disabled and a logic
 archive was not instrumented. The experiment remains unintegrated and is not
 evidence of asynchronous teardown, automatic recovery or display delivery. See ignored
 `source-outcome2/REPORT.md`.
+
+An isolated relief-mask experiment replaced sampled scanline rectangles with
+two reusable A8 masks. On 14 selected direct host refreshes it requested two
+lid draw tasks instead of 6–104 and matched the prior scanline prototype's
+pixels; a focused partial/full test and 14-frame comparison were independently
+rerun. Full refreshes through partial buffers still requested 2–8 lid tasks.
+The two masks reserve 51,200 bytes before descriptors. This is not a peak heap
+or target performance measurement. CSS blink differences remain, the global
+masks can change while pending tasks read them, oversized masks are omitted,
+and decoder/OOM behavior is unresolved. Independent review recommends against
+integration. See ignored `relief-mask/README.md`.
+
+A separate serialized standalone-layer shutdown experiment refuses cleanup
+while a task is marked in progress. After review found an unrelated display
+could trip its global pending-task assertion, its host guard was scoped to the
+refreshing display. Five focused lifecycle tests and the shutdown sanitizer
+case were independently rerun. The in-progress state is simulated, leak
+checking is disabled and an imported archive is uninstrumented; real
+concurrency, worker shutdown, display/DMA completion and product integration
+remain unproven. See ignored `source-shutdown/REPORT.md`.
