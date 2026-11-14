@@ -186,7 +186,8 @@ async def test_character_epochs_and_sequences_fence_concurrent_writers(postgres,
         assert closed == []
 
 
-async def test_character_migration_preserves_existing_postgres_row(postgres, monkeypatch):
+@pytest.mark.parametrize('preexisting', [False, True])
+async def test_character_migration_preserves_existing_postgres_row(postgres, monkeypatch, preexisting):
     """The character migration upgrades and downgrades an existing PostgreSQL row."""
     import importlib.util
     from pathlib import Path
@@ -203,12 +204,16 @@ async def test_character_migration_preserves_existing_postgres_row(postgres, mon
         public_columns_query = text("SELECT attname FROM pg_attribute WHERE attrelid = 'public.companion_state'::regclass AND attnum > 0 AND NOT attisdropped ORDER BY attnum")
         public_columns = list(connection.execute(public_columns_query).scalars())
         public_count = connection.execute(text('SELECT count(*) FROM public.companion_state')).scalar_one()
-        connection.execute(text('CREATE TEMP TABLE companion_state (device_id VARCHAR PRIMARY KEY, owner_id VARCHAR NOT NULL) ON COMMIT DROP'))
-        connection.execute(text("INSERT INTO companion_state VALUES ('board', 'owner')"))
+        extra = ', character_epoch BIGINT NOT NULL DEFAULT 0' if preexisting else ''
+        connection.execute(text(f'CREATE TEMP TABLE companion_state (device_id VARCHAR PRIMARY KEY, owner_id VARCHAR NOT NULL{extra}) ON COMMIT DROP'))
+        if preexisting:
+            connection.execute(text("INSERT INTO companion_state VALUES ('board', 'owner', 42)"))
+        else:
+            connection.execute(text("INSERT INTO companion_state VALUES ('board', 'owner')"))
         monkeypatch.setattr(migration, 'op', Operations(MigrationContext.configure(connection)))
         migration.upgrade()
         row = connection.execute(text('SELECT owner_id, character_epoch, character_seq, character_json FROM companion_state')).one()
-        assert tuple(row) == ('owner', 0, -1, None)
+        assert tuple(row) == ('owner', 42 if preexisting else 0, -1, None)
         migration.downgrade()
         assert connection.execute(text('SELECT owner_id FROM companion_state')).scalar_one() == 'owner'
         # PostgreSQL temporary tables live in pg_temp, not current_schema().
@@ -219,3 +224,77 @@ async def test_character_migration_preserves_existing_postgres_row(postgres, mon
 
     async with postgres.begin() as connection:
         await connection.run_sync(exercise)
+
+
+async def test_character_real_websocket_replacements_on_postgres(postgres):
+    """Overlapping real sockets fence stale state and preserve the last reaction."""
+    import json
+    import socket
+
+    import uvicorn
+    import websockets
+    from companion_helpers import companion_token
+    from httpx import AsyncClient
+    from websockets.exceptions import ConnectionClosed
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(('127.0.0.1', 0))
+    listener.listen(128)
+    port = listener.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, lifespan='off', log_level='error'))
+    server_task = asyncio.create_task(server.serve(sockets=[listener]))
+
+    async def wait_started():
+        while not server.started:
+            if server_task.done():
+                await server_task
+                raise RuntimeError('local test server stopped before startup')
+            await asyncio.sleep(0.01)
+
+    async def receive_type(ws, expected):
+        for _ in range(10):
+            value = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+            if value['type'] == expected:
+                return value
+        raise AssertionError(f'missing {expected} within ten messages')
+
+    try:
+        await asyncio.wait_for(wait_started(), timeout=10)
+        async with AsyncClient(base_url=f'http://127.0.0.1:{port}') as http:
+            owner, board, device_id = await pair_companion(http)
+            token = await companion_token(http, board, device_id)
+            uri = f'ws://127.0.0.1:{port}{B}/devices/channel'
+            header = {'Authorization': f'Bearer {token}'}
+            for _ in range(4):
+                async with websockets.connect(uri, additional_headers=header, proxy=None) as first:
+                    await receive_type(first, 'ready')
+                    await receive_type(first, 'snapshot')
+                    await first.send(json.dumps({'type': 'character_state', 'lost_rev': 0, 'seq': 0,
+                                                 'mood': 'joy', 'reason': 'task_done'}))
+                    await first.send(json.dumps({'type': 'heartbeat'}))
+                    await receive_type(first, 'heartbeat_ack')
+                    # Send without waiting for processing: it may race the replacement.
+                    await first.send(json.dumps({'type': 'character_state', 'lost_rev': 0, 'seq': 1,
+                                                 'mood': 'sad', 'reason': 'overdue'}))
+                    async with websockets.connect(uri, additional_headers=header, proxy=None) as second:
+                        await receive_type(second, 'ready')
+                        await receive_type(second, 'snapshot')
+                        with pytest.raises(ConnectionClosed) as closed:
+                            await asyncio.wait_for(first.recv(), timeout=5)
+                        assert closed.value.rcvd.code == 4000
+                        url = f'{B}/companion/devices/{device_id}'
+                        assert (await http.get(url, headers=bearer(owner))).json()['character'] is None
+                        await second.send(json.dumps({'type': 'character_state', 'lost_rev': 0, 'seq': 0,
+                                                      'mood': 'calm', 'reason': 'calm'}))
+                        await second.send(json.dumps({'type': 'heartbeat'}))
+                        await receive_type(second, 'heartbeat_ack')
+                        character = (await http.get(url, headers=bearer(owner))).json()['character']
+                        assert character['current']['reason'] == 'calm'
+                        assert character['recent']['reason'] == 'task_done'
+    finally:
+        server.should_exit = True
+        try:
+            await asyncio.wait_for(server_task, timeout=10)
+        finally:
+            listener.close()

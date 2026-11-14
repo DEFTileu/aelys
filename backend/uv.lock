@@ -38,6 +38,7 @@ test = [
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -63,6 +64,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'quality'", specifier = "==0.17.3" },
     { name = "sqlalchemy", extras = ["asyncio"] },
     { name = "uvicorn", extras = ["standard"] },
+    { name = "websockets", marker = "extra == 'test'", specifier = ">=15,<18" },
 ]
 provides-extras = ["test", "quality"]
 
