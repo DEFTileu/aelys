@@ -314,3 +314,41 @@ invalidating the image is a candidate lifetime protocol; changing it from a draw
 or flush callback is not. The panel's last DMA transfer can outlive this event,
 but reads a separate display buffer. This reasoning is configuration-specific
 and has not yet been validated with delayed-flush and deletion tests.
+
+## Continuous raster and design-reference experiments
+
+A host-only variant uses the raster path for supported pill eyes even at zero
+rotation. In a frozen, counterfactual worried-blink frame at 100% scale, the
+foreground-union difference across -0.09 to -0.10 degrees fell from 11.598%
+to 0.099%. Across the sampled states the worst boundary difference fell from
+11.598% to 0.928% at 100%, and from 5.309% to 2.063% at 130%. The bitmap
+appearance at zero also differs from the original objects, and unsupported
+forms, allocation failure and recovery still switch renderers. These sampled
+metrics are not a complete design or transition validation.
+
+In one 130% host sequence, checked 1.5x geometric buffer growth reduced
+allocation calls from 21 to 4 and cumulative requested bytes from 3,323,311
+to 624,012; retained bytes increased from 333,642 to 374,406. Peak live
+requested bytes including replacement overlap were 506,529 and 499,209,
+respectively. These figures exclude LVGL allocations, allocator overhead and
+other histories. A larger growth request may fail where exact sizing succeeds.
+Both copied suites passed 41/41, excluding owner/contact and board-port tests;
+sampled one-shot bitmap failures and partial/full checks passed. Persistent
+OOM, LVGL allocations, fragmentation and device performance remain untested.
+See the ignored `rotation-continuous/README.md` for methods and limits.
+
+A separate offline reference extracts only eye-related CSS from the local
+design. At 100%, selected open mischief, wink and dizzy frames differed from
+the compact prototype by 0.67%, 2.17% and 6.74% of the foreground union,
+respectively. Browser antialiasing, RGB565 quantization and animation timing
+contribute; these are not approved acceptance thresholds. The reference covers
+only selected frames and is recorded in ignored `design-reference/`.
+
+The decoder-registration source audit found one node allocation on the pinned,
+uninstrumented LVGL 9.6 success path, but task identity and allocation size do
+not protect a reserve from same-task reentry or interrupts. Memory trace hooks
+can run before the allocation. An independent host rerun confirmed reserve
+theft, fail-stop mismatch handling and the successful registration/deletion
+case. Correct target ABI, configuration, ISR exclusion, ownership, lifetime
+and all other LVGL allocation failures require separate proof. None of these
+experiments is integrated into the firmware.
