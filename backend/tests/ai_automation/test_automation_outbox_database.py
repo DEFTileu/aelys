@@ -360,3 +360,37 @@ async def test_postgres_overlapping_rule_changes_fenced(ai_test_engine, monkeypa
         receipts = (await db.scalars(select(AutomationExecution).order_by(AutomationExecution.rule_id))).all()
         assert [r.run_status for r in receipts] == ["completed", "completed"]
         assert [r.attempt for r in receipts] == [1, 1]
+
+
+@pytest.mark.asyncio
+async def test_postgres_constraint_failure_records_failed_and_continues(ai_test_engine, monkeypatch):
+    from app.automation import hooks
+    from app.core import db as database
+    from app.core.models import AutomationOutbox, AutomationRule, Notification, User
+    from sqlalchemy import func, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    if ai_test_engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL constraint contract")
+    factory = async_sessionmaker(ai_test_engine, expire_on_commit=False)
+    monkeypatch.setattr(database, "SessionLocal", factory)
+    async with ai_test_engine.begin() as connection:
+        await connection.execute(text("ALTER TABLE notifications ADD CONSTRAINT h5_test_title CHECK (title <> 'blocked')"))
+    owner = str(uuid4())
+    async with factory() as db:
+        db.add(User(id=owner))
+        await db.flush()
+        for number, title in enumerate(("first", "blocked", "third")):
+            db.add(AutomationRule(id=f"rule-{number}", owner_id=owner, name="test", enabled=True,
+                trigger_kind="task.created", conditions_json={},
+                actions_json=[{"kind": "create_notification", "args": {"title": title}}],
+                policy_ref="safe", rate_limit_json={}))
+        db.add(AutomationOutbox(owner_id=owner, kind="task.created", event_id=f"task.created:{uuid4()}", payload={}))
+        await db.commit()
+    await hooks.deliver_pending()
+    async with factory() as db:
+        assert await db.scalar(select(func.count()).select_from(AutomationOutbox)) == 0
+        assert (await db.scalars(select(Notification.title).order_by(Notification.title))).all() == ["first", "third"]
+        results = (await db.execute(select(AutomationExecution.run_status, AutomationExecution.error_code)
+                    .order_by(AutomationExecution.rule_id))).all()
+        assert results == [("completed", None), ("failed", "ACTION_FAILED"), ("completed", None)]

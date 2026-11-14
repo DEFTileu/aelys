@@ -347,3 +347,33 @@ async def test_database_error_during_rule_is_retryable(automation_client, monkey
     async with factory() as db:
         assert await db.scalar(select(func.count()).select_from(AutomationOutbox)) == 1
         assert await db.scalar(select(func.count()).select_from(AutomationExecution)) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", ["integrity", "data"])
+async def test_data_errors_are_failed_rule_results(automation_client, monkeypatch, error_type):
+    from app.automation import api
+    from app.core.models import AutomationExecution, AutomationRule
+    from sqlalchemy.exc import DataError, IntegrityError
+
+    client, factory = automation_client
+    await _owner(client)
+    async with factory() as db:
+        owner = await db.scalar(select(User.id))
+        db.add(AutomationRule(id="data-error-rule", owner_id=owner, name="test", enabled=True,
+            trigger_kind="task.created", conditions_json={},
+            actions_json=[{"kind": "create_notification", "args": {"title": "test"}}],
+            policy_ref="safe", rate_limit_json={}))
+        db.add(AutomationOutbox(owner_id=owner, kind="task.created", event_id="data-error", payload={}))
+        await db.commit()
+
+    async def fail_scope(*args, **kwargs):
+        error = IntegrityError if error_type == "integrity" else DataError
+        raise error("statement", {}, ValueError("bad data"))
+
+    monkeypatch.setattr(api, "_require_action_scope", fail_scope)
+    await hooks.deliver_pending()
+    async with factory() as db:
+        assert await db.scalar(select(func.count()).select_from(AutomationOutbox)) == 0
+        execution = await db.scalar(select(AutomationExecution))
+        assert (execution.run_status, execution.error_code) == ("failed", "ACTION_FAILED")

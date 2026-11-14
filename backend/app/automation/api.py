@@ -49,7 +49,7 @@ from pydantic import (
     ValidationError,
 )
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -828,12 +828,18 @@ async def _dispatch_outbox_rule(
                         )
             except Exception as exc:
                 cause: BaseException | None = exc
+                data_error = False
                 while cause is not None:
+                    if isinstance(cause, (IntegrityError, DataError)):
+                        data_error = True
+                        break
                     if isinstance(cause, SQLAlchemyError):
                         raise
                     cause = cause.__cause__ or cause.__context__
                 execution.run_status = "failed"
-                if isinstance(exc, PolicyDenied):
+                if data_error:
+                    execution.error_code = "ACTION_FAILED"
+                elif isinstance(exc, PolicyDenied):
                     execution.error_code = "POLICY_DENIED"
                 elif isinstance(exc, ToolValidationError):
                     execution.error_code = "VALIDATION_ERROR"
