@@ -99,6 +99,34 @@ comparison. An Online improvement was not established, so the experimental
 band change was removed; it does not close S1's performance gates. The board was
 returned to the normal sound/probe/chaos/sparse-off app and hash verified.
 
+### Matched redraw decision
+
+The full-redraw control and sparse22 run used the same firmware revision and
+instrumentation, and their build configurations differed only in the sparse
+flag. To match observed network state and sample count, the local analysis
+selected the earliest complete single-switch observations from each run's
+initial Offline period with one snapshot, consecutive probe records, and no
+new error counters. It selected 21 switches to each screen per run. Network
+state is sampled rather than continuously observed; snapshots, animation
+phases and timing can still differ.
+
+| Mode | Matched switches | p50 | p90 | p99 | Max |
+|---|---:|---:|---:|---:|---:|
+| Full redraw | 42 | 35.827 ms | 45.283 ms | 50.951 ms | 50.951 ms |
+| Sparse22 | 42 | 22.394 ms | 32.576 ms | 41.390 ms | 41.390 ms |
+
+Percentiles use nearest-rank; with 42 samples p99 is the maximum. Across the
+whole control run, 310 valid state samples were Offline; sparse22 had 306,
+of which 99 were Online, 188 waiting for network and 19 logging in or
+connecting. The matched subset is entirely Offline. A matched Online control
+with identical instrumentation does not exist. Across the complete sparse
+run, the maximum switch was 52.736 ms and worst frame 42.062 ms, so the
+absolute 50/25 ms gates still fail. **Decision: reject enabling sparse22 for
+now.** The experimental band change was reverted; ordinary sparse redraw also
+remains disabled. The positive Offline comparison is retained as evidence,
+not generalized to Online use. Reproduction is in the local S1 ledger's
+`matched_redraw_report.py` and sanitized capture files.
+
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
 Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line per period.
 
