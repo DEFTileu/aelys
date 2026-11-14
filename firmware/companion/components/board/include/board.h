@@ -45,6 +45,11 @@ uint32_t lv_port_first_flush_end_us(void);
  * init error but starts the task anyway with whatever worked. */
 esp_err_t board_input_start(void);
 
+/* QMI8658 accelerometer (probes 0x6B then 0x6A). ESP_ERR_NOT_FOUND when absent: then reads return false.
+ * Raw axes in the chip frame, +-2 g full scale; mapping to screen axes is the caller's (level.h). */
+esp_err_t board_imu_init(void);
+bool board_imu_read(int16_t *ax, int16_t *ay, int16_t *az);
+
 /* "Find Aelys": plays the 2 kHz beep pattern (200 ms on / 200 ms off, beep.h) through the ES8311 and the speaker for duration_ms, at most 60 s.
  * Returns at once: an `audio` task (priority 3) is created for it and deleted when the sound ends; the codec, the I2S channel and the amplifier
  * exist only while it plays, so nothing is held at idle. On success it posts UI_EV_FIND data[0] = 1 (the overlay); when the sound ends for any
