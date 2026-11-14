@@ -24,13 +24,25 @@ static double reference_css_ease(double x)
     return 3.0*v*v*t*0.1 + 3.0*v*t*t + t*t*t;
 }
 
+static double reference_css_in_out(double x)
+{
+    double low = 0.0, high = 1.0;
+    for (int i = 0; i < 48; i++) {
+        double t = (low + high) / 2.0, v = 1.0 - t;
+        double bx = 3.0*v*v*t*0.42 + 3.0*v*t*t*0.58 + t*t*t;
+        if (bx < x) low = t; else high = t;
+    }
+    double t = (low + high) / 2.0, v = 1.0 - t;
+    return 3.0*v*t*t + t*t*t;
+}
+
 static void test_character_motion_design(void)
 {
     const struct { mood_t mood; uint32_t period; uint32_t time; int tx, ty, rot, scale; } cases[] = {
         {MOOD_ELATION,1200,300,0,-1400,-600,1000}, {MOOD_PANIC,220,55,-400,100,0,1000},
         {MOOD_ANTICIPATION,2600,1430,1400,-1000,0,1000}, {MOOD_THINKING,3400,0,-600,-800,0,1000},
         {MOOD_FRIGHTENED,1800,144,0,-2200,0,1100}, {MOOD_TICKLED,200,100,0,-300,0,1000},
-        {MOOD_BORED,7000,1750,600,-400,0,1000}, {MOOD_MISSED,4400,880,-2400,0,0,1000},
+        {MOOD_BORED,7000,1750,0,400,0,1000}, {MOOD_MISSED,4400,880,-2400,0,0,1000},
         {MOOD_MISCHIEF,3000,0,0,0,-700,1000},
     };
     for (unsigned i = 0; i < sizeof cases / sizeof *cases; i++) {
@@ -40,6 +52,32 @@ static void test_character_motion_design(void)
         NEAR(g.tx, cases[i].tx, 10); NEAR(g.ty, cases[i].ty, 10);
         NEAR(g.rot, cases[i].rot, 10); NEAR(g.sc, cases[i].scale, 2);
     }
+    /* Later global @keyframes drift in the design overrides the earlier one. */
+    face_group_t drift = face_group_at(MOT_DRIFT, 0);
+    CHECK_EQ(drift.tx, -1200); CHECK_EQ(drift.ty, 400);
+    drift = face_group_at(MOT_DRIFT, 3500);
+    CHECK_EQ(drift.tx, 1200); CHECK_EQ(drift.ty, 400);
+    drift = face_group_at(MOT_DRIFT, 5250);
+    NEAR(drift.tx, 0, 10); CHECK_EQ(drift.ty, 400);
+    drift = face_group_at(MOT_DRIFT, 7000);
+    CHECK_EQ(drift.tx, -1200); CHECK_EQ(drift.ty, 400);
+    for (uint32_t phase = 0; phase <= 500; phase++) {
+        drift = face_group_at(MOT_DRIFT, phase * 7);
+        int32_t expected = (int32_t)(-1200.0 + 2400.0 * reference_css_in_out(phase / 500.0));
+        NEAR(drift.tx, expected, 5);
+        CHECK_EQ(drift.ty, 400);
+    }
+    for (uint32_t ms = 0; ms <= 3500; ms++) {
+        drift = face_group_at(MOT_DRIFT, ms);
+        int32_t expected = (int32_t)(-1200.0 + 2400.0 * reference_css_in_out(ms / 3500.0));
+        NEAR(drift.tx, expected, 7); /* <0.07 px including time/curve rounding */
+    }
+    CHECK_EQ(face_eye_openness(face_mood_def(MOOD_BORED),0,4800),80);
+    CHECK_EQ(face_eye_openness(face_mood_def(MOOD_BORED),1,4800),80);
+    face_group_t tilted = face_group_at(MOT_TILT, 136);
+    NEAR(tilted.tx, -36, 3); NEAR(tilted.rot, -20, 3);
+    face_group_t hop = face_group_at(MOT_HOP, 125);
+    NEAR(hop.ty, -129, 3);
     CHECK(face_mood_def(MOOD_ELATION)->confetti);
     face_confetti_state_t cf = face_confetti_at(0, 400);
     CHECK_EQ(cf.opacity, 255); CHECK_EQ(cf.dy100, 0);

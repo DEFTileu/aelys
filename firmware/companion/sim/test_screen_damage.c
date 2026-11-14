@@ -106,10 +106,10 @@ int main(void)
     }
     /* Include an entire ordinary blink at Home scale, including the short
      * closing and reopening phases. */
-    const mood_t blinking[] = {MOOD_CALM, MOOD_WORRIED};
+    const mood_t blinking[] = {MOOD_CALM, MOOD_WORRIED, MOOD_BORED};
     for (unsigned m = 0; m < sizeof blinking / sizeof *blinking; ++m) {
         scr_home_set_snap(&snap, FX_NOW, blinking[m], false);
-        for (int frame = 0; frame < 160; ++frame) {
+        for (int frame = 0; frame < (blinking[m] == MOOD_BORED ? 210 : 160); ++frame) {
             scr_home_set_snap(&snap, FX_NOW, blinking[m], false);
             sim_step(34);
             exact_frame();

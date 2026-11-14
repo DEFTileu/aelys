@@ -557,6 +557,9 @@ static void test_inherited_blink_phase(void)
     lv_obj_t *right = lv_obj_get_child(face,1);
     int right_before = lv_obj_get_height(right);
     CHECK(right_before < 60);
+    face_set_mood(face,MOOD_BORED); lv_obj_update_layout(face);
+    CHECK_EQ(lv_obj_get_height(left),before);
+    CHECK_EQ(lv_obj_get_height(right),right_before);
     face_set_mood(face,MOOD_WORRIED); lv_obj_update_layout(face);
     CHECK_EQ(lv_obj_get_height(left),before);
     CHECK_EQ(lv_obj_get_height(right),right_before);

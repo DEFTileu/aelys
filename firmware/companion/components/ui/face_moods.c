@@ -77,7 +77,7 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
     [MOOD_WAKING] = { .eye = { E(58,35,70,100,35,STD), E(172,35,70,100,35,STD) },
         .kind = EYE_PILL, .motion = MOT_NONE, .blink_style = BLINK_WAKE, .blink_ms = 3000 },
     [MOOD_BORED] = { .eye = { EL(58,35,70,100,35,STD,480,0), EL(172,35,70,100,35,STD,480,0) },
-        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_DRIFT },
+        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_DRIFT, .blink_ms = 5000 },
     [MOOD_MISSED] = { .eye = { EL(58,42,70,92,35,STD,180,-176), EL(172,42,70,92,35,STD,180,176) },
         .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_SEARCH },
     [MOOD_EXHAUSTED] = { .eye = { EL(58,52,70,84,35,STD,320,0), EL(172,52,70,84,35,STD,320,0) },
@@ -130,15 +130,31 @@ mood_t mood_from_character(character_mood_t mood)
     return (unsigned)mood < CHAR_MOOD_COUNT ? map[mood] : MOOD_CALM;
 }
 
-/* CSS ease-in-out per keyframe interval (smoothstep is within a few percent of cubic-bezier(.42,0,.58,1)),
- * ease-out and ease-in. All take and give permille. */
+/* Smoothstep and quadratic approximations remain in use for effects and
+ * other animation styles. All take and give permille. */
 static int32_t ease(int32_t u) { return u * u * (3000 - 2 * u) / 1000000; }
 static int32_t ease_out(int32_t u) { return 1000 - (1000 - u) * (1000 - u) / 1000; }
 static int32_t ease_in(int32_t u) { return u * u / 1000; }
 
+/* CSS ease-in-out = cubic-bezier(.42,0,.58,1), sampled every 2%.
+ * Linear interpolation stays within 1.1 permille at integer-permille inputs. */
+static int32_t group_ease(int32_t u)
+{
+    static const uint16_t samples[] = {
+        0,1,3,7,13,20,29,39,52,66,82,99,119,140,163,187,214,
+        241,270,300,332,364,397,431,466,500,534,569,603,636,668,
+        700,730,759,786,813,837,860,881,901,918,934,948,961,971,
+        980,987,993,997,999,1000
+    };
+    if (u <= 0) return 0;
+    if (u >= 1000) return 1000;
+    unsigned i = (unsigned)u / 20u, remainder = (unsigned)u % 20u;
+    return (samples[i] * (20u - remainder) + samples[i + 1] * remainder + 10u) / 20u;
+}
+
 /* ---- eye group (.ey) keyframes ---- */
 typedef struct { int16_t t, tx, ty, rot, sc; } kf_t; /* t permille of the loop; px, px, deg, permille */
-typedef struct { uint16_t period; uint8_t easing, n; kf_t k[9]; } motion_t; /* 0 smooth, 1 out, 2 linear */
+typedef struct { uint16_t period; uint8_t easing, n; kf_t k[9]; } motion_t; /* 0 ease-in-out, 1 out, 2 linear */
 #define K(t, tx, ty, rot) { t, tx, ty, rot, 1000 }
 #define KS(t, sc) { t, 0, 0, 0, sc }
 
@@ -167,7 +183,8 @@ static const motion_t MOTION[MOT_COUNT] = {
     [MOT_PONDER] = { 3400, 0, 3, { K(0,-6,-8,0), K(500,8,-10,0), K(1000,-6,-8,0) } },
     [MOT_JUMP] = { 1800, 1, 5, { K(0,0,0,0), {80,0,-22,0,1100}, {200,0,0,0,960}, K(600,0,0,0), K(1000,0,0,0) } },
     [MOT_SHIVER] = { 200, 2, 3, { K(0,0,0,0), K(500,0,-3,0), K(1000,0,0,0) } },
-    [MOT_DRIFT] = { 7000, 0, 5, { K(0,0,0,0), K(250,6,-4,0), K(500,-4,6,0), K(750,-6,-3,0), K(1000,0,0,0) } },
+    /* The design declares drift twice; the later global keyframes win. */
+    [MOT_DRIFT] = { 7000, 0, 3, { K(0,-12,4,0), K(500,12,4,0), K(1000,-12,4,0) } },
     [MOT_SEARCH] = { 4400, 0, 6, { K(0,0,0,0), K(200,-24,0,0), K(350,-24,0,0), K(550,24,0,0), K(700,24,0,0), K(1000,0,0,0) } },
     [MOT_BREATHE_SLOW] = { 5000, 0, 3, { KS(0,1000), KS(500,1050), KS(1000,1000) } },
     [MOT_SINK_RELIEF] = { 3200, 0, 3, { K(0,0,0,0), K(500,0,6,0), K(1000,0,0,0) } },
@@ -182,12 +199,13 @@ face_group_t face_group_at(face_motion_t m, uint32_t t_ms)
     face_group_t g = { 0, 0, 0, 1000 };
     if ((unsigned)m >= MOT_COUNT || !MOTION[m].period) return g;
     const motion_t *mo = &MOTION[m];
-    int32_t p = (int32_t)(t_ms % mo->period * 1000 / mo->period);
+    uint64_t p = (uint64_t)(t_ms % mo->period) * 1000u;
     int i = 0;
-    while (i + 2 < mo->n && p > mo->k[i + 1].t) i++;
+    while (i + 2 < mo->n && p > (uint64_t)mo->k[i + 1].t * mo->period) i++;
     const kf_t *a = &mo->k[i], *b = &mo->k[i + 1];
-    int32_t u = (p - a->t) * 1000 / (b->t - a->t);
-    int32_t e = mo->easing == 2 ? u : mo->easing == 1 ? ease_out(u) : ease(u);
+    int32_t u = (int32_t)((p - (uint64_t)a->t * mo->period) * 1000u /
+                          ((uint64_t)(b->t - a->t) * mo->period));
+    int32_t e = mo->easing == 2 ? u : mo->easing == 1 ? ease_out(u) : group_ease(u);
     g.tx = a->tx * 100 + (b->tx - a->tx) * e / 10;
     g.ty = a->ty * 100 + (b->ty - a->ty) * e / 10;
     g.rot = a->rot * 100 + (b->rot - a->rot) * e / 10;
