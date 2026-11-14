@@ -4,6 +4,13 @@ menu "Aelys companion"
         default n
         help
             Leave disabled unless the owner explicitly approves audible board sound.
+    config AELYS_ARC_IRAM_BENCH
+        bool "Place selected LVGL arc functions in IRAM (bench only)"
+        depends on AELYS_PERF_PROBE
+        default n
+        help
+            Diagnostic build only: compares a small set of arc drawing functions
+            in IRAM. Consumes internal RAM and must remain off in normal builds.
     config AELYS_SPARSE_SCREEN_SWITCH
         bool "Invalidate painted regions for Home/Today navigation (experimental)"
         default n
