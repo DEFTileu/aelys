@@ -3,7 +3,7 @@ const HDR = [0x49, 0x4d, 0x50, 0x52, 0x4f, 0x56] // "IMPROV"
 const VERSION = 1
 
 export type ImprovPacket = { type: number; data: Uint8Array }
-export type ErrorCode = 'NOT_AELYS' | 'LOST_MODE' | 'NOT_PENDING' | 'TIMEOUT' | 'BAD_ARGS' | 'UNSUPPORTED_BROWSER' | 'DISCONNECTED'
+export type ErrorCode = 'NOT_AELYS' | 'LOST_MODE' | 'NOT_PENDING' | 'PAIR_BUSY' | 'TIMEOUT' | 'BAD_ARGS' | 'UNSUPPORTED_BROWSER' | 'DISCONNECTED'
 
 export class CompanionError extends Error {
   constructor(public code: ErrorCode, message: string = code) {

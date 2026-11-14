@@ -33,9 +33,10 @@ typedef struct {
  * after the ui task ran ui_setup (the snapshot buffer must exist). deps must stay valid (copied). */
 esp_err_t link_start(const link_deps_t *d);
 
-/* A pairing was just committed (net task): the link resets the stored command revisions and signs in with the new
- * identity. Safe before link_start (ignored). */
-void link_notify_paired(void);
+/* Serialize a new identity commit with old-socket effects and notify the link task on success.
+ * BUSY means no commit was attempted; retry the same device after startup or contention. */
+typedef enum { LINK_PAIR_OK, LINK_PAIR_BUSY, LINK_PAIR_LOST, LINK_PAIR_FAILED } link_pair_result_t;
+link_pair_result_t link_pair_commit(const char *device_id);
 
 /* ui task: queue an action for the server. False when the board is not online (the UI shows "No connection") or four
  * actions are already waiting. The answer arrives as UI_EV_ACTION. target_id: notification or task id, NULL for focus.* */

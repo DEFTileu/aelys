@@ -22,6 +22,8 @@ typedef struct {
 typedef struct { link_act_t a[LINK_ACT_MAX]; size_t n; } link_acts_t; /* oldest first */
 
 void link_acts_init(link_acts_t *t);
+/* Caller must close admission and serialize this with all table access. */
+void link_acts_discard_all(link_acts_t *t);
 /* false when LINK_ACT_MAX actions are already in flight, or id/target do not fit. Starts un-sent. */
 bool link_acts_add(link_acts_t *t, const char id[37], act_kind_t k, const char *target, uint32_t now_ms);
 /* The oldest action not yet on the wire, or NULL. */

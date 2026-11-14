@@ -30,6 +30,7 @@
 #define IMPROV_ERR_CONNECT     0x03
 #define IMPROV_ERR_LOST_MODE   0x80 /* vendor: refused while lost mode is on */
 #define IMPROV_ERR_NOT_PENDING 0x81 /* vendor: no pending pairing */
+#define IMPROV_ERR_PAIR_BUSY   0x82 /* vendor: commit not attempted; retry same device */
 #define IMPROV_ERR_UNKNOWN     0xFF
 
 typedef struct { uint8_t type; uint8_t len; uint8_t data[255]; } improv_frame_t;

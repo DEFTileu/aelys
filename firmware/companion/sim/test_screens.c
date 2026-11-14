@@ -562,6 +562,17 @@ static void test_lost_mode_discards_old_reaction_before_publishing_new_revision(
     CHECK(reported_why != WHY_TASK_DONE); /* same revision, different owner */
     ui_set_character_status_sink(NULL); fresh_fx();
 }
+static void test_identity_change_clears_old_optimistic_marks(void)
+{
+    fresh_fx(); sink.accept = true; swipe(UI_EV_SWIPE_RIGHT);
+    tap_label("Ship pairing ADR"); CHECK(ui_marked_done("t-101"));
+    tap_label("3 new"); tap_label("Design review"); CHECK(ui_marked_read("n-2"));
+    uint32_t identity = 99;
+    uint8_t change[] = {0, 0, 0, 0, 0, (uint8_t)identity, 0, 0, 0};
+    sim_post(UI_EV_LOST, change, sizeof change);
+    CHECK(!ui_marked_done("t-101")); CHECK(!ui_marked_read("n-2"));
+    btn(BTN_LOW); swipe(UI_EV_SWIPE_LEFT); fresh_fx();
+}
 static void test_identity_change_drops_old_snapshot_before_reporting(void)
 {
     fresh_fx(); ui_set_lost_revision(0); ui_set_character_status_sink(capture_status);
@@ -1560,6 +1571,7 @@ int main(void)
     test_all_large_home_moods();
     test_character_status_while_home_hidden();
     test_lost_mode_discards_old_reaction_before_publishing_new_revision();
+    test_identity_change_clears_old_optimistic_marks();
     test_identity_change_drops_old_snapshot_before_reporting();
     test_character_cue_delivery();
     test_character_tap_and_idle();

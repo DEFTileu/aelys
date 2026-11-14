@@ -5,7 +5,7 @@ import { CompanionError, ImprovParser, improvFrame, resultStrings, rpc, type Imp
 export { CompanionError }
 
 const T_STATE = 0x01, T_ERROR = 0x02, T_RPC = 0x03
-const ERRORS: Record<number, CompanionError['code']> = { 0x80: 'LOST_MODE', 0x81: 'NOT_PENDING' }
+const ERRORS: Record<number, CompanionError['code']> = { 0x80: 'LOST_MODE', 0x81: 'NOT_PENDING', 0x82: 'PAIR_BUSY' }
 
 // Returns a value to finish the request, undefined to keep waiting, or throws.
 type Handler<T> = (p: ImprovPacket) => T | undefined

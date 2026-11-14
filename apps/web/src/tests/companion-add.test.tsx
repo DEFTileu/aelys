@@ -40,7 +40,7 @@ beforeEach(() => {
   m.requestPairing.mockReset().mockImplementation(track('requestPairing', { pairing_id: 'pid-1' }))
   m.approve.mockReset().mockImplementation(track('approve', { device_id: 'aaaaaaaa-0000-4000-8000-000000000001' }))
 })
-afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals() })
+afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ''; vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('Add companion', () => {
   it('happy path calls pairBegin → requestPairing → pairCode → approve → pairCommit in order with the same secret', async () => {
@@ -135,6 +135,93 @@ describe('Add companion', () => {
   const DEV = 'aaaaaaaa-0000-4000-8000-000000000001'
   const pairWith = async () => { await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456'); await act(async () => button('Pair').click()) }
 
+  it('retries busy commits after a delay using the same approved device', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('PAIR_BUSY')).mockRejectedValueOnce(new CompanionError('PAIR_BUSY'))
+    await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456')
+    vi.useFakeTimers()
+    await act(async () => button('Pair').click())
+    expect(m.board.pairCommit).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(m.board.pairCommit.mock.calls).toEqual([[DEV], [DEV], [DEV]])
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(1)
+    expect(m.requestPairing).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('reports persistent busy without starting another pairing', async () => {
+    m.board.pairCommit.mockRejectedValue(new CompanionError('PAIR_BUSY'))
+    await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456')
+    vi.useFakeTimers()
+    await act(async () => button('Pair').click())
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(m.board.pairCommit).toHaveBeenCalledTimes(4)
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(1)
+    expect(host.textContent).toContain('Aelys is busy')
+    expect(host.textContent).not.toContain('lost the pairing')
+    expect(host.querySelector('input[aria-label="Network name"]')).toBeNull()
+    expect(m.board.close).not.toHaveBeenCalled()
+    expect(button('Pair').disabled).toBe(false)
+    m.board.pairCommit.mockResolvedValueOnce(undefined)
+    await act(async () => button('Pair').click())
+    expect(m.board.pairCommit).toHaveBeenLastCalledWith(DEV)
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    expect(m.requestPairing).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('checks status when a commit times out after a busy response', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('PAIR_BUSY')).mockRejectedValueOnce(new CompanionError('TIMEOUT'))
+    m.board.pairStatus.mockResolvedValue({ paired: true, deviceId: DEV })
+    await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456')
+    vi.useFakeTimers()
+    await act(async () => button('Pair').click())
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(m.board.pairStatus).toHaveBeenCalledTimes(1)
+    expect(m.board.pairCommit).toHaveBeenCalledTimes(2)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('checks status after a timeout on the final busy retry', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('PAIR_BUSY')).mockRejectedValueOnce(new CompanionError('PAIR_BUSY')).mockRejectedValueOnce(new CompanionError('PAIR_BUSY')).mockRejectedValueOnce(new CompanionError('TIMEOUT'))
+    m.board.pairStatus.mockResolvedValue({ paired: true, deviceId: DEV })
+    await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456')
+    vi.useFakeTimers()
+    await act(async () => button('Pair').click())
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+    expect(m.board.pairStatus).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('stops retrying when the page is left during the busy delay', async () => {
+    m.board.pairCommit.mockRejectedValue(new CompanionError('PAIR_BUSY'))
+    await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456')
+    vi.useFakeTimers()
+    await act(async () => button('Pair').click())
+    act(() => root.unmount())
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(m.board.pairCommit).toHaveBeenCalledTimes(1)
+    expect(m.board.close).toHaveBeenCalled()
+  })
+
+  it.each(['LOST_MODE', 'DISCONNECTED'] as const)('preserves %s handling after a busy response', async (code) => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('PAIR_BUSY')).mockRejectedValueOnce(new CompanionError(code))
+    await mount(); await act(async () => button('Connect Aelys').click()); await typeCode('123456')
+    vi.useFakeTimers()
+    await act(async () => button('Pair').click())
+    await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+    expect(m.board.pairCommit).toHaveBeenCalledTimes(2)
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    if (code === 'LOST_MODE') {
+      expect(host.textContent).toContain('Aelys is in lost mode')
+      expect(m.board.close).toHaveBeenCalled()
+    } else {
+      expect(host.textContent).toContain('Aelys lost the pairing. Starting again.')
+      expect(m.board.pairBegin).toHaveBeenCalledTimes(2)
+    }
+  })
+
   it('continues to Wi-Fi when a timed-out commit shows the board is paired with the same device', async () => {
     m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT'))
     m.board.pairStatus.mockResolvedValue({ paired: true, deviceId: DEV })
@@ -161,12 +248,80 @@ describe('Add companion', () => {
     expect(document.activeElement).toBe(host.querySelector('input[aria-label="Digit 1"]'))
   })
 
-  it('restarts after a second commit failure', async () => {
+  it('checks the second timeout and continues if the board committed', async () => {
     m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockRejectedValueOnce(new CompanionError('TIMEOUT'))
+    m.board.pairStatus.mockResolvedValueOnce({ paired: false }).mockResolvedValueOnce({ paired: true, deviceId: DEV.toUpperCase() })
     await pairWith()
     expect(m.board.pairCommit).toHaveBeenCalledTimes(2)
-    expect(host.textContent).toContain('Aelys lost the pairing. Starting again.')
+    expect(m.board.pairStatus).toHaveBeenCalledTimes(2)
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('keeps the approved pairing retryable after two unresolved timeouts', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockRejectedValueOnce(new CompanionError('TIMEOUT'))
+    await pairWith()
+    expect(m.board.pairStatus).toHaveBeenCalledTimes(2)
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(1)
+    expect(m.board.close).not.toHaveBeenCalled()
+    expect(button('Pair').disabled).toBe(false)
+    await act(async () => button('Pair').click())
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    expect(m.board.pairCommit).toHaveBeenLastCalledWith(DEV)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('recognizes the approved device after a manual retry returns NOT_PENDING', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockRejectedValueOnce(new CompanionError('NOT_PENDING'))
+    m.board.pairStatus.mockResolvedValueOnce({ paired: false }).mockResolvedValueOnce({ paired: false }).mockResolvedValueOnce({ paired: true, deviceId: DEV.toUpperCase() })
+    await pairWith()
+    await act(async () => button('Pair').click())
+    expect(m.board.pairStatus).toHaveBeenCalledTimes(3)
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(1)
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('keeps the approved device retryable when status is unavailable after NOT_PENDING', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockRejectedValueOnce(new CompanionError('NOT_PENDING')).mockRejectedValueOnce(new CompanionError('NOT_PENDING'))
+    m.board.pairStatus.mockResolvedValueOnce({ paired: false }).mockResolvedValueOnce({ paired: false }).mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockResolvedValueOnce({ paired: true, deviceId: DEV })
+    await pairWith()
+    await act(async () => button('Pair').click())
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(1)
+    expect(m.board.close).not.toHaveBeenCalled()
+    expect(button('Pair').disabled).toBe(false)
+    await act(async () => button('Pair').click())
+    expect(m.approve).toHaveBeenCalledTimes(1)
+    expect(m.board.pairCommit).toHaveBeenLastCalledWith(DEV)
+    expect(host.querySelector('input[aria-label="Network name"]')).not.toBeNull()
+  })
+
+  it('restarts when status confirms a different device after an ambiguous commit', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT')).mockRejectedValueOnce(new CompanionError('NOT_PENDING'))
+    m.board.pairStatus.mockResolvedValueOnce({ paired: false }).mockResolvedValueOnce({ paired: true, deviceId: 'bbbbbbbb-0000-4000-8000-000000000002' })
+    await pairWith()
+    expect(m.board.pairStatus).toHaveBeenCalledTimes(2)
     expect(m.board.pairBegin).toHaveBeenCalledTimes(2)
+    expect(host.querySelector('input[aria-label="Network name"]')).toBeNull()
+  })
+
+  it('preserves lost mode reported by status after a commit timeout', async () => {
+    m.board.pairCommit.mockRejectedValueOnce(new CompanionError('TIMEOUT'))
+    m.board.pairStatus.mockRejectedValueOnce(new CompanionError('LOST_MODE'))
+    await pairWith()
+    expect(host.textContent).toContain('Aelys is in lost mode')
+    expect(m.board.close).toHaveBeenCalled()
+    expect(m.board.pairBegin).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not check status if a pending commit rejects after leaving the page', async () => {
+    let reject!: (reason: Error) => void
+    m.board.pairCommit.mockReturnValue(new Promise((_, fail) => { reject = fail }))
+    await pairWith()
+    act(() => root.unmount())
+    await act(async () => { reject(new CompanionError('TIMEOUT')) })
+    expect(m.board.pairStatus).not.toHaveBeenCalled()
+    expect(m.board.close).toHaveBeenCalled()
   })
 
   it('closes the port when the page is left while the chooser is open', async () => {

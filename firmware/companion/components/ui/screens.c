@@ -744,6 +744,9 @@ void ui_handle_event(const ui_event_t *ev)
             if (identity != g.character_identity) {
                 g.snap_valid = false;
                 g.snap = &empty_snap; /* never derive the next owner's state from the previous snapshot */
+                g.done_id[0] = 0;
+                memset(g.read_id, 0, sizeof g.read_id);
+                memset(g.pend_read, 0, sizeof g.pend_read);
             }
             if (g.lost != (ev->data[0] != 0) || rev != g.lost_rev || identity != g.character_identity)
                 character_init(&g.character); /* do not replay a pre-transition reaction */

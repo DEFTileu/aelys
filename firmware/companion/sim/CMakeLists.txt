@@ -87,3 +87,24 @@ foreach(port_test test_lv_port test_lv_port_probe)
     set_tests_properties(${port_test} PROPERTIES TIMEOUT 5)
 endforeach()
 target_compile_definitions(test_lv_port_probe PRIVATE CONFIG_AELYS_PERF_PROBE=1)
+
+# Host-only regressions include the current link task and replace its IDF boundaries.
+foreach(harness lifecycle inbound)
+    add_executable(pairing_gate_${harness} pairing_gate/${harness}.c)
+    target_compile_options(pairing_gate_${harness} PRIVATE -Wall -Wextra -Wno-unused-function -UNDEBUG)
+    target_compile_definitions(pairing_gate_${harness} PRIVATE _DEFAULT_SOURCE)
+    target_include_directories(pairing_gate_${harness} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pairing_gate/fakes
+        ${CMAKE_CURRENT_SOURCE_DIR}/../components/link
+        ${CMAKE_CURRENT_SOURCE_DIR}/../components/link/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../components/identity/include)
+    target_link_libraries(pairing_gate_${harness} PRIVATE logic Threads::Threads)
+endforeach()
+foreach(scenario sent unsent completed expired inflight admission admission-first lost-on lost-missing startup-pair startup-failure login-pair-connect)
+    add_test(NAME pairing_gate_lifecycle_${scenario} COMMAND pairing_gate_lifecycle ${scenario})
+    set_tests_properties(pairing_gate_lifecycle_${scenario} PROPERTIES TIMEOUT 15)
+endforeach()
+foreach(scenario command result snapshot)
+    add_test(NAME pairing_gate_inbound_${scenario} COMMAND pairing_gate_inbound ${scenario})
+    set_tests_properties(pairing_gate_inbound_${scenario} PROPERTIES TIMEOUT 15)
+endforeach()
