@@ -60,3 +60,46 @@ with tempfile.TemporaryDirectory(prefix='aelys-silent-test-') as d:
     subprocess.run(['cc', '-std=c11', '-Wno-unused-function', '-Wno-unused-variable', str(c), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
 print('PASS: silent board rejects audio before platform calls')
+
+# Execute the real command case: a disabled feature must not be acknowledged
+# as BUSY, because the server retries BUSY after every reconnection.
+main_source = (Path(__file__).resolve().parents[1] / 'main/app_main.c').read_text()
+case = main_source[main_source.index('    case CMD_PLAY_SOUND:'):main_source.index('    default:', main_source.index('    case CMD_PLAY_SOUND:'))]
+command_prefix = r'''
+#include <stdbool.h>
+#include <string.h>
+typedef int esp_err_t;
+#define CMD_PLAY_SOUND 1
+#define BEEP_MAX_MS 60000
+#define ESP_OK 0
+#define ESP_ERR_NOT_SUPPORTED 3
+#define ESP_LOGW(...) ((void)0)
+static const char *TAG = "fake";
+static int result, acknowledged, success;
+static const char *error;
+static int board_audio_beep(int duration) { (void)duration; return result; }
+static void link_send_ack(const char *id, bool ok, const char *err) { (void)id; ++acknowledged; success=ok; error=err; }
+static void command(void) {
+    const char *id = "test";
+    switch (CMD_PLAY_SOUND) {
+'''
+command_suffix = r'''
+    }
+}
+int main(void) {
+    result=ESP_ERR_NOT_SUPPORTED; command();
+    if (acknowledged != 1 || success || !error || strcmp(error, "UNSUPPORTED")) return 1;
+    result=42; acknowledged=0; command();
+    if (acknowledged != 1 || success || !error || strcmp(error, "BUSY")) return 2;
+    result=ESP_OK; acknowledged=0; command();
+    if (acknowledged != 1 || !success || error) return 3;
+    return 0;
+}
+'''
+with tempfile.TemporaryDirectory(prefix='aelys-silent-command-') as d:
+    c = Path(d) / 'test.c'
+    exe = Path(d) / 'test'
+    c.write_text(command_prefix + case + command_suffix)
+    subprocess.run(['cc', '-std=c11', '-Wno-unused-variable', str(c), '-o', str(exe)], check=True)
+    subprocess.run([str(exe)], check=True)
+print('PASS: disabled sound is not retried')
