@@ -51,6 +51,17 @@ These are maxima from one short run, not proof of a root cause; added probe
 logging and different network conditions affect comparisons. Sanitized samples
 and the summary script are in the local S1 ledger, not in the repository.
 
+A subsequent selective-IRAM experiment moved five arc-path functions to IRAM:
+static DIRAM grew by 6104 bytes, from 163642 to 169746. Its 310-second run
+captured 309 samples, all Offline, so no Online memory or latency conclusion is
+available. Compared with the earlier Offline probe32 run, each had 150 switches
+in five complete histogram windows: p50 was [30,35) ms, p90 [45,50) ms and
+p99 [50,55) ms for both. The observed worst frame fell from 47632 to 36338 µs,
+but TE wait on those worst frames also differed (43648 versus 14513 µs), so
+the difference does not establish a speedup. With no clear switch improvement
+and additional internal-memory cost, the experiment was removed. These are
+short, separate runs and do not isolate all workload variability.
+
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
 Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line per period.
 
