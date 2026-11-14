@@ -42,8 +42,8 @@ void perf_probe_frame(perf_probe_t *p, uint32_t start_us, uint32_t end_us, uint3
     s->frames++;
     if (d > 16700) s->n17++;
     if (d > 25000) s->n25++;
-    if (d > s->worst_us) { s->worst_us = d; s->worst_te_us = te_us; }
-    if (work > s->work_max_us) s->work_max_us = work;
+    if (d > s->worst_us) { s->worst_us = d; s->worst_te_us = te_us; s->worst_screen = screen; }
+    if (work > s->work_max_us) { s->work_max_us = work; s->work_max_screen = screen; }
     if (work > 16700) s->work_n17++;
     if (!p->pending) return;
     if (screen != p->target_screen) { perf_probe_interrupt(p); return; }
@@ -53,7 +53,14 @@ void perf_probe_frame(perf_probe_t *p, uint32_t start_us, uint32_t end_us, uint3
     uint32_t latency = end_us - p->posted_us;
     s->sw_ok++;
     s->sw_last_us = latency;
-    if (latency > s->sw_max_us) s->sw_max_us = latency;
+    if (latency > s->sw_max_us) {
+        s->sw_max_us = latency;
+        s->sw_max_queue_us = p->handled_us - p->posted_us;
+        s->sw_max_wait_us = start_us - p->handled_us;
+        s->sw_max_frame_us = d;
+        s->sw_max_te_us = te_us;
+        s->sw_max_screen = screen;
+    }
     uint32_t bin = latency / 5000;
     s->sw_hist[bin < 20 ? bin : 20]++;
 }

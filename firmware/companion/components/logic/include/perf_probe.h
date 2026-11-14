@@ -7,6 +7,8 @@
 typedef struct {
     uint32_t seq, sampled_ms, screen;
     uint32_t frames, n17, n25, worst_us, worst_te_us, work_max_us, work_n17;
+    uint32_t worst_screen, work_max_screen;
+    uint32_t sw_max_queue_us, sw_max_wait_us, sw_max_frame_us, sw_max_te_us, sw_max_screen;
     uint32_t handler_max_us, ev_max_us, ev_max_type, snaps, snap_max_us;
     uint32_t sw_ok, sw_refused, sw_timeout, sw_interrupted, sw_max_us, sw_last_us, sw_hist[21];
     uint32_t sw_dropped;

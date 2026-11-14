@@ -22,8 +22,36 @@ static void test_latency_matches_a_completed_frame(void)
     CHECK_EQ(p.stats.worst_us, 29000);
     CHECK_EQ(p.stats.worst_te_us, 10000);
     CHECK_EQ(p.stats.work_max_us, 19000);
+    CHECK_EQ(p.stats.worst_screen, 3);
+    CHECK_EQ(p.stats.work_max_screen, 3);
+    CHECK_EQ(p.stats.sw_max_queue_us, 1000);
+    CHECK_EQ(p.stats.sw_max_wait_us, 0);
+    CHECK_EQ(p.stats.sw_max_frame_us, 29000);
+    CHECK_EQ(p.stats.sw_max_te_us, 10000);
+    CHECK_EQ(p.stats.sw_max_screen, 3);
     perf_probe_frame(&p, 32000, 33000, 0, 3);
     CHECK_EQ(p.stats.sw_ok, 1);
+}
+
+static void test_attribution_tracks_each_maximum(void)
+{
+    perf_probe_t p;
+    perf_probe_init(&p);
+    perf_probe_frame(&p, 0, 30000, 20000, 2);
+    perf_probe_frame(&p, 40000, 65000, 0, 5);
+    CHECK_EQ(p.stats.worst_screen, 2);
+    CHECK_EQ(p.stats.work_max_screen, 5);
+    perf_probe_swipe_begin(&p, 100000, 101000, true, 3);
+    perf_probe_frame(&p, 104000, 124000, 5000, 3);
+    CHECK_EQ(p.stats.sw_max_us, 24000);
+    CHECK_EQ(p.stats.sw_max_queue_us, 1000);
+    CHECK_EQ(p.stats.sw_max_wait_us, 3000);
+    CHECK_EQ(p.stats.sw_max_frame_us, 20000);
+    CHECK_EQ(p.stats.sw_max_te_us, 5000);
+    CHECK_EQ(p.stats.sw_max_screen, 3);
+    perf_probe_swipe_begin(&p, 200000, 200100, true, 4);
+    perf_probe_frame(&p, 200200, 201000, 0, 4);
+    CHECK_EQ(p.stats.sw_max_screen, 3); /* a faster action cannot overwrite attribution */
 }
 
 static void test_failures_are_not_latency_samples(void)
@@ -66,11 +94,18 @@ static void test_wrap_and_histogram_overflow(void)
     perf_probe_frame(&p, UINT32_MAX - 7999, 15000, 2000, 0);
     CHECK_EQ(p.stats.sw_last_us, 25000);
     CHECK_EQ(p.stats.sw_hist[5], 1);
+    CHECK_EQ(p.stats.sw_max_queue_us, 1000);
+    CHECK_EQ(p.stats.sw_max_wait_us, 1000);
+    CHECK_EQ(p.stats.sw_max_frame_us, 23000);
+    CHECK_EQ(p.stats.sw_max_te_us, 2000);
     CHECK_EQ(p.stats.worst_us, 23000);
     perf_probe_swipe_begin(&p, 20000, 21000, true, 0);
     perf_probe_frame(&p, 21000, 140000, 0, 0);
     CHECK_EQ(p.stats.sw_hist[20], 1);
     CHECK_EQ(p.stats.sw_max_us, 120000);
+    CHECK_EQ(p.stats.sw_max_queue_us, 1000);
+    CHECK_EQ(p.stats.sw_max_frame_us, 119000);
+    CHECK_EQ(p.stats.worst_screen, 0);
     perf_probe_swipe_begin(&p, UINT32_MAX - 9999, UINT32_MAX - 8999, true, 0);
     perf_probe_expire(&p, 990000);
     CHECK_EQ(p.stats.sw_timeout, 1);
@@ -137,6 +172,7 @@ static void test_cross_thread_snapshots_never_tear(void)
 int main(void)
 {
     test_latency_matches_a_completed_frame();
+    test_attribution_tracks_each_maximum();
     test_failures_are_not_latency_samples();
     test_wrap_and_histogram_overflow();
     test_unread_windows_keep_cumulative_evidence();
