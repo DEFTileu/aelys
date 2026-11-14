@@ -112,6 +112,34 @@ static void test_swipes_ignored_in_lost_mode(void)
     CHECK_EQ(screen_next_btn(SCR_TODAY, true, BTN_LOW), SCR_TODAY);
 }
 
+static void test_menu_opens_and_closes(void)
+{
+    CHECK_EQ(screen_next_btn(SCR_HOME, false, BTN_TOP), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_MENU, false, BTN_LOW), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_MENU, false, BTN_TOP), SCR_MENU);        /* opening the item is screen_next_open() */
+    CHECK_EQ(screen_next_btn(SCR_PLACEHOLDER, false, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_btn(SCR_PLACEHOLDER, false, BTN_TOP), SCR_PLACEHOLDER);
+    CHECK_EQ(screen_next_btn(SCR_FOCUS, false, BTN_TOP), SCR_FOCUS);      /* the focus key stays the focus action */
+    CHECK_EQ(screen_next_btn(SCR_ICE, false, BTN_TOP), SCR_ICE);
+    CHECK_EQ(screen_next_btn(SCR_PAIR, false, BTN_TOP), SCR_PAIR);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_FOCUS), SCR_FOCUS);
+    CHECK_EQ(screen_next_open(SCR_MENU, false, SCR_PLACEHOLDER), SCR_PLACEHOLDER);
+    CHECK_EQ(screen_next_open(SCR_HOME, false, SCR_FOCUS), SCR_HOME);     /* only the menu opens items */
+    CHECK_EQ(screen_next(SCR_MENU, false, UI_EV_SWIPE_LEFT), SCR_MENU);   /* swipes turn the wheel, not the screen */
+    CHECK_EQ(screen_next(SCR_MENU, false, UI_EV_SWIPE_RIGHT), SCR_MENU);
+    CHECK_EQ(screen_next(SCR_MENU, false, UI_EV_COMBO_FIRE), SCR_ICE);
+}
+
+static void test_menu_never_opens_in_lost_mode(void)
+{
+    CHECK_EQ(screen_next_btn(SCR_HOME, true, BTN_TOP), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_LOST, true, BTN_TOP), SCR_LOST);
+    CHECK_EQ(screen_next_btn(SCR_MENU, true, BTN_LOW), SCR_MENU);
+    CHECK_EQ(screen_next_open(SCR_MENU, true, SCR_FOCUS), SCR_MENU);
+    CHECK_EQ(screen_next(SCR_MENU, true, UI_EV_LOST), SCR_LOST);          /* lost mode switching on takes the menu away */
+    CHECK_EQ(screen_next(SCR_PLACEHOLDER, true, UI_EV_LOST), SCR_LOST);
+}
+
 static int terminated(const char *s, size_t cap) { return memchr(s, '\0', cap) != NULL; }
 
 static void test_owner_defaults(void)
@@ -163,6 +191,8 @@ int main(void)
     test_swipe_cycle_today_home_focus();
     test_inbox_back();
     test_swipes_ignored_in_lost_mode();
+    test_menu_opens_and_closes();
+    test_menu_never_opens_in_lost_mode();
     test_owner_defaults();
     test_find_overlay_does_not_leave_lost();
     return g_failed ? 1 : 0;

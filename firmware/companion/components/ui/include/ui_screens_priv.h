@@ -80,6 +80,16 @@ lv_obj_t *scr_inbox_create(lv_obj_t *parent);
 void scr_inbox_set(const snap_t *s, int64_t now);
 int scr_inbox_hit(int32_t x, int32_t y);                   /* row index or -1 */
 
+/* scr_menu.c: the menu wheel and the shared "Coming soon" screen. The item table (name, colour, target screen) is items[] there. */
+lv_obj_t *scr_menu_create(lv_obj_t *parent);
+void scr_menu_set(const snap_t *s);                        /* name and sub line of the selected item */
+void scr_menu_step(int dir);                               /* turn the wheel one item: dir > 0 next (swipe left), < 0 previous; wraps */
+int scr_menu_selected(void);                               /* index of the selected item */
+scr_t scr_menu_target(void);                               /* the screen the selected item opens */
+bool scr_menu_hit(int32_t x, int32_t y);                   /* a tap on the selected item or the centre */
+lv_obj_t *scr_placeholder_create(lv_obj_t *parent);
+void scr_placeholder_set(void);                            /* shows the selected menu item's name */
+
 /* orbit.c: task dots on a ring. total == 0 draws 8 dim placeholder dots (nothing paired yet). */
 lv_obj_t *orbit_create(lv_obj_t *parent, int32_t size);
 void orbit_set(lv_obj_t *orbit, int done, int total);

@@ -1218,6 +1218,97 @@ static void test_gestures_and_lost_mode(void)
     CHECK_EQ(ui_current_screen(), SCR_HOME);
 }
 
+/* The menu wheel: top key opens it, a swipe turns it (wrapping), the top key or a tap on the selected item opens it, the low key goes back. */
+static void test_menu_wheel(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sink.accept = true;
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    CHECK_EQ(scr_menu_selected(), 0);
+    CHECK(shows_text(scr, "Tasks"));
+    check_inside("menu");
+
+    swipe(UI_EV_SWIPE_LEFT);
+    check_inside("menu (turning)");                  /* the items stay inside the circle on every frame of the turn */
+    sim_step(60);
+    check_inside_min("menu (mid turn)", 2000);
+    sim_step(200);
+    CHECK_EQ(scr_menu_selected(), 1);
+    CHECK(shows_text(scr, "Focus"));
+    swipe(UI_EV_SWIPE_RIGHT);
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK_EQ(scr_menu_selected(), 8);                /* wraps below the first item ... */
+    sim_step(300);
+    CHECK(shows_text(scr, "Settings"));
+    check_inside("menu (settings)");
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(scr_menu_selected(), 0);                /* ... and above the last */
+    sim_step(300);
+    CHECK(shows_text(scr, "Tasks"));
+
+    btn(BTN_TOP);                                    /* Tasks -> Today for now */
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    btn(BTN_TOP);
+    swipe(UI_EV_SWIPE_LEFT);
+    sim_step(300);
+    tap_at(233, 233);                                /* the centre opens the selected item: Focus */
+    CHECK_EQ(ui_current_screen(), SCR_FOCUS);
+    btn(BTN_LOW);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    tap_at(40, 233);                                 /* an unselected item does nothing */
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    swipe(UI_EV_SWIPE_LEFT);
+    sim_step(300);
+    CHECK(shows_text(scr, "Timer") && shows_text(scr, "Coming soon"));
+    tap_at(233, 73);                                 /* the selected item itself: Timer has no screen yet */
+    CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
+    sim_step(100);
+    CHECK(shows_text(scr, "Timer") && shows_text(scr, "Coming soon"));
+    check_inside_min("menu placeholder", 500);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    for (int i = 0; i < 6; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    btn(BTN_TOP);                                    /* Inbox */
+    CHECK_EQ(scr_menu_selected(), 8);
+    CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
+    btn(BTN_LOW);
+    swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT);
+    sim_step(300);
+    CHECK_EQ(scr_menu_selected(), 4);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_INBOX);
+    sim_step(16000);                                 /* the inbox timeout goes to Today, as before */
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    btn(BTN_LOW);
+
+    /* lost mode: the menu never opens, and switching it on takes an open menu away */
+    post_lost(1);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_lost(0);
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    post_lost(1);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    swipe(UI_EV_SWIPE_LEFT);
+    btn(BTN_TOP);
+    tap_at(233, 233);
+    CHECK_EQ(ui_current_screen(), SCR_LOST);
+    post_lost(0);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    btn(BTN_TOP);
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+}
+
 /* Design "Режим потери · нажата кнопка": a key or a touch on the lost screen leaves lost mode alone and shows the hint for 2 s. */
 static void test_lost_hint_toast_shot(void)
 {
@@ -1633,6 +1724,7 @@ int main(void)
     test_done_ring_is_closed();
     test_idle_screens_do_not_redraw();
     test_gestures_and_lost_mode();
+    test_menu_wheel();
     test_lost_hint_toast_shot();
     test_wifi_toast_shots();
     test_find_overlay_shot();

@@ -37,6 +37,14 @@ scr_t screen_next_tap(scr_t cur, bool lost_mode, tap_hit_t hit)
 
 scr_t screen_next_btn(scr_t cur, bool lost_mode, ui_btn_t btn)
 {
-    if (lost_mode || btn != BTN_LOW) return cur;
-    return cur == SCR_TODAY || cur == SCR_FOCUS ? SCR_HOME : cur == SCR_INBOX ? SCR_TODAY : cur;
+    if (lost_mode) return cur;
+    if (btn == BTN_TOP) return cur == SCR_HOME ? SCR_MENU : cur;
+    if (btn != BTN_LOW) return cur;
+    return cur == SCR_TODAY || cur == SCR_FOCUS || cur == SCR_MENU ? SCR_HOME
+         : cur == SCR_INBOX ? SCR_TODAY : cur == SCR_PLACEHOLDER ? SCR_MENU : cur;
+}
+
+scr_t screen_next_open(scr_t cur, bool lost_mode, scr_t target)
+{
+    return cur == SCR_MENU && !lost_mode && target < SCR_COUNT ? target : cur;
 }
