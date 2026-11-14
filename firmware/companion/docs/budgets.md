@@ -62,6 +62,17 @@ the difference does not establish a speedup. With no clear switch improvement
 and additional internal-memory cost, the experiment was removed. These are
 short, separate runs and do not isolate all workload variability.
 
+A separate 130-second display-I/O attribution run on `c7e4f19` had 130
+complete samples, all Offline. Its slowest of 69 successful switches took
+51811 µs: 15695 µs queued, 35 µs before refresh, and 36081 µs for the
+frame, including 13574 µs TE wait. That frame submitted 217156 pixels in 15
+flushes; the UI task spent 2287 µs in submission calls and 3640 µs waiting
+on the completion semaphore. These are elapsed task times, which can include
+scheduling delays and do not measure total DMA duration. The remaining frame
+time includes drawing and instrumentation; it is not a direct CPU profile.
+The extra timing calls affect this short probe, and Offline results must not be
+compared as if the network workload were identical.
+
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
 Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line per period.
 
