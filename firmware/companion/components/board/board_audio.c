@@ -152,6 +152,10 @@ static void audio_task(void *arg)
 
 esp_err_t board_audio_beep(uint32_t duration_ms)
 {
+#if !CONFIG_AELYS_BOARD_SOUND_ENABLED
+    (void)duration_ms;
+    return ESP_ERR_NOT_SUPPORTED;
+#else
     if (duration_ms == 0) return ESP_ERR_INVALID_ARG;
     if (!lock) lock = xSemaphoreCreateMutexStatic(&lock_buf); /* one caller: no race */
     xSemaphoreTake(lock, portMAX_DELAY); /* waits only while a finished sound is torn down */
@@ -166,6 +170,7 @@ esp_err_t board_audio_beep(uint32_t duration_ms)
     if (e == ESP_OK) post_find(true); /* the overlay follows the sound; a later init failure ends it with the task's FIND(0) */
     xSemaphoreGive(lock);
     return e;
+#endif
 }
 
 void board_audio_stop(void) { atomic_store(&stop_req, true); }

@@ -1,4 +1,9 @@
 menu "Aelys companion"
+    config AELYS_BOARD_SOUND_ENABLED
+        bool "Enable sound on the physical companion"
+        default n
+        help
+            Leave disabled unless the owner explicitly approves audible board sound.
     config AELYS_SPARSE_SCREEN_SWITCH
         bool "Invalidate painted regions for Home/Today navigation (experimental)"
         default n
