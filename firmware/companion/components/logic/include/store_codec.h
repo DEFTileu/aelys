@@ -17,7 +17,7 @@
 #define STORE_LOST_VERSION  2
 #define STORE_PAIR_VERSION  1
 #define STORE_SETTINGS_VERSION 1
-#define STORE_UI_VERSION    1 /* the board's own UI choices (key "ui"); the server never writes it */
+#define STORE_UI_VERSION    2 /* the board's own UI choices (key "ui"); the server never writes it. 2: sounds; a 1 still decodes */
 #define STORE_SNAP_VERSION  3 /* legacy raw struct format; bump with any change to snap_t */
 #define STORE_SNAP_OWNED_VERSION 4 /* 4: weather; 3: tasks_today / events_upcoming. An older blob is ignored (length and version differ), never half-read */
 #define STORE_SNAP_OWNER_LEN 65
@@ -26,7 +26,7 @@ typedef struct { char ssid[33]; char pass[65]; } wifi_cred_t;
 typedef struct { uint8_t n; wifi_cred_t net[WIFI_MAX]; } wifi_list_t;
 
 /* What the owner picks on the board itself (Settings screen). Grow it only by bumping STORE_UI_VERSION. */
-typedef struct { bool level_on; } ui_prefs_t;
+typedef struct { bool level_on, sound_on; } ui_prefs_t;
 
 /* The companion pairing: who this board is to the backend, and its P-256 private scalar. */
 typedef struct { char device_id[40]; char api_url[129]; uint8_t priv[32]; } pair_rec_t;
@@ -38,7 +38,7 @@ typedef struct { char device_id[40]; char api_url[129]; uint8_t priv[32]; } pair
 #define STORE_LOST_BLOB  (1 + STORE_LOST_PAYLOAD + 4)
 #define STORE_SETTINGS_PAYLOAD (1 + sizeof(uint32_t)) /* brightness, rev */
 #define STORE_SETTINGS_BLOB (1 + STORE_SETTINGS_PAYLOAD + 4)
-#define STORE_UI_PAYLOAD 1 /* level_on */
+#define STORE_UI_PAYLOAD 2 /* level_on, sound_on */
 #define STORE_UI_BLOB (1 + STORE_UI_PAYLOAD + 4)
 #define STORE_PAIR_BLOB  (1 + sizeof(pair_rec_t) + 4)
 #define STORE_SNAP_BLOB  (1 + sizeof(snap_t) + 4)

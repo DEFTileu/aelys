@@ -116,15 +116,22 @@ bool store_decode_settings(const uint8_t *buf, size_t len, settings_t *out)
 
 size_t store_encode_ui(const ui_prefs_t *in, uint8_t *buf, size_t cap)
 {
-    uint8_t p[STORE_UI_PAYLOAD] = { in->level_on ? 1 : 0 };
+    uint8_t p[STORE_UI_PAYLOAD] = { in->level_on ? 1 : 0, in->sound_on ? 1 : 0 };
     return seal(STORE_UI_VERSION, p, sizeof p, buf, cap);
 }
 
 bool store_decode_ui(const uint8_t *buf, size_t len, ui_prefs_t *out)
 {
     const uint8_t *p = unseal(STORE_UI_VERSION, buf, len, STORE_UI_PAYLOAD);
+    if (p && p[0] <= 1 && p[1] <= 1) {
+        out->level_on = p[0] == 1;
+        out->sound_on = p[1] == 1;
+        return true;
+    }
+    p = unseal(1, buf, len, 1); /* version 1, before the sounds: they stay off */
     if (!p || p[0] > 1) return false;
     out->level_on = p[0] == 1;
+    out->sound_on = false;
     return true;
 }
 

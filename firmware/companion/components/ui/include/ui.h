@@ -59,10 +59,14 @@ typedef struct {
     void (*level)(bool on);          /* the "always level" switch changed (by Settings or the 1 s hold): save later */
     const char *(*version)(void);    /* firmware version text */
     bool (*battery)(uint8_t *pct, bool *charging); /* false: no battery or the gauge does not answer */
+    void (*sound)(bool on);          /* the "Sounds" switch changed: save later */
 } ui_settings_hooks_t;
 void ui_set_settings_hooks(const ui_settings_hooks_t *h); /* h must outlive the UI; NULL hooks show empty values */
-/* The saved choices at boot (ui task, after ui_setup(); does not call the hooks): brightness percent and "always level". */
-void ui_settings_init(uint8_t brightness_pct, bool level_on);
+/* The saved choices at boot (ui task, after ui_setup(); does not call the hooks): brightness percent, "always level" and "Sounds". */
+void ui_settings_init(uint8_t brightness_pct, bool level_on, bool sound_on);
+/* Plays a sound effect (sfx.h id): main passes board_audio_sfx. Runs in the ui task and must not block. The UI calls it only while the
+ * "Sounds" switch is on, not at night (22:00-7:00), not in lost mode and not while "find me" beeps. */
+void ui_set_sound_sink(void (*sink)(uint8_t sfx));
 /* The action hook (main passes link_post_action): false = refused, and the UI shows "No connection". */
 void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
 /* Runs in the UI task; sink must be non-blocking. */

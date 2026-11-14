@@ -47,6 +47,8 @@ static struct {
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
     lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *reaction_timer, *tick_timer, *level_timer;
     bool level_on;       /* "always level": saved by main through the settings hook; ui_settings_init() sets it at boot */
+    bool sound_on;       /* the "Sounds" switch, the same way */
+    void (*sound_sink)(uint8_t sfx);
     int16_t level_angle; /* the newest UI_EV_LEVEL, applied only while level_on */
     const snap_t *snap;  /* the newest published snapshot; unchanged until the next tribuf_latest() */
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
@@ -137,6 +139,18 @@ void ui_level_set(bool on, bool notify)
     g.level_on = on;
     scr_home_set_level(on ? g.level_angle : 0);
     if (notify) scr_settings_level_changed(on);
+}
+bool ui_sound_on(void) { return g.sound_on; }
+void ui_sound_set(bool on, bool notify)
+{
+    g.sound_on = on;
+    if (notify) scr_settings_sound_changed(on);
+}
+void ui_set_sound_sink(void (*sink)(uint8_t sfx)) { g.sound_sink = sink; }
+void ui_sound(sfx_t s)
+{
+    bool night = g.have_time && (g.hh >= 22 || g.hh < 7);
+    if (g.sound_on && g.sound_sink && !night && !g.lost && !g.find && s != SFX_NONE) g.sound_sink((uint8_t)s);
 }
 character_result_t ui_character_last(void) { return g.character_result; }
 
@@ -524,7 +538,14 @@ static void reaction_timeout(lv_timer_t *t)
 /* A reaction of hers (character.c picks whether it wins over what she shows now), for its three seconds. */
 static void react(character_event_t e)
 {
-    if (character_event(&g.character, e, lv_tick_get())) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+    static const uint8_t voice[CHAR_EVENT_COUNT] = {
+        [CHAR_EVENT_SHAKE] = SFX_DIZZY, [CHAR_EVENT_FALL] = SFX_EEK, [CHAR_EVENT_LIFT] = SFX_HUH, [CHAR_EVENT_WAKE] = SFX_WAKE,
+        [CHAR_EVENT_TOUCH] = SFX_HUH, [CHAR_EVENT_ATTENTION] = SFX_TAP, [CHAR_EVENT_DOUBLE_TOUCH] = SFX_GIGGLE, [CHAR_EVENT_POKES] = SFX_GRUMBLE,
+    };
+    if (character_event(&g.character, e, lv_tick_get())) {
+        arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+        ui_sound((sfx_t)voice[e]); /* only a reaction that shows makes a sound */
+    }
     render();
 }
 
@@ -616,6 +637,7 @@ static void notice_check(const snap_t *s)
     g.notice_base = true;
     if (base || !newest || !toast_ok()) return;
     scr_notice_show(newest, s->other_unread);
+    ui_sound(SFX_NOTIFY);
     if (character_event(&g.character, CHAR_EVENT_NOTIFICATION, lv_tick_get())) {
         update_character();
         arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
@@ -735,6 +757,7 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
         return;
     } else if (g.cur == SCR_MENU && scr_menu_hit(x, y)) {
         *next = screen_next_open(g.cur, g.lost, scr_menu_target());
+        if (*next != g.cur) ui_sound(SFX_OPEN);
         return;
     }
     *next = screen_next_tap(g.cur, g.lost, hit);
@@ -755,6 +778,7 @@ static void on_action_result(const ui_event_t *ev)
             bool accepted = character_event(&g.character, last ? CHAR_EVENT_LAST_TASK : CHAR_EVENT_TASK_DONE, lv_tick_get());
             update_character(); /* deliver a host cue at the event, even off Home */
             if (accepted) arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+            ui_sound(last ? SFX_ALL_DONE : SFX_DONE);
         }
         return;
     }
@@ -790,6 +814,7 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->len < 1 || g.lost) return;
         uint8_t m = ev->data[0];
         if (m == MOTION_FACE_DOWN || m == MOTION_FACE_UP) g.face_down = m == MOTION_FACE_DOWN;
+        if (m == MOTION_FACE_DOWN) ui_sound(SFX_SLEEP);
         if (m != MOTION_FACE_DOWN) { idle_advance(lv_tick_get()); g.idle_elapsed_ms = 0; } /* someone is handling her */
         if (m == MOTION_SHAKE) react(CHAR_EVENT_SHAKE);
         else if (m == MOTION_FALL) react(CHAR_EVENT_FALL);
@@ -1014,6 +1039,7 @@ void ui_handle_event(const ui_event_t *ev)
         next = g.cur == SCR_MENU && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_menu_target())
              : g.cur == SCR_SETTINGS && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_settings_top())
                                                                : screen_next_btn(g.cur, g.lost, (ui_btn_t)ev->data[0]);
+        if (g.cur == SCR_MENU && ev->data[0] == BTN_TOP && next != g.cur) ui_sound(SFX_OPEN);
         break;
     case UI_EV_ACTION:
         if (!g.lost) {

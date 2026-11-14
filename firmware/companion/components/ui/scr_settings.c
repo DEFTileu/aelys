@@ -1,6 +1,6 @@
 /* Settings (design "Настройки", "Wi-Fi · сохранённые сети"): the list behind the menu's Settings item, and the two screens it opens.
- * List: Brightness (steps 20..100 %), Sleep after and Sounds (shown dim with "Soon": the firmware has neither), Always level (the
- * switch for the 1 s hold on the home face), Wi-Fi and About. A swipe moves the highlight, the top key or a tap on a row acts on it:
+ * List: Brightness (steps 20..100 %), Sleep after (shown dim with "Soon": the firmware has none), Sounds (a switch, off at first: the
+ * small sound effects, never at night), Always level (the switch for the 1 s hold on the home face), Wi-Fi and About. A swipe moves the highlight, the top key or a tap on a row acts on it:
  * brightness goes to the next step (a tap on the bar sets the step under the finger), the switch flips, Wi-Fi and About open. The low key
  * goes back. Wi-Fi is view only: the saved names in priority order (names only: the passwords never leave main), the network in use
  * and the state; networks are added, removed and re-ordered in the app. About: firmware, battery, pairing.
@@ -38,7 +38,7 @@
 
 typedef enum { R_BRIGHT, R_SLEEP, R_SOUNDS, R_LEVEL, R_WIFI, R_ABOUT, N_ROWS } row_id_t;
 static const struct { const char *name; bool on; scr_t target; } rows[N_ROWS] = {
-    { "Brightness", true, SCR_SETTINGS }, { "Sleep after", false, SCR_SETTINGS }, { "Sounds", false, SCR_SETTINGS },
+    { "Brightness", true, SCR_SETTINGS }, { "Sleep after", false, SCR_SETTINGS }, { "Sounds", true, SCR_SETTINGS },
     { "Always level", true, SCR_SETTINGS }, { "Wi-Fi", true, SCR_WIFI }, { "About", true, SCR_ABOUT },
 };
 static const uint8_t steps[] = { 20, 40, 60, 80, 100 };
@@ -49,9 +49,9 @@ static uint8_t wifi_state; /* ui_wifi_state_t */
 static char wifi_cur[33];  /* the network in use, "" when none */
 
 static struct {
-    lv_obj_t *root, *head, *arc, *row[N_ROWS], *name[N_ROWS], *val[N_ROWS], *bar, *fill, *sw, *knob;
+    lv_obj_t *root, *head, *arc, *row[N_ROWS], *name[N_ROWS], *val[N_ROWS], *bar, *fill, *sw[N_ROWS], *knob[N_ROWS]; /* sw: the two switch rows */
     int sel, drawn_sel; /* highlight; the one the arc was drawn for */
-    int drawn_pct, drawn_level;
+    int drawn_pct, drawn_sw[N_ROWS];
 } l;
 
 static struct {
@@ -66,10 +66,11 @@ static struct {
 
 void ui_set_settings_hooks(const ui_settings_hooks_t *h) { hooks = h; }
 
-void ui_settings_init(uint8_t brightness_pct, bool level_on)
+void ui_settings_init(uint8_t brightness_pct, bool level_on, bool sound_on)
 {
     pct = brightness_pct < BRIGHTNESS_MIN ? BRIGHTNESS_MIN : brightness_pct > BRIGHTNESS_MAX ? BRIGHTNESS_MAX : brightness_pct;
     ui_level_set(level_on, false);
+    ui_sound_set(sound_on, false);
 }
 
 void scr_settings_note_brightness(uint8_t p)
@@ -80,6 +81,11 @@ void scr_settings_note_brightness(uint8_t p)
 void scr_settings_level_changed(bool on)
 {
     if (hooks && hooks->level) hooks->level(on);
+}
+
+void scr_settings_sound_changed(bool on)
+{
+    if (hooks && hooks->sound) hooks->sound(on);
 }
 
 void scr_settings_set_wifi(uint8_t state, const char *cur)
@@ -132,7 +138,6 @@ static void wifi_value(char *out, size_t cap)
 void scr_settings_set(void)
 {
     char t[40];
-    bool level = ui_level_on();
     ui_set_text(l.head, "SETTINGS");
     for (int i = 0; i < N_ROWS; i++) {
         bool sel = i == l.sel;
@@ -146,10 +151,12 @@ void scr_settings_set(void)
         pct_text(t, pct);
         ui_set_text(l.val[R_BRIGHT], t);
     }
-    if (l.drawn_level != level) {
-        l.drawn_level = level;
-        lv_obj_set_style_bg_color(l.sw, lv_color_hex(level ? COLOR_SW_ON : COLOR_SW_OFF), 0);
-        lv_obj_set_x(l.knob, level ? SW_W - KNOB - 3 : 3);
+    for (int i = R_SOUNDS; i <= R_LEVEL; i++) { /* the two switch rows, next to each other */
+        int on = i == R_LEVEL ? ui_level_on() : ui_sound_on();
+        if (l.drawn_sw[i] == on) continue;
+        l.drawn_sw[i] = on;
+        lv_obj_set_style_bg_color(l.sw[i], lv_color_hex(on ? COLOR_SW_ON : COLOR_SW_OFF), 0);
+        lv_obj_set_x(l.knob[i], on ? SW_W - KNOB - 3 : 3);
     }
     wifi_value(t, sizeof t);
     ui_set_text(l.val[R_WIFI], t);
@@ -183,6 +190,9 @@ static scr_t activate(int i)
         set_brightness(next);
     } else if (i == R_LEVEL) {
         ui_level_set(!ui_level_on(), true);
+    } else if (i == R_SOUNDS) {
+        ui_sound_set(!ui_sound_on(), true);
+        ui_sound(SFX_TAP); /* turned on: a chirp to hear it */
     }
     scr_settings_set();
     return rows[i].target;
@@ -212,7 +222,8 @@ scr_t scr_settings_tap(int32_t x, int32_t y)
 lv_obj_t *scr_settings_create(lv_obj_t *parent)
 {
     memset(&l, 0, sizeof l);
-    l.drawn_sel = l.drawn_pct = l.drawn_level = -1;
+    l.drawn_sel = l.drawn_pct = -1;
+    for (int i = 0; i < N_ROWS; i++) l.drawn_sw[i] = -1;
     l.root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
     l.arc = arc_create(l.root, &l.sel);
     l.head = ui_label(l.root, &inter_16, UI_COLOR_SUBTLE, 200, 1, LV_TEXT_ALIGN_CENTER);
@@ -241,21 +252,23 @@ lv_obj_t *scr_settings_create(lv_obj_t *parent)
     lv_obj_set_style_bg_color(l.fill, lv_color_hex(UI_COLOR_ACCENT), 0);
     lv_obj_set_style_radius(l.fill, BAR_H / 2, 0);
     for (int i = 0; i < N_ROWS; i++) { /* the right-hand value of the rows that have a text one */
-        if (i == R_BRIGHT || i == R_LEVEL) continue;
+        if (i == R_BRIGHT || i == R_LEVEL || i == R_SOUNDS) continue;
         l.val[i] = ui_label(l.row[i], &inter_16, rows[i].on ? UI_COLOR_SUBTLE : UI_COLOR_DIM, 150, 1, LV_TEXT_ALIGN_RIGHT);
         lv_obj_set_pos(l.val[i], ROW_W - PAD - 150, (ROW_H - lv_obj_get_height(l.val[i])) / 2);
         if (!rows[i].on) lv_label_set_text(l.val[i], "Soon");
     }
     lv_obj_set_pos(l.val[R_BRIGHT], ROW_W - PAD - 44, (ROW_H - lv_obj_get_height(l.val[R_BRIGHT])) / 2);
-    l.sw = ui_plain(l.row[R_LEVEL], SW_W, SW_H);
-    lv_obj_set_pos(l.sw, ROW_W - PAD - SW_W, (ROW_H - SW_H) / 2);
-    lv_obj_set_style_radius(l.sw, SW_H / 2, 0);
-    lv_obj_set_style_bg_opa(l.sw, LV_OPA_COVER, 0);
-    l.knob = ui_plain(l.sw, KNOB, KNOB);
-    lv_obj_set_y(l.knob, 3);
-    lv_obj_set_style_radius(l.knob, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(l.knob, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(l.knob, lv_color_hex(0xFFFFFF), 0);
+    for (int i = R_SOUNDS; i <= R_LEVEL; i++) { /* the two switch rows, next to each other */
+        l.sw[i] = ui_plain(l.row[i], SW_W, SW_H);
+        lv_obj_set_pos(l.sw[i], ROW_W - PAD - SW_W, (ROW_H - SW_H) / 2);
+        lv_obj_set_style_radius(l.sw[i], SW_H / 2, 0);
+        lv_obj_set_style_bg_opa(l.sw[i], LV_OPA_COVER, 0);
+        l.knob[i] = ui_plain(l.sw[i], KNOB, KNOB);
+        lv_obj_set_y(l.knob[i], 3);
+        lv_obj_set_style_radius(l.knob[i], LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(l.knob[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(l.knob[i], lv_color_hex(0xFFFFFF), 0);
+    }
     ui_stack(col, gap, N_ROWS + 1, 0, UI_SCREEN_SIZE, -1);
     scr_settings_set();
     return l.root;

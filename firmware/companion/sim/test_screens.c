@@ -694,6 +694,63 @@ static void test_character_tap_and_idle(void)
 }
 
 static void motion(motion_event_t m) { uint8_t v = (uint8_t)m; sim_post(UI_EV_MOTION, &v, 1); }
+static int sounds_n;
+static uint8_t last_sound;
+static void capture_sound(uint8_t s) { sounds_n++; last_sound = s; }
+
+/* Sounds play only with the switch on, by day, and only for a reaction that shows. */
+static void test_sounds(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    ui_set_sound_sink(capture_sound);
+    uint8_t day[] = {14, 32}, night[] = {23, 0}, early[] = {6, 59}, morning[] = {7, 0};
+    sim_post(UI_EV_TIME, day, 2);
+    sim_step(3100);
+    sounds_n = 0;
+    motion(MOTION_SHAKE);
+    CHECK_EQ(sounds_n, 0);                                    /* off unless the owner turns it on */
+    sim_step(3100);
+    ui_sound_set(true, false);
+    motion(MOTION_SHAKE);
+    CHECK_EQ(sounds_n, 1); CHECK_EQ(last_sound, SFX_DIZZY);
+    tap_at(233, 233);                                         /* the tap loses to the shake: no face change, no sound */
+    CHECK_EQ(sounds_n, 1);
+    sim_step(3100);
+    tap_at(233, 233);
+    sim_step(200);
+    tap_at(233, 233);
+    CHECK_EQ(last_sound, SFX_GIGGLE);
+    sim_step(3100);
+    motion(MOTION_FACE_DOWN);
+    CHECK_EQ(last_sound, SFX_SLEEP);
+    motion(MOTION_FACE_UP);
+    CHECK_EQ(last_sound, SFX_WAKE);
+    sim_step(3100);
+    int n = sounds_n;
+    sim_post(UI_EV_TIME, night, 2);
+    motion(MOTION_FALL);
+    sim_post(UI_EV_TIME, early, 2);
+    sim_step(3100);
+    motion(MOTION_LIFT);
+    CHECK_EQ(sounds_n, n);                                    /* 22:00 to 7:00 is quiet */
+    sim_post(UI_EV_TIME, morning, 2);
+    sim_step(3100);
+    motion(MOTION_LIFT);
+    CHECK_EQ(sounds_n, n + 1); CHECK_EQ(last_sound, SFX_HUH);
+    sim_step(3100);
+    post_lost(1);
+    motion(MOTION_SHAKE);
+    CHECK_EQ(sounds_n, n + 1);                                /* lost mode: silent */
+    post_lost(0);
+    sim_step(3100);
+    ui_sound_set(false, false);
+    motion(MOTION_SHAKE);
+    CHECK_EQ(sounds_n, n + 1);
+    sim_post(UI_EV_TIME, day, 2);
+    sim_step(3100);
+    fresh_fx();
+}
+
 
 /* Her body and her face: shaking, falling, picking up, lying face down; a double tap and a run of pokes. */
 static void test_character_body_and_taps(void)
@@ -1411,12 +1468,13 @@ static void open_tasks(void)
 
 /* ---- Settings: brightness, always level, Wi-Fi (view only), About ---- */
 
-static struct { int brightness_n, level_n; uint8_t pct; bool level; } hk;
+static struct { int brightness_n, level_n, sound_n; uint8_t pct; bool level, sound; } hk;
+static void hk_sound(bool on) { hk.sound_n++; hk.sound = on; }
 static void hk_brightness(uint8_t p) { hk.brightness_n++; hk.pct = p; }
 static void hk_level(bool on) { hk.level_n++; hk.level = on; }
 static const char *hk_version(void) { return "9.9.9"; }
 static bool hk_battery(uint8_t *p, bool *charging) { *p = 42; *charging = false; return true; }
-static const ui_settings_hooks_t test_hooks = { hk_brightness, hk_level, hk_version, hk_battery };
+static const ui_settings_hooks_t test_hooks = { hk_brightness, hk_level, hk_version, hk_battery, hk_sound };
 
 _Static_assert(sizeof(ui_wifi_names_t) == 1 + WIFI_MAX * 33, "the UI copy of the Wi-Fi list holds names only: no password field");
 
@@ -1453,7 +1511,7 @@ static void test_settings_screens(void)
     sink.accept = true;
     memset(&hk, 0, sizeof hk);
     ui_set_settings_hooks(&test_hooks);
-    ui_settings_init(60, false);
+    ui_settings_init(60, false, false);
     CHECK_EQ(hk.level_n, 0);                         /* the boot values are not "changes" */
     CHECK_EQ(ui_current_screen(), SCR_HOME);
     settings_open();
@@ -1489,7 +1547,19 @@ static void test_settings_screens(void)
     }
     int n = hk.brightness_n;
     tap_label("Sleep after");                        /* a row the firmware has no setting for does nothing */
+    CHECK_EQ(hk.brightness_n, n); CHECK_EQ(hk.level_n, 0); CHECK_EQ(hk.sound_n, 0);
+    /* sounds: off at first; the switch goes to the hook, and turning it on chirps once */
+    CHECK(!ui_sound_on());
+    ui_set_sound_sink(capture_sound);
+    uint8_t day[] = {14, 32}; sim_post(UI_EV_TIME, day, 2);
+    sounds_n = 0;
     tap_label("Sounds");
+    CHECK_EQ(hk.sound_n, 1); CHECK(hk.sound && ui_sound_on());
+    CHECK_EQ(sounds_n, 1); CHECK_EQ(last_sound, SFX_TAP);
+    check_inside("settings (sounds on)");
+    tap_label("Sounds");
+    CHECK_EQ(hk.sound_n, 2); CHECK(!hk.sound && !ui_sound_on());
+    CHECK_EQ(sounds_n, 1);                           /* turning it off is silent */
     CHECK_EQ(hk.brightness_n, n); CHECK_EQ(hk.level_n, 0);
     CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
 
@@ -1566,7 +1636,8 @@ static void test_settings_screens(void)
     CHECK(shows_text(scr, "Paired") && !shows_text(scr, "Not paired"));
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_SETTINGS);
-    swipe(UI_EV_SWIPE_RIGHT);                        /* back to Always level, then Brightness */
+    swipe(UI_EV_SWIPE_RIGHT);                        /* back to Wi-Fi, Always level, Sounds, then Brightness */
+    swipe(UI_EV_SWIPE_RIGHT);
     swipe(UI_EV_SWIPE_RIGHT);
     swipe(UI_EV_SWIPE_RIGHT);
     sim_step(100);
@@ -1593,7 +1664,7 @@ static void test_settings_screens(void)
     post_lost(0);
     CHECK_EQ(ui_current_screen(), SCR_HOME);
     ui_set_settings_hooks(NULL);
-    ui_settings_init(100, false);
+    ui_settings_init(100, false, false);
     sink.accept = false;
 }
 
@@ -3034,6 +3105,7 @@ int main(void)
     test_character_cue_delivery();
     test_character_tap_and_idle();
     test_character_body_and_taps();
+    test_sounds();
     test_reconnect_does_not_interrupt_task_reaction();
     test_character_reconnected();
     test_character_home_integration();

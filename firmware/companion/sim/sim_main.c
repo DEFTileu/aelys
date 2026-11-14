@@ -253,7 +253,7 @@ static int companion_shot(const char *shot)
         uint8_t wifi[34] = { UI_WIFI_ONLINE, 'H', 'o', 'm', 'e' };
         sim_post(UI_EV_WIFI, wifi, sizeof wifi);
         if (!strcmp(shot, "settings_wifi_wrong")) post_ev(UI_EV_WIFI, UI_WIFI_BAD_PASSWORD);
-        ui_settings_init(60, !strcmp(shot, "settings_level"));
+        ui_settings_init(60, !strcmp(shot, "settings_level"), false);
         post_ev(UI_EV_BTN, BTN_TOP);
         sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
         sim_post(UI_EV_SWIPE_RIGHT, NULL, 0);

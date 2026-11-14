@@ -66,7 +66,10 @@ static void sync_timer(void)
 static void tick_cb(lv_timer_t *t)
 {
     (void)t;
-    if (tmr_poll(&s.t, lv_tick_get()) && ui_current_screen() != SCR_TIMER) ui_toast("Time's up");
+    if (tmr_poll(&s.t, lv_tick_get())) {
+        ui_sound(SFX_TIMER);
+        if (ui_current_screen() != SCR_TIMER) ui_toast("Time's up");
+    }
     if (ui_current_screen() == SCR_TIMER) scr_timer_set();
     sync_timer();
 }

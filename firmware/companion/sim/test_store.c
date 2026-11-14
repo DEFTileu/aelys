@@ -544,10 +544,20 @@ static void test_ui_prefs_roundtrip_and_bounds(void)
     buf[1] = 1; buf[2] ^= 1;
     CHECK(!store_decode_ui(buf, n, &out));               /* corrupt */
     store_encode_ui(&in, buf, sizeof buf);
-    buf[0] = 2; reseal(buf, n);
+    buf[0] = 3; reseal(buf, n);
     CHECK(!store_decode_ui(buf, n, &out));               /* another version */
     CHECK(!store_decode_ui(buf, n - 1, &out));
     CHECK(!out.level_on);                                /* untouched by every failure: still the last good value (off) */
+
+    in = (ui_prefs_t){ .level_on = false, .sound_on = true };
+    n = store_encode_ui(&in, buf, sizeof buf);
+    CHECK(store_decode_ui(buf, n, &out) && out.sound_on && !out.level_on);
+    buf[2] = 2; reseal(buf, n);
+    CHECK(!store_decode_ui(buf, n, &out));               /* 2 is no flag for the sounds either */
+    uint8_t v1[1 + 1 + 4] = { 1, 1 };                    /* saved by the firmware before the sounds */
+    reseal(v1, sizeof v1);
+    out.sound_on = true;
+    CHECK(store_decode_ui(v1, sizeof v1, &out) && out.level_on && !out.sound_on);
 }
 
 int main(void)

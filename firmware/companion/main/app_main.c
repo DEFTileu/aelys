@@ -49,7 +49,7 @@ static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi,
 static SemaphoreHandle_t settings_mu;
 static esp_timer_handle_t persist_timer;
 static volatile uint8_t local_pct;
-static volatile bool local_pending, level_pending, level_want;
+static volatile bool local_pending, level_pending, level_want, sound_pending, sound_want;
 
 static void persist_cb(void *arg)
 {
@@ -63,10 +63,11 @@ static void persist_cb(void *arg)
         }
         xSemaphoreGive(settings_mu);
     }
-    if (level_pending) {
-        level_pending = false;
-        prefs.level_on = level_want;
-        if (store_save_ui(&prefs) != ESP_OK) ESP_LOGW(TAG, "level switch not saved");
+    if (level_pending || sound_pending) {
+        if (level_pending) prefs.level_on = level_want;
+        if (sound_pending) prefs.sound_on = sound_want;
+        level_pending = sound_pending = false;
+        if (store_save_ui(&prefs) != ESP_OK) ESP_LOGW(TAG, "level / sound switch not saved");
     }
 }
 
@@ -88,6 +89,13 @@ static void ui_level(bool on)
 {
     level_want = on;
     level_pending = true;
+    persist_soon();
+}
+
+static void ui_sound_switch(bool on)
+{
+    sound_want = on;
+    sound_pending = true;
     persist_soon();
 }
 
@@ -122,7 +130,8 @@ static esp_err_t net_save_wifi(const wifi_list_t *l)
 
 static const char *fw_version(void) { return esp_app_get_description()->version; }
 
-static const ui_settings_hooks_t settings_hooks = {.brightness = ui_brightness, .level = ui_level, .version = fw_version, .battery = board_battery};
+static const ui_settings_hooks_t settings_hooks = {.brightness = ui_brightness, .level = ui_level, .version = fw_version, .battery = board_battery,
+                                                .sound = ui_sound_switch};
 
 static bool lost_is_on(void) { return lost.on; }
 #ifndef CONFIG_AELYS_NO_WIFI
@@ -178,7 +187,7 @@ static void unpair_board(void)
     settings_defaults(&settings);
     xSemaphoreGive(settings_mu);
     memset(&prefs, 0, sizeof prefs); /* the wipe erased the "ui" blob too; a level switch still pending would write it back, so drop it */
-    level_pending = false;
+    level_pending = sound_pending = false;
 }
 
 /* Wi-Fi commands. wifi_add switches the board's network, which drops the channel: its ack is queued in RAM and goes out after the
@@ -370,7 +379,8 @@ static void boot_ui_setup(void)
 {
     ui_setup();
     ui_set_settings_hooks(&settings_hooks);
-    ui_settings_init(settings.brightness, prefs.level_on); /* the panel itself was set from settings.brightness before the UI started */
+    ui_settings_init(settings.brightness, prefs.level_on, prefs.sound_on); /* the panel itself was set from settings.brightness before the UI started */
+    ui_set_sound_sink(board_audio_sfx); /* the small sounds; the Sounds switch (off at first) gates them */
 #ifdef CONFIG_AELYS_PERF_PROBE
     lv_port_probe_set_ui(ui_probe_swipe, probe_screen);
 #endif
@@ -440,6 +450,7 @@ void app_main(void)
     ESP_LOGW(TAG, "boot: lost_mode=%s", lost.on ? "on" : "off");
 
     lv_port_set_handler(on_ui_event);
+    board_audio_init(); /* before the ui and link tasks: both may play sounds */
     berr = lv_port_start(boot_ui_setup);
     if (berr != ESP_OK) halt("ui start", berr);
 

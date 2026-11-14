@@ -231,7 +231,7 @@ static void maze_tick(void)
     s.mz_tick = now;
     place_ball();
     maze_text();
-    if (s.mz.won) timer_off();
+    if (s.mz.won) { timer_off(); ui_sound(SFX_WIN); } /* the timer stops, so this runs once per win */
 }
 
 static void tm_cb(lv_timer_t *t)
@@ -250,7 +250,7 @@ static void tm_cb(lv_timer_t *t)
         redraw();
     } else if (s.sel == G_REACT) {
         uint32_t now = lv_tick_get();
-        if (rx_poll(&s.rx, now)) { timer_off(); redraw(); }
+        if (rx_poll(&s.rx, now)) { timer_off(); ui_sound(SFX_GO); redraw(); }
         else timer_on(rx_wait_left(&s.rx, now));
     }
 }
@@ -271,6 +271,7 @@ static void coin_done(lv_anim_t *a)
     s.flipping = false;
     s.tails = s.flip_tails;
     draw_coin(s.tails, COIN_D);
+    ui_sound(SFX_COIN);
     redraw();
 }
 
@@ -316,6 +317,7 @@ static void roll(void)
     s.rolling = true;
     s.face_to = gm_die(rnd());
     s.flick = -1;
+    ui_sound(SFX_DICE); /* the rattle slows down with the faces */
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, s.die);

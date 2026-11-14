@@ -62,6 +62,11 @@ esp_err_t board_audio_beep(uint32_t duration_ms);
 /* Ends the sound within about 10 ms. Non-blocking, safe from any task (the ui task calls it on a tap) while the audio task runs; a no-op when
  * nothing plays. */
 void board_audio_stop(void);
+/* Call once at boot, before the tasks that use the two calls above and below start. */
+void board_audio_init(void);
+/* A short sound effect (sfx.h id), from the ui task. Never waits: dropped while "find me" beeps or while a sound is being torn down;
+ * a new one replaces the one playing. Shares the find beeps' audio task, codec and amplifier, which exist only while it plays. */
+void board_audio_sfx(uint8_t id);
 
 /* Rolling 5 s window: frames per second x10 and the longest single refresh in microseconds. */
 void lv_port_frame_stats(uint32_t *fps_x10, uint32_t *worst_us);

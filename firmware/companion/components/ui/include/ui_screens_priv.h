@@ -3,6 +3,7 @@
  * screens keep their widgets in file-level statics. Not a public API. */
 #include "owner.h"
 #include "screen_fsm.h"
+#include "sfx.h"
 #include "ui.h"
 #include "ui_theme.h"
 
@@ -140,6 +141,10 @@ void scr_settings_set_wifi(uint8_t state, const char *cur); /* UI_EV_WIFI: ui_wi
 void scr_settings_level_changed(bool on);                  /* tells the board (hook) that the switch changed */
 bool ui_level_on(void);                                    /* screens.c: "always level" */
 void ui_level_set(bool on, bool notify);                   /* turn it on or off; notify: also tell the board to save it */
+bool ui_sound_on(void);                                    /* screens.c: the "Sounds" switch */
+void ui_sound_set(bool on, bool notify);                   /* notify: also tell the board to save it */
+void scr_settings_sound_changed(bool on);                  /* tells the board (hook) that the switch changed */
+void ui_sound(sfx_t s);                                    /* screens.c: plays it if sounds are on and it is not night */
 bool ui_paired(void);                                      /* screens.c: the board is paired with the server */
 /* scr_games.c (design "Игры"): the hub (Ask Aelys, Coin, Dice, Reaction, Tilt Maze) and the games; one screen, the state lives here */
 lv_obj_t *scr_games_create(lv_obj_t *parent);
