@@ -224,6 +224,21 @@ Do not use the sampled margin as a production guarantee without establishing a
 bound for the pinned fixed-point calculations and a fallback or tiling policy.
 The ignored `bounds-transform/NOTES.md` records the cases and commands.
 
+The experimental adapter also computes a conservative rotated bound from the
+pinned sampler's inverse mapping, instead of relying on the forward rectangle.
+At unit scale the sampler's Q8 source coordinates are sums of two separately
+floored terms. Their two rounding remainders add at most six units after
+multiplication by four. Bounding each source coordinate to the image and
+inverting the resulting integer matrix gives a conservative rectangle; the
+implementation uses 64-bit intermediates and explicit floor/ceiling division.
+The argument depends on LVGL 9.6.0's exact sampling code and arithmetic right
+shift. A separate audit checked the derivation, and the tested ESP32-S3 compiler
+uses arithmetic right shift. The adapter fails closed if its compile-time
+version, configuration or shift assumptions do not hold. A valid bound can
+still exceed the adapter's single-buffer or reachable-coordinate limits; the
+caller must check them and provide a safe fallback. This calculation is not
+connected to the UI and does not prove runtime allocation or frame-time safety.
+
 A later host-only integration prototype rendered actual spring-driven eyes,
 highlights and lids in global passes, then used the LVGL software transform.
 Mischief visibly tilted. At 100% and 130%, six combinations of scale and
@@ -241,6 +256,19 @@ reparenting. Unsupported primitives use the original unrotated renderer.
 The diagnostic source, fault tests and results are in the ignored
 `rotation-next/` ledger directory. Full design fidelity, failure lifecycle,
 device memory and frame timing remain unverified.
+
+A subsequent host-only variant leaves the image object visible, gates its draw,
+and invalidates bounding rectangles scanned from the old and new bitmap alpha,
+including opaque black masks. Its 100% steady-state maximum invalidation
+rectangle was 25,088 pixels, down from 95,500 for a deliberately restored
+full-image invalidation; at 130% it was 41,656. These are rectangles, not flush
+counts or device timings. Six scale/allocation-fault variants each passed 720
+partial/full comparisons. The copied suite passed 38/38 tests, but excluded the
+owner and screen-FSM tests because the throwaway copy omitted their dependencies.
+The variant still needs a proven transformed bound, complete allocation and
+lifetime checks, visual comparison and board measurements. Its extra bitmap
+scans and 1.28 MB buffer cost are not yet measured on the device. Source and
+limits are recorded in the ignored `rotation-damage/` ledger directory.
 
 In the current single UI task and software renderer, source inspection shows
 that LVGL drains drawing tasks for all strips before `LV_EVENT_RENDER_READY`.
