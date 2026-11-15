@@ -25,6 +25,8 @@ kotlin {
 dependencies {
     implementation(project(":tauri-android"))
     testImplementation("junit:junit:4.13.2")
+    // android.jar stubs org.json in JVM unit tests; 20220320 is the version in the offline cache.
+    testImplementation("org.json:json:20220320")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.1")
 }
