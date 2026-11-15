@@ -263,6 +263,7 @@ static void boot_ui_setup(void)
     lv_port_probe_set_ui(ui_probe_swipe, probe_screen);
 #endif
     ui_set_find_stop(board_audio_stop); /* a tap or key while "Here I am!" shows ends the beeps */
+    ui_set_anger_hook(board_audio_growl); /* poked 5 times in 3 s: a short quiet growl (skipped while Find plays; silent unless board sound is enabled) */
 #ifndef CONFIG_AELYS_NO_WIFI
     ui_set_action_sink(link_post_action); /* taps and keys on Today, Focus and Inbox become actions for the server */
 #endif

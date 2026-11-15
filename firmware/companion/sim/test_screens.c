@@ -1302,6 +1302,103 @@ static void test_probe_never_sends_actions(void)
     fresh_fx();
 }
 
+/* ---- Aelys gets annoyed when poked: 5 taps on home within 3 s, for 4 s, with a growl ---- */
+static int growls;
+static void count_growl(void) { growls++; }
+
+/* red-dominant pixels (the annoyed eyes and mark; the calm violet ones do not count) */
+static int red_px(void)
+{
+    const uint16_t *fb = sim_fb();
+    int n = 0;
+    for (int y = 100; y < 360; y++)
+        for (int x = 60; x < 410; x++) {
+            uint16_t c = fb[y * SIM_W + x];
+            n += ((c >> 11) & 31) >= 26 && ((c >> 5) & 63) < 40;
+        }
+    return n;
+}
+
+static void pokes(int n, int gap_ms)
+{
+    for (int i = 0; i < n; i++) {
+        tap_at(233, 233);
+        sim_step((uint32_t)gap_ms);
+    }
+}
+
+static void test_poke_annoys_aelys(void)
+{
+    ui_set_anger_hook(count_growl);
+    sink.accept = true;
+    sink.n = 0;
+    growls = 0;
+    fresh_fx();
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sim_step(6000);
+    int calm = red_px();
+
+    pokes(4, 200);                                    /* four taps are only a touch */
+    sim_step(100);
+    CHECK(red_px() <= calm + 100 && growls == 0);
+    sim_step(3300);                                   /* ... and they are forgotten */
+    pokes(1, 100);
+    CHECK(red_px() <= calm + 100 && growls == 0);
+
+    sim_step(4000);
+    pokes(4, 200);
+    tap_at(233, 233);                                 /* the 5th within 3 s */
+    sim_step(100);
+    CHECK(red_px() > calm + 3000);
+    CHECK_EQ(growls, 1);                              /* one growl, started by the UI */
+    sim_step(3600);
+    CHECK(red_px() > calm + 3000);                    /* 3.8 s: still cross */
+    sim_step(400);
+    CHECK(red_px() <= calm + 100);                    /* 4.2 s: back to the mood the data gives */
+
+    pokes(4, 200);                                    /* poked again after it ended: cross again, one more growl */
+    tap_at(233, 233);
+    sim_step(100);
+    CHECK_EQ(growls, 2);
+    pokes(5, 200);                                    /* more taps while she is cross: no growl, and they do not extend it */
+    CHECK_EQ(growls, 2);
+    sim_step(3300);                                   /* 4.4 s after the trigger: the extra taps did not extend it */
+    CHECK(red_px() <= calm + 100);
+
+    sim_step(2000);                                   /* five taps over 4 s: too slow */
+    pokes(5, 1000);
+    sim_step(100);
+    CHECK(red_px() <= calm + 100);
+    CHECK_EQ(growls, 2);
+
+    sim_step(5000);                                   /* lost mode and other screens: never */
+    post_lost(1);
+    pokes(6, 100);
+    post_lost(0);
+    sim_step(100);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    CHECK_EQ(growls, 2);
+    swipe(UI_EV_SWIPE_RIGHT);
+    CHECK_EQ(ui_current_screen(), SCR_TODAY);
+    for (int i = 0; i < 6; i++) { tap_at(233, 440); sim_step(100); }
+    CHECK_EQ(growls, 2);
+    swipe(UI_EV_SWIPE_LEFT);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sim_step(5000);
+    link_state(LINK_UI_OFFLINE);                      /* the offline face has no anger */
+    pokes(6, 100);
+    CHECK_EQ(growls, 2);
+    link_state(LINK_UI_ONLINE);
+    sim_step(3100);
+    CHECK_EQ(growls, 2);
+
+    CHECK_EQ(sink.n, 0);                              /* the taps sent nothing to the account */
+    ui_set_anger_hook(NULL);
+    pokes(5, 100);                                    /* no hook: the face still gets cross, nothing crashes */
+    CHECK_EQ(growls, 2);
+    sim_step(4500);
+}
+
 int main(void)
 {
     sim_init();
@@ -1333,6 +1430,7 @@ int main(void)
     test_wifi_toast_shots();
     test_find_overlay_shot();
     test_find_overlay_in_lost_mode();
+    test_poke_annoys_aelys();
     test_probe_never_sends_actions();
     return g_failed ? 1 : 0;
 }

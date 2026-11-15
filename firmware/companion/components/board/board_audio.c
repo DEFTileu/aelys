@@ -1,8 +1,11 @@
-/* "Find Aelys": the beep pattern of beep.h through the ES8311 and the speaker. Everything (I2S channel, codec, amplifier, the task itself) exists
- * only while a sound plays. Pins: board_pins.h (Waveshare BSP waveshare/esp32_s3_touch_amoled_1_75c 3.0.0). The codec layer is
+/* "Find Aelys": the beep pattern of beep.h through the ES8311 and the speaker. The same task also plays the short, quiet growl of an
+ * annoyed Aelys (board_audio_growl): the ui task starts it, it never blocks, and Find always wins.
+ * Everything (I2S channel, codec, amplifier, the task itself) exists only while a sound plays. Pins: board_pins.h (Waveshare BSP
+ * waveshare/esp32_s3_touch_amoled_1_75c 3.0.0). The codec layer is
  * espressif/esp_codec_dev (the one that BSP uses; espressif/es8311 1.0.0~1 needs IDF < 6 and the legacy I2C driver).
  *
- * Threads: board_audio_beep() is called from one task (the link task), board_audio_stop() from any. `stop_req` and `gen` are atomics the audio
+ * Threads: board_audio_beep() is called from one task (the link task), board_audio_growl() from the ui task (it only try-locks),
+ * board_audio_stop() from any. `stop_req` and `gen` are atomics the audio
  * task polls every 10 ms chunk; `lock` orders a new request against the end of the task: the task takes it before it decides to finish and
  * keeps it through teardown, so a request that arrives meanwhile either restarts the sound (it sees `gen` change) or waits for the teardown. */
 #include <stdatomic.h>
@@ -20,7 +23,6 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#define BEEP_VOLUME 80       /* esp_codec_dev 0..100: tune on the board; the tone itself peaks at 73 % of full scale */
 #define AUDIO_TASK_PRIO 3
 #define AUDIO_TASK_STACK 5120
 #define LEAD_CHUNKS 2        /* 20 ms of silence before and after: the amplifier switches on/off without a pop on the first/last cycle */
@@ -48,6 +50,7 @@ static TaskHandle_t task;            /* guarded by `lock` */
 static atomic_bool stop_req;
 static atomic_uint gen;              /* bumped by every request: the task restarts its clock when it changes */
 static atomic_uint want_ms;
+static atomic_bool want_growl;       /* the current request is the growl, not the Find beeps */
 
 static void audio_close(audio_t *a)
 {
@@ -102,6 +105,17 @@ static esp_err_t audio_open(audio_t *a)
     return ESP_OK;
 }
 
+#if CONFIG_AELYS_BOARD_SOUND_ENABLED
+static portMUX_TYPE lock_init_mux = portMUX_INITIALIZER_UNLOCKED;
+/* The link task (Find) and the ui task (growl) both start sounds, so the first use must not race. */
+static void audio_lock_init(void)
+{
+    portENTER_CRITICAL(&lock_init_mux);
+    if (!lock) lock = xSemaphoreCreateMutexStatic(&lock_buf);
+    portEXIT_CRITICAL(&lock_init_mux);
+}
+#endif
+
 /* The ui task drains this queue; both ends of a sound must reach it or the overlay would be wrong. Always posted under `lock`: the old
  * sound's FIND(0) goes out before the lock is released, a new request's FIND(1) after it is taken, so the ui task sees them in that order. */
 static void post_find(bool on)
@@ -110,9 +124,10 @@ static void post_find(bool on)
     for (int i = 0; i < 50 && !lv_port_post(&ev); i++) vTaskDelay(pdMS_TO_TICKS(10));
 }
 
-static bool play_chunk(audio_t *a, int16_t *buf, uint32_t *phase, bool on)
+static bool play_chunk(audio_t *a, int16_t *buf, uint32_t *phase, uint32_t chunk, bool on, bool growl)
 {
-    beep_fill(buf, BEEP_CHUNK_FRAMES, phase, on);
+    if (growl) growl_fill(buf, BEEP_CHUNK_FRAMES, chunk * BEEP_CHUNK_FRAMES);
+    else beep_fill(buf, BEEP_CHUNK_FRAMES, phase, on);
     return esp_codec_dev_write(a->dev, buf, 2 * sizeof(int16_t) * BEEP_CHUNK_FRAMES) == ESP_CODEC_DEV_OK;
 }
 
@@ -122,30 +137,38 @@ static void audio_task(void *arg)
     audio_t a = {0};
     int16_t buf[2 * BEEP_CHUNK_FRAMES];
     uint32_t phase = 0, chunk = 0, seen = atomic_load(&gen), total = atomic_load(&want_ms);
+    bool growl = atomic_load(&want_growl);
     ESP_LOGW(TAG, "start: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     bool ok = audio_open(&a) == ESP_OK;
     if (!ok) ESP_LOGW(TAG, "codec or I2S did not start");
-    for (int i = 0; ok && i < LEAD_CHUNKS; i++) ok = play_chunk(&a, buf, &phase, false);
+    if (ok && growl) esp_codec_dev_set_out_vol(a.dev, GROWL_VOLUME);
+    for (int i = 0; ok && i < LEAD_CHUNKS; i++) ok = play_chunk(&a, buf, &phase, 0, false, false);
     for (;;) {
         uint32_t g = atomic_load(&gen);
-        if (g != seen) { seen = g; chunk = 0; total = atomic_load(&want_ms); } /* asked again: the clock restarts */
-        beep_phase_t ph = !ok || atomic_load(&stop_req) ? BEEP_DONE : beep_phase(chunk * BEEP_CHUNK_MS, total);
+        if (g != seen) { /* asked again (Find while the growl plays: Find takes over, at its own volume): the clock restarts */
+            seen = g; chunk = 0; total = atomic_load(&want_ms);
+            bool was = growl;
+            growl = atomic_load(&want_growl);
+            if (ok && growl != was) esp_codec_dev_set_out_vol(a.dev, growl ? GROWL_VOLUME : BEEP_VOLUME);
+        }
+        beep_phase_t ph = !ok || atomic_load(&stop_req) ? BEEP_DONE
+                        : growl ? (chunk * BEEP_CHUNK_MS >= total ? BEEP_DONE : BEEP_ON) : beep_phase(chunk * BEEP_CHUNK_MS, total);
         if (ph == BEEP_DONE) {
             xSemaphoreTake(lock, portMAX_DELAY);
             if (ok && atomic_load(&gen) != seen) { xSemaphoreGive(lock); continue; } /* asked again while finishing */
             break; /* lock held through teardown */
         }
-        ok = play_chunk(&a, buf, &phase, ph == BEEP_ON);
+        ok = play_chunk(&a, buf, &phase, chunk, ph == BEEP_ON, growl);
         if (!ok) ESP_LOGW(TAG, "write failed");
         chunk++;
     }
-    for (int i = 0; a.dev && ok && i < LEAD_CHUNKS; i++) play_chunk(&a, buf, &phase, false);
+    for (int i = 0; a.dev && ok && i < LEAD_CHUNKS; i++) play_chunk(&a, buf, &phase, 0, false, false);
     audio_close(&a);
     atomic_store(&stop_req, false);
     ESP_LOGW(TAG, "end: stack_free=%u free_internal=%u", (unsigned)uxTaskGetStackHighWaterMark(NULL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL)); /* before the task's own memory is freed */
     task = NULL;
-    post_find(false);
+    if (!growl) post_find(false); /* the growl has no overlay to take down */
     xSemaphoreGive(lock);
     vTaskDelete(NULL);
 }
@@ -157,9 +180,10 @@ esp_err_t board_audio_beep(uint32_t duration_ms)
     return ESP_ERR_NOT_SUPPORTED;
 #else
     if (duration_ms == 0) return ESP_ERR_INVALID_ARG;
-    if (!lock) lock = xSemaphoreCreateMutexStatic(&lock_buf); /* one caller: no race */
+    audio_lock_init();
     xSemaphoreTake(lock, portMAX_DELAY); /* waits only while a finished sound is torn down */
     atomic_store(&stop_req, false);
+    atomic_store(&want_growl, false);
     atomic_store(&want_ms, duration_ms > BEEP_MAX_MS ? BEEP_MAX_MS : duration_ms);
     atomic_fetch_add(&gen, 1);
     esp_err_t e = ESP_OK;
@@ -170,6 +194,23 @@ esp_err_t board_audio_beep(uint32_t duration_ms)
     if (e == ESP_OK) post_find(true); /* the overlay follows the sound; a later init failure ends it with the task's FIND(0) */
     xSemaphoreGive(lock);
     return e;
+#endif
+}
+
+/* Called from the ui task: it must not wait. A sound that is playing or being torn down means the growl is simply skipped (Find wins). */
+void board_audio_growl(void)
+{
+#if CONFIG_AELYS_BOARD_SOUND_ENABLED
+    audio_lock_init();
+    if (xSemaphoreTake(lock, 0) != pdTRUE) return;
+    if (!task) {
+        atomic_store(&stop_req, false);
+        atomic_store(&want_growl, true);
+        atomic_store(&want_ms, GROWL_MS);
+        atomic_fetch_add(&gen, 1);
+        if (xTaskCreate(audio_task, "audio", AUDIO_TASK_STACK, NULL, AUDIO_TASK_PRIO, &task) != pdPASS) task = NULL;
+    }
+    xSemaphoreGive(lock);
 #endif
 }
 

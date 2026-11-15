@@ -61,6 +61,35 @@ with tempfile.TemporaryDirectory(prefix='aelys-silent-test-') as d:
     subprocess.run([str(exe)], check=True)
 print('PASS: silent board rejects audio before platform calls')
 
+# The growl is gated the same way: no lock, no task, no platform call while board sound is disabled.
+start = source.index('void board_audio_growl(')
+opening = source.index('{', start)
+depth = 1
+for i in range(opening + 1, len(source)):
+    if source[i] == '{':
+        depth += 1
+    elif source[i] == '}':
+        depth -= 1
+        if depth == 0:
+            growl_body = source[start:i + 1]
+            break
+else:
+    raise ValueError('unclosed board_audio_growl')
+growl_prefix = prefix.replace('static int lock_buf, lock, calls;', 'static int lock_buf, lock, calls;\nstatic void audio_lock_init(void) { ++calls; }\n#define pdTRUE 1\n#define GROWL_MS 600')
+growl_suffix = r'''
+int main(void) {
+    board_audio_growl();
+    return calls != 0;
+}
+'''
+with tempfile.TemporaryDirectory(prefix='aelys-silent-growl-') as d:
+    c = Path(d) / 'test.c'
+    exe = Path(d) / 'test'
+    c.write_text(growl_prefix + growl_body + growl_suffix)
+    subprocess.run(['cc', '-std=c11', '-Wno-unused-function', '-Wno-unused-variable', str(c), '-o', str(exe)], check=True)
+    subprocess.run([str(exe)], check=True)
+print('PASS: silent board does not growl')
+
 # Execute the real command case: a disabled feature must not be acknowledged
 # as BUSY, because the server retries BUSY after every reconnection.
 main_source = (Path(__file__).resolve().parents[1] / 'main/app_main.c').read_text()

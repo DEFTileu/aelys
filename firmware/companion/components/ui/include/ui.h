@@ -45,6 +45,9 @@ void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
 /* While the find overlay is up, any touch, key or both-buttons hold hides it and calls this (main passes board_audio_stop); the touch or key
  * is used up and does nothing else. Called in the ui task. FIND(0) from the audio task (the sound ended) does not call it. */
 void ui_set_find_stop(void (*stop)(void));
+/* 5 taps on the home screen within 3 s annoy Aelys: the angry face for 4 s, and this hook is called once as it starts (main passes
+ * board_audio_growl, which never blocks). Called in the ui task. The taps send nothing to the account. */
+void ui_set_anger_hook(void (*growl)(void));
 /* Wall clock for "today", relative times and the mood (default: time(); returns 0 while the clock is not set). Host tests set it. */
 void ui_set_clock(int64_t (*now)(void));
 

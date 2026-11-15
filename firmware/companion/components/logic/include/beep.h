@@ -13,6 +13,7 @@
 #define BEEP_ON_MS 200
 #define BEEP_OFF_MS 200
 #define BEEP_MAX_MS 60000 /* design: "beeps and flashes for 1 minute" */
+#define BEEP_VOLUME 80    /* esp_codec_dev 0..100: tune on the board; the tone itself peaks at 73 % of full scale */
 
 typedef enum { BEEP_OFF, BEEP_ON, BEEP_DONE } beep_phase_t;
 
@@ -22,3 +23,14 @@ beep_phase_t beep_phase(uint32_t elapsed_ms, uint32_t total_ms);
 /* Fills `frames` stereo frames (L = R, 2 x int16 each). `phase` is the table position (Q16), carried between calls; when !on the
  * chunk is silence and the phase is reset, so every tone starts at zero. */
 void beep_fill(int16_t *out, size_t frames, uint32_t *phase, bool on);
+
+/* The growl of an annoyed Aelys (owner's request): 600 ms of two detuned low tones (175 + 190 Hz) clipped to a square-ish buzz, with a
+ * 28 Hz tremolo and a 40 ms attack / 120 ms release. It peaks at about half of full scale and the codec is set to a lower volume than for
+ * Find, so it is clearly quieter. Stateless: every frame comes from its index, so chunks of any size line up. */
+#define GROWL_MS 600
+#define GROWL_VOLUME 45
+#define GROWL_HZ_A 175
+#define GROWL_HZ_B 190
+#define GROWL_AM_HZ 28
+/* Fills `frames` stereo frames (L = R) of the growl that start `start_frame` frames into it; silence from GROWL_MS on. */
+void growl_fill(int16_t *out, size_t frames, uint32_t start_frame);

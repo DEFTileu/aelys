@@ -29,3 +29,35 @@ void beep_fill(int16_t *out, size_t frames, uint32_t *phase, bool on)
     }
     *phase = p;
 }
+
+#define GROWL_FRAMES (BEEP_RATE_HZ / 1000 * GROWL_MS)
+#define GROWL_PEAK 16000
+#define GROWL_ATTACK (BEEP_RATE_HZ / 1000 * 40)
+#define GROWL_RELEASE (BEEP_RATE_HZ / 1000 * 120)
+#define STEP_A_Q16 ((uint32_t)((uint64_t)GROWL_HZ_A * TABLE_N * 65536 / BEEP_RATE_HZ))
+#define STEP_B_Q16 ((uint32_t)((uint64_t)GROWL_HZ_B * TABLE_N * 65536 / BEEP_RATE_HZ))
+
+/* the table with linear interpolation: at 175 Hz it is a third of an entry per frame, steps would buzz harshly */
+static int32_t tone(uint32_t p)
+{
+    int32_t a = sine[(p >> 16) & (TABLE_N - 1)], b = sine[((p >> 16) + 1) & (TABLE_N - 1)];
+    return a + (b - a) * (int32_t)((p >> 8) & 255) / 256;
+}
+
+void growl_fill(int16_t *out, size_t frames, uint32_t start_frame)
+{
+    for (size_t i = 0; i < frames; i++) {
+        uint32_t n = start_frame + (uint32_t)i;
+        int32_t v = 0;
+        if (n < GROWL_FRAMES) {
+            int32_t s = tone(n * STEP_A_Q16) + tone(n * STEP_B_Q16);
+            s = s > GROWL_PEAK ? GROWL_PEAK : s < -GROWL_PEAK ? -GROWL_PEAK : s;
+            uint32_t ph = n * GROWL_AM_HZ % BEEP_RATE_HZ; /* triangle tremolo: 30 % .. 100 % of the level */
+            int32_t am = 300 + 700 * (int32_t)(ph < BEEP_RATE_HZ / 2 ? ph : BEEP_RATE_HZ - ph) / (BEEP_RATE_HZ / 2);
+            int32_t edge = n < GROWL_ATTACK ? (int32_t)n * 1000 / GROWL_ATTACK
+                         : n >= GROWL_FRAMES - GROWL_RELEASE ? (int32_t)(GROWL_FRAMES - n) * 1000 / GROWL_RELEASE : 1000;
+            v = s * am / 1000 * edge / 1000;
+        }
+        out[2 * i] = out[2 * i + 1] = (int16_t)v;
+    }
+}

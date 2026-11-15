@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include "poke.h"
 #include "ui_screens_priv.h"
 
 #define ICE_TIMEOUT_MS 15000
@@ -13,6 +14,7 @@
 #define INBOX_TIMEOUT_MS 15000
 #define HOLD_STOP_MS 800
 #define HAPPY_MS 3000
+#define ANNOYED_MS 4000 /* poked too often */
 
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
@@ -27,9 +29,11 @@ static struct {
     bool probe_touch_active, probe_combo_active;
 #endif
     bool lost, happy, have_time, find; /* find: the "Here I am!" overlay is up */
+    bool annoyed;        /* poked too often: the angry face for ANNOYED_MS */
+    poke_t poke;
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
-    lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *happy_timer, *tick_timer;
+    lv_timer_t *ice_timer, *paired_timer, *inbox_timer, *hold_timer, *happy_timer, *annoyed_timer, *tick_timer;
     const snap_t *snap;  /* the newest published snapshot; unchanged until the next tribuf_latest() */
     uint32_t snap_ms;    /* lv_tick_get() when it arrived */
     char done_id[40];    /* optimistic marks: task.complete / notification.read sent for these ids */
@@ -37,6 +41,7 @@ static struct {
     char pend_read[5][40]; /* ids of notification.read still unanswered, oldest first: UI_EV_ACTION carries no target */
     bool (*sink)(act_kind_t, const char *);
     void (*find_stop)(void);
+    void (*anger)(void);
     int64_t (*clock)(void);
 } g;
 
@@ -123,6 +128,7 @@ void ui_text_color(lv_obj_t *o, uint32_t c)
 void ui_set_action_sink(bool (*sink)(act_kind_t, const char *)) { g.sink = sink; }
 void ui_set_clock(int64_t (*now)(void)) { g.clock = now; }
 void ui_set_find_stop(void (*stop)(void)) { g.find_stop = stop; }
+void ui_set_anger_hook(void (*growl)(void)) { g.anger = growl; }
 
 int64_t ui_now(void)
 {
@@ -412,7 +418,9 @@ static void render(void)
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
     switch (g.cur) {
-    case SCR_HOME: scr_home_set_snap(s, now, ui_mood_for(s, now, !offline, g.happy), offline); break;
+    case SCR_HOME:
+        scr_home_set_snap(s, now, g.annoyed && !offline ? MOOD_ANNOYED : ui_mood_for(s, now, !offline, g.happy), offline);
+        break;
     case SCR_TODAY: scr_today_set(s, now); break;
     case SCR_FOCUS: scr_focus_set(s, g.snap_ms, lv_tick_get()); break;
     case SCR_INBOX: scr_inbox_set(s, now); break;
@@ -431,6 +439,14 @@ static void happy_timeout(lv_timer_t *t)
     (void)t;
     g.happy_timer = NULL;
     g.happy = false;
+    render();
+}
+
+static void annoyed_timeout(lv_timer_t *t)
+{
+    (void)t;
+    g.annoyed_timer = NULL;
+    g.annoyed = false;
     render();
 }
 
@@ -501,6 +517,8 @@ void ui_setup(void)
     if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
     g.lost = g.happy = g.have_time = g.find = false;
+    g.annoyed = false;
+    g.poke = (poke_t){0};
     scr_find_show(false);
     g.link = LINK_UI_UNPAIRED;
     g.snap = snap_buf ? tribuf_latest(&ui_snap_tb, NULL) : NULL;
@@ -516,6 +534,13 @@ static void on_tap(int32_t x, int32_t y, scr_t *next)
     const snap_t *s = g.snap ? g.snap : &empty_snap;
     tap_hit_t hit = TAP_OUTSIDE;
     int row = -1;
+    /* Poked too often (home only; on_tap never runs in lost mode; not on the offline face): she gets cross and growls */
+    if (g.cur == SCR_HOME && g.link != LINK_UI_OFFLINE && poke_feed(&g.poke, lv_tick_get())) {
+        g.annoyed = true;
+        arm_timer(&g.annoyed_timer, annoyed_timeout, ANNOYED_MS);
+        if (g.anger) g.anger();
+        render();
+    }
     if (g.cur == SCR_TODAY) {
         hit = scr_today_hit(x, y);
         if (hit == TAP_ROW && s->has_task && !ui_marked_done(s->task.id) && act(ACT_TASK_COMPLETE, s->task.id))
