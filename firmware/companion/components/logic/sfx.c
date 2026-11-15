@@ -21,7 +21,9 @@ static const note_t giggle[] = {
     N(1568, 1760, 45, W_SINE, E_PLUCK, 60), REST(25), N(1976, 2349, 45, W_SINE, E_PLUCK, 60), REST(25),
     N(2093, 2637, 70, W_SINE, E_PLUCK, 60),
 };
-static const note_t grumble[] = { N(330, 280, 140, W_BUZZ, E_HOLD, 55), REST(50), N(300, 220, 220, W_BUZZ, E_HOLD, 55) };
+/* a low, rough "grrr": a buzz sliding 220 -> 170 Hz, chopped into 40 ms bursts (a 20 Hz tremolo) */
+#define GRR(f) N(f, f - 4, 40, W_BUZZ, E_HOLD, 55), REST(10)
+static const note_t grumble[] = { GRR(220), GRR(216), GRR(212), GRR(208), GRR(204), GRR(200), GRR(195), GRR(190), GRR(185), GRR(180), GRR(175), GRR(170) };
 static const note_t dizzy[] = {
     N(1300, 700, 130, W_SINE, E_HOLD, 60), N(700, 1100, 130, W_SINE, E_HOLD, 60),
     N(1100, 600, 130, W_SINE, E_HOLD, 60), N(600, 900, 130, W_SINE, E_HOLD, 55), N(900, 450, 180, W_SINE, E_HOLD, 50),

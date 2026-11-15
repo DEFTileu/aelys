@@ -11,7 +11,7 @@ typedef enum {
     SFX_OPEN,     /* an app opens from the menu */
     SFX_HUH,      /* picked up / touched after a long while: "oh?" */
     SFX_GIGGLE,   /* double tap: tickled */
-    SFX_GRUMBLE,  /* poked four times: "hmph" */
+    SFX_GRUMBLE,  /* poked four times: a low "grrr" */
     SFX_DIZZY,    /* shaken: a wobbling slide */
     SFX_EEK,      /* falling: a sharp slide down */
     SFX_SLEEP,    /* laid face down: a sinking sigh */

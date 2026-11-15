@@ -1,8 +1,9 @@
 #include "character.h"
 #include <string.h>
 
-/* Reactions last three seconds, within the design's 2–5 second range. */
+/* Reactions last three seconds, within the design's 2–5 second range; a run of pokes annoys her for four (owner's request). */
 #define REACTION_MS 3000u
+#define POKES_REACTION_MS 4000u
 /* Provisional: an idle hour is boring; one day apart means she missed you. */
 #define BORED_SECONDS 3600u
 #define MISSED_SECONDS 86400u
@@ -30,6 +31,8 @@ static const event_rule_t EVENTS[CHAR_EVENT_COUNT] = {
     [CHAR_EVENT_ATTENTION] = {CHAR_ATTENTION, WHY_TOUCH, CUE_NONE, false},
 };
 
+uint32_t character_reaction_ms(character_event_t e) { return e == CHAR_EVENT_POKES ? POKES_REACTION_MS : REACTION_MS; }
+
 void character_init(character_state_t *s)
 {
     if (s) memset(s, 0, sizeof *s);
@@ -40,7 +43,7 @@ bool character_event(character_state_t *s, character_event_t e, uint32_t now)
     if (!s || e <= CHAR_EVENT_NONE || e >= CHAR_EVENT_COUNT) return false;
     /* A body reaction must not be displaced by a lower-priority tap. */
     if (s->event_pending && s->event > CHAR_EVENT_NONE && s->event < CHAR_EVENT_COUNT &&
-        (uint32_t)(now - s->event_at_ms) < REACTION_MS) {
+        (uint32_t)(now - s->event_at_ms) < character_reaction_ms(s->event)) {
         if (EVENTS[s->event].body && !EVENTS[e].body) return false;
         /* A passive link transition should not erase an ongoing task celebration. */
         if (e == CHAR_EVENT_RECONNECTED && (s->event == CHAR_EVENT_TASK_DONE ||
@@ -59,7 +62,7 @@ character_result_t character_select(character_state_t *s, const character_inputs
 {
     if (!s || !i) return result(CHAR_CALM, WHY_CALM);
     bool active = s->event_pending && s->event > CHAR_EVENT_NONE && s->event < CHAR_EVENT_COUNT &&
-                  (uint32_t)(now - s->event_at_ms) < REACTION_MS;
+                  (uint32_t)(now - s->event_at_ms) < character_reaction_ms(s->event);
     if (!active) { s->event_pending = false; s->cue_pending = false; }
     const event_rule_t *ev = active ? &EVENTS[s->event] : NULL;
     character_result_t out;

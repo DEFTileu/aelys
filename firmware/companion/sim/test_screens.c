@@ -732,6 +732,9 @@ static void test_sounds(void)
     tap_at(233, 233);
     CHECK_EQ(last_sound, SFX_GIGGLE);
     sim_step(3100);
+    for (int i = 0; i < 4; i++) { tap_at(233, 233); sim_step(300); } /* poked: she growls, once */
+    CHECK_EQ(last_sound, SFX_GRUMBLE); CHECK_EQ(scr_home_mood(), MOOD_ANNOYED);
+    sim_step(4100);
     motion(MOTION_FACE_DOWN);
     CHECK_EQ(last_sound, SFX_SLEEP);
     motion(MOTION_FACE_UP);
@@ -802,7 +805,10 @@ static void test_character_body_and_taps(void)
     sim_step(800);
     tap_at(233, 233);                                         /* the fourth within 3 s annoys her */
     CHECK_EQ(ui_character_last().mood, CHAR_IRRITATED); CHECK_EQ(scr_home_mood(), MOOD_ANNOYED);
-    sim_step(3100);
+    sim_step(3700);
+    CHECK_EQ(scr_home_mood(), MOOD_ANNOYED);                  /* annoyed for four seconds */
+    sim_step(400);
+    CHECK(scr_home_mood() != MOOD_ANNOYED);                   /* then back to her usual self */
     tap_at(233, 233);                                         /* the count starts over */
     CHECK_EQ(ui_character_last().mood, CHAR_ATTENTION);
     sim_step(3100);

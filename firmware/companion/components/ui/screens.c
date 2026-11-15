@@ -395,6 +395,7 @@ static void stop_timer(lv_timer_t **t)
 static void arm_timer(lv_timer_t **t, lv_timer_cb_t cb, uint32_t ms)
 {
     if (*t) {
+        lv_timer_set_period(*t, ms); /* a re-armed reaction may last longer than the one it replaces */
         lv_timer_reset(*t);
     } else {
         *t = lv_timer_create(cb, ms, NULL);
@@ -591,7 +592,7 @@ static void reaction_timeout(lv_timer_t *t)
     render();
 }
 
-/* A reaction of hers (character.c picks whether it wins over what she shows now), for its three seconds. */
+/* A reaction of hers (character.c picks whether it wins over what she shows now and for how long). */
 static void react(character_event_t e)
 {
     static const uint8_t voice[CHAR_EVENT_COUNT] = {
@@ -599,7 +600,7 @@ static void react(character_event_t e)
         [CHAR_EVENT_TOUCH] = SFX_HUH, [CHAR_EVENT_ATTENTION] = SFX_TAP, [CHAR_EVENT_DOUBLE_TOUCH] = SFX_GIGGLE, [CHAR_EVENT_POKES] = SFX_GRUMBLE,
     };
     if (character_event(&g.character, e, lv_tick_get())) {
-        arm_timer(&g.reaction_timer, reaction_timeout, REACTION_MS);
+        arm_timer(&g.reaction_timer, reaction_timeout, character_reaction_ms(e));
         ui_sound((sfx_t)voice[e]); /* only a reaction that shows makes a sound */
     }
     render();
