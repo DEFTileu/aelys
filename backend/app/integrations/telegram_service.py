@@ -260,7 +260,7 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
         return None
     # Bot echoes never represent owner activity. Owner media/forwards only
     # record that the human answered; no captions, media or forwarded text persist.
-    if sender.get("is_bot") or raw.get("sender_business_bot"):
+    if chat["id"] == item.bot_id or sender.get("is_bot") or raw.get("sender_business_bot"):
         return None
     direction = "owner" if sender["id"] == item.owner_telegram_id else "inbound"
     from .telegram_business_media import parse_business_media

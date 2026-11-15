@@ -1163,3 +1163,38 @@ async def test_seven_day_retention_erases_draft_sticker(setup):
     async with sessions() as session:
         obj = await session.get(TelegramBusinessMessage, row["id"])
         assert obj.deleted_at is not None and obj.draft_sticker is None
+
+
+async def test_owner_message_to_bot_ignored_as_business_but_personal_and_other_chat_work(setup):
+    from app.core.models import AIConversation
+    from app.integrations.telegram_commands import command_iteration
+    from app.integrations.telegram_models import TelegramBusinessCommand
+    from test_telegram_personal import bound, ordinary
+
+    _, sessions, fake, integration_id = await bound(setup)
+    mirrored = message(1, '/new', sender=OWNER, message_id=101)
+    mirrored['business_message']['chat']['id'] = 1  # ID returned by get_me for this bot.
+    fake.updates = [mirrored]
+    assert await service.poll_once(integration_id, timeout=0) == 1
+    await command_iteration(integration_id)
+    async with sessions() as db:
+        assert not (await db.scalars(select(TelegramBusinessMessage))).all()
+        assert not (await db.scalars(select(TelegramBusinessCommand))).all()
+    assert not fake.sent
+
+    fake.updates = [ordinary(2, '/new')]
+    assert await service.poll_once(integration_id, timeout=0) == 1
+    async with sessions() as db:
+        item = await db.get(TelegramIntegration, integration_id)
+        assert item.personal_conversation_id
+        assert await db.get(AIConversation, item.personal_conversation_id)
+    assert [entry[1] for entry in fake.sent] == ['Новая беседа начата.']
+
+    fake.updates = [message(3), message(4, '/new', sender=OWNER, message_id=102)]
+    assert await service.poll_once(integration_id, timeout=0) == 2
+    async with sessions() as db:
+        messages = (await db.scalars(select(TelegramBusinessMessage))).all()
+        commands = (await db.scalars(select(TelegramBusinessCommand))).all()
+        assert len(messages) == 2 and all(row.chat_id == CUSTOMER for row in messages)
+        assert len(commands) == 1 and commands[0].kind == 'new' and commands[0].chat_id == CUSTOMER
+    assert len(fake.sent) == 1
