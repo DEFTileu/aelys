@@ -84,9 +84,7 @@ class FocusGuardPlugin(private val activity: Activity) : Plugin(activity) {
         val today = localDay(now)
         val state = Policy.promote(store.load(), today)
         val start = startOfLocalDayMs(now)
-        val events = if (usageAccessGranted()) {
-            try { readEvents(activity, start, now) } catch (_: Exception) { emptyList() }
-        } else emptyList()
+        val events = todayEvents(start, now)
         val perApp = JSObject()
         for (app in state.effective) {
             perApp.put(app.id, JSObject().apply {
@@ -98,14 +96,24 @@ class FocusGuardPlugin(private val activity: Activity) : Plugin(activity) {
         JSObject().apply { put("usage", perApp) }
     }
 
+    /** Today's usage events, or none without usage access or on a read failure (then everything reads as 0). */
+    private fun todayEvents(start: Long, now: Long): List<UsageEvent> = if (usageAccessGranted()) {
+        try { readEvents(activity, start, now) } catch (_: Exception) { emptyList() }
+    } else emptyList()
+
     @Command fun applyGrant(invoke: Invoke) = submit(invoke) { args ->
         val seconds = when (val v = args.opt("seconds")) { is Int -> v.toLong(); is Long -> v; else -> throw InvalidGrantException("seconds") }
         val appId = args.opt("appId") as? String ?: throw InvalidGrantException("app")
         val day = args.opt("day") as? String ?: throw InvalidGrantException("day")
-        val today = localDay(System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        val today = localDay(now)
         // Promote first so an app that a due pending config just added can be granted.
-        checkGrant(store.update { Policy.promote(it, today) }, appId, seconds, day, today)
-        store.addGrant(appId, seconds, today)
+        val state = store.update { Policy.promote(it, today) }
+        checkGrant(state, appId, seconds, day, today)
+        // The grant starts from today's overshoot, so it really opens the app (see Policy.grantAfter).
+        val app = state.effective.first { it.id == appId }
+        val start = startOfLocalDayMs(now)
+        store.addGrant(appId, seconds, today, UsageMeter.foregroundSeconds(todayEvents(start, now), app.packages, start, now))
         JSObject()
     }
 

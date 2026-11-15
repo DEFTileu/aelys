@@ -52,15 +52,30 @@ object Policy {
         return state.effective.firstOrNull { pkg in it.packages }
     }
 
+    /** A [Decision.Block] carries today's whole allowance (limit + today's grant), which the block screen shows. */
     fun decide(app: GuardedApp, usedSeconds: Long, state: GuardState, today: String): Decision {
         val left = secondsUntilBlock(app, usedSeconds, state, today) ?: return Decision.Allow
-        return if (left > 0) Decision.Allow else Decision.Block(app, usedSeconds, app.limitSeconds)
+        return if (left > 0) Decision.Allow else Decision.Block(app, usedSeconds, app.limitSeconds + grantToday(app, state, today))
     }
 
     /** Seconds of use left today, 0 once blocked, null when the whole day is unlocked. */
     fun secondsUntilBlock(app: GuardedApp, usedSeconds: Long, state: GuardState, today: String): Long? {
         if (state.dayUnlockedOn == today) return null
-        val grant = if (state.grantsDay == today) state.grants[app.id] ?: 0L else 0L
-        return (app.limitSeconds + grant - usedSeconds).coerceAtLeast(0)
+        return (app.limitSeconds + grantToday(app, state, today) - usedSeconds).coerceAtLeast(0)
+    }
+
+    private fun grantToday(app: GuardedApp, state: GuardState, today: String): Long =
+        if (state.grantsDay == today) state.grants[app.id] ?: 0L else 0L
+
+    /**
+     * Today's grant after granting [seconds] more. It starts from the overshoot (`used - limit`), so a grant
+     * bought while already over the limit opens the app for exactly [seconds]; a larger existing grant is kept.
+     * Every term is clamped to [0, MAX_GRANT_SECONDS] first, so the sum cannot overflow.
+     */
+    fun grantAfter(app: GuardedApp, usedSeconds: Long, existingGrantSeconds: Long, seconds: Long): Long {
+        val cap = FocusStore.MAX_GRANT_SECONDS
+        val overshoot = (usedSeconds.coerceAtLeast(0) - app.limitSeconds.coerceAtLeast(0)).coerceIn(0, cap)
+        val base = maxOf(existingGrantSeconds.coerceIn(0, cap), overshoot)
+        return (base + seconds.coerceIn(0, cap)).coerceAtMost(cap)
     }
 }

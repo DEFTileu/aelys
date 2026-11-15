@@ -258,4 +258,32 @@ class FocusStoreTest {
         // Not yet due: still guarded.
         assertEquals(tiktok, store.appFor(Policy.promote(removing.copy(effectiveFrom = "2026-11-16"), today), "com.zhiliaoapp.musically"))
     }
+
+    @Test
+    fun addGrantStartsFromTodaysOvershoot() {
+        val store = FocusStore(MemPrefs())
+        store.save(stored(insta)) // limit 600
+        store.addGrant("instagram", 300, today, usedSeconds = 720)
+        assertEquals(420L, store.load().grants["instagram"])
+        // a larger existing grant is kept, not replaced by the overshoot
+        store.addGrant("instagram", 60, today, usedSeconds = 700)
+        assertEquals(480L, store.load().grants["instagram"])
+    }
+
+    @Test
+    fun addGrantFromAPreviousDayIsReplacedNotSummed() {
+        val store = FocusStore(MemPrefs())
+        store.save(stored(insta, grants = mapOf("instagram" to 5000L), grantsDay = "2026-11-14"))
+        store.addGrant("instagram", 300, today, usedSeconds = 720)
+        assertEquals(mapOf("instagram" to 420L), store.load().grants)
+        assertEquals(today, store.load().grantsDay)
+    }
+
+    @Test
+    fun addGrantWithOvershootIsCapped() {
+        val store = FocusStore(MemPrefs())
+        store.save(stored(insta))
+        store.addGrant("instagram", 3600, today, usedSeconds = Long.MAX_VALUE)
+        assertEquals(86400L, store.load().grants["instagram"])
+    }
 }

@@ -39,15 +39,16 @@ class FocusStore(private val prefs: Prefs, ownPackage: String? = null) {
     }
 
     /**
-     * Adds [seconds] to [appId]'s grant for [today] (a new day starts a fresh grant map). Ignores non-positive
+     * Grants [seconds] more to [appId] for [today] via [Policy.grantAfter], starting from the overshoot of
+     * [usedSeconds] (today's use) over the limit (a new day starts a fresh grant map). Ignores non-positive
      * seconds and ids not in `effective`; each app's total is capped at [MAX_GRANT_SECONDS] so limit + grant cannot overflow.
      */
-    fun addGrant(appId: String, seconds: Long, today: String) {
+    fun addGrant(appId: String, seconds: Long, today: String, usedSeconds: Long = 0) {
         if (seconds <= 0) return
         update { s ->
-            if (s.effective.none { it.id == appId }) return@update s
+            val app = s.effective.firstOrNull { it.id == appId } ?: return@update s
             val base = if (s.grantsDay == today) s.grants else emptyMap()
-            val total = ((base[appId] ?: 0L) + seconds.coerceAtMost(MAX_GRANT_SECONDS)).coerceAtMost(MAX_GRANT_SECONDS)
+            val total = Policy.grantAfter(app, usedSeconds, base[appId] ?: 0L, seconds)
             s.copy(grants = base + (appId to total), grantsDay = today)
         }
     }
