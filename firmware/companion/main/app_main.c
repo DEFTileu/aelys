@@ -96,6 +96,13 @@ static void ui_brightness(uint8_t pct)
     persist_soon();
 }
 
+static void ui_screen_power(bool on)
+{
+    esp_err_t err = board_display_power(on);
+    if (err != ESP_OK) ESP_LOGW(TAG, "screen %s not applied: %s", on ? "on" : "off", esp_err_to_name(err));
+    else ESP_LOGW(TAG, "screen %s", on ? "on" : "off");
+}
+
 static void ui_level(bool on)
 {
     level_want = on;
@@ -415,6 +422,7 @@ static void boot_ui_setup(void)
     ui_set_settings_hooks(&settings_hooks);
     ui_settings_init(settings.brightness, prefs.level_on, prefs.sound_on); /* the panel itself was set from settings.brightness before the UI started */
     ui_set_sound_sink(board_audio_sfx); /* the small sounds; the Sounds switch (off at first) gates them */
+    ui_set_screen_sink(ui_screen_power);
     ui_games_init(&games);
     ui_set_games_sink(ui_games); /* best times and maze levels survive a reboot or a flash */
 #ifdef CONFIG_AELYS_PERF_PROBE

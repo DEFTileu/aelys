@@ -783,6 +783,35 @@ static int sounds_n;
 static uint8_t last_sound;
 static void capture_sound(uint8_t s) { sounds_n++; last_sound = s; }
 
+static int screen_calls;
+static bool screen_on_now = true;
+static void capture_screen(bool on) { screen_calls++; screen_on_now = on; }
+
+/* Lying screen down turns the panel off; turning it up, or lost mode (a finder must see it), turns it back on. */
+static void test_face_down_screen(void)
+{
+    ui_set_screen_sink(capture_screen);
+    screen_calls = 0;
+    motion(MOTION_FACE_DOWN);
+    CHECK(!screen_on_now); CHECK_EQ(screen_calls, 1);
+    motion(MOTION_FACE_DOWN);
+    CHECK_EQ(screen_calls, 1);                                /* no second command for the same state */
+    motion(MOTION_FACE_UP);
+    CHECK(screen_on_now); CHECK_EQ(screen_calls, 2);
+    sim_step(3100);
+    motion(MOTION_FACE_DOWN);
+    CHECK(!screen_on_now);
+    post_lost(1);
+    CHECK(screen_on_now);                                     /* the lost screen stays visible */
+    post_lost(0);
+    CHECK(!screen_on_now);                                    /* still lying screen down */
+    motion(MOTION_FACE_UP);
+    CHECK(screen_on_now);
+    sim_step(3100);
+    ui_set_screen_sink(NULL);
+}
+
+
 /* Sounds play only with the switch on, by day, and only for a reaction that shows. */
 static void test_sounds(void)
 {
@@ -3355,6 +3384,7 @@ int main(void)
     test_character_tap_and_idle();
     test_character_body_and_taps();
     test_sounds();
+    test_face_down_screen();
     test_reconnect_does_not_interrupt_task_reaction();
     test_character_reconnected();
     test_character_home_integration();

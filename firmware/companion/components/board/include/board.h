@@ -17,6 +17,8 @@ i2c_master_bus_handle_t board_i2c_bus(void);
  * (one SPI device): call it at boot before lv_port_start, then only from the ui task (post UI_EV_BRIGHTNESS).
  * ESP_ERR_INVALID_STATE before board_init(). */
 esp_err_t board_display_set_brightness(uint8_t pct);
+/* Panel display off (0x28) or on (0x29); the picture and brightness are kept. Call from the ui task, which owns the panel. */
+esp_err_t board_display_power(bool on);
 
 /* Battery state of charge (0..100) and whether it is charging, from the AXP2101 fuel gauge. False when there is no
  * battery or the PMIC does not answer; the outputs are then untouched. Safe from any task. */

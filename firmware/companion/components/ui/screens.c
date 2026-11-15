@@ -46,6 +46,8 @@ static struct {
     character_state_t character;
     bool snap_valid, touch_after_idle, touch_character_valid;
     bool face_down;      /* the board lies screen down (UI_EV_MOTION): she sleeps */
+    bool screen_off;     /* the screen sink was last told off */
+    void (*screen_sink)(bool on);
     uint32_t tap_ms[4];  /* the last taps on her face, newest first, 0 = none: a double tap tickles, four in a row annoy her */
     uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
     bool link_was_offline, link_has_history;
@@ -159,6 +161,16 @@ void ui_sound_set(bool on, bool notify)
     if (notify) scr_settings_sound_changed(on);
 }
 void ui_set_sound_sink(void (*sink)(uint8_t sfx)) { g.sound_sink = sink; }
+void ui_set_screen_sink(void (*sink)(bool on)) { g.screen_sink = sink; }
+
+/* Screen down: nobody can see the panel, so it is off; lost mode keeps it on for a finder. */
+static void screen_apply(void)
+{
+    bool off = g.face_down && !g.lost;
+    if (off == g.screen_off) return;
+    g.screen_off = off;
+    if (g.screen_sink) g.screen_sink(!off);
+}
 void ui_sound(sfx_t s)
 {
     bool night = g.have_time && (g.hh >= 22 || g.hh < 7);
@@ -952,6 +964,7 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->len < 1 || g.lost) return;
         uint8_t m = ev->data[0];
         if (m == MOTION_FACE_DOWN || m == MOTION_FACE_UP) g.face_down = m == MOTION_FACE_DOWN;
+        screen_apply();
         if (m == MOTION_FACE_DOWN) ui_sound(SFX_SLEEP);
         if (m != MOTION_FACE_DOWN) { idle_advance(lv_tick_get()); g.idle_elapsed_ms = 0; } /* someone is handling her */
         if (m == MOTION_SHAKE) react(CHAR_EVENT_SHAKE);
@@ -1122,6 +1135,7 @@ void ui_handle_event(const ui_event_t *ev)
             if (g.lost != (ev->data[0] != 0) || rev != g.lost_rev || identity != g.character_identity)
                 character_init(&g.character); /* do not replay a pre-transition reaction */
             g.lost = ev->data[0] != 0;
+            screen_apply();
             g.lost_rev = rev;
             g.character_identity = identity;
         }

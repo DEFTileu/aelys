@@ -70,5 +70,10 @@ esp_err_t board_display_set_brightness(uint8_t pct)
     return esp_lcd_panel_io_tx_param(io, (0x02 << 24) | (0x51 << 8), &raw, 1);
 }
 
+esp_err_t board_display_power(bool on)
+{
+    return panel ? esp_lcd_panel_disp_on_off(panel, on) : ESP_ERR_INVALID_STATE;
+}
+
 esp_lcd_panel_handle_t board_panel(void) { return panel; }
 esp_lcd_panel_io_handle_t board_panel_io(void) { return io; }
