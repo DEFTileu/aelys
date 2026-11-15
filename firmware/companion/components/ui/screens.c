@@ -424,8 +424,26 @@ static void inbox_timeout(lv_timer_t *t)
 }
 
 /* ---- the side keys: a short line at each key on the right edge, with what it does here (design: "Menu" / "Back") ---- */
-#define KEY_TOP_Y0 97   /* the ticks point along the radius at the keys: about 2 and 4 o'clock */
-#define KEY_LOW_Y0 351
+/* Approximate button centres from Waveshare's 1.75C case drawing, USB down:
+ * PWR at -45 degrees, BOOT at +40. The mockup's +/-35 degrees are not the case.
+ * Keep the labels and tangent markers on the same anchors on every screen. */
+#define KEY_R 228 /* outside the home orbit dots, with the stroke still inside the 233 px panel */
+#define KEY_TICK_SIZE 24
+static int key_angle(bool low) { return low ? 40 : 315; }
+static lv_point_t key_anchor(bool low)
+{
+    int a = key_angle(low);
+    return (lv_point_t){ UI_SCREEN_SIZE / 2 + KEY_R * lv_trigo_cos(a) / LV_TRIGO_SIN_MAX,
+                         UI_SCREEN_SIZE / 2 + KEY_R * lv_trigo_sin(a) / LV_TRIGO_SIN_MAX };
+}
+
+void ui_key_hint_place(lv_obj_t *label, bool low)
+{
+    lv_point_t c = key_anchor(low);
+    /* Leave room for the 12 px progress ring as well as the rim marker. */
+    lv_obj_set_pos(label, c.x - 34 - lv_obj_get_width(label), c.y - lv_obj_get_height(label) / 2);
+}
+
 static struct { lv_obj_t *top, *low, *tick[2]; } keys;
 
 static void key_tick_draw(lv_event_t *e)
@@ -438,21 +456,25 @@ static void key_tick_draw(lv_event_t *e)
     l.color = lv_color_hex(low ? UI_COLOR_MUTED : UI_COLOR_ACCENT);
     l.width = 4;
     l.round_start = l.round_end = true;
-    l.p1.x = a.x1 + 2; l.p1.y = low ? a.y2 - 2 : a.y1 + 2;
-    l.p2.x = a.x2 - 2; l.p2.y = low ? a.y1 + 2 : a.y2 - 2;
+    int angle = key_angle(low) + 90;
+    int dx = 9 * lv_trigo_cos(angle) / LV_TRIGO_SIN_MAX;
+    int dy = 9 * lv_trigo_sin(angle) / LV_TRIGO_SIN_MAX;
+    l.p1.x = a.x1 + KEY_TICK_SIZE / 2 - dx; l.p1.y = a.y1 + KEY_TICK_SIZE / 2 - dy;
+    l.p2.x = a.x1 + KEY_TICK_SIZE / 2 + dx; l.p2.y = a.y1 + KEY_TICK_SIZE / 2 + dy;
     lv_draw_line(lv_event_get_layer(e), &l);
 }
 
 static void keys_create(lv_obj_t *root)
 {
     keys.top = ui_label(root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_set_pos(keys.top, 394 - 90, 98); /* where Focus, Timer, Tasks and Games put their own top-key word */
+    ui_key_hint_place(keys.top, false);
     keys.low = ui_label(root, &inter_16, UI_COLOR_MUTED, 90, 1, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_set_pos(keys.low, 394 - 90, 346);
+    ui_key_hint_place(keys.low, true);
     lv_label_set_text(keys.low, "Back");
     for (int i = 0; i < 2; i++) {
-        keys.tick[i] = ui_plain(root, 14, 20);
-        lv_obj_set_pos(keys.tick[i], 406, i ? KEY_LOW_Y0 : KEY_TOP_Y0);
+        lv_point_t c = key_anchor(i != 0);
+        keys.tick[i] = ui_plain(root, KEY_TICK_SIZE, KEY_TICK_SIZE);
+        lv_obj_set_pos(keys.tick[i], c.x - KEY_TICK_SIZE / 2, c.y - KEY_TICK_SIZE / 2);
         lv_obj_set_user_flag(keys.tick[i], 1, true); /* custom paint, see invalidate_painted() */
         lv_obj_add_event_cb(keys.tick[i], key_tick_draw, LV_EVENT_DRAW_MAIN, i ? (void *)1 : NULL);
     }
@@ -747,9 +769,9 @@ void ui_setup(void)
     scr_ask_set_level_source(voice_level);
     g.ask_from = SCR_MENU;
     g.ask_answered = g.voice_toggle = false;
-    scr_hold_create(root);
-    scr_notice_create(root);
     keys_create(root);
+    scr_hold_create(root); /* its opaque background also covers ordinary key hints */
+    scr_notice_create(root);
     scr_toast_create(root);
     scr_find_create(root); /* last: on top of the toast and every screen */
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);

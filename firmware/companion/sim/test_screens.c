@@ -112,6 +112,14 @@ static void test_hold_ring(void)
     uint16_t right = fb[233 * SIM_W + 233 + 219], left = fb[233 * SIM_W + 233 - 219];
     CHECK(((right >> 11) & 31) > 20);
     CHECK(((left >> 11) & 31) < 8 && left != 0);
+    /* The ordinary violet Menu hint must not paint over the red Hold label. */
+    int violet = 0;
+    for (int y = 60; y < 90; y++)
+        for (int x = 320; x < 380; x++) {
+            uint16_t pixel = fb[y * SIM_W + x];
+            violet += (pixel & 31) > (pixel >> 11) + 3;
+        }
+    CHECK_EQ(violet, 0);
     post_progress(0);
     sim_step(100);
     CHECK(((fb[233 * SIM_W + 233 + 219]) >> 11) < 8); /* overlay gone: at most an orbit dot there, not the red ring */
@@ -1431,6 +1439,23 @@ static void test_menu_wheel(void)
     CHECK_EQ(scr_menu_selected(), 0);
     CHECK(shows_text(scr, "Tasks"));
     check_inside("menu");
+
+    /* Case drawing: PWR is about 45 degrees above the right axis, BOOT about
+     * 40 below it. The label's right edge sits 34 px before its rim marker.
+     * Catch drifting back to the mockup's symmetric +/-35 degree positions. */
+    const char *words[] = { "Open", "Back" };
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *label = find_label(scr, words[i]);
+        CHECK(label != NULL);
+        if (!label) continue;
+        lv_area_t a;
+        lv_obj_get_coords(label, &a);
+        int dx = a.x2 + 1 + 34 - 233;
+        int dy = (a.y1 + a.y2 + 1) / 2 - 233;
+        CHECK(dx > 0);
+        if (i == 0) CHECK(-dy * 10 >= dx * 9 && -dy * 10 <= dx * 11);
+        else CHECK(dy * 100 >= dx * 78 && dy * 100 <= dx * 90);
+    }
 
     swipe(UI_EV_SWIPE_LEFT);
     check_inside("menu (turning)");                  /* the items stay inside the circle on every frame of the turn */
