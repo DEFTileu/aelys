@@ -34,10 +34,22 @@ async def conversation_history(
     refs = {ref["id"] for entry in prior for ref in (entry.source_refs_json or [])
             if isinstance(ref, dict) and ref.get("kind") == "owner_memory_fact" and isinstance(ref.get("id"), str)}
     versions = await active_memory_versions(db, owner_id, set(sorted(refs)[:200]))
-    prior = [entry for entry in prior if entry.id == current.id or all(
-        ref.get("kind") != "owner_memory_fact" or
-        (isinstance(ref.get("id"), str) and type(ref.get("version")) is int and versions.get(ref["id"]) == ref["version"])
-        for ref in (entry.source_refs_json or []) if isinstance(ref, dict))]
+    def memory_is_current(entry: AIMessage) -> bool:
+        return all(
+            ref.get("kind") != "owner_memory_fact" or
+            (isinstance(ref.get("id"), str) and type(ref.get("version")) is int and versions.get(ref["id"]) == ref["version"])
+            for ref in (entry.source_refs_json or []) if isinstance(ref, dict))
+
+    excluded: set[str] = set()
+    for index, entry in enumerate(prior):
+        if entry.id == current.id or memory_is_current(entry):
+            continue
+        excluded.add(entry.id)
+        if entry.role == "assistant":
+            previous = next((candidate for candidate in prior[index + 1:] if candidate.role == "user"), None)
+            if previous is not None and previous.id != current.id:
+                excluded.add(previous.id)
+    prior = [entry for entry in prior if entry.id not in excluded]
     ids = [entry.id for entry in prior if entry.role == "user" and entry.id != current.id]
     run_rows = (await db.execute(select(AIRun.prompt_message_id, AIRun.status).where(
         AIRun.owner_id == owner_id, AIRun.conversation_id == conversation_id, AIRun.prompt_message_id.in_(ids)))).all()

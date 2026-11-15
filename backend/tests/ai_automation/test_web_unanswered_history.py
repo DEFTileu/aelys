@@ -116,3 +116,30 @@ async def test_history_keeps_completed_and_unlinked_turns_and_trust_flags(tmp_pa
             telegram = await conversation_history(db, owner, cid, current, limit=20)
             assert web == telegram
             assert [(m.role, m.content, m.untrusted) for m in web] == [('user', 'earlier', True), ('assistant', 'answer', False), ('user', 'current', False)]
+
+
+@pytest.mark.asyncio
+async def test_stale_memory_answer_removes_preceding_completed_question(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from app.ai import memory
+    from app.ai.chat_support import conversation_history
+    from app.core.models import AIConversation, AIMessage, AIRun, now
+
+    async with chat(tmp_path, monkeypatch, [[{'type': 'text', 'text': 'ok'}]]) as (client, script, factory):
+        cid = (await client.post('/api/v1/ai/conversations', json={'title': 'Memory'})).json()['id']
+        async with factory() as db:
+            owner = (await db.get(AIConversation, cid)).owner_id
+            question = AIMessage(conversation_id=cid, role='user', content='Old question', created_at=now()-timedelta(seconds=3))
+            answer = AIMessage(conversation_id=cid, role='assistant', content='Old answer', source_refs_json=[{'kind': 'owner_memory_fact', 'id': 'fact', 'version': 1}], created_at=now()-timedelta(seconds=2))
+            current = AIMessage(conversation_id=cid, role='user', content='Current', created_at=now()-timedelta(seconds=1))
+            db.add_all([question, answer, current]); await db.flush()
+            db.add(AIRun(owner_id=owner, conversation_id=cid, prompt_message_id=question.id, provider='claude', model='test', status='completed'))
+            await db.commit()
+            async def versions(*args, **kwargs):
+                return {'fact': 2}
+            monkeypatch.setattr(memory, 'active_memory_versions', versions)
+            history = await conversation_history(db, owner, cid, current, limit=100)
+            assert [(entry.role, entry.content) for entry in history] == [('user', 'Current')]
+        await run(client, cid, 'Newest', 'stale-memory-check')
+        assert [entry['content'] for entry in script.requests[-1]['messages']] == ['Current', 'Newest']
