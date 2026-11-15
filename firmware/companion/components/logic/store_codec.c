@@ -141,7 +141,7 @@ size_t store_encode_games(const game_rec_t *in, uint8_t *buf, size_t cap)
     memcpy(p, &in->rx_best_ms, 4);
     p[4] = in->mz_level;
     p[5] = in->mz_open;
-    memcpy(p + 6, in->mz_best_ms, 4 * MZ_LEVELS);
+    memcpy(p + 6, in->mz_best_ms, 4 * MZ_FIXED_LEVELS);
     return seal(STORE_GAMES_VERSION, p, sizeof p, buf, cap);
 }
 
@@ -152,7 +152,7 @@ bool store_decode_games(const uint8_t *buf, size_t len, game_rec_t *out)
     memcpy(&out->rx_best_ms, p, 4);
     out->mz_level = p[4];
     out->mz_open = p[5];
-    memcpy(out->mz_best_ms, p + 6, 4 * MZ_LEVELS);
+    memcpy(out->mz_best_ms, p + 6, 4 * MZ_FIXED_LEVELS);
     return true;
 }
 

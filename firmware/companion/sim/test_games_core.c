@@ -167,8 +167,8 @@ static void test_maze(void)
     mz_reset(&m);
     for (int i = 0; i < 400; i++) mz_step(&m, G(2), G(-2), 5000);
     CHECK(m.x >= MZ_BALL_R && m.x <= MZ_SIZE - MZ_BALL_R && m.y >= MZ_BALL_R && m.y <= MZ_SIZE - MZ_BALL_R);
-    for (unsigned i = 0; i < mz_n_walls(0); i++) {
-        const mz_wall_t *w = mz_wall(0, i);
+    for (unsigned i = 0; i < m.n_walls; i++) {
+        const mz_wall_t *w = &m.walls[i];
         bool inside = m.x > w->x && m.x < w->x + w->w && m.y > w->y && m.y < w->y + w->h;
         CHECK(!inside);
     }
@@ -177,75 +177,104 @@ static void test_maze(void)
     CHECK(m.x >= MZ_BALL_R && m.x <= MZ_SIZE - MZ_BALL_R && m.y >= MZ_BALL_R && m.y <= MZ_SIZE - MZ_BALL_R);
 }
 
-/* Cells (x, y) of 52 px are joined unless a wall covers the middle of the side they share. */
-static bool joined(unsigned lv, int x0, int y0, int x1, int y1)
+static int line_at(unsigned n, unsigned k) { return (int)(k * MZ_SIZE / n); }
+
+/* Cells (x, y) of the built level are joined unless a wall covers the middle of the side they share. */
+static bool joined(const mz_t *m, int x0, int y0, int x1, int y1)
 {
-    int mx = x1 != x0 ? 52 * (x0 > x1 ? x0 : x1) : 52 * x0 + 26, my = y1 != y0 ? 52 * (y0 > y1 ? y0 : y1) : 52 * y0 + 26;
-    for (unsigned i = 0; i < mz_n_walls(lv); i++) {
-        const mz_wall_t *w = mz_wall(lv, i);
+    unsigned n = m->grid;
+    int mx = x1 != x0 ? line_at(n, x0 > x1 ? x0 : x1) : (line_at(n, x0) + line_at(n, x0 + 1)) / 2;
+    int my = y1 != y0 ? line_at(n, y0 > y1 ? y0 : y1) : (line_at(n, y0) + line_at(n, y0 + 1)) / 2;
+    for (unsigned i = 0; i < m->n_walls; i++) {
+        const mz_wall_t *w = &m->walls[i];
         if (mx >= w->x && mx <= w->x + w->w && my >= w->y && my <= w->y + w->h) return false;
     }
     return true;
 }
 
-/* The way home through the cells (breadth first), start cell 0 to goal cell 24; returns its length, 0 if there is none. */
-static int way_home(unsigned lv, int way[25])
+/* The way home through the cells (breadth first), the top-left cell to the bottom-right one; returns its length, 0 if there is none. */
+static int way_home(const mz_t *m, int way[49])
 {
-    int prev[25], q[25], n = 0;
-    for (int i = 0; i < 25; i++) prev[i] = -1;
-    prev[0] = 0; q[n++] = 0;
-    for (int h = 0; h < n; h++) {
-        int c = q[h], x = c % 5, y = c / 5;
+    int n = m->grid, last = n * n - 1, prev[49], q[49], len = 0, h = 0, t = 0;
+    for (int i = 0; i < 49; i++) prev[i] = -1;
+    prev[0] = 0; q[t++] = 0;
+    while (h < t) {
+        int c = q[h++], x = c % n, y = c / n;
         const int d[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
         for (int k = 0; k < 4; k++) {
             int X = x + d[k][0], Y = y + d[k][1];
-            if (X < 0 || X > 4 || Y < 0 || Y > 4 || prev[Y * 5 + X] >= 0 || !joined(lv, x, y, X, Y)) continue;
-            prev[Y * 5 + X] = c; q[n++] = Y * 5 + X;
+            if (X < 0 || X >= n || Y < 0 || Y >= n || prev[Y * n + X] >= 0 || !joined(m, x, y, X, Y)) continue;
+            prev[Y * n + X] = c; q[t++] = Y * n + X;
         }
     }
-    if (prev[24] < 0) return 0;
-    int len = 0;
-    for (int c = 24; c; c = prev[c]) way[len++] = c;
+    if (prev[last] < 0) return 0;
+    for (int c = last; c; c = prev[c]) way[len++] = c;
     way[len++] = 0;
-    for (int i = 0; i < len / 2; i++) { int t = way[i]; way[i] = way[len - 1 - i]; way[len - 1 - i] = t; }
+    for (int i = 0; i < len / 2; i++) { int tmp = way[i]; way[i] = way[len - 1 - i]; way[len - 1 - i] = tmp; }
     return len;
 }
 
-/* Every level can be won by a hand on the tilt: steer the ball from cell centre to cell centre along the way home, never over 0.6 g. */
+/* Every level can be won by a hand on the tilt, one after the other (each win opens the next): steer the ball from cell centre to cell
+ * centre along the way home, never over 0.6 g. */
 static void test_maze_levels(void)
 {
-    static const int ways[MZ_LEVELS] = { 13, 15, 17, 19, 23 };
+    static const int drawn[MZ_FIXED_LEVELS] = { 13, 15, 17, 19, 23 };
     mz_t m = { 0 };
     mz_reset(&m);
-    CHECK(m.open == 1 && m.level == 0);
+    CHECK(m.open == 1 && m.level == 0 && m.grid == 5 && m.ball_r == MZ_BALL_R);
     CHECK(!mz_set_level(&m, 1) && m.level == 0);                     /* a closed level does not open */
+    int longest5 = 0;
     for (unsigned lv = 0; lv < MZ_LEVELS; lv++) {
-        int way[25], len = way_home(lv, way);
-        CHECK_EQ(len, ways[lv]);                                     /* each level has a way home, longer than the one before */
-        CHECK(mz_n_walls(lv) <= MZ_MAX_WALLS);
         CHECK(mz_set_level(&m, lv));
-        CHECK(m.x == 26 && m.y == 26 && !m.won);
-        int next = 1;
-        for (uint32_t t = 0; t < 120000 && !m.won; t += 33) {
-            float tx = way[next] % 5 * 52 + 26, ty = way[next] / 5 * 52 + 26;
+        CHECK_EQ(m.grid, lv < 15 ? 5 : lv < 30 ? 6 : 7);              /* 5 x 5 to level 15, 6 x 6 to 30, then 7 x 7 */
+        CHECK(m.n_walls <= MZ_MAX_WALLS && m.n_walls > 0);
+        CHECK(m.x == m.start_xy && m.y == m.start_xy && !m.won);
+        int way[49], len = way_home(&m, way);
+        CHECK(len > 0);                                              /* there is a way home */
+        if (lv >= MZ_FIXED_LEVELS) {                                 /* a generated maze is a tree: n*n - 1 open sides join every cell */
+            int sides = 0, g = m.grid;
+            for (int c = 0; c < g * g; c++) {
+                if (c % g + 1 < g) sides += joined(&m, c % g, c / g, c % g + 1, c / g);
+                if (c / g + 1 < g) sides += joined(&m, c % g, c / g, c % g, c / g + 1);
+            }
+            CHECK_EQ(sides, g * g - 1);
+        }
+        if (lv < MZ_FIXED_LEVELS) CHECK_EQ(len, drawn[lv]);
+        else if (m.grid == 5 && len > longest5) longest5 = len;
+        int n = m.grid, next = 1;
+        for (uint32_t t = 0; t < 180000 && !m.won; t += 33) {
+            float tx = (line_at(n, way[next] % n) + line_at(n, way[next] % n + 1)) / 2.0f;
+            float ty = (line_at(n, way[next] / n) + line_at(n, way[next] / n + 1)) / 2.0f;
             float ax = (tx - m.x) * 20 - m.vx * 8, ay = (ty - m.y) * 20 - m.vy * 8; /* px/s^2 wanted */
             float lim = 0.6f * 900;
             ax = ax > lim ? lim : ax < -lim ? -lim : ax;
             ay = ay > lim ? lim : ay < -lim ? -lim : ay;
             mz_step(&m, (int32_t)(ax / 900 * MZ_G_COUNTS), (int32_t)(ay / 900 * MZ_G_COUNTS), 33);
-            if (next < len - 1 && fabsf(tx - m.x) < 10 && fabsf(ty - m.y) < 10) next++;
+            if (next < len - 1 && fabsf(tx - m.x) < 8 && fabsf(ty - m.y) < 8) next++;
         }
         CHECK(m.won);
-        CHECK(m.best_ms[lv] == m.elapsed_ms && m.best_ms[lv] > 0);
-        CHECK_EQ(m.open, lv + 2 <= MZ_LEVELS ? lv + 2 : MZ_LEVELS);  /* the next level opened; the last one opens nothing */
         if (!m.won) printf("level %u: stuck at %.0f, %.0f heading to cell %d\n", lv + 1, m.x, m.y, way[next]);
+        if (lv < MZ_FIXED_LEVELS) CHECK(m.best_ms[lv] == m.elapsed_ms && m.best_ms[lv] > 0);
+        CHECK_EQ(m.open, lv + 2 <= MZ_LEVELS ? lv + 2 : MZ_LEVELS);  /* the next level opened; the last one opens nothing */
     }
+    CHECK(longest5 > 15);                                            /* the generated 5 x 5 levels reach longer ways than level 2 */
     CHECK(!mz_set_level(&m, MZ_LEVELS));
+
+    /* a level number always gives the same maze */
+    mz_set_level(&m, 40);
+    mz_wall_t first[MZ_MAX_WALLS];
+    unsigned nw = m.n_walls;
+    memcpy(first, m.walls, sizeof first);
+    mz_set_level(&m, 41);
+    CHECK(m.n_walls != nw || memcmp(first, m.walls, nw * sizeof *first));   /* the next one differs */
+    mz_set_level(&m, 40);
+    CHECK(m.n_walls == nw && !memcmp(first, m.walls, nw * sizeof *first));
+
     mz_set_level(&m, 2);                                             /* an earlier level keeps its best and the others' */
     CHECK(m.level == 2 && m.open == MZ_LEVELS && m.best_ms[4] > 0);
-    m.level = 9; m.open = 0;                                         /* nonsense (an old blob) falls back to level 1 */
+    m.level = 120; m.open = 200;                                     /* nonsense (a bad blob) falls back to level 1 */
     mz_reset(&m);
-    CHECK(m.level == 0 && m.open == 1);
+    CHECK(m.level == 0 && m.open == 1 && m.grid == 5);
 }
 
 int main(void)
