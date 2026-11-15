@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_service_label">Aelys Focus Guard</string>
+    <string name="focus_accessibility_description">Aelys only detects which app is in front, so it can close an app you set a daily limit for once the limit is used up. It does not read what is on your screen, what you type or your messages.</string>
+    <string name="block_title">%1$s is closed for today</string>
+    <string name="block_used">You used it %1$s today. Your daily limit is %2$s.</string>
+    <string name="block_minutes">%1$d min</string>
+    <string name="block_go_home">Go Home</string>
+    <string name="block_unlock">Unlock</string>
+</resources>

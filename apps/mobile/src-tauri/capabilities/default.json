@@ -13,6 +13,7 @@
     "core:default",
     "notification:default",
     "aelys-notification-log:default",
+    "aelys-focus-guard:default",
     "allow-runtime-policy",
     "allow-native-status",
     "allow-native-health",

@@ -40,6 +40,7 @@ const STATIC_SUBS: Partial<Record<RoutePath, string>> = {
   '/apps': 'Small tools for everything else',
   '/messages': 'Telegram · Aelys drafts, you approve',
   '/notification-log': 'Every notification, kept on this phone',
+  '/app-limits': 'Daily limits on Instagram, TikTok and more',
   '/automation': 'When this happens, Aelys does that',
   '/search': 'Tasks, notes, mail and more',
   '/finance': new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
@@ -60,7 +61,7 @@ export function MobileShell({ route, apiStatus, children, chromeOnly = false }: 
   useEffect(() => { const sync = () => setSearch(window.location.search); window.addEventListener('popstate', sync); return () => window.removeEventListener('popstate', sync) }, [])
   const settingsSection = route === '/settings' ? new URLSearchParams(search).get('section') : null
   const wallpaper = useWallpaper()
-  const title = route === '/widgets' ? 'Customize home' : route === '/notification-log' ? 'Notification log' : settingsSection ? SETTINGS_TITLES[settingsSection] ?? 'Settings' : APPS.find((app) => app.route === route)?.label ?? 'Aelys'
+  const title = route === '/widgets' ? 'Customize home' : route === '/notification-log' ? 'Notification log' : route === '/app-limits' ? 'App limits' : settingsSection ? SETTINGS_TITLES[settingsSection] ?? 'Settings' : APPS.find((app) => app.route === route)?.label ?? 'Aelys'
 
   useEffect(() => { setAppsOpen(false) }, [route])
   // Inner screens keep Back and the title pinned; once the wallpaper has scrolled away the bar turns solid.

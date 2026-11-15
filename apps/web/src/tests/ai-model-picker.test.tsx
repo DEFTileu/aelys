@@ -164,6 +164,8 @@ describe('Use for', () => {
     client.updateTelegramSettings.mockResolvedValue({ ...status, version: 4, provider_id: 'p1', model: 'claude-sonnet-4-5' })
     await act(async () => root.render(<AiFeatureDefaults providers={[claude, openrouter]} />))
     expect(host.textContent).toContain('AI Chat')
+    expect(host.textContent).toContain('App limits')
+    expect(host.querySelector('button[aria-label="Focus"]')).toBeNull()
     await click(host.querySelector<HTMLElement>('button[aria-label="English"]')!)
     await click(find('Sonnet 4.5', '[role=option]'))
     expect(client.setAIDefaults).toHaveBeenCalledWith({ chat: { provider_id: 'p1', model: 'claude-haiku-5-5' }, english: { provider_id: 'p1', model: 'claude-sonnet-4-5' } })

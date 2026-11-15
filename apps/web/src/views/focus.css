@@ -1,0 +1,36 @@
+/* App limits (Android). Cards, buttons, tags and tokens come from notification-log.css and page-tokens.css; only what they lack is here. */
+.fg__banner { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 14px; font-size: 14px; line-height: 20px; }
+.fg__banner p { margin: 2px 0 10px; }
+.fg__banner svg { flex: none; margin-top: 2px; }
+.fg__banner--off { background: var(--pg-red-bg); color: var(--pg-red); }
+.fg__banner--off p { margin-bottom: 0; }
+.fg__banner--warn { background: var(--pg-warn-bg); color: var(--pg-warn); }
+.fg__go { flex: none; max-width: 55%; min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--pg-violet); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.fg__wide { align-self: stretch; }
+.fg__app { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
+.fg__app + .fg__app, .fg__req + .fg__req { border-top: 1px solid var(--pg-rule); }
+.fg__app-head { display: flex; align-items: center; gap: 10px; }
+.fg__limit { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--pg-mute); }
+.fg__limit input, .fg__add select { height: 40px; border-radius: 10px; border: 1px solid var(--pg-line); background: var(--pg-field); color: var(--pg-ink); font: 500 15px Inter, sans-serif; padding: 0 10px; }
+.fg__limit input { width: 76px; text-align: right; }
+.fg__limit input[aria-invalid='true'] { border-color: var(--pg-red); }
+.fg__track { height: 8px; border-radius: 4px; background: var(--pg-track); overflow: hidden; }
+.fg__track span { display: block; height: 100%; border-radius: inherit; background: var(--pg-violet); }
+.fg__track span.is-full { background: var(--pg-red); }
+.fg__usage { font-size: 13px; line-height: 18px; color: var(--pg-mute); }
+.fg__add { display: flex; gap: 8px; }
+.fg__add select { flex: 1; min-width: 0; }
+.fg__add .nlog__btn { padding: 0 18px; }
+.fg__req { padding: 12px 14px; }
+.fg__req-head { display: flex; align-items: center; gap: 8px; }
+.fg__req-head .nlog__time { margin-left: auto; }
+.fg__reason { margin: 4px 0 0; font-size: 14px; line-height: 20px; color: var(--pg-ink-2); overflow-wrap: anywhere; white-space: pre-line; }
+.fg__unlock { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 20px; background: var(--pg-glass); border: 1px solid var(--pg-line); box-shadow: var(--pg-shadow); }
+.fg__unlock h2 { margin: 0; font-size: 18px; line-height: 24px; }
+.fg__unlock p { margin: 0; font-size: 14px; line-height: 20px; color: var(--pg-mute); }
+.fg__unlock textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--pg-line); background: var(--pg-field); color: var(--pg-ink); font: 15px/22px Inter, sans-serif; }
+.fg__count { font-size: 12px; color: var(--pg-mute); }
+.fg__answer { padding: 10px 12px; border-radius: 12px; background: var(--pg-field); color: var(--pg-ink) !important; }
+.fg__answer.is-ok { background: #DCF5EC; color: #0E7A57 !important; }
+.fg__actions { display: flex; gap: 8px; }
+.fg__actions .nlog__btn { flex: 1; }

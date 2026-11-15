@@ -35,6 +35,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_aelys_session_store::init())
         .plugin(tauri_plugin_aelys_notification_log::init())
+        .plugin(tauri_plugin_aelys_focus_guard::init())
         .setup(|app| {
             app.manage(native::NativeStorage::new(app.handle()));
             Ok(())

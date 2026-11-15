@@ -3,7 +3,7 @@ import type {
   MemoryFactIn, MemoryFactPatch, OwnerMemoryFact,
   ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIAction, AIAttachment, AIAttachmentIn, AIConversation, AIFeedback, AIMessage, AIMessageIn, ConversationPatch, AIProvider, AIProviderSecretResponse,
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
-  AutomationRuleIn, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
+  AutomationRuleIn, FocusConfig, FocusOverview, FocusState, FocusRequestRow, FocusUnlockResult, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
   FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, EnglishCourse, EnglishLesson, EnglishListeningResult, EnglishMock, EnglishMockIn, EnglishBlockKey, EnglishProfile, EnglishReport, EnglishSentenceResult, EnglishSettings, EnglishSpeakingIn, EnglishSpeakingRound, EnglishTasksResult, EnglishToday, EnglishTranscription, EnglishWord, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
   MailAccountIn, MailDraft, MailMessage, MailMessageReadIn, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
@@ -714,6 +714,12 @@ export class ApiClient {
   public automationExecutions(ruleId: Id, options?: RequestOptions) { return this.request<readonly AutomationExecution[]>(`/api/v1/automations/${encodeURIComponent(ruleId)}/executions`, this.read(options)); }
   public automationDryRun(ruleId: Id, body: AutomationEventIn, options?: RequestOptions) { return this.request<AutomationDryRunResponse>(`/api/v1/automations/${encodeURIComponent(ruleId)}/dry-run`, this.write(body, options)); }
   public dispatchAutomation(body: AutomationEventIn, options?: RequestOptions) { return this.request<AutomationDispatchResponse>("/api/v1/automations/dispatch", this.write(body, options)); }
+
+  // Live-only: an unlock decision or a limit change must never be replayed later from the offline queue.
+  public focusOverview(day: string, options?: RequestOptions) { return this.request<FocusOverview>("/api/v1/focus/state", this.read({ ...options, query: { day } })); }
+  public saveFocusConfig(config: FocusConfig, day: string, options?: RequestOptions) { return this.request<FocusState>("/api/v1/focus/config", this.write({ config, day }, { queueOnOffline: false, ...options }, "PUT")); }
+  public focusUnlock(body: { day: string; app_id: string; reason: string }, options?: RequestOptions) { return this.request<FocusUnlockResult>("/api/v1/focus/unlock-request", this.write(body, { queueOnOffline: false, ...options })); }
+  public focusRequests(limit?: number, options?: RequestOptions) { return this.request<readonly FocusRequestRow[]>("/api/v1/focus/requests", this.read({ ...options, query: limit === undefined ? undefined : { limit } })); }
 
   public async eventStream(path: string, options: RequestOptions = {}): Promise<Response> {
     const method = options.method ?? "GET";

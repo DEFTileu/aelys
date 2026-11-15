@@ -33,6 +33,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "tauri-plugin-aelys-focus-guard",
  "tauri-plugin-aelys-notification-log",
  "tauri-plugin-aelys-session-store",
  "tauri-plugin-aelys-update-verifier",
@@ -3900,6 +3901,16 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-aelys-focus-guard"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

@@ -579,7 +579,7 @@ export interface ProviderIn {
   readonly secret_ref?: string | null;
 }
 /** Which provider and model each AI feature uses; a missing feature falls back to the oldest ready provider. */
-export type AIFeature = "chat" | "english" | "automation" | "transcription" | "voice";
+export type AIFeature = "chat" | "english" | "automation" | "focus" | "transcription" | "voice";
 export interface AIFeatureChoice { readonly provider_id: Id; readonly model?: string | null }
 export type AIFeatureDefaults = { readonly [K in AIFeature]?: AIFeatureChoice | null };
 export interface AIProvider extends ProviderIn {
@@ -836,6 +836,44 @@ export interface AutomationDryRunResponse {
 export interface AutomationDispatchResponse {
   readonly event_id: Id;
   readonly results: readonly JsonObject[];
+}
+
+/** One guarded app group; `packages` are Android package names. */
+export interface FocusApp {
+  readonly id: string;
+  readonly label: string;
+  readonly packages: readonly string[];
+  readonly limit_minutes: number;
+}
+export interface FocusConfig { readonly apps: readonly FocusApp[] }
+/** `pending` replaces `effective` on `effective_from` (loosening waits for the next local midnight). */
+export interface FocusState {
+  readonly effective: FocusConfig;
+  readonly pending: FocusConfig | null;
+  readonly effective_from: string | null;
+}
+export interface FocusOverview {
+  readonly day_unlocked: boolean;
+  readonly ai_grants_left: number;
+  readonly requests_left: number;
+  readonly config: FocusState;
+}
+export interface FocusUnlockResult {
+  readonly granted: boolean;
+  readonly minutes: number;
+  readonly message: string;
+  readonly ai_grants_left: number;
+  readonly requests_left: number;
+}
+export interface FocusRequestRow {
+  readonly id: string;
+  readonly day: string;
+  readonly app_id: string;
+  readonly reason: string;
+  readonly granted: boolean;
+  readonly minutes: number;
+  readonly message: string;
+  readonly created_at: IsoDateTime;
 }
 
 export interface SSEEvent<T = JsonObject> {

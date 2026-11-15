@@ -84,7 +84,7 @@
 
 **Files:**
 - Create: `backend/app/companion/voice.py`
-- Create: `backend/alembic/versions/0061_companion_voice.py` — adds nullable `companion_state.voice_conversation_id String(36)`
+- Create: `backend/alembic/versions/0062_companion_voice.py` — adds nullable `companion_state.voice_conversation_id String(36)`
 - Modify: `backend/app/companion/models.py:22-41` (`CompanionState.voice_conversation_id`)
 - Modify: `backend/app/ai/chat_support.py:115-119` — `system_prompt(..., channel="voice")` uses the Telegram write policy plus `VOICE_STYLE`: answer in 1–3 short sentences, no markdown, no links, in the language of the question; say plainly when something cannot be done by voice
 - Test: `backend/tests/test_companion_voice.py`

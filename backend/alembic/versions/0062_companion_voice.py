@@ -2,8 +2,8 @@
 import sqlalchemy as sa
 from alembic import op
 
-revision = '0061_companion_voice'
-down_revision = '0060_companion_weather'
+revision = '0062_companion_voice'
+down_revision = '0061_focus_unlock_requests'
 branch_labels = None
 depends_on = None
 

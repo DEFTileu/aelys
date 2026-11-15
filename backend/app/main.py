@@ -33,6 +33,7 @@ from .domains.gmail import router as gmail_router
 from .domains.google_calendar_api import router as calendar_router
 from .domains.google_calendar_oauth import router as calendar_oauth_router
 from .domains.paged_reads import router as paged_reads_router
+from .focus.api import router as focus_router
 from .sync.api import router as sync_router
 
 
@@ -146,3 +147,4 @@ from .english.lessons import router as english_course_router
 
 app.include_router(english_router, prefix="/api/v1")
 app.include_router(english_course_router, prefix="/api/v1")
+app.include_router(focus_router, prefix="/api/v1")

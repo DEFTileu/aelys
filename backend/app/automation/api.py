@@ -1,35 +1,23 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import Annotated, Any, Literal
-from uuid import uuid4
 
-from app.ai import api as ai_api
-from app.ai.crypto import decrypt_secret
-from app.ai.defaults import feature_provider
 from app.ai.errors import PolicyDenied, ToolValidationError, redact_error
 from app.ai.models import (
-    ChatMessage,
     PermissionContext,
-    PrivacyClass,
-    RoutingRequest,
-    TaskKind,
     ToolCall,
 )
+from app.ai.oneshot import one_shot_json
 from app.ai.policy import ServerPolicyEngine
 from app.ai.tools import ToolDescriptor, ToolRegistry
 from app.automation.hooks import _running_automation
 from app.core.db import get_db
 from app.core.models import (
     ActivityEvent,
-    AIConversation,
-    AIRun,
     AutomationExecution,
     AutomationRule,
     Notification,
@@ -527,34 +515,16 @@ async def _parse_description(db: AsyncSession, owner_id: str, text: str) -> Rule
 
 async def _ai_draft(db: AsyncSession, owner_id: str, description: str) -> RuleIn | None:
     """Ask the owner's configured provider; None means unavailable or unusable output."""
-    chosen = await feature_provider(db, owner_id, "automation")
-    if chosen is None:
+    # The description is fenced as untrusted data; the reply is only ever
+    # parsed into the strict rule schema and re-checked against server policy.
+    shot = await one_shot_json(db, owner_id, "automation", "AutomationDraft", _DRAFT_SYSTEM, description)
+    if shot is None or shot.data is None:
         return None
-    provider, secret, model = chosen
     try:
-        remaining = await ai_api._remaining_monthly_budget(db, owner_id, provider)
-        if remaining <= 0:
-            return None
-        run_id, started = uuid4(), datetime.now(UTC)
-        service = ai_api._service(provider, decrypt_secret(secret.encrypted_value))
-        request = RoutingRequest(TaskKind.UNKNOWN, privacy=PrivacyClass.PERSONAL, manual_model=model, request_budget=min(Decimal(100), remaining))
-        # The description is fenced as untrusted data; the reply is only ever
-        # parsed into the strict rule schema and re-checked against server policy.
-        result = await asyncio.wait_for(service.complete(run_id, request, (ChatMessage("system", _DRAFT_SYSTEM), ChatMessage("user", description, untrusted=True)), max_tokens=600, tools=()), timeout=45)
-        conversation = AIConversation(owner_id=owner_id, title="AutomationDraft", tool_scope_json={})
-        db.add(conversation)
-        await db.flush()
-        db.add(AIRun(id=str(run_id), owner_id=owner_id, conversation_id=conversation.id, prompt_message_id=None, provider_id=provider.id, provider=getattr(result.provider, "value", result.provider), model=result.model, status="completed", tool_scope_json={}, token_counts={"input": result.usage.usage.input_tokens, "output": result.usage.usage.output_tokens}, cost_estimate=result.usage.estimated_cost, started_at=started, completed_at=datetime.now(UTC)))
-        await db.commit()
-        text = result.response.text
-        if result.response.tool_calls or not isinstance(text, str):
-            return None
-        data = json.loads(text[text.index("{"): text.rindex("}") + 1])
-        allowed = {key: data[key] for key in ("name", "trigger_kind", "conditions", "actions", "rate_limit") if key in data}
+        allowed = {key: shot.data[key] for key in ("name", "trigger_kind", "conditions", "actions", "rate_limit") if key in shot.data}
         # The model never chooses the policy.
         return RuleIn.model_validate({**allowed, "policy_ref": "safe"})
-    except Exception:  # noqa: BLE001 - provider or parse failures fall back to the deterministic parser
-        await db.rollback()
+    except ValidationError:
         return None
 
 

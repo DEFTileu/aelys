@@ -310,6 +310,17 @@ class AIRunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     __table_args__ = (UniqueConstraint("run_id", "sequence", name="uq_ai_run_event_sequence"), UniqueConstraint("run_id", "event_id", name="uq_ai_run_event_id"))
 
+class FocusUnlockRequest(Owned):
+    """One owner request for a temporary unlock and the AI judge's answer; also the source of the daily caps."""
+    __tablename__ = "focus_unlock_requests"
+    day: Mapped[date] = mapped_column(Date, index=True)
+    app_id: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(Text)
+    granted: Mapped[bool] = mapped_column(Boolean, default=False)
+    minutes: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[str] = mapped_column(Text, default="")
+    ai_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
 class AgentSessionIndex(Owned):
     __tablename__ = "agent_session_index"
     device_id: Mapped[str] = mapped_column(String(36)); project_id: Mapped[str | None] = mapped_column(String(36)); adapter: Mapped[str] = mapped_column(String(30)); opaque_local_session_ref: Mapped[str] = mapped_column(String(255)); started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)); message_count: Mapped[int | None] = mapped_column(Integer); state: Mapped[str] = mapped_column(String(30), default="active")

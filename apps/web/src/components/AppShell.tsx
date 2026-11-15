@@ -81,6 +81,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
   '/automation': { title: 'Automation', sub: 'When this happens, Aelys does that.' },
   '/messages': { title: 'Messages', sub: 'Telegram chats. Aelys drafts, you approve.' },
   '/notification-log': { title: 'Notification log', sub: 'Every notification, kept on your phone.' },
+  '/app-limits': { title: 'App limits', sub: 'Daily limits on Instagram, TikTok and more.' },
   '/widgets': { title: 'Customize home' },
   '/timer': { title: 'Focus' },
   '/english': { title: 'English', sub: 'Your IELTS course. It adapts after every lesson.' },
@@ -90,7 +91,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
 
 function screenFor(route: RoutePath): string | null {
   if (route === '/settings') return 'settings'
-  if (route === '/timer' || route === '/english' || route === '/automation' || route === '/messages' || route === '/notification-log' || route === '/developer') return 'utilities'
+  if (route === '/timer' || route === '/english' || route === '/automation' || route === '/messages' || route === '/notification-log' || route === '/app-limits' || route === '/developer') return 'utilities'
   return NAV.find((item) => item.route === route)?.id ?? null
 }
 
