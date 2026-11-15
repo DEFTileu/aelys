@@ -93,8 +93,8 @@ class FocusAccessibilityService : AccessibilityService() {
 
     /**
      * Decides for [pkg] now: blocks it, or schedules the moment its time runs out. A non-guarded package
-     * costs one state read and nothing else. A guarded one also costs a usage query, and a store write
-     * only when a pending config is actually promoted.
+     * costs one state read and an in-memory [Policy.promote], and nothing else. A guarded one also costs a
+     * usage query, and a store write only when a pending config is actually promoted.
      */
     private fun evaluate(pkg: String) {
         cancelWake()
@@ -102,8 +102,9 @@ class FocusAccessibilityService : AccessibilityService() {
         val tz = TimeZone.getDefault()
         val now = System.currentTimeMillis()
         val today = localDay(now, tz)
-        // Not guarded: return before any write (this runs for every window event of every app).
-        if (store.appFor(store.load(), pkg) == null) return
+        // Not guarded: return before any write (this runs for every window event of every app). The pending
+        // config is promoted in memory only, so an app added by a due pending is not missed here.
+        if (store.appFor(Policy.promote(store.load(), today), pkg) == null) return
         val state = store.update { Policy.promote(it, today) }
         // Promotion can change the effective set, so resolve the app again from the promoted state.
         val app = store.appFor(state, pkg) ?: return

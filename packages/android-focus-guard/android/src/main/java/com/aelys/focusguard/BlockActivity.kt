@@ -85,6 +85,12 @@ class BlockActivity : Activity() {
             finish()
         } catch (e: Exception) {
             Log.e(TAG, "unlock failed", e)
+            // Do not leave a stale pending unlock for the web layer.
+            try {
+                FocusStore.of(this).setPendingUnlock(null)
+            } catch (e2: Exception) {
+                Log.e(TAG, "clearing the pending unlock failed", e2)
+            }
         }
     }
 

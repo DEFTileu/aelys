@@ -232,4 +232,30 @@ class FocusStoreTest {
         store.update { it.copy(dayUnlockedOn = today) }
         assertEquals(1, puts.get())
     }
+
+    // The service's pre-check is `store.appFor(Policy.promote(load(), today), pkg)`; these pin that combination.
+    @Test
+    fun preCheckSeesAnAppAddedByADuePendingButNotAFutureOne() {
+        val store = FocusStore(MemPrefs())
+        val instaPkg = "com.instagram.android"
+        val tiktokPkg = "com.zhiliaoapp.musically"
+        val due = GuardState(listOf(insta), listOf(insta, tiktok), today, null, emptyMap(), null)
+        assertNull(store.appFor(due, tiktokPkg)) // raw stored state: not guarded yet
+        assertEquals(tiktok, store.appFor(Policy.promote(due, today), tiktokPkg))
+        assertEquals(tiktok, store.appFor(Policy.promote(due.copy(effectiveFrom = "2026-11-14"), today), tiktokPkg))
+        val future = due.copy(effectiveFrom = "2026-11-16")
+        assertNull(store.appFor(Policy.promote(future, today), tiktokPkg))
+        assertEquals(insta, store.appFor(Policy.promote(future, today), instaPkg))
+    }
+
+    @Test
+    fun preCheckDropsAnAppRemovedByADuePending() {
+        val store = FocusStore(MemPrefs())
+        val removing = GuardState(listOf(insta, tiktok), listOf(insta), today, null, emptyMap(), null)
+        assertEquals(tiktok, store.appFor(removing, "com.zhiliaoapp.musically"))
+        assertNull(store.appFor(Policy.promote(removing, today), "com.zhiliaoapp.musically"))
+        assertEquals(insta, store.appFor(Policy.promote(removing, today), "com.instagram.android"))
+        // Not yet due: still guarded.
+        assertEquals(tiktok, store.appFor(Policy.promote(removing.copy(effectiveFrom = "2026-11-16"), today), "com.zhiliaoapp.musically"))
+    }
 }
