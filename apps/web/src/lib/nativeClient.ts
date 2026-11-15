@@ -15,6 +15,8 @@ function nativeAIEventResponse(transport: NativeTransport, origin: string, id: s
   let resolveReady: (response: Response) => void
   let rejectReady: (reason: unknown) => void
   const ready = new Promise<Response>((resolve, reject) => { resolveReady = resolve; rejectReady = reject })
+  // If opening throws before `ready` is returned, a later abort must not surface as an unhandled rejection.
+  ready.catch(() => {})
   const cleanup = () => signal?.removeEventListener('abort', abort)
   const closeRemote = () => { void transport.closeAIEvents(origin, requestId).catch(() => {}) }
   const fail = (error: unknown, readerCancelled = false) => {

@@ -24,7 +24,18 @@ function fixture(autoOpen = true) {
   }
 }
 
+const test_fetch = (fetcher: typeof fetch, signal: AbortSignal) => fetcher(`${origin}/api/v1/changes`, { signal }).catch(() => undefined)
+
 describe('native AI Channel stream', () => {
+  // Vitest fails the run on any unhandled rejection, which is what this guards against.
+  it('leaves no unhandled rejection when opening throws and the caller aborts later', async () => {
+    const transport = { ...createNativeTransport(vi.fn() as NativeInvoke), aiEvents: () => { throw new Error('missing') } }
+    const abort = new AbortController()
+    await test_fetch(createNativeFetch(transport as unknown as ReturnType<typeof createNativeTransport>, origin), abort.signal)
+    abort.abort()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+
   it('opens the owner change-hint stream through the same native command', async () => {
     const test = fixture()
     const response = await test.fetcher(`${origin}/api/v1/changes`)
