@@ -60,7 +60,7 @@ static void test_reaction(void)
     CHECK(rx_poll(&x, 2500));
     CHECK_EQ(x.st, RX_GO);
     CHECK(!rx_poll(&x, 2600));                                       /* once */
-    CHECK_EQ(rx_wait_left(&x, 2600), 0);
+    CHECK_EQ(rx_wait_left(&x, 2600), 1900);                          /* then the 2 s limit runs */
     rx_tap(&x, 2714, 0);
     CHECK_EQ(x.st, RX_DONE);
     CHECK_EQ(x.ms, 214);
@@ -86,6 +86,22 @@ static void test_reaction(void)
     rx_poll(&x, x.go_at);
     rx_tap(&x, x.shown_at + 400, 0);
     CHECK_EQ(x.ms, 400);
+    CHECK_EQ(x.best_ms, 150);
+    /* no tap for 2 s: too slow, the best stays; the next tap starts again */
+    rx_tap(&x, 0, 0);
+    rx_poll(&x, x.go_at);
+    CHECK(!rx_poll(&x, x.shown_at + RX_LIMIT_MS - 1));
+    CHECK(rx_poll(&x, x.shown_at + RX_LIMIT_MS));
+    CHECK_EQ(x.st, RX_SLOW);
+    CHECK_EQ(rx_wait_left(&x, x.shown_at + RX_LIMIT_MS), 0);
+    CHECK(!rx_poll(&x, x.shown_at + 99999));
+    CHECK_EQ(x.best_ms, 150);
+    rx_tap(&x, 50000, 0);
+    CHECK_EQ(x.st, RX_WAIT);
+    /* a late tap that beats the timer is too slow as well, not a 2.5 s time */
+    rx_poll(&x, x.go_at);
+    rx_tap(&x, x.shown_at + 2500, 0);
+    CHECK_EQ(x.st, RX_SLOW);
     CHECK_EQ(x.best_ms, 150);
     /* the tick wraps after 49 days */
     rx_init(&x);

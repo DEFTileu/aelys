@@ -74,7 +74,10 @@ focus_view_t scr_focus_set(const snap_t *s, uint32_t snap_ms, uint32_t now_ms)
     lv_obj_set_hidden(h.big, v == FV_DONE);
     lv_obj_set_hidden(h.title, v != FV_DONE);
     lv_obj_set_hidden(h.sub, v != FV_DONE);
-    lv_obj_set_hidden(h.hold, v != FV_PAUSED);
+    /* "Hold to stop" keeps its line while hidden, so pausing does not move the digits */
+    lv_obj_set_hidden(h.hold, v == FV_DONE);
+    lv_opa_t hold_opa = v == FV_PAUSED ? LV_OPA_COVER : LV_OPA_TRANSP;
+    if (lv_obj_get_style_text_opa(h.hold, LV_PART_MAIN) != hold_opa) lv_obj_set_style_text_opa(h.hold, hold_opa, 0);
 
     lv_obj_set_hidden(h.ring.obj, !ring);
     if (ring) {
@@ -90,7 +93,7 @@ lv_obj_t *scr_focus_create(lv_obj_t *parent)
 {
     h.root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
     ui_arc_create(&h.ring, h.root);
-    h.face = face_create(h.root, 34); /* the design's 0.34 zoom of a 300x170 face */
+    h.face = face_create(h.root, 50); /* larger than the design's 0.34, so the eyes read from across a desk */
     h.mood = MOOD_CALM;
     h.eb = ui_label(h.root, &inter_16, COLOR_FOCUS_TEXT, 300, 1, LV_TEXT_ALIGN_CENTER);
     h.big = ui_label(h.root, &inter_clock_96, UI_COLOR_TEXT, 330, 1, LV_TEXT_ALIGN_CENTER);

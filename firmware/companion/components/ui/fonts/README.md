@@ -20,7 +20,7 @@ Inter, rendered by `lv_font_conv` into LVGL bitmap fonts with 8 bits per pixel
 | `inter_24` | SemiBold | 24 | text set | screen titles |
 | `inter_28` | SemiBold | 28 | text set | titles |
 | `inter_40` | Bold | 40 | ASCII 0x20-0x7E, `·` `…` `—` | big numbers |
-| `inter_clock_96` | Bold | 96 | `0`-`9`, `:`, space | clock digits |
+| `inter_clock_96` | Bold, tabular digits | 96 | `0`-`9`, `:`, space | clock digits |
 
 Text set (16/20/24/28): ASCII 0x20-0x7E, `·` `…` `—`, curly quotes `‘ ’ “ ”`, Cyrillic
 U+0400-045F (Russian and the other Slavic letters) and the Kazakh letters
@@ -48,7 +48,16 @@ TXT="$ASCII,0x2018,0x2019,0x201C,0x201D,0x400-0x45F,0x492,0x493,0x49A,0x49B,0x4A
 for s in 16 20; do $C --font Inter-Medium.ttf --size $s -r "$TXT" -o out/inter_$s.c; done
 for s in 24 28; do $C --font Inter-SemiBold.ttf --size $s -r "$TXT" -o out/inter_$s.c; done
 $C --font Inter-Bold.ttf --size 40 -r "$ASCII" -o out/inter_40.c
-$C --font Inter-Bold.ttf --size 96 -r '0x30-0x3A,0x20' -o out/inter_clock_96.c
+# clock: Inter's tabular digits (zero.tf ... nine.tf) mapped onto 0-9, so a running time does not jitter sideways
+python3 -m venv venv && venv/bin/pip install fonttools==4.55.3
+venv/bin/python -I -c "
+from fontTools.ttLib import TTFont
+f = TTFont('Inter-Bold.ttf')
+for t in f['cmap'].tables:
+    if t.isUnicode():
+        for i, n in enumerate('zero one two three four five six seven eight nine'.split()): t.cmap[0x30 + i] = n + '.tf'
+f.save('Inter-Bold-tnum.ttf')"
+$C --font Inter-Bold-tnum.ttf --size 96 -r '0x30-0x3A,0x20' -o out/inter_clock_96.c
 ```
 
 The output is used as generated. With LVGL 9 it defines non-const `lv_font_t` structs

@@ -37,11 +37,13 @@ static void rx_start(rx_t *x, uint32_t now, uint32_t r)
 
 uint32_t rx_wait_left(const rx_t *x, uint32_t now)
 {
-    return x->st == RX_WAIT && (int32_t)(x->go_at - now) > 0 ? x->go_at - now : 0;
+    uint32_t due = x->st == RX_WAIT ? x->go_at : x->st == RX_GO ? x->shown_at + RX_LIMIT_MS : now;
+    return (int32_t)(due - now) > 0 ? due - now : 0;
 }
 
 bool rx_poll(rx_t *x, uint32_t now)
 {
+    if (x->st == RX_GO && now - x->shown_at >= RX_LIMIT_MS) { x->st = RX_SLOW; return true; }
     if (x->st != RX_WAIT || (int32_t)(now - x->go_at) < 0) return false;
     x->st = RX_GO;
     x->shown_at = now;
@@ -52,6 +54,8 @@ void rx_tap(rx_t *x, uint32_t now, uint32_t r)
 {
     if (x->st == RX_WAIT) {
         x->st = RX_EARLY;
+    } else if (x->st == RX_GO && now - x->shown_at >= RX_LIMIT_MS) {
+        x->st = RX_SLOW; /* the tap beat the timer that would have said so */
     } else if (x->st == RX_GO) {
         x->st = RX_DONE;
         x->ms = now - x->shown_at;

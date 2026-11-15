@@ -17,10 +17,11 @@ unsigned gm_die(uint32_t r);                               /* 1..6 */
 /* Pips of a face as a bit mask over the seven spots: 0 top-left, 1 top-right, 2 mid-left, 3 centre, 4 mid-right, 5 bottom-left, 6 bottom-right. */
 unsigned gm_die_pips(unsigned face);
 
-/* Reaction: wait 1.5 to 4 s, the screen turns, tap as fast as possible. */
+/* Reaction: wait 1.5 to 4 s, the screen turns, tap as fast as possible; no tap within 2 s is "too slow". */
 #define RX_MIN_WAIT_MS 1500
 #define RX_SPAN_MS 2500
-typedef enum { RX_IDLE, RX_WAIT, RX_GO, RX_DONE, RX_EARLY } rx_state_t;
+#define RX_LIMIT_MS 2000
+typedef enum { RX_IDLE, RX_WAIT, RX_GO, RX_DONE, RX_EARLY, RX_SLOW } rx_state_t;
 typedef struct {
     rx_state_t st;
     uint32_t go_at;    /* WAIT: the tick at which the screen turns */
@@ -29,9 +30,9 @@ typedef struct {
     uint32_t best_ms;  /* the best of the session, 0 = none yet */
 } rx_t;
 void rx_init(rx_t *x);
-uint32_t rx_wait_left(const rx_t *x, uint32_t now);        /* WAIT: ms until the screen turns, else 0 */
-bool rx_poll(rx_t *x, uint32_t now);                       /* WAIT -> GO once due; true exactly on that change */
-void rx_tap(rx_t *x, uint32_t now, uint32_t r);            /* WAIT: too soon; GO: the time; anything else starts a new wait */
+uint32_t rx_wait_left(const rx_t *x, uint32_t now);        /* WAIT: ms until the screen turns; GO: until too slow; else 0 */
+bool rx_poll(rx_t *x, uint32_t now);                       /* WAIT -> GO, GO -> SLOW once due; true exactly on a change */
+void rx_tap(rx_t *x, uint32_t now, uint32_t r);            /* WAIT: too soon; GO: the time (or too slow); anything else starts a new wait */
 
 /* Tilt maze on a 260 x 260 board (design "Лабиринт наклоном"): the ball rolls with the tilt, walls stop it, the goal is in the far corner. */
 #define MZ_SIZE 260
