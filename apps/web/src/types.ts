@@ -16,6 +16,7 @@ export type RoutePath =
   | '/automation'
   | '/messages'
   | '/notification-log'
+  | '/app-limits'
   | '/search'
   | '/settings'
   | '/components'

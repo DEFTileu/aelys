@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType } from 'react'
-import { Bell, Brush, GraduationCap, Calculator, Brain, CircleDot, Dices, Disc3, Grid2x2, Hash, Worm, Zap, Globe, Keyboard, Layers, MessageSquare, Terminal, Timer, Workflow, Wrench, BookOpen, type LucideIcon } from 'lucide-react'
+import { Bell, Brush, ShieldCheck, GraduationCap, Calculator, Brain, CircleDot, Dices, Disc3, Grid2x2, Hash, Worm, Zap, Globe, Keyboard, Layers, MessageSquare, Terminal, Timer, Workflow, Wrench, BookOpen, type LucideIcon } from 'lucide-react'
 import { isMacPlatform } from '../../data/navigation'
 import { getSharedApiClient } from '../../lib/api'
 import { navigate } from '../../lib/router'
@@ -20,6 +20,7 @@ const GROUPS: readonly { id: string; title: string; tone: Tone }[] = [
 // Tiles marked soon have no data source or screen in the product yet: they stay visible as designed but do nothing.
 const CATALOG: readonly Entry[] = [
   { group: 'mind', id: 'focus', title: 'Focus', icon: Timer, desc: 'Pomodoro, breaks and stopwatch', route: '/timer' },
+  { group: 'mind', id: 'applimits', title: 'App limits', icon: ShieldCheck, desc: 'Daily limits on Instagram, TikTok and more', route: '/app-limits' as RoutePath },
   { group: 'quick', id: 'calc', title: 'Calculator', icon: Calculator, desc: 'Math, units, percent and tips', local: 'calc', status: 'Units and percent' },
   { group: 'quick', id: 'zones', title: 'Zones', icon: Globe, desc: 'Time across cities', local: 'zones' },
   { group: 'quick', id: 'decide', title: 'Decide', icon: Dices, desc: 'Coin, dice and a choice wheel', local: 'decide', status: 'Coin · dice · wheel' },
@@ -89,8 +90,8 @@ export function useApps(apiStatus: ApiStatus) {
   }, [apiStatus, mac])
   useEffect(() => { const id = window.setInterval(() => setNow(new Date()), 30_000); return () => window.clearInterval(id) }, [])
 
-  // The notification log reads Android notifications, so it exists only in the Android app.
-  const entries = useMemo(() => CATALOG.filter(entry => (entry.id !== 'dev' || mac) && (entry.id !== 'notifylog' || isAndroidHost())), [mac])
+  // The notification log and app limits read Android phone data, so they exist only in the Android app.
+  const entries = useMemo(() => CATALOG.filter(entry => (entry.id !== 'dev' || mac) && (entry.id !== 'notifylog' || isAndroidHost()) && (entry.id !== 'applimits' || isAndroidHost())), [mac])
   const zonesStatus = useMemo(() => {
     const zones = read('aelys.apps.zones.v1', isIds, ['Europe/London', 'America/New_York'])
     return zones.slice(0, 2).map(zone => `${cityOf(zone)} ${zoneTime(zone, now)}`).join(' · ') || 'Time across cities'

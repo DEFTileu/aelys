@@ -5,6 +5,8 @@ import { AppsView, siteUrl } from '../views/AppsView'
 
 const client = vi.hoisted(() => ({ focusSessions: vi.fn(), automations: vi.fn(), agentSessions: vi.fn() }))
 vi.mock('../lib/api', () => ({ getSharedApiClient: () => client }))
+const android = vi.hoisted(() => ({ value: false }))
+vi.mock('../lib/notificationLog', () => ({ isAndroidHost: () => android.value }))
 const nav = vi.hoisted(() => vi.fn())
 vi.mock('../lib/router', () => ({ navigate: nav }))
 let root: ReturnType<typeof createRoot>
@@ -27,6 +29,16 @@ it('groups apps as designed and shows real statuses only', async () => {
   for (const title of ['Plan & reflect', 'Review', 'Weeks', 'Habits', 'Countdowns', 'Breathe']) expect(text).not.toContain(title)
   expect(text).toContain('1h 15m today'); expect(text).toContain('1 rule on'); expect(text).not.toContain('3 of 5')
   expect(host.querySelectorAll('.apps-soon').length).toBe(4)
+})
+it('shows the App limits tile only in the Android app and opens its route', async () => {
+  await mount()
+  expect(host.textContent).not.toContain('App limits'); act(() => root.unmount()); document.body.innerHTML = ''
+  android.value = true
+  try {
+    await mount()
+    await act(async () => [...host.querySelectorAll<HTMLElement>('.apps-card__open')].find(b => b.textContent === 'App limits')!.click())
+    expect(nav).toHaveBeenCalledWith('/app-limits')
+  } finally { android.value = false }
 })
 it('opens real routes, local apps and ignores Soon tiles', async () => {
   await mount()
