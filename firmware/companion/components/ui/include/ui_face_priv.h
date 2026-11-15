@@ -18,7 +18,7 @@ typedef enum {
 } face_lid_t;
 typedef enum {
     MOT_NONE, MOT_LOOK, MOT_HOP, MOT_HOP_SLOW, MOT_SWAY, MOT_BREATHE, MOT_JIT, MOT_SINK, MOT_SINK_SLOW, MOT_POP,
-    MOT_TILT, MOT_WOBBLE, MOT_HUFF, MOT_PARTY, MOT_SHAKE, MOT_PEEK, MOT_PONDER,
+    MOT_TILT, MOT_WOBBLE, MOT_ANGRY, MOT_PARTY, MOT_SHAKE, MOT_PEEK, MOT_PONDER,
     MOT_JUMP, MOT_SHIVER, MOT_DRIFT, MOT_SEARCH, MOT_BREATHE_SLOW,
     MOT_SINK_RELIEF, MOT_SINK_LETDOWN, MOT_CHEEKY, MOT_COUNT
 } face_motion_t;
@@ -44,10 +44,11 @@ typedef struct {
     uint32_t gradient_top, gradient_bottom; /* 0 = normal purple gradient */
     uint8_t star_opacity;         /* 0 = default full opacity */
     uint8_t glow_width;           /* shadow width in face pixels; 0 = no glow */
-    uint8_t n_spark, n_zz, n_heart, n_line;
-    bool drop, cheeks, dots, confetti;
+    uint8_t n_spark, n_zz, n_heart, n_line, n_steam;
+    bool drop, cheeks, dots, confetti, vein; /* vein: the anger mark */
     uint16_t drop_ms;             /* drip period */
     face_fx_t spark[3], drop_at, zz[2], heart[2], line[3]; /* line: size = rotation in degrees */
+    face_fx_t vein_at, steam[2];  /* steam: the box of a cloud at the start of its rise */
 } face_mood_t;
 
 const face_mood_t *face_mood_def(mood_t m); /* NULL if out of range */
@@ -70,6 +71,8 @@ face_fx_state_t face_fx_rise(uint32_t t_ms, uint32_t period_ms, uint32_t delay_m
 face_fx_state_t face_fx_drip(uint32_t t_ms, uint32_t period_ms);                    /* drops */
 face_fx_state_t face_fx_twinkle(uint32_t t_ms, uint32_t delay_ms);                  /* sparkles */
 face_fx_state_t face_fx_burst(uint32_t t_ms);                                       /* surprised lines */
+face_fx_state_t face_fx_pulse(uint32_t t_ms);                                       /* the anger mark: k = scale permille */
+face_fx_state_t face_fx_steam(uint32_t t_ms, uint32_t delay_ms);                    /* a cloud: dy = rise, k = growth 0..1000 */
 int32_t face_fx_dot(uint32_t t_ms, int index); /* offline dots: 0..255 mix of dim to accent */
 
 /* Pre-rendered A8 shapes (img_fx.c, tools/gen_face_fx.py), nearest size to the requested one. */
@@ -79,3 +82,5 @@ const lv_image_dsc_t *face_img_star_squashed(int32_t width_key, int32_t openness
 const lv_image_dsc_t *face_img_heart(int32_t w);
 const lv_image_dsc_t *face_img_drop(int32_t px);   /* box edge before the 45 degree turn */
 const lv_image_dsc_t *face_img_z(int32_t h);       /* glyph height */
+const lv_image_dsc_t *face_img_vein(int32_t px);   /* the anger mark's edge */
+const lv_image_dsc_t *face_img_puff(int32_t px);   /* a steam cloud's width */

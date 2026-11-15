@@ -106,10 +106,60 @@ static void test_shapes(void)
     CHECK(dark(93, 70) && lit(93, 90));
     gone(f);
 
-    f = show(MOOD_ANNOYED, 100, 0, 0, 100);                        /* inner ends lower */
-    CHECK(dark(93, 75) && lit(93, 90));
-    CHECK(dark(120, 85) && lit(66, 78));
+    f = show(MOOD_ANNOYED, 100, 0, 0, 100);                        /* big red eyes, 92 x 120 at 47 / 161, inner ends lower */
+    CHECK(dark(93, 50) && lit(93, 70) && lit(93, 140) && dark(93, 150));
+    CHECK(lit(49, 86) && dark(45, 86) && lit(137, 86) && dark(142, 86)); /* 92 wide */
+    CHECK(lit(163, 86) && dark(159, 86) && lit(251, 86) && dark(256, 86));
+    CHECK(dark(60, 45) && lit(60, 65) && dark(125, 62) && lit(125, 80)); /* cut: 59 in the middle, 48 outside, 69 inside */
+    CHECK(dark(240, 45) && lit(240, 65) && dark(175, 62) && lit(175, 80));
+    { rgb_t p = at(93, 110); CHECK(p.r > p.g + 80 && p.r > p.b + 60); } /* red, not violet */
+    { rgb_t t = at(93, 75), b = at(93, 140); CHECK(t.g > b.g + 30 && b.r > 190 && b.g < 70); } /* #FF8A84 down to #E5262E */
     gone(f);
+
+    /* the glint sits below the brow, inside each eye */
+    f = show(MOOD_ANNOYED, 100, 0, 0, 100);
+    CHECK(close_to(108, 83, 255, 255, 255, 30) && close_to(222, 83, 255, 255, 255, 30)); /* 22 px star at 50,46 of each eye */
+    gone(f);
+
+    /* the anger mark and the steam belong to this mood only */
+    f = show(MOOD_ANNOYED, 100, 0, 0, 530);                        /* the mark is biggest at 0.54 s: 37 px at 250, 6 */
+    int quad[4] = { 0, 0, 0, 0 }, solid = 0;
+    for (int y = 4; y < 43; y++)
+        for (int x = 247; x < 288; x++)
+            if (close_to(x, y, 0xFF, 0x5A, 0x5F, 40)) {
+                quad[(y > 23) * 2 + (x > 267)]++;
+                solid += close_to(x, y, 0xFF, 0x5A, 0x5F, 12);
+            }
+    for (int q = 0; q < 4; q++) CHECK(quad[q] > 25);              /* four arcs, one in each corner */
+    for (int y = 4; y < 43; y++) CHECK(dark(267, y));              /* clear gaps between them, on both axes */
+    for (int x = 247; x < 288; x++) CHECK(dark(x, 23));
+    CHECK(solid > 60);                                             /* #FF5A5F itself, not only blended edges */
+    int left = 0;
+    for (int y = 50; y < 110; y++)
+        for (int x = 0; x < 30; x++) left += lit(x, y);            /* the left cloud (0.5 s into its loop), beside the eye */
+    CHECK(left > 80);
+    { rgb_t p = at(12, 62); CHECK(p.r > 100 && p.b > p.r && p.b < 230); } /* light grey with a violet tint, #B8B2C4 at most */
+    gone(f);
+    f = show(MOOD_ANNOYED, 100, 0, 0, 1280);                       /* the right cloud is half a loop behind */
+    int right = 0;
+    for (int y = 50; y < 110; y++)
+        for (int x = 272; x < 306; x++) right += lit(x, y);
+    CHECK(right > 80);
+    gone(f);
+    f = show(MOOD_CALM, 100, 0, 0, 530);
+    CHECK(dark(257, 13) && dark(278, 34));
+    for (int y = 50; y < 110; y++)
+        for (int x = 272; x < 306; x++) CHECK(dark(x, y));
+    gone(f);
+
+    /* the dart: left at 1.2 s, right at 1.55 s, back to the middle at the end of the loop */
+    f = show(MOOD_ANNOYED, 100, 0, 0, 1180);
+    CHECK(lit(35, 86) && dark(22, 86) && dark(130, 86) && lit(150, 86)); /* 18 px left of 47, shaking by 3 */
+    gone(f);
+    f = show(MOOD_ANNOYED, 100, 0, 0, 1530);
+    CHECK(lit(265, 86) && dark(278, 86));
+    gone(f);
+
 
     f = show(MOOD_SLEEPY, 100, 0, 0, 100);
     CHECK(dark(93, 70) && lit(93, 100));

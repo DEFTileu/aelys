@@ -1,6 +1,7 @@
 /* Mood table and animation curves, ported from the design's face CSS (ACTUAL AELYS Companion, CompanionFace):
  * the .e eye boxes and lids per mood, the `.ey` group keyframes (look, hop, sway, breathe, jit, sink, pop, tilt,
- * wobble, huff) and the effect loops (twinkle, drip, zz, burst, d3). Integer math only. */
+ * wobble) and the effect loops (twinkle, drip, zz, burst, d3). The angry face (dart, anger mark, steam) is the owner's
+ * request, not the design. Integer math only. */
 #include "ui_face_priv.h"
 
 /* x, y, w, h, radius, star x, star y, star edge [, lid cut y (tenths of px), lid slope (permille)] */
@@ -41,8 +42,14 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
                         .n_zz = 2, .zz = { { 238, 56, 30, 0 }, { 264, 28, 22, 1600 } } },
     [MOOD_DIZZY] = { .eye = { E(55, 47, 76, 76, 38, NOSTAR), E(169, 47, 76, 76, 38, NOSTAR) },
                      .kind = EYE_RING, .border = 12, .color = 0xA98CFB, .motion = MOT_WOBBLE },
-    [MOOD_ANNOYED] = { .eye = { EL(58, 54, 70, 76, 35, STD, 273, 325), EL(172, 54, 70, 76, 35, STD, 273, -325) },
-                       .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_HUFF, .blink_ms = 6000 },
+    /* owner's request (2026-11-15), not the design: angry = big red eyes under slanted brows that dart left and right,
+     * a pulsing anger mark top right and two small steam clouds beside the eyes (outside the 18 + 3 px dart); the glint
+     * sits below the brow line */
+    [MOOD_ANNOYED] = { .eye = { EL(47, 26, 92, 120, 46, 50, 46, 22, 330, 325), EL(161, 26, 92, 120, 46, 50, 46, 22, 330, -325) },
+                       .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_ANGRY, .blink_ms = 6000,
+                       .gradient_top = 0xFF8A84, .gradient_bottom = 0xE5262E,
+                       .vein = true, .vein_at = { 250, 6, 34, 0 },
+                       .n_steam = 2, .steam = { { -2, 66, 28, 0 }, { 275, 66, 28, 800 } } },
     [MOOD_LOVE] = { .eye = { E(58, 35, 70, 100, 35, STD), E(172, 35, 70, 100, 35, STD) },
                     .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_SWAY, .cheeks = true,
                     .n_heart = 2, .heart = { { 258, 20, 24, 0 }, { 16, 34, 24, 1400 } } },
@@ -170,7 +177,7 @@ static int32_t group_ease_out(int32_t u)
 
 /* ---- eye group (.ey) keyframes ---- */
 typedef struct { int16_t t, tx, ty, rot, sc; } kf_t; /* t permille of the loop; px, px, deg, permille */
-typedef struct { uint16_t period; uint8_t easing, n; kf_t k[9]; } motion_t; /* 0 ease-in-out, 1 out, 2 linear */
+typedef struct { uint16_t period; uint8_t easing, n; kf_t k[8]; } motion_t; /* 0 ease-in-out, 1 out, 2 linear */
 #define K(t, tx, ty, rot) { t, tx, ty, rot, 1000 }
 #define KS(t, sc) { t, 0, 0, 0, sc }
 
@@ -190,9 +197,7 @@ static const motion_t MOTION[MOT_COUNT] = {
     [MOT_TILT] = { 4000, false, 6, { K(0, 0, 0, 0), K(300, -14, 0, -8), K(450, -14, 0, -8), K(650, 14, -4, 6),
                                      K(800, 14, -4, 6), K(1000, 0, 0, 0) } },
     [MOT_WOBBLE] = { 1600, false, 3, { K(0, 0, 0, -9), K(500, 0, 0, 9), K(1000, 0, 0, -9) } },
-    [MOT_HUFF] = { 3000, false, 9, { K(0, 0, 0, 0), K(200, 0, 0, 0), K(300, 16, 0, 0), K(600, 16, 0, 0),
-                                     K(640, 12, 0, 0), K(680, 18, 0, 0), K(720, 14, 0, 0), K(850, 0, 0, 0),
-                                     K(1000, 0, 0, 0) } },
+    [MOT_ANGRY] = { 2400, 0, 0, { { 0 } } }, /* computed: angry_tx() */
     [MOT_PARTY] = { 1200, 0, 4, { K(0,0,0,0), K(250,0,-14,-6), K(750,0,-14,6), K(1000,0,0,0) } },
     [MOT_SHAKE] = { 220, 2, 4, { K(0,0,0,0), K(250,-4,1,0), K(750,4,-1,0), K(1000,0,0,0) } },
     [MOT_PEEK] = { 2600, 0, 5, { K(0,0,0,0), K(400,0,0,0), K(550,14,-10,0), K(850,14,-10,0), K(1000,0,0,0) } },
@@ -210,10 +215,33 @@ static const motion_t MOTION[MOT_COUNT] = {
 
 uint32_t face_motion_period(face_motion_t m) { return (unsigned)m < MOT_COUNT ? MOTION[m].period : 0; }
 
+/* Triangle wave, -1000..1000, starting at 0 and rising. */
+static int32_t tri(uint32_t t_ms, uint32_t period_ms)
+{
+    int32_t p = (int32_t)(t_ms % period_ms * 4000 / period_ms);
+    return p < 1000 ? p : p < 3000 ? 2000 - p : p - 4000;
+}
+
+/* The angry dart, px*100 over a 2.4 s loop: a 1.5 px tremble at 12 Hz; at 1.00 s a jump 18 px left, a 3 px shake for 250 ms
+ * (16 Hz); at 1.33 s a jump 18 px right and the same shake; at 1.68 s back to the middle and the tremble. */
+static int32_t angry_tx(uint32_t t)
+{
+    if (t < 1000 || t >= 1800) return 150 * tri(t, 83) / 1000;
+    if (t < 1080) return -1800 * ease_out((int32_t)(t - 1000) * 1000 / 80) / 1000;
+    if (t < 1330) return -1800 + 300 * tri(t - 1080, 64) / 1000;
+    if (t < 1430) return -1800 + 3600 * ease_out((int32_t)(t - 1330) * 10) / 1000;
+    if (t < 1680) return 1800 + 300 * tri(t - 1430, 64) / 1000;
+    return 1800 - 1800 * ease((int32_t)(t - 1680) * 1000 / 120) / 1000;
+}
+
 face_group_t face_group_at(face_motion_t m, uint32_t t_ms)
 {
     face_group_t g = { 0, 0, 0, 1000 };
     if ((unsigned)m >= MOT_COUNT || !MOTION[m].period) return g;
+    if (m == MOT_ANGRY) {
+        g.tx = angry_tx(t_ms % MOTION[m].period);
+        return g;
+    }
     const motion_t *mo = &MOTION[m];
     uint64_t p = (uint64_t)(t_ms % mo->period) * 1000u;
     int i = 0;
@@ -380,6 +408,30 @@ face_fx_state_t face_fx_burst(uint32_t t_ms)
         s.op = 255 * e / 1000;
         s.k = 300 + 700 * e / 1000;
     } else if (p < 800) s.op = 255 - 255 * ease_out((p - 420) * 1000 / 380) / 1000;
+    return s;
+}
+
+/* The anger mark, 1.2 s: scale .7 at 0, 1.1 at 45 %, .9 at 75 %, back to .7; opacity follows the scale (150 .. 255) */
+face_fx_state_t face_fx_pulse(uint32_t t_ms)
+{
+    int32_t p = (int32_t)(t_ms % 1200 * 1000 / 1200);
+    face_fx_state_t s = { 0, 0, 0, 0 };
+    if (p < 450) s.k = 700 + 400 * ease(p * 1000 / 450) / 1000;
+    else if (p < 750) s.k = 1100 - 200 * ease((p - 450) * 1000 / 300) / 1000;
+    else s.k = 900 - 200 * ease((p - 750) * 1000 / 250) / 1000;
+    s.op = 150 + 105 * (s.k - 700) / 400;
+    return s;
+}
+
+/* A steam cloud, 1.6 s: appears at once (6 % fade-in) at 230 / 255, fades out while it rises 30 px (ease-out) and swells (k = growth permille) */
+face_fx_state_t face_fx_steam(uint32_t t_ms, uint32_t delay_ms)
+{
+    int32_t p = phase(t_ms, 1600, delay_ms);
+    face_fx_state_t s;
+    s.op = p < 60 ? 230 * p / 60 : 230 - 230 * ease((p - 60) * 1000 / 940) / 1000;
+    s.dx = 0;
+    s.dy = -3000 * ease_out(p) / 1000;
+    s.k = ease_out(p);
     return s;
 }
 
