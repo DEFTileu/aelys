@@ -47,7 +47,7 @@ void ui_setup(void);
 typedef struct {
     bool (*start)(bool speak);
     void (*end)(bool cancel);
-    void (*hold_power)(bool hold);
+    uint8_t (*level)(void); /* link_voice_level: the microphone level while listening, 0-255, for the Ask Aelys bars */
     void (*stop_audio)(void);
     uint32_t (*token)(void); /* link_voice_token: identity of the queued start */
 } ui_voice_hooks_t;

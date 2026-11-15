@@ -5,7 +5,6 @@
 
 /* The PMIC powers off after 10 s of press, so a key "down" for longer is stale (lost release edge). */
 #define PWRKEY_STALE_MS 10500
-#define PWRKEY_STALE_TALK_MS 31000
 
 typedef struct { bool down; uint32_t since_ms; } pwrkey_t;
 

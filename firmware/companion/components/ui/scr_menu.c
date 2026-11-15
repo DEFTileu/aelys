@@ -33,7 +33,7 @@ static const menu_item_t items[N_ITEMS] = {
     { "Calendar",  0xFF8A84, SCR_CALENDAR },
     { "Inbox",     0xB9A8FF, SCR_INBOX },
     { "Weather",   0x7FA8F5, SCR_WEATHER },
-    { "Ask Aelys", 0xB9A8FF, SCR_PLACEHOLDER },
+    { "Ask Aelys", 0xB9A8FF, SCR_ASK },
     { "Games",     0x5FD7A8, SCR_GAMES },
     { "Settings",  0xA6A0B2, SCR_SETTINGS },
 };
@@ -80,6 +80,7 @@ static void sub_text(char *out, size_t cap, int i, const snap_t *s)
     else if (items[i].target == SCR_TIMER) scr_timer_summary(out, cap);
     else if (items[i].target == SCR_WEATHER) scr_weather_summary(s, out, cap);
     else if (items[i].target == SCR_GAMES) snprintf(out, cap, "5 games");
+    else if (items[i].target == SCR_ASK) snprintf(out, cap, "Or hold the lower button");
     else if (items[i].target == SCR_INBOX) snprintf(out, cap, "%d new", s->unread > 0 ? s->unread : 0);
     else if (items[i].target == SCR_SETTINGS) snprintf(out, cap, "Brightness \xC2\xB7 Wi-Fi");
 }

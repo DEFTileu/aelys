@@ -187,3 +187,11 @@ bool scr_pair_set_code(const char *digits); /* 6 ASCII digits; false (nothing ch
 void scr_pair_set_done(void);               /* the "Paired" card */
 
 void scr_notice_voice(const char *text);
+
+/* scr_ask.c (design "5 · Голос · Спросить Элис"): the voice app; screens.c drives the view from the voice events */
+typedef enum { ASK_IDLE, ASK_LISTEN, ASK_THINK, ASK_ANSWER } ask_view_t;
+lv_obj_t *scr_ask_create(lv_obj_t *parent);
+void scr_ask_set(ask_view_t v);
+void scr_ask_question(const char *text);                  /* shown in quotes while it thinks */
+void scr_ask_reply(const char *text);                     /* shown while it answers */
+void scr_ask_set_level_source(uint8_t (*fn)(void));       /* the microphone level 0-255 the bars follow; NULL = still */

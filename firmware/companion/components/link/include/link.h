@@ -83,4 +83,5 @@ int link_probe_state(void); /* link_state_t, or -1 before initialization; bench 
 
 bool link_voice_start(bool speak);
 uint32_t link_voice_token(void); /* most recent successfully queued start */
+uint8_t link_voice_level(void);  /* peak of the latest microphone block while listening, 0-255 */
 void link_voice_end(bool cancel);

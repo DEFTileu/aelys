@@ -44,17 +44,8 @@ static void test_wraparound(void)
     CHECK(!pwrkey_update(&k, false, false, 0xFFFFFF00u + PWRKEY_STALE_MS + 1, PWRKEY_STALE_MS));
 }
 
-static void test_extended_stale(void)
-{
-    pwrkey_t k; pwrkey_reset(&k);
-    CHECK(pwrkey_update(&k, true, false, 0, PWRKEY_STALE_TALK_MS));
-    CHECK(pwrkey_update(&k, false, false, 11000, PWRKEY_STALE_TALK_MS));
-    CHECK(!pwrkey_update(&k, false, false, 31001, PWRKEY_STALE_TALK_MS));
-}
-
 int main(void)
 {
-    test_extended_stale();
     test_press_release();
     test_both_edges_is_a_tap();
     test_stale_down_expires();

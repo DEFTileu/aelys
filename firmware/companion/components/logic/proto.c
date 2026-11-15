@@ -427,13 +427,13 @@ bool proto_parse(const char *json, size_t len, proto_msg_t *out)
         if (!get_str(&p, 0, "id", out->id, sizeof out->id, S_REQ) || !get_bool(&p, 0, "ok", &out->u.result.ok, S_REQ) ||
             !get_str(&p, 0, "error_code", out->u.result.error, sizeof out->u.result.error, S_TRUNC)) return false;
         t = MSG_ACTION_RESULT;
-    } else if (strcmp(type, "voice_state") == 0 || strcmp(type, "voice_text") == 0) {
+    } else if (strcmp(type, "voice_state") == 0 || strcmp(type, "voice_text") == 0 || strcmp(type, "voice_heard") == 0) {
         bool state = strcmp(type, "voice_state") == 0;
         if (!get_str(&p, 0, "id", out->id, sizeof out->id, S_REQ) || !out->id[0] ||
             !(state ? get_str(&p, 0, "state", out->u.voice.state, sizeof out->u.voice.state, S_REQ) &&
                        get_str(&p, 0, "error_code", out->u.voice.error, sizeof out->u.voice.error, S_TRUNC)
                     : get_str(&p, 0, "text", out->u.voice.text, sizeof out->u.voice.text, S_REQ | S_TRUNC))) return false;
-        t = state ? MSG_VOICE_STATE : MSG_VOICE_TEXT;
+        t = state ? MSG_VOICE_STATE : strcmp(type, "voice_heard") == 0 ? MSG_VOICE_HEARD : MSG_VOICE_TEXT;
     } else if (strcmp(type, "command") == 0) {
         return parse_command(&p, out);
     } else if (strcmp(type, "error") == 0) {
