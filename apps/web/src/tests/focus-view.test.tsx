@@ -53,6 +53,35 @@ beforeEach(() => {
 afterEach(() => { if (root) act(() => root.unmount()); document.body.innerHTML = '' })
 
 describe('FocusView', () => {
+  it('warns when it cannot confirm protection because status failed', async () => {
+    guard.status.mockRejectedValue(new Error('plugin gone'))
+    await mount()
+    expect(host.textContent).toContain('Cannot confirm protection')
+    expect(host.textContent).not.toContain('Protection is off')
+  })
+
+  it('shows no protection warning when everything is on', async () => {
+    await mount()
+    expect(host.textContent).not.toContain('Cannot confirm protection')
+    expect(host.textContent).not.toContain('Protection is off')
+  })
+
+  it('remembers that limits were configured once a non-empty config loads, and never forgets it', async () => {
+    localStorage.removeItem('aelys.appLimits.configured')
+    client.focusOverview.mockResolvedValue(overview([]))
+    await mount()
+    expect(localStorage.getItem('aelys.appLimits.configured')).toBeNull()
+    act(() => root.unmount())
+    client.focusOverview.mockResolvedValue(overview([INSTA]))
+    await mount()
+    expect(localStorage.getItem('aelys.appLimits.configured')).toBe('1')
+    act(() => root.unmount())
+    client.focusOverview.mockResolvedValue(overview([]))
+    await mount()
+    expect(localStorage.getItem('aelys.appLimits.configured')).toBe('1')
+    localStorage.removeItem('aelys.appLimits.configured')
+  })
+
   it('shows protection off when accessibility is missing', async () => {
     guard.status.mockResolvedValue({ usageAccess: true, accessibility: false })
     await mount()

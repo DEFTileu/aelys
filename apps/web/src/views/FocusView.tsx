@@ -4,7 +4,7 @@ import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
 import { Shield, TriangleAlert } from '../icons'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
-import { subscribeUnlockHandoff, takeUnlockHandoff, setUnlockHandoff } from '../lib/focusHandoff'
+import { markLimitsConfigured, subscribeUnlockHandoff, takeUnlockHandoff, setUnlockHandoff } from '../lib/focusHandoff'
 import { focusGuard, localDay, syncGuard, type AppUsage, type GuardStatus, type InstalledApp } from '../lib/focusGuard'
 import { isAndroidHost } from '../lib/notificationLog'
 import type { ApiStatus } from '../types'
@@ -45,7 +45,8 @@ export function FocusView({ apiStatus }: { apiStatus: ApiStatus }) {
 function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
   const [overview, setOverview] = useState<FocusOverview | null>(null)
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [status, setStatus] = useState<GuardStatus | null>(null)
+  // undefined: not read yet; null: the plugin could not say.
+  const [status, setStatus] = useState<GuardStatus | null | undefined>(undefined)
   const [usage, setUsage] = useState<Record<string, AppUsage> | null>(null)
   const [requests, setRequests] = useState<readonly FocusRequestRow[] | null>(null)
   // `base` is the effective config the edit started from; an edit is dropped when a refresh brings a different one.
@@ -75,6 +76,7 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
     try { loaded = await getSharedApiClient().focusOverview(day) }
     catch { setLoadState('error'); await showWaitingUnlock(); return }
     setOverview(loaded); setLoadState('ready')
+    if (loaded.config.effective.apps.length > 0) markLimitsConfigured()
     const stale = draftRef.current !== null && draftRef.current.base !== JSON.stringify(loaded.config.effective.apps)
     if (stale) setDraft(null)
     setNotice(stale ? 'The limits changed since you started editing. Your edit was discarded.' : '')
@@ -128,10 +130,11 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
   const taken = new Set(apps.flatMap((a) => a.packages))
 
   if (loadState === 'loading') return <div className="nlog" aria-busy="true"><StateCard status="loading" title="Loading app limits" description="Loading your limits from the server." /></div>
-  const protectionOff = status !== null && (!status.usageAccess || !status.accessibility)
+  const protectionOff = !!status && (!status.usageAccess || !status.accessibility)
 
   return <div className="nlog fg">
     {protectionOff && <div className="fg__banner fg__banner--off" role="alert"><TriangleAlert size={18} aria-hidden="true" /><div><b>Protection is off</b><p>Apps are not blocked until usage access and the accessibility service are both on.</p></div></div>}
+    {status === null && <div className="fg__banner fg__banner--off" role="alert"><TriangleAlert size={18} aria-hidden="true" /><div><b>Cannot confirm protection</b><p>Aelys could not read the blocking status on this phone, so limits may not be working. Reopen the screen to retry.</p></div></div>}
     {notice && <p className="nlog__notice" role="status">{notice}</p>}
     {unlockApp && <Unlock key={unlockApp} appId={unlockApp} label={labelOf(unlockApp)} aiLeft={overview?.ai_grants_left} ready={loadState === 'ready' && canWrite} onClose={() => setUnlockApp(null)} onDone={() => void load()} />}
     {loadState === 'error' && !overview && <StateCard status={online ? 'error' : 'offline'} title={online ? 'Could not load app limits' : 'You are offline'} description="Your phone keeps the limits it already has. Check the connection and try again."
@@ -179,7 +182,7 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
   </div>
 }
 
-function Bar({ app, status, usage }: { app: FocusApp; status: GuardStatus | null; usage: Record<string, AppUsage> | null }) {
+function Bar({ app, status, usage }: { app: FocusApp; status: GuardStatus | null | undefined; usage: Record<string, AppUsage> | null }) {
   // The plugin reports zero use without usage access; that is not a fact, so say so instead of "0 min".
   if (!status?.usageAccess) return <small className="fg__usage">No usage access yet · limit {app.limit_minutes} min</small>
   if (!usage) return <small className="fg__usage">Usage is not available right now</small>
