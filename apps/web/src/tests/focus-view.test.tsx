@@ -82,6 +82,25 @@ describe('FocusView', () => {
     localStorage.removeItem('aelys.appLimits.configured')
   })
 
+  it('unlock panel says the day also unlocks through English or tasks', async () => {
+    guard.takePendingUnlock.mockResolvedValue('instagram')
+    await mount()
+    expect(host.textContent).toContain("finishing today's English lesson or all of today's tasks")
+    expect(host.querySelector('textarea')).not.toBeNull()
+    expect(button('Ask for time')).toBeDefined()
+    expect(host.textContent).not.toContain('Already unlocked for today')
+  })
+
+  it('unlock panel needs no reason when the day is already unlocked', async () => {
+    guard.takePendingUnlock.mockResolvedValue('instagram')
+    client.focusOverview.mockResolvedValue(overview([INSTA], null, { day_unlocked: true }))
+    await mount()
+    expect(host.querySelector('section[aria-label="Unlock Instagram"]')).not.toBeNull()
+    expect(host.textContent).toContain('Already unlocked for today')
+    expect(host.querySelector('textarea')).toBeNull()
+    expect(button('Ask for time')).toBeUndefined()
+  })
+
   it('shows protection off when accessibility is missing', async () => {
     guard.status.mockResolvedValue({ usageAccess: true, accessibility: false })
     await mount()
@@ -215,7 +234,7 @@ describe('FocusView', () => {
     expect(guard.applyGrant).toHaveBeenCalledWith('instagram', 600, NOW)
     expect(host.textContent).toContain('Fine, ten minutes.')
     expect(host.textContent).toContain('You can open Instagram for 10 minutes')
-    expect(host.textContent).toContain('2 AI unlocks left today')
+    expect(host.textContent).toContain('2 AI unlocks left in the last 24 hours')
   })
 
   it('unlock panel shows the AI message and applies nothing on denial', async () => {
@@ -227,7 +246,7 @@ describe('FocusView', () => {
     expect(host.textContent).toContain('Scrolling is not a reason.')
     expect(host.textContent).not.toContain('You can open')
     expect(guard.applyGrant).not.toHaveBeenCalled()
-    expect(host.textContent).toContain('3 AI unlocks left today')
+    expect(host.textContent).toContain('3 AI unlocks left in the last 24 hours')
   })
 
   it('unlock is disabled when offline', async () => {

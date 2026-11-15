@@ -136,7 +136,7 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
     {protectionOff && <div className="fg__banner fg__banner--off" role="alert"><TriangleAlert size={18} aria-hidden="true" /><div><b>Protection is off</b><p>Apps are not blocked until usage access and the accessibility service are both on.</p></div></div>}
     {status === null && <div className="fg__banner fg__banner--off" role="alert"><TriangleAlert size={18} aria-hidden="true" /><div><b>Cannot confirm protection</b><p>Aelys could not read the blocking status on this phone, so limits may not be working. Reopen the screen to retry.</p></div></div>}
     {notice && <p className="nlog__notice" role="status">{notice}</p>}
-    {unlockApp && <Unlock key={unlockApp} appId={unlockApp} label={labelOf(unlockApp)} aiLeft={overview?.ai_grants_left} ready={loadState === 'ready' && canWrite} onClose={() => setUnlockApp(null)} onDone={() => void load()} />}
+    {unlockApp && <Unlock key={unlockApp} appId={unlockApp} label={labelOf(unlockApp)} aiLeft={overview?.ai_grants_left} dayUnlocked={overview?.day_unlocked === true} ready={loadState === 'ready' && canWrite} onClose={() => setUnlockApp(null)} onDone={() => void load()} />}
     {loadState === 'error' && !overview && <StateCard status={online ? 'error' : 'offline'} title={online ? 'Could not load app limits' : 'You are offline'} description="Your phone keeps the limits it already has. Check the connection and try again."
       action={<button type="button" className="nlog__btn nlog__btn--soft" onClick={() => void load()}>Try again</button>} />}
     {overview && <>
@@ -193,7 +193,7 @@ function Bar({ app, status, usage }: { app: FocusApp; status: GuardStatus | null
     <small className="fg__usage">{used} min of {Math.round(total / 60)} min{u.usedSeconds >= total ? ' · limit reached' : ''}</small></>
 }
 
-function Unlock({ appId, label, aiLeft, ready, onClose, onDone }: { appId: string; label: string; aiLeft: number | undefined; ready: boolean; onClose: () => void; onDone: () => void }) {
+function Unlock({ appId, label, aiLeft, dayUnlocked, ready, onClose, onDone }: { appId: string; label: string; aiLeft: number | undefined; dayUnlocked: boolean; ready: boolean; onClose: () => void; onDone: () => void }) {
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<FocusUnlockResult | null>(null)
@@ -219,17 +219,19 @@ function Unlock({ appId, label, aiLeft, ready, onClose, onDone }: { appId: strin
   const left = result?.ai_grants_left ?? aiLeft
   return <section className="fg__unlock" aria-label={`Unlock ${label}`}>
     <h2>Need more time on {label}?</h2>
-    <p>Write why. A short, honest reason works best. Each approval gives up to 10 minutes.</p>
-    <textarea aria-label="Reason" maxLength={300} rows={3} value={reason} disabled={busy || earned} onChange={(e) => setReason(e.target.value)} placeholder="Why do you need this app right now?" />
-    <small className="fg__count">{reason.length}/300</small>
-    {!ready && <p className="nlog__hint">You are offline or the server is not reachable. Unlocking needs a connection.</p>}
-    {error && <p className="nlog__notice" role="alert">{error}</p>}
-    {result && <p className={`fg__answer${earned ? ' is-ok' : ''}`} role="status">{result.message}</p>}
-    {earned && !applyFailed && <div className="nlog__done">You can open {label} for {result.minutes} minutes</div>}
-    {earned && applyFailed && <div className="nlog__notice" role="alert">Approved, but this phone did not take the grant. <button type="button" className="nlog__link" onClick={() => void apply(result.minutes)}>Try again</button></div>}
-    {left !== undefined && <small className="fg__count">{plural(left, 'AI unlock', 'AI unlocks')} left today</small>}
+    <p className="nlog__hint">The whole day also unlocks by finishing today's English lesson or all of today's tasks.</p>
+    {dayUnlocked && !earned ? <div className="nlog__done">Already unlocked for today</div> : <>
+      <p>Write why. A short, honest reason works best. Each approval gives up to 10 minutes.</p>
+      <textarea aria-label="Reason" maxLength={300} rows={3} value={reason} disabled={busy || earned} onChange={(e) => setReason(e.target.value)} placeholder="Why do you need this app right now?" />
+      <small className="fg__count">{reason.length}/300</small>
+      {!ready && <p className="nlog__hint">You are offline or the server is not reachable. Unlocking needs a connection.</p>}
+      {error && <p className="nlog__notice" role="alert">{error}</p>}
+      {result && <p className={`fg__answer${earned ? ' is-ok' : ''}`} role="status">{result.message}</p>}
+      {earned && !applyFailed && <div className="nlog__done">You can open {label} for {result.minutes} minutes</div>}
+      {earned && applyFailed && <div className="nlog__notice" role="alert">Approved, but this phone did not take the grant. <button type="button" className="nlog__link" onClick={() => void apply(result.minutes)}>Try again</button></div>}
+      {left !== undefined && <small className="fg__count">{plural(left, 'AI unlock', 'AI unlocks')} left in the last 24 hours</small>}</>}
     <div className="fg__actions">
-      {!earned && <button type="button" className="nlog__btn nlog__btn--primary" disabled={!reason.trim() || busy || !ready} onClick={() => void submit()}>Ask for time</button>}
+      {!earned && !dayUnlocked && <button type="button" className="nlog__btn nlog__btn--primary" disabled={!reason.trim() || busy || !ready} onClick={() => void submit()}>Ask for time</button>}
       <button type="button" className="nlog__btn nlog__btn--soft" onClick={onClose}>{earned ? 'Done' : 'Close'}</button></div>
   </section>
 }
