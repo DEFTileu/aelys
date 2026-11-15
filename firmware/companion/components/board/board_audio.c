@@ -22,12 +22,15 @@
 #include "freertos/task.h"
 
 #define BEEP_VOLUME 80       /* esp_codec_dev 0..100: tune on the board; the tone itself peaks at 73 % of full scale */
-#define VOICE_VOLUME 65      /* initial value; calibrate on the board */
+#define VOICE_VOLUME 85      /* speech sits ~16 dB under the beep tone; 65 was too quiet on the board (owner) */
 #define VOICE_RING_BYTES (128 * 1024)
 #define VOICE_CAPTURE_MAX_SAMPLES (20 * BEEP_RATE_HZ)
 #define SFX_VOLUME 65        /* the small sounds: quieter than "find me" (shortcut: a first guess, tune it by ear on the board) */
 #define AUDIO_TASK_PRIO 3
 #define AUDIO_TASK_STACK 5120
+#define VOICE_TX_PRIO 7      /* above the ui task (6): a frame that draws for 300 ms must not starve the speaker mid-word */
+#define VOICE_DMA_FRAMES 480 /* 30 ms per descriptor, x 6 = 180 ms of speech queued: Wi-Fi and redraws stop crackling it */
+#define VOICE_DMA_DESC 6
 #define LEAD_CHUNKS 2        /* 20 ms of silence before and after: the amplifier switches on/off without a pop on the first/last cycle */
 #define I2S_PORT I2S_NUM_0
 
@@ -89,11 +92,12 @@ static void audio_close(audio_t *a)
     *a = (audio_t){0};
 }
 
-static esp_err_t audio_open(audio_t *a)
+/* voice: a streamed reply gets a deeper DMA queue (11.5 KB internal) than the generated beeps and sounds (2.5 KB). */
+static esp_err_t audio_open(audio_t *a, bool voice)
 {
     i2s_chan_config_t cc = I2S_CHANNEL_DEFAULT_CONFIG(I2S_PORT, I2S_ROLE_MASTER);
-    cc.dma_desc_num = 4;                       /* small, internal: 4 x 160 frames x 4 bytes = 2.5 KB */
-    cc.dma_frame_num = BEEP_CHUNK_FRAMES;
+    cc.dma_desc_num = voice ? VOICE_DMA_DESC : 4;   /* small, internal: 4 x 160 frames x 4 bytes = 2.5 KB */
+    cc.dma_frame_num = voice ? VOICE_DMA_FRAMES : BEEP_CHUNK_FRAMES;
     cc.auto_clear_after_cb = true;             /* an underrun is silence, not a repeated buffer */
     ESP_RETURN_ON_ERROR(i2s_new_channel(&cc, &a->tx, NULL), TAG, "i2s channel");
     const i2s_std_config_t sc = {
@@ -153,7 +157,7 @@ static void audio_task(void *arg)
     sfx_player_t pl;
     sfx_start(&pl, snd);
     ESP_LOGW(TAG, "start: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    bool ok = audio_open(&a) == ESP_OK;
+    bool ok = audio_open(&a, false) == ESP_OK;
     if (!ok) ESP_LOGW(TAG, "codec or I2S did not start");
     else if (snd != SFX_NONE) esp_codec_dev_set_out_vol(a.dev, SFX_VOLUME);
     for (int i = 0; ok && i < LEAD_CHUNKS; i++) ok = play_chunk(&a, buf, &phase, false);
@@ -386,10 +390,10 @@ esp_err_t board_audio_play_begin(void)
     atomic_store(&voice_end, false);
     ++voice_generation;
     voice_ring = heap_caps_malloc(VOICE_RING_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    esp_err_t e = voice_ring ? audio_open(&voice_audio) : ESP_ERR_NO_MEM;
+    esp_err_t e = voice_ring ? audio_open(&voice_audio, true) : ESP_ERR_NO_MEM;
     if (e == ESP_OK) {
         esp_codec_dev_set_out_vol(voice_audio.dev, VOICE_VOLUME);
-        if (xTaskCreate(voice_task, "audio_tx", AUDIO_TASK_STACK, NULL, AUDIO_TASK_PRIO, &task) != pdPASS)
+        if (xTaskCreate(voice_task, "audio_tx", AUDIO_TASK_STACK, NULL, VOICE_TX_PRIO, &task) != pdPASS)
             e = ESP_ERR_NO_MEM;
     }
     if (e != ESP_OK) {
