@@ -25,7 +25,7 @@ dependencies = [
 
 [[package]]
 name = "aelys-mobile"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aelys-android-updater",
  "aelys-native-transport",
