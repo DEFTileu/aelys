@@ -60,3 +60,15 @@ private fun app(v: Any?): GuardedApp {
     if (minutes !in 1..1440) bad("limit_minutes")
     return GuardedApp(id, label, packages, minutes * 60)
 }
+
+/** A grant the plugin refuses; mapped to the `INVALID_GRANT` error code. */
+class InvalidGrantException(message: String) : IllegalArgumentException(message)
+
+const val MAX_GRANT_REQUEST_SECONDS = 600L
+
+/** Rejects a stale or forged grant: [seconds] in 1..600, [appId] in the current effective config, [day] == [today]. */
+fun checkGrant(state: GuardState, appId: String, seconds: Long, day: String, today: String) {
+    if (seconds !in 1..MAX_GRANT_REQUEST_SECONDS) throw InvalidGrantException("seconds")
+    if (state.effective.none { it.id == appId }) throw InvalidGrantException("app")
+    if (day != today) throw InvalidGrantException("day")
+}

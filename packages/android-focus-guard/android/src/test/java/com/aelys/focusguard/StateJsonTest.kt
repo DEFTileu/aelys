@@ -117,4 +117,22 @@ class StateJsonTest {
         assertInvalid(state(pending = "x", from = "2026-11-16"))
         assertInvalid(state(pending = JSONObject()))
     }
+
+    @Test
+    fun aGrantNeedsAKnownAppTenMinutesAtMostAndTodaysDate() {
+        val st = previous
+        val today = "2026-11-15"
+        checkGrant(st, "instagram", 1, today, today)
+        checkGrant(st, "instagram", 600, today, today)
+        for ((id, secs, day) in listOf(
+            Triple("instagram", 0L, today), Triple("instagram", -1L, today), Triple("instagram", 601L, today),
+            Triple("nope", 60L, today), Triple("instagram", 60L, "2026-11-14"), Triple("instagram", 60L, "2026-11-16"),
+        )) {
+            try {
+                checkGrant(st, id, secs, day, today)
+                fail("expected InvalidGrantException for $id $secs $day")
+            } catch (_: InvalidGrantException) {
+            }
+        }
+    }
 }
