@@ -104,7 +104,7 @@ class FocusAccessibilityService : AccessibilityService() {
         val today = localDay(now, tz)
         // Not guarded: return before any write (this runs for every window event of every app). The pending
         // config is promoted in memory only, so an app added by a due pending is not missed here.
-        if (store.appFor(Policy.promote(store.load(), today), pkg) == null) return
+        if (store.guardedApp(store.load(), pkg, today) == null) return
         val state = store.update { Policy.promote(it, today) }
         // Promotion can change the effective set, so resolve the app again from the promoted state.
         val app = store.appFor(state, pkg) ?: return
@@ -118,7 +118,8 @@ class FocusAccessibilityService : AccessibilityService() {
                     .putExtra(BlockActivity.EXTRA_USED, d.usedSeconds)
                     .putExtra(BlockActivity.EXTRA_LIMIT, d.limitSeconds),
             )
-            Decision.Allow -> Policy.secondsUntilBlock(app, used, state, today)?.let { schedule(pkg, it) }
+            // A day unlock has no block time; wake at midnight instead, so an app held open into tomorrow is metered.
+            Decision.Allow -> schedule(pkg, Policy.secondsUntilBlock(app, used, state, today) ?: secondsTo(nextLocalMidnightMs(now, tz), now))
         }
     }
 
@@ -131,6 +132,9 @@ class FocusAccessibilityService : AccessibilityService() {
         wake = r
         handler.postDelayed(r, maxOf(seconds, 1L) * 1000)
     }
+
+    /** Whole seconds from [now] to [targetMs], rounded up so the wake-up lands after the target. */
+    private fun secondsTo(targetMs: Long, now: Long): Long = (targetMs - now + 999) / 1000
 
     private fun cancelWake() {
         wake?.let { handler.removeCallbacks(it) }

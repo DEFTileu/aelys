@@ -38,6 +38,9 @@ class FocusStore(private val prefs: Prefs, ownPackage: String? = null) {
         transform(old).also { if (it != old) save(it) }
     }
 
+    /** [appFor] on the state with a due pending config promoted in memory (no write): the service's pre-check. */
+    fun guardedApp(state: GuardState, pkg: String, today: String): GuardedApp? = appFor(Policy.promote(state, today), pkg)
+
     /**
      * Grants [seconds] more to [appId] for [today] via [Policy.grantAfter], starting from the overshoot of
      * [usedSeconds] (today's use) over the limit (a new day starts a fresh grant map). Ignores non-positive

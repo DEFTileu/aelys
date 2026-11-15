@@ -61,4 +61,35 @@ class LocalTimeTest {
             assertEquals(true, s <= now && now - s < 25 * 3_600_000L)
         }
     }
+
+    @Test
+    fun nextMidnightOnANormalDay() {
+        // Almaty 2026-03-08 15:00 -> 2026-03-09 00:00 Almaty = 2026-03-08 19:00 UTC.
+        assertEquals(now + 9 * 3_600_000L, nextLocalMidnightMs(now, almaty))
+        assertEquals(now + 14 * 3_600_000L, nextLocalMidnightMs(now, utc))
+        // Exactly at midnight: the next one, a full day later.
+        val m = startOfLocalDayMs(now, almaty)
+        assertEquals(m + 24 * 3_600_000L, nextLocalMidnightMs(m, almaty))
+        assertEquals(m + 24 * 3_600_000L, nextLocalMidnightMs(m + 24 * 3_600_000L - 1, almaty))
+    }
+
+    @Test
+    fun nextMidnightOnSpringForwardDay() {
+        // LA 2026-03-08 03:00 PDT (23 h day); next midnight is 2026-03-09 00:00 PDT = 07:00 UTC.
+        val next = nextLocalMidnightMs(now, la)
+        assertEquals(now + 21 * 3_600_000L, next)
+        assertEquals(23 * 3_600_000L, next - startOfLocalDayMs(now, la))
+        assertEquals("2026-03-09", localDay(next, la))
+        assertEquals("2026-03-08", localDay(next - 1, la))
+    }
+
+    @Test
+    fun nextMidnightOnFallBackDay() {
+        // LA 2026-11-01 12:00 PST (25 h day); next midnight 2026-11-02 00:00 PST = 08:00 UTC.
+        val t = 1_793_563_200_000L
+        val next = nextLocalMidnightMs(t, la)
+        assertEquals(t + 12 * 3_600_000L, next)
+        assertEquals(25 * 3_600_000L, next - startOfLocalDayMs(t, la))
+        assertEquals("2026-11-02", localDay(next, la))
+    }
 }
