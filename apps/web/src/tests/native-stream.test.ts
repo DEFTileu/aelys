@@ -25,6 +25,15 @@ function fixture(autoOpen = true) {
 }
 
 describe('native AI Channel stream', () => {
+  it('opens the owner change-hint stream through the same native command', async () => {
+    const test = fixture()
+    const response = await test.fetcher(`${origin}/api/v1/changes`)
+    const reader = response.body!.getReader()
+    test.emit({ type: 'event', event: { id: null, event: 'changes.hint', data: { collections: ['focus'] } } })
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('event: changes.hint\ndata: {"collections":["focus"]}\n\n')
+    expect(test.invoke).toHaveBeenCalledWith('native_ai_events', expect.objectContaining({ origin, id: '', changes: true }))
+  })
+
   it('delivers text before invoke completes and closes only on the ordered end message', async () => {
     const test = fixture()
     const response = await test.fetcher(eventsUrl)

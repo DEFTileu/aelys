@@ -4,7 +4,7 @@ import { diagnostics } from './diagnostics'
 
 type NativeTransport = ReturnType<typeof createNativeTransport>
 
-function nativeAIEventResponse(transport: NativeTransport, origin: string, id: string, signal?: AbortSignal | null, diagnosticId?: number): Promise<Response> {
+function nativeAIEventResponse(transport: NativeTransport, origin: string, id: string, signal?: AbortSignal | null, diagnosticId?: number, changes = false): Promise<Response> {
   if (signal?.aborted) return Promise.reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
   const requestId = crypto.randomUUID()
   const encoder = new TextEncoder()
@@ -53,7 +53,7 @@ function nativeAIEventResponse(transport: NativeTransport, origin: string, id: s
     diagnostics.event(diagnosticId, event.event, event.data)
     const eventId = event.id === null ? '' : `id: ${event.id}\n`
     controller.enqueue(encoder.encode(`${eventId}event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`))
-  }).catch(fail)
+  }, changes).catch(fail)
   return ready
 }
 
@@ -309,6 +309,7 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
         return new Response(bytes, { status: 200, headers: { 'Content-Type': binary.content_type, 'Content-Length': String(bytes.byteLength) } })
       } catch (error) { return nativeErrorResponse(error, origin, init) }
     }
+    if (method === 'GET' && url.pathname === '/api/v1/changes') return nativeAIEventResponse(transport, origin, '', init?.signal, undefined, true)
     // Only the audio upload awaits; any extra tick here would let an early abort beat the native invoke.
     const upload = url.pathname === UPLOAD_PATH ? await uploadOperation(url, init) : undefined
     if (upload instanceof Response) return upload

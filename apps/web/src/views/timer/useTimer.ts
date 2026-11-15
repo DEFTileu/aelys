@@ -3,6 +3,7 @@ import type { FocusIn, FocusOut, ProjectResponse, TaskOut } from '@aelys/shared'
 import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
 import { Pause, Play, Square } from '../../icons'
 import { getSharedApiClient } from '../../lib/api'
+import { onChangeHint } from '../../lib/changeHints'
 import type { ApiStatus } from '../../types'
 
 export type Mode = 'focus' | 'break' | 'stopwatch'
@@ -46,6 +47,7 @@ export function useTimer(apiStatus: ApiStatus) {
     } catch (error) { setNotice(errorText(error)); setStatus(navigator.onLine ? 'error' : 'offline') }
   }, [])
   useEffect(() => { void load(false) }, [load, apiStatus])
+  useEffect(() => onChangeHint(['focus', 'tasks'], () => void load()), [load])
   const ticking = (!!active && !paused) || breakStart !== null
   useEffect(() => {
     if (!ticking) return

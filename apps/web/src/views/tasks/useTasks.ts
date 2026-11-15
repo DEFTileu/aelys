@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { ApiError, type ProjectResponse, type TaskOut } from '@aelys/shared'
 import { Calendar, CalendarDays, CircleCheck, Inbox } from '../../icons'
 import { getSharedApiClient } from '../../lib/api'
+import { onChangeHint } from '../../lib/changeHints'
 import type { ApiStatus } from '../../types'
 import { dateKey, dayDiff, fmtDay, draftFromTask, parseQuickTokens, draftToInput, emptyDraft, fullTaskInput, groupTasksByDay, groupTasksInMatrix, isCompleted, isOverdue, taskMatchesQuery, type TaskDraft } from './taskModel'
 import { useDurableDrafts } from '../../lib/durableDrafts'
@@ -148,6 +149,7 @@ export function useTasks(apiStatus: ApiStatus) {
     return nextSource === 'live'
   }, [])
   useEffect(() => { void load(false); return () => { loadGeneration.current++ } }, [load, apiStatus])
+  useEffect(() => onChangeHint(['tasks'], () => void load()), [load])
   useEffect(() => {
     const update = () => { setOnline(navigator.onLine); if (navigator.onLine) void load() }
     window.addEventListener('online', update); window.addEventListener('offline', update)

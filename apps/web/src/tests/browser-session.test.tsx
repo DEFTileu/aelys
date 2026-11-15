@@ -57,7 +57,8 @@ describe('shared browser session', () => {
 
   it('returns to sign in on a rejected refresh instead of leaving modules in an error state', async () => {
     sessionStorage.setItem('aelys.accessToken', 'old-access')
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/me') ? json({ id: 'owner' }) : json({ detail: { code: 'UNAUTHORIZED', message: 'Revoked' } }, 401))
+    // The live change stream opens on sign-in; only the explicit refresh below may reject the session.
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/me') ? json({ id: 'owner' }) : String(input).endsWith('/changes') ? new Response('', { headers: { 'Content-Type': 'text/event-stream' } }) : json({ detail: { code: 'UNAUTHORIZED', message: 'Revoked' } }, 401))
     vi.stubGlobal('fetch', fetchImpl)
     const { host } = await mount()
     expect(host.textContent).toContain('Finance workspace')

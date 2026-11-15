@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { CalendarReminder, EventOccurrence, EventOut } from '@aelys/shared'
 import { ApiError } from '@aelys/shared'
 import { getSharedApiClient } from '../../lib/api'
+import { onChangeHint } from '../../lib/changeHints'
 import type { ApiStatus } from '../../types'
 
 export const HOURS = Array.from({ length: 24 }, (_, index) => index)
@@ -75,6 +76,7 @@ export function useCalendar(apiStatus: ApiStatus) {
     }
   }
   useEffect(() => { void load(); return () => { requestGeneration.current += 1 } }, [apiStatus, range])
+  useEffect(() => onChangeHint(['events'], () => void load()), [])  // load reads the current range from a ref
   useEffect(() => {
     const date = new Date(selectedDate); date.setDate(date.getDate() + weekOffset * 7)
     setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1))

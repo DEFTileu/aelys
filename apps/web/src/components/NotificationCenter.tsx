@@ -3,6 +3,7 @@ import { ArrowLeft, Bell } from '../icons'
 import { X } from 'lucide-react'
 import type { Notification } from '@aelys/shared'
 import { getSharedApiClient } from '../lib/api'
+import { onChangeHint } from '../lib/changeHints'
 import { useWallpaper } from '../lib/wallpaper'
 import { isNativeHost } from '../lib/nativeTransport'
 import { askNotifyPermissionOnce, sendSystemNotification } from '../lib/systemNotifications'
@@ -66,8 +67,10 @@ export function NotificationCenter({ apiStatus, route }: { apiStatus: ApiStatus;
     }
     void load()
     // Native apps keep polling while hidden so a minimized window still raises system notifications.
+    // The interval also dispatches due calendar reminders, so it stays even while change hints arrive.
     const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden' || isNativeHost()) void load() }, 30_000)
-    return () => { active = false; window.clearInterval(timer) }
+    const stopHints = onChangeHint(['notifications'], () => void load())
+    return () => { active = false; window.clearInterval(timer); stopHints() }
   }, [apiStatus, route, open])
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '@aelys/shared'
-import { bootstrapOwner, browserAuthStatus, claimSetupToken, clearNativeSignedOut, getAccessToken, getApiConfig, getSharedApiClient, hasDeviceIdentity, isSignedOut, login, resumeBrowserSession, saveApiBaseUrl, SESSION_EVENT, setNativeCacheOwner, signInWithThisDevice, startOutboxReplay } from '../lib/api'
+import { bootstrapOwner, browserAuthStatus, claimSetupToken, clearNativeSignedOut, getAccessToken, getApiConfig, getSharedApiClient, hasDeviceIdentity, isSignedOut, login, resumeBrowserSession, saveApiBaseUrl, SESSION_EVENT, setNativeCacheOwner, signInWithThisDevice, startChangeStream, startOutboxReplay } from '../lib/api'
 import type { ApiStatus } from '../types'
 import './auth-entry.css'
 import { Icon } from './Icon'
@@ -132,7 +132,11 @@ export function AuthGate({ apiStatus, children }: { apiStatus: ApiStatus; childr
     void check()
     return () => { alive = false }
   }, [apiStatus, retry])
-  useEffect(() => (state === 'ready' ? startOutboxReplay() : undefined), [state])
+  useEffect(() => {
+    if (state !== 'ready') return
+    const stops = [startOutboxReplay(), startChangeStream()]
+    return () => stops.forEach((stop) => stop())
+  }, [state])
   const unlock = async () => {
     if (busy) return
     const run = generation.current
