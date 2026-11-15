@@ -198,27 +198,6 @@ async def test_voice_lost_mode_during_chat_prevents_tool_and_accounts_usage(pair
 
 
 @pytest.mark.asyncio
-async def test_voice_chat_budget_reservation_blocks_concurrent_turn(paired, monkeypatch):
-    owner, device_id, _ = paired
-    owner_id = decode_token(owner['access_token'])['sub']
-    await setup_voice(owner_id, device_id)
-    started, release = asyncio.Event(), asyncio.Event()
-    class WaitingService(FakeService):
-        async def complete(self, *args, **kwargs):
-            started.set()
-            await release.wait()
-            return await super().complete(*args, **kwargs)
-    service = WaitingService()
-    first = asyncio.create_task(execute_turn(monkeypatch, owner_id, device_id, 'one', service))
-    await asyncio.wait_for(started.wait(), 3)
-    try:
-        second = await execute_turn(monkeypatch, owner_id, device_id, 'two', FakeService())
-        assert second[-1]['error_code'] == 'BUDGET_EXCEEDED'
-    finally:
-        release.set()
-        await first
-
-@pytest.mark.asyncio
 async def test_session_revocation_stops_tool_and_preserves_usage(paired, monkeypatch):
     owner, device_id, _ = paired
     owner_id = decode_token(owner['access_token'])['sub']
@@ -257,3 +236,34 @@ async def test_voice_duplicate_turn_never_replays_provider(paired, monkeypatch):
     second = await execute_turn(monkeypatch, owner_id, device_id, 'same', second_service)
     assert first[-1]['state'] == 'done'
     assert second[-1]['error_code'] == 'VOICE_UNAVAILABLE' and not second_service.requests
+
+
+@pytest.mark.asyncio
+async def test_voice_cancelled_turn_keeps_chat_budget(paired, monkeypatch):
+    owner, device_id, _ = paired
+    owner_id = decode_token(owner['access_token'])['sub']
+    await setup_voice(owner_id, device_id)
+    class SlowService:
+        async def complete(self, *args, **kwargs):
+            await asyncio.sleep(30)
+    monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: SlowService())
+    async def stt(*args):
+        return 'вопрос'
+    monkeypatch.setattr(voice, 'transcribe_pcm', stt)
+    async def send(item):
+        pass
+    task = asyncio.create_task(voice.run_voice_turn(owner_id, device_id, 'cut', b'\x00\x00', False, send, send))
+    for _ in range(100):  # until the chat request is waiting on the provider
+        await asyncio.sleep(0.05)
+        async with db.SessionLocal() as session:
+            if (await session.execute(select(AIRun).where(AIRun.provider == 'claude'))).scalar_one_or_none():
+                break
+    await asyncio.sleep(0.2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    async with db.SessionLocal() as session:
+        chat = (await session.execute(select(AIProvider).where(AIProvider.owner_id == owner_id, AIProvider.kind == 'claude'))).scalar_one()
+        run = (await session.execute(select(AIRun).where(AIRun.provider_id == chat.id))).scalar_one()
+        assert run.status == 'failed' and run.cost_estimate == 0
+        assert await ai_api._remaining_monthly_budget(session, owner_id, chat) == Decimal(10)

@@ -74,9 +74,6 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
             message['error_code'] = code
         await send(message)
     run_ids: list[str] = []
-    chat_run_id: str | None = None
-    actual_cost: Decimal | None = None
-    request_in_flight = False
     try:
         await state('thinking')
         if len(pcm) > VOICE_MAX_BYTES:
@@ -129,12 +126,10 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
             await db.flush()
             run = AIRun(owner_id=owner_id, conversation_id=conversation.id, prompt_message_id=user_message.id,
                         provider_id=chat_provider.id, provider=chat_provider.kind, model=model or 'auto', status='running',
-                        started_at=now(), idempotency_key=key + ':chat', cost_estimate=min(Decimal(100), remaining),
-                        token_counts={'billing': 'reserved_estimate'})
+                        started_at=now(), idempotency_key=key + ':chat')  # cost recorded as it is reported (on_usage), as in Telegram: a cut turn must not keep a reservation
             db.add(run)
             await db.flush()
             run_ids.append(run.id)
-            chat_run_id = run.id
             snapshot = await build_snapshot(db, owner_id, now())
             user = await db.get(User, owner_id)
             timezone = owner_timezone((user.settings_json or {}).get('timezone') if user else None)
@@ -158,14 +153,6 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
             request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL,
                                      manual_model=model, context_tokens=sum(len(m.content) for m in messages)//4, request_budget=min(Decimal(100), remaining))
             service = ai_api._service(chat_provider, decrypt_secret(chat_secret.encrypted_value))
-            original_complete = service.complete
-            async def tracked_complete(*args: Any, **kwargs: Any) -> Any:
-                nonlocal request_in_flight
-                request_in_flight = True
-                result = await original_complete(*args, **kwargs)
-                request_in_flight = False
-                return result
-            service.complete = tracked_complete
             await db.commit()
             async def check() -> bool:
                 try:
@@ -182,9 +169,8 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
                 await _authorized(db, owner_id, device_id)
                 await db.commit()
             async def account(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
-                nonlocal actual_cost
-                actual_cost = cost
-                run.token_counts = {'input': input_tokens, 'output': output_tokens, 'actual_cost': str(cost), 'billing': 'reserved_estimate'}
+                run.cost_estimate = cost
+                run.token_counts = {'input': input_tokens, 'output': output_tokens, 'actual_cost': str(cost)}
                 await db.commit()
             result = await run_tool_turn(service, UUID(run.id), request, messages, registry, context,
                                          parse_call=ai_api._tool_call, on_event=event, on_usage=account, cancel_check=check, usage_before_check=True)
@@ -219,9 +205,6 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
         if run_ids:
             try:
                 async with database.SessionLocal() as cleanup:
-                    if chat_run_id and actual_cost is not None and not request_in_flight:
-                        await cleanup.execute(update(AIRun).where(AIRun.id == chat_run_id, AIRun.owner_id == owner_id,
-                                                                  AIRun.status == 'running').values(cost_estimate=actual_cost))
                     await cleanup.execute(update(AIRun).where(AIRun.owner_id == owner_id, AIRun.id.in_(run_ids),
                                                               AIRun.status == 'running').values(status='failed', completed_at=now()))
                     await cleanup.commit()

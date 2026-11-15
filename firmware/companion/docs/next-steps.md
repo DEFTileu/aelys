@@ -80,10 +80,10 @@ The owner must enter the BYOK key in Settings; never copy it to the board or rep
 - Exercise interruption under load: lower-key/ICE, Find, lost mode, socket
   replacement/disconnect, ring-full and failed codec initialization. Confirm
   no old audio appears in a later turn and Sounds-off/night skip TTS.
-- Budget limitation: voice turns reserve their chat allowance durably, but
-  existing ordinary chat callers do not yet share that reservation lock.
-  Concurrent ordinary chat and voice may oversubscribe the same provider
-  budget; shared accounting across all chat consumers remains a release gate.
+- Budget: the voice chat run records cost as the provider reports it, like
+  Telegram (no reservation: a cancelled turn used to keep the whole remaining
+  budget). Concurrent chat, Telegram and voice can overshoot the monthly
+  budget by about one turn, as the other callers already can.
   Voice currently requires a chat model advertising tool calling; a text-only
   model returns a generic voice error rather than a no-tools fallback.
 
