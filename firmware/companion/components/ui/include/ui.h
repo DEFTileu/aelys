@@ -67,6 +67,11 @@ void ui_settings_init(uint8_t brightness_pct, bool level_on, bool sound_on);
 /* Plays a sound effect (sfx.h id): main passes board_audio_sfx. Runs in the ui task and must not block. The UI calls it only while the
  * "Sounds" switch is on, not at night (22:00-7:00), not in lost mode and not while "find me" beeps. */
 void ui_set_sound_sink(void (*sink)(uint8_t sfx));
+/* The games' best times and open maze levels (scr_games.c). ui_games_init: what the board saved, at boot in the ui task after ui_setup()
+ * (a bad level falls back to level 1). The sink gets the whole record each time it changes (a new best, a level opened or picked); it runs in
+ * the ui task and must not block: main copies it and saves later. */
+void ui_games_init(const game_rec_t *r);
+void ui_set_games_sink(void (*sink)(const game_rec_t *r));
 /* The action hook (main passes link_post_action): false = refused, and the UI shows "No connection". */
 void ui_set_action_sink(bool (*sink)(act_kind_t k, const char *target_id));
 /* Runs in the UI task; sink must be non-blocking. */

@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include "check.h"
 #include "games_core.h"
@@ -150,23 +151,24 @@ static void test_maze(void)
     run(&m, G(0.35), 0, 3000);
     CHECK(m.won);
     CHECK(m.x == 228 && m.y == 228);
-    CHECK(m.best_ms == m.elapsed_ms && m.best_ms > 4000);
+    CHECK(m.best_ms[0] == m.elapsed_ms && m.best_ms[0] > 4000);
+    CHECK(m.open == 2 && m.level == 0);                              /* the win opened level 2 */
     uint32_t t = m.elapsed_ms;
     run(&m, G(-0.5), 0, 1000);                                       /* a won game stays won */
     CHECK(m.won && m.x == 228 && m.elapsed_ms == t);
 
     mz_reset(&m);                                                    /* again: the best time stays, a slower run does not replace it */
-    CHECK(!m.won && m.x == 26 && m.elapsed_ms == 0 && m.best_ms == t);
+    CHECK(!m.won && m.x == 26 && m.elapsed_ms == 0 && m.best_ms[0] == t && m.open == 2);
     run(&m, G(0.35), 0, 3000);
     run(&m, 0, G(0.35), 1000);
-    CHECK(m.best_ms == t);
+    CHECK(m.best_ms[0] == t);
 
     /* a huge tilt and a long stall never put the ball through a wall or out of the board */
     mz_reset(&m);
     for (int i = 0; i < 400; i++) mz_step(&m, G(2), G(-2), 5000);
     CHECK(m.x >= MZ_BALL_R && m.x <= MZ_SIZE - MZ_BALL_R && m.y >= MZ_BALL_R && m.y <= MZ_SIZE - MZ_BALL_R);
-    for (unsigned i = 0; i < MZ_N_WALLS; i++) {
-        const mz_wall_t *w = mz_wall(i);
+    for (unsigned i = 0; i < mz_n_walls(0); i++) {
+        const mz_wall_t *w = mz_wall(0, i);
         bool inside = m.x > w->x && m.x < w->x + w->w && m.y > w->y && m.y < w->y + w->h;
         CHECK(!inside);
     }
@@ -175,11 +177,83 @@ static void test_maze(void)
     CHECK(m.x >= MZ_BALL_R && m.x <= MZ_SIZE - MZ_BALL_R && m.y >= MZ_BALL_R && m.y <= MZ_SIZE - MZ_BALL_R);
 }
 
+/* Cells (x, y) of 52 px are joined unless a wall covers the middle of the side they share. */
+static bool joined(unsigned lv, int x0, int y0, int x1, int y1)
+{
+    int mx = x1 != x0 ? 52 * (x0 > x1 ? x0 : x1) : 52 * x0 + 26, my = y1 != y0 ? 52 * (y0 > y1 ? y0 : y1) : 52 * y0 + 26;
+    for (unsigned i = 0; i < mz_n_walls(lv); i++) {
+        const mz_wall_t *w = mz_wall(lv, i);
+        if (mx >= w->x && mx <= w->x + w->w && my >= w->y && my <= w->y + w->h) return false;
+    }
+    return true;
+}
+
+/* The way home through the cells (breadth first), start cell 0 to goal cell 24; returns its length, 0 if there is none. */
+static int way_home(unsigned lv, int way[25])
+{
+    int prev[25], q[25], n = 0;
+    for (int i = 0; i < 25; i++) prev[i] = -1;
+    prev[0] = 0; q[n++] = 0;
+    for (int h = 0; h < n; h++) {
+        int c = q[h], x = c % 5, y = c / 5;
+        const int d[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+        for (int k = 0; k < 4; k++) {
+            int X = x + d[k][0], Y = y + d[k][1];
+            if (X < 0 || X > 4 || Y < 0 || Y > 4 || prev[Y * 5 + X] >= 0 || !joined(lv, x, y, X, Y)) continue;
+            prev[Y * 5 + X] = c; q[n++] = Y * 5 + X;
+        }
+    }
+    if (prev[24] < 0) return 0;
+    int len = 0;
+    for (int c = 24; c; c = prev[c]) way[len++] = c;
+    way[len++] = 0;
+    for (int i = 0; i < len / 2; i++) { int t = way[i]; way[i] = way[len - 1 - i]; way[len - 1 - i] = t; }
+    return len;
+}
+
+/* Every level can be won by a hand on the tilt: steer the ball from cell centre to cell centre along the way home, never over 0.6 g. */
+static void test_maze_levels(void)
+{
+    static const int ways[MZ_LEVELS] = { 13, 15, 17, 19, 23 };
+    mz_t m = { 0 };
+    mz_reset(&m);
+    CHECK(m.open == 1 && m.level == 0);
+    CHECK(!mz_set_level(&m, 1) && m.level == 0);                     /* a closed level does not open */
+    for (unsigned lv = 0; lv < MZ_LEVELS; lv++) {
+        int way[25], len = way_home(lv, way);
+        CHECK_EQ(len, ways[lv]);                                     /* each level has a way home, longer than the one before */
+        CHECK(mz_n_walls(lv) <= MZ_MAX_WALLS);
+        CHECK(mz_set_level(&m, lv));
+        CHECK(m.x == 26 && m.y == 26 && !m.won);
+        int next = 1;
+        for (uint32_t t = 0; t < 120000 && !m.won; t += 33) {
+            float tx = way[next] % 5 * 52 + 26, ty = way[next] / 5 * 52 + 26;
+            float ax = (tx - m.x) * 20 - m.vx * 8, ay = (ty - m.y) * 20 - m.vy * 8; /* px/s^2 wanted */
+            float lim = 0.6f * 900;
+            ax = ax > lim ? lim : ax < -lim ? -lim : ax;
+            ay = ay > lim ? lim : ay < -lim ? -lim : ay;
+            mz_step(&m, (int32_t)(ax / 900 * MZ_G_COUNTS), (int32_t)(ay / 900 * MZ_G_COUNTS), 33);
+            if (next < len - 1 && fabsf(tx - m.x) < 10 && fabsf(ty - m.y) < 10) next++;
+        }
+        CHECK(m.won);
+        CHECK(m.best_ms[lv] == m.elapsed_ms && m.best_ms[lv] > 0);
+        CHECK_EQ(m.open, lv + 2 <= MZ_LEVELS ? lv + 2 : MZ_LEVELS);  /* the next level opened; the last one opens nothing */
+        if (!m.won) printf("level %u: stuck at %.0f, %.0f heading to cell %d\n", lv + 1, m.x, m.y, way[next]);
+    }
+    CHECK(!mz_set_level(&m, MZ_LEVELS));
+    mz_set_level(&m, 2);                                             /* an earlier level keeps its best and the others' */
+    CHECK(m.level == 2 && m.open == MZ_LEVELS && m.best_ms[4] > 0);
+    m.level = 9; m.open = 0;                                         /* nonsense (an old blob) falls back to level 1 */
+    mz_reset(&m);
+    CHECK(m.level == 0 && m.open == 1);
+}
+
 int main(void)
 {
     test_ask();
     test_coin_and_dice();
     test_reaction();
     test_maze();
+    test_maze_levels();
     return g_failed ? 1 : 0;
 }

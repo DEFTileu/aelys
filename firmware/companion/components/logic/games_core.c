@@ -65,11 +65,20 @@ void rx_tap(rx_t *x, uint32_t now, uint32_t r)
     }
 }
 
-/* The design's walls, 6 px thick, on a grid of 52 px cells: the way from the top-left cell to the goal runs right, down, left, down, right. */
-static const mz_wall_t walls[MZ_N_WALLS] = {
-    { 0, 49, 104, 6 }, { 153, 0, 6, 104 }, { 0, 101, 104, 6 }, { 52, 153, 208, 6 }, { 101, 156, 6, 52 }, { 205, 52, 6, 104 }, { 156, 205, 104, 6 },
+/* Walls 6 px thick on the lines of a grid of 52 px cells: H(k, a, b) runs along line y = 52k from cell a to cell b, V(k, a, b) along x = 52k. */
+#define H(k, a, b) { 52 * (a), 52 * (k) - 3, 52 * ((b) - (a)), 6 }
+#define V(k, a, b) { 52 * (k) - 3, 52 * (a), 6, 52 * ((b) - (a)) }
+/* Level 1 is the design's maze (right, down, left, down, right); 2-5 are spanning-tree mazes, picked for a longer way and more turns
+ * each: 13, 15, 17, 19 and 23 cells, 6, 9, 11, 12 and 15 turns. test_games_core rolls the ball home through every one. */
+static const struct { uint8_t n; mz_wall_t w[MZ_MAX_WALLS]; } levels[MZ_LEVELS] = {
+    { 7, { H(1, 0, 2), V(3, 0, 2), H(2, 0, 2), H(3, 1, 5), V(2, 3, 4), V(4, 1, 3), H(4, 3, 5) } },
+    { 11, { H(1, 0, 1), H(1, 4, 5), H(2, 2, 4), H(3, 1, 2), H(3, 3, 4), H(4, 0, 1), V(1, 1, 2), V(2, 0, 4), V(3, 1, 2), V(3, 3, 5), V(4, 3, 4) } },
+    { 11, { H(1, 0, 3), H(2, 1, 2), H(2, 3, 4), H(3, 1, 4), H(4, 0, 1), H(4, 2, 3), V(2, 1, 2), V(2, 3, 4), V(3, 2, 3), V(4, 0, 2), V(4, 4, 5) } },
+    { 9, { H(1, 1, 2), H(2, 0, 1), H(3, 1, 2), H(4, 0, 1), H(4, 3, 4), V(1, 0, 1), V(2, 1, 4), V(3, 1, 5), V(4, 0, 3) } },
+    { 9, { H(1, 0, 1), H(1, 2, 3), H(2, 1, 2), H(2, 3, 4), H(3, 0, 1), H(4, 1, 3), V(2, 0, 4), V(3, 3, 4), V(4, 1, 5) } },
 };
-const mz_wall_t *mz_wall(unsigned i) { return &walls[i % MZ_N_WALLS]; }
+unsigned mz_n_walls(unsigned level) { return levels[level % MZ_LEVELS].n; }
+const mz_wall_t *mz_wall(unsigned level, unsigned i) { return &levels[level % MZ_LEVELS].w[i % MZ_MAX_WALLS]; }
 
 #define START_XY 26.0f    /* centre of the top-left cell */
 #define GOAL_XY 228.0f    /* the goal ring (36 px at 210, 210) */
@@ -84,7 +93,20 @@ const mz_wall_t *mz_wall(unsigned i) { return &walls[i % MZ_N_WALLS]; }
 
 void mz_reset(mz_t *m)
 {
-    *m = (mz_t){ .x = START_XY, .y = START_XY, .best_ms = m->best_ms };
+    if (m->open < 1 || m->open > MZ_LEVELS) m->open = 1;
+    if (m->level >= m->open) m->level = 0;
+    m->x = m->y = START_XY;
+    m->vx = m->vy = 0;
+    m->elapsed_ms = 0;
+    m->started = m->won = false;
+}
+
+bool mz_set_level(mz_t *m, unsigned level)
+{
+    if (level >= m->open || level >= MZ_LEVELS) return false;
+    m->level = (uint8_t)level;
+    mz_reset(m);
+    return true;
 }
 
 static float tilt_acc(int32_t g)
@@ -128,7 +150,8 @@ void mz_step(mz_t *m, int32_t gx, int32_t gy, uint32_t dt_ms)
         m->vx *= k; m->vy *= k;
         if (sp > MAX_V) { m->vx *= MAX_V / sp; m->vy *= MAX_V / sp; }
         m->x += m->vx * dt; m->y += m->vy * dt;
-        for (unsigned i = 0; i < MZ_N_WALLS; i++) push_out(m, walls[i].x, walls[i].y, walls[i].w, walls[i].h);
+        const mz_wall_t *w = levels[m->level].w;
+        for (unsigned i = 0; i < levels[m->level].n; i++) push_out(m, w[i].x, w[i].y, w[i].w, w[i].h);
         float lo = MZ_BALL_R, hi = MZ_SIZE - MZ_BALL_R;
         if (m->x < lo) { m->x = lo; if (m->vx < 0) m->vx *= -BOUNCE; }
         if (m->x > hi) { m->x = hi; if (m->vx > 0) m->vx *= -BOUNCE; }
@@ -141,7 +164,9 @@ void mz_step(mz_t *m, int32_t gx, int32_t gy, uint32_t dt_ms)
             m->won = true;
             m->x = m->y = GOAL_XY;
             m->vx = m->vy = 0;
-            if (!m->best_ms || m->elapsed_ms < m->best_ms) m->best_ms = m->elapsed_ms;
+            uint32_t *best = &m->best_ms[m->level];
+            if (!*best || m->elapsed_ms < *best) *best = m->elapsed_ms;
+            if (m->level + 1 < MZ_LEVELS && m->open < m->level + 2) m->open = (uint8_t)(m->level + 2);
             return;
         }
     }

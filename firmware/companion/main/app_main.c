@@ -39,6 +39,7 @@ static owner_info_t owner;
 static lost_state_t lost;
 static settings_t settings;
 static ui_prefs_t prefs; /* "always level": written by persist_cb only once the UI runs */
+static game_rec_t games; /* loaded at boot for the UI; later saves go through games_want */
 static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi, home shows the welcome */
 
 /* What the owner picks on the Settings screen. The hooks run in the ui task and only set the panel and arm a timer; the flash writes
@@ -50,6 +51,10 @@ static SemaphoreHandle_t settings_mu;
 static esp_timer_handle_t persist_timer;
 static volatile uint8_t local_pct;
 static volatile bool local_pending, level_pending, level_want, sound_pending, sound_want;
+/* The games' record: the ui task hands over a copy, the timer task saves it; the copy is a struct, so both sides take games_mux. */
+static portMUX_TYPE games_mux = portMUX_INITIALIZER_UNLOCKED;
+static game_rec_t games_want;
+static bool games_pending;
 
 static void persist_cb(void *arg)
 {
@@ -69,6 +74,12 @@ static void persist_cb(void *arg)
         level_pending = sound_pending = false;
         if (store_save_ui(&prefs) != ESP_OK) ESP_LOGW(TAG, "level / sound switch not saved");
     }
+    taskENTER_CRITICAL(&games_mux);
+    bool g_due = games_pending;
+    game_rec_t g = games_want;
+    games_pending = false;
+    taskEXIT_CRITICAL(&games_mux);
+    if (g_due && store_save_games(&g) != ESP_OK) ESP_LOGW(TAG, "game records not saved");
 }
 
 static void persist_soon(void)
@@ -96,6 +107,15 @@ static void ui_sound_switch(bool on)
 {
     sound_want = on;
     sound_pending = true;
+    persist_soon();
+}
+
+static void ui_games(const game_rec_t *r)
+{
+    taskENTER_CRITICAL(&games_mux);
+    games_want = *r;
+    games_pending = true;
+    taskEXIT_CRITICAL(&games_mux);
     persist_soon();
 }
 
@@ -188,6 +208,9 @@ static void unpair_board(void)
     xSemaphoreGive(settings_mu);
     memset(&prefs, 0, sizeof prefs); /* the wipe erased the "ui" blob too; a level switch still pending would write it back, so drop it */
     level_pending = sound_pending = false;
+    taskENTER_CRITICAL(&games_mux);
+    games_pending = false; /* the wipe erased "games" too; the restart that follows starts the UI over */
+    taskEXIT_CRITICAL(&games_mux);
 }
 
 /* Wi-Fi commands. wifi_add switches the board's network, which drops the channel: its ack is queued in RAM and goes out after the
@@ -381,6 +404,8 @@ static void boot_ui_setup(void)
     ui_set_settings_hooks(&settings_hooks);
     ui_settings_init(settings.brightness, prefs.level_on, prefs.sound_on); /* the panel itself was set from settings.brightness before the UI started */
     ui_set_sound_sink(board_audio_sfx); /* the small sounds; the Sounds switch (off at first) gates them */
+    ui_games_init(&games);
+    ui_set_games_sink(ui_games); /* best times and maze levels survive a reboot or a flash */
 #ifdef CONFIG_AELYS_PERF_PROBE
     lv_port_probe_set_ui(ui_probe_swipe, probe_screen);
 #endif
@@ -429,6 +454,7 @@ void app_main(void)
     store_load_lost(&lost);
     store_load_settings(&settings);
     store_load_ui(&prefs);
+    store_load_games(&games);
     settings_mu = xSemaphoreCreateMutex();
     const esp_timer_create_args_t pargs = {.callback = persist_cb, .name = "persist"};
     if (!settings_mu || esp_timer_create(&pargs, &persist_timer) != ESP_OK) halt("settings init", ESP_ERR_NO_MEM);

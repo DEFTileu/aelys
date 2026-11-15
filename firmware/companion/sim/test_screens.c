@@ -2165,10 +2165,15 @@ static void back_to_menu(void)
     CHECK_EQ(ui_current_screen(), SCR_MENU);
 }
 
+static game_rec_t saved_games;
+static int games_saves;
+static void games_saved(const game_rec_t *r) { saved_games = *r; games_saves++; }
+
 static void test_games_screens(void)
 {
     lv_obj_t *scr = lv_screen_active();
     ui_set_random(game_rand);
+    ui_set_games_sink(games_saved);
     while (ui_current_screen() != SCR_HOME) btn(BTN_LOW);
     open_games();
 
@@ -2316,6 +2321,7 @@ static void test_games_screens(void)
     sim_step(10000);
     CHECK_EQ(ui_current_screen(), SCR_GAMES);
     CHECK(see("Reaction") && shows_text(scr, "Best 180 ms"));        /* the hub shows the record */
+    CHECK(games_saves > 0 && saved_games.rx_best_ms == 180);         /* and main got it to save */
     btn(BTN_TOP);
     CHECK(see("Tap to start") && shows_text(scr, "Best 180 ms") && !shows_text(scr, "Tap!"));
     back_to_menu();
@@ -2337,17 +2343,53 @@ static void test_games_screens(void)
     tilt(-350, 0); frames(3000);
     tilt(0, 350); frames(3000);
     tilt(350, 0); frames(3000);
-    CHECK(see("Tilt to roll"));
+    CHECK(see("Tap for level 2"));                    /* the win opened level 2 */
+    CHECK(saved_games.mz_open == 2 && saved_games.mz_level == 0 && saved_games.mz_best_ms[0] > 0);
     check_inside("maze (done)");
     sim_step(100);
     n0 = sim_flushes();
     frames(2000);
     CHECK_EQ(sim_flushes(), n0);                                     /* a finished maze costs nothing */
-    btn(BTN_TOP);                                                    /* restart: the ball is back at the start, the best time stays */
     tilt(0, 0);
+    btn(BTN_TOP);                                                    /* the tap after a win: level 2, the ball at its start */
     frames(500);
-    check_inside("maze (restart)");
+    CHECK(see("Level 2 \xC2\xB7 swipe to change"));
+    CHECK(saved_games.mz_level == 1);
+    check_inside("maze (level 2)");
+    swipe(UI_EV_SWIPE_RIGHT);                                        /* before the ball moves a swipe picks an open level */
+    sim_step(100);
+    CHECK(see("Level 1 \xC2\xB7 swipe to change"));
+    swipe(UI_EV_SWIPE_RIGHT);                                        /* round the two open ones */
+    sim_step(100);
+    CHECK(see("Level 2 \xC2\xB7 swipe to change") && saved_games.mz_level == 1);
+    tilt(350, 0); frames(1000);                                      /* rolling: a swipe changes nothing */
+    swipe(UI_EV_SWIPE_RIGHT);
+    sim_step(100);
+    CHECK(see("Level 2"));
     back_to_menu();
+    tilt(0, 0);
+    open_game(4);                                                    /* back in: the same level, ready */
+    CHECK(see("Level 2 \xC2\xB7 swipe to change"));
+    back_to_menu();
+
+    /* what the board saved comes back at boot: level 3 of 4 open, with its best time on the hub */
+    game_rec_t boot = { .rx_best_ms = 150, .mz_level = 2, .mz_open = 4, .mz_best_ms = { 9000, 12000, 65000, 0, 0 } };
+    ui_games_init(&boot);
+    open_game(4);
+    CHECK(see("Level 3 \xC2\xB7 swipe to change"));
+    back_to_menu();
+    btn(BTN_TOP);
+    CHECK(shows_text(scr, "Level 3 \xC2\xB7 Best 1:05"));
+    for (int i = 0; i < 5 && scr_games_selected() != 3; i++) { swipe(UI_EV_SWIPE_RIGHT); sim_step(100); }
+    sim_step(100);
+    CHECK(shows_text(scr, "Best 150 ms"));
+    btn(BTN_LOW);
+    boot = (game_rec_t){ .mz_level = 7, .mz_open = 9 };              /* nonsense falls back to level 1 */
+    ui_games_init(&boot);
+    open_game(4);
+    CHECK(see("Tilt to roll"));
+    back_to_menu();
+    ui_set_games_sink(NULL);
 
     /* lost mode takes the screen away; coming back opens the hub */
     open_game(3);

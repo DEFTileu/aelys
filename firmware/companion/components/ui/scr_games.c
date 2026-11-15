@@ -3,8 +3,10 @@
  *   Ask Aelys  a "thinking" face for a second, then one of twelve short answers;
  *   Coin       a plain 100 tenge coin (gold ring, silver centre) flips edge-on a few times: Heads is the emblem, Tails the 100;
  *   Dice       the faces flick past, slower and slower, and stop on 1..6 (no caption: the spots say it);
- *   Reaction   wait 1.5-4 s, the screen turns green, tap: the time in ms and the best of this session; too early is "Too soon", over 2 s "Too slow";
- *   Tilt Maze  the ball follows the board's tilt (UI_EV_LEVEL's gravity x/y) to the ring in the far corner; the time of the best run is kept.
+ *   Reaction   wait 1.5-4 s, the screen turns green, tap: the time in ms and the best so far; too early is "Too soon", over 2 s "Too slow";
+ *   Tilt Maze  the ball follows the board's tilt (UI_EV_LEVEL's gravity x/y) to the ring in the far corner. Five levels: a win opens the next
+ *              and a tap after it goes there; before the ball moves a swipe picks any open level. Each level keeps its best time.
+ * The best times and the open levels go to main through the games sink and come back at boot (ui_games_init), so a reboot keeps them.
  * The rules and the physics are in games_core.c (host-tested); this file draws them. Nothing here sounds, listens or touches the network.
  * Objects are created once. The only timer is paused unless a wait, a thought or the maze runs; the coin and the dice use one lv_anim each.
  * Deviations from the design: a tap replaces "shake" (the board's shake gesture does not exist yet), the coin is a plain 100 tenge instead of a star, no noise meter
@@ -51,7 +53,7 @@ static const struct { const char *name, *sub; uint32_t color; } info[G_COUNT] = 
 
 static struct {
     lv_obj_t *root, *eb, *big, *sub, *note, *hint, *dot[G_COUNT], *hub[G_COUNT];
-    lv_obj_t *face, *coin, *disc, *silver, *emblem, *tail, *die, *pip[7], *go, *rx_ms, *board, *ball;
+    lv_obj_t *face, *coin, *disc, *silver, *emblem, *tail, *die, *pip[7], *go, *rx_ms, *board, *ball, *wall[MZ_MAX_WALLS];
     lv_timer_t *tm;
     game_t sel;
     bool open;
@@ -66,6 +68,17 @@ static struct {
     uint32_t mz_tick;
     int32_t gx, gy;               /* the newest tilt */
 } s;
+
+static void (*games_sink)(const game_rec_t *r);
+void ui_set_games_sink(void (*sink)(const game_rec_t *r)) { games_sink = sink; }
+
+static void save_games(void)
+{
+    if (!games_sink) return;
+    game_rec_t r = { .rx_best_ms = s.rx.best_ms, .mz_level = s.mz.level, .mz_open = s.mz.open };
+    memcpy(r.mz_best_ms, s.mz.best_ms, sizeof r.mz_best_ms);
+    games_sink(&r);
+}
 
 static uint32_t xorshift(void)
 {
@@ -119,12 +132,18 @@ static void compose(const char *eb, uint32_t eb_color, lv_obj_t *stage, const ch
     ui_stack(col, gap, n, 0, UI_SCREEN_SIZE, -1);
 }
 
-static void best_text(char out[24], game_t g)
+static void best_text(char out[32], game_t g)
 {
     char t[8];
     out[0] = 0;
-    if (g == G_REACT && s.rx.best_ms) snprintf(out, 24, "Best %u ms", (unsigned)s.rx.best_ms);
-    else if (g == G_MAZE && s.mz.best_ms) { mmss(t, s.mz.best_ms); snprintf(out, 24, "Best %s", t); }
+    if (g == G_REACT && s.rx.best_ms) snprintf(out, 32, "Best %u ms", (unsigned)s.rx.best_ms);
+    else if (g == G_MAZE) {
+        uint32_t b = s.mz.best_ms[s.mz.level];
+        mmss(t, b);
+        if (b && s.mz.open > 1) snprintf(out, 32, "Level %u \xC2\xB7 Best %s", s.mz.level + 1u, t);
+        else if (b) snprintf(out, 32, "Best %s", t);
+        else if (s.mz.open > 1) snprintf(out, 32, "Level %u", s.mz.level + 1u);
+    }
 }
 
 static void draw_dice(unsigned face)
@@ -148,18 +167,37 @@ static void place_ball(void)
     lv_obj_set_pos(s.ball, (int32_t)s.mz.x - MZ_BALL_R, (int32_t)s.mz.y - MZ_BALL_R);
 }
 
+/* The walls of the level: the objects exist once, the unused ones hide. */
+static void maze_layout(void)
+{
+    for (unsigned i = 0; i < MZ_MAX_WALLS; i++) {
+        bool on = i < mz_n_walls(s.mz.level);
+        lv_obj_set_hidden(s.wall[i], !on);
+        if (!on) continue;
+        const mz_wall_t *w = mz_wall(s.mz.level, i);
+        lv_obj_set_pos(s.wall[i], w->x, w->y);
+        lv_obj_set_size(s.wall[i], w->w, w->h);
+    }
+}
+
 static void maze_text(void)
 {
-    char t[8], u[8], line[40] = "";
+    char t[8], u[8], line[40] = "", head[40];
+    unsigned lv = s.mz.level + 1u;
+    if (s.mz.won) snprintf(head, sizeof head, lv < s.mz.open ? "Tap for level %u" : "Tap to play again", lv + 1);
+    else if (s.mz.started) snprintf(head, sizeof head, "Level %u", lv);
+    else if (s.mz.open > 1) snprintf(head, sizeof head, "Level %u \xC2\xB7 swipe to change", lv);
+    else snprintf(head, sizeof head, "Tilt to roll");
+    ui_set_text(s.eb, head);
     if (s.mz.won) {
         mmss(t, s.mz.elapsed_ms);
-        mmss(u, s.mz.best_ms);
+        mmss(u, s.mz.best_ms[s.mz.level]);
         snprintf(line, sizeof line, "Done %s \xC2\xB7 Best %s", t, u);
     } else if (s.mz.started) {
         mmss(t, s.mz.elapsed_ms);
         snprintf(line, sizeof line, "%s", t);
     } else {
-        best_text(line, G_MAZE);
+        if (s.mz.best_ms[s.mz.level]) { mmss(t, s.mz.best_ms[s.mz.level]); snprintf(line, sizeof line, "Best %s", t); } /* the level is in the line above */
     }
     ui_set_text(s.sub, line);
     lv_obj_set_hidden(s.sub, !line[0]);
@@ -167,7 +205,7 @@ static void maze_text(void)
 
 static void redraw(void)
 {
-    char best[24];
+    char best[32];
     if (!s.open) {
         best_text(best, s.sel);
         compose("Games", COLOR_HUB, s.hub[s.sel], info[s.sel].name, &inter_28, UI_COLOR_TEXT, best[0] ? best : info[s.sel].sub, NULL,
@@ -207,7 +245,7 @@ static void redraw(void)
         else compose("Reaction", col, NULL, "Tap to start", &inter_40, UI_COLOR_TEXT, "Tap when it turns green", best[0] ? best : NULL, "Start", col);
         break;
     default: /* G_MAZE */
-        compose("Tilt to roll", UI_COLOR_SUBTLE, s.board, NULL, NULL, 0, "", NULL, NULL, 0); /* the board covers the top key's corner */
+        compose("", UI_COLOR_SUBTLE, s.board, NULL, NULL, 0, "", NULL, NULL, 0); /* the board covers the top key's corner; maze_text writes both lines */
         maze_text();
         place_ball();
         break;
@@ -232,7 +270,7 @@ static void maze_tick(void)
     s.mz_tick = now;
     place_ball();
     maze_text();
-    if (s.mz.won) { timer_off(); ui_sound(SFX_WIN); } /* the timer stops, so this runs once per win */
+    if (s.mz.won) { timer_off(); ui_sound(SFX_WIN); save_games(); } /* the timer stops, so this runs once per win */
 }
 
 static void tm_cb(lv_timer_t *t)
@@ -362,6 +400,16 @@ void scr_games_visible(bool on)
 
 void scr_games_swipe(int dir)
 {
+    if (s.open && s.sel == G_MAZE && !s.mz.started && !s.mz.won) { /* before the ball moves: the previous or next open level */
+        unsigned lv = (s.mz.level + (dir < 0 ? s.mz.open - 1u : 1u)) % s.mz.open;
+        if (lv == s.mz.level) return;
+        mz_set_level(&s.mz, lv);
+        maze_layout();
+        save_games();
+        maze_start();
+        redraw();
+        return;
+    }
     if (s.open) return;
     s.sel = (game_t)((s.sel + (dir < 0 ? G_COUNT - 1 : 1)) % G_COUNT);
     redraw();
@@ -392,13 +440,20 @@ void scr_games_top(void)
         break;
     case G_COIN: flip(); break;
     case G_DICE: roll(); break;
-    case G_REACT:
+    case G_REACT: {
+        uint32_t best = s.rx.best_ms;
         rx_tap(&s.rx, now, rnd());
+        if (s.rx.best_ms != best) save_games();
         if (s.rx.st == RX_WAIT) timer_on(rx_wait_left(&s.rx, now));
         else timer_off();
         redraw();
         break;
-    default: maze_start(); redraw(); break;
+    }
+    default:
+        if (s.mz.won && s.mz.level + 1u < s.mz.open) { mz_set_level(&s.mz, s.mz.level + 1u); maze_layout(); save_games(); }
+        maze_start();
+        redraw();
+        break;
     }
 }
 
@@ -574,10 +629,7 @@ lv_obj_t *scr_games_create(lv_obj_t *parent)
     lv_obj_set_style_border_width(s.board, 6, 0);
     lv_obj_set_style_border_color(s.board, lv_color_hex(COLOR_WALL), 0);
     lv_obj_set_style_radius(s.board, 10, 0);
-    for (unsigned i = 0; i < MZ_N_WALLS; i++) {
-        const mz_wall_t *w = mz_wall(i);
-        lv_obj_set_pos(shape(s.board, w->w, w->h, 3, COLOR_WALL), w->x, w->y);
-    }
+    for (unsigned i = 0; i < MZ_MAX_WALLS; i++) s.wall[i] = shape(s.board, 6, 6, 3, COLOR_WALL);
     lv_obj_t *ring = ui_plain(s.board, 36, 36);
     lv_obj_set_pos(ring, 210, 210);
     lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
@@ -587,8 +639,11 @@ lv_obj_t *scr_games_create(lv_obj_t *parent)
     s.hint = ui_label(s.root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
     lv_obj_set_pos(s.hint, 394 - 90, 98); /* at the top key, like Focus and Timer */
     s.last_ans = s.ans = GM_N_ANSWERS;
+    uint32_t rx_best = s.rx.best_ms; /* a repeated setup (host tests) keeps what ui_games_init gave */
     rx_init(&s.rx);
+    s.rx.best_ms = rx_best;
     mz_reset(&s.mz);
+    maze_layout();
     if (!s.tm) { /* a repeated setup (host tests) keeps the one timer */
         s.tm = lv_timer_create(tm_cb, FRAME_MS, NULL);
         lv_timer_pause(s.tm);
@@ -597,4 +652,14 @@ lv_obj_t *scr_games_create(lv_obj_t *parent)
     s.sel = G_ASK;
     redraw();
     return s.root;
+}
+
+void ui_games_init(const game_rec_t *r)
+{
+    s.rx.best_ms = r->rx_best_ms;
+    s.mz.open = r->mz_open;
+    s.mz.level = r->mz_level;
+    memcpy(s.mz.best_ms, r->mz_best_ms, sizeof s.mz.best_ms);
+    mz_reset(&s.mz); /* a nonsense level or count falls back to level 1 */
+    if (s.root) { maze_layout(); redraw(); }
 }
