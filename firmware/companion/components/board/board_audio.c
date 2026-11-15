@@ -15,6 +15,7 @@
 #include "esp_codec_dev_defaults.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "voice_buf.h"
 #include "esp_private/esp_gpio_reserve.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -257,9 +258,11 @@ static void voice_task(void *arg)
             }
         }
     } else {
+        bool playing = false;
         while (!atomic_load(&stop_req)) {
             xSemaphoreTake(lock, portMAX_DELAY);
-            size_t n = ring_used < sizeof mono ? ring_used : sizeof mono;
+            playing = voice_buf_playing(playing, ring_used, atomic_load(&voice_end));
+            size_t n = !playing ? 0 : ring_used < sizeof mono ? ring_used : sizeof mono;
             for (size_t i = 0; i < n; ++i) {
                 ((uint8_t *)mono)[i] = voice_ring[ring_tail];
                 ring_tail = (ring_tail + 1) % VOICE_RING_BYTES;
