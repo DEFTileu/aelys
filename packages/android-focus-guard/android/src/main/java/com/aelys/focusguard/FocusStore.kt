@@ -110,7 +110,7 @@ class FocusStore(private val prefs: Prefs, ownPackage: String? = null) {
         private val DATE = Regex("""\d{4}-\d{2}-\d{2}""")
 
         // Hand-rolled calendar check: java.time needs API 26 and minSdk is 24.
-        private fun validDate(s: String): Boolean {
+        internal fun validDate(s: String): Boolean {
             if (!DATE.matches(s)) return false
             val y = s.substring(0, 4).toInt()
             val m = s.substring(5, 7).toInt()
