@@ -77,9 +77,15 @@ class BlockActivity : Activity() {
             Log.w(TAG, "no launch intent for $packageName")
             return
         }
-        FocusStore.of(this).setPendingUnlock(appId)
-        startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        finish()
+        // This process also hosts the Aelys WebView: a failure here must not take it down. On failure
+        // the block screen stays (no unlock, the app stays blocked) and the owner can still press Go Home.
+        try {
+            FocusStore.of(this).setPendingUnlock(appId)
+            startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            finish()
+        } catch (e: Exception) {
+            Log.e(TAG, "unlock failed", e)
+        }
     }
 
     private fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()

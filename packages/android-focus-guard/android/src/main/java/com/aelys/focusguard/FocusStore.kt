@@ -32,9 +32,10 @@ class FocusStore(private val prefs: Prefs, ownPackage: String? = null) {
 
     fun save(state: GuardState) = synchronized(LOCK) { prefs.put(STATE, toJson(state).toString()) }
 
-    /** Atomic load -> [transform] -> save; returns the new state. */
+    /** Atomic load -> [transform] -> save; returns the new state. Saves only if it differs from the loaded one. */
     fun update(transform: (GuardState) -> GuardState): GuardState = synchronized(LOCK) {
-        transform(load()).also { save(it) }
+        val old = load()
+        transform(old).also { if (it != old) save(it) }
     }
 
     /**

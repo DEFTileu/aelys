@@ -207,4 +207,29 @@ class FocusStoreTest {
         store.setPendingUnlock(null)
         assertNull(store.takePendingUnlock())
     }
+
+    @Test
+    fun updateWritesOnlyWhenTheStateChanged() {
+        val puts = AtomicInteger()
+        val prefs = object : Prefs {
+            val map = ConcurrentHashMap<String, String>()
+            override fun get(key: String) = map[key]
+            override fun put(key: String, value: String) { puts.incrementAndGet(); map[key] = value }
+        }
+        val store = FocusStore(prefs)
+        // Absent storage: loads the defaults; an unchanged update persists nothing.
+        assertEquals(DEFAULT_APPS, store.update { it }.effective)
+        assertEquals(0, puts.get())
+        // Equal-but-rebuilt state is still "unchanged".
+        store.update { it.copy(effective = it.effective.toList()) }
+        assertEquals(0, puts.get())
+        // A real change writes exactly once and is returned and persisted.
+        val changed = store.update { it.copy(dayUnlockedOn = today) }
+        assertEquals(today, changed.dayUnlockedOn)
+        assertEquals(1, puts.get())
+        assertEquals(today, store.load().dayUnlockedOn)
+        // Same change again: nothing new to write.
+        store.update { it.copy(dayUnlockedOn = today) }
+        assertEquals(1, puts.get())
+    }
 }
