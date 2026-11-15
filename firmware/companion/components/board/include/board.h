@@ -57,8 +57,9 @@ esp_err_t board_audio_beep(uint32_t duration_ms);
 /* Ends the sound within about 10 ms. Non-blocking, safe from any task (the ui task calls it on a tap) while the audio task runs; a no-op when
  * nothing plays. */
 void board_audio_stop(void);
-/* The short, quiet growl of an annoyed Aelys (beep.h: ~600 ms, volume 45 against Find's 80). Called by the ui task, so it never blocks: if a
- * sound is playing or being torn down it does nothing (Find wins); otherwise it starts the same `audio` task. No overlay, no FIND events.
+/* The short, quiet growl of an annoyed Aelys (beep.h: ~600 ms, volume 45 against Find's 80). Called by the ui task, so it only queues a
+ * request for the FreeRTOS timer-service task and returns (no wait, no allocation here). That task starts the same `audio` task, unless a
+ * sound is playing or being torn down (Find wins) or free internal heap is below 40 KB (TLS first). No overlay, no FIND events.
  * A no-op when board sound is disabled (CONFIG_AELYS_BOARD_SOUND_ENABLED, off by default). */
 void board_audio_growl(void);
 

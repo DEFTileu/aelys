@@ -518,6 +518,7 @@ void ui_setup(void)
     set_owner(tribuf_latest(&ui_owner_tb, NULL));
     g.lost = g.happy = g.have_time = g.find = false;
     g.annoyed = false;
+    stop_timer(&g.annoyed_timer);
     g.poke = (poke_t){0};
     scr_find_show(false);
     g.link = LINK_UI_UNPAIRED;

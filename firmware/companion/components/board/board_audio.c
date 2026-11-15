@@ -1,11 +1,12 @@
 /* "Find Aelys": the beep pattern of beep.h through the ES8311 and the speaker. The same task also plays the short, quiet growl of an
- * annoyed Aelys (board_audio_growl): the ui task starts it, it never blocks, and Find always wins.
+ * annoyed Aelys (board_audio_growl): the ui task only asks for it, the FreeRTOS timer-service task starts it (never the ui task), and
+ * Find always wins.
  * Everything (I2S channel, codec, amplifier, the task itself) exists only while a sound plays. Pins: board_pins.h (Waveshare BSP
  * waveshare/esp32_s3_touch_amoled_1_75c 3.0.0). The codec layer is
  * espressif/esp_codec_dev (the one that BSP uses; espressif/es8311 1.0.0~1 needs IDF < 6 and the legacy I2C driver).
  *
- * Threads: board_audio_beep() is called from one task (the link task), board_audio_growl() from the ui task (it only try-locks),
- * board_audio_stop() from any. `stop_req` and `gen` are atomics the audio
+ * Threads: board_audio_beep() is called from one task (the link task), board_audio_growl() from the ui task (it only queues a request),
+ * growl_start() on the timer-service task (try-lock, heap floor), board_audio_stop() from any. `stop_req` and `gen` are atomics the audio
  * task polls every 10 ms chunk; `lock` orders a new request against the end of the task: the task takes it before it decides to finish and
  * keeps it through teardown, so a request that arrives meanwhile either restarts the sound (it sees `gen` change) or waits for the teardown. */
 #include <stdatomic.h>
@@ -22,9 +23,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "freertos/timers.h"
 
 #define AUDIO_TASK_PRIO 3
 #define AUDIO_TASK_STACK 5120
+#define GROWL_MIN_INTERNAL (40 * 1024) /* free internal heap below which the growl is skipped: it must never take what TLS needs */
 #define LEAD_CHUNKS 2        /* 20 ms of silence before and after: the amplifier switches on/off without a pop on the first/last cycle */
 #define I2S_PORT I2S_NUM_0
 
@@ -197,10 +200,14 @@ esp_err_t board_audio_beep(uint32_t duration_ms)
 #endif
 }
 
-/* Called from the ui task: it must not wait. A sound that is playing or being torn down means the growl is simply skipped (Find wins). */
-void board_audio_growl(void)
-{
 #if CONFIG_AELYS_BOARD_SOUND_ENABLED
+/* Runs on the timer-service task, so the 5 KB stack and the task control block are allocated there, not in the ui path. A sound that is
+ * playing or being torn down, or too little free internal heap (TLS needs it), means the growl is simply skipped: Find always wins. */
+static void growl_start(void *arg, uint32_t unused)
+{
+    (void)arg;
+    (void)unused;
+    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) < GROWL_MIN_INTERNAL) return;
     audio_lock_init();
     if (xSemaphoreTake(lock, 0) != pdTRUE) return;
     if (!task) {
@@ -211,6 +218,14 @@ void board_audio_growl(void)
         if (xTaskCreate(audio_task, "audio", AUDIO_TASK_STACK, NULL, AUDIO_TASK_PRIO, &task) != pdPASS) task = NULL;
     }
     xSemaphoreGive(lock);
+}
+#endif
+
+/* Called from the ui task: it only queues a request (no wait, no allocation of its own; a full queue drops it). */
+void board_audio_growl(void)
+{
+#if CONFIG_AELYS_BOARD_SOUND_ENABLED
+    (void)xTimerPendFunctionCall(growl_start, NULL, 0, 0);
 #endif
 }
 
