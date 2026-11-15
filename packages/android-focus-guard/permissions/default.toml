@@ -1,3 +1,11 @@
 [default]
 description = "Lets the Aelys web UI drive the on-device Focus Guard."
-permissions = []
+permissions = [
+  "allow-status",
+  "allow-open-settings",
+  "allow-set-state",
+  "allow-usage",
+  "allow-apply-grant",
+  "allow-installed-apps",
+  "allow-take-pending-unlock",
+]
