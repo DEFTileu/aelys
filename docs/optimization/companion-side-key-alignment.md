@@ -43,3 +43,12 @@ partition was flashed.
 
 Visual acceptance on the physical case remains pending: compare both markers
 with the actual buttons and adjust the approximate angles if needed.
+
+Owner follow-up: the upper physical button is longer than the lower one.
+Increased only the upper marker's tangent half-length from 9 to 13 px;
+both anchors and the lower marker remain at their previous positions.
+Follow-up validation: simulator build passed; `ctest --test-dir
+firmware/companion/sim/build -R '^(test_screens|test_screen_damage|sim_shot_smoke)$'
+--output-on-failure` passed 3/3. Inspected the updated menu render. IDF build
+and app-flash passed with hash verification. An 8-second boot check confirmed
+pairing and Wi-Fi startup, without detected startup faults.

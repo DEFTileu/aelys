@@ -457,8 +457,9 @@ static void key_tick_draw(lv_event_t *e)
     l.width = 4;
     l.round_start = l.round_end = true;
     int angle = key_angle(low) + 90;
-    int dx = 9 * lv_trigo_cos(angle) / LV_TRIGO_SIN_MAX;
-    int dy = 9 * lv_trigo_sin(angle) / LV_TRIGO_SIN_MAX;
+    int half_length = low ? 9 : 13; /* the upper case button is longer */
+    int dx = half_length * lv_trigo_cos(angle) / LV_TRIGO_SIN_MAX;
+    int dy = half_length * lv_trigo_sin(angle) / LV_TRIGO_SIN_MAX;
     l.p1.x = a.x1 + KEY_TICK_SIZE / 2 - dx; l.p1.y = a.y1 + KEY_TICK_SIZE / 2 - dy;
     l.p2.x = a.x1 + KEY_TICK_SIZE / 2 + dx; l.p2.y = a.y1 + KEY_TICK_SIZE / 2 + dy;
     lv_draw_line(lv_event_get_layer(e), &l);
