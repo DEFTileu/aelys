@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, OfflineWriteUnavailableError, type FocusApp, type FocusOverview } from '@aelys/shared'
 import { FocusView } from '../views/FocusView'
 import { localDay } from '../lib/focusGuard'
+import { setUnlockHandoff, takeUnlockHandoff } from '../lib/focusHandoff'
 
 const client = vi.hoisted(() => ({ focusOverview: vi.fn(), saveFocusConfig: vi.fn(), focusUnlock: vi.fn(), focusRequests: vi.fn() }))
 const guard = vi.hoisted(() => ({ status: vi.fn(), openSettings: vi.fn(), setState: vi.fn(), usage: vi.fn(), applyGrant: vi.fn(), installedApps: vi.fn(), takePendingUnlock: vi.fn() }))
@@ -35,6 +36,7 @@ const NOW = localDay()
 
 beforeEach(() => {
   vi.resetAllMocks()
+  takeUnlockHandoff()
   android.value = true
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
   client.focusOverview.mockResolvedValue(overview([INSTA, TIKTOK, PDD]))
@@ -214,6 +216,84 @@ describe('FocusView', () => {
     await type(host.querySelector<HTMLTextAreaElement>('textarea')!, 'a real reason')
     expect(button('Ask for time')!.disabled).toBe(true)
     expect(guard.setState).not.toHaveBeenCalled()
+  })
+
+  const refresh = async () => act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
+
+  it('disables every write after a failed refresh so stale data is never saved', async () => {
+    client.focusOverview.mockResolvedValue(overview([INSTA, TIKTOK], [{ ...INSTA, limit_minutes: 90 }, TIKTOK]))
+    await mount()
+    await type(host.querySelector<HTMLInputElement>('input[aria-label="Daily limit for TikTok in minutes"]')!, '30')
+    expect(button('Save')!.disabled).toBe(false)
+    client.focusOverview.mockRejectedValue(new Error('down'))
+    await refresh()
+    expect(host.textContent).toContain('Could not refresh')
+    expect(button('Save')!.disabled).toBe(true)
+    expect(button('Cancel pending change')!.disabled).toBe(true)
+    await click('Save'); await click('Cancel pending change')
+    expect(client.saveFocusConfig).not.toHaveBeenCalled()
+    act(() => root.unmount()); document.body.innerHTML = ''
+    client.focusOverview.mockResolvedValue(overview([]))
+    await mount()
+    expect(button('Enable default limits')!.disabled).toBe(false)
+    client.focusOverview.mockRejectedValue(new Error('down'))
+    await refresh()
+    expect(button('Enable default limits')!.disabled).toBe(true)
+  })
+
+  it('drops an edit when a refresh brings a different effective config', async () => {
+    await mount()
+    await type(host.querySelector<HTMLInputElement>('input[aria-label="Daily limit for Instagram in minutes"]')!, '30')
+    expect(button('Save')!.disabled).toBe(false)
+    client.focusOverview.mockResolvedValue(overview([{ ...INSTA, limit_minutes: 45 }, TIKTOK, PDD])) // e.g. another device or midnight
+    await refresh()
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Daily limit for Instagram in minutes"]')!.value).toBe('45')
+    expect(host.textContent).toContain('Your edit was discarded')
+    expect(button('Save')!.disabled).toBe(true)
+    await click('Save')
+    expect(client.saveFocusConfig).not.toHaveBeenCalled()
+  })
+
+  it('keeps an edit when a refresh returns the same effective config', async () => {
+    await mount()
+    await type(host.querySelector<HTMLInputElement>('input[aria-label="Daily limit for Instagram in minutes"]')!, '30')
+    await refresh()
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Daily limit for Instagram in minutes"]')!.value).toBe('30')
+    expect(button('Save')!.disabled).toBe(false)
+  })
+
+  it('applies nothing for a grant of zero minutes', async () => {
+    guard.takePendingUnlock.mockResolvedValue('instagram')
+    client.focusUnlock.mockResolvedValue({ granted: true, minutes: 0, message: 'Odd.', ai_grants_left: 2, requests_left: 9 })
+    await mount()
+    await type(host.querySelector<HTMLTextAreaElement>('textarea')!, 'reason')
+    await click('Ask for time')
+    expect(guard.applyGrant).not.toHaveBeenCalled()
+    expect(host.textContent).not.toContain('You can open')
+  })
+
+  it('opens the unlock panel from a handoff set before it mounted, without asking the plugin', async () => {
+    setUnlockHandoff('tiktok')
+    await mount()
+    expect(host.querySelector('section[aria-label="Unlock TikTok"]')).not.toBeNull()
+    expect(guard.takePendingUnlock).not.toHaveBeenCalled()
+    expect(takeUnlockHandoff()).toBeNull()
+  })
+
+  it('opens the unlock panel when a handoff arrives while it is already mounted', async () => {
+    await mount()
+    expect(host.querySelector('section[aria-label^="Unlock"]')).toBeNull()
+    await act(async () => { setUnlockHandoff('instagram') })
+    expect(host.querySelector('section[aria-label="Unlock Instagram"]')).not.toBeNull()
+  })
+
+  it('does not consume a pending unlock when the screen was left while loading', async () => {
+    let finish!: (value: FocusOverview) => void
+    client.focusOverview.mockReturnValue(new Promise<FocusOverview>((resolve) => { finish = resolve }))
+    await mount()
+    act(() => root.unmount())
+    await act(async () => { finish(overview([INSTA])) })
+    expect(guard.takePendingUnlock).not.toHaveBeenCalled()
   })
 
   it('lists the request history newest first with reason, decision and time', async () => {

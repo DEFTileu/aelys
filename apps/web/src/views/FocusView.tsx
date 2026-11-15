@@ -4,6 +4,7 @@ import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
 import { Shield, TriangleAlert } from '../icons'
 import { StateCard } from '../components/StateCard'
 import { getSharedApiClient } from '../lib/api'
+import { subscribeUnlockHandoff, takeUnlockHandoff, setUnlockHandoff } from '../lib/focusHandoff'
 import { focusGuard, localDay, syncGuard, type AppUsage, type GuardStatus, type InstalledApp } from '../lib/focusGuard'
 import { isAndroidHost } from '../lib/notificationLog'
 import type { ApiStatus } from '../types'
@@ -47,7 +48,8 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
   const [status, setStatus] = useState<GuardStatus | null>(null)
   const [usage, setUsage] = useState<Record<string, AppUsage> | null>(null)
   const [requests, setRequests] = useState<readonly FocusRequestRow[] | null>(null)
-  const [draft, setDraft] = useState<FocusApp[] | null>(null)
+  // `base` is the effective config the edit started from; an edit is dropped when a refresh brings a different one.
+  const [draft, setDraft] = useState<{ apps: FocusApp[]; base: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [online, setOnline] = useState(() => navigator.onLine)
@@ -55,21 +57,33 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
   const [pick, setPick] = useState('')
   const [unlockApp, setUnlockApp] = useState<string | null>(null)
 
+  const alive = useRef(true)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  // The handoff (set app-wide when Aelys was opened from the block screen) comes first, then the plugin itself.
+  const showWaitingUnlock = useCallback(async () => {
+    if (!alive.current) return // nowhere to show it; leave it for the next screen
+    const id = takeUnlockHandoff() ?? await focusGuard.takePendingUnlock().catch(() => null)
+    if (!id) return
+    if (alive.current) setUnlockApp(id); else setUnlockHandoff(id)
+  }, [])
   const running = useRef(false)
   const queued = useRef(false)
   const run = useCallback(async () => {
     const day = localDay()
     let loaded: FocusOverview
     try { loaded = await getSharedApiClient().focusOverview(day) }
-    catch { setLoadState('error'); const waiting = await focusGuard.takePendingUnlock().catch(() => null); if (waiting) setUnlockApp(waiting); return }
+    catch { setLoadState('error'); await showWaitingUnlock(); return }
     setOverview(loaded); setLoadState('ready')
+    const stale = draftRef.current !== null && draftRef.current.base !== JSON.stringify(loaded.config.effective.apps)
+    if (stale) setDraft(null)
+    setNotice(stale ? 'The limits changed since you started editing. Your edit was discarded.' : '')
     // Only a loaded overview ever reaches the phone; a failed load leaves its state untouched.
-    try { await syncGuard(loaded, day); setNotice('') } catch { setNotice('Could not update protection on this phone. Reopen the screen to retry.') }
+    try { await syncGuard(loaded, day) } catch { setNotice('Could not update protection on this phone. Reopen the screen to retry.') }
     const [s, u, r] = await Promise.all([focusGuard.status().catch(() => null), focusGuard.usage().catch(() => null), getSharedApiClient().focusRequests(20).catch(() => null)])
     setStatus(s); setUsage(u); setRequests(r && [...r].sort((a, b) => b.created_at.localeCompare(a.created_at)))
-    const pending = await focusGuard.takePendingUnlock().catch(() => null)
-    if (pending) setUnlockApp(pending)
-  }, [])
+    await showWaitingUnlock()
+  }, [showWaitingUnlock])
   // A load asked for while one runs is coalesced into one more run, so the last request always wins.
   const load = useCallback(async () => {
     if (running.current) { queued.current = true; return }
@@ -78,19 +92,22 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
   }, [run])
 
   useEffect(() => {
+    alive.current = true
     void load()
     const again = () => { if (document.visibilityState !== 'hidden') void load() }
     const setOn = () => setOnline(true); const setOff = () => setOnline(false)
+    const unsubscribe = subscribeUnlockHandoff(() => void load())
     document.addEventListener('visibilitychange', again); window.addEventListener('focus', again)
     window.addEventListener('online', setOn); window.addEventListener('offline', setOff)
-    return () => { document.removeEventListener('visibilitychange', again); window.removeEventListener('focus', again); window.removeEventListener('online', setOn); window.removeEventListener('offline', setOff) }
+    return () => { alive.current = false; unsubscribe(); document.removeEventListener('visibilitychange', again); window.removeEventListener('focus', again); window.removeEventListener('online', setOn); window.removeEventListener('offline', setOff) }
   }, [load])
 
   const effective = overview?.config.effective.apps ?? []
   const pending = overview?.config.pending ?? null
-  const canWrite = apiStatus === 'ready' && online
-  const apps = draft ?? effective
-  const dirty = draft !== null && !sameApps(draft, effective)
+  // Writes build a whole config, so they need current data: never after a failed refresh.
+  const canWrite = apiStatus === 'ready' && online && loadState === 'ready'
+  const apps = draft?.apps ?? effective
+  const dirty = draft !== null && !sameApps(draft.apps, effective)
   const valid = apps.every((a) => validLimit(a.limit_minutes))
   const labelOf = (id: string) => effective.find((a) => a.id === id)?.label ?? id
 
@@ -100,12 +117,13 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
     catch (error) { setNotice(saveError(error)) }
     finally { setBusy(false) }
   }
-  const edit = (id: string, limit: number) => setDraft(apps.map((a) => a.id === id ? { ...a, limit_minutes: limit } : a))
+  const setApps = (next: FocusApp[]) => setDraft({ apps: next, base: JSON.stringify(effective) })
+  const edit = (id: string, limit: number) => setApps(apps.map((a) => a.id === id ? { ...a, limit_minutes: limit } : a))
   const openPicker = async () => { if (!installed) setInstalled(await focusGuard.installedApps().catch(() => { setNotice('Could not read the apps on this phone.'); return [] })) }
   const add = () => {
     const found = installed?.find((p) => p.pkg === pick)
     if (!found) return
-    setDraft([...apps, { id: slug(found.label, new Set(apps.map((a) => a.id))), label: found.label.slice(0, 60), packages: [found.pkg], limit_minutes: 60 }]); setPick('')
+    setApps([...apps, { id: slug(found.label, new Set(apps.map((a) => a.id))), label: found.label.slice(0, 60), packages: [found.pkg], limit_minutes: 60 }]); setPick('')
   }
   const taken = new Set(apps.flatMap((a) => a.packages))
 
@@ -141,7 +159,7 @@ function FocusScreen({ apiStatus }: { apiStatus: ApiStatus }) {
       {apps.length > 0 && <div className="nlog__card">{apps.map((a) => <div key={a.id} className="fg__app">
         <div className="fg__app-head"><span className="nlog__app-name">{a.label}</span>
           <label className="fg__limit"><input type="number" inputMode="numeric" min={1} max={1440} step={1} aria-label={`Daily limit for ${a.label} in minutes`} aria-invalid={!validLimit(a.limit_minutes)} value={a.limit_minutes || ''} onChange={(e) => edit(a.id, e.target.value === '' ? 0 : Number(e.target.value))} />min</label>
-          <button type="button" className="nlog__link" onClick={() => setDraft(apps.filter((x) => x.id !== a.id))}>Remove</button></div>
+          <button type="button" className="nlog__link" onClick={() => setApps(apps.filter((x) => x.id !== a.id))}>Remove</button></div>
         {effective.some((e) => e.id === a.id) && <Bar app={effective.find((e) => e.id === a.id)!} status={status} usage={usage} />}
       </div>)}</div>}
       {!valid && <p className="nlog__notice" role="status">Each limit must be a whole number from 1 to 1440 minutes.</p>}
@@ -188,26 +206,27 @@ function Unlock({ appId, label, aiLeft, ready, onClose, onDone }: { appId: strin
     try {
       const answer = await getSharedApiClient().focusUnlock({ day: day.current, app_id: appId, reason: reason.trim() })
       setResult(answer)
-      if (answer.granted) await apply(answer.minutes)
+      if (answer.granted && answer.minutes > 0) await apply(answer.minutes)
       onDone()
     } catch (e) {
       setError(e instanceof OfflineWriteUnavailableError ? 'You are offline. Unlocking needs a connection.' : e instanceof ApiError && e.code === 'NOT_FOUND' ? 'That app is no longer in your list.' : 'Could not ask for time. Try again.')
     } finally { setBusy(false) }
   }
+  const earned = result?.granted === true && result.minutes > 0
   const left = result?.ai_grants_left ?? aiLeft
   return <section className="fg__unlock" aria-label={`Unlock ${label}`}>
     <h2>Need more time on {label}?</h2>
     <p>Write why. A short, honest reason works best. Each approval gives up to 10 minutes.</p>
-    <textarea aria-label="Reason" maxLength={300} rows={3} value={reason} disabled={busy || result?.granted === true} onChange={(e) => setReason(e.target.value)} placeholder="Why do you need this app right now?" />
+    <textarea aria-label="Reason" maxLength={300} rows={3} value={reason} disabled={busy || earned} onChange={(e) => setReason(e.target.value)} placeholder="Why do you need this app right now?" />
     <small className="fg__count">{reason.length}/300</small>
     {!ready && <p className="nlog__hint">You are offline or the server is not reachable. Unlocking needs a connection.</p>}
     {error && <p className="nlog__notice" role="alert">{error}</p>}
-    {result && <p className={`fg__answer${result.granted ? ' is-ok' : ''}`} role="status">{result.message}</p>}
-    {result?.granted && !applyFailed && <div className="nlog__done">You can open {label} for {result.minutes} minutes</div>}
-    {result?.granted && applyFailed && <div className="nlog__notice" role="alert">Approved, but this phone did not take the grant. <button type="button" className="nlog__link" onClick={() => void apply(result.minutes)}>Try again</button></div>}
+    {result && <p className={`fg__answer${earned ? ' is-ok' : ''}`} role="status">{result.message}</p>}
+    {earned && !applyFailed && <div className="nlog__done">You can open {label} for {result.minutes} minutes</div>}
+    {earned && applyFailed && <div className="nlog__notice" role="alert">Approved, but this phone did not take the grant. <button type="button" className="nlog__link" onClick={() => void apply(result.minutes)}>Try again</button></div>}
     {left !== undefined && <small className="fg__count">{plural(left, 'AI unlock', 'AI unlocks')} left today</small>}
     <div className="fg__actions">
-      {!result?.granted && <button type="button" className="nlog__btn nlog__btn--primary" disabled={!reason.trim() || busy || !ready} onClick={() => void submit()}>Ask for time</button>}
-      <button type="button" className="nlog__btn nlog__btn--soft" onClick={onClose}>{result?.granted ? 'Done' : 'Close'}</button></div>
+      {!earned && <button type="button" className="nlog__btn nlog__btn--primary" disabled={!reason.trim() || busy || !ready} onClick={() => void submit()}>Ask for time</button>}
+      <button type="button" className="nlog__btn nlog__btn--soft" onClick={onClose}>{earned ? 'Done' : 'Close'}</button></div>
   </section>
 }

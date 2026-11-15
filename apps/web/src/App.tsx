@@ -7,6 +7,7 @@ import { AndroidUpdateNotice } from './components/AndroidUpdateNotice'
 import { getApiConfig } from './lib/api'
 import { createApiHealth } from './lib/apiHealth'
 import { getRoute } from './lib/router'
+import { useUnlockHandoff } from './lib/focusHandoff'
 // React.lazy defers each named view export until AuthGate renders the selected route.
 const MobileCustomizeView = lazy(() => import('./views/MobileCustomizeView').then(module => ({ default: module.MobileCustomizeView })))
 const HomeView = lazy(() => import('./views/HomeView').then((module) => ({ default: module.HomeView })))
@@ -78,6 +79,7 @@ export default function App() {
 
 function WorkspaceApp({ route, theme, toggleTheme }: { route: RoutePath; theme: 'light' | 'dark'; toggleTheme: () => void }) {
   const apiStatus = useApiStatus()
+  useUnlockHandoff()
   const moduleKey = route.slice(1)
   const screens: Partial<Record<RoutePath, ReactElement>> = { '/': <HomeView apiStatus={apiStatus} />, '/mail': <MailView apiStatus={apiStatus} />, '/ai': <AiView apiStatus={apiStatus} />, '/tasks': <TasksView apiStatus={apiStatus} />, '/calendar': <CalendarView apiStatus={apiStatus} />, '/projects': <ProjectsView apiStatus={apiStatus} />, '/notes': <NotesView apiStatus={apiStatus} />, '/knowledge': <KnowledgeView apiStatus={apiStatus} />, '/widgets': <MobileCustomizeView theme={theme} onToggleTheme={toggleTheme} />, '/finance': <FinanceView apiStatus={apiStatus} />, '/apps': <AppsView apiStatus={apiStatus} />, '/timer': <TimerView apiStatus={apiStatus} />, '/english': <EnglishView apiStatus={apiStatus} />, '/automation': <AutomationView apiStatus={apiStatus} />, '/messages': <MessagesView apiStatus={apiStatus} />, '/notification-log': <NotificationLogView apiStatus={apiStatus} />, '/app-limits': <FocusView apiStatus={apiStatus} />, '/developer': <DeveloperView apiStatus={apiStatus} />, '/search': <SearchView apiStatus={apiStatus} />, '/settings': <SettingsView apiStatus={apiStatus} theme={theme} onToggleTheme={toggleTheme} /> }
   const content = screens[route] ?? <ModuleView moduleKey={moduleKey} apiStatus={apiStatus} />
