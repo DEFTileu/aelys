@@ -13,7 +13,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -104,7 +104,7 @@ class _Link:
     token_exp: int | None = None
     voice: _Voice | None = None
     voice_output: Callable[[dict | bytes, _Voice], Awaitable[None]] | None = None
-    voice_lock: asyncio.Lock | None = None
+    voice_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 async def _begin_character_session(link: _Link) -> int:
@@ -252,10 +252,7 @@ async def _voice_start(link: _Link, message: dict) -> None:
     body = VoiceStartIn.model_validate(message)
     if body.rate != 16000 or body.format != 'pcm_s16le':
         raise ValueError('invalid voice format')
-    if link.voice_lock:
-        async with link.voice_lock:
-            _cancel_voice(link)
-    else:
+    async with link.voice_lock:
         _cancel_voice(link)
     if not await _voice_allowed(link):
         await link.reply({'type': 'voice_state', 'id': body.id, 'state': 'error', 'error_code': 'VOICE_UNAVAILABLE'})
@@ -299,10 +296,7 @@ async def _voice_end(link: _Link, message: dict) -> None:
 async def _voice_cancel(link: _Link, message: dict) -> None:
     body = VoiceIdIn.model_validate(message)
     if link.voice and link.voice.id == body.id:
-        if link.voice_lock:
-            async with link.voice_lock:
-                _cancel_voice(link)
-        else:
+        async with link.voice_lock:
             _cancel_voice(link)
 
 
@@ -427,7 +421,7 @@ async def device_channel(websocket: WebSocket) -> None:
                             lost = state.lost_mode_json if state else True
                             allowed = (device and device.owner_id == link.owner_id and device.platform == 'companion' and not device.revoked_at
                                 and session and not session.revoked_at and session.owner_id == link.owner_id and session.device_id == link.device_id
-                                and not _expired(session.expires_at) and time.time() < link.token_exp and state and state.owner_id == link.owner_id
+                                and not _expired(session.expires_at) and link.token_exp is not None and time.time() < link.token_exp and state and state.owner_id == link.owner_id
                                 and (lost is None or (isinstance(lost, dict) and lost.get('on') is False)))
                             if not allowed or link.voice is not voice:
                                 continue
@@ -463,7 +457,7 @@ async def device_channel(websocket: WebSocket) -> None:
             else:
                 await _dispatch(link, event.get("text"))
 
-    link = _Link(device_id, owner_id, reply, close, session_id=session_id, token_exp=int(claims["exp"]), voice_output=voice_output, voice_lock=asyncio.Lock())
+    link = _Link(device_id, owner_id, reply, close, session_id=session_id, token_exp=int(claims["exp"]), voice_output=voice_output)
     tasks: list[asyncio.Task[Any]] = [asyncio.create_task(writer())]
     unregister: Callable[[], None] | None = None
     try:
