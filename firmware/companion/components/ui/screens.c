@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include "motion.h"
+#include "gesture.h"
 #include "ui_screens_priv.h"
 
 #define ICE_TIMEOUT_MS 15000
@@ -21,6 +22,10 @@
 #define NIGHT_IDLE_MS 600000u    /* provisional: ten minutes */
 #define IDLE_MAX_MS 3600000u     /* saturation at the boredom threshold */
 
+tribuf_t ui_voice_tb;
+static char (*voice_buf)[601];
+static ui_voice_hooks_t voice_hooks;
+void ui_set_voice_hooks(const ui_voice_hooks_t *h) { voice_hooks = h ? *h : (ui_voice_hooks_t){0}; }
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
 tribuf_t ui_wifi_tb;
@@ -42,6 +47,8 @@ static struct {
     uint32_t tap_ms[4];  /* the last taps on her face, newest first, 0 = none: a double tap tickles, four in a row annoy her */
     uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
     bool link_was_offline, link_has_history;
+    bool voice_listening, voice_thinking, voice_warned, voice_active, voice_presented;
+    uint32_t voice_started_ms, voice_token;
     bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
     lv_obj_t *scr[SCR_COUNT]; /* indexed by scr_t; NULL for screens that do not exist yet */
@@ -558,7 +565,7 @@ static void render(void)
     update_character();
     switch (g.cur) {
     case SCR_HOME: {
-        scr_home_set_snap(s, now, mood_from_character(g.character_result.mood), offline);
+        scr_home_set_snap(s, now, g.voice_listening ? MOOD_ATTENTION : g.voice_thinking ? MOOD_THINKING : mood_from_character(g.character_result.mood), offline);
         break;
     }
     case SCR_TODAY: scr_today_set(s, now); break;
@@ -581,6 +588,10 @@ static void tick_timer_cb(lv_timer_t *t)
 {
     (void)t;
     idle_advance(lv_tick_get());
+    if (g.voice_listening && !g.voice_warned && lv_tick_get() - g.voice_started_ms >= 17000u) {
+        g.voice_warned = true;
+        toast("3 seconds left");
+    }
     render();
 }
 
@@ -727,6 +738,10 @@ void ui_setup(void)
     scr_toast_create(root);
     scr_find_create(root); /* last: on top of the toast and every screen */
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
+    voice_buf = lv_malloc_zeroed(3 * sizeof *voice_buf);
+    ui_voice_tb = (tribuf_t){0};
+    if (voice_buf) tribuf_init(&ui_voice_tb, voice_buf[0], voice_buf[1], voice_buf[2]);
+    g.voice_listening = g.voice_thinking = g.voice_active = false;
     tribuf_init(&ui_owner_tb, &owner_buf[0], &owner_buf[1], &owner_buf[2]);
     snap_buf = lv_malloc_zeroed(3 * sizeof *snap_buf); /* zeroed: no snapshot yet */
     if (snap_buf) tribuf_init(&ui_snap_tb, &snap_buf[0], &snap_buf[1], &snap_buf[2]); /* else slot[0] stays NULL: producers skip it */
@@ -996,6 +1011,12 @@ void ui_handle_event(const ui_event_t *ev)
         break;
     }
     case UI_EV_FIND:
+        if (ev->len && ev->data[0] && g.voice_active) {
+            if (voice_hooks.end) voice_hooks.end(true);
+            if (voice_hooks.stop_audio) voice_hooks.stop_audio();
+            if (voice_hooks.hold_power) voice_hooks.hold_power(false);
+            g.voice_listening = g.voice_thinking = g.voice_active = false;
+        }
         if (ev->len < 1) return;
         g.find = ev->data[0] != 0;
         if (g.find) { scr_toast_hide(); scr_notice_hide(); } /* a toast or the Wi-Fi card must not come out from under the overlay when it ends */
@@ -1007,12 +1028,24 @@ void ui_handle_event(const ui_event_t *ev)
         return;
     case UI_EV_LOST:
         if (ev->len < 1) return;
+        if (ev->data[0] && g.voice_active) {
+            if (voice_hooks.end) voice_hooks.end(true);
+            if (voice_hooks.stop_audio) voice_hooks.stop_audio();
+            if (voice_hooks.hold_power) voice_hooks.hold_power(false);
+            g.voice_listening = g.voice_thinking = g.voice_active = false;
+        }
         {
             uint32_t rev = ev->len >= 5 ? (uint32_t)ev->data[1] | ((uint32_t)ev->data[2] << 8) |
                               ((uint32_t)ev->data[3] << 16) | ((uint32_t)ev->data[4] << 24) : g.lost_rev;
             uint32_t identity = ev->len >= 9 ? (uint32_t)ev->data[5] | ((uint32_t)ev->data[6] << 8) |
                                    ((uint32_t)ev->data[7] << 16) | ((uint32_t)ev->data[8] << 24) : g.character_identity;
             if (identity != g.character_identity) {
+                if (g.voice_active) {
+                    if (voice_hooks.end) voice_hooks.end(true);
+                    if (voice_hooks.stop_audio) voice_hooks.stop_audio();
+                    if (voice_hooks.hold_power) voice_hooks.hold_power(false);
+                    g.voice_active = g.voice_listening = g.voice_thinking = false;
+                }
                 g.snap_valid = false;
                 g.snap = &ui_empty_snap; /* never derive the next owner's state from the previous snapshot */
                 memset(g.done_id, 0, sizeof g.done_id);
@@ -1085,7 +1118,50 @@ void ui_handle_event(const ui_event_t *ev)
         if (g.cur == SCR_SETTINGS && !g.lost) scr_settings_step(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         if (g.cur == SCR_GAMES && !g.lost) scr_games_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         break;
+    case UI_EV_TALK:
+        if (ev->len < 1) return;
+        if (ev->data[0] == TALK_START && !g.lost && !g.find && (g.cur == SCR_HOME || g.cur == SCR_TODAY)) {
+            if (voice_hooks.stop_audio) voice_hooks.stop_audio();
+            bool speak = g.sound_on && !(g.have_time && (g.hh >= 22 || g.hh < 7));
+            if (!voice_hooks.start || !voice_hooks.start(speak)) { toast("No connection"); return; }
+            if (voice_hooks.hold_power) voice_hooks.hold_power(true);
+            g.voice_token = voice_hooks.token ? voice_hooks.token() : 0;
+            g.voice_listening = g.voice_active = true; g.voice_thinking = false; g.voice_warned = g.voice_presented = false; g.voice_started_ms = lv_tick_get(); render();
+        } else if ((ev->data[0] == TALK_END || ev->data[0] == TALK_CANCEL) && g.voice_listening) {
+            bool cancel = ev->data[0] == TALK_CANCEL;
+            if (voice_hooks.end) voice_hooks.end(cancel);
+            if (cancel && voice_hooks.stop_audio) voice_hooks.stop_audio();
+            if (voice_hooks.hold_power && (cancel || ev->len < 2 || !ev->data[1])) voice_hooks.hold_power(false);
+            g.voice_listening = false; g.voice_thinking = !cancel; if (cancel) g.voice_active = false; render();
+        } else if (ev->data[0] == TALK_SHORT && !g.lost && (g.cur == SCR_HOME || g.cur == SCR_TODAY)) {
+            next = screen_next_btn(g.cur, false, BTN_TOP);
+            break;
+        }
+        return;
+    case UI_EV_VOICE:
+        if (ev->len < 29 || g.lost || !g.voice_active) return;
+        uint32_t token = (uint32_t)ev->data[25] | (uint32_t)ev->data[26] << 8 |
+                         (uint32_t)ev->data[27] << 16 | (uint32_t)ev->data[28] << 24;
+        if (token != g.voice_token) return;
+        if (ev->data[0] == VOICE_UI_THINKING) { g.voice_thinking = true; render(); }
+        else if (ev->data[0] == VOICE_UI_SPEAKING || ev->data[0] == VOICE_UI_DONE) {
+            g.voice_thinking = false; render();
+            const char *text = ui_voice_tb.slot[0] ? tribuf_latest(&ui_voice_tb, NULL) : NULL;
+            if (!g.voice_presented && text && text[0]) { scr_notice_voice(text); g.voice_presented = true; }
+        } else if (ev->data[0] == VOICE_UI_ERROR) {
+            g.voice_listening = g.voice_thinking = g.voice_active = false;
+            if (voice_hooks.stop_audio) voice_hooks.stop_audio();
+            if (voice_hooks.hold_power) voice_hooks.hold_power(false);
+            char code[25]; ev_str(code, sizeof code, ev, 1);
+            toast(!strcmp(code, "VOICE_NOT_CONFIGURED") ? "Voice not configured" :
+                  !strcmp(code, "BUDGET_EXCEEDED") ? "AI budget exceeded" :
+                  !strcmp(code, "VOICE_TOO_LONG") ? "Too long" :
+                  !strcmp(code, "VOICE_EMPTY") ? "Didn't catch that" : "Couldn't connect");
+            render();
+        }
+        return;
     case UI_EV_BTN:
+        if (ev->len && ev->data[0] == BTN_TOP && (g.cur == SCR_HOME || g.cur == SCR_TODAY)) return;
         if (g.cur == SCR_LOST && ev->len >= 1) scr_lost_show_hint();
         if (g.lost || ev->len < 1) return;
         if (ev->data[0] == BTN_LOW && scr_notice_visible()) { scr_notice_hide(); return; } /* the low key dismisses the pop-up, nothing else */

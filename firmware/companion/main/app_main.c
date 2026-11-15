@@ -397,6 +397,17 @@ static void on_ui_event(const ui_event_t *ev)
     ui_handle_event(ev);
 }
 
+#ifndef CONFIG_AELYS_NO_WIFI
+static bool voice_audio_in(const uint8_t *pcm, size_t len)
+{
+    return board_audio_play_push(pcm, len, 500);
+}
+static const ui_voice_hooks_t voice_hooks = {
+    .start = link_voice_start, .end = link_voice_end,
+    .hold_power = board_input_hold_power, .stop_audio = board_audio_stop, .token = link_voice_token,
+};
+#endif
+
 /* Runs in the ui task (LVGL lock held) before the first frame. */
 static void boot_ui_setup(void)
 {
@@ -414,6 +425,7 @@ static void boot_ui_setup(void)
 #ifndef CONFIG_AELYS_NO_WIFI
     ui_set_lost_revision(lost.rev);
     ui_set_character_status_sink(link_post_character);
+    ui_set_voice_hooks(&voice_hooks);
     ui_set_action_sink(link_post_action); /* taps and keys on Today, Focus and Inbox become actions for the server */
 #endif
     *(owner_info_t *)tribuf_back(&ui_owner_tb) = lost.on ? lost.shown : owner; /* lost mode shows what the owner chose */
@@ -494,6 +506,8 @@ void app_main(void)
     /* after the ui task ran ui_setup (the snapshot buffer exists) and after net_start (Wi-Fi is up or coming up) */
     static const link_deps_t ldeps = {.on_command = on_command, .save_snap = save_snap, .load_snap = load_snap,
                                       .erase_snap = erase_snap, .lost_on = lost_is_on, .lost_rev = lost_revision, .contact_phone = contact_phone, .contact_telegram = contact_telegram,
+                                      .listen_start = board_audio_listen, .listen_stop = board_audio_listen_stop,
+                                      .audio_begin = board_audio_play_begin, .audio_in = voice_audio_in, .audio_end = board_audio_play_end, .audio_stop = board_audio_stop,
                                       .current_ssid = net_wifi_current_ssid, .load_wifi = store_load_wifi, .reset_revs = reset_revs};
     err = link_start(&ldeps);
     if (err != ESP_OK) ESP_LOGE(TAG, "link start: %s", esp_err_to_name(err));

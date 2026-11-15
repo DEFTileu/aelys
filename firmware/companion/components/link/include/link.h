@@ -15,6 +15,12 @@ typedef struct {
     /* Runs in the link task. m is valid only during the call. Must answer with link_send_ack (wifi_scan with a
      * wifi_scan_result built by proto_wifi_scan_result and link_send_raw). BAD_ARGS acks and acks of unknown names are
      * sent by the link itself and never reach this hook. */
+    esp_err_t (*listen_start)(void (*on_pcm)(const int16_t *pcm, size_t samples));
+    void (*listen_stop)(void);
+    esp_err_t (*audio_begin)(void); /* link task, starts playback */
+    bool (*audio_in)(const uint8_t *pcm, size_t len);
+    void (*audio_stop)(void); /* abort playback immediately, without draining */
+    void (*audio_end)(void); /* must return promptly; drain asynchronously */
     void (*on_command)(const proto_msg_t *m);
     void (*save_snap)(const snap_t *s);   /* flash, at most every 300 s (at once in lost mode) */
     bool (*load_snap)(snap_t *s);         /* false: none saved (or lost mode is on: nothing may show) */
@@ -74,3 +80,7 @@ uint32_t link_ws_stack_free_min(void);    /* smallest free stack the websocket t
 #ifdef CONFIG_AELYS_PERF_PROBE
 int link_probe_state(void); /* link_state_t, or -1 before initialization; bench probe only */
 #endif
+
+bool link_voice_start(bool speak);
+uint32_t link_voice_token(void); /* most recent successfully queued start */
+void link_voice_end(bool cancel);

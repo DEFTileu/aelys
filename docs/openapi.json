@@ -12016,6 +12016,16 @@
                 "type": "null"
               }
             ]
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeatureChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -14537,7 +14547,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "pattern": "^(claude|openrouter|transcription)$",
+            "pattern": "^(claude|openrouter|transcription|elevenlabs)$",
             "title": "Kind"
           },
           "base_url": {

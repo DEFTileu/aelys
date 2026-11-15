@@ -70,6 +70,18 @@ uint32_t link_character_new_identity(void) { return ++character_identity; }
 #ifdef CONFIG_AELYS_PERF_PROBE
 static atomic_int probe_state = ATOMIC_VAR_INIT(-1);
 #endif
+static char voice_id[40];
+static bool voice_listening;
+static atomic_uint voice_gate; /* generation in upper bits; bit 1 armed, bit 0 speaking */
+static atomic_uchar voice_wire_id[40];
+static atomic_ullong voice_end_pending; /* token << 2 | end/cancel */
+static atomic_uint voice_request, voice_failure;
+static uint32_t voice_current;
+static atomic_uint voice_capture_token;
+static atomic_bool audio_slots[LINK_AUDIO_SLOTS];
+static uint32_t audio_generation[LINK_AUDIO_SLOTS];
+static int16_t voice_pcm[1600];
+static size_t voice_pcm_n;
 static bool ws_online; /* guarded by act_mu */
 static atomic_uint paired_seq;  /* bumped by the net task on every PAIR_COMMIT */
 static atomic_bool act_queued;
@@ -273,6 +285,124 @@ bool link_post_action(act_kind_t k, const char *target_id)
     return ok;
 }
 
+static void voice_post(voice_ui_t state, const char *error)
+{
+    ui_event_t ev = { .type = UI_EV_VOICE, .len = 25, .data = { (uint8_t)state } };
+    if (error) strlcpy((char *)&ev.data[1], error, 24);
+    uint32_t token = voice_current;
+    for (int i = 0; i < 4; i++) ev.data[25 + i] = (uint8_t)(token >> (8 * i));
+    ev.len = 29;
+    ui_post(&ev);
+}
+
+static void voice_pending_end(uint32_t token, bool cancel)
+{
+    unsigned long long old = atomic_load(&voice_end_pending), next;
+    do {
+        if (token != atomic_load(&voice_request)) return;
+        if ((old >> 2) == token && (old & 3u) == 2u) return;
+        next = ((unsigned long long)token << 2) | (cancel ? 2u : 1u);
+    } while (!atomic_compare_exchange_weak(&voice_end_pending, &old, next));
+}
+bool link_voice_start(bool speak)
+{
+    if (!q || !act_mu || xSemaphoreTake(act_mu, 0) != pdTRUE) return false;
+    uint32_t token = atomic_load(&voice_request) + 1u;
+    if (!token) token = 1;
+    bool online = ws_online && !pair_transition_pending;
+    bool ok = online && link_q_post(LQ_VOICE_START, link_ws_gen(), speak, (int32_t)token);
+    if (ok) atomic_store(&voice_request, token);
+    xSemaphoreGive(act_mu);
+    return ok;
+}
+uint32_t link_voice_token(void) { return atomic_load(&voice_request); }
+void link_voice_end(bool cancel)
+{
+    uint32_t token = atomic_load(&voice_request);
+    if (token && !link_q_post(LQ_VOICE_END, link_ws_gen(), cancel, (int32_t)token)) voice_pending_end(token, cancel);
+}
+static void voice_pcm_cb(const int16_t *pcm, size_t samples)
+{
+    while (samples) {
+        size_t n = 1600 - voice_pcm_n;
+        if (n > samples) n = samples;
+        memcpy(voice_pcm + voice_pcm_n, pcm, n * sizeof *pcm);
+        voice_pcm_n += n; pcm += n; samples -= n;
+        if (voice_pcm_n == 1600) { if (!link_ws_send_bin(voice_pcm, sizeof voice_pcm)) voice_pending_end(atomic_load(&voice_capture_token), true); voice_pcm_n = 0; }
+    }
+}
+static void voice_gate_reset(void)
+{
+    unsigned old = atomic_load(&voice_gate);
+    while (!atomic_compare_exchange_weak(&voice_gate, &old, (old & ~3u) + 4u)) { }
+}
+uint32_t link_voice_generation(void) { return atomic_load(&voice_gate) & ~3u; }
+void link_voice_wire_speaking(const char *id)
+{
+    unsigned gate = atomic_load(&voice_gate);
+    if (!(gate & 2u)) return;
+    for (size_t i = 0; i < 40; i++) {
+        unsigned char c = atomic_load(&voice_wire_id[i]);
+        if (c != (unsigned char)id[i]) return;
+        if (!c) { atomic_compare_exchange_strong(&voice_gate, &gate, gate | 1u); return; }
+    }
+}
+void link_voice_audio_failed(uint32_t generation)
+{
+    if (generation == link_voice_generation() && (atomic_load(&voice_gate) & 1u)) atomic_store(&voice_failure, generation);
+}
+bool link_voice_accept_audio(uint32_t generation, const uint8_t *pcm, size_t len)
+{
+    unsigned gate = atomic_load(&voice_gate);
+    if ((gate & ~3u) != generation || !(gate & 1u)) return false;
+    if (!q || !link_mem) { atomic_store(&voice_failure, generation); return false; }
+    if (len > LINK_AUDIO_CHUNK) {
+        size_t n = LINK_AUDIO_CHUNK;
+        return link_voice_accept_audio(generation, pcm, n) && link_voice_accept_audio(generation, pcm + n, len - n);
+    }
+    for (int i = 0; i < LINK_AUDIO_SLOTS; i++) {
+        bool unused = false;
+        if (!atomic_compare_exchange_strong(&audio_slots[i], &unused, true)) continue;
+        memcpy(link_mem->audio[i], pcm, len);
+        audio_generation[i] = generation;
+        lq_t ev = {.kind = LQ_VOICE_AUDIO, .gen = link_ws_gen(), .a = i, .b = (int32_t)len};
+        if (xQueueSend(q, &ev, 0) == pdTRUE) return true;
+        atomic_store(&audio_slots[i], false);
+        break;
+    }
+    atomic_store(&voice_failure, generation);
+    return false;
+}
+static void voice_stop(bool cancel, bool send)
+{
+    atomic_fetch_and(&voice_gate, ~1u);
+    if (voice_listening && link_deps.listen_stop) link_deps.listen_stop();
+    voice_listening = false;
+    if (!cancel && voice_pcm_n && send) link_ws_send_bin(voice_pcm, voice_pcm_n * sizeof *voice_pcm);
+    voice_pcm_n = 0;
+    if (send && voice_id[0]) {
+        size_t n = proto_voice_end(link_mem->tx, sizeof link_mem->tx, voice_id, cancel);
+        if (!link_ws_send(link_mem->tx, n)) cancel = true;
+    }
+    if (cancel) { voice_gate_reset(); voice_id[0] = 0; if (link_deps.audio_stop) link_deps.audio_stop(); }
+}
+static void voice_begin(bool speak)
+{
+    if (fsm.st != LS_ONLINE) { voice_post(VOICE_UI_ERROR, "OFFLINE"); return; }
+    if (voice_id[0]) voice_stop(true, true);
+    if (ui_voice_tb.slot[0]) { ((char *)tribuf_back(&ui_voice_tb))[0] = '\0'; tribuf_publish(&ui_voice_tb); }
+    voice_gate_reset();
+    uint8_t random[16]; esp_fill_random(random, sizeof random); uuid4_format(random, voice_id);
+    for (size_t i = 0; i < sizeof voice_id; i++) atomic_store(&voice_wire_id[i], (unsigned char)voice_id[i]);
+    atomic_fetch_or(&voice_gate, 2u);
+    atomic_store(&voice_capture_token, voice_current); /* previous capture was joined above */
+    size_t n = proto_voice_start(link_mem->tx, sizeof link_mem->tx, voice_id, speak);
+    if (!link_ws_send(link_mem->tx, n) || !link_deps.listen_start || link_deps.listen_start(voice_pcm_cb) != ESP_OK) {
+        voice_stop(true, true); voice_post(VOICE_UI_ERROR, "OFFLINE"); return;
+    }
+    voice_listening = true;
+}
+
 /* ---------------------------------------------------------- sign-in actions */
 
 /* Where the wire result of a sign-in step is turned into an FSM event. */
@@ -379,6 +509,7 @@ static void on_online(void)
 
 static void on_offline(void)
 {
+    if (voice_id[0]) { voice_stop(true, false); voice_post(VOICE_UI_ERROR, "OFFLINE"); }
     xSemaphoreTake(act_mu, portMAX_DELAY);
     ws_online = false;
     link_acts_unsend_all(&acts, ms());
@@ -455,6 +586,29 @@ static void handle_frame_locked(int slot, int len)
     }
     if (fsm.st != LS_ONLINE) return;
     switch (m->type) {
+    case MSG_VOICE_TEXT:
+        if (voice_id[0] && !strcmp(voice_id, m->id) && ui_voice_tb.slot[0]) {
+            strlcpy(tribuf_back(&ui_voice_tb), m->u.voice.text, 601);
+            tribuf_publish(&ui_voice_tb);
+        }
+        break;
+    case MSG_VOICE_STATE:
+        if (!voice_id[0] || strcmp(voice_id, m->id)) break;
+        if (!strcmp(m->u.voice.state, "thinking")) voice_post(VOICE_UI_THINKING, NULL);
+        else if (!strcmp(m->u.voice.state, "speaking")) {
+            if (!link_deps.audio_begin || link_deps.audio_begin() != ESP_OK) {
+                voice_stop(true, true); voice_post(VOICE_UI_ERROR, "VOICE_UNAVAILABLE");
+            } else voice_post(VOICE_UI_SPEAKING, NULL);
+        }
+        else if (!strcmp(m->u.voice.state, "done") || !strcmp(m->u.voice.state, "error")) {
+            bool error = !strcmp(m->u.voice.state, "error");
+            atomic_fetch_and(&voice_gate, ~1u);
+            if (error) { if (link_deps.audio_stop) link_deps.audio_stop(); }
+            else if (link_deps.audio_end) link_deps.audio_end();
+            voice_post(error ? VOICE_UI_ERROR : VOICE_UI_DONE, m->u.voice.error);
+            voice_id[0] = 0; voice_gate_reset();
+        }
+        break;
     case MSG_SNAPSHOT:
         link_mem->snap = m->u.snap;
         publish_snapshot(&link_mem->snap, true);
@@ -526,6 +680,30 @@ static void handle_paired(void)
 static void handle_q(const lq_t *e)
 {
     switch (e->kind) {
+    case LQ_VOICE_START:
+        /* Admission publishes voice_request under this lock after queueing. */
+        xSemaphoreTake(act_mu, portMAX_DELAY);
+        xSemaphoreGive(act_mu);
+        voice_current = (uint32_t)e->b;
+        if (e->gen == link_ws_gen()) voice_begin(e->a != 0);
+        else voice_post(VOICE_UI_ERROR, "OFFLINE");
+        break;
+    case LQ_VOICE_END:
+        if ((uint32_t)e->b == voice_current && voice_id[0]) voice_stop(e->a != 0, e->gen == link_ws_gen());
+        break;
+    case LQ_VOICE_AUDIO: {
+        int slot = e->a;
+        if (slot >= 0 && slot < LINK_AUDIO_SLOTS) {
+            uint32_t generation = audio_generation[slot];
+            unsigned gate = atomic_load(&voice_gate);
+            if (e->gen == link_ws_gen() && (gate & ~3u) == generation && (gate & 1u) &&
+                (!link_deps.audio_in || !link_deps.audio_in(link_mem->audio[slot], (size_t)e->b))) {
+                atomic_store(&voice_failure, generation);
+            }
+            atomic_store(&audio_slots[slot], false);
+        }
+        break;
+    }
     case LQ_PAIRED:
         handle_paired(); /* the event only wakes the task: tick() also notices the counter, so a dropped event is harmless */
         break;
@@ -552,6 +730,16 @@ static bool chaos_due(uint32_t now) { (void)now; return false; }
 
 static void tick(void)
 {
+    unsigned long long pending = atomic_load(&voice_end_pending);
+    uint32_t token = (uint32_t)(pending >> 2);
+    if (pending && (token == voice_current || token != atomic_load(&voice_request))) {
+        if (atomic_compare_exchange_strong(&voice_end_pending, &pending, 0) && token == voice_current && voice_id[0])
+            voice_stop((pending & 3u) == 2u, true);
+    }
+    uint32_t failure = atomic_exchange(&voice_failure, 0);
+    if (failure && failure == link_voice_generation() && voice_id[0]) {
+        voice_stop(true, true); voice_post(VOICE_UI_ERROR, "VOICE_UNAVAILABLE");
+    }
     handle_paired();
     bool up = net_ok();
     if (up != net_up) {
@@ -692,7 +880,7 @@ esp_err_t link_start(const link_deps_t *d)
     link_mem = heap_caps_calloc(1, sizeof *link_mem, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     act_mu = xSemaphoreCreateMutex();
     pair_send_mu = xSemaphoreCreateMutex();
-    q = xQueueCreate(12, sizeof(lq_t));
+    q = xQueueCreate(144, sizeof(lq_t));
     link_acts_init(&acts);
     if (!link_mem || !act_mu || !pair_send_mu || !q ||
         xTaskCreatePinnedToCore(link_task, "link", LINK_STACK, NULL, 5, NULL, 0) != pdPASS) {

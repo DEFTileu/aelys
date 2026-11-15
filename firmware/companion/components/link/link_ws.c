@@ -18,7 +18,7 @@
 
 static const char *TAG = "link";
 
-enum { OP_CONT = 0x0, OP_TEXT = 0x1, OP_CLOSE = 0x8, OP_PING = 0x9, OP_PONG = 0xA };
+enum { OP_CONT = 0x0, OP_TEXT = 0x1, OP_BINARY = 0x2, OP_CLOSE = 0x8, OP_PING = 0x9, OP_PONG = 0xA };
 
 static struct {
     esp_websocket_client_handle_t client;
@@ -30,6 +30,11 @@ static struct {
     int slot;                     /* slot being filled, -1 none */
     size_t len;
     bool drop;
+    bool binary, binary_drop;
+    size_t binary_len;
+    uint32_t binary_generation;
+    bool binary_half;
+    uint8_t binary_byte;
     int close_code;
     int hs_status;
     uint32_t closed_gen;
@@ -68,8 +73,37 @@ static void on_data(uint32_t gen, const esp_websocket_event_data_t *e)
         if (e->data_len >= 2) ws.close_code = ((uint8_t)e->data_ptr[0] << 8) | (uint8_t)e->data_ptr[1];
         return;
     }
-    if (op != OP_TEXT && op != OP_CONT) return; /* ping, pong, binary: not part of the protocol */
-    if (op == OP_TEXT && e->payload_offset == 0) { /* a new message: forget a half-built one */
+    if (op == OP_BINARY && e->payload_offset == 0) {
+        if (ws.slot >= 0) ws.busy[ws.slot] = false;
+        ws.slot = -1; ws.binary = true; ws.binary_drop = false; ws.binary_len = 0; ws.binary_half = false; ws.binary_generation = link_voice_generation();
+    }
+    if ((op == OP_BINARY || op == OP_CONT) && ws.binary) {
+        size_t n = (size_t)e->data_len;
+        const uint8_t *p = (const uint8_t *)e->data_ptr;
+        ws.binary_len += n;
+        if (ws.binary_len > LINK_FRAME_MAX || e->payload_len > LINK_FRAME_MAX ||
+            (e->fin && e->payload_offset + e->data_len >= e->payload_len && (ws.binary_len & 1))) {
+            ws.binary_drop = true; link_voice_audio_failed(ws.binary_generation);
+        }
+        if (!ws.binary_drop && ws.binary_half && n) {
+            uint8_t pair[2] = {ws.binary_byte, *p++}; n--; ws.binary_half = false;
+            if (!link_voice_accept_audio(ws.binary_generation, pair, 2)) ws.binary_drop = true;
+        }
+        if (!ws.binary_drop && n >= 2) {
+            size_t even = n & ~(size_t)1;
+            if (!link_voice_accept_audio(ws.binary_generation, p, even)) ws.binary_drop = true;
+            p += even; n -= even;
+        }
+        if (!ws.binary_drop && n) { ws.binary_byte = *p; ws.binary_half = true; }
+        if (e->fin && e->payload_offset + e->data_len >= e->payload_len) {
+            if (ws.binary_half) ws.binary_drop = true;
+            ws.binary = false;
+        }
+        return;
+    }
+    if (op != OP_TEXT && op != OP_CONT) return;
+    if (op == OP_TEXT && e->payload_offset == 0) {
+        ws.binary = false; /* a new message: forget a half-built one */
         if (ws.slot >= 0) ws.busy[ws.slot] = false;
         ws.slot = claim_slot();
         ws.len = 0;
@@ -91,6 +125,8 @@ static void on_data(uint32_t gen, const esp_websocket_event_data_t *e)
     if (e->fin && e->payload_offset + e->data_len >= e->payload_len) { /* message complete */
         if (!ws.drop && ws.slot >= 0) {
             link_mem->rx[ws.slot][ws.len] = '\0';
+            char voice_id[40];
+            if (proto_voice_speaking_id(link_mem->rx[ws.slot], ws.len, voice_id)) link_voice_wire_speaking(voice_id);
             if (!link_q_post(LQ_WS_FRAME, gen, ws.slot, (int32_t)ws.len)) { ws.busy[ws.slot] = false; ws.lost_frame = true; }
         }
         ws.slot = -1;
@@ -225,5 +261,16 @@ bool link_ws_send(const char *json, size_t n)
     if (c && esp_websocket_client_is_connected(c)) r = esp_websocket_client_send_text(c, json, (int)n, pdMS_TO_TICKS(2000));
     xSemaphoreGive(mu);
     if (r != (int)n) ESP_LOGW(TAG, "ws send failed (%d of %u)", r, (unsigned)n);
+    return r == (int)n;
+}
+
+bool link_ws_send_bin(const void *data, size_t n)
+{
+    if (!mu || !data || !n || n > 3200 || (n & 1)) return false;
+    xSemaphoreTake(mu, portMAX_DELAY);
+    esp_websocket_client_handle_t c = ws.client;
+    int r = -1;
+    if (c && esp_websocket_client_is_connected(c)) r = esp_websocket_client_send_bin(c, data, (int)n, pdMS_TO_TICKS(2000));
+    xSemaphoreGive(mu);
     return r == (int)n;
 }

@@ -31,6 +31,7 @@ class CompanionState(Base):
     character_epoch: Mapped[int] = mapped_column(BigInteger, default=0, server_default=text('0'))
     character_seq: Mapped[int] = mapped_column(BigInteger, default=-1, server_default=text('-1'))
     character_json: Mapped[dict | None] = mapped_column(JSON)
+    voice_conversation_id: Mapped[str | None] = mapped_column(String(36))
     lost_mode_json: Mapped[dict | None] = mapped_column(JSON)
     ice_json: Mapped[dict | None] = mapped_column(JSON)
     pending_commands_json: Mapped[list] = mapped_column(JSON, default=list)

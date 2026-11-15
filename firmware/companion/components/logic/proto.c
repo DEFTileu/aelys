@@ -427,6 +427,13 @@ bool proto_parse(const char *json, size_t len, proto_msg_t *out)
         if (!get_str(&p, 0, "id", out->id, sizeof out->id, S_REQ) || !get_bool(&p, 0, "ok", &out->u.result.ok, S_REQ) ||
             !get_str(&p, 0, "error_code", out->u.result.error, sizeof out->u.result.error, S_TRUNC)) return false;
         t = MSG_ACTION_RESULT;
+    } else if (strcmp(type, "voice_state") == 0 || strcmp(type, "voice_text") == 0) {
+        bool state = strcmp(type, "voice_state") == 0;
+        if (!get_str(&p, 0, "id", out->id, sizeof out->id, S_REQ) || !out->id[0] ||
+            !(state ? get_str(&p, 0, "state", out->u.voice.state, sizeof out->u.voice.state, S_REQ) &&
+                       get_str(&p, 0, "error_code", out->u.voice.error, sizeof out->u.voice.error, S_TRUNC)
+                    : get_str(&p, 0, "text", out->u.voice.text, sizeof out->u.voice.text, S_REQ | S_TRUNC))) return false;
+        t = state ? MSG_VOICE_STATE : MSG_VOICE_TEXT;
     } else if (strcmp(type, "command") == 0) {
         return parse_command(&p, out);
     } else if (strcmp(type, "error") == 0) {
@@ -667,4 +674,31 @@ size_t proto_wifi_state(char *buf, size_t cap, const wifi_list_t *saved, const c
     if (current && utf8_ok(current)) wq(&w, current); else wr(&w, "null");
     wr(&w, "}");
     return w_done(&w);
+}
+
+size_t proto_voice_start(char *buf, size_t cap, const char *id, bool speak)
+{
+    if (!id || !*id) return 0;
+    W w; w_init(&w, buf, cap);
+    wr(&w, "{\"type\":\"voice_start\",\"id\":"); wq(&w, id);
+    wr(&w, speak ? ",\"rate\":16000,\"format\":\"pcm_s16le\",\"speak\":true}" : ",\"rate\":16000,\"format\":\"pcm_s16le\",\"speak\":false}");
+    return w_done(&w);
+}
+size_t proto_voice_end(char *buf, size_t cap, const char *id, bool cancel)
+{
+    if (!id || !*id) return 0;
+    W w; w_init(&w, buf, cap);
+    wr(&w, cancel ? "{\"type\":\"voice_cancel\",\"id\":" : "{\"type\":\"voice_end\",\"id\":");
+    wq(&w, id); wr(&w, "}"); return w_done(&w);
+}
+
+bool proto_voice_speaking_id(const char *json, size_t len, char id[40])
+{
+    jsmntok_t local[32]; jsmn_parser parser; jsmn_init(&parser);
+    int n = jsmn_parse(&parser, json, len, local, 32);
+    if (n < 1 || local[0].type != JSMN_OBJECT) return false;
+    P p = {json, local, n}; char type[16], state[12];
+    return get_str(&p, 0, "type", type, sizeof type, S_REQ) && !strcmp(type, "voice_state") &&
+           get_str(&p, 0, "state", state, sizeof state, S_REQ) && !strcmp(state, "speaking") &&
+           get_str(&p, 0, "id", id, 40, S_REQ) && id[0];
 }

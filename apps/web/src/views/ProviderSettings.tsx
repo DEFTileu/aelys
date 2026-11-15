@@ -13,8 +13,9 @@ const LOOKS: Record<string, { name: string; letter: string; tone: string; hint: 
   claude: { name: 'Claude', letter: 'C', tone: 'st-tone-claude', hint: 'Anthropic models', models: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5'] },
   openrouter: { name: 'OpenRouter', letter: 'O', tone: 'st-tone-profile', hint: 'Many models, one key', models: [] },
   transcription: { name: 'Transcription', letter: 'T', tone: 'st-tone-blue', hint: 'Voice messages, OpenAI compatible', models: ['gpt-4o-mini-transcribe', 'whisper-1'] },
+  elevenlabs: { name: 'ElevenLabs', letter: 'E', tone: 'st-tone-blue', hint: "ElevenLabs key for the desk board's voice: speech recognition and speech.", models: ['eleven_flash_v2_5'] },
 }
-const KINDS: AIProviderKind[] = ['claude', 'openrouter', 'transcription']
+const KINDS: AIProviderKind[] = ['claude', 'openrouter', 'transcription', 'elevenlabs']
 
 const errorCode = (error: unknown) => { const code = (error as { code?: unknown })?.code; return typeof code === 'string' ? ` (${code})` : '' }
 
@@ -28,6 +29,7 @@ export function ProviderSettings() {
   const [documents, setDocuments] = useState(false)
   const [monthlyBudget, setMonthlyBudget] = useState('100')
   const [transcriptionCost, setTranscriptionCost] = useState('0.10')
+  const [voiceCost, setVoiceCost] = useState('0.05')
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -51,7 +53,7 @@ export function ProviderSettings() {
     const existingModels = configuredModels(current)
     const previous = existingModels.find(item => item.name === String(current?.model_policy?.default_model ?? model.trim()))
     const capabilities = [...(Array.isArray(previous?.capabilities) ? previous.capabilities.filter(value => typeof value === 'string' && !['streaming', 'tool_calling', 'images', 'documents'].includes(value)) : []), 'streaming', ...(toolCalling ? ['tool_calling'] : []), ...(images ? ['images'] : []), ...(documents ? ['documents'] : [])]
-    const modelPolicy = { ...current?.model_policy, ...(kind === 'transcription' ? { monthly_budget: monthlyBudget, transcription_request_cost: transcriptionCost } : {}), default_model: model.trim(), models: kind === 'transcription' ? [] : [...existingModels.filter(item => item !== previous && item.name !== model.trim()), { ...previous, name: model.trim(), capabilities, context_tokens: previous?.context_tokens ?? 100000 }] }
+    const modelPolicy = { ...current?.model_policy, ...(kind === 'transcription' ? { monthly_budget: monthlyBudget, transcription_request_cost: transcriptionCost } : {}), ...(kind === 'elevenlabs' ? { monthly_budget: monthlyBudget, voice_request_cost: voiceCost, tts_model: model.trim() } : {}), default_model: model.trim(), models: kind === 'transcription' || kind === 'elevenlabs' ? [] : [...existingModels.filter(item => item !== previous && item.name !== model.trim()), { ...previous, name: model.trim(), capabilities, context_tokens: previous?.context_tokens ?? 100000 }] }
     const provider = editing ? { id: editing } : await client.createAIProvider({ kind, enabled: false, model_policy: modelPolicy }, { queueOnOffline: false })
     // Retain the new id if storing its key fails, so retry edits the same provider.
     setEditing(provider.id)
@@ -64,7 +66,7 @@ export function ProviderSettings() {
     setBusy(true); setNotice('')
     try {
       const id = await persist()
-      if (id) { setNotice(kind === 'transcription' ? 'Transcription saved. You can send voice messages to your Telegram bot.' : 'Provider saved. Test the connection, then open AI Chat.'); await load() }
+      if (id) { setNotice(kind === 'transcription' ? 'Transcription saved. You can send voice messages to your Telegram bot.' : kind === 'elevenlabs' ? 'ElevenLabs voice provider saved.' : 'Provider saved. Test the connection, then open AI Chat.'); await load() }
     } catch (error) { console.debug('[aelys] save provider failed', error); setNotice(`Could not save provider${errorCode(error)}. Check the connection and owner session, then retry.`) }
     finally { setApiKey(''); setBusy(false) }
   }
@@ -91,7 +93,9 @@ export function ProviderSettings() {
   const edit = (provider?: AIProvider) => {
     setEditing(provider?.id ?? ''); setKind(provider?.kind ?? 'claude')
     setMonthlyBudget(String(provider?.model_policy?.monthly_budget ?? '100')); setTranscriptionCost(String(provider?.model_policy?.transcription_request_cost ?? '0.10'))
-    const modelId = String(provider?.model_policy?.default_model ?? '')
+    setVoiceCost(String(provider?.model_policy?.voice_request_cost ?? '0.05'))
+    if (!provider && kind === 'elevenlabs') setModel('eleven_flash_v2_5')
+    const modelId = String(provider?.kind === 'elevenlabs' ? provider.model_policy?.tts_model ?? provider.model_policy?.default_model ?? '' : provider?.model_policy?.default_model ?? '')
     const capabilities = configuredModels(provider).find(item => item.name === modelId)?.capabilities
     setToolCalling(Array.isArray(capabilities) && capabilities.includes('tool_calling'))
     setImages(Array.isArray(capabilities) && capabilities.includes('images')); setDocuments(Array.isArray(capabilities) && capabilities.includes('documents'))
@@ -121,7 +125,7 @@ export function ProviderSettings() {
       <Card>
         <form className="st-form" onSubmit={save} noValidate>
           <div role="radiogroup" aria-label="Provider" className="st-kinds">
-            {KINDS.map((value) => { const item = LOOKS[value]; return <button key={value} type="button" role="radio" aria-checked={kind === value} className="st-kind" disabled={!!editing || busy} onClick={() => { setKind(value); setModel(''); setProblem(null) }}>
+            {KINDS.map((value) => { const item = LOOKS[value]; return <button key={value} type="button" role="radio" aria-checked={kind === value} className="st-kind" disabled={!!editing || busy} onClick={() => { setKind(value); setModel(value === 'elevenlabs' ? 'eleven_flash_v2_5' : ''); setProblem(null) }}>
               <span className={`st-prov-logo ${item.tone}`}>{item.letter}</span>
               <span className="st-kind-text"><b>{item.name}</b><span>{item.hint}</span></span>
             </button> })}
@@ -129,13 +133,13 @@ export function ProviderSettings() {
           <label className="st-field-label">Model ID<input className="st-input st-input--mono" value={model} onChange={(event) => { setModel(event.target.value); setProblem(null) }} autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder={kind === 'openrouter' ? 'e.g. anthropic/claude-sonnet-5-5' : 'Model ID from your provider'} aria-invalid={problem?.field === 'model'} /></label>
           {look.models.length > 0 && <div className="st-suggest" aria-label="Suggested models">{look.models.map((id) => <button key={id} type="button" className={`st-suggest-chip${model === id ? ' is-on' : ''}`} disabled={busy} onClick={() => { setModel(id); setProblem(null) }}>{id}</button>)}</div>}
           {problem?.field === 'model' && <div className="st-error" role="alert">{problem.text}</div>}
-          {kind !== 'transcription' ? <div role="group" aria-label="Model capabilities" className="st-form st-form--flush"><div><div className="st-label">Model capabilities</div><div className="st-hint">Enable only features supported by this model.</div></div>
+          {kind !== 'transcription' && kind !== 'elevenlabs' ? <div role="group" aria-label="Model capabilities" className="st-form st-form--flush"><div><div className="st-label">Model capabilities</div><div className="st-hint">Enable only features supported by this model.</div></div>
             <Checkbox label="Tool calling" checked={toolCalling} disabled={busy} onChange={setToolCalling} />
             <Checkbox label="Images" checked={images} disabled={busy} onChange={setImages} />
             <Checkbox label="PDF documents" checked={documents} disabled={busy} onChange={setDocuments} />
-          </div> : <div className="st-form st-form--flush"><div className="st-hint">A separate key for voice transcription through the OpenAI audio API. It is not used for chat replies.</div>
-            <label className="st-field-label">Monthly transcription budget (USD)<input className="st-input" type="number" min="0" step="0.01" value={monthlyBudget} onChange={event => setMonthlyBudget(event.target.value)} /></label>
-            <label className="st-field-label">Estimate per transcription (USD)<input className="st-input" type="number" min="0.01" step="0.01" value={transcriptionCost} onChange={event => setTranscriptionCost(event.target.value)} /></label>
+          </div> : <div className="st-form st-form--flush"><div className="st-hint">{kind === 'elevenlabs' ? "ElevenLabs key for the desk board's voice: speech recognition and speech." : 'A separate key for voice transcription through the OpenAI audio API. It is not used for chat replies.'}</div>
+            <label className="st-field-label">Monthly {kind === 'elevenlabs' ? 'voice' : 'transcription'} budget (USD)<input className="st-input" type="number" min="0" step="0.01" value={monthlyBudget} onChange={event => setMonthlyBudget(event.target.value)} /></label>
+            <label className="st-field-label">Estimate per {kind === 'elevenlabs' ? 'voice request' : 'transcription'} (USD)<input className="st-input" type="number" min="0.01" step="0.01" value={kind === 'elevenlabs' ? voiceCost : transcriptionCost} onChange={event => kind === 'elevenlabs' ? setVoiceCost(event.target.value) : setTranscriptionCost(event.target.value)} /></label>
             <div className="st-hint">This estimate counts toward the monthly limit before each attempt, including failed attempts. Check actual charges with your provider.</div>
           </div>}
           <label className="st-field-label">{keyRequired ? 'API key' : 'Replace API key (optional)'}

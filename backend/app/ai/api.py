@@ -88,7 +88,7 @@ from .turn import run_tool_turn
 logger = logging.getLogger(__name__)
 router=APIRouter()
 _active_cancellations: dict[str, asyncio.Event] = {}
-class ProviderIn(BaseModel): kind:str=Field(pattern="^(claude|openrouter|transcription)$"); base_url:str|None=None; enabled:bool=True; model_policy:dict={}; secret_ref:str|None=None
+class ProviderIn(BaseModel): kind:str=Field(pattern="^(claude|openrouter|transcription|elevenlabs)$"); base_url:str|None=None; enabled:bool=True; model_policy:dict={}; secret_ref:str|None=None
 class ConversationIn(BaseModel):
     project_id: str | None = None
     title: str = "Conversation"
@@ -256,7 +256,7 @@ def _authorize_provider(owner_id: str, scope: str, *, external: bool = False) ->
 
 
 def _provider_base_url(kind: str, value: str | None) -> str:
-    default = {"claude":"https://api.anthropic.com", "openrouter":"https://openrouter.ai", "transcription":"https://api.openai.com"}.get(kind, "")
+    default = {"claude":"https://api.anthropic.com", "openrouter":"https://openrouter.ai", "transcription":"https://api.openai.com", "elevenlabs":"https://api.elevenlabs.io"}.get(kind, "")
     if not default:
         raise HTTPException(422, detail={"code":"INVALID_PROVIDER_ENDPOINT","message":"Unsupported provider kind"})
     if value is None:
@@ -267,12 +267,12 @@ def _provider_base_url(kind: str, value: str | None) -> str:
         port = parsed.port
     except ValueError:
         raise HTTPException(422, detail={"code":"INVALID_PROVIDER_ENDPOINT","message":"Invalid provider endpoint port"}) from None
-    allowed = (kind == "claude" and host == "api.anthropic.com") or (kind == "openrouter" and host == "openrouter.ai") or (kind == "transcription" and host == "api.openai.com")
+    allowed = (kind == "claude" and host == "api.anthropic.com") or (kind == "openrouter" and host == "openrouter.ai") or (kind == "transcription" and host == "api.openai.com") or (kind == "elevenlabs" and host == "api.elevenlabs.io")
     try:
         is_ip = ipaddress.ip_address(host)
     except ValueError:
         is_ip = None
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password or is_ip is not None or not allowed or parsed.query or parsed.fragment or port not in {None, 443} or (kind == "transcription" and parsed.path not in {"", "/"}):
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password or is_ip is not None or not allowed or parsed.query or parsed.fragment or port not in {None, 443} or (kind in {"transcription", "elevenlabs"} and parsed.path not in {"", "/"}):
         raise HTTPException(status_code=422, detail={"code":"INVALID_PROVIDER_ENDPOINT","message":"Provider endpoint must be an approved HTTPS host"})
     return value.rstrip("/")
 
@@ -329,6 +329,7 @@ class FeatureDefaults(BaseModel):
     english: FeatureChoice | None = None
     automation: FeatureChoice | None = None
     transcription: FeatureChoice | None = None
+    voice: FeatureChoice | None = None
 
 @router.get("/ai/defaults", response_model=FeatureDefaults)
 async def feature_defaults(principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):

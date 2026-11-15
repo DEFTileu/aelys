@@ -85,3 +85,18 @@ it('preserves existing routing capabilities while enabling photos and tools', as
   act(() => root.unmount())
 })
 })
+
+it('saves ElevenLabs with the voice request estimate and default TTS model', async () => {
+  client.aiProviders.mockResolvedValue([]); client.createAIProvider.mockResolvedValue({ id: 'voice-provider' }); client.setAIProviderSecret.mockResolvedValue(undefined); client.updateAIProvider.mockResolvedValue(undefined)
+  const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host)
+  await act(async () => root.render(<ProviderSettings />))
+  const option = Array.from(host.querySelectorAll<HTMLButtonElement>('[role=radio]')).find(item => item.textContent?.includes('ElevenLabs'))
+  expect(option).toBeTruthy(); await act(async () => option!.click())
+  const set = async (field: HTMLInputElement, value: string) => {
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, value); field.dispatchEvent(new Event('input', { bubbles: true })) })
+  }
+  await set(Array.from(host.querySelectorAll('label')).find(item => item.textContent?.startsWith('API key'))!.querySelector('input')!, 'synthetic-elevenlabs-key')
+  await act(async () => host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(client.createAIProvider).toHaveBeenCalledWith(expect.objectContaining({ kind: 'elevenlabs', model_policy: expect.objectContaining({ default_model: 'eleven_flash_v2_5', tts_model: 'eleven_flash_v2_5', voice_request_cost: '0.05', monthly_budget: '100' }) }), { queueOnOffline: false })
+  act(() => root.unmount())
+})

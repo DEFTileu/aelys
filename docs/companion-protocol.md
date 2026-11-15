@@ -459,3 +459,9 @@ recorded in the command log.
 ```json
 {"device_id": "7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d", "wifi": {"saved": ["Home"], "current": "Home"}, "battery": {"pct": 81, "charging": true}, "settings": {"brightness": 60}, "command_log": [{"id": "c1d2e3f4-0a1b-4c2d-8e3f-4a5b6c7d8e9f", "name": "wifi_add", "sent_at": "2026-11-13T09:30:00+00:00", "ok": false, "error_code": "WIFI_FAILED"}]}
 ```
+
+## Voice
+
+The authenticated companion channel supports one push-to-talk turn at a time. The board sends `voice_start` with a device-unique `id` (1–40 characters), `rate: 16000`, `format: "pcm_s16le"` and boolean `speak`, followed by binary mono 16-bit little-endian PCM, then `voice_end` or `voice_cancel` with the same `id`. Audio outside an open recording is ignored. The limit is 640,000 bytes (20 seconds); exceeding it discards the recording and returns `VOICE_TOO_LONG`. A new start cancels the prior turn and fences its queued output.
+
+The server sends `voice_state` with `id` and `state` (`thinking`, `speaking`, `done`, or `error`), `voice_text` with the `id` and at most 600 characters, and binary PCM frames of at most 4096 bytes, each an even number of bytes. `done` follows the final audio frame; `speak: false` skips synthesis. Errors contain `error_code`: `VOICE_NOT_CONFIGURED`, `BUDGET_EXCEEDED`, `VOICE_TOO_LONG`, `VOICE_EMPTY`, or `VOICE_UNAVAILABLE`. Lost mode refuses voice. The board controls sound suppression for night and its Sounds setting. Audio is transient and never stored; the conversation text is stored in the owner's AI chat and never logged.

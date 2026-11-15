@@ -113,3 +113,14 @@ lv_obj_t *scr_notice_create(lv_obj_t *parent)
     lv_obj_set_hidden(n.box, true);
     return n.box;
 }
+
+void scr_notice_voice(const char *text)
+{
+    if (!text || !*text) return;
+    ui_set_text(n.eb, "Aelys");
+    ui_set_text(n.title, text);
+    ui_text_color(n.eb, UI_COLOR_SUBTLE);
+    lv_obj_set_hidden(n.box, false);
+    lv_obj_move_foreground(n.box);
+    if (n.timer) { lv_timer_delete(n.timer); n.timer = NULL; }
+}

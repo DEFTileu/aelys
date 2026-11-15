@@ -66,6 +66,11 @@ Tasks:
 1. Provider connectivity health/probe.
 2. Run orchestration and limits (steps, time, tokens/cost).
 3. Read and create_task tools via domain services.
+   Owner-requested companion voice extension (2026-11-15): restricted
+   voice tools, ElevenLabs BYOK and the companion PCM channel are tracked in
+   [the approved phase 5 plan](superpowers/plans/2026-11-15-companion-voice.md).
+   Development and hardware acceptance limits are recorded in
+   [companion next steps](../firmware/companion/docs/next-steps.md).
    Owner-approved shared action-service extension (2026-11-13), Task 1 only:
    [task notes and validation](optimization/aelys-harness-task-proposals.md).
    Task 2 implements opt-in Telegram suggestions and private owner buttons;

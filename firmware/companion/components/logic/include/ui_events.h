@@ -26,6 +26,8 @@ typedef enum {
     UI_EV_LEVEL,        /* [0..1] = int16 LE, eye rotation in tenths of a degree that keeps the face level (level.h). Optional [2..3], [4..5] = int16 LE gravity along the screen x (right) and y (down), 16384 counts = 1 g, for the tilt maze */
     UI_EV_WIFI_LIST,    /* the saved network names changed: they are in ui_wifi_tb (names only, never passwords) */
     UI_EV_MOTION,       /* [0] = motion_event_t (motion.h): a shake, fall or pick-up, or the board turned face down / back up */
+    UI_EV_TALK,
+    UI_EV_VOICE,
 } ui_event_type_t;
 
 typedef struct {
@@ -47,3 +49,5 @@ typedef enum { LINK_UI_UNPAIRED, LINK_UI_CONNECTING, LINK_UI_ONLINE, LINK_UI_OFF
 
 /* UI_EV_PAIR data[0]: CODE shows the six SAS digits (data[1..6]), DONE the "Paired" card, HIDE drops the pair screen. */
 typedef enum { PAIR_UI_HIDE, PAIR_UI_CODE, PAIR_UI_DONE } ui_pair_t;
+
+typedef enum { VOICE_UI_THINKING, VOICE_UI_SPEAKING, VOICE_UI_DONE, VOICE_UI_ERROR } voice_ui_t;
