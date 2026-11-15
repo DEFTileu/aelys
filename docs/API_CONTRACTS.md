@@ -877,3 +877,27 @@ GET /api/v1/changes   (owner app session; Accept: text/event-stream)
   poll, and catches up once after an outage. Native hosts open the same stream
   through the `native_ai_events` command with `changes: true`, whose event
   allow-list includes `changes.hint`.
+
+### AI chat voice (owner-requested Phase 4 slice)
+
+Authenticated, online-only calls using the owner's `voice` feature provider
+(`elevenlabs`); both routes return `Cache-Control: no-store` and never persist
+recordings or generated audio. They are excluded from client durable outboxes.
+
+- `POST /api/v1/ai/voice/transcribe`: raw audio body or one multipart file field
+  `audio`, at most 10 MiB. Allowed MIME types: `audio/webm`, `audio/mp4`,
+  `audio/ogg`, `audio/wav`, `audio/mpeg` (codec parameters accepted). Returns
+  `{text: string}`. Audio is parsed in bounded memory, without disk spooling.
+- `POST /api/v1/ai/voice/speak`: `{text: string}` (1–20,000 characters). Markdown,
+  code and link targets are removed; spoken text is capped at 2,500 characters.
+  Returns `{audio: string, content_type: "audio/mpeg"}`, where `audio` is base64
+  MP3 (`mp3_44100_64`, at most 4 MiB before base64 encoding).
+
+Each call reserves the configured decimal `voice_request_cost` (default `0.05`)
+against the selected provider's monthly budget. A language-detection retry
+reserves another request estimate before a second provider call. An `AIRun` tracks completion or
+failure in a hidden conversation; no recording or TTS content is stored there.
+Voice errors use `detail.code`: `VOICE_NOT_CONFIGURED` (409), `BUDGET_EXCEEDED`
+(429), `VOICE_EMPTY` (422), `VOICE_UNAVAILABLE` (502). Upload validation uses
+`AUDIO_UNSUPPORTED` (415), `AUDIO_TOO_LARGE` (413), and `AUDIO_EMPTY` or
+`AUDIO_INVALID` (422). Provider diagnostic bodies, keys and URLs are redacted.

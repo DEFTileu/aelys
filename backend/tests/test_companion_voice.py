@@ -62,7 +62,7 @@ async def setup_voice(owner_id, device_id):
 
 async def execute_turn(monkeypatch, owner_id, device_id, turn_id, service, *, speak=False):
     monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: service)
-    async def stt(*args):
+    async def stt(*args, **kwargs):
         return 'личная расшифровка'
     async def tts(*args):
         yield b'\x01\x02'
@@ -131,7 +131,7 @@ async def test_voice_cancel_marks_reserved_run_failed(paired, monkeypatch):
     owner_id = decode_token(owner['access_token'])['sub']
     await setup_voice(owner_id, device_id)
     started = asyncio.Event()
-    async def stt(*args):
+    async def stt(*args, **kwargs):
         started.set()
         await asyncio.Event().wait()
     async def send(item):
@@ -162,7 +162,7 @@ async def test_voice_failure_branches(paired, monkeypatch, mode, expected):
             provider = (await session.execute(select(AIProvider).where(AIProvider.kind == 'elevenlabs'))).scalar_one()
             provider.model_policy_json = {'monthly_budget': '0.01'}
             await session.commit()
-    async def stt(*args):
+    async def stt(*args, **kwargs):
         raise voice.VoiceError('VOICE_EMPTY')
     monkeypatch.setattr(voice, 'transcribe_pcm', stt)
     sent = []
@@ -210,7 +210,7 @@ async def test_session_revocation_stops_tool_and_preserves_usage(paired, monkeyp
             return await super().complete(*args, **kwargs)
     service = RevokedService({'id': '1', 'name': 'create_task', 'input': {'title': 'revoked task'}})
     monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: service)
-    async def stt(*args):
+    async def stt(*args, **kwargs):
         return 'private speech'
     async def authorized(session):
         return permitted
@@ -247,7 +247,7 @@ async def test_voice_cancelled_turn_keeps_chat_budget(paired, monkeypatch):
         async def complete(self, *args, **kwargs):
             await asyncio.sleep(30)
     monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: SlowService())
-    async def stt(*args):
+    async def stt(*args, **kwargs):
         return 'вопрос'
     monkeypatch.setattr(voice, 'transcribe_pcm', stt)
     async def send(item):
@@ -267,3 +267,35 @@ async def test_voice_cancelled_turn_keeps_chat_budget(paired, monkeypatch):
         run = (await session.execute(select(AIRun).where(AIRun.provider_id == chat.id))).scalar_one()
         assert run.status == 'failed' and run.cost_estimate == 0
         assert await ai_api._remaining_monthly_budget(session, owner_id, chat) == Decimal(10)
+
+
+@pytest.mark.asyncio
+async def test_board_language_retry_requires_remaining_voice_budget(paired, monkeypatch):
+    import httpx
+    from app.companion import voice_provider
+
+    owner, device_id, _ = paired
+    owner_id = decode_token(owner['access_token'])['sub']
+    await setup_voice(owner_id, device_id)
+    async with db.SessionLocal() as session:
+        provider = (await session.execute(select(AIProvider).where(AIProvider.kind == 'elevenlabs'))).scalar_one()
+        provider.model_policy_json = {'monthly_budget': '0.05'}
+        await session.commit()
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={'text': 'Hello', 'language_code': 'por'})
+
+    monkeypatch.setattr(voice_provider, 'voice_transport', lambda: httpx.MockTransport(handler))
+    sent = []
+
+    async def send(item):
+        sent.append(item)
+
+    await voice.run_voice_turn(owner_id, device_id, 'retry-budget', b'00', False, send, send)
+    assert len(calls) == 1
+    assert sent[-1]['error_code'] == 'BUDGET_EXCEEDED'
+    async with db.SessionLocal() as session:
+        run = (await session.execute(select(AIRun))).scalar_one()
+        assert run.status == 'failed' and run.cost_estimate == Decimal('0.05')

@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
-from decimal import ROUND_CEILING, Decimal
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -31,6 +31,8 @@ from app.companion.snapshot import build_snapshot
 from app.companion.state import locked_state
 from app.companion.voice_provider import (
     VoiceError,
+    request_estimate,
+    reserve_retry,
     speak_pcm,
     transcribe_pcm,
     voice_provider,
@@ -83,13 +85,7 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
             await lock_owner(db, owner_id)
             board = await _authorized(db, owner_id, device_id)
             provider, secret = await voice_provider(db, owner_id)
-            try:
-                estimate = Decimal(str((provider.model_policy_json or {}).get('voice_request_cost', '0.05')))
-                if not estimate.is_finite() or not Decimal('0.00000001') <= estimate <= Decimal('999999999999.99999999'):
-                    raise ValueError()
-                estimate = estimate.quantize(Decimal('0.00000001'), rounding=ROUND_CEILING)
-            except (ValueError, TypeError, ArithmeticError):
-                raise VoiceError('BUDGET_EXCEEDED') from None
+            estimate = request_estimate(provider)
             key = f'companion-voice:{device_id}:{turn_id}'
             existing = (await db.execute(select(AIRun.id).where(AIRun.owner_id == owner_id, AIRun.idempotency_key == key))).scalar_one_or_none()
             if existing:
@@ -110,7 +106,8 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
             await db.flush()
             run_ids.append(voice_run.id)
             await db.commit()
-            transcript = await transcribe_pcm(provider, decrypt_secret(secret.encrypted_value), pcm)
+            transcript = await transcribe_pcm(provider, decrypt_secret(secret.encrypted_value), pcm,
+                                              before_retry=lambda: reserve_retry(db, owner_id, provider, voice_run))
             del pcm
             await send({'type': 'voice_heard', 'id': turn_id, 'text': transcript[:600]})  # the board shows the question while it waits
             await _authorized(db, owner_id, device_id)

@@ -15,6 +15,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from .agents.api import router as agents_router
 from .ai.api import router as ai_router
 from .ai.memory_api import router as memory_router
+from .ai.voice_api import router as ai_voice_router
 from .automation.api import router as automation_router
 from .automation.hooks import automation_loop, wait_for_automations
 from .companion.api import router as companion_router
@@ -88,8 +89,8 @@ async def request_id(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)"
-    if (request.url.path.startswith("/api/v1/auth/") or request.url.path.startswith("/api/v1/integrations/telegram/")):
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=(self)"
+    if (request.url.path.startswith("/api/v1/auth/") or request.url.path.startswith("/api/v1/integrations/telegram/") or request.url.path.startswith("/api/v1/ai/voice/")):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -101,6 +102,8 @@ async def validation_error(request: Request, exc: RequestValidationError):
         return JSONResponse(status_code=422, content={"detail": {"code": "INVALID_OAUTH_STATE", "message": "Restart the Calendar connection in Aelys."}})
     if request.url.path.startswith("/api/v1/auth/native/"):
         return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Invalid native authentication request"}})
+    if request.url.path.startswith("/api/v1/ai/voice/"):
+        return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Invalid voice request"}})
     if request.url.path.startswith("/api/v1/companion/devices/"):  # the default body echoes the input, e.g. the Wi-Fi blob
         return JSONResponse(status_code=422, content={"detail": {"code": "VALIDATION_ERROR", "message": "Invalid request"}})
     if request.url.path == "/api/v1/integrations/telegram/connect":
@@ -125,6 +128,7 @@ app.include_router(domain_router, prefix="/api/v1")
 app.include_router(paged_reads_router, prefix="/api/v1")
 app.include_router(sync_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
+app.include_router(ai_voice_router, prefix="/api/v1")
 app.include_router(memory_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(automation_router, prefix="/api/v1")
