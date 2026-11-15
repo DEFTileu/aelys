@@ -35,4 +35,18 @@ beforeEach(() => { client.notesPage.mockImplementation(async () => ({ items: awa
     expect(client.updateTask).toHaveBeenCalledWith('task-1', expect.objectContaining({ version: 4, status: 'completed' }), { queueOnOffline: false })
     expect(host.querySelector('[role="checkbox"]')?.getAttribute('aria-checked')).toBe('true')
   })
+
+  it('counts a pomodoro down like the board, and a stopwatch up', async () => {
+    const started = new Date(Date.now() - (12 * 60 + 53) * 1000).toISOString()
+    const session = { id: 'f1', version: 1, started_at: started, mode: 'pomodoro', status: 'active', elapsed_seconds: 0, paused_seconds: 0, task_id: null, project_id: null }
+    client.tasks.mockResolvedValue([]); client.focusSessions.mockResolvedValue([session])
+    const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    await act(async () => root?.render(<HomeView apiStatus="ready" />))
+    expect(host.querySelector('.dw-ring-time')?.textContent).toMatch(/^12:0[67]$/)
+    act(() => root?.unmount())
+    client.focusSessions.mockResolvedValue([{ ...session, mode: 'stopwatch' }])
+    root = createRoot(host)
+    await act(async () => root?.render(<HomeView apiStatus="ready" />))
+    expect(host.querySelector('.dw-ring-time')?.textContent).toMatch(/^12:5[34]$/)
+  })
 })

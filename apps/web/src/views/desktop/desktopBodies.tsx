@@ -102,9 +102,11 @@ function CalendarBody({ id, size, mobile, data }: BodyProps) {
 
 const clock = (seconds: number) => `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`
 function FocusBody({ size, focus, data }: BodyProps) {
-  const pct = Math.min(100, Math.round((focus.left / FOCUS_SESSION_SECONDS) * 100))
+  // Like the board and the Timer page: a pomodoro counts down and its ring melts away, a stopwatch counts up.
+  const shown = focus.stopwatch ? focus.elapsed : Math.max(0, FOCUS_SESSION_SECONDS - focus.elapsed)
+  const pct = focus.live ? Math.min(100, Math.round((shown / FOCUS_SESSION_SECONDS) * 100)) : 0
   const verb = focus.running ? 'Pause' : focus.paused ? 'Resume' : 'Start'
-  const ring = <div className="dw-ring" style={{ background: `conic-gradient(from 0deg,#F9C29A,#F06A58 ${pct}%,var(--dw-ring-track) ${pct}%)` }}><div className="dw-ring-inner"><div className="dw-ring-time">{clock(focus.left)}</div><div className="dw-ring-sub">{focus.paused ? 'Paused' : 'Deep work'}</div></div></div>
+  const ring = <div className="dw-ring" style={{ background: `conic-gradient(from 0deg,#F9C29A,#F06A58 ${pct}%,var(--dw-ring-track) ${pct}%)` }}><div className="dw-ring-inner"><div className="dw-ring-time">{clock(shown)}</div><div className="dw-ring-sub">{focus.paused ? 'Paused' : 'Deep work'}</div></div></div>
   const controls = <div className="dw-ctrls">
     <button type="button" className="home-btn dw-round dw-round--go" disabled={focus.disabled} title={verb} aria-label={`${verb} focus`} onClick={focus.toggle}>{focus.running ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}</button>
     <button type="button" className="home-btn dw-round" disabled={focus.disabled} title="Stop" aria-label="Stop focus" onClick={focus.reset}><Square size={12} aria-hidden="true" /></button>
@@ -114,7 +116,7 @@ function FocusBody({ size, focus, data }: BodyProps) {
   const active = sessions.find((item) => item.status === 'active' || item.status === 'paused')
   const linked = active?.task_id ? data.tasks.find((task) => task.id === active.task_id) : undefined
   const todayStart = dayStart()
-  const seconds = (session: FocusOut) => session.id === active?.id ? focus.left : session.elapsed_seconds
+  const seconds = (session: FocusOut) => session.id === active?.id ? focus.elapsed : session.elapsed_seconds
   const today = sessions.filter((session) => Date.parse(session.started_at) >= todayStart)
   const total = today.reduce((sum, session) => sum + seconds(session), 0)
   const week = Array.from({ length: 7 }, (_, index) => { const start = dayStart(index - 6); return { start, total: sessions.filter((session) => Date.parse(session.started_at) >= start && Date.parse(session.started_at) < start + 86_400_000).reduce((sum, session) => sum + seconds(session), 0) } })

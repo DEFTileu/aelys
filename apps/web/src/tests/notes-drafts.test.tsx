@@ -52,7 +52,8 @@ describe('note drafts', () => {
     expect(rows).toHaveLength(3)
     expect(rows[0]!.className).toContain('nl-note--active')
     expect(rows[0]!.textContent).toContain('Untitled'); expect(rows[0]!.textContent).toContain('Just now'); expect(rows[0]!.textContent).toContain('No content yet')
-    expect(input('Note title').value).toBe(''); expect(document.activeElement).toBe(input('Note title'))
+    // The title is focused from a 60 ms timer; wait for it rather than racing a fixed delay on a slow runner.
+    expect(input('Note title').value).toBe(''); await vi.waitFor(() => expect(document.activeElement).toBe(input('Note title')))
     expect(host.querySelector('.nl-editor-actions')!.textContent).toContain('0 words')
     expect(host.querySelector('form.nl-form')).toBeNull()
     await click('Alpha')

@@ -161,7 +161,7 @@ describe('dashboard widgets', () => {
     client.resumeFocusSession.mockResolvedValue({})
     const { grid } = await mount()
     const card = grid.querySelector('[data-widget-id="focus"]')!
-    expect(card.textContent).toContain('02:05'); expect(card.textContent).toContain('Paused')
+    expect(card.textContent).toContain('22:55'); expect(card.textContent).toContain('Paused')
     await click(card.querySelector<HTMLElement>('[aria-label="Resume focus"]')!)
     expect(client.resumeFocusSession).toHaveBeenCalledWith('f1', 4)
   })
