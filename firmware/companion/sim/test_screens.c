@@ -2304,6 +2304,12 @@ static void test_games_screens(void)
     sim_step(360);
     tap_at(233, 233);
     CHECK(see("400") && shows_text(scr, "Best 180 ms"));            /* a worse one does not take the record */
+    tap_at(233, 233);                                                /* no tap for 2 s after green: "Too slow" */
+    sim_step(2100);
+    CHECK(see("Tap!"));
+    sim_step(2050);
+    CHECK(see("Too slow") && shows_text(scr, "Tap to retry") && !shows_text(scr, "Tap!"));
+    check_inside("reaction (too slow)");
     tap_at(233, 233);                                                /* leave in the middle of a wait: it is dropped */
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_GAMES);

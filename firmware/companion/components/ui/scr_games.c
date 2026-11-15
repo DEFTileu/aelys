@@ -3,7 +3,7 @@
  *   Ask Aelys  a "thinking" face for a second, then one of twelve short answers;
  *   Coin       a plain 100 tenge coin (gold ring, silver centre) flips edge-on a few times: Heads is the emblem, Tails the 100;
  *   Dice       the faces flick past, slower and slower, and stop on 1..6 (no caption: the spots say it);
- *   Reaction   wait 1.5-4 s, the screen turns green, tap: the time in ms and the best of this session; too early is "Too soon";
+ *   Reaction   wait 1.5-4 s, the screen turns green, tap: the time in ms and the best of this session; too early is "Too soon", over 2 s "Too slow";
  *   Tilt Maze  the ball follows the board's tilt (UI_EV_LEVEL's gravity x/y) to the ring in the far corner; the time of the best run is kept.
  * The rules and the physics are in games_core.c (host-tested); this file draws them. Nothing here sounds, listens or touches the network.
  * Objects are created once. The only timer is paused unless a wait, a thought or the maze runs; the coin and the dice use one lv_anim each.
@@ -203,6 +203,7 @@ static void redraw(void)
             ui_set_text(s.rx_ms, ms);
             compose(NULL, 0, s.rx_ms, NULL, NULL, 0, "ms", best, "Again", col);
         } else if (s.rx.st == RX_EARLY) compose("Reaction", col, NULL, "Too soon", &inter_40, UI_COLOR_DANGER, "Wait for green", "Tap to retry", "Retry", col);
+        else if (s.rx.st == RX_SLOW) compose("Reaction", col, NULL, "Too slow", &inter_40, UI_COLOR_DANGER, "Tap within 2 s", "Tap to retry", "Retry", col);
         else compose("Reaction", col, NULL, "Tap to start", &inter_40, UI_COLOR_TEXT, "Tap when it turns green", best[0] ? best : NULL, "Start", col);
         break;
     default: /* G_MAZE */
@@ -250,8 +251,11 @@ static void tm_cb(lv_timer_t *t)
         redraw();
     } else if (s.sel == G_REACT) {
         uint32_t now = lv_tick_get();
-        if (rx_poll(&s.rx, now)) { timer_off(); ui_sound(SFX_GO); redraw(); }
-        else timer_on(rx_wait_left(&s.rx, now));
+        if (rx_poll(&s.rx, now)) {
+            if (s.rx.st == RX_GO) { ui_sound(SFX_GO); timer_on(rx_wait_left(&s.rx, now)); } /* keeps running for the 2 s limit */
+            else timer_off();
+            redraw();
+        } else timer_on(rx_wait_left(&s.rx, now));
     }
 }
 
