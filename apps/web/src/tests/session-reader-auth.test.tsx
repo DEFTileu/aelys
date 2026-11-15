@@ -18,7 +18,7 @@ vi.mock('../lib/api', () => ({
   getApiConfig: () => ({ baseUrl: '/api/v1' }),
   getSharedApiClient: () => ({ projects: mocks.projects, agentSessions: mocks.sessions }),
   isSignedOut: () => false, getAccessToken: () => undefined,
-  setNativeCacheOwner: vi.fn(), clearNativeSignedOut: vi.fn(), startOutboxReplay: () => () => {},
+  setNativeCacheOwner: vi.fn(), clearNativeSignedOut: vi.fn(), startOutboxReplay: () => () => {}, startChangeStream: () => () => {},
   SESSION_EVENT: 'aelys:session-changed', bootstrapOwner: vi.fn(), browserAuthStatus: vi.fn(), login: vi.fn(),
   resumeBrowserSession: vi.fn(), saveApiBaseUrl: vi.fn(), claimSetupToken: vi.fn(), hasDeviceIdentity: vi.fn(), signInWithThisDevice: vi.fn(),
 }))

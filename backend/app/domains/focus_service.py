@@ -65,7 +65,7 @@ async def stop_focus(db: AsyncSession, owner_id: str, focus_id: str, version: in
         await db.rollback()
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
     await db.refresh(item)
-    mark_dirty(db, owner_id)  # Core UPDATE: no mapper event fires
+    mark_dirty(db, owner_id, "focus")  # Core UPDATE: no mapper event fires
     return item
 
 
@@ -88,5 +88,5 @@ async def set_focus_paused(db: AsyncSession, owner_id: str, focus_id: str, pause
         await db.rollback()
         raise HTTPException(409, detail={"code": "VERSION_CONFLICT", "message": "Another device changed the focus session. Reload."})
     await db.refresh(item)
-    mark_dirty(db, owner_id)  # Core UPDATE: no mapper event fires
+    mark_dirty(db, owner_id, "focus")  # Core UPDATE: no mapper event fires
     return item

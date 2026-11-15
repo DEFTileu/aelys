@@ -3,6 +3,7 @@ import { ApiClient, ApiError as SharedApiError, IndexedDbOfflineStore, type Brow
 import { isNativeHost, loadNativeTransport, nativeBackendOrigin, NATIVE_SESSION_EXPIRED_EVENT } from './nativeTransport'
 import { createNativeFetch } from './nativeClient'
 import { localBrowserLaunchId } from './localBrowserLogin'
+import { CHANGES_EVENT, startChangeHints } from './changeHints'
 import { generateDeviceKey, indexedDbIdentityStore, signWithDeviceKey, webCryptoAvailable, type DeviceIdentity, type IdentityStore } from './deviceKey'
 
 const API_BASE_STORAGE_KEY = 'aelys.apiBaseUrl'
@@ -266,6 +267,16 @@ export function startOutboxReplay(): () => void {
   const timer = window.setInterval(run, 30_000)
   window.addEventListener('online', reconnect); window.addEventListener('focus', run)
   return () => { window.clearInterval(timer); window.removeEventListener('online', reconnect); window.removeEventListener('focus', run) }
+}
+
+/** Live hints from the server: on each one, drop the read cache and tell views which collections to refetch. */
+export function startChangeStream(): () => void {
+  return startChangeHints(
+    (signal) => getSharedApiClient().eventStream('/api/v1/changes', { signal }),
+    (collections) => { getSharedApiClient().clearReadCache(); window.dispatchEvent(new CustomEvent(CHANGES_EVENT, { detail: collections })) },
+    // Native apps keep polling while hidden so a minimized window still raises system notifications.
+    () => document.visibilityState !== 'hidden' || isNativeHost(),
+  )
 }
 
 export function getSharedApiClient(): ApiClient {

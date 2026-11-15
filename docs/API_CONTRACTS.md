@@ -853,3 +853,27 @@ or `ats:r:<UUID>` (approve/reject), with identity and server-stored provenance
 checks; common action-service HTTP 404/409 errors become terminal private texts.
 The owner task result is committed before callback acknowledgement and keyboard
 removal. No callback arguments or scopes are accepted from the client.
+
+## Live change hints (2026-11-15)
+
+```http
+GET /api/v1/changes   (owner app session; Accept: text/event-stream)
+```
+
+- Server-Sent Events for the caller's own owner only. Each event is
+  `event: changes.hint` with `data: {"collections": [...]}`, where the names come
+  from `tasks`, `events`, `notifications` and `focus`. A hint never carries
+  record ids or content; the app clears its read cache and refetches the views
+  that show those collections.
+- Hints reuse the companion hub's commit-time dirty marks (mapper events plus
+  `mark_dirty` for Core writes) and fire only after a commit; a rollback hints
+  nothing. Hints that arrive before the stream sends them coalesce into one event.
+- `: ready` and `: ping` comment lines (every 15 s) keep proxies open. The server
+  ends each stream after at most 240 s, or when the access token expires, so a
+  reconnect re-checks the session. The database session is released before
+  streaming starts.
+- A companion board gets `403 DEVICE_SCOPE_DENIED`; no token gets `401`.
+- Clients: while the stream is down the web app falls back to a 30 s refetch
+  poll, and catches up once after an outage. Native hosts open the same stream
+  through the `native_ai_events` command with `changes: true`, whose event
+  allow-list includes `changes.hint`.

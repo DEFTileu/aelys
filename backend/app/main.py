@@ -18,6 +18,7 @@ from .ai.memory_api import router as memory_router
 from .automation.api import router as automation_router
 from .automation.hooks import automation_loop, wait_for_automations
 from .companion.api import router as companion_router
+from .companion.changes import router as changes_router
 from .companion.channel import router as companion_channel_router
 from .companion.hub import hub, install_change_listeners
 from .core import models  # noqa: F401 - register domain metadata
@@ -116,6 +117,7 @@ app.include_router(companion_channel_router, prefix="/api/v1")  # before core: n
 app.include_router(core_router, prefix="/api/v1")
 app.include_router(device_auth_router, prefix="/api/v1")
 app.include_router(companion_router, prefix="/api/v1")
+app.include_router(changes_router, prefix="/api/v1")
 app.include_router(browser_auth_router, prefix="/api/v1")
 app.include_router(native_auth_router, prefix="/api/v1")
 app.include_router(domain_router, prefix="/api/v1")

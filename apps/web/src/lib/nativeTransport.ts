@@ -128,10 +128,11 @@ export function createNativeTransport(invoke: NativeInvoke, makeChannel?: Native
     operation: <T>(origin: string, operation: NativeOperation, diagnostic?: (value: NativeDiagnostic) => void) => diagnostic && makeDiagnosticChannel && operation.type === 'ai_run_create'
       ? invoke<T>('native_operation_diagnostic', { origin, operation, diagnostic: makeDiagnosticChannel(diagnostic) })
       : invoke<T>('native_operation', { origin, operation }),
-    aiEvents: async (origin: string, id: string, requestId: string, receive: (message: NativeAIStreamMessage) => void) => {
+    // `changes` opens the owner's change-hint stream on the same native stream command; `id` is then unused.
+    aiEvents: async (origin: string, id: string, requestId: string, receive: (message: NativeAIStreamMessage) => void, changes = false) => {
       if (!makeChannel) throw new Error('NATIVE_STREAM_UNAVAILABLE')
       const onEvent = makeChannel(receive)
-      await invoke<void>('native_ai_events', { origin, id, requestId, onEvent })
+      await invoke<void>('native_ai_events', { origin, id, requestId, onEvent, ...(changes ? { changes } : {}) })
     },
     closeAIEvents: (origin: string, requestId: string) => invoke<void>('native_ai_events_close', { origin, requestId }),
   }

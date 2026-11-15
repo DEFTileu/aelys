@@ -483,6 +483,8 @@ fn parse_ai_events(source: &str) -> Result<Vec<AIEvent>, String> {
         "ai.tool.result",
         // Approval cards for proposed writes; without it a proposal aborts the whole stream.
         "ai.action.proposed",
+        // The owner's change-hint stream (`changes`): collection names only, never content.
+        "changes.hint",
     ];
     let mut events = Vec::new();
     let normalized = source.replace("\r\n", "\n");
@@ -2975,6 +2977,7 @@ async fn ensure_operation_session(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri maps each IPC argument and managed state to a parameter
 pub async fn native_ai_events(
     window: WebviewWindow,
     state: State<'_, NativeState>,
@@ -2982,13 +2985,21 @@ pub async fn native_ai_events(
     origin: String,
     id: String,
     request_id: String,
+    // true opens the owner's change-hint stream instead of an AI run's; `id` is then ignored.
+    changes: Option<bool>,
     on_event: Channel<AIStreamMessage>,
 ) -> Result<(), String> {
     check_window(&window)?;
     let origin = origin_fn(&origin)?;
-    if !valid_id(&id) || !valid_id(&request_id) {
+    let changes = changes.unwrap_or(false);
+    if (!changes && !valid_id(&id)) || !valid_id(&request_id) {
         return Err(err("VALIDATION_ERROR"));
     }
+    let path = if changes {
+        "/api/v1/changes".to_owned()
+    } else {
+        format!("/api/v1/ai/runs/{id}/events")
+    };
     let (cancel, cancel_rx) = watch::channel(false);
     let access = {
         // Register under the same lock order as session changes so logout
@@ -3021,7 +3032,7 @@ pub async fn native_ai_events(
         let client = stream_client()?;
         stream_ai_events(
             &client,
-            &format!("{origin}/api/v1/ai/runs/{id}/events"),
+            &format!("{origin}{path}"),
             &access,
             cancel_rx,
             |event| {
@@ -4693,6 +4704,9 @@ mod tests {
         let proposed =
             parse_ai_events("event: ai.action.proposed\ndata: {\"action_id\":\"a1\"}\n\n").unwrap();
         assert_eq!(proposed[0].data["action_id"], "a1");
+        let hint = parse_ai_events("event: changes.hint\ndata: {\"collections\":[\"focus\"]}\n\n")
+            .unwrap();
+        assert_eq!(hint[0].data["collections"][0], "focus");
     }
     #[test]
     fn ai_stream_decoder_handles_split_utf8_crlf_and_keepalives() {

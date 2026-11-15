@@ -2,6 +2,7 @@ import { ApiError } from '@aelys/shared'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { askAelys, takeCustomizeHome, useDesktopState } from '../../lib/desktopStore'
 import { getSharedApiClient } from '../../lib/api'
+import { onChangeHint } from '../../lib/changeHints'
 import type { FocusIn, FocusOut, TaskOut } from '@aelys/shared'
 import type { ApiStatus } from '../../types'
 import { DEFAULT_LAYOUT, MOBILE_DEFAULT_LAYOUT, layoutKey, pendingHighlight, newLayoutEntry, readLayout, reorderLayout, saveLayout, normalizeWidgetSize, type LayoutEntry, type SizeKey, type WidgetId } from '../desktop/homeLayout'
@@ -71,6 +72,16 @@ export function useHome(apiStatus: ApiStatus | undefined, mobile: boolean) {
     })
     return () => { active = false }
   }, [apiStatus, reload])
+  const refreshFocus = async () => {
+    const sessions = await getSharedApiClient().focusSessions()
+    setFocusSession(sessions.find(isLive) ?? null); setData((current) => ({ ...current, focusSessions: sessions }))
+  }
+  // A focus change from the board updates only the focus card; task and event changes reload the widgets.
+  useEffect(() => {
+    const stopFocus = onChangeHint(['focus'], () => { if (!focusLock.current) void refreshFocus().catch(() => {}) })
+    const stopRest = onChangeHint(['tasks', 'events'], () => setReload((value) => value + 1))
+    return () => { stopFocus(); stopRest() }
+  }, [])
   useEffect(() => { if (!focusSession || focusSession.status === 'paused') return; const timer = window.setInterval(() => setFocusTick((value) => value + 1), 1000); return () => window.clearInterval(timer) }, [focusSession])
   const changeFocus = async (stopOnly = false) => {
     if (focusLock.current || apiStatus !== 'ready' || (stopOnly && !focusSession)) return
@@ -84,8 +95,7 @@ export function useHome(apiStatus: ApiStatus | undefined, mobile: boolean) {
         await client.startFocusSession(focusStart.current.body, { queueOnOffline: false, idempotencyKey: focusStart.current.key })
         focusStart.current = null
       }
-      const sessions = await client.focusSessions()
-      setFocusSession(sessions.find(isLive) ?? null); setData((current) => ({ ...current, focusSessions: sessions }))
+      await refreshFocus()
     } catch { setTaskNotice('Focus action could not be confirmed. Open Timer and refresh before retrying.') }
     finally { focusLock.current = false; setFocusBusy(false) }
   }
