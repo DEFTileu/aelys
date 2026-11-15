@@ -12,22 +12,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 MAX_GRANTS_PER_DAY = 3
 MAX_REQUESTS_PER_DAY = 10
 MAX_GRANT_MINUTES = 10
+CAP_WINDOW = timedelta(hours=24)
 
 # A task in any of these statuses is finished; mirrors the web UI's set (apps/web/src/views/tasks/taskModel.ts).
 FINISHED_STATUSES = frozenset({"done", "completed", "complete", "closed", "cancelled"})
 
 
-async def ai_counts(db: AsyncSession, owner_id: str, day: date) -> tuple[int, int]:
-    """(grants used, requests used) for `day`; refused requests count only as requests."""
+async def ai_counts(db: AsyncSession, owner_id: str) -> tuple[int, int]:
+    """(grants used, requests used) in the last 24h of SERVER time; the client's `day` label cannot move this window.
+
+    Refused requests count only as requests. The single place the caps are counted.
+    """
+    since = datetime.now(UTC) - CAP_WINDOW
     grants, requests = (await db.execute(select(func.count().filter(FocusUnlockRequest.granted.is_(True)), func.count()).where(
-        FocusUnlockRequest.owner_id == owner_id, FocusUnlockRequest.day == day, FocusUnlockRequest.deleted_at.is_(None),
+        FocusUnlockRequest.owner_id == owner_id, FocusUnlockRequest.deleted_at.is_(None), FocusUnlockRequest.created_at >= since,
     ))).one()
     return grants, requests
 
 
-async def ai_left(db: AsyncSession, owner_id: str, day: date) -> tuple[int, int]:
-    """(grants left, requests left) for `day`."""
-    grants, requests = await ai_counts(db, owner_id, day)
+async def ai_left(db: AsyncSession, owner_id: str) -> tuple[int, int]:
+    """(grants left, requests left) in the rolling window."""
+    grants, requests = await ai_counts(db, owner_id)
     return max(0, MAX_GRANTS_PER_DAY - grants), max(0, MAX_REQUESTS_PER_DAY - requests)
 
 

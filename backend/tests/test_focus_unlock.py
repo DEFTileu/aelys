@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from app.ai import api as ai_api
 from app.ai.models import ProviderKind, ProviderResponse, Usage
-from app.core.models import FocusUnlockRequest
+from app.core.models import FocusUnlockRequest, User
 from sqlalchemy import select
 from test_automation_api import _owner, automation_client  # noqa: F401 - shared fixture
 
@@ -203,3 +203,49 @@ async def test_other_owner_cannot_see_history(focus):
     assert [r["reason"] for r in rows] == ["my boss needs me to open a video call link"]
     state = (await client.get("/api/v1/focus/state", params={"day": TODAY}, headers=headers)).json()
     assert (state["ai_grants_left"], state["requests_left"]) == (2, 9)  # their row does not count against this owner
+
+
+def _days() -> list[str]:
+    today = datetime.now(UTC).date()
+    return [(today + timedelta(days=d)).isoformat() for d in (-1, 0, 1)]  # all accepted by _check_day
+
+
+async def test_caps_cannot_be_multiplied_by_changing_the_day_label(focus):
+    client, factory, headers, judge = focus
+    await _provider(client, headers)
+    results = [(await _ask(client, headers, day=_days()[i % 3])).json() for i in range(9)]
+    assert [r["granted"] for r in results] == [True] * 3 + [False] * 6
+    assert len(judge.calls) == 3  # never a 4th model call once the grant cap is hit
+    judge.reply = json.dumps({"granted": False, "minutes": 0, "message": "no"})
+    async with factory() as db:
+        for row in (await db.execute(select(FocusUnlockRequest))).scalars():
+            row.created_at = datetime.now(UTC) - timedelta(days=3)  # reset the window, then spend the request cap
+        await db.commit()
+    judge.calls.clear()
+    results = [(await _ask(client, headers, day=_days()[i % 3])).json() for i in range(14)]
+    assert len(judge.calls) == 10 and results[-1]["requests_left"] == 0 and not any(r["granted"] for r in results)
+    async with factory() as db:
+        assert len((await db.execute(select(FocusUnlockRequest).where(FocusUnlockRequest.created_at >= datetime.now(UTC) - timedelta(hours=1)))).scalars().all()) == 10
+
+
+async def test_cap_window_is_a_rolling_24_hours_of_server_time(focus):
+    client, factory, headers, judge = focus
+    await _provider(client, headers)
+
+    async def seed(hours_ago: int, count: int = 3) -> None:
+        async with factory() as db:
+            for _ in range(count):
+                db.add(FocusUnlockRequest(owner_id=owner, day=datetime.now(UTC).date(), app_id="yt", reason="old", granted=True, minutes=5, message="ok", created_at=datetime.now(UTC) - timedelta(hours=hours_ago)))
+            await db.commit()
+
+    async with factory() as db:
+        owner = (await db.execute(select(User.id))).scalar_one()
+    await seed(25)  # older than 24h: no longer counts
+    state = (await client.get("/api/v1/focus/state", params={"day": TODAY}, headers=headers)).json()
+    assert (state["ai_grants_left"], state["requests_left"]) == (3, 10)
+    assert (await _ask(client, headers)).json()["granted"] is True and len(judge.calls) == 1
+    await seed(23)  # still inside the window: 1 + 3 granted
+    state = (await client.get("/api/v1/focus/state", params={"day": TODAY}, headers=headers)).json()
+    assert (state["ai_grants_left"], state["requests_left"]) == (0, 6)
+    denied = (await _ask(client, headers, day=_days()[0])).json()
+    assert denied["granted"] is False and len(judge.calls) == 1

@@ -69,7 +69,7 @@ async def get_config(day: date, principal=Depends(current_principal), db: AsyncS
 async def get_state(day: date, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
     owner_id = principal[0].id
     config = await _current(db, owner_id, day)
-    grants_left, requests_left = await ai_left(db, owner_id, day)
+    grants_left, requests_left = await ai_left(db, owner_id)
     return FocusStateOut(day_unlocked=await day_unlocked(db, owner_id, day), ai_grants_left=grants_left, requests_left=requests_left, config=config)
 
 
@@ -121,12 +121,11 @@ async def unlock_request(body: UnlockRequestBody, principal=Depends(current_prin
     if body.app_id not in {a.id for a in effective.apps}:
         raise HTTPException(404, detail={"code": "NOT_FOUND", "message": "That app is not in the focus list"})
     async with _unlock_lock:
-        store = (await ai_left(db, owner_id, body.day))[1] > 0  # requests past the cap are refused but not stored, so rows stay bounded
         decision = await decide(db, owner_id, body.day, body.app_id, body.reason)
-        if store:
+        if not decision.capped:  # refusals made because a cap is used up are not stored, so rows stay bounded
             db.add(FocusUnlockRequest(owner_id=owner_id, day=body.day, app_id=body.app_id, reason=body.reason, granted=decision.granted, minutes=decision.minutes, message=decision.message, ai_run_id=decision.ai_run_id))
             await db.commit()
-        grants_left, requests_left = await ai_left(db, owner_id, body.day)
+        grants_left, requests_left = await ai_left(db, owner_id)
     return UnlockResultOut(granted=decision.granted, minutes=decision.minutes, message=decision.message, ai_grants_left=grants_left, requests_left=requests_left)
 
 

@@ -32,6 +32,7 @@ class Decision:
     minutes: int
     message: str
     ai_run_id: str | None = None
+    capped: bool = False  # a daily cap was already used up: no model call was made
 
 
 def _denied(message: str, ai_run_id: str | None = None) -> Decision:
@@ -54,9 +55,9 @@ def _interpret(data: dict | None, run_id: str) -> Decision:
 
 async def decide(db: AsyncSession, owner_id: str, day: date, app_id: str, reason: str) -> Decision:
     """`app_id` is checked by the caller against the owner's effective config; the model never sees it."""
-    grants, requests = await ai_counts(db, owner_id, day)
+    grants, requests = await ai_counts(db, owner_id)
     if grants >= MAX_GRANTS_PER_DAY or requests >= MAX_REQUESTS_PER_DAY:
-        return _denied("Today's unlock limit is used up.")  # no model call
+        return Decision(False, 0, "The unlock limit is used up for now.", capped=True)  # no model call
     shot = await one_shot_json(db, owner_id, "focus", "FocusUnlock", _SYSTEM, reason, max_tokens=300)
     if shot is None:
         return _denied("The AI judge is not available right now, so the app stays locked.")
