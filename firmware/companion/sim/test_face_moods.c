@@ -424,13 +424,18 @@ static void test_scales_and_api(void)
     lv_obj_t *face = face_create(lv_screen_active(), 100);
     face_set_mood(face, MOOD_COUNT);                               /* out of range: ignored */
     face_set_mood(NULL, MOOD_CALM);
+    face_set_eye_zoom(NULL, 1200);                                 /* no face, or no size: ignored */
+    face_set_eye_zoom(face, 0);
     lv_obj_delete(face);
 }
 
 static void test_elation_confetti(void)
 {
     lv_obj_t *f = show(MOOD_ELATION, 100, HX, HY, 100);
-    rgb_t yellow = at(HX + 74, HY - 3);
+    for (int x = HX; x < HX + FACE_W; x++) CHECK(dark(x, HY - 3)); /* clipped to the face box: none above it */
+    gone(f);
+    f = show(MOOD_ELATION, 100, HX, HY, 900);                       /* the yellow piece, half way down */
+    rgb_t yellow = at(HX + 74, HY + 16);
     CHECK(yellow.r > 150 && yellow.g > 120 && yellow.b < 160);
     gone(f);
 }

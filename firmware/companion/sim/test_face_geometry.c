@@ -409,7 +409,7 @@ static void test_anger_fx(void)
     /* a cloud sits outside the eye even at the end of a dart (18 px + 3 px shake) */
     CHECK(a->steam[0].x + a->steam[0].size <= a->eye[0].x - 21);
     CHECK(a->steam[1].x >= a->eye[1].x + a->eye[1].w + 21);
-    CHECK(a->steam[1].x + a->steam[1].size <= FACE_W + 3);  /* the face box overhangs by up to 30 px */
+    CHECK(a->steam[0].x >= -6 && a->steam[1].x + a->steam[1].size <= FACE_W + 6); /* within the face's 40 px overhang */
     CHECK(a->steam[1].delay_ms > 0 && a->steam[1].delay_ms < 1600);
     for (int m = 0; m < MOOD_COUNT; m++)
         if (m != MOOD_ANNOYED) CHECK(!face_mood_def(m)->vein && !face_mood_def(m)->n_steam);
@@ -453,7 +453,7 @@ static void test_fx(void)
     CHECK_EQ(sl->zz[1].x, 264); CHECK_EQ(sl->zz[1].y, 28); CHECK_EQ(sl->zz[1].size, 22); CHECK_EQ(sl->zz[1].delay_ms, 1600);
     const face_mood_t *lv = face_mood_def(MOOD_LOVE);
     CHECK(lv->cheeks); CHECK_EQ(lv->n_heart, 2);
-    CHECK_EQ(lv->heart[0].x, 258); CHECK_EQ(lv->heart[0].y, 20);
+    CHECK_EQ(lv->heart[0].x, 246); CHECK_EQ(lv->heart[0].y, 34);
     CHECK_EQ(lv->heart[1].x, 16);  CHECK_EQ(lv->heart[1].y, 34); CHECK_EQ(lv->heart[1].delay_ms, 1400);
     CHECK(face_mood_def(MOOD_OFFLINE)->dots);
     const face_mood_t *c = face_mood_def(MOOD_CALM);

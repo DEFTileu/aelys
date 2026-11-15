@@ -27,6 +27,9 @@ typedef enum {
  * Returns NULL on bad parent or out of memory. The face starts as MOOD_CALM. */
 lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100);
 void face_set_mood(lv_obj_t *face, mood_t m);
+/* Draw the eyes (with their lids and highlights) `permille` / 1000 larger about the face's centre; the effects keep their
+ * places and sizes. 1000 = the design's proportions. */
+void face_set_eye_zoom(lv_obj_t *face, int32_t permille);
 /* Turn the whole face about its centre, tenths of a degree ("always level"). 0 draws it with no transform layer. */
 void face_set_level(lv_obj_t *face, int32_t angle10);
 /* Lower-case name ("calm", ...); "?" for an out-of-range value. */

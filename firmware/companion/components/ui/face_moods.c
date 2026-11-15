@@ -49,10 +49,10 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
                        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_ANGRY, .blink_ms = 6000,
                        .gradient_top = 0xFF8A84, .gradient_bottom = 0xE5262E,
                        .vein = true, .vein_at = { 250, 6, 34, 0 },
-                       .n_steam = 2, .steam = { { -2, 66, 28, 0 }, { 275, 66, 28, 800 } } },
+                       .n_steam = 2, .steam = { { -6, 66, 28, 0 }, { 278, 66, 28, 800 } } },
     [MOOD_LOVE] = { .eye = { E(58, 35, 70, 100, 35, STD), E(172, 35, 70, 100, 35, STD) },
                     .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_SWAY, .cheeks = true,
-                    .n_heart = 2, .heart = { { 258, 20, 24, 0 }, { 16, 34, 24, 1400 } } },
+                    .n_heart = 2, .heart = { { 246, 34, 24, 0 }, { 16, 34, 24, 1400 } } }, /* design: 258, 20; lowered to stay on the 1.4 face's circle */
     [MOOD_OFFLINE] = { .eye = { E(79, 66, 28, 28, 14, NOSTAR), E(193, 66, 28, 28, 14, NOSTAR) },
                        .kind = EYE_DOT, .color = 0x4A4554, .motion = MOT_NONE, .dots = true },
     /* Additional character states from the ACTUAL design. */

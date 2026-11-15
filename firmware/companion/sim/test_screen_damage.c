@@ -38,11 +38,11 @@ static void switch_and_check(uint8_t type)
     CHECK(pixels > 0);
     if (pixels > most_pixels) most_pixels = pixels;
     if (pixels < least_pixels) least_pixels = pixels;
-    /* The 130% face has larger dirty rectangles than the previous 100% face.
-     * This is a host traffic regression guard, not a board timing budget:
-     * require at least 1/8 less traffic than a full-screen transfer. */
-    if (pixels >= SIM_W * SIM_H * 7u / 8u) fprintf(stderr, "screen change sent %u pixels\n", pixels);
-    CHECK(pixels < SIM_W * SIM_H * 7u / 8u);
+    /* The 1.4 face with the owner's 1.2 eyes has larger dirty rectangles than the previous 100% face (Home <-> Today
+     * sends up to 198k px, 91 % of a frame; 187k before the bigger eyes). This is a host traffic regression guard, not a
+     * board timing budget: require at least 1/16 less traffic than a full-screen transfer. */
+    if (pixels >= SIM_W * SIM_H * 15u / 16u) fprintf(stderr, "screen change sent %u pixels\n", pixels);
+    CHECK(pixels < SIM_W * SIM_H * 15u / 16u);
     exact_frame();
 }
 

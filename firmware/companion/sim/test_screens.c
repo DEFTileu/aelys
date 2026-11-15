@@ -529,6 +529,70 @@ static void test_home_larger_face(void)
     scr_home_set_welcome(false);
 }
 
+/* Lit pixels in a run through (x, y), along x (dx = 1) or y (dx = 0). */
+static int lit_run(int x, int y, int dx)
+{
+    const uint16_t *fb = sim_fb();
+    int a = 0, b = 0;
+    while (fb[(y - (dx ? 0 : a + 1)) * SIM_W + x - (dx ? a + 1 : 0)]) a++;
+    while (fb[(y + (dx ? 0 : b + 1)) * SIM_W + x + (dx ? b + 1 : 0)]) b++;
+    return fb[y * SIM_W + x] ? a + b + 1 : 0;
+}
+
+/* The home eyes: at least 15 % larger than the 1.4 face's 98 x 140, and in every mood, through every loop, the eyes and their
+ * effects stay inside the round screen and off the letters of the clock, the agenda line and the top key's "Menu". */
+static void test_home_bigger_eyes(void)
+{
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    lv_obj_t *root = scr_home_root(), *clock = lv_obj_get_child(root, 1), *face = lv_obj_get_child(root, 2);
+    lv_obj_t *agenda = lv_obj_get_child(root, 3);
+    lv_label_set_text(agenda, "WWWWWWWWWWWWWWWWWWWWWWWW"); /* the widest line the label can show */
+    lv_obj_update_layout(root);
+    lv_obj_t *menu = find_label(lv_screen_active(), "Menu");
+    CHECK(menu != NULL);
+    lv_area_t c, f, a, k;
+    lv_obj_get_coords(clock, &c); lv_obj_get_coords(face, &f); lv_obj_get_coords(agenda, &a);
+    if (menu) lv_obj_get_coords(menu, &k); else k = c;
+    /* only the face moves: the periodic character update must not retarget it while this runs */
+    lv_timer_t *paused[16]; int n = 0;
+    lv_timer_t *refr = lv_display_get_refr_timer(lv_display_get_default());
+    for (lv_timer_t *t = lv_timer_get_next(NULL); t && n < 16; t = lv_timer_get_next(t))
+        if (t != lv_anim_get_timer() && t != refr) lv_timer_pause(paused[n++] = t);
+
+    lv_obj_t *orbit = lv_obj_get_child(root, 0);
+    lv_obj_set_hidden(orbit, true);                            /* its dots near the labels' ends light up on their own */
+    face_set_mood(face, MOOD_CALM);
+    sim_step(2000);                                            /* settled, looking ahead, eyes open */
+    int cx = (int)f.x1 + (150 - 57 * 12 / 10) * 14 / 10, cy = (int)f.y1 + 85 * 14 / 10; /* the left eye's centre */
+    int w = lit_run(cx, cy, 1), h = lit_run(cx, cy, 0);
+    fprintf(stderr, "home calm eye %d x %d px\n", w, h);
+    CHECK(w >= 113 && w <= 120); CHECK(h >= 161 && h <= 170);
+    static uint16_t text[SIM_W * SIM_H];
+    memcpy(text, sim_fb(), sizeof text);
+    for (int m = 0; m < MOOD_COUNT; m++) {
+        face_set_mood(face, (mood_t)m);
+        int covered = 0, outside = 0, in;
+        for (int t = 0; t < 12000; t += 100) {                 /* longer than every loop (the look loop is 9 s) */
+            sim_step(100);
+            int o; count_lit(&o, &in); outside += o;
+            const lv_area_t *box[] = { &c, &a, &k };
+            for (int b = 0; b < 3; b++)
+                for (int y = (int)box[b]->y1; y <= (int)box[b]->y2; y++)
+                    for (int x = (int)box[b]->x1; x <= (int)box[b]->x2; x++) {
+                        int i = y * SIM_W + x;
+                        covered += text[i] && sim_fb()[i] != text[i]; /* a letter's pixel changed */
+                    }
+        }
+        if (outside || covered) fprintf(stderr, "home %s: %d px outside the circle, %d px over the text\n", mood_name((mood_t)m), outside, covered);
+        CHECK_EQ(outside, 0); CHECK_EQ(covered, 0);
+    }
+    for (int i = 0; i < n; i++) lv_timer_resume(paused[i]);
+    lv_obj_set_hidden(orbit, false);
+    face_set_mood(face, scr_home_mood());
+    scr_home_set_tasks(0, 0);
+    sim_step(100);
+}
+
 static int32_t home_max_rotation(void) /* largest |rotation| among the home screen's children */
 {
     lv_obj_t *root = scr_home_root();
@@ -3172,6 +3236,7 @@ int main(void)
     test_first_boot_welcome();
     test_companion_setup();
     test_home_larger_face();
+    test_home_bigger_eyes();
     test_level_event_turns_home_faces_only();
     test_all_large_home_moods();
     test_character_status_while_home_hidden();
