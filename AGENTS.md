@@ -43,6 +43,32 @@ If docs live under `/docs`, adjust paths accordingly.
 - API URLs `/api/v1` and typed error codes, stable idempotency keys.
 - Don't introduce unnecessary microservices, queues/vendors, or additional SDKs without technical justification.
 
+## Wiring a new API route or native feature
+
+The Mac and Android apps send every API call through the native transport, not
+straight to the server. A route that is not wired there passes backend and web
+tests (they mock the client) and then fails on the device without any server log.
+
+- `packages/native-transport/src/transport.rs`: add the method and path (under
+  `/api/v1`, `*` is exactly one id segment) to `API_ALLOWLIST`. Add it to
+  `SLOW_API` too if the server may take longer than 15 s (model calls). Extend
+  the allowlist tests next to `generic_api_route_is_allowlisted`. Query keys may
+  only be lowercase letters and `_`. Auth, device, sync and credential routes
+  stay out of the list on purpose.
+- `packages/shared/src/api-client.ts`: `mutationFamilies` maps a path prefix to
+  cache families, so a new route under an existing prefix (for example
+  `/api/v1/focus`, which is the Pomodoro timer) invalidates that family; pass a
+  `cacheKey` only when a stale read is harmless.
+- Native plugin commands: list them in the plugin's `build.rs` and
+  `permissions/default.toml`, and grant the plugin in the app's
+  `capabilities/default.json`.
+- A feature that needs Android permissions, an accessibility service or the
+  native transport is not complete until it ran on a real device. Say "not
+  verified on device" in the completion report instead of relying on mocked tests.
+- Before publishing an APK, scan it for local paths and personal data (Rust
+  panic messages embed the home directory; build with
+  `RUSTFLAGS="--remap-path-prefix=$HOME=/home/build"`).
+
 ## Completion gate
 
 Do not claim a module is complete if any essential requirement is mocked, tests are absent, security isolation is unverified, or app isn't functionally accessible. Mark spikes/prototypes clearly.
