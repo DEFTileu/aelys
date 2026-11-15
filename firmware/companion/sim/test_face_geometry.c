@@ -256,7 +256,8 @@ static void test_eyes(void)
         EYE_IS(MOOD_SLEEPY, s, x, 42, 70, 96, 35);
         EYE_IS(MOOD_SLEEPING, s, x, 76, 70, 28, 35);
         EYE_IS(MOOD_DIZZY, s, x - 3, 47, 76, 76, 38);      /* margin-left -3 */
-        EYE_IS(MOOD_ANNOYED, s, x, 54, 70, 76, 35);
+        EYE_IS(MOOD_ANNOYED, s, s ? 161 : 47, 26, 92, 120, 46); /* owner: big, centred where the calm eyes are */
+        STAR_IS(MOOD_ANNOYED, s, 50, 46, 22);
         EYE_IS(MOOD_OFFLINE, s, x + 21, 66, 28, 28, 14);   /* margin-left 21 */
     }
     EYE_IS(MOOD_CURIOUS, 0, 58, 46, 70, 84, 35);
@@ -285,13 +286,13 @@ static void test_lids(void)
         { MOOD_LOVE, LID_DOME }, { MOOD_OFFLINE, LID_NONE },
     };
     for (unsigned i = 0; i < sizeof L / sizeof *L; i++) CHECK_EQ(face_mood_def(L[i].m)->lid, L[i].lid);
-    /* the cut line of the rotated black lid at the eye's middle: worried 25.3 px, sad 23.1, annoyed 27.3;
-     * slope tan(16 deg) = .287, tan(18 deg) = .325, inner corners higher for worried and sad, lower for annoyed */
+    /* the cut line of the rotated black lid at the eye's middle: worried 25.3 px, sad 23.1, annoyed 33 (owner's big
+     * eyes); slope tan(16 deg) = .287, tan(18 deg) = .325, inner corners higher for worried and sad, lower for annoyed */
     NEAR(eye(MOOD_WORRIED, 0)->lid_y10, 253, 3); NEAR(eye(MOOD_WORRIED, 0)->lid_slope, -287, 3);
     NEAR(eye(MOOD_WORRIED, 1)->lid_y10, 253, 3); NEAR(eye(MOOD_WORRIED, 1)->lid_slope, 287, 3);
     NEAR(eye(MOOD_SAD, 0)->lid_y10, 231, 3);     NEAR(eye(MOOD_SAD, 0)->lid_slope, -287, 3);
     NEAR(eye(MOOD_SAD, 1)->lid_slope, 287, 3);
-    NEAR(eye(MOOD_ANNOYED, 0)->lid_y10, 273, 3); NEAR(eye(MOOD_ANNOYED, 0)->lid_slope, 325, 3);
+    NEAR(eye(MOOD_ANNOYED, 0)->lid_y10, 330, 3); NEAR(eye(MOOD_ANNOYED, 0)->lid_slope, 325, 3);
     NEAR(eye(MOOD_ANNOYED, 1)->lid_slope, -325, 3);
 }
 
@@ -301,7 +302,7 @@ static void test_motion_and_blink(void)
         { MOOD_CALM, MOT_LOOK, 5000 }, { MOOD_HAPPY, MOT_HOP, 0 }, { MOOD_PROUD, MOT_HOP_SLOW, 0 },
         { MOOD_FOCUSED, MOT_BREATHE, 8000 }, { MOOD_WORRIED, MOT_JIT, 5000 }, { MOOD_SAD, MOT_SINK, 6000 },
         { MOOD_SURPRISED, MOT_POP, 5000 }, { MOOD_CURIOUS, MOT_TILT, 5000 }, { MOOD_SLEEPY, MOT_SINK_SLOW, 0 },
-        { MOOD_SLEEPING, MOT_BREATHE, 0 }, { MOOD_DIZZY, MOT_WOBBLE, 0 }, { MOOD_ANNOYED, MOT_HUFF, 6000 },
+        { MOOD_SLEEPING, MOT_BREATHE, 0 }, { MOOD_DIZZY, MOT_WOBBLE, 0 }, { MOOD_ANNOYED, MOT_ANGRY, 6000 },
         { MOOD_LOVE, MOT_SWAY, 0 }, { MOOD_OFFLINE, MOT_NONE, 0 },
     };
     for (unsigned i = 0; i < sizeof M / sizeof *M; i++) {
@@ -337,8 +338,6 @@ static void test_motion_and_blink(void)
     g = face_group_at(MOT_TILT, 2800);    CHECK_EQ(g.rot, 600);  CHECK_EQ(g.tx, 1400);  CHECK_EQ(g.ty, -400);
     g = face_group_at(MOT_WOBBLE, 0);     CHECK_EQ(g.rot, -900);
     g = face_group_at(MOT_WOBBLE, 800);   CHECK_EQ(g.rot, 900);
-    g = face_group_at(MOT_HUFF, 1350);    CHECK_EQ(g.tx, 1600);
-    g = face_group_at(MOT_HUFF, 2040);    CHECK_EQ(g.tx, 1800);
     g = face_group_at(MOT_NONE, 1234);    CHECK_EQ(g.tx, 0); CHECK_EQ(g.rot, 0); CHECK_EQ(g.sc, 1000);
 
     /* blink: open until 93 %, shut to 8 % at 96 %, open again at 100 % */
@@ -349,6 +348,88 @@ static void test_motion_and_blink(void)
     NEAR(face_blink_x1000(5000, 4725), 262, 4);
     CHECK_EQ(face_blink_x1000(8000, 7680), 80);
     CHECK_EQ(face_blink_x1000(0, 123), 1000);
+}
+
+/* The angry dart: every 2.4 s the eyes jump 18 px left, shake, jump 18 px right, shake and come back; in between they tremble. */
+static void test_angry_dart(void)
+{
+    CHECK_EQ(face_motion_period(MOT_ANGRY), 2400);
+    int32_t lo = 0, hi = 0, rest_lo = 0, rest_hi = 0;
+    for (uint32_t t = 0; t < 2400; t++) {
+        face_group_t g = face_group_at(MOT_ANGRY, t);
+        CHECK_EQ(g.ty, 0); CHECK_EQ(g.rot, 0); CHECK_EQ(g.sc, 1000);       /* the eyes only move sideways */
+        if (g.tx < lo) lo = g.tx;
+        if (g.tx > hi) hi = g.tx;
+        if (t < 900 && g.tx < rest_lo) rest_lo = g.tx;
+        if (t < 900 && g.tx > rest_hi) rest_hi = g.tx;
+        face_group_t again = face_group_at(MOT_ANGRY, t + 2400);
+        CHECK_EQ(again.tx, g.tx);                                          /* loops */
+    }
+    CHECK(lo <= -1800 && lo >= -2100);                                     /* reaches -18 px, shaking up to 3 px beyond */
+    CHECK(hi >= 1800 && hi <= 2100);
+    CHECK(rest_hi - rest_lo >= 200 && rest_hi - rest_lo <= 400);           /* trembles by 1 to 2 px between darts */
+    NEAR(face_group_at(MOT_ANGRY, 1200).tx, -1800, 300);                   /* held left, shaking */
+    NEAR(face_group_at(MOT_ANGRY, 1550).tx, 1800, 300);                    /* then right */
+    NEAR(face_group_at(MOT_ANGRY, 1000).tx, 0, 200);                       /* each jump starts from the rest pose */
+    NEAR(face_group_at(MOT_ANGRY, 1800).tx, 0, 200);
+    int32_t v = face_group_at(MOT_ANGRY, 1100).tx, prev = v, flips = 0, dir = 0;
+    for (uint32_t t = 1101; t < 1330; t++) {                               /* the shake changes direction several times */
+        v = face_group_at(MOT_ANGRY, t).tx;
+        int d = v > prev ? 1 : v < prev ? -1 : 0;
+        if (d && dir && d != dir) flips++;
+        if (d) dir = d;
+        prev = v;
+    }
+    CHECK(flips >= 4);
+}
+
+/* The glint of the angry eye sits below the brow line on both eyes, at every dart position, and inside the eye. */
+static void test_angry_glint(void)
+{
+    for (int s = 0; s < 2; s++) {
+        const face_eye_t *e = eye(MOOD_ANNOYED, s);
+        for (int cx = 0; cx <= 22; cx += 22) {
+            for (int cy = 0; cy <= 22; cy += 22) {
+                int x = e->star_x + cx, y = e->star_y + cy;                                   /* a corner of the 22 px star */
+                int cut10 = e->lid_y10 + e->lid_slope * (x - e->w / 2) / 100;                  /* brow line at that x, tenths of px */
+                CHECK(y * 10 > cut10);                                                         /* below the brow */
+                CHECK(x >= 0 && x <= e->w && y >= e->r && y <= e->h - e->r);                   /* inside the full-width part of the pill */
+            }
+        }
+    }
+}
+
+static void test_anger_fx(void)
+{
+    const face_mood_t *a = face_mood_def(MOOD_ANNOYED);
+    CHECK(a->vein);
+    CHECK_EQ(a->vein_at.x, 250); CHECK_EQ(a->vein_at.y, 6); CHECK_EQ(a->vein_at.size, 34);
+    CHECK_EQ(a->n_steam, 2);
+    CHECK_EQ(a->gradient_top, 0xFF8A84); CHECK_EQ(a->gradient_bottom, 0xE5262E);
+    /* a cloud sits outside the eye even at the end of a dart (18 px + 3 px shake) */
+    CHECK(a->steam[0].x + a->steam[0].size <= a->eye[0].x - 21);
+    CHECK(a->steam[1].x >= a->eye[1].x + a->eye[1].w + 21);
+    CHECK(a->steam[0].x >= -6 && a->steam[1].x + a->steam[1].size <= FACE_W + 6); /* within the face's 40 px overhang */
+    CHECK(a->steam[1].delay_ms > 0 && a->steam[1].delay_ms < 1600);
+    for (int m = 0; m < MOOD_COUNT; m++)
+        if (m != MOOD_ANNOYED) CHECK(!face_mood_def(m)->vein && !face_mood_def(m)->n_steam);
+
+    face_fx_state_t f = face_fx_pulse(0);       /* the mark: scale .7 -> 1.1 -> .9 -> .7 every 1.2 s, opacity follows */
+    CHECK_EQ(f.k, 700); CHECK(f.op >= 120 && f.op < 200);
+    f = face_fx_pulse(540);                     CHECK_EQ(f.k, 1100); CHECK_EQ(f.op, 255);
+    f = face_fx_pulse(900);                     CHECK_EQ(f.k, 900);  CHECK(f.op > 200 && f.op < 255);
+    f = face_fx_pulse(1200);                    CHECK_EQ(f.k, 700);
+    for (uint32_t t = 0; t < 1200; t += 7) {
+        f = face_fx_pulse(t);
+        CHECK(f.k >= 700 && f.k <= 1100 && f.op >= 120 && f.op <= 255);
+    }
+    f = face_fx_steam(0, 0);                    /* a cloud: appears at once, rises 30 px and swells while it fades, gone at the top */
+    CHECK_EQ(f.op, 0); CHECK_EQ(f.dy, 0); CHECK_EQ(f.k, 0);
+    f = face_fx_steam(100, 0);                  CHECK(f.op >= 225 && f.op <= 235);              /* nearly opaque at the start */
+    f = face_fx_steam(400, 0);                  CHECK(f.op >= 180 && f.op <= 235); CHECK(f.dy < -500 && f.dy > -2500);
+    f = face_fx_steam(1599, 0);                 CHECK(f.op < 8); NEAR(f.dy, -3000, 60); CHECK(f.k >= 950);
+    f = face_fx_steam(400 + 800, 800);          CHECK(f.op >= 150);   /* the second puff is half a loop behind */
+    f = face_fx_steam(2 * 1600, 0);             CHECK_EQ(f.op, 0);    /* loops */
 }
 
 static void test_fx(void)
@@ -372,7 +453,7 @@ static void test_fx(void)
     CHECK_EQ(sl->zz[1].x, 264); CHECK_EQ(sl->zz[1].y, 28); CHECK_EQ(sl->zz[1].size, 22); CHECK_EQ(sl->zz[1].delay_ms, 1600);
     const face_mood_t *lv = face_mood_def(MOOD_LOVE);
     CHECK(lv->cheeks); CHECK_EQ(lv->n_heart, 2);
-    CHECK_EQ(lv->heart[0].x, 258); CHECK_EQ(lv->heart[0].y, 20);
+    CHECK_EQ(lv->heart[0].x, 246); CHECK_EQ(lv->heart[0].y, 34);
     CHECK_EQ(lv->heart[1].x, 16);  CHECK_EQ(lv->heart[1].y, 34); CHECK_EQ(lv->heart[1].delay_ms, 1400);
     CHECK(face_mood_def(MOOD_OFFLINE)->dots);
     const face_mood_t *c = face_mood_def(MOOD_CALM);
@@ -422,6 +503,24 @@ static void test_images(void)
     const lv_image_dsc_t *z = face_img_z(16);
     CHECK_EQ(z->header.h, 16); CHECK_EQ(z->header.w, 15);
     CHECK(z->data[0] > 200 && z->data[14] > 200);             /* top bar across */
+    const lv_image_dsc_t *v = face_img_vein(34);              /* the anger mark: four arcs, gaps on the axes, hollow middle */
+    CHECK_EQ(v->header.w, 34); CHECK_EQ(v->header.h, 34); CHECK_EQ(v->header.cf, LV_COLOR_FORMAT_A8);
+    CHECK_EQ(v->data_size, 34 * 34);
+    /* four arcs, ) ( above and ) ( below: solid in their corners, clear gaps on both axes and in the middle */
+    CHECK(v->data[8 * 34 + 11] >= 250 && v->data[8 * 34 + 22] >= 250 && v->data[25 * 34 + 11] >= 250 && v->data[25 * 34 + 22] >= 250);
+    for (int i = 0; i < 34; i++) { CHECK_EQ(v->data[i * 34 + 16], 0); CHECK_EQ(v->data[i * 34 + 17], 0); CHECK_EQ(v->data[16 * 34 + i], 0); CHECK_EQ(v->data[17 * 34 + i], 0); }
+    CHECK(v->data[8 * 34 + 13] >= 250 && v->data[8 * 34 + 15] == 0);   /* it bulges toward the middle: the arc's apex is its inner edge */
+    CHECK(v->data[8 * 34 + 7] == 0);                                   /* concave side outward: hollow behind the left arc */
+    CHECK(v->data[1 * 34 + 8] > 0 && v->data[1 * 34 + 13] == 0);       /* the ends curve back out */
+    CHECK_EQ(face_img_vein(1)->header.w, 16);                 /* clamped to the ladder: .7 of 34 px at the 0.7 offline face is 17, */
+    CHECK_EQ(face_img_vein(99)->header.w, 52);                /* 1.1 of it at the 1.4 home face is 52 */
+    const lv_image_dsc_t *p = face_img_puff(28);              /* a small cloud of three soft circles */
+    CHECK_EQ(p->header.w, 28); CHECK_EQ(p->header.h, 28); CHECK_EQ(p->header.cf, LV_COLOR_FORMAT_A8);
+    CHECK(p->data[13 * 28 + 14] >= 250 && p->data[17 * 28 + 8] >= 250 && p->data[17 * 28 + 21] >= 250); /* the three circles are solid inside */
+    CHECK_EQ(p->data[0], 0); CHECK_EQ(p->data[27 * 28 + 14], 0); CHECK(p->data[17 * 28 + 1] < 100);   /* clear corners, soft edge */
+    CHECK(p->data[22 * 28 + 9] > 100 && p->data[22 * 28 + 14] == 0);                                  /* a notch between the lower circles */
+    CHECK_EQ(face_img_puff(1)->header.w, 16);                 /* 24..30 px clouds from the 0.7 to the 1.4 face */
+    CHECK_EQ(face_img_puff(99)->header.w, 42);
 }
 
 int main(void)
@@ -433,6 +532,9 @@ int main(void)
     test_eyes();
     test_lids();
     test_motion_and_blink();
+    test_angry_dart();
+    test_angry_glint();
+    test_anger_fx();
     test_fx();
     test_images();
     return g_failed ? 1 : 0;

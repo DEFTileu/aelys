@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|weather|weather_empty|weather_stale|weather_hot|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|weather|weather_empty|weather_stale|weather_hot|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--zoom 1000] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -198,6 +198,12 @@ static int companion_shot(const char *shot)
             sim_step(601000);
         } else if (!strcmp(shot, "character_reconnected")) {
             post_ev(UI_EV_LINK, LINK_UI_OFFLINE); post_ev(UI_EV_LINK, LINK_UI_ONLINE);
+        } else if (!strcmp(shot, "character_pokes")) { /* four quick taps annoy her; --at counts from the fourth */
+            const uint8_t point[] = {233, 0, 233, 0};
+            for (int i = 0; i < 4; i++) {
+                sim_post(UI_EV_TOUCH, point, 4); sim_post(UI_EV_TAP, point, 4); sim_post(UI_EV_RELEASE, NULL, 0);
+                if (i < 3) sim_step(300);
+            }
         } else if (!strcmp(shot, "character_tap") || !strcmp(shot, "character_surprise")) {
             if (!strcmp(shot, "character_surprise")) sim_step(301000);
             const uint8_t point[] = {233, 0, 233, 0};
@@ -383,19 +389,20 @@ int main(int argc, char **argv)
 {
     const char *shot = NULL, *out = NULL, *cue = NULL, *event_cue = NULL;
     int hour = 14;
-    int scale = 100, at = 100; /* at: ms of animation before the shot */
+    int scale = 100, at = 100, zoom = 1000; /* at: ms of animation before the shot; zoom: face:<mood> eyes, permille */
     for (int i = 1; i + 1 < argc; i += 2) {
         if (!strcmp(argv[i], "--shot")) shot = argv[i + 1];
         else if (!strcmp(argv[i], "--out")) out = argv[i + 1];
         else if (!strcmp(argv[i], "--scale")) scale = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "--at")) at = atoi(argv[i + 1]);
+        else if (!strcmp(argv[i], "--zoom")) zoom = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "--cue")) cue = argv[i + 1];
         else if (!strcmp(argv[i], "--event-cue")) event_cue = argv[i + 1];
         else if (!strcmp(argv[i], "--hour")) hour = atoi(argv[i + 1]);
         else return 2;
     }
     if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--at <ms>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--zoom <permille>] [--at <ms>]\n",
                 argv[0]);
         fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
                         "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);
@@ -434,6 +441,7 @@ int main(int argc, char **argv)
         lv_obj_t *face = face_create(lv_screen_active(), scale);
         if (!face) return 1;
         lv_obj_center(face);
+        face_set_eye_zoom(face, zoom);
         face_set_mood(face, (mood_t)mood);
     } else if (screen_shot(shot)) {
         fprintf(stderr, "unknown screen '%s' (try home, lost, ice, ice_progress, face:calm)\n", shot);

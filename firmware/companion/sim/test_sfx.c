@@ -8,6 +8,7 @@ int main(void)
 {
     CHECK_EQ(sfx_length_ms(SFX_NONE), 0u);
     CHECK_EQ(sfx_length_ms(SFX_COUNT), 0u);
+    CHECK(sfx_length_ms(SFX_GRUMBLE) >= 550 && sfx_length_ms(SFX_GRUMBLE) <= 650); /* a growl, not a short "hmph" */
     sfx_player_t p;
     int16_t buf[2 * BEEP_CHUNK_FRAMES];
     sfx_start(&p, SFX_NONE);

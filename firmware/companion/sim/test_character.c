@@ -111,8 +111,11 @@ static void test_all_events(void)
     character_state_t s; character_inputs_t i = normal();
     for (int e = 1; e < CHAR_EVENT_COUNT; ++e) {
         character_init(&s); character_event(&s, (character_event_t)e, 0);
+        uint32_t ms = character_reaction_ms((character_event_t)e);
+        CHECK_EQ(ms, e == CHAR_EVENT_POKES ? 4000u : 3000u); /* poked: annoyed a little longer */
         CHECK_EQ(character_select(&s, &i, 1).mood, mood[e]);
-        CHECK_EQ(character_select(&s, &i, 3000).mood, CHAR_CALM);
+        CHECK_EQ(character_select(&s, &i, ms - 1).mood, mood[e]);
+        CHECK_EQ(character_select(&s, &i, ms).mood, CHAR_CALM);
     }
     character_init(&s); character_event(&s, CHAR_EVENT_SHAKE, 0);
     character_event(&s, CHAR_EVENT_TOUCH, 1);

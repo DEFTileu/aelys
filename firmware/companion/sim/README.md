@@ -35,5 +35,5 @@ Character scenarios exercise actual UI events and can be saved as BMP files:
 firmware/companion/sim/build/companion_sim --shot character_tap --out tap.bmp
 ```
 
-Other scenarios are `character_surprise`, `character_sleep`, and
-`character_reconnected`. They use fake snapshot data and a simulated clock.
+Other scenarios are `character_surprise`, `character_sleep`,
+`character_reconnected`, and `character_pokes` (four quick taps: annoyed). They use fake snapshot data and a simulated clock.

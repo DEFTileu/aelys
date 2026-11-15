@@ -3,8 +3,8 @@
  * Cheap primitives only, all created once in face_create(); a mood switch restyles, repositions and shows/hides.
  *  - eye: lv_obj pill with a vertical bg gradient; sleeping = a pill ring under a black cover, dizzy = lv_draw_arc,
  *    offline = flat circle.
- *  - highlight, sparkles, drops, hearts, "z": pre-rendered A8 images (img_fx.c, tools/gen_face_fx.py), recoloured
- *    and picked by pixel size, never scaled or rotated at run time.
+ *  - highlight, sparkles, drops, hearts, "z", the angry face's anger mark and steam: pre-rendered A8 images (img_fx.c,
+ *    tools/gen_face_fx.py), recoloured and picked by pixel size, never scaled or rotated at run time.
  *  - lids (worried, sad, annoyed, sleepy, and the sleeping cover): the CSS lid is a black box rotated 16 / 18 degrees
  *    inside the eye. On the black screen only the cut along its bottom edge shows, so the lid is a black rect plus
  *    one triangle drawn by an event callback: two small fills, no transform layer, no mask image to store.
@@ -25,6 +25,8 @@
 #define COLOR_SPARK 0xE6DCFF
 #define COLOR_DROP 0x7FA8F5
 #define COLOR_DOT_OFF 0x4A4554
+#define COLOR_ANGER 0xFF5A5F
+#define COLOR_STEAM 0xB8B2C4
 #define DROOP_TRAVEL 250 /* sleepy lid: bottom edge moves 25 px (tenths) between -56 % and -30 % of 96 px */
 /* The anim timer ticks every LV_DEF_REFR_PERIOD (5 ms on the board) while the panel flushes at 60 Hz (16.67 ms, TE).
  * The face uses a 33.33 ms clock in 1/3 ms; the panel and navigation remain at 60 Hz. */
@@ -35,7 +37,7 @@ typedef struct { int16_t w, h, yl, yr; } cut_t; /* lid object size, cut height a
 typedef struct {
     lv_obj_t *root;
     lv_obj_t *eye[2], *star[2], *ring[2], *lid[2], *dome[2];
-    lv_obj_t *cheek[2], *dot[3], *line[3], *spark[3], *drop, *zz[2], *heart[2];
+    lv_obj_t *cheek[2], *dot[3], *line[3], *spark[3], *drop, *zz[2], *heart[2], *vein, *steam[2];
     lv_obj_t *confetti_layer;
     face_confetti_state_t confetti_state[6];
     cut_t cut[2];
@@ -43,6 +45,7 @@ typedef struct {
     int16_t line_k[3], line_op[3];
     int16_t dot_mix[3];
     int32_t s;           /* scale_x100 */
+    int32_t zoom;        /* eyes only, permille (face_set_eye_zoom) */
     const face_mood_t *m;
     face_spring_t eye_spring[2][10];
     face_eye_t current_eye[2];
@@ -255,7 +258,7 @@ static void ring_draw(lv_event_t *e)
     lv_draw_arc_dsc_t arc;
     lv_draw_arc_dsc_init(&arc);
     arc.color = lv_color_hex(f->m->color);
-    arc.width = (f->m->border * f->s + 50) / 100;
+    arc.width = (f->m->border * f->s * f->zoom / 1000 + 50) / 100;
     arc.center.x = (a.x1 + a.x2 + 1) / 2;
     arc.center.y = (a.y1 + a.y2 + 1) / 2;
     arc.radius = (uint16_t)((a.x2 - a.x1 + 1) / 2);
@@ -308,6 +311,7 @@ static void layout_eyes(face_t *f, uint32_t t)
 {
     const face_mood_t *m = f->m;
     face_group_t g = face_group_at((face_motion_t)m->motion, t);
+    g.sc = g.sc * f->zoom / 1000; /* the eye zoom rides on the group's scale about the face centre */
     int32_t sn, cs;
     trig(g.rot, &sn, &cs);
 
@@ -390,14 +394,14 @@ static void layout_eyes(face_t *f, uint32_t t)
             /* left -14, right -14, top 52, 96 tall: an ellipse 98 x 96 */
             int32_t px = e->x * 100 + e->w * 50, py = e->y * 100 + 10000;
             group_pt(&g, sn, cs, &px, &py);
-            int32_t dw = (e->w + 28) * 50;
-            place(f->dome[side], d(f, px - dw), d(f, py - 4800), d(f, px + dw) - d(f, px - dw), d(f, py + 4800) - d(f, py - 4800));
+            int32_t dw = (e->w + 28) * 50 * g.sc / 1000, dh = 4800 * g.sc / 1000;
+            place(f->dome[side], d(f, px - dw), d(f, py - dh), d(f, px + dw) - d(f, px - dw), d(f, py + dh) - d(f, py - dh));
             show(f->dome[side], true);
         }
     }
 }
 
-/* Effects: sparkles, drops, "z", hearts, burst lines and the offline dots. They do not follow the eye group. */
+/* Effects: sparkles, drops, "z", hearts, burst lines, the anger mark, steam and the offline dots. They do not follow the eye group. */
 static void layout_fx(face_t *f, uint32_t t)
 {
     const face_mood_t *m = f->m;
@@ -438,6 +442,21 @@ static void layout_fx(face_t *f, uint32_t t)
         const face_fx_t *p = &m->heart[i];
         face_fx_state_t st = face_fx_rise(t, 2800, p->delay_ms);
         put_img(f->heart[i], face_img_heart(d(f, p->size * 100)), d(f, p->x * 100 + st.dx), d(f, p->y * 100 + st.dy), st.op);
+    }
+    if (m->vein) {
+        /* pulses about its centre: the pre-rendered mark nearest to the scaled size */
+        face_fx_state_t st = face_fx_pulse(t);
+        const lv_image_dsc_t *img = face_img_vein(d(f, m->vein_at.size * st.k / 10));
+        int32_t cx = d(f, m->vein_at.x * 100 + m->vein_at.size * 50), cy = d(f, m->vein_at.y * 100 + m->vein_at.size * 50);
+        put_img(f->vein, img, cx - img->header.w / 2, cy - img->header.h / 2, st.op);
+    }
+    for (int i = 0; i < m->n_steam; i++) {
+        /* a cloud swells from 24 to 30 px as it rises from the middle of its box */
+        const face_fx_t *p = &m->steam[i];
+        face_fx_state_t st = face_fx_steam(t, p->delay_ms);
+        const lv_image_dsc_t *img = face_img_puff(d(f, 2400 + 6 * st.k));
+        int32_t cx = d(f, p->x * 100 + p->size * 50), cy = d(f, p->y * 100 + p->size * 50 + st.dy);
+        put_img(f->steam[i], img, cx - img->header.w / 2, cy - img->header.h / 2, st.op);
     }
     if (m->n_line) {
         face_fx_state_t st = face_fx_burst(t);
@@ -507,6 +526,7 @@ static void apply_mood(face_t *f)
         show(f->cheek[side], m->cheeks);
     }
     show(f->drop, false);
+    show(f->vein, false);
     show(f->confetti_layer, m->confetti);
     for (int i = 0; i < 6; i++) f->confetti_state[i] = (face_confetti_state_t){0};
     for (int i = 0; i < 3; i++) {
@@ -519,6 +539,7 @@ static void apply_mood(face_t *f)
     for (int i = 0; i < 2; i++) {
         show(f->zz[i], false);
         show(f->heart[i], false);
+        show(f->steam[i], false);
     }
     for (int i = 0; i < m->n_line; i++) {
         int32_t n = d(f, 2800), cx = d(f, m->line[i].x * 100 + 250), cy = d(f, m->line[i].y * 100 + 1100);
@@ -530,7 +551,7 @@ static void apply_mood(face_t *f)
     for (int i = 0; i < 3; i++) place(f->dot[i], d(f, (123 + 22 * i) * 100), d(f, 11800), d(f, 1000), d(f, 1000));
 }
 
-/* Confetti can start 34 px above the face; allow 40 px of overhang. */
+/* Effects (the steam, a rising heart, a drip) can reach past the face box; allow 40 px of overhang. */
 static void face_ext_size(lv_event_t *e)
 {
     const face_t *f = lv_event_get_user_data(e);
@@ -550,6 +571,7 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
     face_t *f = lv_malloc_zeroed(sizeof *f);
     if (!f) return NULL;
     f->s = scale_x100;
+    f->zoom = 1000;
 
     lv_obj_t *root = lv_obj_create(parent);
     f->root = root;
@@ -607,15 +629,18 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
         f->spark[i] = image(root, COLOR_SPARK);
     }
     f->drop = image(root, COLOR_DROP);
+    f->vein = image(root, COLOR_ANGER);
     for (int i = 0; i < 2; i++) {
         f->zz[i] = image(root, UI_COLOR_MUTED);
         f->heart[i] = image(root, UI_COLOR_CHEEK);
+        f->steam[i] = image(root, COLOR_STEAM);
     }
 
     f->confetti_layer = box(root, UI_COLOR_BG);
     lv_obj_set_style_bg_opa(f->confetti_layer, LV_OPA_TRANSP, 0);
-    lv_obj_set_size(f->confetti_layer, d(f, FACE_W * 100), d(f, (FACE_H + 80) * 100));
-    lv_obj_set_pos(f->confetti_layer, 0, -d(f, 4000));
+    /* Confetti starts up to 34 px above the face; the layer clips it to the face box, so on the home screen it falls
+     * in below the clock and the top key's word instead of over them. */
+    lv_obj_set_size(f->confetti_layer, d(f, FACE_W * 100), d(f, (FACE_H + 40) * 100));
     lv_obj_add_event_cb(f->confetti_layer, confetti_draw, LV_EVENT_DRAW_MAIN, f);
     lv_obj_set_user_flag(f->confetti_layer, 1, true);
     lv_obj_set_hidden(f->confetti_layer, true);
@@ -640,6 +665,15 @@ void face_set_level(lv_obj_t *face, int32_t angle10)
     lv_obj_set_style_transform_pivot_x(face, lv_pct(50), 0);
     lv_obj_set_style_transform_pivot_y(face, lv_pct(50), 0);
     lv_obj_set_style_transform_rotation(face, angle10, 0);
+}
+
+void face_set_eye_zoom(lv_obj_t *face, int32_t permille)
+{
+    face_t *f = face ? lv_obj_get_user_data(face) : NULL;
+    if (!f || permille <= 0 || permille == f->zoom) return;
+    f->zoom = permille;
+    lv_obj_invalidate(face);
+    layout_eyes(f, lv_tick_get() - f->t0);
 }
 
 void face_set_mood(lv_obj_t *face, mood_t m)
