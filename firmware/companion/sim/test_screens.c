@@ -5,7 +5,9 @@
 #include <string.h>
 #include <time.h>
 #include "check.h"
+#include "bmp.h"
 #include "motion.h"
+#include "gesture.h"
 #include "sim_display.h"
 #include "snap_fixture.h"
 #include "src/misc/lv_text_private.h" /* lv_text_encoded_next */
@@ -459,7 +461,12 @@ static void swipe_at(uint8_t type, int x, int y) /* as the board posts it: with 
     post(UI_EV_RELEASE);
 }
 
-static void btn(ui_btn_t b) { uint8_t v = (uint8_t)b; sim_post(UI_EV_BTN, &v, 1); }
+static void btn(ui_btn_t b) {
+    uint8_t v = (uint8_t)b;
+    if (b == BTN_TOP && (ui_current_screen() == SCR_HOME || ui_current_screen() == SCR_TODAY)) {
+        v = TALK_SHORT; sim_post(UI_EV_TALK, &v, 1);
+    } else sim_post(UI_EV_BTN, &v, 1);
+}
 /* Focus is reached from the menu only: Menu, turn to Focus (item 1), open; and back home with the wheel on its first item again. */
 static void open_focus(void) { btn(BTN_TOP); while (scr_menu_selected() != 1) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); } btn(BTN_TOP); }
 static void close_focus(void) { btn(BTN_LOW); swipe(UI_EV_SWIPE_RIGHT); sim_step(300); btn(BTN_LOW); }
@@ -3219,6 +3226,48 @@ static void test_probe_never_sends_actions(void)
     fresh_fx();
 }
 
+static int voice_starts, voice_ends, voice_holds, voice_stops; static bool voice_speak;
+static uint32_t voice_token_test(void) { return (uint32_t)voice_starts; }
+static void voice_shot(const char *name) {
+    const char *dir = getenv("VOICE_SHOT_DIR"); if (!dir) return;
+    char path[512]; snprintf(path, sizeof path, "%s/%s.bmp", dir, name);
+    sim_step(100); CHECK_EQ(bmp_write_rgb565(path, sim_fb(), SIM_W, SIM_H), 0);
+}
+static bool voice_start_test(bool speak) { voice_starts++; voice_speak = speak; return true; }
+static void voice_end_test(bool cancel) { voice_ends += cancel ? 10 : 1; }
+static void voice_hold_test(bool on) { voice_holds += on ? 1 : -1; }
+static void voice_stop_test(void) { voice_stops++; }
+static void test_voice_flow(void)
+{
+    ui_setup(); ui_settings_init(50, false, true);
+    ui_voice_hooks_t h = { .start = voice_start_test, .end = voice_end_test, .hold_power = voice_hold_test, .stop_audio = voice_stop_test, .token = voice_token_test };
+    ui_set_voice_hooks(&h);
+    uint8_t top = BTN_TOP, start = TALK_START, end = TALK_END, cancel = TALK_CANCEL;
+    sim_post(UI_EV_BTN, &top, 1); CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, 1); CHECK(voice_speak); CHECK_EQ(voice_holds, 1);
+    voice_shot("listening");
+    sim_post(UI_EV_TALK, &end, 1); CHECK_EQ(voice_ends, 1); CHECK_EQ(voice_holds, 0);
+    voice_shot("thinking");
+    strcpy(tribuf_back(&ui_voice_tb), "Here is your answer."); tribuf_publish(&ui_voice_tb);
+    uint8_t state[29] = { VOICE_UI_SPEAKING }; state[25] = 1;
+    sim_post(UI_EV_VOICE, state, sizeof state); CHECK(scr_notice_visible()); voice_shot("answer");
+    btn(BTN_LOW); CHECK(!scr_notice_visible()); state[0] = VOICE_UI_DONE;
+    sim_post(UI_EV_VOICE, state, sizeof state); CHECK(!scr_notice_visible());
+    sim_post(UI_EV_TALK, &start, 1); sim_post(UI_EV_TALK, &cancel, 1); CHECK_EQ(voice_ends, 11);
+    sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, 3);
+    uint8_t capped[2] = { TALK_END, 1 }; sim_post(UI_EV_TALK, capped, 2); CHECK_EQ(voice_holds, 1);
+    state[0] = VOICE_UI_ERROR; state[25] = 2; sim_post(UI_EV_VOICE, state, sizeof state); CHECK_EQ(voice_holds, 1);
+    post(UI_EV_COMBO_FIRE); CHECK_EQ(ui_current_screen(), SCR_ICE);
+    post(UI_EV_TOUCH); CHECK_EQ(ui_current_screen(), SCR_HOME);
+    ui_sound_set(false, false); sim_post(UI_EV_TALK, &start, 1); CHECK(!voice_speak);
+    sim_post(UI_EV_TALK, &cancel, 1); ui_sound_set(true, false);
+    uint8_t night[2] = {23, 0}; sim_post(UI_EV_TIME, night, 2);
+    sim_post(UI_EV_TALK, &start, 1); CHECK(!voice_speak); sim_post(UI_EV_TALK, &cancel, 1);
+    int before = voice_starts; post_lost(1); sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, before);
+    post_lost(0); open_focus(); sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, before);
+    close_focus(); ui_set_voice_hooks(NULL);
+}
+
 int main(void)
 {
     sim_init();
@@ -3277,5 +3326,6 @@ int main(void)
     test_find_overlay_shot();
     test_find_overlay_in_lost_mode();
     test_probe_never_sends_actions();
+    test_voice_flow();
     return g_failed ? 1 : 0;
 }

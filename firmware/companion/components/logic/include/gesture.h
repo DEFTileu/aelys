@@ -25,3 +25,9 @@ bool gesture_moved(const gesture_ctx_t *g);
 /* Switch debounce: the returned level changes only after 3 polls in a row that disagree with it. */
 typedef struct { bool level; uint8_t n; } debounce_t;
 bool debounce_feed(debounce_t *d, bool raw);
+
+#define TALK_HOLD_MS 400u
+#define TALK_MAX_MS 20000u
+typedef enum { TALK_NONE, TALK_SHORT, TALK_START, TALK_END, TALK_CANCEL } talk_t;
+typedef struct { bool top, low, started, cancelled; uint32_t t0; } talk_ctx_t;
+talk_t talk_feed(talk_ctx_t *t, bool top, bool low, uint32_t now_ms);

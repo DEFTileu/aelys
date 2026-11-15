@@ -44,6 +44,15 @@ void ui_setup(void);
 /* The UI owns the owner-data buffers (valid after ui_setup()). A producer fills tribuf_back(&ui_owner_tb),
  * NUL-terminates every string, calls tribuf_publish(), then posts UI_EV_OWNER (len 0); the UI reads
  * tribuf_latest(). The content is what the lost and ICE screens show: lost.on ? lost.shown : owner. */
+typedef struct {
+    bool (*start)(bool speak);
+    void (*end)(bool cancel);
+    void (*hold_power)(bool hold);
+    void (*stop_audio)(void);
+    uint32_t (*token)(void); /* link_voice_token: identity of the queued start */
+} ui_voice_hooks_t;
+void ui_set_voice_hooks(const ui_voice_hooks_t *hooks); /* copied; NULL clears */
+extern tribuf_t ui_voice_tb; /* each slot is char[601] */
 extern tribuf_t ui_owner_tb; /* owner_info_t */
 /* The companion snapshot (valid after ui_setup()). The link task fills tribuf_back(&ui_snap_tb), calls tribuf_publish(),
  * then posts UI_EV_SNAPSHOT (data[0] = 1 live from the server, 0 restored from flash); the UI reads tribuf_latest().

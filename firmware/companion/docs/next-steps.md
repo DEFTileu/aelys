@@ -49,3 +49,53 @@ Code is done and reviewed, but nothing ran online yet: do `link-checklist.md` fi
 - Backend (B1): unpair not in the command log; today fields use the Telegram time zone and are not pushed at midnight; a failed send is logged as pending.
 - Alembic: B1 uses revision `0051_companion_v11`; plan 4 also creates a `0051_*` and retitles the protocol to v2, so whichever lands second needs one merge revision.
 - Spec items still out: OTA, coredump upload, power management, Sounds / Emotions / Other-apps / Name rows, focus break timer, device menu apps, SOS, USB pairing from the Mac app, NVS encryption.
+
+## Voice development slice (2026-11-15)
+
+Voice code is under local validation; phase 5 hardware acceptance is **pending**.
+No real ElevenLabs request, board flash or speaker test was performed for this slice.
+The owner must enter the BYOK key in Settings; never copy it to the board or reports.
+
+- Push-to-talk: Home/Today, 400 ms threshold, 20 s / 640,000 B cap,
+  16 kHz signed little-endian mono PCM on the existing authenticated channel.
+- The approved spec takes precedence over stale plan values: 128 KiB PSRAM
+  playback ring, 25 s PMIC failsafe, normal capped hold retained until release.
+  An abort restores long-press shutdown. Capture DMA payload is 2,880 B across
+  both directions; playback DMA payload is 2,560 B, excluding driver overhead.
+- XPowersLib `enableLongPressShutdown` / `disableLongPressShutdown` confirms
+  PWROFF_EN (0x22), bit 1: set enables, clear disables. Source:
+  https://github.com/lewisxhe/XPowersLib/blob/master/src/XPowersAXP2101.hpp
+  This is source verification, not a physical 15 s hold test.
+- PWR = top remains an unverified hardware mapping. MIC1 and 24 dB gain are
+  provisional calibration values. The default premade voice ID must be
+  verified on the owner's account before acceptance.
+- The server limits replies to 600 Unicode characters. The specified board
+  buffer holds 600 UTF-8 bytes, so non-ASCII display text can be shorter;
+  truncation preserves code-point boundaries. Audio uses the server reply.
+- Before release: fresh-main build; authorized silent capture/hold tests;
+  ten 20 s recordings; ONLINE baseline and ten-turn memory/performance gate
+  (heap drop <=16 KiB, largest block >=24 KiB, worst frame <=25 ms,
+  no retained heap after each turn); then owner-approved playback and latency
+  measurements over ten turns (target release-to-first-sound <=4 s).
+- Exercise interruption under load: lower-key/ICE, Find, lost mode, socket
+  replacement/disconnect, ring-full and failed codec initialization. Confirm
+  no old audio appears in a later turn and Sounds-off/night skip TTS.
+- Budget: the voice chat run records cost as the provider reports it, like
+  Telegram (no reservation: a cancelled turn used to keep the whole remaining
+  budget). Concurrent chat, Telegram and voice can overshoot the monthly
+  budget by about one turn, as the other callers already can.
+  Voice currently requires a chat model advertising tool calling; a text-only
+  model returns a generic voice error rather than a no-tools fallback.
+
+Local validation for this slice (development worktree, not release hardware):
+`pytest tests/test_companion_*.py -q`: 177 passed, 6 skipped;
+Telegram personal regressions: 82 passed, 41 skipped;
+voice/provider/shared-turn checks: 37 passed, 1 skipped;
+provider settings web tests: 5 passed; TypeScript and changed-backend Ruff passed.
+SQLite `alembic upgrade head` plus `alembic check` passed (expression-index
+reflection warning expected). The complete host ctest suite passed 61/61;
+after the final stale-end fix, six relevant host tests passed again, including
+the production link harness. ESP-IDF 6.1 rebuilt successfully with ES7210 enabled
+and example owner contacts. Simulator listening/thinking/answer snapshots were
+rendered and inspected. PostgreSQL-specific checks were skipped without their
+test database; no physical-device or real-provider acceptance is implied.

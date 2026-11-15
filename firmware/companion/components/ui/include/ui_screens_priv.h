@@ -185,3 +185,5 @@ void scr_hold_set(int pct);
 lv_obj_t *scr_pair_create(lv_obj_t *parent);
 bool scr_pair_set_code(const char *digits); /* 6 ASCII digits; false (nothing changed) if one is not a digit */
 void scr_pair_set_done(void);               /* the "Paired" card */
+
+void scr_notice_voice(const char *text);

@@ -107,7 +107,7 @@ foreach(scenario sent unsent completed expired inflight admission admission-firs
     add_test(NAME pairing_gate_lifecycle_${scenario} COMMAND pairing_gate_lifecycle ${scenario})
     set_tests_properties(pairing_gate_lifecycle_${scenario} PROPERTIES TIMEOUT 15)
 endforeach()
-foreach(scenario command result snapshot)
+foreach(scenario command result snapshot voice)
     add_test(NAME pairing_gate_inbound_${scenario} COMMAND pairing_gate_inbound ${scenario})
     set_tests_properties(pairing_gate_inbound_${scenario} PROPERTIES TIMEOUT 15)
 endforeach()
@@ -124,3 +124,7 @@ target_include_directories(test_owned_nvs PRIVATE
 target_compile_definitions(test_owned_nvs PRIVATE explicit_bzero=owned_nvs_explicit_bzero)
 target_compile_options(test_owned_nvs PRIVATE -Wall -Wextra)
 add_test(NAME test_owned_nvs COMMAND test_owned_nvs)
+
+add_executable(test_voice_power test_voice_power.c)
+target_include_directories(test_voice_power PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../components/board/include)
+add_test(NAME test_voice_power COMMAND test_voice_power)

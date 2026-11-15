@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 CHAT_KINDS = ("claude", "openrouter")
 FEATURES: dict[str, tuple[str, ...]] = {"chat": CHAT_KINDS, "english": CHAT_KINDS, "automation": CHAT_KINDS, "focus": CHAT_KINDS,
-                                        "transcription": ("transcription",)}
+                                        "transcription": ("transcription",), "voice": ("elevenlabs",)}
 
 
 def stored_defaults(user: User | None) -> dict[str, dict[str, Any]]:

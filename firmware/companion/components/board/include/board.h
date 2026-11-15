@@ -44,6 +44,10 @@ uint32_t lv_port_first_flush_end_us(void);
  * (BTN_TOP / BTN_LOW) for a short click of one key. Call after board_init(). Returns the first
  * init error but starts the task anyway with whatever worked. */
 esp_err_t board_input_start(void);
+/* UI requests a temporary PWR shutdown inhibit. The input task applies it;
+ * releasing PWR or the 25s watchdog always restores hardware shutdown.
+ * off aborts the hold; normal auto-END waits for the input task to see release. */
+void board_input_hold_power(bool on);
 
 /* QMI8658 accelerometer (probes 0x6B then 0x6A). ESP_ERR_NOT_FOUND when absent: then reads return false.
  * Raw axes in the chip frame, +-2 g full scale; mapping to screen axes is the caller's (level.h). */
@@ -64,6 +68,14 @@ esp_err_t board_audio_beep(uint32_t duration_ms);
 void board_audio_stop(void);
 /* Call once at boot, before the tasks that use the two calls above and below start. */
 void board_audio_init(void);
+/* Half-duplex 16kHz signed little-endian mono PCM. Stop joins the capture task,
+ * so no callback can follow its return. Playback push has bounded backpressure. */
+esp_err_t board_audio_listen(void (*on_pcm)(const int16_t *pcm, size_t samples));
+void board_audio_listen_stop(void);
+esp_err_t board_audio_play_begin(void);
+bool board_audio_play_push(const uint8_t *pcm, size_t len, uint32_t wait_ms);
+void board_audio_play_end(void);
+bool board_audio_voice_active(void);
 /* A short sound effect (sfx.h id), from the ui task. Never waits: dropped while "find me" beeps or while a sound is being torn down;
  * a new one replaces the one playing. Shares the find beeps' audio task, codec and amplifier, which exist only while it plays. */
 void board_audio_sfx(uint8_t id);

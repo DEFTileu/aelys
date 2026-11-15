@@ -5,6 +5,8 @@
  * BOOT + PWR held COMBO_HOLD_MS opens the ICE card; the PMIC's own long-press power-off is pushed
  * out to 10 s so the 2 s hold can never power the board off. */
 #include <stdint.h>
+#include <stdatomic.h>
+#include "voice_power.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -38,6 +40,8 @@ static const char *TAG = "input";
 #define IMU_SCREEN_Y(ax, ay) (ax)
 
 /* AXP2101 registers (datasheet / XPowersLib) */
+#define AXP_PWROFF_EN 0x22
+#define AXP_LONG_PRESS_SHUTDOWN (1u << 1) /* XPowersLib enable/disableLongPressShutdown */
 #define AXP_PWRKEY_TIMES 0x27 /* [5:4] IRQ time, [3:2] power-on time, [1:0] power-off time: 4/6/8/10 s */
 #define AXP_IRQ_EN1      0x41 /* bit0 PKEY positive edge (release), bit1 PKEY negative edge (press) */
 #define AXP_IRQ_STS1     0x49 /* same bits, latched, write 1 to clear */
@@ -45,6 +49,13 @@ static const char *TAG = "input";
 #define AXP_PKEY_NEG     (1u << 1)
 #define AXP_OFF_10S      0x03
 
+static atomic_bool voice_power_start;
+static atomic_bool voice_power_off;
+void board_input_hold_power(bool on)
+{
+    if (on) atomic_store(&voice_power_start, true);
+    else atomic_store(&voice_power_off, true);
+}
 static i2c_master_dev_handle_t axp;
 static esp_lcd_touch_handle_t touch;
 static volatile bool touch_irq; /* INT fell since the last read: a pulse shorter than a poll still counts */
@@ -88,6 +99,7 @@ static esp_err_t axp_pwrkey_init(void)
     const i2c_device_config_t cfg = {.dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = I2C_ADDR_AXP2101,
                                      .scl_speed_hz = 400000};
     ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(board_i2c_bus(), &cfg, &axp), TAG, "AXP2101 device");
+    ESP_RETURN_ON_ERROR(axp_set(AXP_PWROFF_EN, AXP_LONG_PRESS_SHUTDOWN, AXP_LONG_PRESS_SHUTDOWN), TAG, "restore long-press shutdown");
     ESP_RETURN_ON_ERROR(axp_set(AXP_PWRKEY_TIMES, 0x03, AXP_OFF_10S), TAG, "power-off time");
     ESP_RETURN_ON_ERROR(axp_set(AXP_IRQ_EN1, AXP_PKEY_POS | AXP_PKEY_NEG, AXP_PKEY_POS | AXP_PKEY_NEG), TAG, "irq enable");
     return axp_wr(AXP_IRQ_STS1, AXP_PKEY_POS | AXP_PKEY_NEG); /* drop edges latched before we listened */
@@ -207,6 +219,10 @@ static void input_task(void *arg)
     motion_t mot = {0};
     int32_t lvl_sent = 0, tilt_x_sent = 0, tilt_y_sent = 0; /* the tilt the maze last heard */
     btn_ctx_t bctx = {0};
+    talk_ctx_t talk = {0};
+    talk_t pending_talk = TALK_NONE;
+    voice_power_t voice_power = {0};
+    bool power_applied = false;
     debounce_t boot_deb = {0}; /* for the click only: the combo has its own 2 s timing */
     bool moved_sent = false;   /* UI_EV_RELEASE already sent for this touch because the finger moved */
     gesture_t pend_gest = GEST_NONE; /* a tap or swipe the ui queue had no room for yet */
@@ -267,18 +283,50 @@ static void input_task(void *arg)
                 /* the edges count only once cleared: a failed clear is read again next poll */
                 if (edges && axp_wr(AXP_IRQ_STS1, edges) == ESP_OK)
                     pwrkey_update(&pwrkey, edges & AXP_PKEY_NEG, edges & AXP_PKEY_POS,
-                                  (uint32_t)(esp_timer_get_time() / 1000));
+                                  (uint32_t)(esp_timer_get_time() / 1000),
+                                  power_applied ? PWRKEY_STALE_TALK_MS : PWRKEY_STALE_MS);
                 if (edges) ESP_LOGI(TAG, "PWR key edges 0x%X, now %s", edges, pwrkey.down ? "down" : "up");
             }
         }
         /* no edge: only ages the state, so a lost release edge cannot leave the key down for good */
-        bool pwr = pwrkey_update(&pwrkey, false, false, (uint32_t)(esp_timer_get_time() / 1000));
+        uint32_t key_now = (uint32_t)(esp_timer_get_time() / 1000);
+        bool pwr = pwrkey_update(&pwrkey, false, false, key_now,
+                                 power_applied ? PWRKEY_STALE_TALK_MS : PWRKEY_STALE_MS);
+        if (slow) {
+            bool start_hold = atomic_exchange(&voice_power_start, false);
+            if (atomic_exchange(&voice_power_off, false)) {
+                voice_power_cancel(&voice_power);
+                start_hold = false; /* abort takes precedence */
+            }
+            bool hold = voice_power_update(&voice_power, start_hold, pwr, key_now);
+            if (axp && hold != power_applied &&
+                axp_set(AXP_PWROFF_EN, AXP_LONG_PRESS_SHUTDOWN, hold ? 0 : AXP_LONG_PRESS_SHUTDOWN) == ESP_OK)
+                power_applied = hold;
+            if (hold && !power_applied) {
+                /* Fail closed if shutdown suppression cannot be verified. */
+                voice_power_cancel(&voice_power);
+                board_audio_stop();
+                pending_talk = TALK_CANCEL;
+                /* Readback may fail after the write took effect. Force a
+                 * restore attempt on the next pass even if state is unknown. */
+                power_applied = true;
+            }
+        }
         bool boot = gpio_get_level(PIN_BOOT) == 0;
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
         boot = boot || st_boot;
         pwr = pwr || st_pwr;
 #endif
-        ui_btn_t click = btn_feed(&bctx, pwr, debounce_feed(&boot_deb, boot), (uint32_t)(esp_timer_get_time() / 1000)); /* top = PWR: see the top of this file */
+        bool low = debounce_feed(&boot_deb, boot);
+        talk_t te = talk_feed(&talk, pwr, low, key_now);
+        /* Retry terminal events when the UI queue is full. A new terminal
+         * event supersedes a START that the UI never received. */
+        if (te != TALK_NONE && pending_talk != TALK_CANCEL) pending_talk = te;
+        if (pending_talk != TALK_NONE) {
+            ui_event_t event = {.type = UI_EV_TALK, .len = 2, .data = {pending_talk, pwr}};
+            if (lv_port_post(&event)) pending_talk = TALK_NONE;
+        }
+        ui_btn_t click = btn_feed(&bctx, pwr, low, key_now); /* top = PWR: see the top of this file */
         if (click) post(UI_EV_BTN, click);
         int pct = combo_update(&combo, boot, pwr, (uint32_t)(esp_timer_get_time() / 1000));
         if (pct == 100) {

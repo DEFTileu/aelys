@@ -32,7 +32,7 @@ async def test_each_feature_uses_the_chosen_provider_and_model(tmp_path, monkeyp
                 # Nothing chosen: the oldest provider of the right kind, never the transcription one.
                 assert (await feature_provider(session, owner, "english"))[0].kind == "claude"
 
-            assert (await client.get("/api/v1/ai/defaults", headers=headers)).json() == {"chat": None, "english": None, "automation": None, "transcription": None}
+            assert (await client.get("/api/v1/ai/defaults", headers=headers)).json() == {"chat": None, "english": None, "automation": None, "transcription": None, "voice": None}
             wrong = await client.put("/api/v1/ai/defaults", headers=headers, json={"english": {"provider_id": ids["transcription"]}})
             assert wrong.status_code == 422 and wrong.json()["detail"]["code"] == "PROVIDER_MISMATCH"
             saved = await client.put("/api/v1/ai/defaults", headers=headers, json={"english": {"provider_id": ids["openrouter"], "model": "openai/gpt-5"}})

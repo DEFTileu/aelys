@@ -9391,6 +9391,246 @@
           }
         ]
       }
+    },
+    "/api/v1/focus/config": {
+      "get": {
+        "tags": [
+          "focus"
+        ],
+        "summary": "Get Config",
+        "operationId": "get_config_api_v1_focus_config_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "focus"
+        ],
+        "summary": "Put Config",
+        "operationId": "put_config_api_v1_focus_config_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FocusConfigBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/focus/state": {
+      "get": {
+        "tags": [
+          "focus"
+        ],
+        "summary": "Get State",
+        "operationId": "get_state_api_v1_focus_state_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/focus/unlock-request": {
+      "post": {
+        "tags": [
+          "focus"
+        ],
+        "summary": "Unlock Request",
+        "operationId": "unlock_request_api_v1_focus_unlock_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnlockResultOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/focus/requests": {
+      "get": {
+        "tags": [
+          "focus"
+        ],
+        "summary": "List Requests",
+        "operationId": "list_requests_api_v1_focus_requests_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnlockRequestOut"
+                  },
+                  "title": "Response List Requests Api V1 Focus Requests Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12016,6 +12256,16 @@
                 "type": "null"
               }
             ]
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeatureChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -12363,6 +12613,82 @@
         ],
         "title": "FinanceTransactionOut"
       },
+      "FocusApp": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,40}$",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "packages": {
+            "items": {
+              "type": "string",
+              "maxLength": 255,
+              "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Packages"
+          },
+          "limit_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Limit Minutes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "packages",
+          "limit_minutes"
+        ],
+        "title": "FocusApp"
+      },
+      "FocusConfig": {
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/FocusApp"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Apps",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FocusConfig"
+      },
+      "FocusConfigBody": {
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/FocusConfig"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "config",
+          "day"
+        ],
+        "title": "FocusConfigBody"
+      },
       "FocusIn": {
         "properties": {
           "task_id": {
@@ -12509,6 +12835,67 @@
           "version"
         ],
         "title": "FocusOut"
+      },
+      "FocusState": {
+        "properties": {
+          "effective": {
+            "$ref": "#/components/schemas/FocusConfig",
+            "default": {
+              "apps": []
+            }
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FocusConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FocusState"
+      },
+      "FocusStateOut": {
+        "properties": {
+          "day_unlocked": {
+            "type": "boolean",
+            "title": "Day Unlocked"
+          },
+          "ai_grants_left": {
+            "type": "integer",
+            "title": "Ai Grants Left"
+          },
+          "requests_left": {
+            "type": "integer",
+            "title": "Requests Left"
+          },
+          "config": {
+            "$ref": "#/components/schemas/FocusState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day_unlocked",
+          "ai_grants_left",
+          "requests_left",
+          "config"
+        ],
+        "title": "FocusStateOut"
       },
       "GenerateIn": {
         "properties": {
@@ -14537,7 +14924,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "pattern": "^(claude|openrouter|transcription)$",
+            "pattern": "^(claude|openrouter|transcription|elevenlabs)$",
             "title": "Kind"
           },
           "base_url": {
@@ -16868,6 +17255,116 @@
           "credit"
         ],
         "title": "TransferOut"
+      },
+      "UnlockRequestBody": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "app_id": {
+            "type": "string",
+            "title": "App Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "app_id",
+          "reason"
+        ],
+        "title": "UnlockRequestBody"
+      },
+      "UnlockRequestOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "app_id": {
+            "type": "string",
+            "title": "App Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "granted": {
+            "type": "boolean",
+            "title": "Granted"
+          },
+          "minutes": {
+            "type": "integer",
+            "title": "Minutes"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "day",
+          "app_id",
+          "reason",
+          "granted",
+          "minutes",
+          "message",
+          "created_at"
+        ],
+        "title": "UnlockRequestOut"
+      },
+      "UnlockResultOut": {
+        "properties": {
+          "granted": {
+            "type": "boolean",
+            "title": "Granted"
+          },
+          "minutes": {
+            "type": "integer",
+            "title": "Minutes"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "ai_grants_left": {
+            "type": "integer",
+            "title": "Ai Grants Left"
+          },
+          "requests_left": {
+            "type": "integer",
+            "title": "Requests Left"
+          }
+        },
+        "type": "object",
+        "required": [
+          "granted",
+          "minutes",
+          "message",
+          "ai_grants_left",
+          "requests_left"
+        ],
+        "title": "UnlockResultOut"
       },
       "UnpairIn": {
         "properties": {

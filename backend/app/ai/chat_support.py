@@ -112,10 +112,15 @@ def owner_timezone(*candidates: object) -> str:
     return "UTC"
 
 
+VOICE_STYLE = "Answer in 1–3 short sentences, without markdown or links, in the language of the question. Say plainly when something cannot be done by voice."
+
+
 def system_prompt(timezone: str, *, tools: bool, channel: str = "app") -> str:
     now = datetime.now(ZoneInfo(timezone))
     # Telegram writes execute directly on the owner's request, so their policy differs from app chat's approval gate.
-    policy = TELEGRAM_POLICY if channel == "telegram" else SYSTEM_POLICY if tools else _NO_TOOLS
+    policy = TELEGRAM_POLICY if channel in {"telegram", "voice"} else SYSTEM_POLICY if tools else _NO_TOOLS
+    if channel == "voice":
+        policy += " " + VOICE_STYLE
     return f"{_IDENTITY}{policy}\nCurrent owner time: {now:%Y-%m-%d %H:%M} ({now:%A}), timezone {timezone}."
 
 

@@ -54,3 +54,20 @@ bool debounce_feed(debounce_t *d, bool raw)
     else if (++d->n >= 3) { d->level = raw; d->n = 0; }
     return d->level;
 }
+
+talk_t talk_feed(talk_ctx_t *t, bool top, bool low, uint32_t now_ms)
+{
+    talk_t event = TALK_NONE;
+    if (top && !t->top) { t->t0 = now_ms; t->started = false; t->cancelled = false; }
+    if ((top || t->top) && !t->cancelled) {
+        if (low) { event = TALK_CANCEL; t->cancelled = true; }
+        else if (!top && t->top) { event = t->started ? TALK_END : TALK_SHORT; t->cancelled = true; }
+        else if (top && !t->started && now_ms - t->t0 >= TALK_HOLD_MS) {
+            t->started = true; t->t0 = now_ms; event = TALK_START;
+        } else if (top && t->started && now_ms - t->t0 >= TALK_MAX_MS) {
+            t->cancelled = true; event = TALK_END;
+        }
+    }
+    t->top = top; t->low = low;
+    return event;
+}

@@ -15,6 +15,29 @@
 static const char *TAG = "metrics";
 
 static uint32_t period_ms;
+/* Sampled per-turn metrics; the board memory gate still requires measured
+ * ten-turn hardware acceptance. No audio or dialogue content is logged. */
+static bool voice_seen;
+static uint32_t voice_min, voice_largest, voice_worst;
+static void voice_sample(void)
+{
+    bool active = board_audio_voice_active();
+    if (active) {
+        uint32_t heap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        uint32_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        uint32_t fps, worst;
+        lv_port_frame_stats(&fps, &worst);
+        if (!voice_seen) { voice_min = heap; voice_largest = largest; voice_worst = 0; }
+        if (heap < voice_min) voice_min = heap;
+        if (largest < voice_largest) voice_largest = largest;
+        if (worst > voice_worst) voice_worst = worst;
+    } else if (voice_seen) {
+        ESP_LOGW(TAG, "voice heap_sampled_min=%u largest_sampled_min=%u worst_us=%u heap_after=%u",
+                 (unsigned)voice_min, (unsigned)voice_largest, (unsigned)voice_worst,
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    }
+    voice_seen = active;
+}
 
 static uint32_t stack_free(const char *name)
 {
@@ -35,7 +58,10 @@ static void metrics_task(void *arg)
     for (;;) {
         /* every second: frames actually drawn, only while something moves (2+ frames), to read the real rate */
         for (uint32_t waited = 0; waited < period_ms; waited += 1000) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            for (unsigned sample = 0; sample < 50; sample++) {
+                vTaskDelay(pdMS_TO_TICKS(20));
+                voice_sample();
+            }
             uint32_t frames, worst;
             lv_port_frame_take(&frames, &worst);
             if (frames >= 2) ESP_LOGW(TAG, "fps1s frames=%u worst_us=%u", (unsigned)frames, (unsigned)worst);

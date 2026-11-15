@@ -106,8 +106,31 @@ static void test_moved(void)
     CHECK(!gesture_moved(&g));
 }
 
+static void test_talk(void)
+{
+    talk_ctx_t t = {0};
+    CHECK_EQ(talk_feed(&t, true, false, 0), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, false, false, 399), TALK_SHORT);
+    CHECK_EQ(talk_feed(&t, true, false, 1000), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, true, false, 1399), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, true, false, 1400), TALK_START);
+    CHECK_EQ(talk_feed(&t, false, false, 1401), TALK_END);
+    CHECK_EQ(talk_feed(&t, true, false, 2000), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, true, false, 2400), TALK_START);
+    CHECK_EQ(talk_feed(&t, true, false, 22400), TALK_END);
+    CHECK_EQ(talk_feed(&t, false, false, 22401), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, true, false, 23000), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, true, true, 23001), TALK_CANCEL);
+    CHECK_EQ(talk_feed(&t, true, false, 24000), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, false, false, 24001), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, true, false, 0xffffff00u), TALK_NONE);
+    CHECK_EQ(talk_feed(&t, true, false, 0x90u), TALK_START);
+    CHECK_EQ(talk_feed(&t, true, true, 0x91u), TALK_CANCEL);
+}
+
 int main(void)
 {
+    test_talk();
     test_tap();
     test_slow_drag_is_none();
     test_swipe_left_right();

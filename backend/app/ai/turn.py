@@ -59,6 +59,7 @@ async def run_tool_turn(
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     on_text: Callable[[str], Awaitable[None]] | None = None,
     max_steps: int = 8,
+    usage_before_check: bool = False,
 ) -> ToolTurnResult:
     """Only server scopes authorize tools; provider results always return as data.
 
@@ -149,12 +150,15 @@ async def run_tool_turn(
         result = await service.complete(completion_id, replace(request, request_budget=remaining),
                                         messages, tools=schemas, cancel=cancel,
                                         **streaming)
-        await check()
+        if not usage_before_check:
+            await check()
         cost += result.usage.estimated_cost
         input_tokens += result.usage.usage.input_tokens
         output_tokens += result.usage.usage.output_tokens
         if on_usage:
             await on_usage(cost, input_tokens, output_tokens)
+        if usage_before_check:
+            await check()
         if step == 1:
             await emit('ai.run.started', provider=result.provider.value, model=result.model)
         if cost > request.request_budget:

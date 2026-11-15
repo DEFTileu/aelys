@@ -209,8 +209,7 @@ async def test_bad_frames_get_errors_and_connection_survives(paired):
             assert socket.receive_json()['code'] == 'VALIDATION_ERROR'
         socket.send_text('{"type": "ping", "pad": "' + 'x' * 4096 + '"}')
         assert socket.receive_json()['code'] == 'VALIDATION_ERROR'
-        socket.send_bytes(b'{"type": "heartbeat"}')
-        assert socket.receive_json()['code'] == 'VALIDATION_ERROR'
+        socket.send_bytes(b'{"type": "heartbeat"}')  # binary outside a voice recording is silently ignored
         socket.send_json({'type': 'nope'})
         assert socket.receive_json()['code'] == 'UNKNOWN_MESSAGE'
         socket.send_json({'type': 'heartbeat'})

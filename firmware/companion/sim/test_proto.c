@@ -713,8 +713,26 @@ static void test_http_bodies(void)
     CHECK(!proto_error_code("<html>502</html>", 16, code));
 }
 
+static void test_voice(void)
+{
+    char b[1024]; proto_msg_t m;
+    CHECK(proto_voice_start(b, sizeof b, "abc", true));
+    CHECK(!strcmp(b, "{\"type\":\"voice_start\",\"id\":\"abc\",\"rate\":16000,\"format\":\"pcm_s16le\",\"speak\":true}"));
+    CHECK(!proto_voice_start(b, 5, "abc", false));
+    CHECK(proto_voice_end(b, sizeof b, "abc", true));
+    CHECK(!strcmp(b, "{\"type\":\"voice_cancel\",\"id\":\"abc\"}"));
+    CHECK(!proto_voice_end(b, 5, "abc", false));
+    const char *state = "{\"type\":\"voice_state\",\"id\":\"abc\",\"state\":\"error\",\"error_code\":\"VOICE_EMPTY\"}";
+    CHECK(proto_parse(state, strlen(state), &m));
+    CHECK_EQ(m.type, MSG_VOICE_STATE); CHECK(!strcmp(m.u.voice.error, "VOICE_EMPTY"));
+    char text[700]; memset(text, 'x', 599); memcpy(text+599, "é", 2); text[601]=0;
+    snprintf(b, sizeof b, "{\"type\":\"voice_text\",\"id\":\"abc\",\"text\":\"%s\"}", text);
+    CHECK(proto_parse(b, strlen(b), &m)); CHECK_EQ(m.type, MSG_VOICE_TEXT); CHECK_EQ(strlen(m.u.voice.text), 599);
+}
+
 int main(void)
 {
+    test_voice();
     test_wifi_seen_merge();
     test_parses_every_contract_example();
     test_parses_v11_examples();

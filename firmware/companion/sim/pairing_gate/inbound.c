@@ -16,7 +16,14 @@ static char device[40] = "old-device";
 static char socket_device[40];
 static bool paired = true, send_ok = true;
 static bool fake_lost_on(void) { return false; }
-static lq_t queue_items[32];
+static int listen_started, listen_stopped, audio_stopped, audio_started, audio_chunks;
+static bool fail_audio;
+static esp_err_t fake_listen(void (*cb)(const int16_t *, size_t)) { (void)cb; listen_started++; return ESP_OK; }
+static void fake_listen_stop(void) { listen_stopped++; }
+static void fake_audio_stop(void) { audio_stopped++; }
+static esp_err_t fake_audio_begin(void) { audio_started++; return ESP_OK; }
+static bool fake_audio_in(const uint8_t *p, size_t n) { (void)p; (void)n; audio_chunks++; return !fail_audio; }
+static lq_t queue_items[256];
 static size_t qhead, qtail;
 static char captured[8][1024], captured_owner[8][40];
 static size_t capture_n;
@@ -39,6 +46,8 @@ static void unlock(pthread_mutex_t *m) { assert(pthread_mutex_unlock(m)==0); }
 static void signal_gate(void) { assert(pthread_cond_broadcast(&gate_cond)==0); }
 static void await_gate(bool *flag) { while (!*flag) assert(pthread_cond_wait(&gate_cond, &gate_mutex)==0); }
 tribuf_t ui_snap_tb;
+tribuf_t ui_voice_tb;
+bool link_ws_send_bin(const void *data, size_t n) { (void)data; (void)n; return true; }
 
 void explicit_bzero(void *p, size_t n) { volatile unsigned char *q = p; while (n--) *q++ = 0; }
 int64_t esp_timer_get_time(void) { return (int64_t)now_ms * 1000; }
@@ -57,8 +66,8 @@ int xTaskCreatePinnedToCore(void (*fn)(void *), const char *name, unsigned stack
     }
     return fail_task_create ? 0 : pdPASS;
 }
-QueueHandle_t xQueueCreate(unsigned n, unsigned s) { assert(n <= 32 && s == sizeof(lq_t)); return queue_items; }
-int xQueueSend(QueueHandle_t qh, const void *p, unsigned t) { (void)qh;(void)t; lock(&queue_mutex); assert(qtail < 32); queue_items[qtail++] = *(const lq_t *)p; unlock(&queue_mutex); return pdTRUE; }
+QueueHandle_t xQueueCreate(unsigned n, unsigned s) { assert(n <= 256 && s == sizeof(lq_t)); return queue_items; }
+int xQueueSend(QueueHandle_t qh, const void *p, unsigned t) { (void)qh;(void)t; lock(&queue_mutex); assert(qtail < 256); queue_items[qtail++] = *(const lq_t *)p; unlock(&queue_mutex); return pdTRUE; }
 int xQueueReceive(QueueHandle_t qh, void *p, unsigned t) { if (stop_task_at_receive) { stop_task_at_receive=false; longjmp(task_started,1); } (void)qh;(void)t; lock(&queue_mutex); if (qhead == qtail) { unlock(&queue_mutex); return 0; } *(lq_t *)p = queue_items[qhead++]; unlock(&queue_mutex); return pdTRUE; }
 SemaphoreHandle_t xSemaphoreCreateMutex(void) { return mutex_creations++ == 0 ? &action_mutex : &send_mutex; }
 int xSemaphoreTake(SemaphoreHandle_t s, unsigned t) {
@@ -129,13 +138,42 @@ static void one_event(int kind) {
 }
 int main(int argc,char **argv) {
     assert(argc==2);
+    bool voice_case=!strcmp(argv[1],"voice");
     bool cmd=!strcmp(argv[1],"command"), result_case=!strcmp(argv[1],"result"), snap=!strcmp(argv[1],"snapshot");
-    assert(cmd || result_case || snap);
+    assert(cmd || result_case || snap || voice_case);
     tribuf_init(&ui_snap_tb,&snap_slots[0],&snap_slots[1],&snap_slots[2]);
-    link_deps_t deps={.reset_revs=reset_revs, .lost_on=fake_lost_on}; assert(link_start(&deps)==ESP_OK);
+    link_deps_t deps={.reset_revs=reset_revs, .lost_on=fake_lost_on, .listen_start=fake_listen, .listen_stop=fake_listen_stop, .audio_stop=fake_audio_stop, .audio_begin=fake_audio_begin, .audio_in=fake_audio_in}; assert(link_start(&deps)==ESP_OK);
     seen_seq=paired_seq; link_fsm_init(&fsm,identity_paired()); ui_posted=LINK_UI_OFFLINE;
     atomic_store(&link_task_ready, true); /* Explicitly model the initialized task boundary. */
     pump(); assert(fsm.st==LS_CONNECT); ready(); assert(!strcmp(socket_device,"old-device"));
+    if (voice_case) {
+        ws_online = false; assert(!link_voice_start(true)); ws_online = true;
+        assert(link_voice_start(true)); pump();
+        assert(voice_id[0]); assert(listen_started == 1);
+        char active[40]; strlcpy(active, voice_id, sizeof active);
+        queue_frame(0, link_ws_gen(), "{\"type\":\"voice_state\",\"id\":\"stale\",\"state\":\"done\"}"); one_event(LQ_WS_FRAME);
+        assert(!strcmp(active, voice_id));
+        link_voice_end(false); pump(); assert(voice_id[0]); assert(listen_stopped == 1);
+        char speaking[160]; snprintf(speaking, sizeof speaking, "{\"type\":\"voice_state\",\"id\":\"%s\",\"state\":\"speaking\"}", active);
+        queue_frame(0, link_ws_gen(), speaking);
+        uint32_t vg = link_voice_generation(); link_voice_wire_speaking("stale");
+        uint8_t pcm[2] = {0}; assert(!link_voice_accept_audio(vg, pcm, 2));
+        link_voice_wire_speaking(active); assert(link_voice_accept_audio(vg, pcm, 2));
+        one_event(LQ_WS_FRAME); assert(audio_started == 1); one_event(LQ_VOICE_AUDIO); assert(audio_chunks == 1);
+        assert(link_voice_accept_audio(vg, pcm, 2)); fail_audio = true; one_event(LQ_VOICE_AUDIO); tick();
+        assert(!voice_id[0] && audio_stopped == 1);
+        assert(link_voice_start(true)); pump(); assert(voice_id[0]);
+        voice_pending_end(voice_current, true);
+        voice_pending_end(voice_current - 1, true);
+        assert((atomic_load(&voice_end_pending) >> 2) == voice_current);
+        voice_pending_end(voice_current, false);
+        assert((atomic_load(&voice_end_pending) & 3u) == 2u);
+        atomic_store(&voice_end_pending, 0);
+        voice_pending_end(voice_current - 1, true); tick(); assert(voice_id[0]);
+        assert(link_q_post(LQ_WS_CLOSED, link_ws_gen(), 0, 0)); one_event(LQ_WS_CLOSED);
+        assert(!voice_id[0]); assert(audio_stopped == 2);
+        free(link_mem); return 0;
+    }
     char frame[512], id[40]="";
     if (result_case) {
         assert(link_post_action(ACT_FOCUS_START,NULL)); pump(); assert(acts.n==1);

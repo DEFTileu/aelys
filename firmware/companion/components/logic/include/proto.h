@@ -12,13 +12,14 @@
 typedef enum { ACT_NOTIFICATION_READ, ACT_FOCUS_START, ACT_FOCUS_PAUSE, ACT_FOCUS_RESUME, ACT_FOCUS_STOP, ACT_TASK_COMPLETE } act_kind_t;
 typedef enum { CMD_LOST_MODE, CMD_PLAY_SOUND, CMD_ICE_UPDATE, CMD_WIFI_ADD, CMD_WIFI_SCAN, CMD_SETTINGS, CMD_WIFI_REMOVE,
                CMD_WIFI_ORDER, CMD_RESTART, CMD_UNPAIR, CMD_UNKNOWN } cmd_name_t;
-typedef enum { MSG_READY, MSG_HB_ACK, MSG_SNAPSHOT, MSG_ACTION_RESULT, MSG_COMMAND, MSG_ERROR, MSG_UNKNOWN } msg_type_t;
+typedef enum { MSG_READY, MSG_HB_ACK, MSG_SNAPSHOT, MSG_ACTION_RESULT, MSG_COMMAND, MSG_ERROR, MSG_VOICE_STATE, MSG_VOICE_TEXT, MSG_UNKNOWN } msg_type_t;
 
 typedef struct {
     msg_type_t type;
     char id[40]; /* action/command id; ready: device_id */
     union {
         snap_t snap;
+        struct { char state[12]; char error[24]; char text[601]; } voice;
         struct { bool ok; char error[24]; } result;
         struct { char code[32]; } error;
         struct {
@@ -68,3 +69,8 @@ size_t proto_command_ack(char *buf, size_t cap, const char *id, bool ok, const c
 size_t proto_wifi_scan_result(char *buf, size_t cap, const char *id, const wifi_seen_t *nets, int n);
 size_t proto_wifi_state(char *buf, size_t cap, const wifi_list_t *saved, const char *current /* NULL -> null */);
 const char *act_kind_str(act_kind_t k); /* "notification.read", "focus.start", ... as in the contract */
+
+size_t proto_voice_start(char *buf, size_t cap, const char *id, bool speak);
+size_t proto_voice_end(char *buf, size_t cap, const char *id, bool cancel);
+
+bool proto_voice_speaking_id(const char *json, size_t len, char id[40]);

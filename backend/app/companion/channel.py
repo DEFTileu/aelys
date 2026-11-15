@@ -13,14 +13,16 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from app.companion.actions import ActionIn, run_action
 from app.companion.character import REACTION_REASONS, CharacterStateIn
 from app.companion.hub import hub
+from app.companion.models import CompanionState
 from app.companion.state import locked_state, record_ack, valid_command
+from app.companion.voice import VOICE_MAX_BYTES, run_voice_turn
 from app.core import db as core_db
 from app.core.models import AuthSession, Device
 from app.core.security import decode_token
@@ -84,6 +86,14 @@ class WifiStateIn(BaseModel):
 
 
 @dataclass
+class _Voice:
+    id: str
+    speak: bool
+    buf: bytearray | None
+    task: asyncio.Task | None = None
+
+
+@dataclass
 class _Link:
     device_id: str
     owner_id: str
@@ -92,6 +102,9 @@ class _Link:
     session_id: str | None = None
     character_epoch: int | None = None
     token_exp: int | None = None
+    voice: _Voice | None = None
+    voice_output: Callable[[dict | bytes, _Voice], Awaitable[None]] | None = None
+    voice_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 async def _begin_character_session(link: _Link) -> int:
@@ -202,10 +215,95 @@ async def _action(link: _Link, message: dict) -> None:
     await link.reply({"type": "action_result", **result.model_dump(mode="json", exclude_none=True)})
 
 
+class VoiceStartIn(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    rate: int
+    format: str
+    speak: bool
+
+
+class VoiceIdIn(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+
+
+async def _voice_allowed(link: _Link) -> bool:
+    try:
+        if not link.session_id or await _validate(link.owner_id, link.device_id, link.session_id) is not None:
+            return False
+        if link.token_exp is not None and time.time() >= link.token_exp:
+            return False
+        async with core_db.SessionLocal() as db:
+            row = await db.get(CompanionState, link.device_id)
+            if not row or row.owner_id != link.owner_id:
+                return False
+            lost = row.lost_mode_json
+            return lost is None or (isinstance(lost, dict) and lost.get('on') is False)
+    except Exception:  # noqa: BLE001 - authorization must fail closed
+        return False
+
+
+def _cancel_voice(link: _Link) -> None:
+    old, link.voice = link.voice, None
+    if old and old.task and not old.task.done():
+        old.task.cancel()
+
+
+async def _voice_start(link: _Link, message: dict) -> None:
+    body = VoiceStartIn.model_validate(message)
+    if body.rate != 16000 or body.format != 'pcm_s16le':
+        raise ValueError('invalid voice format')
+    async with link.voice_lock:
+        _cancel_voice(link)
+    if not await _voice_allowed(link):
+        await link.reply({'type': 'voice_state', 'id': body.id, 'state': 'error', 'error_code': 'VOICE_UNAVAILABLE'})
+        return
+    link.voice = _Voice(body.id, body.speak, bytearray())
+
+
+async def _audio(link: _Link, data: bytes) -> None:
+    voice = link.voice
+    if not voice or voice.buf is None:
+        return
+    if len(voice.buf) + len(data) > VOICE_MAX_BYTES:
+        link.voice = None
+        await link.reply({'type': 'voice_state', 'id': voice.id, 'state': 'error', 'error_code': 'VOICE_TOO_LONG'})
+        return
+    voice.buf.extend(data)
+
+
+async def _voice_end(link: _Link, message: dict) -> None:
+    body = VoiceIdIn.model_validate(message)
+    voice = link.voice
+    if not voice or voice.id != body.id or voice.buf is None:
+        return
+    pcm, voice.buf = bytes(voice.buf), None
+    async def output(item: dict | bytes) -> None:
+        if link.voice is not voice or not await _voice_allowed(link):
+            return
+        if link.voice_output:
+            await link.voice_output(item, voice)
+        elif isinstance(item, dict):
+            await link.reply(item)
+    async def authorized(db) -> bool:
+        if link.voice is not voice or not link.session_id or (link.token_exp is not None and time.time() >= link.token_exp):
+            return False
+        session = await db.get(AuthSession, link.session_id, with_for_update=True, populate_existing=True)
+        return bool(session and not session.revoked_at and session.owner_id == link.owner_id and
+                    session.device_id == link.device_id and not _expired(session.expires_at) and link.voice is voice)
+    voice.task = asyncio.create_task(run_voice_turn(link.owner_id, link.device_id, voice.id, pcm, voice.speak, output, output, authorized=authorized))
+
+
+async def _voice_cancel(link: _Link, message: dict) -> None:
+    body = VoiceIdIn.model_validate(message)
+    if link.voice and link.voice.id == body.id:
+        async with link.voice_lock:
+            _cancel_voice(link)
+
+
 HANDLERS: dict[str, Callable[[_Link, dict], Awaitable[None]]] = {
     "hello": _hello, "heartbeat": _heartbeat, "metrics": _metrics, "action": _action,
     "command_ack": _command_ack, "wifi_scan_result": _wifi_scan_result, "wifi_state": _wifi_state,
-    "character_state": _character_state}
+    "character_state": _character_state, "voice_start": _voice_start, "voice_end": _voice_end, "voice_cancel": _voice_cancel}
 
 
 def _error(code: str, message: str) -> dict:
@@ -229,7 +327,7 @@ async def _dispatch(link: _Link, text: str | None) -> None:
         return
     try:
         await handler(link, message)
-    except ValidationError:
+    except (ValidationError, ValueError):
         await link.reply(_error("VALIDATION_ERROR", "invalid message"))
 
 
@@ -281,22 +379,27 @@ async def device_channel(websocket: WebSocket) -> None:
         return
 
     await websocket.accept()
-    outbox: asyncio.Queue[tuple[dict, asyncio.Future[None] | None]] = asyncio.Queue(OUTBOX_SIZE)
+    outbox: asyncio.Queue[tuple[dict | bytes, asyncio.Future[None] | None, _Voice | None]] = asyncio.Queue(OUTBOX_SIZE)
     ended = asyncio.Event()  # the writer is gone: nothing queued from now on would ever be sent
     gone = asyncio.Event()  # somebody closed the socket
 
     async def reply(message: dict) -> None:
         if ended.is_set():
             raise ConnectionError("channel closed")
-        await outbox.put((message, None))
+        await outbox.put((message, None, None))
 
     async def push(message: dict) -> None:
         """The hub's send: resolves only once the frame has really gone out, so a dead socket is noticed."""
         if ended.is_set():
             raise ConnectionError("channel closed")
         sent: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-        await outbox.put((message, sent))
+        await outbox.put((message, sent, None))
         await sent
+
+    async def voice_output(message: dict | bytes, voice: _Voice) -> None:
+        if ended.is_set():
+            raise ConnectionError("channel closed")
+        await outbox.put((message, None, voice))
 
     async def close(code: int) -> None:
         if gone.is_set():
@@ -308,9 +411,29 @@ async def device_channel(websocket: WebSocket) -> None:
     async def writer() -> None:
         try:
             while True:
-                message, sent = await outbox.get()
+                message, sent, voice = await outbox.get()
                 try:
-                    await websocket.send_json(message)
+                    if voice is not None:
+                        async with link.voice_lock, core_db.SessionLocal() as db:
+                            device = await db.get(Device, link.device_id, with_for_update=True, populate_existing=True)
+                            state = await locked_state(db, link.device_id, link.owner_id)
+                            session = await db.get(AuthSession, link.session_id, with_for_update=True, populate_existing=True)
+                            lost = state.lost_mode_json if state else True
+                            allowed = (device and device.owner_id == link.owner_id and device.platform == 'companion' and not device.revoked_at
+                                and session and not session.revoked_at and session.owner_id == link.owner_id and session.device_id == link.device_id
+                                and not _expired(session.expires_at) and link.token_exp is not None and time.time() < link.token_exp and state and state.owner_id == link.owner_id
+                                and (lost is None or (isinstance(lost, dict) and lost.get('on') is False)))
+                            if not allowed or link.voice is not voice:
+                                continue
+                            async with asyncio.timeout(5):
+                                if isinstance(message, bytes):
+                                    await websocket.send_bytes(message)
+                                else:
+                                    await websocket.send_json(message)
+                    elif isinstance(message, bytes):
+                        await websocket.send_bytes(message)
+                    else:
+                        await websocket.send_json(message)
                 except BaseException as exc:  # cancellation too: the hub must not wait out its send timeout under the owner lock
                     if sent and not sent.done():
                         sent.set_exception(exc if isinstance(exc, Exception) else ConnectionError("channel closed"))
@@ -320,7 +443,7 @@ async def device_channel(websocket: WebSocket) -> None:
         finally:
             ended.set()
             while not outbox.empty():
-                _, sent = outbox.get_nowait()
+                _, sent, _ = outbox.get_nowait()
                 if sent and not sent.done():
                     sent.set_exception(ConnectionError("channel closed"))
 
@@ -329,9 +452,12 @@ async def device_channel(websocket: WebSocket) -> None:
             event = await websocket.receive()
             if event["type"] == "websocket.disconnect":
                 return
-            await _dispatch(link, event.get("text"))
+            if event.get("bytes") is not None:
+                await _audio(link, event["bytes"])
+            else:
+                await _dispatch(link, event.get("text"))
 
-    link = _Link(device_id, owner_id, reply, close, session_id=session_id, token_exp=int(claims["exp"]))
+    link = _Link(device_id, owner_id, reply, close, session_id=session_id, token_exp=int(claims["exp"]), voice_output=voice_output)
     tasks: list[asyncio.Task[Any]] = [asyncio.create_task(writer())]
     unregister: Callable[[], None] | None = None
     try:
@@ -361,6 +487,7 @@ async def device_channel(websocket: WebSocket) -> None:
             logger.warning("companion channel failed device=%s reason=%s", device_id, type(failed).__name__)
             await close(ERROR_CLOSE_CODE)
     finally:
+        _cancel_voice(link)
         if unregister:
             unregister()
         for task in tasks:  # not awaited: under a cancelled host task (server shutdown, test client) gathering them leaks the cancellation

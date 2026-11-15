@@ -20,7 +20,7 @@ static char device[40] = "old-device";
 static char socket_device[40];
 static bool paired = true, send_ok = true, lost_mode;
 static bool fake_lost_on(void) { return lost_mode; }
-static lq_t queue_items[32];
+static lq_t queue_items[256];
 static size_t qhead, qtail;
 static char captured[8][1024], captured_owner[8][40];
 static size_t capture_n;
@@ -54,6 +54,8 @@ static void unlock(pthread_mutex_t *m) { assert(pthread_mutex_unlock(m)==0); }
 static void signal_gate(void) { assert(pthread_cond_broadcast(&gate_cond)==0); }
 static void await_gate(bool *flag) { while (!*flag) assert(pthread_cond_wait(&gate_cond, &gate_mutex)==0); }
 tribuf_t ui_snap_tb;
+tribuf_t ui_voice_tb;
+bool link_ws_send_bin(const void *data, size_t n) { (void)data; (void)n; return true; }
 
 void explicit_bzero(void *p, size_t n) { volatile unsigned char *q = p; while (n--) *q++ = 0; }
 int64_t esp_timer_get_time(void) { return (int64_t)now_ms * 1000; }
@@ -72,8 +74,8 @@ int xTaskCreatePinnedToCore(void (*fn)(void *), const char *name, unsigned stack
     }
     return fail_task_create ? 0 : pdPASS;
 }
-QueueHandle_t xQueueCreate(unsigned n, unsigned s) { assert(n <= 32 && s == sizeof(lq_t)); return queue_items; }
-int xQueueSend(QueueHandle_t qh, const void *p, unsigned t) { (void)qh;(void)t; lock(&queue_mutex); assert(qtail < 32); queue_items[qtail++] = *(const lq_t *)p; unlock(&queue_mutex); return pdTRUE; }
+QueueHandle_t xQueueCreate(unsigned n, unsigned s) { assert(n <= 256 && s == sizeof(lq_t)); return queue_items; }
+int xQueueSend(QueueHandle_t qh, const void *p, unsigned t) { (void)qh;(void)t; lock(&queue_mutex); assert(qtail < 256); queue_items[qtail++] = *(const lq_t *)p; unlock(&queue_mutex); return pdTRUE; }
 int xQueueReceive(QueueHandle_t qh, void *p, unsigned t) { if (stop_task_at_receive) { stop_task_at_receive=false; longjmp(task_started,1); } (void)qh;(void)t; lock(&queue_mutex); if (qhead == qtail) { unlock(&queue_mutex); return 0; } *(lq_t *)p = queue_items[qhead++]; unlock(&queue_mutex); return pdTRUE; }
 SemaphoreHandle_t xSemaphoreCreateMutex(void) {
     unsigned n=mutex_creations++;

@@ -8,12 +8,15 @@
 
 #define LINK_RX_SLOTS 3
 #define LINK_FRAME_MAX 4096   /* contract: a server frame is at most 4 KB; bigger is dropped (log: code only) */
+#define LINK_AUDIO_SLOTS 128
+#define LINK_AUDIO_CHUNK 1024
 #define LINK_HTTP_MAX 2048    /* a sign-in response is well under 1 KB */
 #define LINK_TOKEN_MAX 1024
 
 /* Buffers that live in PSRAM (internal RAM stays for Wi-Fi, TLS state and the UI). */
 typedef struct {
     char rx[LINK_RX_SLOTS][LINK_FRAME_MAX + 1]; /* websocket frames: the ws task fills a free slot, the link task frees it */
+    uint8_t audio[LINK_AUDIO_SLOTS][LINK_AUDIO_CHUNK];
     char tx[1024];                              /* outgoing frames and the Authorization header */
     char http[LINK_HTTP_MAX];                   /* HTTP response body */
     char token[LINK_TOKEN_MAX];                 /* access token: RAM only, zeroed once the socket has it */
@@ -24,7 +27,7 @@ extern link_mem_t *link_mem;
 extern link_deps_t link_deps;
 
 /* events from other tasks to the link task */
-typedef enum { LQ_PAIRED, LQ_ACTION, LQ_WS_FRAME, LQ_WS_CLOSED } lq_kind_t;
+typedef enum { LQ_PAIRED, LQ_ACTION, LQ_WS_FRAME, LQ_WS_CLOSED, LQ_VOICE_START, LQ_VOICE_END, LQ_VOICE_AUDIO } lq_kind_t;
 bool link_q_post(lq_kind_t k, uint32_t gen, int32_t a, int32_t b); /* LQ_WS_FRAME: a = slot, b = length; LQ_WS_CLOSED: a = close code */
 void link_tls_failed(void);                                        /* count one failed TLS handshake */
 void link_heap_gate(const char *what);                             /* wait for a 16 KB internal block, log the connect line */
@@ -37,6 +40,11 @@ link_http_t link_http_login(const char *api_url, const char *challenge_id, const
 uint32_t link_ws_open(const char *api_url, const char *token);   /* 0 = could not start */
 void link_ws_close(void);                                        /* idempotent; invalidates the generation */
 bool link_ws_send(const char *json, size_t n);
+bool link_ws_send_bin(const void *data, size_t n);
+uint32_t link_voice_generation(void);
+void link_voice_wire_speaking(const char *id);
+bool link_voice_accept_audio(uint32_t generation, const uint8_t *pcm, size_t len);
+void link_voice_audio_failed(uint32_t generation);
 uint32_t link_ws_gen(void);                                      /* 0 = no socket */
 uint32_t link_ws_last_rx_ms(void);                               /* any frame, pings and pongs included */
 void link_ws_slot_free(int slot);
