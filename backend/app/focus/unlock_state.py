@@ -12,6 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 AI_GRANTS_LEFT = 3
 REQUESTS_LEFT = 10
 
+# A task in any of these statuses is finished; mirrors the web UI's set (apps/web/src/views/tasks/taskModel.ts).
+FINISHED_STATUSES = frozenset({"done", "completed", "complete", "closed", "cancelled"})
+
+
+def _block_done(block: object, progress: dict) -> bool:
+    """Malformed lesson data counts as not done, never as an error."""
+    key = block.get("key") if isinstance(block, dict) else None
+    entry = progress.get(key) if isinstance(key, str) else None
+    return isinstance(entry, dict) and bool(entry.get("done"))
+
 
 def _tz(name: str | None) -> tzinfo:
     try:
@@ -24,9 +34,10 @@ async def day_unlocked(db: AsyncSession, owner_id: str, day: date) -> bool:
     """Unlocked when today's English lesson is fully done, or there are tasks due today and all are completed."""
     lesson = await _lesson_for(db, owner_id, day)
     if lesson is not None:
-        progress = lesson.progress_json or {}
-        blocks = (lesson.content_json or {}).get("blocks") or []
-        if blocks and all((progress.get(b["key"]) or {}).get("done") for b in blocks):
+        progress = lesson.progress_json if isinstance(lesson.progress_json, dict) else {}
+        content = lesson.content_json if isinstance(lesson.content_json, dict) else {}
+        blocks = content.get("blocks")
+        if isinstance(blocks, list) and blocks and all(_block_done(b, progress) for b in blocks):
             return True
     # Every real zone is within 14h of UTC, so this window holds all tasks that can fall on `day`.
     start = datetime.combine(day - timedelta(days=1), time.min, tzinfo=UTC)
@@ -37,4 +48,4 @@ async def day_unlocked(db: AsyncSession, owner_id: str, day: date) -> bool:
     )).all()
     # SQLite returns naive datetimes; they are stored as UTC.
     statuses = [s for due, tz, s in rows if due.replace(tzinfo=due.tzinfo or UTC).astimezone(_tz(tz)).date() == day]
-    return bool(statuses) and all(s == "completed" for s in statuses)
+    return bool(statuses) and all((s or "").lower() in FINISHED_STATUSES for s in statuses)

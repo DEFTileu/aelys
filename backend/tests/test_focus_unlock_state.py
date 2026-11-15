@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.core.models import EnglishLesson, Task, User
 from app.focus.unlock_state import day_unlocked
@@ -136,3 +137,44 @@ async def test_state_endpoint_returns_unlock_counters_and_promoted_config(automa
     }
     far = await client.get("/api/v1/focus/state", params={"day": "2020-01-01"}, headers=headers)
     assert far.status_code == 422
+
+
+async def test_finished_statuses_do_not_block_and_open_ones_do(automation_client):  # noqa: F811
+    client, factory = automation_client
+    await _owner(client)
+    owner = await _owner_id(factory)
+    await _add(factory, _task(owner, "completed"), _task(owner, "done"), _task(owner, "cancelled"), _task(owner, "Completed"))
+    assert await _unlocked(factory, owner)  # done/cancelled/other-case count as finished
+    for open_status in ("todo", "in_progress"):
+        await _add(factory, _task(owner, open_status))
+        assert not await _unlocked(factory, owner), open_status
+        async with factory() as db:
+            await db.delete((await db.execute(select(Task).where(Task.status == open_status))).scalar_one())
+            await db.commit()
+
+
+async def test_malformed_lesson_data_is_not_done_and_never_raises(automation_client):  # noqa: F811
+    client, factory = automation_client
+    await _owner(client)
+    owner = await _owner_id(factory)
+    lesson = _lesson(owner, {"a": True, "b": True})
+    lesson.content_json = {"blocks": [{"title": "no key"}, "oops", {"key": "a"}]}
+    await _add(factory, lesson)
+    assert not await _unlocked(factory, owner)
+    async with factory() as db:
+        row = (await db.execute(select(EnglishLesson))).scalar_one()
+        row.content_json = {"blocks": [{"key": "a"}, {"key": "b"}]}
+        row.progress_json = {"a": True, "b": "yes"}  # truthy non-dict entries
+        await db.commit()
+    assert not await _unlocked(factory, owner)
+
+
+async def test_west_of_utc_evening_task_counts_for_its_local_day(automation_client):  # noqa: F811
+    client, factory = automation_client
+    await _owner(client)
+    owner = await _owner_id(factory)
+    # 21:00 in Los Angeles (UTC-8 or UTC-7) is already the next UTC day, but it is due on `day` locally.
+    local = datetime(DAY.year, DAY.month, DAY.day, 21, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+    await _add(factory, _task(owner, "todo", local.astimezone(UTC), "America/Los_Angeles"), _task(owner, "completed"))
+    assert local.astimezone(UTC).date() == DAY + timedelta(days=1)
+    assert not await _unlocked(factory, owner)
