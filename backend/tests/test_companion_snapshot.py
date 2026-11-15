@@ -96,13 +96,19 @@ async def test_focus_active_or_paused_only(owner):
     assert (await snapshot(owner, [FocusSession(owner_id=owner, started_at=NOW - timedelta(hours=1), status='completed')])).focus is None
     active = FocusSession(owner_id=owner, started_at=NOW - timedelta(minutes=20), status='active', mode='pomodoro', paused_seconds=60)
     focus = (await snapshot(owner, [active])).focus
-    assert (focus.id, focus.status, focus.mode, focus.elapsed_seconds) == (active.id, 'active', 'pomodoro', 1140)
+    assert (focus.id, focus.status, focus.mode, focus.elapsed_seconds, focus.planned_seconds) == (active.id, 'active', 'pomodoro', 1140, None)
     async with db.SessionLocal() as session:
         row = await session.get(FocusSession, active.id)
         row.status, row.paused_at = 'paused', NOW - timedelta(minutes=5)
         await session.commit()
     focus = (await snapshot(owner)).focus
     assert (focus.status, focus.elapsed_seconds) == ('paused', 840)
+
+
+@pytest.mark.asyncio
+async def test_focus_carries_the_planned_length_to_the_board(owner):
+    row = FocusSession(owner_id=owner, started_at=NOW - timedelta(minutes=5), status='active', mode='pomodoro', planned_seconds=3000)
+    assert (await snapshot(owner, [row])).focus.planned_seconds == 3000
 
 
 @pytest.mark.asyncio
