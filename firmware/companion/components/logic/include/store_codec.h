@@ -42,7 +42,7 @@ typedef struct { char device_id[40]; char api_url[129]; uint8_t priv[32]; } pair
 #define STORE_SETTINGS_BLOB (1 + STORE_SETTINGS_PAYLOAD + 4)
 #define STORE_UI_PAYLOAD 2 /* level_on, sound_on */
 #define STORE_UI_BLOB (1 + STORE_UI_PAYLOAD + 4)
-#define STORE_GAMES_PAYLOAD (4 + 2 + 4 * MZ_LEVELS) /* rx_best_ms, mz_level, mz_open, mz_best_ms[] */
+#define STORE_GAMES_PAYLOAD (4 + 2 + 4 * MZ_FIXED_LEVELS) /* rx_best_ms, mz_level, mz_open, mz_best_ms[] (the drawn levels only) */
 #define STORE_GAMES_BLOB (1 + STORE_GAMES_PAYLOAD + 4)
 #define STORE_PAIR_BLOB  (1 + sizeof(pair_rec_t) + 4)
 #define STORE_SNAP_BLOB  (1 + sizeof(snap_t) + 4)

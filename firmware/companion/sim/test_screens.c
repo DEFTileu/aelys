@@ -2384,7 +2384,7 @@ static void test_games_screens(void)
     sim_step(100);
     CHECK(shows_text(scr, "Best 150 ms"));
     btn(BTN_LOW);
-    boot = (game_rec_t){ .mz_level = 7, .mz_open = 9 };              /* nonsense falls back to level 1 */
+    boot = (game_rec_t){ .mz_level = 120, .mz_open = 200 };              /* nonsense falls back to level 1 */
     ui_games_init(&boot);
     open_game(4);
     CHECK(see("Tilt to roll"));

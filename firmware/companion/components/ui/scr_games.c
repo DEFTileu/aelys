@@ -4,8 +4,9 @@
  *   Coin       a plain 100 tenge coin (gold ring, silver centre) flips edge-on a few times: Heads is the emblem, Tails the 100;
  *   Dice       the faces flick past, slower and slower, and stop on 1..6 (no caption: the spots say it);
  *   Reaction   wait 1.5-4 s, the screen turns green, tap: the time in ms and the best so far; too early is "Too soon", over 2 s "Too slow";
- *   Tilt Maze  the ball follows the board's tilt (UI_EV_LEVEL's gravity x/y) to the ring in the far corner. Five levels: a win opens the next
- *              and a tap after it goes there; before the ball moves a swipe picks any open level. Each level keeps its best time.
+ *   Tilt Maze  the ball follows the board's tilt (UI_EV_LEVEL's gravity x/y) to the ring in the far corner. 99 levels (1-5 drawn, the rest
+ *              generated, games_core.c): a win opens the next and a tap after it goes there; before the ball moves a swipe picks any open
+ *              level. The drawn levels keep their best time.
  * The best times and the open levels go to main through the games sink and come back at boot (ui_games_init), so a reboot keeps them.
  * The rules and the physics are in games_core.c (host-tested); this file draws them. Nothing here sounds, listens or touches the network.
  * Objects are created once. The only timer is paused unless a wait, a thought or the maze runs; the coin and the dice use one lv_anim each.
@@ -53,7 +54,7 @@ static const struct { const char *name, *sub; uint32_t color; } info[G_COUNT] = 
 
 static struct {
     lv_obj_t *root, *eb, *big, *sub, *note, *hint, *dot[G_COUNT], *hub[G_COUNT];
-    lv_obj_t *face, *coin, *disc, *silver, *emblem, *tail, *die, *pip[7], *go, *rx_ms, *board, *ball, *wall[MZ_MAX_WALLS];
+    lv_obj_t *face, *coin, *disc, *silver, *emblem, *tail, *die, *pip[7], *go, *rx_ms, *board, *ball, *ring, *wall[MZ_MAX_WALLS];
     lv_timer_t *tm;
     game_t sel;
     bool open;
@@ -132,13 +133,15 @@ static void compose(const char *eb, uint32_t eb_color, lv_obj_t *stage, const ch
     ui_stack(col, gap, n, 0, UI_SCREEN_SIZE, -1);
 }
 
+static uint32_t maze_best(void) { return s.mz.level < MZ_FIXED_LEVELS ? s.mz.best_ms[s.mz.level] : 0; } /* generated levels keep none */
+
 static void best_text(char out[32], game_t g)
 {
     char t[8];
     out[0] = 0;
     if (g == G_REACT && s.rx.best_ms) snprintf(out, 32, "Best %u ms", (unsigned)s.rx.best_ms);
     else if (g == G_MAZE) {
-        uint32_t b = s.mz.best_ms[s.mz.level];
+        uint32_t b = maze_best();
         mmss(t, b);
         if (b && s.mz.open > 1) snprintf(out, 32, "Level %u \xC2\xB7 Best %s", s.mz.level + 1u, t);
         else if (b) snprintf(out, 32, "Best %s", t);
@@ -164,17 +167,21 @@ static void draw_coin(bool tails, int32_t h)
 
 static void place_ball(void)
 {
-    lv_obj_set_pos(s.ball, (int32_t)s.mz.x - MZ_BALL_R, (int32_t)s.mz.y - MZ_BALL_R);
+    lv_obj_set_pos(s.ball, (int32_t)(s.mz.x - s.mz.ball_r), (int32_t)(s.mz.y - s.mz.ball_r));
 }
 
-/* The walls of the level: the objects exist once, the unused ones hide. */
+/* The level as mz_reset built it: the wall objects exist once and the unused ones hide; the ball and the ring follow the grid size. */
 static void maze_layout(void)
 {
+    int32_t d = (int32_t)(2 * s.mz.ball_r), rd = (int32_t)(3 * s.mz.ball_r);
+    lv_obj_set_size(s.ball, d, d);
+    lv_obj_set_size(s.ring, rd, rd);
+    lv_obj_set_pos(s.ring, (int32_t)s.mz.goal_xy - rd / 2, (int32_t)s.mz.goal_xy - rd / 2);
     for (unsigned i = 0; i < MZ_MAX_WALLS; i++) {
-        bool on = i < mz_n_walls(s.mz.level);
+        bool on = i < s.mz.n_walls;
         lv_obj_set_hidden(s.wall[i], !on);
         if (!on) continue;
-        const mz_wall_t *w = mz_wall(s.mz.level, i);
+        const mz_wall_t *w = &s.mz.walls[i];
         lv_obj_set_pos(s.wall[i], w->x, w->y);
         lv_obj_set_size(s.wall[i], w->w, w->h);
     }
@@ -191,13 +198,14 @@ static void maze_text(void)
     ui_set_text(s.eb, head);
     if (s.mz.won) {
         mmss(t, s.mz.elapsed_ms);
-        mmss(u, s.mz.best_ms[s.mz.level]);
-        snprintf(line, sizeof line, "Done %s \xC2\xB7 Best %s", t, u);
+        mmss(u, maze_best());
+        if (maze_best()) snprintf(line, sizeof line, "Done %s \xC2\xB7 Best %s", t, u);
+        else snprintf(line, sizeof line, "Done %s", t);
     } else if (s.mz.started) {
         mmss(t, s.mz.elapsed_ms);
         snprintf(line, sizeof line, "%s", t);
     } else {
-        if (s.mz.best_ms[s.mz.level]) { mmss(t, s.mz.best_ms[s.mz.level]); snprintf(line, sizeof line, "Best %s", t); } /* the level is in the line above */
+        if (maze_best()) { mmss(t, maze_best()); snprintf(line, sizeof line, "Best %s", t); } /* the level is in the line above */
     }
     ui_set_text(s.sub, line);
     lv_obj_set_hidden(s.sub, !line[0]);
@@ -623,18 +631,17 @@ lv_obj_t *scr_games_create(lv_obj_t *parent)
     lv_label_set_text(tap, "Tap!");
     lv_obj_center(tap);
     s.rx_ms = ui_label(s.root, &inter_clock_96, UI_COLOR_TEXT, 330, 1, LV_TEXT_ALIGN_CENTER);
-    /* Maze: the board with its rim, the design's seven walls, the goal ring and the ball. The board's own position is its place on the screen. */
+    /* Maze: the board with its rim, the walls (placed per level by maze_layout), the goal ring and the ball. The board's own position is its place on the screen. */
     s.board = ui_plain(s.root, BOARD_OUT, BOARD_OUT);
     lv_obj_set_pos(s.board, (UI_SCREEN_SIZE - BOARD_OUT) / 2, (UI_SCREEN_SIZE - BOARD_OUT) / 2);
     lv_obj_set_style_border_width(s.board, 6, 0);
     lv_obj_set_style_border_color(s.board, lv_color_hex(COLOR_WALL), 0);
     lv_obj_set_style_radius(s.board, 10, 0);
     for (unsigned i = 0; i < MZ_MAX_WALLS; i++) s.wall[i] = shape(s.board, 6, 6, 3, COLOR_WALL);
-    lv_obj_t *ring = ui_plain(s.board, 36, 36);
-    lv_obj_set_pos(ring, 210, 210);
-    lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(ring, 4, 0);
-    lv_obj_set_style_border_color(ring, lv_color_hex(COLOR_AMBER), 0);
+    s.ring = ui_plain(s.board, 36, 36);
+    lv_obj_set_style_radius(s.ring, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(s.ring, 4, 0);
+    lv_obj_set_style_border_color(s.ring, lv_color_hex(COLOR_AMBER), 0);
     s.ball = shape(s.board, 2 * MZ_BALL_R, 2 * MZ_BALL_R, LV_RADIUS_CIRCLE, 0xB9A8FF);
     s.hint = ui_label(s.root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
     lv_obj_set_pos(s.hint, 394 - 90, 98); /* at the top key, like Focus and Timer */
