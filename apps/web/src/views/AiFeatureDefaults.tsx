@@ -10,6 +10,7 @@ const MODEL_FEATURES: readonly (readonly [Exclude<AIFeature, 'transcription'>, s
   ['chat', 'AI Chat', 'Default model for new chats; each chat can still switch'],
   ['english', 'English', 'Words, lessons, corrections and speaking feedback'],
   ['automation', 'Automation', 'Turns a described rule into a draft'],
+  ['focus', 'Focus', 'Judges your reasons to unlock a limited app'],
 ]
 
 /** One place to choose which provider and model every AI feature uses. */

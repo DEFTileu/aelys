@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 CHAT_KINDS = ("claude", "openrouter")
-FEATURES: dict[str, tuple[str, ...]] = {"chat": CHAT_KINDS, "english": CHAT_KINDS, "automation": CHAT_KINDS,
+FEATURES: dict[str, tuple[str, ...]] = {"chat": CHAT_KINDS, "english": CHAT_KINDS, "automation": CHAT_KINDS, "focus": CHAT_KINDS,
                                         "transcription": ("transcription",)}
 
 

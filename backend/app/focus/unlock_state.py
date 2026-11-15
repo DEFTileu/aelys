@@ -3,17 +3,32 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.core.models import Task
+from app.core.models import FocusUnlockRequest, Task
 from app.english.lessons import _lesson_for
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Placeholders until the AI counters land (Task 3 replaces these two).
-AI_GRANTS_LEFT = 3
-REQUESTS_LEFT = 10
+# The only place the AI judge's hard caps live; the server enforces them whatever the model says.
+MAX_GRANTS_PER_DAY = 3
+MAX_REQUESTS_PER_DAY = 10
+MAX_GRANT_MINUTES = 10
 
 # A task in any of these statuses is finished; mirrors the web UI's set (apps/web/src/views/tasks/taskModel.ts).
 FINISHED_STATUSES = frozenset({"done", "completed", "complete", "closed", "cancelled"})
+
+
+async def ai_counts(db: AsyncSession, owner_id: str, day: date) -> tuple[int, int]:
+    """(grants used, requests used) for `day`; refused requests count only as requests."""
+    grants, requests = (await db.execute(select(func.count().filter(FocusUnlockRequest.granted.is_(True)), func.count()).where(
+        FocusUnlockRequest.owner_id == owner_id, FocusUnlockRequest.day == day, FocusUnlockRequest.deleted_at.is_(None),
+    ))).one()
+    return grants, requests
+
+
+async def ai_left(db: AsyncSession, owner_id: str, day: date) -> tuple[int, int]:
+    """(grants left, requests left) for `day`."""
+    grants, requests = await ai_counts(db, owner_id, day)
+    return max(0, MAX_GRANTS_PER_DAY - grants), max(0, MAX_REQUESTS_PER_DAY - requests)
 
 
 def _block_done(block: object, progress: dict) -> bool:

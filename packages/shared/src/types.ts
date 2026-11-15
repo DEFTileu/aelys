@@ -579,7 +579,7 @@ export interface ProviderIn {
   readonly secret_ref?: string | null;
 }
 /** Which provider and model each AI feature uses; a missing feature falls back to the oldest ready provider. */
-export type AIFeature = "chat" | "english" | "automation" | "transcription";
+export type AIFeature = "chat" | "english" | "automation" | "focus" | "transcription";
 export interface AIFeatureChoice { readonly provider_id: Id; readonly model?: string | null }
 export type AIFeatureDefaults = { readonly [K in AIFeature]?: AIFeatureChoice | null };
 export interface AIProvider extends ProviderIn {
