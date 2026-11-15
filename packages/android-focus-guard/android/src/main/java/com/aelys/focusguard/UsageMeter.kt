@@ -36,6 +36,21 @@ object UsageMeter {
         if (open.isNotEmpty()) totalMs += toMs - last
         return totalMs / 1000
     }
+
+    /**
+     * Maps a `UsageEvents.Event` type to ours, or null to skip it. RESUMED/PAUSED below API 29 are the same
+     * ints as MOVE_TO_FOREGROUND/BACKGROUND. ACTIVITY_STOPPED (API 29+) also closes the interval, so a
+     * crashed or destroyed activity that never logged PAUSED stops counting.
+     */
+    @Suppress("DEPRECATION") // MOVE_TO_* are the only constants below API 29
+    fun mapType(type: Int, sdkInt: Int): UsageEvent.Type? = when {
+        type == (if (sdkInt >= 29) UsageEvents.Event.ACTIVITY_RESUMED else UsageEvents.Event.MOVE_TO_FOREGROUND) -> UsageEvent.Type.RESUMED
+        type == (if (sdkInt >= 29) UsageEvents.Event.ACTIVITY_PAUSED else UsageEvents.Event.MOVE_TO_BACKGROUND) -> UsageEvent.Type.PAUSED
+        sdkInt >= 29 && type == UsageEvents.Event.ACTIVITY_STOPPED -> UsageEvent.Type.PAUSED
+        type == UsageEvents.Event.SCREEN_NON_INTERACTIVE -> UsageEvent.Type.SCREEN_OFF
+        type == UsageEvents.Event.DEVICE_SHUTDOWN -> UsageEvent.Type.SHUTDOWN
+        else -> null
+    }
 }
 
 /** How far before `fromMs` [readEvents] looks, so activities already open at the window start are seen. */
@@ -46,23 +61,14 @@ const val LOOKBACK_MS = 24 * 60 * 60 * 1000L
  * Queries from `fromMs - LOOKBACK_MS` and keeps raw timestamps, so a RESUMED before `fromMs` is
  * returned and [UsageMeter.foregroundSeconds] clips the interval to `[fromMs, toMs]`.
  */
-@Suppress("DEPRECATION") // MOVE_TO_* are the only constants below API 29
 fun readEvents(context: Context, fromMs: Long, toMs: Long): List<UsageEvent> {
     val manager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-    val resumed = if (Build.VERSION.SDK_INT >= 29) UsageEvents.Event.ACTIVITY_RESUMED else UsageEvents.Event.MOVE_TO_FOREGROUND
-    val paused = if (Build.VERSION.SDK_INT >= 29) UsageEvents.Event.ACTIVITY_PAUSED else UsageEvents.Event.MOVE_TO_BACKGROUND
     val out = ArrayList<UsageEvent>()
     val raw = manager.queryEvents(fromMs - LOOKBACK_MS, toMs)
     val ev = UsageEvents.Event()
     while (raw.hasNextEvent()) {
         raw.getNextEvent(ev)
-        val type = when (ev.eventType) {
-            resumed -> UsageEvent.Type.RESUMED
-            paused -> UsageEvent.Type.PAUSED
-            UsageEvents.Event.SCREEN_NON_INTERACTIVE -> UsageEvent.Type.SCREEN_OFF
-            UsageEvents.Event.DEVICE_SHUTDOWN -> UsageEvent.Type.SHUTDOWN
-            else -> continue
-        }
+        val type = UsageMeter.mapType(ev.eventType, Build.VERSION.SDK_INT) ?: continue
         out.add(UsageEvent(ev.packageName.orEmpty(), ev.className.orEmpty(), type, ev.timeStamp))
     }
     return out

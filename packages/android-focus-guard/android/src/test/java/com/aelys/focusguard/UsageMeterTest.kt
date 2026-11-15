@@ -125,4 +125,31 @@ class UsageMeterTest {
         assertEquals(15L, meter(sorted.reversed(), yt))
         assertEquals(15L, meter(listOf(sorted[3], sorted[0], sorted[5], sorted[2], sorted[4], sorted[1]), yt))
     }
+
+    // Literal values of UsageEvents.Event constants (checked against android-37 android.jar).
+    @Test
+    fun mapTypeMapsTheSystemEventTypes() {
+        for (sdk in listOf(24, 28, 29, 34)) {
+            assertEquals(Type.RESUMED, UsageMeter.mapType(1, sdk)) // ACTIVITY_RESUMED / MOVE_TO_FOREGROUND
+            assertEquals(Type.PAUSED, UsageMeter.mapType(2, sdk)) // ACTIVITY_PAUSED / MOVE_TO_BACKGROUND
+            assertEquals(Type.SCREEN_OFF, UsageMeter.mapType(16, sdk)) // SCREEN_NON_INTERACTIVE
+            assertEquals(Type.SHUTDOWN, UsageMeter.mapType(26, sdk)) // DEVICE_SHUTDOWN
+            assertEquals(null, UsageMeter.mapType(15, sdk)) // SCREEN_INTERACTIVE: ignored
+            assertEquals(null, UsageMeter.mapType(5, sdk)) // CONFIGURATION_CHANGE: ignored
+        }
+        // ACTIVITY_STOPPED closes the interval of a crashed/destroyed activity (API 29+ only).
+        assertEquals(Type.PAUSED, UsageMeter.mapType(23, 29))
+        assertEquals(Type.PAUSED, UsageMeter.mapType(23, 34))
+        assertEquals(null, UsageMeter.mapType(23, 28))
+    }
+
+    @Test
+    fun aStoppedActivityStopsCounting() {
+        val p = "com.google.android.youtube"
+        val e = listOf(
+            UsageEvent(p, "A", UsageMeter.mapType(1, 34)!!, 0),
+            UsageEvent(p, "A", UsageMeter.mapType(23, 34)!!, 30_000),
+        )
+        assertEquals(30L, meter(e, yt))
+    }
 }
