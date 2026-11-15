@@ -29,14 +29,15 @@ export const focusGuard = {
 /**
  * Pushes a loaded backend overview to the device guard. Refuses anything else: an empty state would
  * switch all guarding off, so a failed load must never reach `set_state`.
+ * `day` is the day the overview was fetched for, so the unlock is never stamped with a later day.
  */
-export async function syncGuard(overview: FocusOverview): Promise<void> {
+export async function syncGuard(overview: FocusOverview, day = localDay()): Promise<void> {
   const config = overview?.config
   if (!config?.effective || !Array.isArray(config.effective.apps)) throw new Error('syncGuard needs a loaded focus overview')
   await focusGuard.setState({
     effective: [...config.effective.apps],
     pending: config.pending ? [...config.pending.apps] : null,
     effectiveFrom: config.effective_from,
-    dayUnlockedOn: overview.day_unlocked ? localDay() : null,
+    dayUnlockedOn: overview.day_unlocked ? day : null,
   })
 }

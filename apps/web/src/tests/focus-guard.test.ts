@@ -40,6 +40,11 @@ describe('syncGuard', () => {
     expect(invoke).toHaveBeenLastCalledWith('plugin:aelys-focus-guard|set_state', { state: expect.objectContaining({ dayUnlockedOn: localDay() }) })
   })
 
+  it('stamps the unlock with the day it was fetched for', async () => {
+    await syncGuard(overview({ day_unlocked: true }), '2026-11-14')
+    expect(invoke).toHaveBeenLastCalledWith('plugin:aelys-focus-guard|set_state', { state: expect.objectContaining({ dayUnlockedOn: '2026-11-14' }) })
+  })
+
   it('maps the backend shape to the plugin shape and preserves pending null vs []', async () => {
     await syncGuard(overview())
     expect(invoke).toHaveBeenLastCalledWith('plugin:aelys-focus-guard|set_state', {
