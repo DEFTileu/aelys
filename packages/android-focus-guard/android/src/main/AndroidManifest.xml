@@ -1,1 +1,36 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Special access the owner grants in Settings > Usage access; it cannot be requested at runtime. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- Launchable apps are visible so the block screen and status can show app names. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
+    <application>
+        <!-- Only the system can bind it; the owner enables it in Settings > Accessibility. -->
+        <service
+            android:name="com.aelys.focusguard.FocusAccessibilityService"
+            android:label="@string/focus_service_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/focus_accessibility_config" />
+        </service>
+        <!-- Started only by the service and by itself; own empty-affinity task, never in Recents. -->
+        <activity
+            android:name="com.aelys.focusguard.BlockActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/FocusBlockTheme" />
+    </application>
+</manifest>
