@@ -6,7 +6,7 @@
 #include <string.h>
 #include "ui_screens_priv.h"
 
-#define N_BARS 26
+#define N_BARS 24
 #define BAR_OUT 219 /* centre to the outer end of a bar */
 #define BAR_MIN 10
 #define BAR_MAX 34
@@ -15,9 +15,10 @@
 #define ARC_MS 1400 /* one turn */
 #define ARC_R (UI_SCREEN_SIZE / 2 - 16) /* the design's thin ring, 14 px in */
 
-/* the design's bars: every 12 degrees from the top, clockwise, leaving the low key's corner (108-144) for its word */
-static const int16_t bar_deg[N_BARS] = { 0, 12, 24, 36, 48, 60, 72, 84, 96, 156, 168, 180, 192, 204, 216, 228, 240, 252, 264, 276,
-                                         288, 300, 312, 324, 336, 348 };
+/* the design's bars, every 12 degrees clockwise from the top; the gaps keep the two keys' marks clear where the case puts them: the top key
+ * 45 degrees round from the top, the low key 130 (ui_key_hint_place's 315 and 40, counted from 3 o'clock) */
+static const int16_t bar_deg[N_BARS] = { 0, 12, 24, 72, 84, 96, 108, 156, 168, 180, 192, 204, 216, 228, 240, 252, 264, 276, 288, 300,
+                                         312, 324, 336, 348 };
 
 static struct {
     lv_obj_t *root, *bars, *arc, *face, *eb, *body, *hint, *low;
