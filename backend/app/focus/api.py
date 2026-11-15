@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import FocusConfig, FocusLimitError, FocusState, apply_edit, promote
+from .unlock_state import AI_GRANTS_LEFT, REQUESTS_LEFT, day_unlocked
 
 router = APIRouter(prefix="/focus", tags=["focus"])
 
@@ -43,10 +44,28 @@ async def _save(db: AsyncSession, user: User, state: FocusState) -> FocusState:
     return state
 
 
+async def _current(db: AsyncSession, owner_id: str, day: date) -> FocusState:
+    user, stored, state = await _promoted(db, owner_id, day)
+    return state if state == stored else await _save(db, user, state)
+
+
+class FocusStateOut(BaseModel):
+    day_unlocked: bool
+    ai_grants_left: int
+    requests_left: int
+    config: FocusState
+
+
 @router.get("/config", response_model=FocusState)
 async def get_config(day: date, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
-    user, stored, state = await _promoted(db, principal[0].id, day)
-    return state if state == stored else await _save(db, user, state)
+    return await _current(db, principal[0].id, day)
+
+
+@router.get("/state", response_model=FocusStateOut)
+async def get_state(day: date, principal=Depends(current_principal), db: AsyncSession = Depends(get_db)):
+    owner_id = principal[0].id
+    config = await _current(db, owner_id, day)
+    return FocusStateOut(day_unlocked=await day_unlocked(db, owner_id, day), ai_grants_left=AI_GRANTS_LEFT, requests_left=REQUESTS_LEFT, config=config)
 
 
 @router.put("/config", response_model=FocusState)
