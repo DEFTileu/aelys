@@ -1144,6 +1144,11 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("PATCH", "mail/messages/*"),
     ("POST", "focus/sessions/*/pause"),
     ("POST", "focus/sessions/*/resume"),
+    ("GET", "focus/state"),
+    ("GET", "focus/config"),
+    ("PUT", "focus/config"),
+    ("POST", "focus/unlock-request"),
+    ("GET", "focus/requests"),
     ("GET", "automations"),
     ("GET", "automations/runs"),
     ("GET", "automations/*/executions"),
@@ -1270,14 +1275,16 @@ fn remember_pairing(path: &str, value: &Value) {
         set.remove(id);
     }
 }
-/// English AI routes that run a model server-side for up to ~60-90 s; every
-/// other API route keeps the 15 s `client()` timeout.
+/// English AI routes that run a model server-side for up to ~60-90 s, and the
+/// App limits unlock (the model judges the reason, up to 45 s); every other
+/// API route keeps the 15 s `client()` timeout.
 const SLOW_API: &[(&str, &str)] = &[
     ("POST", "english/lessons/today"),
     ("POST", "english/lessons/*/sentences"),
     ("POST", "english/lessons/*/speaking"),
     ("POST", "english/speech/transcribe"),
     ("POST", "english/reports"),
+    ("POST", "focus/unlock-request"),
 ];
 fn api_allowed(method: &str, path: &str) -> bool {
     route_listed(API_ALLOWLIST, method, path)
@@ -5174,6 +5181,43 @@ mod tests {
             .1,
             "/api/v1/integrations/telegram/messages?business_connection_id=business-1&chat_id=222"
         );
+    }
+
+    #[test]
+    fn app_limits_routes_are_allowlisted_and_the_ai_unlock_is_slow() {
+        let ok = |m: &str, p: &str| api_allowed(m, p);
+        assert!(ok("GET", "/api/v1/focus/state"));
+        assert!(ok("GET", "/api/v1/focus/config"));
+        assert!(ok("PUT", "/api/v1/focus/config"));
+        assert!(ok("POST", "/api/v1/focus/unlock-request"));
+        assert!(ok("GET", "/api/v1/focus/requests"));
+        // wrong methods and extra segments stay refused
+        assert!(!ok("POST", "/api/v1/focus/state"));
+        assert!(!ok("DELETE", "/api/v1/focus/config"));
+        assert!(!ok("GET", "/api/v1/focus/unlock-request"));
+        assert!(!ok("GET", "/api/v1/focus/config/extra"));
+        // the model judges the reason server-side for up to 45 s: longer than the 15 s default
+        assert!(route_listed(
+            SLOW_API,
+            "POST",
+            "/api/v1/focus/unlock-request"
+        ));
+        assert!(!route_listed(SLOW_API, "GET", "/api/v1/focus/state"));
+        let mut day = std::collections::BTreeMap::new();
+        day.insert("day".to_string(), "2026-11-15".to_string());
+        assert_eq!(
+            api_route("GET".into(), "/api/v1/focus/state".into(), Some(day), None)
+                .unwrap()
+                .1,
+            "/api/v1/focus/state?day=2026-11-15"
+        );
+        assert!(api_route(
+            "PUT".into(),
+            "/api/v1/focus/config".into(),
+            None,
+            Some(json!({"config": {"apps": []}, "day": "2026-11-15"}))
+        )
+        .is_ok());
     }
 
     #[test]
