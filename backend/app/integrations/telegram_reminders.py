@@ -157,7 +157,7 @@ async def _notification(db: AsyncSession, item: TelegramIntegration,
     ).on_conflict_do_nothing(index_elements=['dedup_key']).returning(Notification.id))
     inserted = result.scalar_one_or_none() is not None
     if inserted:
-        mark_dirty(db, item.owner_id)  # Core INSERT: no mapper event fires
+        mark_dirty(db, item.owner_id, "notifications")  # Core INSERT: no mapper event fires
     return inserted
 
 

@@ -1,5 +1,7 @@
 """In-process hub that pushes fresh snapshots to connected boards when an owner's data changes.
 
+The same marks also feed app hint streams: each subscriber learns only which of its owner's collections changed.
+
 Mapper events (not sync_changes) mark owners dirty, because notifications and focus sessions never
 reach the sync log. Marks ride on the writing session and fire only after its commit.
 """
@@ -42,6 +44,18 @@ class _Connection:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)  # one send at a time keeps snapshots in order
 
 
+@dataclass(eq=False)
+class HintSubscriber:
+    """One open app stream; changes coalesce here until the stream sends them, so memory stays bounded."""
+    changed: set[str] = field(default_factory=set)
+    wake: asyncio.Event = field(default_factory=asyncio.Event)
+
+    def take(self) -> set[str]:
+        self.wake.clear()
+        changed, self.changed = self.changed, set()
+        return changed
+
+
 class CompanionHub:
     def __init__(self) -> None:
         self.debounce = DEBOUNCE_SECONDS  # tests shrink this
@@ -50,6 +64,7 @@ class CompanionHub:
         self._pending: dict[str, asyncio.Task[None]] = {}  # owners inside their debounce window
         self._background: set[asyncio.Task[None]] = set()
         self._owner_locks: dict[str, asyncio.Lock] = {}  # build + send as one unit keeps an older snapshot from landing last
+        self._hint_subscribers: dict[str, set[HintSubscriber]] = {}  # keyed by owner: hints never cross owners
 
     def connection_lock(self, device_id: str) -> asyncio.Lock:
         lock = self._connection_locks.get(device_id)
@@ -98,6 +113,23 @@ class CompanionHub:
         task = loop.create_task(self._flush(owner_id))
         self._pending[owner_id] = task
         self._track(task)
+
+    def subscribe_hints(self, owner_id: str) -> tuple[HintSubscriber, Callable[[], None]]:
+        subscriber = HintSubscriber()
+        self._hint_subscribers.setdefault(owner_id, set()).add(subscriber)
+
+        def unsubscribe() -> None:
+            subscribers = self._hint_subscribers.get(owner_id)
+            if subscribers is not None:
+                subscribers.discard(subscriber)
+                if not subscribers:
+                    del self._hint_subscribers[owner_id]
+        return subscriber, unsubscribe
+
+    def publish_hint(self, owner_id: str, collections: set[str]) -> None:
+        for subscriber in self._hint_subscribers.get(owner_id, ()):
+            subscriber.changed |= collections
+            subscriber.wake.set()
 
     async def wait_idle(self, timeout: float | None = None) -> None:
         """Wait for background pushes and closes; with a timeout, whatever is still running then is cancelled."""
@@ -182,30 +214,42 @@ class CompanionHub:
 
 hub = CompanionHub()
 
-_WATCHED = (Task, CalendarEvent, Notification, FocusSession)
+# Model -> the app collection a hint names; only these names ever leave the server.
+_WATCHED = {Task: "tasks", CalendarEvent: "events", Notification: "notifications", FocusSession: "focus"}
+_SYNC_KINDS = {"task": "tasks", "event": "events"}
 _installed = False
 
 
-def mark_dirty(db: AsyncSession, owner_id: str) -> None:
-    """For writes that bypass mapper events (Core UPDATE/INSERT): push a snapshot after this session commits."""
-    db.sync_session.info.setdefault(_DIRTY_KEY, set()).add(owner_id)
+def mark_dirty(db: AsyncSession, owner_id: str, collection: str | None = None) -> None:
+    """For writes that bypass mapper events (Core UPDATE/INSERT): push a snapshot, and hint `collection` to the
+    owner's apps, after this session commits."""
+    _note(db.sync_session, owner_id, collection)
+
+
+def _note(session: Session, owner_id: str, collection: str | None) -> None:
+    collections = session.info.setdefault(_DIRTY_KEY, {}).setdefault(owner_id, set())
+    if collection:
+        collections.add(collection)
 
 
 def _note_sync_change(_mapper: Any, _connection: Any, target: Any) -> None:
     # Every record_domain_change writes a SyncChange, so this covers task/event writes made with Core UPDATEs.
-    if target.resource_kind in ("task", "event"):
-        _note_owner(_mapper, _connection, target)
+    session = object_session(target)
+    if session is not None and target.owner_id and target.resource_kind in _SYNC_KINDS:
+        _note(session, target.owner_id, _SYNC_KINDS[target.resource_kind])
 
 
 def _note_owner(_mapper: Any, _connection: Any, target: Any) -> None:
     session = object_session(target)
     if session is not None and target.owner_id:
-        session.info.setdefault(_DIRTY_KEY, set()).add(target.owner_id)
+        _note(session, target.owner_id, _WATCHED[type(target)])
 
 
 def _after_commit(session: Session) -> None:
-    for owner_id in session.info.pop(_DIRTY_KEY, ()):
+    for owner_id, collections in session.info.pop(_DIRTY_KEY, {}).items():
         hub.mark_owner_dirty(owner_id)
+        if collections:
+            hub.publish_hint(owner_id, collections)
 
 
 def _after_rollback(session: Session, *_: Any) -> None:
