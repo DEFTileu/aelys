@@ -26,6 +26,8 @@ tribuf_t ui_voice_tb;
 static char (*voice_buf)[601];
 static ui_voice_hooks_t voice_hooks;
 void ui_set_voice_hooks(const ui_voice_hooks_t *h) { voice_hooks = h ? *h : (ui_voice_hooks_t){0}; }
+static uint8_t voice_level(void);
+static void voice_finish(bool cancel);
 tribuf_t ui_owner_tb;
 static owner_info_t owner_buf[3];
 tribuf_t ui_wifi_tb;
@@ -48,6 +50,9 @@ static struct {
     uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
     bool link_was_offline, link_has_history;
     bool voice_listening, voice_thinking, voice_warned, voice_active, voice_presented;
+    bool voice_toggle;   /* started by the top key in Ask Aelys: the top key sends, nothing else ends it before 20 s */
+    bool ask_answered;   /* Ask Aelys has a reply to show */
+    scr_t ask_from;      /* where the low key leaves Ask Aelys for: the screen a hold of the low key came from, else the menu */
     uint32_t voice_started_ms, voice_token;
     bool lost, have_time, find; /* find: the "Here I am!" overlay is up */
     uint8_t link, hh, mm; /* link: ui_link_state_t */
@@ -457,14 +462,14 @@ static void keys_create(lv_obj_t *root)
 static void keys_update(scr_t s)
 {
     if (!keys.top) return;
-    bool top_own = s == SCR_FOCUS || s == SCR_TIMER || s == SCR_TASKS || s == SCR_GAMES;
+    bool top_own = s == SCR_FOCUS || s == SCR_TIMER || s == SCR_TASKS || s == SCR_GAMES || s == SCR_ASK;
     const char *top = s == SCR_HOME || s == SCR_TODAY ? "Menu" : s == SCR_MENU ? "Open" : NULL;
     top_own |= s == SCR_SETTINGS; /* the top key selects a row there: the tick alone, the word would touch the first row */
     /* Today's low key goes home, but home and Today keep the same marks: a swipe between them redraws only the painted parts,
      * and more changed areas than LVGL keeps (32) would redraw the whole screen */
     bool low = !g.lost && s != SCR_TODAY && screen_next_btn(s, false, BTN_LOW) != s;
     /* where the content reaches the key (the Settings rows, the hourly weather, the maze) only the tick shows */
-    bool low_word = low && s != SCR_SETTINGS && s != SCR_WEATHER && s != SCR_GAMES;
+    bool low_word = low && s != SCR_SETTINGS && s != SCR_WEATHER && s != SCR_GAMES && s != SCR_ASK; /* Ask Aelys says "Release" there itself */
     if (g.lost || s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) top = NULL, top_own = false;
     if (top) ui_set_text(keys.top, top);
     lv_obj_set_hidden(keys.top, !top);
@@ -581,6 +586,10 @@ static void render(void)
     case SCR_WIFI: scr_wifinets_set(); break;
     case SCR_ABOUT: scr_about_set(); break;
     case SCR_PLACEHOLDER: scr_placeholder_set(); break;
+    case SCR_ASK:
+        scr_ask_set(g.voice_listening ? ASK_LISTEN : g.voice_thinking ? ASK_THINK : g.ask_answered ? ASK_ANSWER
+                  : g.voice_active ? ASK_THINK : ASK_IDLE);
+        break;
     default: break; /* lost mode, ICE and pairing have their own event-driven data */
     }
 }
@@ -593,6 +602,7 @@ static void tick_timer_cb(lv_timer_t *t)
         g.voice_warned = true;
         toast("3 seconds left");
     }
+    if (g.voice_listening && g.voice_toggle && lv_tick_get() - g.voice_started_ms >= 20000u) voice_finish(false); /* as talk_feed ends a hold */
     render();
 }
 
@@ -733,6 +743,10 @@ void ui_setup(void)
     g.scr[SCR_ABOUT] = scr_about_create(root);
     g.scr[SCR_GAMES] = scr_games_create(root);
     g.scr[SCR_WEATHER] = scr_weather_create(root);
+    g.scr[SCR_ASK] = scr_ask_create(root);
+    scr_ask_set_level_source(voice_level);
+    g.ask_from = SCR_MENU;
+    g.ask_answered = g.voice_toggle = false;
     scr_hold_create(root);
     scr_notice_create(root);
     keys_create(root);
@@ -866,6 +880,34 @@ static bool ends_find(const ui_event_t *ev)
     return ev->type == UI_EV_TOUCH || ev->type == UI_EV_TAP || ev->type == UI_EV_SWIPE_LEFT || ev->type == UI_EV_SWIPE_RIGHT ||
            ev->type == UI_EV_BTN || ev->type == UI_EV_COMBO_FIRE ||
            (ev->type == UI_EV_COMBO_PROGRESS && ev->len >= 1 && ev->data[0] > 0);
+}
+
+static uint8_t voice_level(void) { return voice_hooks.level ? voice_hooks.level() : 0; }
+
+/* A voice turn starts (a hold of the low key, or the top key in Ask Aelys when `toggle`): the mic opens and Ask Aelys starts over. */
+static bool voice_begin(bool toggle)
+{
+    if (voice_hooks.stop_audio) voice_hooks.stop_audio();
+    bool speak = g.sound_on && !(g.have_time && (g.hh >= 22 || g.hh < 7));
+    if (!voice_hooks.start || !voice_hooks.start(speak)) { toast("No connection"); return false; }
+    g.voice_token = voice_hooks.token ? voice_hooks.token() : 0;
+    g.voice_listening = g.voice_active = true;
+    g.voice_thinking = g.voice_warned = g.voice_presented = g.ask_answered = false;
+    g.voice_toggle = toggle;
+    g.voice_started_ms = lv_tick_get();
+    scr_ask_question(NULL);
+    scr_ask_reply(NULL);
+    return true;
+}
+
+/* The mic closes: sent (it thinks next), or cancelled (nothing more comes). */
+static void voice_finish(bool cancel)
+{
+    if (voice_hooks.end) voice_hooks.end(cancel);
+    if (cancel && voice_hooks.stop_audio) voice_hooks.stop_audio();
+    g.voice_listening = false;
+    g.voice_thinking = !cancel;
+    if (cancel) g.voice_active = false;
 }
 
 void ui_handle_event(const ui_event_t *ev)
@@ -1015,7 +1057,6 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->len && ev->data[0] && g.voice_active) {
             if (voice_hooks.end) voice_hooks.end(true);
             if (voice_hooks.stop_audio) voice_hooks.stop_audio();
-            if (voice_hooks.hold_power) voice_hooks.hold_power(false);
             g.voice_listening = g.voice_thinking = g.voice_active = false;
         }
         if (ev->len < 1) return;
@@ -1032,7 +1073,6 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->data[0] && g.voice_active) {
             if (voice_hooks.end) voice_hooks.end(true);
             if (voice_hooks.stop_audio) voice_hooks.stop_audio();
-            if (voice_hooks.hold_power) voice_hooks.hold_power(false);
             g.voice_listening = g.voice_thinking = g.voice_active = false;
         }
         {
@@ -1044,8 +1084,7 @@ void ui_handle_event(const ui_event_t *ev)
                 if (g.voice_active) {
                     if (voice_hooks.end) voice_hooks.end(true);
                     if (voice_hooks.stop_audio) voice_hooks.stop_audio();
-                    if (voice_hooks.hold_power) voice_hooks.hold_power(false);
-                    g.voice_active = g.voice_listening = g.voice_thinking = false;
+                            g.voice_active = g.voice_listening = g.voice_thinking = false;
                 }
                 g.snap_valid = false;
                 g.snap = &ui_empty_snap; /* never derive the next owner's state from the previous snapshot */
@@ -1121,22 +1160,13 @@ void ui_handle_event(const ui_event_t *ev)
         break;
     case UI_EV_TALK:
         if (ev->len < 1) return;
-        if (ev->data[0] == TALK_START && !g.lost && !g.find && (g.cur == SCR_HOME || g.cur == SCR_TODAY)) {
-            if (voice_hooks.stop_audio) voice_hooks.stop_audio();
-            bool speak = g.sound_on && !(g.have_time && (g.hh >= 22 || g.hh < 7));
-            if (!voice_hooks.start || !voice_hooks.start(speak)) { toast("No connection"); return; }
-            if (voice_hooks.hold_power) voice_hooks.hold_power(true);
-            g.voice_token = voice_hooks.token ? voice_hooks.token() : 0;
-            g.voice_listening = g.voice_active = true; g.voice_thinking = false; g.voice_warned = g.voice_presented = false; g.voice_started_ms = lv_tick_get(); render();
-        } else if ((ev->data[0] == TALK_END || ev->data[0] == TALK_CANCEL) && g.voice_listening) {
-            bool cancel = ev->data[0] == TALK_CANCEL;
-            if (voice_hooks.end) voice_hooks.end(cancel);
-            if (cancel && voice_hooks.stop_audio) voice_hooks.stop_audio();
-            if (voice_hooks.hold_power && (cancel || ev->len < 2 || !ev->data[1])) voice_hooks.hold_power(false);
-            g.voice_listening = false; g.voice_thinking = !cancel; if (cancel) g.voice_active = false; render();
-        } else if (ev->data[0] == TALK_SHORT && !g.lost && (g.cur == SCR_HOME || g.cur == SCR_TODAY)) {
-            next = screen_next_btn(g.cur, false, BTN_TOP);
-            break;
+        if (ev->data[0] == TALK_START && !g.lost && !g.find && g.cur != SCR_ICE && g.cur != SCR_LOST && g.cur != SCR_PAIR) {
+            if (!voice_begin(false)) return;
+            if (g.cur != SCR_ASK) { g.ask_from = g.cur; next = SCR_ASK; break; } /* a hold of the low key talks from anywhere */
+            render();
+        } else if ((ev->data[0] == TALK_END || ev->data[0] == TALK_CANCEL) && g.voice_listening && !g.voice_toggle) {
+            voice_finish(ev->data[0] == TALK_CANCEL);
+            render();
         }
         return;
     case UI_EV_VOICE:
@@ -1145,14 +1175,19 @@ void ui_handle_event(const ui_event_t *ev)
                          (uint32_t)ev->data[27] << 16 | (uint32_t)ev->data[28] << 24;
         if (token != g.voice_token) return;
         if (ev->data[0] == VOICE_UI_THINKING) { g.voice_thinking = true; render(); }
-        else if (ev->data[0] == VOICE_UI_SPEAKING || ev->data[0] == VOICE_UI_DONE) {
-            g.voice_thinking = false; render();
+        else if (ev->data[0] == VOICE_UI_HEARD) {
+            scr_ask_question(ui_voice_tb.slot[0] ? tribuf_latest(&ui_voice_tb, NULL) : NULL);
+            render();
+        } else if (ev->data[0] == VOICE_UI_SPEAKING || ev->data[0] == VOICE_UI_DONE) {
             const char *text = ui_voice_tb.slot[0] ? tribuf_latest(&ui_voice_tb, NULL) : NULL;
-            if (!g.voice_presented && text && text[0]) { scr_notice_voice(text); g.voice_presented = true; }
+            g.voice_thinking = false;
+            if (text && text[0] && g.cur == SCR_ASK) { scr_ask_reply(text); g.ask_answered = true; } /* a reply read off a card is done with */
+            render();
+            /* away from Ask Aelys the reply comes up as a card */
+            if (g.cur != SCR_ASK && !g.voice_presented && text && text[0]) { scr_notice_voice(text); g.voice_presented = true; }
         } else if (ev->data[0] == VOICE_UI_ERROR) {
             g.voice_listening = g.voice_thinking = g.voice_active = false;
             if (voice_hooks.stop_audio) voice_hooks.stop_audio();
-            if (voice_hooks.hold_power) voice_hooks.hold_power(false);
             char code[25]; ev_str(code, sizeof code, ev, 1);
             toast(!strcmp(code, "VOICE_NOT_CONFIGURED") ? "Voice not configured" :
                   !strcmp(code, "BUDGET_EXCEEDED") ? "AI budget exceeded" :
@@ -1162,12 +1197,24 @@ void ui_handle_event(const ui_event_t *ev)
         }
         return;
     case UI_EV_BTN:
-        if (ev->len && ev->data[0] == BTN_TOP && (g.cur == SCR_HOME || g.cur == SCR_TODAY)) return;
         if (g.cur == SCR_LOST && ev->len >= 1) scr_lost_show_hint();
         if (g.lost || ev->len < 1) return;
         if (ev->data[0] == BTN_LOW && scr_notice_visible()) { scr_notice_hide(); return; } /* the low key dismisses the pop-up, nothing else */
         if (ev->data[0] == BTN_TOP && g.cur == SCR_FOCUS) {
             act(scr_focus_top_action(), NULL);
+        }
+        if (g.cur == SCR_ASK) {
+            if (ev->data[0] == BTN_TOP && g.voice_listening) { if (g.voice_toggle) voice_finish(false); }
+            else if (ev->data[0] == BTN_TOP) voice_begin(true);
+            else if (g.voice_listening) voice_finish(true); /* the low key while listening drops the question */
+            else { /* back where it was opened from */
+                next = g.ask_from;
+                g.ask_from = SCR_MENU;
+                if (!g.voice_active) { g.ask_answered = false; scr_ask_question(NULL); scr_ask_reply(NULL); }
+                break;
+            }
+            render();
+            return;
         }
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task(0);
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TIMER) scr_timer_top();

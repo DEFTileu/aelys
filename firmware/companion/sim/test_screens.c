@@ -461,12 +461,7 @@ static void swipe_at(uint8_t type, int x, int y) /* as the board posts it: with 
     post(UI_EV_RELEASE);
 }
 
-static void btn(ui_btn_t b) {
-    uint8_t v = (uint8_t)b;
-    if (b == BTN_TOP && (ui_current_screen() == SCR_HOME || ui_current_screen() == SCR_TODAY)) {
-        v = TALK_SHORT; sim_post(UI_EV_TALK, &v, 1);
-    } else sim_post(UI_EV_BTN, &v, 1);
-}
+static void btn(ui_btn_t b) { uint8_t v = (uint8_t)b; sim_post(UI_EV_BTN, &v, 1); }
 /* Focus is reached from the menu only: Menu, turn to Focus (item 1), open; and back home with the wheel on its first item again. */
 static void open_focus(void) { btn(BTN_TOP); while (scr_menu_selected() != 1) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); } btn(BTN_TOP); }
 static void close_focus(void) { btn(BTN_LOW); swipe(UI_EV_SWIPE_RIGHT); sim_step(300); btn(BTN_LOW); }
@@ -1498,14 +1493,11 @@ static void test_menu_wheel(void)
     CHECK_EQ(ui_current_screen(), SCR_MENU);
     swipe(UI_EV_SWIPE_LEFT);
     sim_step(300);
-    CHECK(shows_text(scr, "Ask Aelys") && shows_text(scr, "Coming soon"));
-    tap_at(233, 73);                                 /* an item without a screen: the placeholder */
-    CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
+    CHECK(shows_text(scr, "Ask Aelys") && shows_text(scr, "Or hold the lower button") && !shows_text(scr, "Coming soon"));
+    tap_at(233, 73);                                 /* Ask Aelys has its screen: the voice app */
+    CHECK_EQ(ui_current_screen(), SCR_ASK);
     sim_step(100);
-    CHECK(shows_text(scr, "Ask Aelys") && shows_text(scr, "Coming soon"));
-    check_inside_min("menu placeholder", 500);
-    btn(BTN_TOP);
-    CHECK_EQ(ui_current_screen(), SCR_PLACEHOLDER);
+    check_inside_min("ask aelys", 500);
     btn(BTN_LOW);
     CHECK_EQ(ui_current_screen(), SCR_MENU);
     for (int i = 0; i < 2; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
@@ -3226,7 +3218,7 @@ static void test_probe_never_sends_actions(void)
     fresh_fx();
 }
 
-static int voice_starts, voice_ends, voice_holds, voice_stops; static bool voice_speak;
+static int voice_starts, voice_ends, voice_stops; static bool voice_speak;
 static uint32_t voice_token_test(void) { return (uint32_t)voice_starts; }
 static void voice_shot(const char *name) {
     const char *dir = getenv("VOICE_SHOT_DIR"); if (!dir) return;
@@ -3235,36 +3227,78 @@ static void voice_shot(const char *name) {
 }
 static bool voice_start_test(bool speak) { voice_starts++; voice_speak = speak; return true; }
 static void voice_end_test(bool cancel) { voice_ends += cancel ? 10 : 1; }
-static void voice_hold_test(bool on) { voice_holds += on ? 1 : -1; }
 static void voice_stop_test(void) { voice_stops++; }
+static uint8_t voice_level_test(void) { return 160; }
+static void voice_event(uint8_t kind, uint8_t token) { uint8_t st[29] = { kind }; st[25] = token; sim_post(UI_EV_VOICE, st, sizeof st); }
+static void voice_text(const char *t) { strcpy(tribuf_back(&ui_voice_tb), t); tribuf_publish(&ui_voice_tb); }
+/* Ask Aelys (design "5 · Голос"): a hold of the low key talks from anywhere and opens it; from the menu its top key talks and sends. */
 static void test_voice_flow(void)
 {
     ui_setup(); ui_settings_init(50, false, true);
-    ui_voice_hooks_t h = { .start = voice_start_test, .end = voice_end_test, .hold_power = voice_hold_test, .stop_audio = voice_stop_test, .token = voice_token_test };
+    ui_voice_hooks_t h = { .start = voice_start_test, .end = voice_end_test, .stop_audio = voice_stop_test, .token = voice_token_test,
+                           .level = voice_level_test };
     ui_set_voice_hooks(&h);
-    uint8_t top = BTN_TOP, start = TALK_START, end = TALK_END, cancel = TALK_CANCEL;
-    sim_post(UI_EV_BTN, &top, 1); CHECK_EQ(ui_current_screen(), SCR_HOME);
-    sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, 1); CHECK(voice_speak); CHECK_EQ(voice_holds, 1);
-    voice_shot("listening");
-    sim_post(UI_EV_TALK, &end, 1); CHECK_EQ(voice_ends, 1); CHECK_EQ(voice_holds, 0);
-    voice_shot("thinking");
-    strcpy(tribuf_back(&ui_voice_tb), "Here is your answer."); tribuf_publish(&ui_voice_tb);
-    uint8_t state[29] = { VOICE_UI_SPEAKING }; state[25] = 1;
-    sim_post(UI_EV_VOICE, state, sizeof state); CHECK(scr_notice_visible()); voice_shot("answer");
-    btn(BTN_LOW); CHECK(!scr_notice_visible()); state[0] = VOICE_UI_DONE;
-    sim_post(UI_EV_VOICE, state, sizeof state); CHECK(!scr_notice_visible());
+    lv_obj_t *scr = lv_screen_active();
+    uint8_t start = TALK_START, end = TALK_END, cancel = TALK_CANCEL;
+    btn(BTN_TOP); CHECK_EQ(ui_current_screen(), SCR_MENU);           /* the top key opens the menu again: talking moved to the low key */
+    btn(BTN_LOW); CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* hold the low key on home: Ask Aelys listens; release: it thinks with the question, then answers */
+    sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, 1); CHECK(voice_speak);
+    CHECK_EQ(ui_current_screen(), SCR_ASK); CHECK(see("Listening") && shows_text(scr, "Release"));
+    sim_step(300); voice_shot("listening");
+    sim_post(UI_EV_TALK, &end, 1); CHECK_EQ(voice_ends, 1); CHECK(see("Thinking"));
+    voice_text("What's on tomorrow?"); voice_event(VOICE_UI_HEARD, 1);
+    CHECK(see("\xE2\x80\x9CWhat's on tomorrow?\xE2\x80\x9D"));
+    sim_step(300); voice_shot("thinking");
+    voice_text("Tomorrow you have the standup at ten and lunch at one."); voice_event(VOICE_UI_SPEAKING, 1);
+    CHECK(see("Tomorrow you have the standup at ten and lunch at one.")); CHECK(!scr_notice_visible()); /* in the app: no card */
+    voice_shot("answer");
+    voice_event(VOICE_UI_DONE, 1);
+    btn(BTN_LOW); CHECK_EQ(ui_current_screen(), SCR_HOME);           /* back where the hold began */
+
+    /* the top key while holding cancels; the low key then leaves */
     sim_post(UI_EV_TALK, &start, 1); sim_post(UI_EV_TALK, &cancel, 1); CHECK_EQ(voice_ends, 11);
-    sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, 3);
-    uint8_t capped[2] = { TALK_END, 1 }; sim_post(UI_EV_TALK, capped, 2); CHECK_EQ(voice_holds, 1);
-    state[0] = VOICE_UI_ERROR; state[25] = 2; sim_post(UI_EV_VOICE, state, sizeof state); CHECK_EQ(voice_holds, 1);
+    CHECK(see("Hold the lower button and talk"));
+    btn(BTN_LOW); CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* left before the reply: it comes up as a card */
+    sim_post(UI_EV_TALK, &start, 1); sim_post(UI_EV_TALK, &end, 1); CHECK_EQ(voice_ends, 12);
+    btn(BTN_LOW); CHECK_EQ(ui_current_screen(), SCR_HOME);
+    voice_text("Here is your answer."); voice_event(VOICE_UI_SPEAKING, 3); CHECK(scr_notice_visible());
+    btn(BTN_LOW); CHECK(!scr_notice_visible());
+    voice_event(VOICE_UI_ERROR, 3);
+
+    /* from the menu: Ask Aelys says how to talk, the top key talks and sends, a release of the low key does not end it */
+    btn(BTN_TOP);
+    for (int i = 0; i < 9 && scr_menu_selected() != 6; i++) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); }
+    CHECK_EQ(scr_menu_selected(), 6); sim_step(100); CHECK(shows_text(scr, "Or hold the lower button"));
+    btn(BTN_TOP); CHECK_EQ(ui_current_screen(), SCR_ASK);
+    CHECK(see("Ask Aelys")); CHECK(shows_text(scr, "Hold the lower button and talk")); CHECK(shows_text(scr, "Talk"));
+    voice_shot("idle");
+    btn(BTN_TOP); CHECK_EQ(voice_starts, 4); CHECK(see("Listening") && shows_text(scr, "Send"));
+    sim_post(UI_EV_TALK, &end, 1); CHECK_EQ(voice_ends, 12);
+    btn(BTN_TOP); CHECK_EQ(voice_ends, 13); CHECK(see("Thinking"));
+    btn(BTN_LOW); CHECK_EQ(ui_current_screen(), SCR_MENU);
+    voice_event(VOICE_UI_ERROR, 4);
+    btn(BTN_TOP); CHECK_EQ(ui_current_screen(), SCR_ASK); CHECK(see("Hold the lower button and talk"));
+    btn(BTN_TOP); CHECK_EQ(voice_starts, 5);                           /* nobody presses send: it sends itself after 20 s */
+    sim_step(21500); CHECK_EQ(voice_ends, 14);
+    voice_event(VOICE_UI_ERROR, 5);
+    btn(BTN_LOW); CHECK_EQ(ui_current_screen(), SCR_MENU); btn(BTN_LOW); CHECK_EQ(ui_current_screen(), SCR_HOME);
+
+    /* sounds off or night: the reply is text only; lost mode never talks; any everyday screen does */
     post(UI_EV_COMBO_FIRE); CHECK_EQ(ui_current_screen(), SCR_ICE);
+    sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, 5);        /* not over the ICE card */
     post(UI_EV_TOUCH); CHECK_EQ(ui_current_screen(), SCR_HOME);
     ui_sound_set(false, false); sim_post(UI_EV_TALK, &start, 1); CHECK(!voice_speak);
-    sim_post(UI_EV_TALK, &cancel, 1); ui_sound_set(true, false);
+    sim_post(UI_EV_TALK, &cancel, 1); btn(BTN_LOW); ui_sound_set(true, false);
     uint8_t night[2] = {23, 0}; sim_post(UI_EV_TIME, night, 2);
-    sim_post(UI_EV_TALK, &start, 1); CHECK(!voice_speak); sim_post(UI_EV_TALK, &cancel, 1);
+    sim_post(UI_EV_TALK, &start, 1); CHECK(!voice_speak); sim_post(UI_EV_TALK, &cancel, 1); btn(BTN_LOW);
     int before = voice_starts; post_lost(1); sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, before);
-    post_lost(0); open_focus(); sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, before);
+    post_lost(0); open_focus(); sim_post(UI_EV_TALK, &start, 1); CHECK_EQ(voice_starts, before + 1);
+    CHECK_EQ(ui_current_screen(), SCR_ASK); sim_post(UI_EV_TALK, &cancel, 1);
+    btn(BTN_LOW); CHECK_EQ(ui_current_screen(), SCR_FOCUS);
     close_focus(); ui_set_voice_hooks(NULL);
 }
 

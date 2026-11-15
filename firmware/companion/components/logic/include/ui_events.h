@@ -50,4 +50,4 @@ typedef enum { LINK_UI_UNPAIRED, LINK_UI_CONNECTING, LINK_UI_ONLINE, LINK_UI_OFF
 /* UI_EV_PAIR data[0]: CODE shows the six SAS digits (data[1..6]), DONE the "Paired" card, HIDE drops the pair screen. */
 typedef enum { PAIR_UI_HIDE, PAIR_UI_CODE, PAIR_UI_DONE } ui_pair_t;
 
-typedef enum { VOICE_UI_THINKING, VOICE_UI_SPEAKING, VOICE_UI_DONE, VOICE_UI_ERROR } voice_ui_t;
+typedef enum { VOICE_UI_THINKING, VOICE_UI_SPEAKING, VOICE_UI_DONE, VOICE_UI_ERROR, VOICE_UI_HEARD /* the question, in ui_voice_tb */ } voice_ui_t;

@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|weather|weather_empty|weather_stale|weather_hot|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--zoom 1000] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|ask|ask_listen|ask_think|ask_answer|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|weather|weather_empty|weather_stale|weather_hot|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out file.bmp [--scale 100] [--zoom 1000] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -153,6 +153,19 @@ static void games_shot(const char *shot)
 }
 
 /* The companion screens, fed with the made-up fixture of snap_fixture.h (14:32, UTC). */
+static bool ask_start(bool speak) { (void)speak; return true; }
+static uint32_t ask_token(void) { return 1; }
+static uint8_t ask_level(void) { return 170; }
+static void ask_event(uint8_t kind, const char *text)
+{
+    strcpy(tribuf_back(&ui_voice_tb), text);
+    tribuf_publish(&ui_voice_tb);
+    uint8_t st[29] = { kind };
+    st[25] = 1; /* the token */
+    sim_post(UI_EV_VOICE, st, sizeof st);
+    sim_step(700);
+}
+
 static int companion_shot(const char *shot)
 {
     static snap_t s;
@@ -225,16 +238,23 @@ static int companion_shot(const char *shot)
         sim_step(300);
         post_ev(UI_EV_BTN, BTN_TOP);
     }
-    else if (!strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder")) {
+    else if (!strcmp(shot, "menu")) post_ev(UI_EV_BTN, BTN_TOP);
+    else if (!strncmp(shot, "ask", 3)) { /* Ask Aelys from the menu; "ask_listen|think|answer": the top key talks, sends, a reply comes */
+        static const ui_voice_hooks_t h = { .start = ask_start, .token = ask_token, .level = ask_level };
+        ui_set_voice_hooks(&h);
         post_ev(UI_EV_BTN, BTN_TOP);
-        if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Ask Aelys, which has no screen yet, and open it */
-            for (int i = 0; i < 6; i++) {
-                sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
-                sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
-                sim_step(200);
-            }
-            post_ev(UI_EV_BTN, BTN_TOP);
+        for (int i = 0; i < 6; i++) {
+            sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+            sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            sim_step(200);
         }
+        post_ev(UI_EV_BTN, BTN_TOP);
+        if (shot[3]) { post_ev(UI_EV_BTN, BTN_TOP); sim_step(400); }
+        if (!strcmp(shot, "ask_think") || !strcmp(shot, "ask_answer")) {
+            post_ev(UI_EV_BTN, BTN_TOP);
+            ask_event(VOICE_UI_HEARD, "What's on tomorrow?");
+        }
+        if (!strcmp(shot, "ask_answer")) ask_event(VOICE_UI_SPEAKING, "Tomorrow you have the standup at ten, lunch at one and the gym at seven.");
     }
     else if (!strcmp(shot, "timer_set") || !strcmp(shot, "timer_running") || !strcmp(shot, "timer_done") || !strcmp(shot, "stopwatch")) {
         post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Timer, open it */
@@ -327,7 +347,7 @@ static int companion_shot(const char *shot)
 static int screen_shot(const char *shot)
 {
     if (!strncmp(shot, "character_", 10) || !strcmp(shot, "today") || !strcmp(shot, "aelys") || !strcmp(shot, "aelys_offline") || !strcmp(shot, "aelys_offline_wifi") || !strcmp(shot, "inbox") ||
-        !strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder") || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "weather", 7) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6) || !strncmp(shot, "settings", 8) || !strncmp(shot, "games", 5))
+        !strcmp(shot, "menu") || !strncmp(shot, "ask", 3) || !strncmp(shot, "timer_", 6) || !strcmp(shot, "stopwatch") || !strncmp(shot, "calendar", 8) || !strncmp(shot, "weather", 7) || !strncmp(shot, "notice_", 7) || !strncmp(shot, "tasks", 5) || !strncmp(shot, "focus_", 6) || !strncmp(shot, "settings", 8) || !strncmp(shot, "games", 5))
         return companion_shot(shot);
     static owner_info_t owner;
     const uint8_t time_hm[2] = { 14, 32 };
@@ -402,7 +422,7 @@ int main(int argc, char **argv)
         else return 2;
     }
     if (!out || (!!shot + !!cue + !!event_cue != 1) || scale <= 0 || hour < 0 || hour > 23 || argc % 2 != 1) {
-        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|menu_placeholder|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--zoom <permille>] [--at <ms>]\n",
+        fprintf(stderr, "usage: %s --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|ask|ask_listen|ask_think|ask_answer|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|face:<mood> --out <file.bmp> [--scale <percent>] [--zoom <permille>] [--at <ms>]\n",
                 argv[0]);
         fprintf(stderr, "       %s --cue joy|elation|surprise|fright|tender --out file.wav\n"
                         "       %s --event-cue task-complete --out file.wav [--hour 0..23]\n", argv[0], argv[0]);

@@ -30,4 +30,6 @@ bool debounce_feed(debounce_t *d, bool raw);
 #define TALK_MAX_MS 20000u
 typedef enum { TALK_NONE, TALK_SHORT, TALK_START, TALK_END, TALK_CANCEL } talk_t;
 typedef struct { bool top, low, started, cancelled; uint32_t t0; } talk_ctx_t;
+/* `top` is the talk key, `low` the other key (on the board: the low BOOT key talks, the top PWR key cancels). Held TALK_HOLD_MS: START;
+ * released: END (or SHORT, before START); the other key: CANCEL; held TALK_MAX_MS after START: END. */
 talk_t talk_feed(talk_ctx_t *t, bool top, bool low, uint32_t now_ms);

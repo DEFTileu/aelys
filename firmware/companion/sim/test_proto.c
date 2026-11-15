@@ -728,6 +728,9 @@ static void test_voice(void)
     char text[700]; memset(text, 'x', 599); memcpy(text+599, "é", 2); text[601]=0;
     snprintf(b, sizeof b, "{\"type\":\"voice_text\",\"id\":\"abc\",\"text\":\"%s\"}", text);
     CHECK(proto_parse(b, strlen(b), &m)); CHECK_EQ(m.type, MSG_VOICE_TEXT); CHECK_EQ(strlen(m.u.voice.text), 599);
+    const char *heard = "{\"type\":\"voice_heard\",\"id\":\"abc\",\"text\":\"What's on tomorrow?\"}"; /* the question, for the Thinking screen */
+    CHECK(proto_parse(heard, strlen(heard), &m)); CHECK_EQ(m.type, MSG_VOICE_HEARD);
+    CHECK(!strcmp(m.id, "abc") && !strcmp(m.u.voice.text, "What's on tomorrow?"));
 }
 
 int main(void)

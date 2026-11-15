@@ -111,6 +111,7 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
             await db.commit()
             transcript = await transcribe_pcm(provider, decrypt_secret(secret.encrypted_value), pcm)
             del pcm
+            await send({'type': 'voice_heard', 'id': turn_id, 'text': transcript[:600]})  # the board shows the question while it waits
             await _authorized(db, owner_id, device_id)
             voice_run.status, voice_run.completed_at = 'completed', now()
             await lock_owner(db, owner_id)

@@ -4,6 +4,7 @@
  * (a 401 UNAUTHORIZED from /auth/device/challenge); every other failure only backs off. */
 #include <stdio.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include "board.h"
@@ -321,8 +322,13 @@ void link_voice_end(bool cancel)
     uint32_t token = atomic_load(&voice_request);
     if (token && !link_q_post(LQ_VOICE_END, link_ws_gen(), cancel, (int32_t)token)) voice_pending_end(token, cancel);
 }
+static atomic_uchar voice_level;
+uint8_t link_voice_level(void) { return atomic_load(&voice_level); }
 static void voice_pcm_cb(const int16_t *pcm, size_t samples)
 {
+    int peak = 0;
+    for (size_t i = 0; i < samples; i++) peak = abs(pcm[i]) > peak ? abs(pcm[i]) : peak;
+    atomic_store(&voice_level, (uint8_t)(peak > 8191 ? 255 : peak >> 5)); /* speech peaks around a quarter of full scale */
     while (samples) {
         size_t n = 1600 - voice_pcm_n;
         if (n > samples) n = samples;
@@ -587,9 +593,11 @@ static void handle_frame_locked(int slot, int len)
     if (fsm.st != LS_ONLINE) return;
     switch (m->type) {
     case MSG_VOICE_TEXT:
+    case MSG_VOICE_HEARD:
         if (voice_id[0] && !strcmp(voice_id, m->id) && ui_voice_tb.slot[0]) {
             strlcpy(tribuf_back(&ui_voice_tb), m->u.voice.text, 601);
             tribuf_publish(&ui_voice_tb);
+            if (m->type == MSG_VOICE_HEARD) voice_post(VOICE_UI_HEARD, NULL); /* the ui copies the question out before the reply replaces it */
         }
         break;
     case MSG_VOICE_STATE:

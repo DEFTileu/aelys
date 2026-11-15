@@ -82,7 +82,7 @@ async def test_voice_create_task_and_no_history_reuse_and_recreate(paired, monke
     await setup_voice(owner_id, device_id)
     service = FakeService({'id': 'call1', 'name': 'create_task', 'input': {'title': 'купить молоко'}})
     sent = await execute_turn(monkeypatch, owner_id, device_id, 'first', service, speak=True)
-    assert [x if isinstance(x, bytes) else x.get('state', x['type']) for x in sent] == ['thinking', 'voice_text', 'speaking', b'\x01\x02', 'done']
+    assert [x if isinstance(x, bytes) else x.get('state', x['type']) for x in sent] == ['thinking', 'voice_heard', 'voice_text', 'speaking', b'\x01\x02', 'done']
     async with db.SessionLocal() as session:
         assert (await session.execute(select(Task).where(Task.title == 'купить молоко'))).scalar_one()
         assert not (await session.execute(select(AIAction))).scalars().all()
@@ -119,7 +119,7 @@ async def test_voice_rejects_completion_and_skips_tts(paired, monkeypatch):
         task_id = task.id
     service = FakeService({'id': 'call1', 'name': 'complete_task', 'input': {'task_id': task_id, 'version': 1}})
     sent = await execute_turn(monkeypatch, owner_id, device_id, 'reject', service)
-    assert [x.get('state', x['type']) for x in sent] == ['thinking', 'voice_text', 'done']
+    assert [x.get('state', x['type']) for x in sent] == ['thinking', 'voice_heard', 'voice_text', 'done']
     assert 'unknown tool' in repr(service.requests)
     async with db.SessionLocal() as session:
         assert (await session.get(Task, task_id)).status != 'done'

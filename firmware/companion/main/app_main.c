@@ -404,7 +404,7 @@ static bool voice_audio_in(const uint8_t *pcm, size_t len)
 }
 static const ui_voice_hooks_t voice_hooks = {
     .start = link_voice_start, .end = link_voice_end,
-    .hold_power = board_input_hold_power, .stop_audio = board_audio_stop, .token = link_voice_token,
+    .stop_audio = board_audio_stop, .token = link_voice_token, .level = link_voice_level,
 };
 #endif
 

@@ -125,6 +125,3 @@ target_compile_definitions(test_owned_nvs PRIVATE explicit_bzero=owned_nvs_expli
 target_compile_options(test_owned_nvs PRIVATE -Wall -Wextra)
 add_test(NAME test_owned_nvs COMMAND test_owned_nvs)
 
-add_executable(test_voice_power test_voice_power.c)
-target_include_directories(test_voice_power PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../components/board/include)
-add_test(NAME test_voice_power COMMAND test_voice_power)

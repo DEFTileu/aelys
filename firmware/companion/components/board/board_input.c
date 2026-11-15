@@ -3,10 +3,11 @@
  * The PWR key reaches the SoC only through the PMIC, so it is read as PKEY press/release edge
  * interrupts, polled and cleared over I2C every 20 ms (the PMIC IRQ line is not wired).
  * BOOT + PWR held COMBO_HOLD_MS opens the ICE card; the PMIC's own long-press power-off is pushed
- * out to 10 s so the 2 s hold can never power the board off. */
+ * out to 10 s so the 2 s hold can never power the board off.
+ * Holding BOOT (the low key) talks to Aelys (talk_feed); a short BOOT press is Back, sent at the release. Talking on BOOT keeps the
+ * PMIC's power-off untouched: it only ever watches PWR. */
 #include <stdint.h>
 #include <stdatomic.h>
-#include "voice_power.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -49,13 +50,6 @@ static const char *TAG = "input";
 #define AXP_PKEY_NEG     (1u << 1)
 #define AXP_OFF_10S      0x03
 
-static atomic_bool voice_power_start;
-static atomic_bool voice_power_off;
-void board_input_hold_power(bool on)
-{
-    if (on) atomic_store(&voice_power_start, true);
-    else atomic_store(&voice_power_off, true);
-}
 static i2c_master_dev_handle_t axp;
 static esp_lcd_touch_handle_t touch;
 static volatile bool touch_irq; /* INT fell since the last read: a pulse shorter than a poll still counts */
@@ -221,8 +215,6 @@ static void input_task(void *arg)
     btn_ctx_t bctx = {0};
     talk_ctx_t talk = {0};
     talk_t pending_talk = TALK_NONE;
-    voice_power_t voice_power = {0};
-    bool power_applied = false;
     debounce_t boot_deb = {0}; /* for the click only: the combo has its own 2 s timing */
     bool moved_sent = false;   /* UI_EV_RELEASE already sent for this touch because the finger moved */
     gesture_t pend_gest = GEST_NONE; /* a tap or swipe the ui queue had no room for yet */
@@ -284,49 +276,30 @@ static void input_task(void *arg)
                 if (edges && axp_wr(AXP_IRQ_STS1, edges) == ESP_OK)
                     pwrkey_update(&pwrkey, edges & AXP_PKEY_NEG, edges & AXP_PKEY_POS,
                                   (uint32_t)(esp_timer_get_time() / 1000),
-                                  power_applied ? PWRKEY_STALE_TALK_MS : PWRKEY_STALE_MS);
+                                  PWRKEY_STALE_MS);
                 if (edges) ESP_LOGI(TAG, "PWR key edges 0x%X, now %s", edges, pwrkey.down ? "down" : "up");
             }
         }
         /* no edge: only ages the state, so a lost release edge cannot leave the key down for good */
         uint32_t key_now = (uint32_t)(esp_timer_get_time() / 1000);
-        bool pwr = pwrkey_update(&pwrkey, false, false, key_now,
-                                 power_applied ? PWRKEY_STALE_TALK_MS : PWRKEY_STALE_MS);
-        if (slow) {
-            bool start_hold = atomic_exchange(&voice_power_start, false);
-            if (atomic_exchange(&voice_power_off, false)) {
-                voice_power_cancel(&voice_power);
-                start_hold = false; /* abort takes precedence */
-            }
-            bool hold = voice_power_update(&voice_power, start_hold, pwr, key_now);
-            if (axp && hold != power_applied &&
-                axp_set(AXP_PWROFF_EN, AXP_LONG_PRESS_SHUTDOWN, hold ? 0 : AXP_LONG_PRESS_SHUTDOWN) == ESP_OK)
-                power_applied = hold;
-            if (hold && !power_applied) {
-                /* Fail closed if shutdown suppression cannot be verified. */
-                voice_power_cancel(&voice_power);
-                board_audio_stop();
-                pending_talk = TALK_CANCEL;
-                /* Readback may fail after the write took effect. Force a
-                 * restore attempt on the next pass even if state is unknown. */
-                power_applied = true;
-            }
-        }
+        bool pwr = pwrkey_update(&pwrkey, false, false, key_now, PWRKEY_STALE_MS);
         bool boot = gpio_get_level(PIN_BOOT) == 0;
 #ifdef CONFIG_AELYS_INPUT_SELFTEST
         boot = boot || st_boot;
         pwr = pwr || st_pwr;
 #endif
         bool low = debounce_feed(&boot_deb, boot);
-        talk_t te = talk_feed(&talk, pwr, low, key_now);
+        talk_t te = talk_feed(&talk, low, pwr, key_now); /* the low key talks, the top key cancels */
         /* Retry terminal events when the UI queue is full. A new terminal
          * event supersedes a START that the UI never received. */
         if (te != TALK_NONE && pending_talk != TALK_CANCEL) pending_talk = te;
-        if (pending_talk != TALK_NONE) {
-            ui_event_t event = {.type = UI_EV_TALK, .len = 2, .data = {pending_talk, pwr}};
+        if (pending_talk == TALK_SHORT && post(UI_EV_BTN, BTN_LOW)) pending_talk = TALK_NONE; /* a short low press is Back */
+        if (pending_talk != TALK_NONE && pending_talk != TALK_SHORT) {
+            ui_event_t event = {.type = UI_EV_TALK, .len = 1, .data = {pending_talk}};
             if (lv_port_post(&event)) pending_talk = TALK_NONE;
         }
         ui_btn_t click = btn_feed(&bctx, pwr, low, key_now); /* top = PWR: see the top of this file */
+        if (click == BTN_LOW) click = 0; /* the low key clicks through talk_feed, at its release, so a hold can talk */
         if (click) post(UI_EV_BTN, click);
         int pct = combo_update(&combo, boot, pwr, (uint32_t)(esp_timer_get_time() / 1000));
         if (pct == 100) {

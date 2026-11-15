@@ -44,10 +44,6 @@ uint32_t lv_port_first_flush_end_us(void);
  * (BTN_TOP / BTN_LOW) for a short click of one key. Call after board_init(). Returns the first
  * init error but starts the task anyway with whatever worked. */
 esp_err_t board_input_start(void);
-/* UI requests a temporary PWR shutdown inhibit. The input task applies it;
- * releasing PWR or the 25s watchdog always restores hardware shutdown.
- * off aborts the hold; normal auto-END waits for the input task to see release. */
-void board_input_hold_power(bool on);
 
 /* QMI8658 accelerometer (probes 0x6B then 0x6A). ESP_ERR_NOT_FOUND when absent: then reads return false.
  * Raw axes in the chip frame, +-2 g full scale; mapping to screen axes is the caller's (level.h). */
