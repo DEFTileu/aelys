@@ -66,9 +66,9 @@ static void test_pair_screen_follows_lost_and_combo(void)
 static void test_swipe_cycle_today_home_focus(void)
 {
     CHECK_EQ(screen_next(SCR_HOME, false, UI_EV_SWIPE_RIGHT), SCR_TODAY);
-    CHECK_EQ(screen_next(SCR_HOME, false, UI_EV_SWIPE_LEFT), SCR_FOCUS);
+    CHECK_EQ(screen_next(SCR_HOME, false, UI_EV_SWIPE_LEFT), SCR_HOME);     /* Focus is opened from the menu */
     CHECK_EQ(screen_next(SCR_TODAY, false, UI_EV_SWIPE_LEFT), SCR_HOME);
-    CHECK_EQ(screen_next(SCR_FOCUS, false, UI_EV_SWIPE_RIGHT), SCR_HOME);
+    CHECK_EQ(screen_next(SCR_FOCUS, false, UI_EV_SWIPE_RIGHT), SCR_FOCUS);
     /* no wrap-around and no other screen swipes */
     CHECK_EQ(screen_next(SCR_TODAY, false, UI_EV_SWIPE_RIGHT), SCR_TODAY);
     CHECK_EQ(screen_next(SCR_FOCUS, false, UI_EV_SWIPE_LEFT), SCR_FOCUS);
@@ -90,7 +90,7 @@ static void test_inbox_back(void)
     CHECK_EQ(screen_next_btn(SCR_INBOX, false, BTN_LOW), SCR_TODAY);
     CHECK_EQ(screen_next_btn(SCR_INBOX, false, BTN_TOP), SCR_INBOX);
     CHECK_EQ(screen_next_btn(SCR_TODAY, false, BTN_LOW), SCR_HOME);
-    CHECK_EQ(screen_next_btn(SCR_FOCUS, false, BTN_LOW), SCR_HOME);
+    CHECK_EQ(screen_next_btn(SCR_FOCUS, false, BTN_LOW), SCR_MENU);
     CHECK_EQ(screen_next_btn(SCR_HOME, false, BTN_LOW), SCR_HOME);
     CHECK_EQ(screen_next_btn(SCR_FOCUS, false, BTN_TOP), SCR_FOCUS);
     CHECK_EQ(screen_next_btn(SCR_ICE, false, BTN_LOW), SCR_ICE);

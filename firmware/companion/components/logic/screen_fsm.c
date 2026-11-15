@@ -12,10 +12,10 @@ scr_t screen_next(scr_t cur, bool lost_mode, ui_event_type_t ev)
         return cur;
     case UI_EV_SWIPE_RIGHT:
         if (lost_mode) return cur;
-        return cur == SCR_HOME ? SCR_TODAY : cur == SCR_FOCUS ? SCR_HOME : cur;
+        return cur == SCR_HOME ? SCR_TODAY : cur;
     case UI_EV_SWIPE_LEFT:
         if (lost_mode) return cur;
-        return cur == SCR_HOME ? SCR_FOCUS : cur == SCR_TODAY ? SCR_HOME : cur;
+        return cur == SCR_TODAY ? SCR_HOME : cur; /* Focus lives in the menu only */
     default:
         return cur;
     }
@@ -40,8 +40,8 @@ scr_t screen_next_btn(scr_t cur, bool lost_mode, ui_btn_t btn)
     if (lost_mode) return cur;
     if (btn == BTN_TOP) return cur == SCR_HOME || cur == SCR_TODAY ? SCR_MENU : cur; /* the two face pages share the "Menu" key */
     if (btn != BTN_LOW) return cur;
-    return cur == SCR_TODAY || cur == SCR_FOCUS || cur == SCR_MENU ? SCR_HOME
-         : cur == SCR_INBOX ? SCR_TODAY : cur == SCR_PLACEHOLDER || cur == SCR_TASKS || cur == SCR_TIMER || cur == SCR_CALENDAR || cur == SCR_SETTINGS || cur == SCR_GAMES || cur == SCR_WEATHER ? SCR_MENU
+    return cur == SCR_TODAY || cur == SCR_MENU ? SCR_HOME
+         : cur == SCR_INBOX ? SCR_TODAY : cur == SCR_PLACEHOLDER || cur == SCR_FOCUS || cur == SCR_TASKS || cur == SCR_TIMER || cur == SCR_CALENDAR || cur == SCR_SETTINGS || cur == SCR_GAMES || cur == SCR_WEATHER ? SCR_MENU
          : cur == SCR_WIFI || cur == SCR_ABOUT ? SCR_SETTINGS : cur;
 }
 
