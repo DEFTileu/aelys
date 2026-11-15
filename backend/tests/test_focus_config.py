@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from app.core.models import User
+from app.focus import api as focus_api
 from app.focus.config import (
     FocusApp,
     FocusConfig,
+    FocusLimitError,
     FocusState,
     apply_edit,
     promote,
     tighten,
 )
 from pydantic import ValidationError
+from sqlalchemy import select
 from test_automation_api import _owner, automation_client  # noqa: F401
 
 TODAY = date(2026, 11, 15)
@@ -90,33 +94,162 @@ def test_models_reject_bad_values(bad):
         FocusApp(**{**base, **bad})
 
 
+def test_mixed_tighten_and_loosen_applies_the_tightening_and_defers_the_rest():
+    effective = _cfg(_app("yt", 30), _app("tt", 15, ("com.tt",)))
+    desired = _cfg(_app("yt", 10))
+    out = apply_edit(FocusState(effective=effective), desired, TODAY)
+    assert {a.id: a.limit_minutes for a in out.effective.apps} == {"tt": 15, "yt": 10}
+    assert out.pending == desired and out.effective_from == TOMORROW
+
+
+def test_label_only_edit_applies_now_without_pending():
+    state = FocusState(effective=_cfg(_app("yt", 30)))
+    out = apply_edit(state, _cfg(_app("yt", 30).model_copy(update={"label": "Renamed"})), TODAY)
+    assert out.effective.apps[0].label == "Renamed"
+    assert out.pending is None and out.effective_from is None
+
+
+def test_tighten_overflow_raises_instead_of_clamping():
+    ten = _app("yt", 30, tuple(f"com.a{i}" for i in range(10)))
+    other = _app("yt", 30, tuple(f"com.b{i}" for i in range(10)))
+    with pytest.raises(FocusLimitError):
+        tighten(_cfg(ten), _cfg(other))
+    full = _cfg(*(_app(f"a{i}", 30, (f"com.a{i}",)) for i in range(30)))
+    swapped = _cfg(*(_app(f"a{i}", 30, (f"com.a{i}",)) for i in range(1, 30)), _app("new", 30, ("com.new",)))
+    with pytest.raises(FocusLimitError):
+        tighten(full, swapped)
+
+
+def _json_app(id: str = "yt", limit: int = 30, packages: list[str] | None = None) -> dict:
+    return {"id": id, "label": id, "packages": packages or [f"com.{id}"], "limit_minutes": limit}
+
+
+def _day(offset: int = 0) -> str:
+    return (datetime.now(UTC).date() + timedelta(days=offset)).isoformat()
+
+
+async def _put(client, headers, apps, day=None):
+    return await client.put("/api/v1/focus/config", json={"config": {"apps": apps}, "day": day or _day()}, headers=headers)
+
+
 @pytest.mark.asyncio
 async def test_api_put_then_get_round_trips(automation_client):  # noqa: F811
     client, _ = automation_client
     headers = await _owner(client)
-    first = {"id": "yt", "label": "YouTube", "packages": ["com.google.android.youtube"], "limit_minutes": 30}
-    body = {"config": {"apps": [first]}, "day": "2026-11-15"}
-    put = await client.put("/api/v1/focus/config", json=body, headers=headers)
+    first = _json_app("yt", 30, ["com.google.android.youtube"])
+    put = await _put(client, headers, [first])
     assert put.status_code == 200
     assert put.json() == {"effective": {"apps": [first]}, "pending": None, "effective_from": None}
 
-    loosen = {"config": {"apps": [{**first, "limit_minutes": 60}]}, "day": "2026-11-15"}
-    state = (await client.put("/api/v1/focus/config", json=loosen, headers=headers)).json()
+    state = (await _put(client, headers, [{**first, "limit_minutes": 60}])).json()
     assert state["effective"]["apps"][0]["limit_minutes"] == 30
-    assert state["effective_from"] == TOMORROW
+    assert state["effective_from"] == _day(1)
 
-    today = await client.get("/api/v1/focus/config", params={"day": "2026-11-15"}, headers=headers)
+    today = await client.get("/api/v1/focus/config", params={"day": _day()}, headers=headers)
     assert today.json() == state
-    tomorrow = await client.get("/api/v1/focus/config", params={"day": TOMORROW}, headers=headers)
+    tomorrow = await client.get("/api/v1/focus/config", params={"day": _day(1)}, headers=headers)
     assert tomorrow.json()["effective"]["apps"][0]["limit_minutes"] == 60
     assert tomorrow.json()["pending"] is None
 
 
 @pytest.mark.asyncio
-async def test_api_rejects_bad_package_name_and_limit_out_of_range(automation_client):  # noqa: F811
+async def test_api_rejects_invalid_bodies(automation_client):  # noqa: F811
     client, _ = automation_client
     headers = await _owner(client)
-    app = {"id": "yt", "label": "YouTube", "packages": ["com.google.android.youtube"], "limit_minutes": 30}
-    for bad in ({"packages": ["bad name"]}, {"limit_minutes": 0}, {"limit_minutes": 1441}):
-        response = await client.put("/api/v1/focus/config", json={"config": {"apps": [{**app, **bad}]}, "day": "2026-11-15"}, headers=headers)
-        assert response.status_code == 422
+    ok = _json_app("yt", 30, ["com.google.android.youtube"])
+    bad_apps = [
+        [{**ok, "packages": ["bad name"]}],
+        [{**ok, "limit_minutes": 0}],
+        [{**ok, "limit_minutes": 1441}],
+        [{**ok, "packages": []}],
+        [{**ok, "packages": [f"com.p{i}" for i in range(11)]}],
+        [{**ok, "extra": 1}],
+        [ok, ok],
+        [_json_app(f"a{i}") for i in range(31)],
+    ]
+    for apps in bad_apps:
+        assert (await _put(client, headers, apps)).status_code == 422, apps
+    extra_top = await client.put("/api/v1/focus/config", json={"config": {"apps": [ok]}, "day": _day(), "x": 1}, headers=headers)
+    assert extra_top.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_api_tighten_overflow_is_422_and_stored_state_still_loads(automation_client):  # noqa: F811
+    client, _ = automation_client
+    headers = await _owner(client)
+    ten = _json_app("yt", 30, [f"com.a{i}" for i in range(10)])
+    assert (await _put(client, headers, [ten])).status_code == 200
+    overflow = await _put(client, headers, [{**ten, "packages": [f"com.b{i}" for i in range(10)]}])
+    assert overflow.status_code == 422
+    assert overflow.json()["detail"]["code"] == "FOCUS_LIMIT"
+    got = await client.get("/api/v1/focus/config", params={"day": _day()}, headers=headers)
+    assert got.status_code == 200 and got.json()["effective"]["apps"] == [ten]
+
+
+@pytest.mark.asyncio
+async def test_api_swapping_an_app_at_30_is_422_and_stored_state_still_loads(automation_client):  # noqa: F811
+    client, _ = automation_client
+    headers = await _owner(client)
+    thirty = [_json_app(f"a{i}") for i in range(30)]
+    assert (await _put(client, headers, thirty)).status_code == 200
+    swapped = await _put(client, headers, [*thirty[1:], _json_app("new")])
+    assert swapped.status_code == 422 and swapped.json()["detail"]["code"] == "FOCUS_LIMIT"
+    got = await client.get("/api/v1/focus/config", params={"day": _day()}, headers=headers)
+    assert got.status_code == 200 and len(got.json()["effective"]["apps"]) == 30
+
+
+@pytest.mark.asyncio
+async def test_api_label_only_edit_applies_now(automation_client):  # noqa: F811
+    client, _ = automation_client
+    headers = await _owner(client)
+    await _put(client, headers, [_json_app("yt")])
+    state = (await _put(client, headers, [{**_json_app("yt"), "label": "Renamed"}])).json()
+    assert state["effective"]["apps"][0]["label"] == "Renamed"
+    assert state["pending"] is None
+
+
+@pytest.mark.asyncio
+async def test_api_rejects_a_day_far_from_the_server_date(automation_client):  # noqa: F811
+    client, _ = automation_client
+    headers = await _owner(client)
+    for offset in (-2, 2, 30):
+        assert (await _put(client, headers, [_json_app()], day=_day(offset))).status_code == 422
+        got = await client.get("/api/v1/focus/config", params={"day": _day(offset)}, headers=headers)
+        assert got.status_code == 422
+    for offset in (-1, 1):
+        got = await client.get("/api/v1/focus/config", params={"day": _day(offset)}, headers=headers)
+        assert got.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_api_get_writes_only_when_promotion_changes_state(automation_client, monkeypatch):  # noqa: F811
+    client, _ = automation_client
+    headers = await _owner(client)
+    await _put(client, headers, [_json_app("yt", 30)])
+    await _put(client, headers, [_json_app("yt", 60)])  # pending until tomorrow
+    saves = []
+    original = focus_api._save
+    async def spy(db, user, state):
+        saves.append(state)
+        return await original(db, user, state)
+    monkeypatch.setattr(focus_api, "_save", spy)
+
+    await client.get("/api/v1/focus/config", params={"day": _day()}, headers=headers)
+    assert saves == []
+    promoted = await client.get("/api/v1/focus/config", params={"day": _day(1)}, headers=headers)
+    assert len(saves) == 1 and promoted.json()["effective"]["apps"][0]["limit_minutes"] == 60
+    await client.get("/api/v1/focus/config", params={"day": _day(1)}, headers=headers)
+    assert len(saves) == 1
+
+
+@pytest.mark.asyncio
+async def test_api_corrupt_stored_state_reads_as_empty(automation_client):  # noqa: F811
+    client, factory = automation_client
+    headers = await _owner(client)
+    async with factory() as db:
+        user = (await db.execute(select(User))).scalar_one()
+        user.settings_json = {**(user.settings_json or {}), "focus": {"effective": {"apps": [{"id": "x"}]}}}
+        await db.commit()
+    got = await client.get("/api/v1/focus/config", params={"day": _day()}, headers=headers)
+    assert got.status_code == 200 and got.json()["effective"] == {"apps": []}
+    assert (await _put(client, headers, [_json_app()])).status_code == 200
