@@ -25,7 +25,7 @@
 #define COLOR_DROP 0x7FA8F5
 #define COLOR_DOT_OFF 0x4A4554
 #define COLOR_ANGER 0xFF5A5F
-#define COLOR_STEAM 0x8C869A
+#define COLOR_STEAM 0xB8B2C4
 #define DROOP_TRAVEL 250 /* sleepy lid: bottom edge moves 25 px (tenths) between -56 % and -30 % of 96 px */
 /* The anim timer ticks every LV_DEF_REFR_PERIOD (5 ms on the board) while the panel flushes at 60 Hz (16.67 ms, TE).
  * A fixed minimum gap would quantise to that 5 ms grid (15 ms: a state is skipped now and then; 16 ms: 20 ms, a state
@@ -332,10 +332,10 @@ static void layout_fx(face_t *f, uint32_t t)
         put_img(f->vein, img, cx - img->header.w / 2, cy - img->header.h / 2, st.op);
     }
     for (int i = 0; i < m->n_steam; i++) {
-        /* a puff swells from 14 to 20 px as it rises from the middle of its box */
+        /* a cloud swells from 24 to 30 px as it rises from the middle of its box */
         const face_fx_t *p = &m->steam[i];
         face_fx_state_t st = face_fx_steam(t, p->delay_ms);
-        const lv_image_dsc_t *img = face_img_puff(d(f, 1400 + 6 * st.k));
+        const lv_image_dsc_t *img = face_img_puff(d(f, 2400 + 6 * st.k));
         int32_t cx = d(f, p->x * 100 + p->size * 50), cy = d(f, p->y * 100 + p->size * 50 + st.dy);
         put_img(f->steam[i], img, cx - img->header.w / 2, cy - img->header.h / 2, st.op);
     }

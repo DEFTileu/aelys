@@ -6,7 +6,7 @@
 Shapes come from the design (ACTUAL AELYS Companion, CompanionFace): the 4-point star
 (clip-path polygon, eye highlight and sparkles), the heart (clip-path path), the water drop
 (16 px box, border-radius 0 50% 50% 50%, rotated 45 deg), a bold "z", the anger mark (four tapered arcs round
-an empty middle) and a soft steam puff (owner's request, not from the design). Each is rendered once
+an empty middle) and a small steam cloud (owner's request, not from the design). Each is rendered once
 per pixel size with 8x8 supersampling, so the face never scales or rotates an image at run time:
 face.c picks the nearest size and recolours it (image_recolor). Pure standard library.
 """
@@ -85,23 +85,29 @@ def zed(h):
 
 
 def vein(n):
-    """The anger mark: four arcs of a ring 0.58 n in radius (the box clips the corners), tapering away from the diagonals, gaps on the axes."""
+    """The anger mark: four short thick arcs, ) ( on top and ) ( below, pinched toward the middle with clear gaps.
+    One arc (top left) is a crescent of two equal circles (radius .27 n) .14 n apart, clipped to a band; the others mirror it."""
     def covered(x, y):
-        dx, dy = (x - n / 2) / n, (y - n / 2) / n
-        r = math.hypot(dx, dy)
-        a = abs(math.degrees(math.atan2(dy, dx)) % 90 - 45)    # angular distance to the nearest diagonal
-        return a <= 28 and 0.58 - 0.24 * (1 - a / 34) <= r <= 0.58
+        u, v = x / n, y / n
+        u, v = min(u, 1 - u), min(v, 1 - v)
+        if not .03 <= v <= .43:
+            return False
+        return (u - .15) ** 2 + (v - .23) ** 2 <= .0729 and (u - .01) ** 2 + (v - .23) ** 2 > .0729
 
     return n, n, render(n, n, covered)
 
 
 def puff(n):
-    """A soft disc: opaque in the middle 40 %, fading linearly to nothing at the edge."""
+    """A small cloud: three overlapping soft circles; opaque in the middle 55 % of each, fading to nothing at its edge."""
+    discs = [(.28, .62, .26), (.52, .45, .30), (.74, .60, .24)]
     out = []
     for py in range(n):
         for px in range(n):
-            r = math.hypot(px + .5 - n / 2, py + .5 - n / 2) / (n / 2)
-            out.append(round(255 * max(0.0, min(1.0, (1 - r) / 0.6))))
+            a = 0.0
+            for cx, cy, r in discs:
+                d = math.hypot(px + .5 - cx * n, py + .5 - cy * n) / (r * n)
+                a = max(a, min(1.0, (1 - d) / 0.45))
+            out.append(round(255 * max(0.0, a)))
     return n, n, out
 
 
@@ -151,4 +157,4 @@ emit("zed", "face_img_z", range(4, 19), zed)
 print()
 emit("vein", "face_img_vein", range(24, 40, 2), vein)
 print()
-emit("puff", "face_img_puff", range(14, 21, 2), puff)
+emit("puff", "face_img_puff", range(24, 31, 2), puff)

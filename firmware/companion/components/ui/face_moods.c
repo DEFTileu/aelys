@@ -43,12 +43,13 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
     [MOOD_DIZZY] = { .eye = { E(55, 47, 76, 76, 38, NOSTAR), E(169, 47, 76, 76, 38, NOSTAR) },
                      .kind = EYE_RING, .border = 12, .color = 0xA98CFB, .motion = MOT_WOBBLE },
     /* owner's request (2026-11-15), not the design: angry = big red eyes under slanted brows that dart left and right,
-     * a pulsing anger mark top right and two puffs of steam beside the eyes (outside the 18 + 3 px dart) */
-    [MOOD_ANNOYED] = { .eye = { EL(47, 26, 92, 120, 46, 50, 16, 22, 330, 325), EL(161, 26, 92, 120, 46, 50, 16, 22, 330, -325) },
+     * a pulsing anger mark top right and two small steam clouds beside the eyes (outside the 18 + 3 px dart); the glint
+     * sits below the brow line */
+    [MOOD_ANNOYED] = { .eye = { EL(47, 26, 92, 120, 46, 50, 46, 22, 330, 325), EL(161, 26, 92, 120, 46, 50, 46, 22, 330, -325) },
                        .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_ANGRY, .blink_ms = 6000,
                        .grad_top = 0xFF8A84, .grad_bottom = 0xE5262E,
                        .vein = true, .vein_at = { 250, 6, 34, 0 },
-                       .n_steam = 2, .steam = { { 6, 72, 18, 0 }, { 276, 72, 18, 800 } } },
+                       .n_steam = 2, .steam = { { -2, 66, 28, 0 }, { 275, 66, 28, 800 } } },
     [MOOD_LOVE] = { .eye = { E(58, 35, 70, 100, 35, STD), E(172, 35, 70, 100, 35, STD) },
                     .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_SWAY, .cheeks = true,
                     .n_heart = 2, .heart = { { 258, 20, 24, 0 }, { 16, 34, 24, 1400 } } },
@@ -220,14 +221,14 @@ face_fx_state_t face_fx_pulse(uint32_t t_ms)
     return s;
 }
 
-/* A steam puff, 1.6 s: fades in by 25 %, then out; rises 36 px (ease-out) and swells (k = growth permille) */
+/* A steam cloud, 1.6 s: appears at once (6 % fade-in) at 230 / 255, fades out while it rises 30 px (ease-out) and swells (k = growth permille) */
 face_fx_state_t face_fx_steam(uint32_t t_ms, uint32_t delay_ms)
 {
     int32_t p = phase(t_ms, 1600, delay_ms);
     face_fx_state_t s;
-    s.op = p < 250 ? 200 * ease(p * 4) / 1000 : 200 - 200 * ease((p - 250) * 1000 / 750) / 1000;
+    s.op = p < 60 ? 230 * p / 60 : 230 - 230 * ease((p - 60) * 1000 / 940) / 1000;
     s.dx = 0;
-    s.dy = -3600 * ease_out(p) / 1000;
+    s.dy = -3000 * ease_out(p) / 1000;
     s.k = ease_out(p);
     return s;
 }

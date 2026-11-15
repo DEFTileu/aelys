@@ -30,7 +30,7 @@ static void test_eyes(void)
         EYE_IS(MOOD_SLEEPING, s, x, 76, 70, 28, 35);
         EYE_IS(MOOD_DIZZY, s, x - 3, 47, 76, 76, 38);      /* margin-left -3 */
         EYE_IS(MOOD_ANNOYED, s, s ? 161 : 47, 26, 92, 120, 46); /* owner: big, centred where the calm eyes are */
-        STAR_IS(MOOD_ANNOYED, s, 50, 16, 22);
+        STAR_IS(MOOD_ANNOYED, s, 50, 46, 22);
         EYE_IS(MOOD_OFFLINE, s, x + 21, 66, 28, 28, 14);   /* margin-left 21 */
     }
     EYE_IS(MOOD_CURIOUS, 0, 58, 46, 70, 84, 35);
@@ -156,6 +156,22 @@ static void test_angry_dart(void)
     CHECK(flips >= 4);
 }
 
+/* The glint of the angry eye sits below the brow line on both eyes, at every dart position, and inside the eye. */
+static void test_angry_glint(void)
+{
+    for (int s = 0; s < 2; s++) {
+        const face_eye_t *e = eye(MOOD_ANNOYED, s);
+        for (int cx = 0; cx <= 22; cx += 22) {
+            for (int cy = 0; cy <= 22; cy += 22) {
+                int x = e->star_x + cx, y = e->star_y + cy;                                   /* a corner of the 22 px star */
+                int cut10 = e->lid_y10 + e->lid_slope * (x - e->w / 2) / 100;                  /* brow line at that x, tenths of px */
+                CHECK(y * 10 > cut10);                                                         /* below the brow */
+                CHECK(x >= 0 && x <= e->w && y >= e->r && y <= e->h - e->r);                   /* inside the full-width part of the pill */
+            }
+        }
+    }
+}
+
 static void test_anger_fx(void)
 {
     const face_mood_t *a = face_mood_def(MOOD_ANNOYED);
@@ -163,10 +179,10 @@ static void test_anger_fx(void)
     CHECK_EQ(a->vein_at.x, 250); CHECK_EQ(a->vein_at.y, 6); CHECK_EQ(a->vein_at.size, 34);
     CHECK_EQ(a->n_steam, 2);
     CHECK_EQ(a->grad_top, 0xFF8A84); CHECK_EQ(a->grad_bottom, 0xE5262E);
-    /* a puff sits outside the eye even at the end of a dart (18 px + 3 px shake) */
+    /* a cloud sits outside the eye even at the end of a dart (18 px + 3 px shake) */
     CHECK(a->steam[0].x + a->steam[0].size <= a->eye[0].x - 21);
     CHECK(a->steam[1].x >= a->eye[1].x + a->eye[1].w + 21);
-    CHECK(a->steam[1].x + a->steam[1].size <= FACE_W);
+    CHECK(a->steam[1].x + a->steam[1].size <= FACE_W + 3);  /* the face box overhangs by up to 30 px */
     CHECK(a->steam[1].delay_ms > 0 && a->steam[1].delay_ms < 1600);
     for (int m = 0; m < MOOD_COUNT; m++)
         if (m != MOOD_ANNOYED) CHECK(!face_mood_def(m)->vein && !face_mood_def(m)->n_steam);
@@ -180,10 +196,11 @@ static void test_anger_fx(void)
         f = face_fx_pulse(t);
         CHECK(f.k >= 700 && f.k <= 1100 && f.op >= 120 && f.op <= 255);
     }
-    f = face_fx_steam(0, 0);                    /* a puff: fades in, rises 36 px and swells, gone at the top */
+    f = face_fx_steam(0, 0);                    /* a cloud: appears at once, rises 30 px and swells while it fades, gone at the top */
     CHECK_EQ(f.op, 0); CHECK_EQ(f.dy, 0); CHECK_EQ(f.k, 0);
-    f = face_fx_steam(400, 0);                  CHECK(f.op >= 150 && f.op <= 220); CHECK(f.dy < -500 && f.dy > -2500);
-    f = face_fx_steam(1599, 0);                 CHECK(f.op < 8); NEAR(f.dy, -3600, 60); CHECK(f.k >= 950);
+    f = face_fx_steam(100, 0);                  CHECK(f.op >= 225 && f.op <= 235);              /* nearly opaque at the start */
+    f = face_fx_steam(400, 0);                  CHECK(f.op >= 180 && f.op <= 235); CHECK(f.dy < -500 && f.dy > -2500);
+    f = face_fx_steam(1599, 0);                 CHECK(f.op < 8); NEAR(f.dy, -3000, 60); CHECK(f.k >= 950);
     f = face_fx_steam(400 + 800, 800);          CHECK(f.op >= 150);   /* the second puff is half a loop behind */
     f = face_fx_steam(2 * 1600, 0);             CHECK_EQ(f.op, 0);    /* loops */
 }
@@ -262,15 +279,21 @@ static void test_images(void)
     const lv_image_dsc_t *v = face_img_vein(34);              /* the anger mark: four arcs, gaps on the axes, hollow middle */
     CHECK_EQ(v->header.w, 34); CHECK_EQ(v->header.h, 34); CHECK_EQ(v->header.cf, LV_COLOR_FORMAT_A8);
     CHECK_EQ(v->data_size, 34 * 34);
-    CHECK(v->data[5 * 34 + 5] >= 250 && v->data[5 * 34 + 28] >= 250 && v->data[28 * 34 + 5] >= 250 && v->data[28 * 34 + 28] >= 250); /* on the diagonals */
-    CHECK_EQ(v->data[17 * 34 + 17], 0); CHECK_EQ(v->data[6 * 34 + 17], 0); CHECK_EQ(v->data[17 * 34 + 6], 0);
+    /* four arcs, ) ( above and ) ( below: solid in their corners, clear gaps on both axes and in the middle */
+    CHECK(v->data[8 * 34 + 11] >= 250 && v->data[8 * 34 + 22] >= 250 && v->data[25 * 34 + 11] >= 250 && v->data[25 * 34 + 22] >= 250);
+    for (int i = 0; i < 34; i++) { CHECK_EQ(v->data[i * 34 + 16], 0); CHECK_EQ(v->data[i * 34 + 17], 0); CHECK_EQ(v->data[16 * 34 + i], 0); CHECK_EQ(v->data[17 * 34 + i], 0); }
+    CHECK(v->data[8 * 34 + 13] >= 250 && v->data[8 * 34 + 15] == 0);   /* it bulges toward the middle: the arc's apex is its inner edge */
+    CHECK(v->data[8 * 34 + 7] == 0);                                   /* concave side outward: hollow behind the left arc */
+    CHECK(v->data[1 * 34 + 8] > 0 && v->data[1 * 34 + 13] == 0);       /* the ends curve back out */
     CHECK_EQ(face_img_vein(1)->header.w, 24);                 /* clamped to the ladder: scale .7 of 34 is 24 px, 1.1 is 37 */
     CHECK_EQ(face_img_vein(99)->header.w, 38);
-    const lv_image_dsc_t *p = face_img_puff(18);              /* a soft disc: solid in the middle, clear at the corners */
-    CHECK_EQ(p->header.w, 18); CHECK_EQ(p->header.h, 18); CHECK_EQ(p->header.cf, LV_COLOR_FORMAT_A8);
-    CHECK(p->data[9 * 18 + 9] >= 250); CHECK_EQ(p->data[0], 0); CHECK(p->data[9 * 18 + 1] < 100);
-    CHECK_EQ(face_img_puff(1)->header.w, 14);
-    CHECK_EQ(face_img_puff(99)->header.w, 20);
+    const lv_image_dsc_t *p = face_img_puff(28);              /* a small cloud of three soft circles */
+    CHECK_EQ(p->header.w, 28); CHECK_EQ(p->header.h, 28); CHECK_EQ(p->header.cf, LV_COLOR_FORMAT_A8);
+    CHECK(p->data[13 * 28 + 14] >= 250 && p->data[17 * 28 + 8] >= 250 && p->data[17 * 28 + 21] >= 250); /* the three circles are solid inside */
+    CHECK_EQ(p->data[0], 0); CHECK_EQ(p->data[27 * 28 + 14], 0); CHECK(p->data[17 * 28 + 1] < 100);   /* clear corners, soft edge */
+    CHECK(p->data[22 * 28 + 9] > 100 && p->data[22 * 28 + 14] == 0);                                  /* a notch between the lower circles */
+    CHECK_EQ(face_img_puff(1)->header.w, 24);
+    CHECK_EQ(face_img_puff(99)->header.w, 30);
 }
 
 int main(void)
@@ -279,6 +302,7 @@ int main(void)
     test_lids();
     test_motion_and_blink();
     test_angry_dart();
+    test_angry_glint();
     test_anger_fx();
     test_fx();
     test_images();
