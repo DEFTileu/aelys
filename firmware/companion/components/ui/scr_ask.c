@@ -186,9 +186,9 @@ lv_obj_t *scr_ask_create(lv_obj_t *parent)
     a.body = ui_label(a.root, &inter_20, UI_COLOR_TEXT, 330, 6, LV_TEXT_ALIGN_CENTER);
     /* at the keys, as the design's ".bt.t" and ".bt.b" */
     a.hint = ui_label(a.root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_set_pos(a.hint, 394 - 90, 98);
+    ui_key_hint_place(a.hint, false);
     a.low = ui_label(a.root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_set_pos(a.low, 394 - 90, 346);
+    ui_key_hint_place(a.low, true);
     if (!a.tm) { /* a repeated setup (host tests) keeps the one timer */
         a.tm = lv_timer_create(tm_cb, BAR_MS, NULL);
     }
