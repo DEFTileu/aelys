@@ -102,7 +102,7 @@ lv_obj_t *scr_focus_create(lv_obj_t *parent)
     lv_label_set_text(h.hold, "Hold to stop");
     /* at the key: top key, right edge, as the design's ".bt.t" and the hold overlay */
     h.hint = ui_label(h.root, &inter_16, COLOR_FOCUS_TEXT, 90, 1, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_set_pos(h.hint, 394 - 90, 98);
+    ui_key_hint_place(h.hint, false);
     lv_label_set_text(h.eb, "");
     lv_label_set_text(h.big, "00:00");
     lv_label_set_text(h.hint, "Start");

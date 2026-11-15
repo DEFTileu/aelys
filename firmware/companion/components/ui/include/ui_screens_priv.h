@@ -32,6 +32,8 @@ scr_t ui_current_screen(void); /* for host tests */
 /* screens.c: more helpers */
 void ui_text_color(lv_obj_t *o, uint32_t color);             /* ditto for the text colour */
 void ui_set_text(lv_obj_t *label, const char *txt);         /* only touches the label when the text changed: no redraw */
+/* Align a side-key label with the physical case, not the mockup; low selects BOOT. */
+void ui_key_hint_place(lv_obj_t *label, bool low);
 void ui_fmt_hm(char out[8], int64_t epoch);                  /* local "HH:MM" ("--:--" for epoch <= 0) */
 int64_t ui_now(void);                                        /* wall-clock epoch seconds, 0 until the clock is set */
 bool ui_marked_done(const char *task_id);                    /* task.complete sent for it, answer still open or ok */

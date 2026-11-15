@@ -581,7 +581,7 @@ lv_obj_t *scr_games_create(lv_obj_t *parent)
     lv_obj_set_style_border_color(ring, lv_color_hex(COLOR_AMBER), 0);
     s.ball = shape(s.board, 2 * MZ_BALL_R, 2 * MZ_BALL_R, LV_RADIUS_CIRCLE, 0xB9A8FF);
     s.hint = ui_label(s.root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_set_pos(s.hint, 394 - 90, 98); /* at the top key, like Focus and Timer */
+    ui_key_hint_place(s.hint, false);
     s.last_ans = s.ans = GM_N_ANSWERS;
     rx_init(&s.rx);
     mz_reset(&s.mz);

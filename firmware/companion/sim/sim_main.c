@@ -208,7 +208,11 @@ static int companion_shot(const char *shot)
         sim_post(UI_EV_TOUCH, tap, 4);
         sim_post(UI_EV_TAP, tap, 4);
     }
-    else if (!strncmp(shot, "focus_", 6)) sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+    else if (!strncmp(shot, "focus_", 6)) {
+        post_ev(UI_EV_BTN, BTN_TOP); /* Focus now lives in the menu, not on a home swipe. */
+        games_swipe(UI_EV_SWIPE_LEFT, 1);
+        post_ev(UI_EV_BTN, BTN_TOP);
+    }
     else if (!strcmp(shot, "menu") || !strcmp(shot, "menu_placeholder")) {
         post_ev(UI_EV_BTN, BTN_TOP);
         if (!strcmp(shot, "menu_placeholder")) { /* turn the wheel to Ask Aelys, which has no screen yet, and open it */

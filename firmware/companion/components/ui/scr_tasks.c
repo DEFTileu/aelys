@@ -164,7 +164,7 @@ lv_obj_t *scr_tasks_create(lv_obj_t *parent)
     }
     /* at the top key, right edge, like the Focus hint */
     t.hint = ui_label(t.root, &inter_16, UI_COLOR_TASK, 90, 1, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_set_pos(t.hint, 394 - 90, 98);
+    ui_key_hint_place(t.hint, false);
     lv_label_set_text(t.hint, "Done");
     scr_tasks_set(&ui_empty_snap, 0, false);
     return t.root;

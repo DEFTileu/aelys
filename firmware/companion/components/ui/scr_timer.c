@@ -282,7 +282,7 @@ lv_obj_t *scr_timer_create(lv_obj_t *parent)
     }
     /* at the top key, right edge, like the Focus hint */
     s.hint = ui_label(s.root, &inter_16, COLOR_TIMER_TEXT, 90, 1, LV_TEXT_ALIGN_RIGHT);
-    lv_obj_set_pos(s.hint, 394 - 90, 98);
+    ui_key_hint_place(s.hint, false);
     s.pos = DEFAULT_PRESET;
     tmr_init(&s.t, preset_min[s.pos] * 60000u);
     memset(&s.sw, 0, sizeof s.sw);

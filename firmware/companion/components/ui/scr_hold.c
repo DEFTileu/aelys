@@ -88,12 +88,11 @@ lv_obj_t *scr_hold_create(lv_obj_t *parent)
     const uint8_t gap[] = { 0, 8, 8 };
     ui_stack(col, gap, 3, 0, UI_SCREEN_SIZE, -1);
 
-    /* the design points at both buttons on the right edge: top at y 98, bottom at y 344, right edge x 394 */
-    const int32_t by[2] = { 98, 344 };
+    /* Use the same physical anchors as the normal side-key hints. */
     for (int i = 0; i < 2; i++) {
         lv_obj_t *l = ui_label(h.root, &inter_16, UI_COLOR_DANGER, 60, 1, LV_TEXT_ALIGN_RIGHT);
         lv_label_set_text(l, "Hold");
-        lv_obj_set_pos(l, 394 - 60, by[i]);
+        ui_key_hint_place(l, i != 0);
     }
     h.pct = 0;
     lv_obj_set_hidden(h.root, true);
