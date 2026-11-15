@@ -415,7 +415,7 @@ static void inbox_timeout(lv_timer_t *t)
  * PWR at -45 degrees, BOOT at +40. The mockup's +/-35 degrees are not the case.
  * Keep the labels and tangent markers on the same anchors on every screen. */
 #define KEY_R 228 /* outside the home orbit dots, with the stroke still inside the 233 px panel */
-#define KEY_TICK_SIZE 24
+#define KEY_TICK_SIZE 36 /* contains the longer top marker, rounded caps and anti-aliasing */
 static int key_angle(bool low) { return low ? 40 : 315; }
 static lv_point_t key_anchor(bool low)
 {
@@ -444,7 +444,7 @@ static void key_tick_draw(lv_event_t *e)
     l.width = 4;
     l.round_start = l.round_end = true;
     int angle = key_angle(low) + 90;
-    int half_length = low ? 9 : 13; /* the upper case button is longer */
+    int half_length = low ? 13 : 20; /* lower = previous upper; upper = 1.5x, rounded to pixels */
     int dx = half_length * lv_trigo_cos(angle) / LV_TRIGO_SIN_MAX;
     int dy = half_length * lv_trigo_sin(angle) / LV_TRIGO_SIN_MAX;
     l.p1.x = a.x1 + KEY_TICK_SIZE / 2 - dx; l.p1.y = a.y1 + KEY_TICK_SIZE / 2 - dy;

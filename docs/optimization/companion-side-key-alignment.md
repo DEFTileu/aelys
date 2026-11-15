@@ -52,3 +52,10 @@ firmware/companion/sim/build -R '^(test_screens|test_screen_damage|sim_shot_smok
 --output-on-failure` passed 3/3. Inspected the updated menu render. IDF build
 and app-flash passed with hash verification. An 8-second boot check confirmed
 pairing and Wi-Fi startup, without detected startup faults.
+
+Second length adjustment requested by the owner: lower half-length 13 px
+(the previous upper length), upper half-length 20 px (13 x 1.5, rounded).
+The paint bounds were enlarged to 36 px so the longer stroke and rounded caps
+are not clipped. Anchors remain unchanged. The same three simulator checks
+passed 3/3, and the updated menu render was inspected. IDF build and app-flash
+passed with written-data hash verification.
