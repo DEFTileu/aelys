@@ -460,6 +460,9 @@ static void swipe_at(uint8_t type, int x, int y) /* as the board posts it: with 
 }
 
 static void btn(ui_btn_t b) { uint8_t v = (uint8_t)b; sim_post(UI_EV_BTN, &v, 1); }
+/* Focus is reached from the menu only: Menu, turn to Focus (item 1), open; and back home with the wheel on its first item again. */
+static void open_focus(void) { btn(BTN_TOP); while (scr_menu_selected() != 1) { swipe(UI_EV_SWIPE_LEFT); sim_step(300); } btn(BTN_TOP); }
+static void close_focus(void) { btn(BTN_LOW); swipe(UI_EV_SWIPE_RIGHT); sim_step(300); btn(BTN_LOW); }
 static void link_state(uint8_t st) { sim_post(UI_EV_LINK, &st, 1); }
 
 static struct { int n; act_kind_t kind; char id[40]; bool accept; } sink;
@@ -1098,7 +1101,7 @@ static void focus_snap(uint8_t status, const char *mode, int elapsed)
 static void test_focus_shots(void)
 {
     lv_obj_t *scr = lv_screen_active();
-    swipe(UI_EV_SWIPE_LEFT);
+    open_focus();
     CHECK_EQ(ui_current_screen(), SCR_FOCUS);
     check_inside("focus (none)");
     CHECK(shows_text(scr, "Focus \xC2\xB7 25 min session") && shows_text(scr, "Start"));
@@ -1165,7 +1168,7 @@ static void test_focus_shots(void)
     CHECK(shows_text(scr, "62:08"));
     check_inside("focus (stopwatch)");
 
-    btn(BTN_LOW);
+    close_focus();
     CHECK_EQ(ui_current_screen(), SCR_HOME);
     fresh_fx();
 }
@@ -1173,12 +1176,12 @@ static void test_focus_shots(void)
 /* Hidden countdowns must do no label/layout work; opening one uses the latest snapshot and elapsed time. */
 static void test_hidden_focus_refreshes_on_entry(void)
 {
-    swipe(UI_EV_SWIPE_LEFT);
+    open_focus();
     focus_snap(FOCUS_ACTIVE, "pomodoro", 545);
     lv_obj_t *digits = find_label(lv_screen_active(), "15:55");
     CHECK(digits != NULL);
     if (!digits) return;
-    swipe(UI_EV_SWIPE_RIGHT);
+    close_focus();
     CHECK_EQ(ui_current_screen(), SCR_HOME);
     sim_step(5000);
     CHECK(!strcmp(lv_label_get_text(digits), "15:55"));
@@ -1186,20 +1189,20 @@ static void test_hidden_focus_refreshes_on_entry(void)
     focus_snap(FOCUS_ACTIVE, "pomodoro", 60);
     sim_step(3000);
     CHECK(!strcmp(lv_label_get_text(digits), "15:55"));
-    swipe(UI_EV_SWIPE_LEFT);
+    open_focus();
     sim_step(20);
     CHECK(shows_text(lv_screen_active(), "23:57"));
     CHECK(shows_text(lv_screen_active(), "Pause"));
     sim_step(1000);
     CHECK(shows_text(lv_screen_active(), "23:56"));
-    swipe(UI_EV_SWIPE_RIGHT);
+    close_focus();
     focus_snap(FOCUS_PAUSED, "pomodoro", 1072);
-    swipe(UI_EV_SWIPE_LEFT);
+    open_focus();
     sink.n = 0;
     btn(BTN_TOP); /* actions must use the just-opened view, rather than its old active state */
     CHECK_EQ(sink.n, 1);
     CHECK_EQ(sink.kind, ACT_FOCUS_RESUME);
-    swipe(UI_EV_SWIPE_RIGHT);
+    close_focus();
     fresh_fx();
 }
 
@@ -1260,13 +1263,13 @@ static void test_failed_read_clears_only_that_notice(void)
 static void test_done_ring_is_closed(void)
 {
     const uint16_t *fb = sim_fb();
-    swipe(UI_EV_SWIPE_LEFT);
+    open_focus();
     focus_snap(FOCUS_ACTIVE, "pomodoro", 1500);
     sim_step(1100);
     CHECK(shows_text(lv_screen_active(), "Session done"));
     for (int x = 229; x <= 237; x++) CHECK(((fb[14 * SIM_W + x] >> 11) & 31) > 20); /* coral across the top */
     fresh_fx();
-    swipe(UI_EV_SWIPE_RIGHT);
+    close_focus();
     CHECK_EQ(ui_current_screen(), SCR_HOME);
 }
 
@@ -1387,8 +1390,7 @@ static void test_menu_wheel(void)
     sim_step(300);
     tap_at(233, 233);                                /* the centre opens the selected item: Focus */
     CHECK_EQ(ui_current_screen(), SCR_FOCUS);
-    btn(BTN_LOW);
-    btn(BTN_TOP);
+    btn(BTN_LOW);                                    /* back to the menu, like every item */
     CHECK_EQ(ui_current_screen(), SCR_MENU);
     tap_at(40, 233);                                 /* between two icons: nothing */
     CHECK_EQ(ui_current_screen(), SCR_MENU);
@@ -3074,12 +3076,12 @@ static void test_probe_never_sends_actions(void)
     sim_post(UI_EV_RELEASE, &still_down, 1); /* movement cancels a hold, but is not a physical lift */
     CHECK(!ui_probe_swipe());
     post(UI_EV_RELEASE);
-    swipe(UI_EV_SWIPE_LEFT);
+    open_focus();
     focus_snap(FOCUS_PAUSED, "pomodoro", 1072);
     CHECK(!ui_probe_swipe());
     sim_step(900);
     CHECK_EQ(sink.n, 0); /* a refused probe never arms hold-to-stop */
-    swipe(UI_EV_SWIPE_RIGHT);
+    close_focus();
     post(UI_EV_COMBO_FIRE);
     CHECK(!ui_probe_swipe());
     post(UI_EV_TOUCH);

@@ -10,9 +10,10 @@ typedef struct {
     bool primed, face_down;
     int32_t px, py, pz;          /* the previous sample */
     uint32_t jolt_ms[4];         /* the last four jolts, newest first */
-    uint32_t low_since, still_since, down_since, up_since, quiet_until;
+    uint32_t low_since, still_since, down_since, up_since, quiet_until, fall_until;
     bool low, down_pending, up_pending;
 } motion_t;
 
-/* One sample; returns the gesture it completes, or MOTION_NONE. A shake, fall or lift is followed by a 2 s pause. */
+/* One sample; returns the gesture it completes, or MOTION_NONE. A shake, fall or lift is followed by a 2 s pause;
+ * a fall is reported at most once every 10 s. */
 motion_event_t motion_update(motion_t *m, int32_t ax, int32_t ay, int32_t az, uint32_t now_ms);

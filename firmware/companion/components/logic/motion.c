@@ -5,8 +5,9 @@
 #define JOLT (G / 2)          /* a change of half a g between two samples 20 ms apart */
 #define SHAKE_JOLTS 4
 #define SHAKE_MS 1000
-#define FALL_G2 ((int64_t)(G * 35 / 100) * (G * 35 / 100)) /* below 0.35 g: free fall */
-#define FALL_MS 80
+#define FALL_G2 ((int64_t)(G * 20 / 100) * (G * 20 / 100)) /* below 0.2 g: free fall, not a quick put-down */
+#define FALL_MS 150           /* a drop of about 10 cm or more */
+#define FALL_AGAIN_MS 10000   /* one fright, not one per bounce */
 #define STILL (G / 25)        /* under 0.04 g between samples is "lying still" */
 #define LIFT (G / 7)          /* then 0.14 g of movement is a pick-up */
 #define LIFT_STILL_MS 10000
@@ -23,7 +24,7 @@ motion_event_t motion_update(motion_t *m, int32_t ax, int32_t ay, int32_t az, ui
     if (!m->primed) {
         m->primed = true;
         m->px = ax; m->py = ay; m->pz = az;
-        m->still_since = m->quiet_until = now;
+        m->still_since = m->quiet_until = m->fall_until = now;
         return MOTION_NONE;
     }
     int32_t d = abs(ax - m->px) + abs(ay - m->py) + abs(az - m->pz);
@@ -60,7 +61,11 @@ motion_event_t motion_update(motion_t *m, int32_t ax, int32_t ay, int32_t az, ui
     if (before(now, m->quiet_until)) return MOTION_NONE;
 
     motion_event_t e = MOTION_NONE;
-    if (m->low && (uint32_t)(now - m->low_since) >= FALL_MS) e = MOTION_FALL;
+    bool shaking = m->jolt_ms[1] && (uint32_t)(now - m->jolt_ms[1]) <= SHAKE_MS; /* one jolt is the release of a drop, two are a shake */
+    if (m->low && (uint32_t)(now - m->low_since) >= FALL_MS && !shaking && !before(now, m->fall_until)) {
+        e = MOTION_FALL;
+        m->fall_until = now + FALL_AGAIN_MS;
+    }
     else if (m->jolt_ms[SHAKE_JOLTS - 1] && (uint32_t)(now - m->jolt_ms[SHAKE_JOLTS - 1]) <= SHAKE_MS) e = MOTION_SHAKE;
     else if (d >= LIFT && still_for >= LIFT_STILL_MS) e = MOTION_LIFT;
     if (e != MOTION_NONE) {

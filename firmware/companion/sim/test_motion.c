@@ -38,11 +38,26 @@ int main(void)
     CHECK_EQ(feed(&b, G, 0, G, 1), MOTION_NONE);
     CHECK_EQ(feed(&b, 0, 0, G, 60), MOTION_NONE);
 
-    /* free fall: near zero g for 80 ms */
+    /* free fall: near zero g for 150 ms */
     motion_t f = {0};
     feed(&f, 0, 0, G, 5);
-    CHECK_EQ(feed(&f, 0, 0, 1000, 2), MOTION_NONE);                  /* 40 ms is too short */
-    CHECK_EQ(feed(&f, 0, 0, 1000, 4), MOTION_FALL);
+    CHECK_EQ(feed(&f, 0, 0, 1000, 7), MOTION_NONE);                  /* 120 ms is a quick put-down, not a drop */
+    CHECK_EQ(feed(&f, 0, 0, 1000, 2), MOTION_FALL);
+    CHECK_EQ(feed(&f, 0, 0, G, 150), MOTION_NONE);                   /* caught; 3 s later it falls again: */
+    CHECK_EQ(feed(&f, 0, 0, 1000, 20), MOTION_NONE);                 /* no second fright within 10 s */
+    feed(&f, 0, 0, G, 400);
+    CHECK_EQ(feed(&f, 0, 0, 1000, 9), MOTION_FALL);                  /* and again once they are over */
+
+    /* lowered briskly: 0.3 g for a while is not a fall */
+    motion_t p = {0};
+    feed(&p, 0, 0, G, 5);
+    CHECK_EQ(feed(&p, 0, 0, G * 3 / 10, 20), MOTION_NONE);
+
+    /* the light moments of a shake are not a fall */
+    motion_t sl = {0};
+    feed(&sl, 0, 0, G, 5);
+    feed(&sl, G, 0, G, 1); feed(&sl, -G, 0, G, 1);                   /* two jolts */
+    CHECK(feed(&sl, 0, 0, 1000, 9) != MOTION_FALL);
 
     /* lift: lying still 10 s, then it moves */
     motion_t l = {0};
