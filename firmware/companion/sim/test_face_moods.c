@@ -96,9 +96,10 @@ static void test_shapes(void)
     CHECK(dark(93, 70) && lit(93, 90));
     gone(f);
 
-    f = show(MOOD_ANNOYED, 100, 0, 0, 100);                        /* inner ends lower */
-    CHECK(dark(93, 75) && lit(93, 90));
-    CHECK(dark(120, 85) && lit(66, 78));
+    f = show(MOOD_ANNOYED, 100, 0, 0, 100);                        /* big red eyes, inner ends lower */
+    CHECK(dark(93, 60) && lit(93, 80) && lit(93, 130) && dark(93, 145));
+    CHECK(dark(120, 72) && lit(120, 90) && lit(66, 66));
+    { rgb_t p = at(93, 110); CHECK(p.r > p.g + 80 && p.r > p.b + 60); } /* red, not violet */
     gone(f);
 
     f = show(MOOD_SLEEPY, 100, 0, 0, 100);

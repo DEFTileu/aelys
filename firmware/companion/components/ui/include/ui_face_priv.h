@@ -35,6 +35,7 @@ typedef struct {
     uint16_t blink_ms;            /* blink period, 0 = none */
     uint8_t border;               /* ring / arc thickness, px */
     uint32_t color;               /* flat colour of arc, ring and dot; pill eyes use the gradient */
+    uint32_t grad_top, grad_bottom; /* pill gradient; 0 = the default violet #CDBFFF -> #7C58F4 */
     uint8_t n_spark, n_zz, n_heart, n_line;
     bool drop, cheeks, dots;
     uint16_t drop_ms;             /* drip period */

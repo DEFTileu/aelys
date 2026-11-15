@@ -370,8 +370,8 @@ static void apply_mood(face_t *f)
         lv_obj_set_style_border_width(eye, 0, 0);
         if (m->kind == EYE_PILL) {
             lv_obj_set_style_bg_opa(eye, LV_OPA_COVER, 0);
-            lv_obj_set_style_bg_color(eye, lv_color_hex(COLOR_GRAD_TOP), 0);
-            lv_obj_set_style_bg_grad_color(eye, lv_color_hex(COLOR_GRAD_BOTTOM), 0);
+            lv_obj_set_style_bg_color(eye, lv_color_hex(m->grad_top ? m->grad_top : COLOR_GRAD_TOP), 0);
+            lv_obj_set_style_bg_grad_color(eye, lv_color_hex(m->grad_bottom ? m->grad_bottom : COLOR_GRAD_BOTTOM), 0);
             lv_obj_set_style_bg_grad_dir(eye, LV_GRAD_DIR_VER, 0);
         } else {
             lv_obj_set_style_bg_grad_dir(eye, LV_GRAD_DIR_NONE, 0);

@@ -29,7 +29,7 @@ static void test_eyes(void)
         EYE_IS(MOOD_SLEEPY, s, x, 42, 70, 96, 35);
         EYE_IS(MOOD_SLEEPING, s, x, 76, 70, 28, 35);
         EYE_IS(MOOD_DIZZY, s, x - 3, 47, 76, 76, 38);      /* margin-left -3 */
-        EYE_IS(MOOD_ANNOYED, s, x, 54, 70, 76, 35);
+        EYE_IS(MOOD_ANNOYED, s, x - 7, 30, 84, 110, 42); /* owner: big like surprised */
         EYE_IS(MOOD_OFFLINE, s, x + 21, 66, 28, 28, 14);   /* margin-left 21 */
     }
     EYE_IS(MOOD_CURIOUS, 0, 58, 46, 70, 84, 35);
@@ -64,7 +64,7 @@ static void test_lids(void)
     NEAR(eye(MOOD_WORRIED, 1)->lid_y10, 253, 3); NEAR(eye(MOOD_WORRIED, 1)->lid_slope, 287, 3);
     NEAR(eye(MOOD_SAD, 0)->lid_y10, 231, 3);     NEAR(eye(MOOD_SAD, 0)->lid_slope, -287, 3);
     NEAR(eye(MOOD_SAD, 1)->lid_slope, 287, 3);
-    NEAR(eye(MOOD_ANNOYED, 0)->lid_y10, 273, 3); NEAR(eye(MOOD_ANNOYED, 0)->lid_slope, 325, 3);
+    NEAR(eye(MOOD_ANNOYED, 0)->lid_y10, 380, 3); NEAR(eye(MOOD_ANNOYED, 0)->lid_slope, 325, 3);
     NEAR(eye(MOOD_ANNOYED, 1)->lid_slope, -325, 3);
 }
 

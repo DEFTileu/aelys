@@ -41,8 +41,10 @@ static const face_mood_t MOODS[MOOD_COUNT] = {
                         .n_zz = 2, .zz = { { 238, 56, 30, 0 }, { 264, 28, 22, 1600 } } },
     [MOOD_DIZZY] = { .eye = { E(55, 47, 76, 76, 38, NOSTAR), E(169, 47, 76, 76, 38, NOSTAR) },
                      .kind = EYE_RING, .border = 12, .color = 0xA98CFB, .motion = MOT_WOBBLE },
-    [MOOD_ANNOYED] = { .eye = { EL(58, 54, 70, 76, 35, STD, 273, 325), EL(172, 54, 70, 76, 35, STD, 273, -325) },
-                       .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_HUFF, .blink_ms = 6000 },
+    /* owner's request (2026-11-15), not the design: angry = big red eyes (surprised size) under the slanted brows */
+    [MOOD_ANNOYED] = { .eye = { EL(51, 30, 84, 110, 42, 46, 14, 20, 380, 325), EL(165, 30, 84, 110, 42, 46, 14, 20, 380, -325) },
+                       .kind = EYE_PILL, .lid = LID_SLANT, .motion = MOT_HUFF, .blink_ms = 6000,
+                       .grad_top = 0xFF8A84, .grad_bottom = 0xE5262E },
     [MOOD_LOVE] = { .eye = { E(58, 35, 70, 100, 35, STD), E(172, 35, 70, 100, 35, STD) },
                     .kind = EYE_PILL, .lid = LID_DOME, .motion = MOT_SWAY, .cheeks = true,
                     .n_heart = 2, .heart = { { 258, 20, 24, 0 }, { 16, 34, 24, 1400 } } },
