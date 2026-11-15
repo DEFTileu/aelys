@@ -84,4 +84,45 @@ class UsageMeterTest {
         )
         assertEquals(3L, meter(e, yt)) // 3.2s total, per-interval flooring would give 2
     }
+
+    // readEvents looks back before `from`, so a RESUMED earlier than the window reaches the meter.
+    @Test
+    fun lookbackResumeBeforeWindowCountsOnlyTheWindowPart() {
+        val p = "com.google.android.youtube"
+        val from = 10_000_000L
+        val e = listOf(
+            UsageEvent(p, "A", Type.RESUMED, from - 600_000),
+            UsageEvent(p, "A", Type.PAUSED, from + 600_000),
+        )
+        assertEquals(600L, meter(e, yt, from = from, to = from + 3_600_000))
+    }
+
+    @Test
+    fun lookbackResumeTwentyHoursBeforeFromStillOpenAtToIsClippedBothEnds() {
+        val p = "com.google.android.youtube"
+        val from = 100_000_000L
+        val to = from + 1_800_000
+        val e = listOf(UsageEvent(p, "A", Type.RESUMED, from - 20 * 3_600_000L))
+        assertEquals(1800L, meter(e, yt, from = from, to = to))
+    }
+
+    @Test
+    fun emptyOrInvertedWindowIsZero() {
+        val e = listOf(ev("com.google.android.youtube", "A", Type.RESUMED, 0.0))
+        assertEquals(0L, meter(e, yt, from = 5_000, to = 5_000))
+        assertEquals(0L, meter(e, yt, from = 9_000, to = 5_000))
+    }
+
+    @Test
+    fun unsortedEventsGiveTheSameResultAsSorted() {
+        val p = "com.google.android.youtube"
+        val sorted = listOf(
+            ev(p, "A", Type.RESUMED, 0.0), ev(p, "B", Type.RESUMED, 2.0),
+            ev(p, "A", Type.PAUSED, 3.0), ev(p, "B", Type.PAUSED, 10.0),
+            ev(p, "A", Type.RESUMED, 20.0), ev(p, "A", Type.PAUSED, 25.0),
+        )
+        assertEquals(15L, meter(sorted, yt))
+        assertEquals(15L, meter(sorted.reversed(), yt))
+        assertEquals(15L, meter(listOf(sorted[3], sorted[0], sorted[5], sorted[2], sorted[4], sorted[1]), yt))
+    }
 }
