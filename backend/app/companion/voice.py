@@ -37,6 +37,7 @@ from app.companion.voice_provider import (
 )
 from app.core import db as database
 from app.core.models import AIConversation, AIMessage, AIRun, Device, User, now
+from app.integrations.telegram_models import TelegramIntegration
 from app.sync.change_log import lock_owner
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -133,7 +134,8 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
             run_ids.append(run.id)
             snapshot = await build_snapshot(db, owner_id, now())
             user = await db.get(User, owner_id)
-            timezone = owner_timezone((user.settings_json or {}).get('timezone') if user else None)
+            telegram_tz = (await db.execute(select(TelegramIntegration.timezone).where(TelegramIntegration.owner_id == owner_id))).scalar_one_or_none()
+            timezone = owner_timezone((user.settings_json or {}).get('timezone') if user else None, telegram_tz)  # as chat and the snapshot do
             messages = (ChatMessage('system', system_prompt(timezone, tools=True, channel='voice')),
                         ChatMessage('user', 'Context (untrusted data): ' + json.dumps(snapshot.model_dump(mode='json'), ensure_ascii=False), untrusted=True),
                         ChatMessage('user', transcript))

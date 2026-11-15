@@ -22,7 +22,7 @@ Inter, rendered by `lv_font_conv` into LVGL bitmap fonts with 8 bits per pixel
 | `inter_40` | Bold | 40 | ASCII 0x20-0x7E, `·` `…` `—` | big numbers |
 | `inter_clock_96` | Bold, tabular digits | 96 | `0`-`9`, `:`, space | clock digits |
 
-Text set (16/20/24/28): ASCII 0x20-0x7E, `·` `…` `—`, curly quotes `‘ ’ “ ”`, Cyrillic
+Text set (16/20/24/28): ASCII 0x20-0x7E, `·` `…` `—` `–` `−` `°`, the no-break space and hyphen, quotes `‘ ’ “ ” « »` (AI replies use them), Cyrillic
 U+0400-045F (Russian and the other Slavic letters) and the Kazakh letters
 Ғ ғ Қ қ Ң ң Ү ү Ұ ұ Һ һ Ә ә Ө ө (U+0492/3, 049A/B, 04A2/3, 04AE-04B1, 04BA/B, 04D8/9, 04E8/9).
 `inter_40` stays ASCII: it only shows numbers.
@@ -44,7 +44,7 @@ ln -sfn "$REPO/firmware/companion/components/ui/fonts" out   # so -o stays a rel
 
 C="npx --yes lv_font_conv@1.5.2 --bpp 8 --no-compress --format lvgl --lv-include lvgl.h"
 ASCII='0x20-0x7E,0xB7,0x2026,0x2014'
-TXT="$ASCII,0x2018,0x2019,0x201C,0x201D,0x400-0x45F,0x492,0x493,0x49A,0x49B,0x4A2,0x4A3,0x4AE-0x4B1,0x4BA,0x4BB,0x4D8,0x4D9,0x4E8,0x4E9"
+TXT="$ASCII,0xA0,0xAB,0xB0,0xBB,0x2011,0x2013,0x2018,0x2019,0x201C,0x201D,0x2212,0x400-0x45F,0x492,0x493,0x49A,0x49B,0x4A2,0x4A3,0x4AE-0x4B1,0x4BA,0x4BB,0x4D8,0x4D9,0x4E8,0x4E9"
 for s in 16 20; do $C --font Inter-Medium.ttf --size $s -r "$TXT" -o out/inter_$s.c; done
 for s in 24 28; do $C --font Inter-SemiBold.ttf --size $s -r "$TXT" -o out/inter_$s.c; done
 $C --font Inter-Bold.ttf --size 40 -r "$ASCII" -o out/inter_40.c

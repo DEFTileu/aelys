@@ -254,7 +254,7 @@ static int companion_shot(const char *shot)
             post_ev(UI_EV_BTN, BTN_TOP);
             ask_event(VOICE_UI_HEARD, "What's on tomorrow?");
         }
-        if (!strcmp(shot, "ask_answer")) ask_event(VOICE_UI_SPEAKING, "Tomorrow you have the standup at ten, lunch at one and the gym at seven.");
+        if (!strcmp(shot, "ask_answer")) ask_event(VOICE_UI_SPEAKING, "Завтра в 08:30–09:20 «Практика MDE 162», задач на сегодня нет. На улице −3°, снег до вечера. Что-нибудь добавить?"); /* a Russian reply with an en dash, guillemets and a degree sign */
     }
     else if (!strcmp(shot, "timer_set") || !strcmp(shot, "timer_running") || !strcmp(shot, "timer_done") || !strcmp(shot, "stopwatch")) {
         post_ev(UI_EV_BTN, BTN_TOP); /* the menu, the wheel to Timer, open it */

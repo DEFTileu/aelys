@@ -13,6 +13,7 @@
 #define BAR_MS 66   /* the bars' frame */
 #define ARC_DEG 58  /* the thinking arc: 16 % of the ring */
 #define ARC_MS 1400 /* one turn */
+#define ANSWER_AREA_H 400 /* the answer column is centred in [0, 400): bottom about 335, the low key's word starts at 346 */
 #define ARC_R (UI_SCREEN_SIZE / 2 - 16) /* the design's thin ring, 14 px in */
 
 /* the design's bars, every 12 degrees clockwise from the top; the gaps keep the two keys' marks clear where the case puts them: the top key
@@ -118,7 +119,8 @@ static void restack(void)
 {
     lv_obj_t *col[] = { a.face, a.eb, a.body };
     static const uint8_t gap[] = { 0, 12, 8 };
-    ui_stack(col, gap, 3, 0, UI_SCREEN_SIZE, -1);
+    /* a reply runs to five lines: centred higher, its last line stays above the low key's word */
+    ui_stack(col, gap, 3, 0, a.view == ASK_ANSWER ? ANSWER_AREA_H : UI_SCREEN_SIZE, -1);
 }
 
 void scr_ask_question(const char *text)
@@ -164,7 +166,7 @@ void scr_ask_set(ask_view_t v)
                      : "Hold the lower button and talk";
     ui_set_text(a.body, body);
     ui_text_color(a.body, listen ? UI_COLOR_SUBTLE : UI_COLOR_TEXT);
-    lv_obj_set_height(a.body, ui_text_height(body, &inter_20, 330, v == ASK_ANSWER ? 6 : 3));
+    lv_obj_set_height(a.body, ui_text_height(body, &inter_20, 300, v == ASK_ANSWER ? 5 : 3));
     /* the keys: from the menu the top key talks and sends; a hold of the low key talks and its release sends */
     ui_set_text(a.hint, listen ? "Send" : "Talk");
     lv_obj_set_hidden(a.hint, think);
@@ -184,7 +186,7 @@ lv_obj_t *scr_ask_create(lv_obj_t *parent)
     lv_obj_add_event_cb(a.arc, arc_draw, LV_EVENT_DRAW_MAIN, NULL);
     a.face = face_create(a.root, 62); /* the design's 0.62 */
     a.eb = ui_label(a.root, &inter_16, UI_COLOR_ACCENT, 300, 1, LV_TEXT_ALIGN_CENTER);
-    a.body = ui_label(a.root, &inter_20, UI_COLOR_TEXT, 330, 6, LV_TEXT_ALIGN_CENTER);
+    a.body = ui_label(a.root, &inter_20, UI_COLOR_TEXT, 300, 5, LV_TEXT_ALIGN_CENTER);
     /* at the keys, as the design's ".bt.t" and ".bt.b" */
     a.hint = ui_label(a.root, &inter_16, UI_COLOR_ACCENT, 90, 1, LV_TEXT_ALIGN_RIGHT);
     ui_key_hint_place(a.hint, false);

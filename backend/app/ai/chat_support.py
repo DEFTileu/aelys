@@ -112,7 +112,9 @@ def owner_timezone(*candidates: object) -> str:
     return "UTC"
 
 
-VOICE_STYLE = "Answer in 1–3 short sentences, without markdown or links, in the language of the question. Say plainly when something cannot be done by voice."
+VOICE_STYLE = ("Answer in 1–3 short sentences, without markdown or links. Answer in Russian, Kazakh or English: the one the question is in, "
+               "Russian when unsure, never another language. Say times in the owner's local time, without naming a timezone. "
+               "Say plainly when something cannot be done by voice.")
 
 
 def system_prompt(timezone: str, *, tools: bool, channel: str = "app") -> str:
