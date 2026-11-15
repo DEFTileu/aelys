@@ -11,7 +11,7 @@ from app.ai.defaults import feature_provider
 from app.core.models import AIProvider, AIProviderSecret
 from sqlalchemy.ext.asyncio import AsyncSession
 
-DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'
+DEFAULT_VOICE_ID = 'Xb7hH8MSUJpSbSDYk0k2'  # Alice, a premade voice: free accounts get 402 paid_plan_required for library voices
 _BASE = 'https://api.elevenlabs.io'
 
 
