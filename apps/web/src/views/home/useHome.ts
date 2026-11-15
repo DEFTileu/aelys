@@ -1,6 +1,7 @@
 import { ApiError } from '@aelys/shared'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { askAelys, takeCustomizeHome, useDesktopState } from '../../lib/desktopStore'
+import { FOCUS_SESSION_SECONDS } from '../../data/desktop/home'
 import { getSharedApiClient } from '../../lib/api'
 import { onChangeHint } from '../../lib/changeHints'
 import type { FocusIn, FocusOut, TaskOut } from '@aelys/shared'
@@ -102,7 +103,7 @@ export function useHome(apiStatus: ApiStatus | undefined, mobile: boolean) {
   const focus = useMemo<FocusTimer>(() => {
     const paused = focusSession?.status === 'paused'
     const elapsed = !focusSession ? 0 : paused ? focusSession.elapsed_seconds : Math.max(0, Math.floor((Date.now() - new Date(focusSession.started_at).getTime()) / 1000) - (focusSession.paused_seconds ?? 0))
-    return { elapsed, stopwatch: focusSession?.mode === 'stopwatch', running: !!focusSession && !paused, paused, live: !!focusSession, disabled: focusBusy || apiStatus !== 'ready', toggle: () => { void changeFocus() }, reset: () => { void changeFocus(true) } }
+    return { elapsed, length: focusSession?.planned_seconds ?? FOCUS_SESSION_SECONDS, stopwatch: focusSession?.mode === 'stopwatch', running: !!focusSession && !paused, paused, live: !!focusSession, disabled: focusBusy || apiStatus !== 'ready', toggle: () => { void changeFocus() }, reset: () => { void changeFocus(true) } }
   }, [focusSession, focusTick, focusBusy, apiStatus])
   // The sidebar Widgets item sets this flag and navigates here.
   useEffect(() => { if (takeCustomizeHome()) { setEditing(true); if (!mobile) setSheet(true) } }, [customizeHome])

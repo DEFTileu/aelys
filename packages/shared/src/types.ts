@@ -268,6 +268,8 @@ export interface FocusIn {
   readonly project_id?: Id | null;
   readonly started_at: IsoDateTime;
   readonly mode?: string;
+  /** Pomodoro length; null or absent means the 25 min default. */
+  readonly planned_seconds?: number | null;
 }
 export interface FocusOut {
   readonly id: Id;
@@ -285,6 +287,8 @@ export interface FocusOut {
   readonly paused_at?: IsoDateTime | null;
   /** Accumulated paused time, excluded from elapsed_seconds. */
   readonly paused_seconds?: number;
+  /** Pomodoro length; null or absent means the 25 min default. */
+  readonly planned_seconds?: number | null;
 }
 
 export interface FinanceAccountIn {

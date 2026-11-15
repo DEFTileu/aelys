@@ -48,5 +48,10 @@ beforeEach(() => { client.notesPage.mockImplementation(async () => ({ items: awa
     root = createRoot(host)
     await act(async () => root?.render(<HomeView apiStatus="ready" />))
     expect(host.querySelector('.dw-ring-time')?.textContent).toMatch(/^12:5[34]$/)
+    act(() => root?.unmount())
+    client.focusSessions.mockResolvedValue([{ ...session, planned_seconds: 50 * 60 }])  // a 50 min session started in the app
+    root = createRoot(host)
+    await act(async () => root?.render(<HomeView apiStatus="ready" />))
+    expect(host.querySelector('.dw-ring-time')?.textContent).toMatch(/^37:0[67]$/)
   })
 })
