@@ -3,7 +3,7 @@
  * Cheap primitives only, all created once in face_create(); a mood switch restyles, repositions and shows/hides.
  *  - eye: lv_obj pill with a vertical bg gradient; sleeping = a pill ring under a black cover, dizzy = lv_draw_arc,
  *    offline = flat circle.
- *  - highlight, sparkles, drops, hearts, "z": pre-rendered A8 images (img_fx.c, tools/gen_face_fx.py), recoloured
+ *  - highlight, sparkles, drops, hearts, "z", the angry face's anger mark and steam: pre-rendered A8 images (img_fx.c, tools/gen_face_fx.py), recoloured
  *    and picked by pixel size, never scaled or rotated at run time.
  *  - lids (worried, sad, annoyed, sleepy, and the sleeping cover): the CSS lid is a black box rotated 16 / 18 degrees
  *    inside the eye. On the black screen only the cut along its bottom edge shows, so the lid is a black rect plus
@@ -24,6 +24,8 @@
 #define COLOR_SPARK 0xE6DCFF
 #define COLOR_DROP 0x7FA8F5
 #define COLOR_DOT_OFF 0x4A4554
+#define COLOR_ANGER 0xFF5A5F
+#define COLOR_STEAM 0x8C869A
 #define DROOP_TRAVEL 250 /* sleepy lid: bottom edge moves 25 px (tenths) between -56 % and -30 % of 96 px */
 /* The anim timer ticks every LV_DEF_REFR_PERIOD (5 ms on the board) while the panel flushes at 60 Hz (16.67 ms, TE).
  * A fixed minimum gap would quantise to that 5 ms grid (15 ms: a state is skipped now and then; 16 ms: 20 ms, a state
@@ -35,7 +37,7 @@ typedef struct { int16_t w, h, yl, yr; } cut_t; /* lid object size, cut height a
 typedef struct {
     lv_obj_t *root;
     lv_obj_t *eye[2], *star[2], *ring[2], *lid[2], *dome[2];
-    lv_obj_t *cheek[2], *dot[3], *line[3], *spark[3], *drop, *zz[2], *heart[2];
+    lv_obj_t *cheek[2], *dot[3], *line[3], *spark[3], *drop, *zz[2], *heart[2], *vein, *steam[2];
     cut_t cut[2];
     int16_t ring_a[2];
     int16_t line_k[3], line_op[3];
@@ -291,7 +293,7 @@ static void layout_eyes(face_t *f, uint32_t t)
     }
 }
 
-/* Effects: sparkles, drops, "z", hearts, burst lines and the offline dots. They do not follow the eye group. */
+/* Effects: sparkles, drops, "z", hearts, burst lines, the anger mark, steam and the offline dots. They do not follow the eye group. */
 static void layout_fx(face_t *f, uint32_t t)
 {
     const face_mood_t *m = f->m;
@@ -321,6 +323,21 @@ static void layout_fx(face_t *f, uint32_t t)
         const face_fx_t *p = &m->heart[i];
         face_fx_state_t st = face_fx_rise(t, 2800, p->delay_ms);
         put_img(f->heart[i], face_img_heart(d(f, p->size * 100)), d(f, p->x * 100 + st.dx), d(f, p->y * 100 + st.dy), st.op);
+    }
+    if (m->vein) {
+        /* pulses about its centre: the pre-rendered mark nearest to the scaled size */
+        face_fx_state_t st = face_fx_pulse(t);
+        const lv_image_dsc_t *img = face_img_vein(d(f, m->vein_at.size * st.k / 10));
+        int32_t cx = d(f, m->vein_at.x * 100 + m->vein_at.size * 50), cy = d(f, m->vein_at.y * 100 + m->vein_at.size * 50);
+        put_img(f->vein, img, cx - img->header.w / 2, cy - img->header.h / 2, st.op);
+    }
+    for (int i = 0; i < m->n_steam; i++) {
+        /* a puff swells from 14 to 20 px as it rises from the middle of its box */
+        const face_fx_t *p = &m->steam[i];
+        face_fx_state_t st = face_fx_steam(t, p->delay_ms);
+        const lv_image_dsc_t *img = face_img_puff(d(f, 1400 + 6 * st.k));
+        int32_t cx = d(f, p->x * 100 + p->size * 50), cy = d(f, p->y * 100 + p->size * 50 + st.dy);
+        put_img(f->steam[i], img, cx - img->header.w / 2, cy - img->header.h / 2, st.op);
     }
     if (m->n_line) {
         face_fx_state_t st = face_fx_burst(t);
@@ -386,6 +403,7 @@ static void apply_mood(face_t *f)
         show(f->cheek[side], m->cheeks);
     }
     show(f->drop, false);
+    show(f->vein, false);
     for (int i = 0; i < 3; i++) {
         show(f->spark[i], false);
         show(f->line[i], false);
@@ -396,6 +414,7 @@ static void apply_mood(face_t *f)
     for (int i = 0; i < 2; i++) {
         show(f->zz[i], false);
         show(f->heart[i], false);
+        show(f->steam[i], false);
     }
     for (int i = 0; i < m->n_line; i++) {
         int32_t n = d(f, 2800), cx = d(f, m->line[i].x * 100 + 250), cy = d(f, m->line[i].y * 100 + 1100);
@@ -480,9 +499,11 @@ lv_obj_t *face_create(lv_obj_t *parent, int32_t scale_x100)
         f->spark[i] = image(root, COLOR_SPARK);
     }
     f->drop = image(root, COLOR_DROP);
+    f->vein = image(root, COLOR_ANGER);
     for (int i = 0; i < 2; i++) {
         f->zz[i] = image(root, UI_COLOR_MUTED);
         f->heart[i] = image(root, UI_COLOR_CHEEK);
+        f->steam[i] = image(root, COLOR_STEAM);
     }
 
     lv_obj_set_user_data(root, f);
