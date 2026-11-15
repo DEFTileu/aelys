@@ -16,7 +16,9 @@ typedef struct {
     snap_hour_t hours[5];            /* the next hours, at most SNAP_MAX_HOURS (5) */
 } snap_weather_t;
 typedef enum { FOCUS_NONE, FOCUS_ACTIVE, FOCUS_PAUSED } focus_status_t;
-typedef struct { char id[40]; uint8_t status; char mode[16]; int64_t started; int32_t elapsed_s; } snap_focus_t;
+/* planned_s: the pomodoro length from the app, 0 when the server sent none (the 25 min default). It sits in what was the
+ * struct's tail padding, so snap_t keeps its size and an older stored snapshot reads it as 0. */
+typedef struct { char id[40]; uint8_t status; char mode[16]; int64_t started; int32_t elapsed_s; int32_t planned_s; } snap_focus_t;
 
 #define SNAP_MAX_TASKS 5  /* tasks_today: open tasks due today or overdue (server v1.2) */
 #define SNAP_MAX_EVENTS 4 /* events_upcoming: from now to the end of tomorrow (server v1.2) */
