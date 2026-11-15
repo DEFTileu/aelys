@@ -59,3 +59,11 @@ The paint bounds were enlarged to 36 px so the longer stroke and rounded caps
 are not clipped. Anchors remain unchanged. The same three simulator checks
 passed 3/3, and the updated menu render was inspected. IDF build and app-flash
 passed with written-data hash verification.
+
+Publication integration: replayed the four local commits onto current main,
+preserving the later voice app and reply buffering changes. Main already
+correctly opened Focus screenshots through the menu, so its simulator path
+was retained. Ask Aelys labels now use the same physical-button anchors.
+The integrated simulator build and full suite passed 61/61; inspected the
+Ask Aelys render and reviewed the final diff. The integrated image was not
+flashed during this publication step.
