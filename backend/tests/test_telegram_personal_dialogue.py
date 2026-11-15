@@ -417,3 +417,37 @@ async def test_owner_memory_is_placed_before_current_question(setup, monkeypatch
     messages = [message for message in model.requests[0][0] if message.role != 'system']
     assert messages[-1].content == 'Как дела?'
     assert 'Likes tea' in messages[-2].content and messages[-2].untrusted
+
+
+async def test_memory_is_available_after_idle_conversation_rotation(setup, monkeypatch):
+    from app.ai import memory
+    from app.integrations import telegram_personal_dialogue as dialogue
+
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+    async with sessions() as db:
+        integration = await db.get(TelegramIntegration, integration_id)
+        previous = AIConversation(owner_id=integration.owner_id, title='Telegram assistant')
+        db.add(previous); await db.flush()
+        integration.personal_conversation_id = previous.id
+        db.add(AIMessage(conversation_id=previous.id, role='assistant', content='Old topic', created_at=now()-timedelta(hours=7)))
+        await db.commit()
+        previous_id = previous.id
+
+    async def facts(*args, **kwargs):
+        return [SimpleNamespace(id='fact-1', version=1, kind='preference', text='Likes tea')]
+    async def versions(*args, **kwargs):
+        return {'fact-1': 1}
+    monkeypatch.setattr(memory, 'select_relevant_facts', facts)
+    monkeypatch.setattr(memory, 'active_memory_versions', versions)
+    model = Service(); model.requests = []; model.response = SimpleNamespace(text='Ответ', tool_calls=())
+    monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: model)
+    fake.updates = [ordinary(1, 'Как дела?')]
+    await service.poll_once(integration_id, timeout=0)
+    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
+    messages = [message for message in model.requests[0][0] if message.role != 'system']
+    assert any('Likes tea' in message.content and message.untrusted for message in messages)
+    assert all('Old topic' not in message.content for message in messages)
+    assert messages[-1].content == 'Как дела?'
+    async with sessions() as db:
+        assert (await db.get(TelegramIntegration, integration_id)).personal_conversation_id != previous_id

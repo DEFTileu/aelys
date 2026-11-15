@@ -8,13 +8,13 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.ai.crypto import decrypt_secret
 from app.ai.errors import PolicyDenied
 from app.core import db as database
-from app.core.models import AIConversation, AIRun, Notification, now
+from app.core.models import AIConversation, AIMessage, AIRun, Notification, now
 from app.domains.recurrence import utc
 from sqlalchemy import exists, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -89,6 +89,19 @@ async def enqueue_owner_message(db: AsyncSession, item: TelegramIntegration,
         AIConversation.id == active.personal_conversation_id, AIConversation.owner_id == active.owner_id,
         AIConversation.deleted_at.is_(None),
     ))).scalar_one_or_none() if active.personal_conversation_id else None
+    if conversation is not None:
+        latest = await db.scalar(select(AIMessage.created_at).where(
+            AIMessage.conversation_id == conversation.id,
+        ).order_by(AIMessage.created_at.desc(), AIMessage.id.desc()).limit(1))
+        sent_at = utc(at)
+        timestamp = message.get('date')
+        if isinstance(timestamp, int) and _integer(timestamp):
+            try:
+                sent_at = datetime.fromtimestamp(timestamp, UTC)
+            except (OverflowError, OSError, ValueError):
+                pass
+        if latest is not None and sent_at - utc(latest) > timedelta(hours=6):
+            conversation = None
     if conversation is None:
         conversation = AIConversation(owner_id=active.owner_id, title='Telegram assistant')
         db.add(conversation)

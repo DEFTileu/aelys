@@ -563,3 +563,41 @@ async def test_recovery_notices_are_bounded_to_twenty_per_iteration(setup):
     assert len(setup.sent) == 25
     await notify_interrupted_personal_jobs('integration')
     assert len(setup.sent) == 25
+
+
+@pytest.mark.parametrize('age,same', [(timedelta(hours=5, minutes=59), True), (timedelta(hours=6), True), (timedelta(hours=6, minutes=1), False)])
+async def test_idle_conversation_uses_latest_message_time(setup, age, same):
+    from app.core.models import AIMessage
+    async with setup.sessions() as db:
+        integration = await db.get(TelegramIntegration, 'integration')
+        old = AIConversation(owner_id='owner', title='Telegram assistant')
+        db.add(old); await db.flush()
+        integration.personal_conversation_id = old.id
+        db.add(AIMessage(conversation_id=old.id, role='assistant', content='old', created_at=AT - age))
+        await db.commit()
+        old_id = old.id
+    new_job = await enqueue(setup, at=AT)
+    async with setup.sessions() as db:
+        job = await db.get(TelegramPersonalJob, new_job)
+        assert (job.conversation_id == old_id) is same
+        assert (await db.get(TelegramIntegration, 'integration')).personal_conversation_id == job.conversation_id
+
+
+async def test_idle_uses_telegram_message_timestamp_not_ingestion_time(setup):
+    from app.core.models import AIMessage
+    async with setup.sessions() as db:
+        integration = await db.get(TelegramIntegration, 'integration')
+        conversation = AIConversation(owner_id='owner', title='Telegram assistant')
+        db.add(conversation); await db.flush()
+        integration.personal_conversation_id = conversation.id
+        db.add(AIMessage(conversation_id=conversation.id, role='assistant', content='old', created_at=AT))
+        await db.commit()
+        old_id = conversation.id
+    async with setup.sessions() as db:
+        integration = await db.get(TelegramIntegration, 'integration')
+        message = payload(1)
+        message['message']['date'] = int((AT + timedelta(hours=5, minutes=59)).timestamp())
+        await enqueue_owner_message(db, integration, message, AT + timedelta(hours=7))
+        await db.commit()
+        job = await db.scalar(select(TelegramPersonalJob))
+        assert job.conversation_id == old_id
