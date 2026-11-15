@@ -34,7 +34,12 @@ Validation:
   the emergency hold overlay for visual inspection.
 - `git diff --check`: passed.
 
-The owner requested simulator-only validation for now. No firmware was flashed.
-Hardware installation and visual acceptance remain pending. Next step when
-the owner resumes hardware testing: flash the app partition and compare both
-markers with the actual case; adjust the approximate angles if needed.
+The owner initially requested simulator-only validation, then reconnected the
+board and requested installation. `idf.py -p /dev/cu.usbmodem101 app-flash`
+completed with written-data hash verification. A subsequent reset and 12-second
+serial check confirmed startup with pairing preserved and lost mode off; no
+panic, abort, UI-start or input-start fault was detected. Only the application
+partition was flashed.
+
+Visual acceptance on the physical case remains pending: compare both markers
+with the actual buttons and adjust the approximate angles if needed.
