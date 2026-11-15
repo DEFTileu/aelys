@@ -1,6 +1,6 @@
 # Focus guard: daily limits and a hard gate on social apps (Android)
 
-Status: draft for owner approval. Nothing is built.
+Status: approved by the owner; implemented on branch feat/focus-guard (see docs/superpowers/plans/2026-11-15-focus-guard.md). The screen is called "App limits" (route /app-limits). AI caps are counted over a rolling 24 hours of server time.
 
 ## Intent and why
 
@@ -180,6 +180,15 @@ restarted. The extra manual Usage access permission is accepted.
   today are done. With no tasks due today, only the English lesson can unlock
   (an empty list must not unlock the day). Overdue and undated tasks do not
   count. English counts when every block of today's lesson is done.
+- A grant starts from the overshoot: when today's use is already past the
+  limit plus earlier grants (install day, a lowered limit, the service was off,
+  a revoked day unlock), the grant becomes `max(earlier grant, used - limit) +
+  minutes`, capped at 24 hours, so an approved grant always opens the app for
+  exactly the approved minutes.
+- Task-farming caveat (open decision for the owner): path A can be satisfied
+  by creating a task due today and completing it at once. Every cheap rule
+  against it (created before today, a minimum age) also blocks real same-day
+  tasks, so it is left as specified.
 - The phone learns the day-unlock state by pulling it when the block screen or
   Aelys opens; no push in v1 (finishing on another device is picked up on the
   next open).
