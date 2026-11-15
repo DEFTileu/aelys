@@ -18,6 +18,20 @@ async def test_transcribe_pcm_sends_raw_pcm_multipart(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(('detected', 'calls'), [('por', 2), ('rus', 1), ('kaz', 1), ('eng', 1), (None, 1)])
+async def test_transcribe_retries_other_languages_as_russian(monkeypatch, detected, calls):
+    seen = []
+    async def handle(request):
+        body = await request.aread()
+        seen.append(b'language_code' in body and b'rus' in body)
+        return httpx.Response(200, json={'text': 'privet' if len(seen) > 1 else 'Não tenho', 'language_code': detected})
+    monkeypatch.setattr(voice, 'voice_transport', lambda: httpx.MockTransport(handle))
+    text = await voice.transcribe_pcm(SimpleNamespace(model_policy_json={}), 'secret', b'pcm')
+    assert len(seen) == calls and seen[0] is False
+    assert text == ('privet' if calls == 2 else 'Não tenho') and (calls == 1 or seen[1] is True)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(('response', 'code'), [(httpx.Response(500), 'VOICE_UNAVAILABLE'), (httpx.Response(200, content=b'bad'), 'VOICE_UNAVAILABLE'), (httpx.Response(200, json={'text': ''}), 'VOICE_EMPTY'), (httpx.Response(200, content=b'x' * 100001), 'VOICE_UNAVAILABLE')])
 async def test_transcribe_errors_generic(monkeypatch, caplog, response, code):
     monkeypatch.setattr(voice, 'voice_transport', lambda: httpx.MockTransport(lambda request: response))

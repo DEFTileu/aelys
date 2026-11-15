@@ -32,12 +32,19 @@ async def voice_provider(db: AsyncSession, owner_id: str) -> tuple[AIProvider, A
     return chosen[0], chosen[1]
 
 
-async def transcribe_pcm(provider: AIProvider, key: str, pcm: bytes) -> str:
+# The owner speaks Russian, Kazakh or English. On a short phrase Scribe can guess another language (Portuguese was seen) and then
+# returns gibberish in it: such a guess is transcribed again as Russian.
+VOICE_LANGUAGES = frozenset({'ru', 'rus', 'kk', 'kaz', 'en', 'eng'})
+
+
+async def _scribe(provider: AIProvider, key: str, pcm: bytes, language: str | None) -> dict:
     transport = voice_transport()
     try:
+        fields = {'model_id': (provider.model_policy_json or {}).get('stt_model', 'scribe_v1'), 'file_format': 'pcm_s16le_16'}
+        if language:
+            fields['language_code'] = language
         request = httpx.Request('POST', _BASE + '/v1/speech-to-text', headers={'xi-api-key': key},
-            data={'model_id': (provider.model_policy_json or {}).get('stt_model', 'scribe_v1'), 'file_format': 'pcm_s16le_16'},
-            files={'file': ('voice.pcm', pcm, 'application/octet-stream')})
+            data=fields, files={'file': ('voice.pcm', pcm, 'application/octet-stream')})
         request.read()
         async with asyncio.timeout(30):
             response = await transport.handle_async_request(request)
@@ -50,12 +57,9 @@ async def transcribe_pcm(provider: AIProvider, key: str, pcm: bytes) -> str:
                 if response.status_code != 200:
                     raise VoiceError('VOICE_UNAVAILABLE')
                 data = json.loads(body)
-                text = data.get('text') if isinstance(data, dict) else None
-                if not isinstance(text, str):
+                if not isinstance(data, dict) or not isinstance(data.get('text'), str):
                     raise VoiceError('VOICE_UNAVAILABLE')
-                if not text.strip():
-                    raise VoiceError('VOICE_EMPTY')
-                return text.strip()
+                return data
             finally:
                 await response.aclose()
     except VoiceError:
@@ -64,6 +68,17 @@ async def transcribe_pcm(provider: AIProvider, key: str, pcm: bytes) -> str:
         raise VoiceError('VOICE_UNAVAILABLE') from None
     finally:
         await transport.aclose()
+
+
+async def transcribe_pcm(provider: AIProvider, key: str, pcm: bytes) -> str:
+    data = await _scribe(provider, key, pcm, None)
+    detected = data.get('language_code')
+    if isinstance(detected, str) and detected.lower() not in VOICE_LANGUAGES:
+        data = await _scribe(provider, key, pcm, 'rus')
+    text = data['text'].strip()
+    if not text:
+        raise VoiceError('VOICE_EMPTY')
+    return text
 
 
 async def speak_pcm(provider: AIProvider, key: str, text: str) -> AsyncIterator[bytes]:
