@@ -12401,6 +12401,19 @@
             ],
             "title": "Mode",
             "default": "pomodoro"
+          },
+          "planned_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 86400.0,
+                "minimum": 60.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Seconds"
           }
         },
         "type": "object",
@@ -12447,6 +12460,19 @@
             ],
             "title": "Mode",
             "default": "pomodoro"
+          },
+          "planned_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 86400.0,
+                "minimum": 60.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Seconds"
           },
           "id": {
             "type": "string",
@@ -15738,6 +15764,17 @@
           "elapsed_seconds": {
             "type": "integer",
             "title": "Elapsed Seconds"
+          },
+          "planned_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Seconds"
           }
         },
         "type": "object",

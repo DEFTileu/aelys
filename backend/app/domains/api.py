@@ -290,6 +290,7 @@ class FocusIn(BaseModel):
     project_id: str | None = None
     started_at: datetime
     mode: Literal["pomodoro", "stopwatch", "custom"] = "pomodoro"
+    planned_seconds: int | None = Field(default=None, ge=60, le=86400)  # pomodoro length; null means the 25 min default
 
     @field_validator("started_at")
     @classmethod
@@ -848,7 +849,7 @@ async def finance_summary(principal=Depends(current_principal), db:AsyncSession=
 @router.post("/focus/sessions", response_model=FocusOut)
 async def start_focus(body:FocusIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db), idempotency_key: str | None = Header(default=None, max_length=150)):
     user,_=principal; await owned_ref(Project, body.project_id, user.id, db); await owned_ref(Task, body.task_id, user.id, db)
-    item = await focus_service.start_focus(db, user.id, started_at=body.started_at, mode=body.mode, task_id=body.task_id, project_id=body.project_id, idempotency_key=idempotency_key)
+    item = await focus_service.start_focus(db, user.id, started_at=body.started_at, mode=body.mode, task_id=body.task_id, project_id=body.project_id, idempotency_key=idempotency_key, planned_seconds=body.planned_seconds)
     await db.commit(); await db.refresh(item); return item
 @router.get("/focus/sessions", response_model=list[FocusOut])
 async def focus_sessions(principal=Depends(current_principal),db:AsyncSession=Depends(get_db)):

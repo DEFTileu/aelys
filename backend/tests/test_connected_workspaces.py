@@ -126,9 +126,10 @@ async def test_calendar_round_trip_preserves_instant_and_rejects_stale_edits(cli
 @pytest.mark.asyncio
 async def test_focus_session_round_trip_persists_elapsed_time(client):
     started = "2026-10-29T09:00:00Z"
-    body = {"started_at": started, "mode": "pomodoro"}
+    assert (await client.post("/api/v1/focus/sessions", json={"started_at": started, "planned_seconds": 30})).status_code == 422
+    body = {"started_at": started, "mode": "pomodoro", "planned_seconds": 3000}
     session = (await client.post("/api/v1/focus/sessions", json=body, headers={"Idempotency-Key": "focus-start-1"})).json()
-    assert session["status"] == "active"
+    assert session["status"] == "active" and session["planned_seconds"] == 3000
     assert session["started_at"].endswith("Z")
     listed = (await client.get("/api/v1/focus/sessions")).json()
     assert listed[0]["elapsed_seconds"] >= 0

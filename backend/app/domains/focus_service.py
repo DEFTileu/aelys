@@ -30,16 +30,16 @@ async def active_focus(db: AsyncSession, owner_id: str) -> FocusSession | None:
 
 
 async def start_focus(db: AsyncSession, owner_id: str, *, started_at: datetime, mode: str, task_id: str | None,
-                      idempotency_key: str | None, project_id: str | None = None) -> FocusSession:
+                      idempotency_key: str | None, project_id: str | None = None, planned_seconds: int | None = None) -> FocusSession:
     item_id = str(uuid5(NAMESPACE_URL, f"aelys:focus:{owner_id}:{idempotency_key}")) if idempotency_key else str(uuid4())
     existing = await db.get(FocusSession, item_id)
     if existing:
-        if existing.task_id != task_id or existing.project_id != project_id or existing.mode != mode or utc(existing.started_at) != started_at:
+        if existing.task_id != task_id or existing.project_id != project_id or existing.mode != mode or existing.planned_seconds != planned_seconds or utc(existing.started_at) != started_at:
             raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Focus start key is bound to another request"})
         return existing
     if await active_focus(db, owner_id):
         raise HTTPException(409, detail={"code": "TIMER_ACTIVE", "message": "Only one active focus session is allowed"})
-    item = FocusSession(id=item_id, owner_id=owner_id, started_at=started_at, mode=mode, task_id=task_id, project_id=project_id)
+    item = FocusSession(id=item_id, owner_id=owner_id, started_at=started_at, mode=mode, task_id=task_id, project_id=project_id, planned_seconds=planned_seconds)
     db.add(item)
     try:
         await db.flush()  # the partial unique index rejects a racing second active session here

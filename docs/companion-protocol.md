@@ -184,7 +184,9 @@ Snapshot schema (`CompanionSnapshot`):
 - `SnapTask`: `id` str, `title` str, `due_at` datetime.
 - `SnapEvent`: `id` str, `title` str, `starts_at` datetime, `ends_at` datetime or null, `all_day` bool.
 - `SnapNotice`: `id` str, `kind` str, `title` str, `created_at` datetime. No body and no data.
-- `SnapFocus`: `id` str, `status` `"active"` or `"paused"`, `mode` str, `started_at` datetime, `elapsed_seconds` int.
+- `SnapFocus`: `id` str, `status` `"active"` or `"paused"`, `mode` str, `started_at` datetime, `elapsed_seconds` int,
+  `planned_seconds` int or null (2026-11-15: the pomodoro length chosen in the app, 60 to 86400; null means the 25 min
+  default, and a board-started session always has null).
 
 ### `action_result`
 `error_code` is present only when `ok` is false. Action failures are reported

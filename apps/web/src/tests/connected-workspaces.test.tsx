@@ -152,7 +152,7 @@ describe('connected workspaces', () => {
     client.resumeFocusSession.mockImplementation(async () => { client.focusSessions.mockResolvedValue([{ ...active, version: 3 }]); return active })
     client.stopFocusSession.mockImplementation(async () => { const stopped = { ...active, status: 'completed', elapsed_seconds: 31 }; client.focusSessions.mockResolvedValue([stopped]); return stopped })
     await render(<TimerView apiStatus="ready" />); await click('Start')
-    expect(client.startFocusSession).toHaveBeenCalledWith(expect.objectContaining({ mode: 'pomodoro' }), expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
+    expect(client.startFocusSession).toHaveBeenCalledWith(expect.objectContaining({ mode: 'pomodoro', planned_seconds: 1500 }), expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
     expect(host.textContent).toMatch(/24:(29|30)/); expect(host.textContent).toContain('1 session')
     await click('Pause')
     expect(client.pauseFocusSession).toHaveBeenCalledWith('s1', 1)
@@ -162,6 +162,12 @@ describe('connected workspaces', () => {
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Reset"]')!.click())
     expect(client.stopFocusSession).toHaveBeenCalledWith('s1', expect.objectContaining({ query: { version: 3 }, queueOnOffline: false }))
     expect(host.textContent).toContain('completed'); expect(host.textContent).toContain('Ready')
+  })
+  it('counts a running session down from its own length, not the preset picked here', async () => {
+    const active = { id: 's1', version: 1, started_at: new Date(Date.now() - 30_000).toISOString(), mode: 'pomodoro', status: 'active', elapsed_seconds: 30, planned_seconds: 50 * 60 }
+    client.focusSessions.mockResolvedValue([active]); client.tasks.mockResolvedValue([]); client.projects.mockResolvedValue([])
+    await render(<TimerView apiStatus="ready" />)
+    expect(host.textContent).toMatch(/49:(29|30)/)
   })
   it('reloads the real session after a VERSION_CONFLICT on pause', async () => {
     const active = { id: 's1', version: 1, started_at: new Date(Date.now() - 30_000).toISOString(), mode: 'pomodoro', status: 'active', elapsed_seconds: 30 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FocusIn, FocusOut, ProjectResponse, TaskOut } from '@aelys/shared'
 import { ApiError, OfflineWriteUnavailableError } from '@aelys/shared'
 import { Pause, Play, Square } from '../../icons'
+import { FOCUS_SESSION_SECONDS } from '../../data/desktop/home'
 import { getSharedApiClient } from '../../lib/api'
 import { onChangeHint } from '../../lib/changeHints'
 import type { ApiStatus } from '../../types'
@@ -61,9 +62,11 @@ export function useTimer(apiStatus: ApiStatus) {
   const breakLeft = breakStart === null ? preset * 60 : Math.max(0, preset * 60 - Math.floor((now - breakStart) / 1000))
   const breakRunning = breakStart !== null && breakLeft > 0
   const running = !!active || breakRunning
-  const left = shown === 'break' ? breakLeft : Math.max(0, preset * 60 - elapsed)
-  const time = shown === 'stopwatch' ? elapsed : shown === 'break' ? breakLeft : active ? left : preset * 60
-  const filled = shown === 'stopwatch' ? (elapsed % 3600) / 36 : running || breakStart !== null ? 100 - (time / (preset * 60)) * 100 : 0
+  // A running session keeps the length it was started with (a board start has none: 25 min), not the preset picked here.
+  const length = active ? active.planned_seconds ?? FOCUS_SESSION_SECONDS : preset * 60
+  const left = shown === 'break' ? breakLeft : Math.max(0, length - elapsed)
+  const time = shown === 'stopwatch' ? elapsed : shown === 'break' ? breakLeft : active ? left : length
+  const filled = shown === 'stopwatch' ? (elapsed % 3600) / 36 : running || breakStart !== null ? 100 - (time / length) * 100 : 0
   const locked = running || !!pendingStart.current
 
   const pickMode = (next: Mode) => { setMode(next); setPreset(PRESETS[next][0] ?? 0); setBreakStart(null) }
@@ -73,7 +76,7 @@ export function useTimer(apiStatus: ApiStatus) {
     setBusy(true); setNotice('')
     try {
       const task = tasks.find((item) => item.id === taskId)
-      pendingStart.current ??= { key: crypto.randomUUID(), body: { started_at: new Date().toISOString(), task_id: taskId || null, project_id: task?.project_id ?? null, mode: API_MODE[mode as 'focus' | 'stopwatch'] } }
+      pendingStart.current ??= { key: crypto.randomUUID(), body: { started_at: new Date().toISOString(), task_id: taskId || null, project_id: task?.project_id ?? null, mode: API_MODE[mode as 'focus' | 'stopwatch'], planned_seconds: mode === 'focus' ? preset * 60 : null } }
       await getSharedApiClient().startFocusSession(pendingStart.current.body, { queueOnOffline: false, idempotencyKey: pendingStart.current.key })
       pendingStart.current = null
       await load()

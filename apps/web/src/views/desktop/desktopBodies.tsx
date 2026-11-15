@@ -3,7 +3,7 @@ import { useState, type CSSProperties, type FormEvent, type ReactNode } from 're
 import { CloudDrizzle, CloudUpload } from 'lucide-react'
 import { Calendar, Check, ChevronDown, Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, FileText, Folder, MapPin, Mail, Moon, Pause, Play, Plus, Sun, Zap, Square, type AelysIconComponent } from '../../icons'
 import type { ActivityEvent, FocusOut, MailMessage, NoteOut, ProjectResponse, TaskOut } from '@aelys/shared'
-import { ACCENT, FOCUS_SESSION_SECONDS, accentOf, type AccentKey } from '../../data/desktop/home'
+import { ACCENT, accentOf, type AccentKey } from '../../data/desktop/home'
 import { ageLabel, dayLabel } from '../../lib/format'
 import { formatMoney, sumDecimals } from '../../lib/money'
 import { navigate } from '../../lib/router'
@@ -103,8 +103,8 @@ function CalendarBody({ id, size, mobile, data }: BodyProps) {
 const clock = (seconds: number) => `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`
 function FocusBody({ size, focus, data }: BodyProps) {
   // Like the board and the Timer page: a pomodoro counts down and its ring melts away, a stopwatch counts up.
-  const shown = focus.stopwatch ? focus.elapsed : Math.max(0, FOCUS_SESSION_SECONDS - focus.elapsed)
-  const pct = focus.live ? Math.min(100, Math.round((shown / FOCUS_SESSION_SECONDS) * 100)) : 0
+  const shown = focus.stopwatch ? focus.elapsed : Math.max(0, focus.length - focus.elapsed)
+  const pct = focus.live ? Math.min(100, Math.round((shown / focus.length) * 100)) : 0
   const verb = focus.running ? 'Pause' : focus.paused ? 'Resume' : 'Start'
   const ring = <div className="dw-ring" style={{ background: `conic-gradient(from 0deg,#F9C29A,#F06A58 ${pct}%,var(--dw-ring-track) ${pct}%)` }}><div className="dw-ring-inner"><div className="dw-ring-time">{clock(shown)}</div><div className="dw-ring-sub">{focus.paused ? 'Paused' : 'Deep work'}</div></div></div>
   const controls = <div className="dw-ctrls">
