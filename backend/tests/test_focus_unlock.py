@@ -107,6 +107,22 @@ async def test_no_provider_denies(focus):
         assert (await db.execute(select(FocusUnlockRequest))).scalars().one().ai_run_id is None
 
 
+
+async def test_budget_exhausted_denies_without_calling_the_model(focus, monkeypatch):
+    client, factory, headers, judge = focus
+    await _provider(client, headers)
+
+    async def no_budget(*args, **kwargs):
+        return Decimal(0)
+
+    monkeypatch.setattr(ai_api, "_remaining_monthly_budget", no_budget)
+    body = (await _ask(client, headers)).json()
+    assert body["granted"] is False and body["minutes"] == 0 and not judge.calls
+    assert "not available" in body["message"]
+    async with factory() as db:
+        row = (await db.execute(select(FocusUnlockRequest))).scalars().one()
+        assert row.granted is False and row.ai_run_id is None
+
 @pytest.mark.parametrize("failure", ["error", "timeout"])
 async def test_provider_error_or_timeout_denies(focus, monkeypatch, failure):
     client, _, headers, judge = focus
