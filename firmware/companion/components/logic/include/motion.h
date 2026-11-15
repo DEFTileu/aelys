@@ -9,9 +9,9 @@ typedef enum { MOTION_NONE, MOTION_SHAKE, MOTION_FALL, MOTION_LIFT, MOTION_FACE_
 typedef struct {
     bool primed, face_down;
     int32_t px, py, pz;          /* the previous sample */
-    uint32_t jolt_ms[4];         /* the last four jolts, newest first */
+    uint32_t jolt_ms[4];         /* the last four g-force peaks, newest first */
     uint32_t low_since, still_since, down_since, up_since, quiet_until, fall_until;
-    bool low, down_pending, up_pending;
+    bool low, high, down_pending, up_pending;
 } motion_t;
 
 /* One sample; returns the gesture it completes, or MOTION_NONE. A shake, fall or lift is followed by a 2 s pause;

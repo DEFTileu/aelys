@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #define G 16384
-#define JOLT (G / 2)          /* a change of half a g between two samples 20 ms apart */
+#define PEAK_G2 ((int64_t)(G * 3 / 2) * (G * 3 / 2)) /* over 1.5 g: the end of a swing; sliding or turning the board stays near 1 g */
 #define SHAKE_JOLTS 4
 #define SHAKE_MS 1000
 #define FALL_G2 ((int64_t)(G * 20 / 100) * (G * 20 / 100)) /* below 0.2 g: free fall, not a quick put-down */
@@ -54,14 +54,16 @@ motion_event_t motion_update(motion_t *m, int32_t ax, int32_t ay, int32_t az, ui
     int64_t g2 = (int64_t)ax * ax + (int64_t)ay * ay + (int64_t)az * az;
     if (g2 >= FALL_G2) m->low = false;
     else if (!m->low) { m->low = true; m->low_since = now; }
-    if (d >= JOLT) {
+    bool high = g2 > PEAK_G2;
+    if (high && !m->high) { /* one jolt per peak, however many samples it lasts */
         for (int i = SHAKE_JOLTS - 1; i > 0; i--) m->jolt_ms[i] = m->jolt_ms[i - 1];
         m->jolt_ms[0] = now | 1; /* 0 means "no jolt" */
     }
+    m->high = high;
     if (before(now, m->quiet_until)) return MOTION_NONE;
 
     motion_event_t e = MOTION_NONE;
-    bool shaking = m->jolt_ms[1] && (uint32_t)(now - m->jolt_ms[1]) <= SHAKE_MS; /* one jolt is the release of a drop, two are a shake */
+    bool shaking = m->jolt_ms[1] && (uint32_t)(now - m->jolt_ms[1]) <= SHAKE_MS; /* two peaks in a second: shaking, and its light moments are not a fall */
     if (m->low && (uint32_t)(now - m->low_since) >= FALL_MS && !shaking && !before(now, m->fall_until)) {
         e = MOTION_FALL;
         m->fall_until = now + FALL_AGAIN_MS;

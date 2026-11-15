@@ -11,6 +11,12 @@ static motion_event_t feed(motion_t *m, int32_t x, int32_t y, int32_t z, int n) 
     for (int i = 0; i < n; i++) { motion_event_t e = motion_update(m, x, y, z, t += 20); if (e) last = e; }
     return last;
 }
+static motion_event_t swing(motion_t *m, int i) /* one end of a shake: a 1.8 g peak, then back through 1 g */
+{
+    motion_event_t e = feed(m, (i & 1) ? G * 3 / 2 : -G * 3 / 2, 0, G, 1);
+    motion_event_t e2 = feed(m, 0, 0, G, 1);
+    return e ? e : e2;
+}
 
 int main(void)
 {
@@ -23,13 +29,13 @@ int main(void)
     motion_t s = {0};
     feed(&s, 0, 0, G, 5);
     motion_event_t e = MOTION_NONE;
-    for (int i = 0; i < 6 && !e; i++) e = feed(&s, (i & 1) ? G : -G, 0, G, 1);
+    for (int i = 0; i < 6 && !e; i++) e = swing(&s, i);
     CHECK_EQ(e, MOTION_SHAKE);
     CHECK_EQ(feed(&s, 0, 0, G, 10), MOTION_NONE);                    /* calm again, and a pause after it */
-    for (int i = 0; i < 6; i++) e = feed(&s, (i & 1) ? G : -G, 0, G, 1);
+    for (int i = 0; i < 6; i++) e = swing(&s, i);
     CHECK_EQ(e, MOTION_NONE);                                        /* still inside the 2 s pause */
     feed(&s, 0, 0, G, 100);
-    for (int i = 0; i < 6 && !(e = feed(&s, (i & 1) ? G : -G, 0, G, 1)); i++) {}
+    for (int i = 0; i < 6 && !(e = swing(&s, i)); i++) {}
     CHECK_EQ(e, MOTION_SHAKE);                                       /* and again once the pause is over */
 
     /* one bump is not a shake */
@@ -37,6 +43,20 @@ int main(void)
     feed(&b, 0, 0, G, 5);
     CHECK_EQ(feed(&b, G, 0, G, 1), MOTION_NONE);
     CHECK_EQ(feed(&b, 0, 0, G, 60), MOTION_NONE);
+
+    /* moved about by hand: turned and slid, jerky but never past 1.5 g, is not a shake */
+    motion_t h = {0};
+    feed(&h, 0, 0, G, 5);
+    e = MOTION_NONE;
+    for (int i = 0; i < 50 && !e; i++)
+        e = feed(&h, (i & 1) ? G * 7 / 10 : -G * 7 / 10, (i % 3) * G / 4, G - G / 10, 1); /* 0.7 g swings sideways: up to 1.3 g */
+    CHECK_EQ(e, MOTION_NONE);
+
+    /* a bump and a put-down: two peaks are not a shake */
+    motion_t b2 = {0};
+    feed(&b2, 0, 0, G, 5);
+    swing(&b2, 0); swing(&b2, 1);
+    CHECK_EQ(feed(&b2, 0, 0, G, 60), MOTION_NONE);
 
     /* free fall: near zero g for 150 ms */
     motion_t f = {0};
@@ -56,7 +76,7 @@ int main(void)
     /* the light moments of a shake are not a fall */
     motion_t sl = {0};
     feed(&sl, 0, 0, G, 5);
-    feed(&sl, G, 0, G, 1); feed(&sl, -G, 0, G, 1);                   /* two jolts */
+    swing(&sl, 0); swing(&sl, 1);                                    /* two peaks */
     CHECK(feed(&sl, 0, 0, 1000, 9) != MOTION_FALL);
 
     /* lift: lying still 10 s, then it moves */
@@ -82,7 +102,7 @@ int main(void)
     motion_t w = {0};
     t = UINT32_MAX - 200;
     feed(&w, 0, 0, G, 5);
-    for (int i = 0; i < 6 && !(e = feed(&w, (i & 1) ? G : -G, 0, G, 1)); i++) {}
+    for (int i = 0; i < 6 && !(e = swing(&w, i)); i++) {}
     CHECK_EQ(e, MOTION_SHAKE);
     return g_failed ? 1 : 0;
 }
