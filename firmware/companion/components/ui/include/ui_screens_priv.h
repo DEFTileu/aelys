@@ -149,7 +149,7 @@ bool ui_paired(void);                                      /* screens.c: the boa
 /* scr_games.c (design "Игры"): the hub (Ask Aelys, Coin, Dice, Reaction, Tilt Maze) and the games; one screen, the state lives here */
 lv_obj_t *scr_games_create(lv_obj_t *parent);
 void scr_games_visible(bool on);                           /* shown / hidden: everything that runs stops, and it opens on the hub */
-void scr_games_swipe(int dir);                             /* hub: dir > 0 (swipe left) next game, < 0 previous; in a game nothing */
+void scr_games_swipe(int dir);                             /* hub: dir > 0 (swipe left) next game, < 0 previous; the maze before the ball moves: the open levels; else nothing */
 void scr_games_top(void);                                  /* the top key: open the selected game / play */
 void scr_games_tap(void);                                  /* a tap: the same */
 bool scr_games_back(void);                                 /* the low key: true if it only went from a game back to the hub */

@@ -528,6 +528,30 @@ static void test_settings_roundtrip_and_bounds(void)
     CHECK(out.brightness == 35 && out.rev == 7);         /* untouched by every failure */
 }
 
+static void test_games_roundtrip_and_bounds(void)
+{
+    game_rec_t in = { .rx_best_ms = 187, .mz_level = 2, .mz_open = 4, .mz_best_ms = { 9100, 15200, 21000, 0, 0 } }, out = { 0 };
+    uint8_t buf[STORE_GAMES_BLOB];
+    size_t n = store_encode_games(&in, buf, sizeof buf);
+    CHECK_EQ(n, STORE_GAMES_BLOB);
+    CHECK_EQ(buf[0], STORE_GAMES_VERSION);
+    CHECK(store_decode_games(buf, n, &out));
+    CHECK(out.rx_best_ms == 187 && out.mz_level == 2 && out.mz_open == 4 && !memcmp(in.mz_best_ms, out.mz_best_ms, sizeof in.mz_best_ms));
+    CHECK_EQ(store_encode_games(&in, buf, n - 1), 0);    /* too small */
+    game_rec_t bad = in;
+    bad.mz_open = 0; store_encode_games(&bad, buf, sizeof buf);
+    CHECK(!store_decode_games(buf, n, &out));            /* no level open */
+    bad.mz_open = MZ_LEVELS + 1; store_encode_games(&bad, buf, sizeof buf);
+    CHECK(!store_decode_games(buf, n, &out));            /* more levels than there are */
+    bad = in; bad.mz_level = 4; store_encode_games(&bad, buf, sizeof buf);
+    CHECK(!store_decode_games(buf, n, &out));            /* a level that is not open */
+    store_encode_games(&in, buf, sizeof buf);
+    buf[3] ^= 1;
+    CHECK(!store_decode_games(buf, n, &out));            /* corrupt */
+    CHECK(out.mz_open == 4 && out.rx_best_ms == 187);    /* a failed decode leaves *out alone */
+    CHECK(!store_decode_games(buf, n - 1, &out));
+}
+
 static void test_ui_prefs_roundtrip_and_bounds(void)
 {
     ui_prefs_t in = { .level_on = true }, out = { 0 }; uint8_t buf[STORE_UI_BLOB];
@@ -584,5 +608,6 @@ int main(void)
     test_snap_overlong_and_bad_counts_are_made_safe();
     test_settings_roundtrip_and_bounds();
     test_ui_prefs_roundtrip_and_bounds();
+    test_games_roundtrip_and_bounds();
     return g_failed ? 1 : 0;
 }

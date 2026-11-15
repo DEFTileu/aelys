@@ -1,5 +1,5 @@
 #pragma once
-/* NVS adapter for the settings blobs (namespace "aelys", keys "owner", "wifi", "lost", "pair", "settings", "ui", "snap"). The blob
+/* NVS adapter for the settings blobs (namespace "aelys", keys "owner", "wifi", "lost", "pair", "settings", "ui", "games", "snap"). The blob
  * format and its CRC live in components/logic/store_codec. Load never fails: empty or corrupt
  * NVS yields the factory defaults. */
 #include <stdbool.h>
@@ -20,6 +20,8 @@ void store_load_settings(settings_t *s);         /* else settings_defaults() */
 esp_err_t store_save_settings(const settings_t *s);
 void store_load_ui(ui_prefs_t *p);                 /* else everything off */
 esp_err_t store_save_ui(const ui_prefs_t *p);
+void store_load_games(game_rec_t *g);            /* else nothing played: level 1 open, no best times */
+esp_err_t store_save_games(const game_rec_t *g);
 bool store_load_pair(pair_rec_t *p);             /* false if absent or corrupt; *p untouched */
 esp_err_t store_save_pair(const pair_rec_t *p);
 esp_err_t store_erase_pair(void);                /* ESP_OK also when there was no pairing */
@@ -30,6 +32,6 @@ bool store_load_snap(snap_t *s, const uint8_t owner[STORE_SNAP_OWNER_LEN]);     
 esp_err_t store_save_snap(const snap_t *s, const uint8_t owner[STORE_SNAP_OWNER_LEN]);
 esp_err_t store_erase_snap(void);                /* ESP_OK also when there was none */
 
-/* Unpair command: erases the Wi-Fi list, owner, lost, settings, ui and snap blobs (the pairing goes through identity_wipe). The only
+/* Unpair command: erases the Wi-Fi list, owner, lost, settings, ui, games and snap blobs (the pairing goes through identity_wipe). The only
  * place that erases the Wi-Fi list. Tries every key; returns the first error, ESP_OK also when there was nothing. */
 esp_err_t store_erase_device_data(void);

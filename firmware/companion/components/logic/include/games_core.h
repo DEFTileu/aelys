@@ -27,26 +27,39 @@ typedef struct {
     uint32_t go_at;    /* WAIT: the tick at which the screen turns */
     uint32_t shown_at; /* GO: the tick at which it did */
     uint32_t ms;       /* DONE: this reaction */
-    uint32_t best_ms;  /* the best of the session, 0 = none yet */
+    uint32_t best_ms;  /* the best so far (kept across reboots by the UI), 0 = none yet */
 } rx_t;
 void rx_init(rx_t *x);
 uint32_t rx_wait_left(const rx_t *x, uint32_t now);        /* WAIT: ms until the screen turns; GO: until too slow; else 0 */
 bool rx_poll(rx_t *x, uint32_t now);                       /* WAIT -> GO, GO -> SLOW once due; true exactly on a change */
 void rx_tap(rx_t *x, uint32_t now, uint32_t r);            /* WAIT: too soon; GO: the time (or too slow); anything else starts a new wait */
 
-/* Tilt maze on a 260 x 260 board (design "Лабиринт наклоном"): the ball rolls with the tilt, walls stop it, the goal is in the far corner. */
+/* Tilt maze on a 260 x 260 board (design "Лабиринт наклоном"): the ball rolls with the tilt, walls stop it, the goal is in the far corner.
+ * Five levels on a grid of 52 px cells, each a longer way home; winning one opens the next. */
 #define MZ_SIZE 260
 #define MZ_BALL_R 12
 #define MZ_G_COUNTS 16384 /* one g in accelerometer counts (+-2 g, 16 bit) */
+#define MZ_LEVELS 5
+#define MZ_MAX_WALLS 11
 typedef struct { int16_t x, y, w, h; } mz_wall_t;
-#define MZ_N_WALLS 7
-const mz_wall_t *mz_wall(unsigned i);
+unsigned mz_n_walls(unsigned level);                       /* level < MZ_LEVELS */
+const mz_wall_t *mz_wall(unsigned level, unsigned i);      /* i < mz_n_walls(level) */
 typedef struct {
     float x, y, vx, vy;  /* ball centre and speed, board px and px/s */
     uint32_t elapsed_ms; /* from the first movement */
     bool started, won;
-    uint32_t best_ms;    /* 0 = none yet */
+    uint8_t level;       /* 0-based, < open */
+    uint8_t open;        /* levels open to play, 1..MZ_LEVELS */
+    uint32_t best_ms[MZ_LEVELS]; /* 0 = none yet */
 } mz_t;
-void mz_reset(mz_t *m);                                    /* ball back at the start, the best time kept */
-/* gx, gy: gravity along the screen axes (x right, y down) in counts. */
+void mz_reset(mz_t *m);                                    /* ball back at the start of the same level; level, open levels and best times kept */
+bool mz_set_level(mz_t *m, unsigned level);                /* an open level: reset there and true; otherwise nothing and false */
+/* gx, gy: gravity along the screen axes (x right, y down) in counts. A win keeps the best time of the level and opens the next one. */
 void mz_step(mz_t *m, int32_t gx, int32_t gy, uint32_t dt_ms);
+
+/* What the board remembers of the games across reboots (NVS key "games", store_codec). */
+typedef struct {
+    uint32_t rx_best_ms;
+    uint8_t mz_level, mz_open;
+    uint32_t mz_best_ms[MZ_LEVELS];
+} game_rec_t;

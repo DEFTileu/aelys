@@ -123,6 +123,22 @@ esp_err_t store_save_ui(const ui_prefs_t *p)
     return n ? write_blob("ui", b, n) : ESP_ERR_INVALID_SIZE;
 }
 
+void store_load_games(game_rec_t *g)
+{
+    uint8_t b[STORE_GAMES_BLOB];
+    size_t n = read_blob("games", b, sizeof b);
+    if (n && store_decode_games(b, n, g)) return;
+    if (n) ESP_LOGW(TAG, "games blob corrupt, starting over");
+    *g = (game_rec_t){ .mz_open = 1 };
+}
+
+esp_err_t store_save_games(const game_rec_t *g)
+{
+    uint8_t b[STORE_GAMES_BLOB];
+    size_t n = store_encode_games(g, b, sizeof b);
+    return n ? write_blob("games", b, n) : ESP_ERR_INVALID_SIZE;
+}
+
 bool store_load_pair(pair_rec_t *p)
 {
     uint8_t b[STORE_PAIR_BLOB];
@@ -182,7 +198,7 @@ esp_err_t store_erase_snap(void) { return erase_key("snap"); }
 esp_err_t store_erase_device_data(void)
 {
     esp_err_t first = ESP_OK;
-    static const char *const keys[] = {"wifi", "owner", "lost", "settings", "ui", "snap"};
+    static const char *const keys[] = {"wifi", "owner", "lost", "settings", "ui", "games", "snap"};
     for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
         esp_err_t e = erase_key(keys[i]);
         if (e != ESP_OK) ESP_LOGE(TAG, "erase %s: %s", keys[i], esp_err_to_name(e));

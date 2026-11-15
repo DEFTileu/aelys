@@ -135,6 +135,27 @@ bool store_decode_ui(const uint8_t *buf, size_t len, ui_prefs_t *out)
     return true;
 }
 
+size_t store_encode_games(const game_rec_t *in, uint8_t *buf, size_t cap)
+{
+    uint8_t p[STORE_GAMES_PAYLOAD];
+    memcpy(p, &in->rx_best_ms, 4);
+    p[4] = in->mz_level;
+    p[5] = in->mz_open;
+    memcpy(p + 6, in->mz_best_ms, 4 * MZ_LEVELS);
+    return seal(STORE_GAMES_VERSION, p, sizeof p, buf, cap);
+}
+
+bool store_decode_games(const uint8_t *buf, size_t len, game_rec_t *out)
+{
+    const uint8_t *p = unseal(STORE_GAMES_VERSION, buf, len, STORE_GAMES_PAYLOAD);
+    if (!p || p[5] < 1 || p[5] > MZ_LEVELS || p[4] >= p[5]) return false;
+    memcpy(&out->rx_best_ms, p, 4);
+    out->mz_level = p[4];
+    out->mz_open = p[5];
+    memcpy(out->mz_best_ms, p + 6, 4 * MZ_LEVELS);
+    return true;
+}
+
 size_t store_encode_pair(const pair_rec_t *in, uint8_t *buf, size_t cap)
 {
     return seal(STORE_PAIR_VERSION, in, sizeof *in, buf, cap);
