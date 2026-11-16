@@ -64,6 +64,9 @@ Exit: each user scenario passes acceptance tests, offline behavior explicit.
 
 Tasks:
 1. Provider connectivity health/probe.
+   Owner-requested AI chat voice slice (2026-11-16): ElevenLabs microphone
+   transcription and read-aloud across clients; [task notes](optimization/ai-chat-voice.md).
+   Physical-device microphone/playback acceptance remains separate.
 2. Run orchestration and limits (steps, time, tokens/cost).
 3. Read and create_task tools via domain services.
    Owner-requested companion voice extension (2026-11-15): restricted

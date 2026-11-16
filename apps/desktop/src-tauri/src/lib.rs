@@ -1,6 +1,7 @@
 use aelys_runtime::adapter::{AdapterKind, AgentAdapter, ProcessCommandProbe, VendorAdapter};
 use serde::Serialize;
 mod companion_serial;
+mod media_permission;
 mod native;
 mod session_reader;
 
@@ -54,6 +55,7 @@ pub fn run() {
             // Built here, not from config, so a download handler can be attached. Only blob: URLs
             // (the in-app saved photo/sticker) may download; everything else is refused.
             tauri::WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?
+                .on_permission_request(|_, kind| media_permission::permission_response(kind))
                 .on_download(|_, event| match event {
                     tauri::webview::DownloadEvent::Requested { url, .. } => url.scheme() == "blob",
                     _ => true,
