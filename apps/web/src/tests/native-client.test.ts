@@ -253,6 +253,17 @@ describe('native shared-client bridge', () => {
     form.append('audio', new File([new Uint8Array([1, 2, 3, 250])], 'a.webm', { type: 'audio/webm' }))
     await fetchNative(url, { method: 'POST', body: form })
     expect(invoke).toHaveBeenLastCalledWith('native_operation', { origin: 'http://127.0.0.1:8000', operation: op(btoa('\x01\x02\x03\xfa'), 'audio/webm') })
+    const voiceUrl = 'http://127.0.0.1:8000/api/v1/ai/voice/transcribe'
+    await fetchNative(voiceUrl, { method: 'POST', body: blob })
+    expect(invoke).toHaveBeenLastCalledWith('native_operation', {
+      origin: 'http://127.0.0.1:8000',
+      operation: { type: 'api', method: 'POST', path: '/api/v1/ai/voice/transcribe', upload: { content_type: 'audio/webm;codecs=opus', data: btoa('\x01\x02\x03\xfa') } },
+    })
+    await fetchNative('http://127.0.0.1:8000/api/v1/ai/voice/speak', { method: 'POST', body: JSON.stringify({ text: 'Hello' }) })
+    expect(invoke).toHaveBeenLastCalledWith('native_operation', {
+      origin: 'http://127.0.0.1:8000',
+      operation: { type: 'api', method: 'POST', path: '/api/v1/ai/voice/speak', body: { text: 'Hello' } },
+    })
     const calls = vi.mocked(invoke).mock.calls.length
     const big = await fetchNative(url, { method: 'POST', body: new Blob([new Uint8Array(10 * 1024 * 1024 + 1)], { type: 'audio/wav' }) })
     expect(big.status).toBe(413)

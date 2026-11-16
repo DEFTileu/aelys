@@ -935,7 +935,7 @@ pub enum Operation {
         body: Option<Value>,
         #[serde(default)]
         idempotency_key: Option<String>,
-        /// Raw audio body (base64) for `UPLOAD_PATH` only; sent instead of a JSON body.
+        /// Raw audio body (base64) for transcription routes only; sent instead of a JSON body.
         #[serde(default)]
         upload: Option<ApiUpload>,
     },
@@ -1164,6 +1164,8 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "english/mocks"),
     ("GET", "english/mocks"),
     ("POST", "english/speech/transcribe"),
+    ("POST", "ai/voice/transcribe"),
+    ("POST", "ai/voice/speak"),
     ("GET", "english/today"),
     ("POST", "english/today/words"),
     ("POST", "english/words/*/review"),
@@ -1283,6 +1285,8 @@ const SLOW_API: &[(&str, &str)] = &[
     ("POST", "english/lessons/*/sentences"),
     ("POST", "english/lessons/*/speaking"),
     ("POST", "english/speech/transcribe"),
+    ("POST", "ai/voice/transcribe"),
+    ("POST", "ai/voice/speak"),
     ("POST", "english/reports"),
     ("POST", "focus/unlock-request"),
 ];
@@ -1330,8 +1334,11 @@ const BINARY_TYPES: &[&str] = &[
     "audio/webm",
 ];
 const MAX_BINARY: usize = 20 * 1024 * 1024;
-/// The one route that takes a raw audio body (speech practice) and its caps.
-const UPLOAD_PATH: &str = "/api/v1/english/speech/transcribe";
+/// Routes accepting transient raw audio bodies, with shared MIME and size caps.
+const UPLOAD_PATHS: &[&str] = &[
+    "/api/v1/english/speech/transcribe",
+    "/api/v1/ai/voice/transcribe",
+];
 const UPLOAD_TYPES: &[&str] = &[
     "audio/webm",
     "audio/mp4",
@@ -1340,7 +1347,7 @@ const UPLOAD_TYPES: &[&str] = &[
     "audio/mpeg",
 ];
 const MAX_UPLOAD: usize = 10 * 1024 * 1024;
-/// Validates and decodes an `Api` upload: POST to `UPLOAD_PATH` only, no JSON body, an
+/// Validates and decodes an `Api` upload: POST to a transcription route only, no JSON body, an
 /// allowed audio type (codec parameters dropped) and at most `MAX_UPLOAD` decoded bytes.
 fn decode_upload(operation: &Operation) -> Result<Option<(String, Vec<u8>)>, String> {
     use base64::{engine::general_purpose::STANDARD, Engine};
@@ -1362,7 +1369,7 @@ fn decode_upload(operation: &Operation) -> Result<Option<(String, Vec<u8>)>, Str
         .trim()
         .to_ascii_lowercase();
     if method != "POST"
-        || path != UPLOAD_PATH
+        || !UPLOAD_PATHS.contains(&path.as_str())
         || body.is_some()
         || !UPLOAD_TYPES.contains(&content_type.as_str())
         || upload.data.len() > MAX_UPLOAD.div_ceil(3) * 4
@@ -5227,6 +5234,10 @@ mod tests {
         assert!(ok("POST", "/api/v1/english/today/words"));
         assert!(ok("POST", "/api/v1/english/words/abc123/review"));
         assert!(ok("POST", "/api/v1/english/reports"));
+        assert!(ok("POST", "/api/v1/ai/voice/transcribe"));
+        assert!(ok("POST", "/api/v1/ai/voice/speak"));
+        assert!(!ok("GET", "/api/v1/ai/voice/transcribe"));
+        assert!(!ok("GET", "/api/v1/ai/voice/speak"));
         assert!(ok("POST", "/api/v1/english/lessons/abc123/grammar"));
         assert!(ok("POST", "/api/v1/english/lessons/abc123/reading"));
         assert!(ok("GET", "/api/v1/english/reports"));
@@ -5240,6 +5251,8 @@ mod tests {
             ("POST", "/api/v1/english/lessons/abc123/sentences"),
             ("POST", "/api/v1/english/lessons/abc123/speaking"),
             ("POST", "/api/v1/english/speech/transcribe"),
+            ("POST", "/api/v1/ai/voice/transcribe"),
+            ("POST", "/api/v1/ai/voice/speak"),
             ("POST", "/api/v1/english/reports"),
         ] {
             assert!(slow(m, p) && api_allowed(m, p), "{m} {p}");
@@ -5325,6 +5338,8 @@ mod tests {
         assert!(ok("POST", "/api/v1/english/mocks"));
         assert!(ok("GET", "/api/v1/english/mocks"));
         assert!(ok("POST", "/api/v1/english/speech/transcribe"));
+        assert!(ok("POST", "/api/v1/ai/voice/transcribe"));
+        assert!(ok("POST", "/api/v1/ai/voice/speak"));
         assert!(!ok("GET", "/api/v1/english/speech/transcribe"));
         assert!(!ok("POST", "/api/v1/english/lessons/a/blocks/done"));
         assert!(!ok("POST", "/api/v1/english/lessons/a/b/blocks/c/done"));
@@ -5340,7 +5355,7 @@ mod tests {
         let data = STANDARD.encode(b"RIFFaudio");
         let (ct, bytes) = decode_upload(&op(
             "POST",
-            UPLOAD_PATH,
+            "/api/v1/english/speech/transcribe",
             "Audio/WebM;codecs=opus",
             data.clone(),
             Value::Null,
@@ -5351,24 +5366,37 @@ mod tests {
             (ct.as_str(), bytes.as_slice()),
             ("audio/webm", &b"RIFFaudio"[..])
         );
+        let (voice_ct, voice_bytes) = decode_upload(&op(
+            "POST",
+            "/api/v1/ai/voice/transcribe",
+            "Audio/WebM;codecs=opus",
+            data.clone(),
+            Value::Null,
+        ))
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            (voice_ct.as_str(), voice_bytes.as_slice()),
+            ("audio/webm", &b"RIFFaudio"[..])
+        );
         let bad = |o: Operation| assert_eq!(decode_upload(&o).unwrap_err(), "VALIDATION_ERROR");
         bad(op(
             "POST",
-            UPLOAD_PATH,
+            "/api/v1/english/speech/transcribe",
             "image/png",
             data.clone(),
             Value::Null,
         ));
         bad(op(
             "POST",
-            UPLOAD_PATH,
+            "/api/v1/english/speech/transcribe",
             "audio/flac",
             data.clone(),
             Value::Null,
         ));
         bad(op(
             "PUT",
-            UPLOAD_PATH,
+            "/api/v1/english/speech/transcribe",
             "audio/wav",
             data.clone(),
             Value::Null,
@@ -5382,29 +5410,100 @@ mod tests {
         ));
         bad(op(
             "POST",
-            UPLOAD_PATH,
+            "/api/v1/ai/voice/speak",
+            "audio/wav",
+            data.clone(),
+            Value::Null,
+        ));
+        bad(op(
+            "POST",
+            "/api/v1/english/speech/transcribe",
             "audio/wav",
             data.clone(),
             json!({}),
         ));
         bad(op(
             "POST",
-            UPLOAD_PATH,
+            "/api/v1/english/speech/transcribe",
             "audio/wav",
             "%%%".into(),
             Value::Null,
         ));
         bad(op(
             "POST",
-            UPLOAD_PATH,
+            "/api/v1/english/speech/transcribe",
             "audio/wav",
             String::new(),
             Value::Null,
         ));
         let max = STANDARD.encode(vec![0u8; MAX_UPLOAD]);
-        assert!(decode_upload(&op("POST", UPLOAD_PATH, "audio/wav", max, Value::Null)).is_ok());
+        assert!(decode_upload(&op(
+            "POST",
+            "/api/v1/english/speech/transcribe",
+            "audio/wav",
+            max,
+            Value::Null
+        ))
+        .is_ok());
+        let voice_max = STANDARD.encode(vec![0u8; MAX_UPLOAD]);
+        assert!(decode_upload(&op(
+            "POST",
+            "/api/v1/ai/voice/transcribe",
+            "audio/wav",
+            voice_max,
+            Value::Null
+        ))
+        .is_ok());
         let over = STANDARD.encode(vec![0u8; MAX_UPLOAD + 1]);
-        bad(op("POST", UPLOAD_PATH, "audio/wav", over, Value::Null));
+        bad(op(
+            "POST",
+            "/api/v1/english/speech/transcribe",
+            "audio/wav",
+            over,
+            Value::Null,
+        ));
+    }
+
+    #[tokio::test]
+    async fn ai_voice_speak_json_response_accepts_large_base64_with_existing_cap() {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let audio_base64 = STANDARD.encode(vec![0u8; 4_200_000]);
+        assert_eq!(audio_base64.len(), 5_600_000);
+        let payload = json!({ "audio": audio_base64 }).to_string();
+        let response_len = payload.len();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                payload.len()
+            )
+            .unwrap();
+            stream.write_all(payload.as_bytes()).unwrap();
+        });
+
+        let value = request_api(
+            &client().unwrap(),
+            Method::POST,
+            &url,
+            None,
+            None,
+            None,
+            "test-token",
+        )
+        .await
+        .unwrap();
+        server.join().unwrap();
+
+        assert_eq!(value["audio"].as_str().unwrap().len(), 5_600_000);
+        assert!(response_len < MAX_JSON);
     }
     #[test]
     fn reauth_signs_the_purpose_message_for_the_own_device_challenge() {

@@ -1065,6 +1065,8 @@ export interface EnglishListeningResult {
 }
 export interface EnglishSpeakingIn { readonly round: 4 | 3 | 2; readonly transcript: string; readonly duration_sec: number; readonly pause_count?: number }
 export interface EnglishTranscription { readonly text: string; readonly duration_sec: number | null }
+export interface AIVoiceTranscription { readonly text: string }
+export interface AIVoiceSpeech { readonly audio: string; readonly content_type: string }
 export interface EnglishMockIn {
   readonly day: string;
   readonly listening?: string | null; readonly reading?: string | null; readonly writing?: string | null; readonly speaking?: string | null;
