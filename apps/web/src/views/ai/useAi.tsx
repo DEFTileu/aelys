@@ -11,6 +11,7 @@ import { useOwner } from '../../lib/owner'
 import { consumeSse } from '../../lib/sse'
 import type { ApiStatus } from '../../types'
 import { ActionCard } from './ChatParts'
+import { useVoice } from './useVoice'
 import { ACCEPTED_FILES, DEFAULT_SOURCES, IMAGE_FILES, MAX_FILE_BYTES, SOURCES, SOURCE_IDS, estimateTokens, formatCost, groupConversations, scopesFor, sourcesOn, toolLabel, type RunStep, type SourceId } from './chatModel'
 
 type ChatLine = Pick<AIMessage, 'id' | 'role' | 'content'> & Partial<Pick<AIMessage, 'created_at' | 'source_refs_json' | 'attachments' | 'feedback' | 'steps'>>
@@ -144,7 +145,7 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
     const question = takePendingAsk()
     // StrictMode replays effects: consuming twice must not erase the first draft.
     if (!question) return
-    setKnowledgeScope(pendingKnowledge); setConversationId(''); setLines([]); setSources([]); setMessage(question); setPick(readChoice(DEFAULT_CHOICE_KEY)); clearRun(); setDraftSources(new Set(DEFAULT_SOURCES))
+    voice.reset(); setKnowledgeScope(pendingKnowledge); setConversationId(''); setLines([]); setSources([]); setMessage(question); setPick(readChoice(DEFAULT_CHOICE_KEY)); clearRun(); setDraftSources(new Set(DEFAULT_SOURCES))
   }, [pendingAsk, pendingKnowledge])
   useEffect(() => {
     let live = true
@@ -157,6 +158,7 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
   }, [apiStatus, mergeConversations, sessionEpoch])
   useEffect(() => {
     const reset = () => {
+      voice.reset()
       controller.current?.abort(); pendingCreation.current = null; durableRun.current = null; durableConversation.current = null; runId.current = ''
       setLines([]); setPartial(''); setSources([]); setConversationId(''); setConversations([]); setMessage('')
       setRunning(false); setLoading(false); setRecovering(false); setCreationUncertain(false); setStorageReady(false); setNotice('')
@@ -203,8 +205,10 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
   }, [conversationId])
   useEffect(() => { const el = scroller.current; if (el && pinned.current) el.scrollTop = el.scrollHeight }, [lines, partial, liveSteps, running, actions, extras])
 
-  const execute = async (prompt: string, replace?: { now?: readonly string[]; after?: readonly string[] }, override?: ModelChoice, savedRun?: PendingAiRun, conversationOverride?: AIConversation) => {
+  const voice = useVoice((text, token) => { void execute(text, undefined, undefined, undefined, undefined, token) }, setNotice)
+  const execute = async (prompt: string, replace?: { now?: readonly string[]; after?: readonly string[] }, override?: ModelChoice, savedRun?: PendingAiRun, conversationOverride?: AIConversation, voiceToken?: number) => {
     const choice = override ?? active
+    if (voiceToken === undefined && voice.phase !== 'idle') return
     if (!prompt || busy.current || loading || apiStatus !== 'ready' || !choice.providerId || uploading || !storageReady || creationUncertain && !savedRun) return
     busy.current = true; setRunning(true); setNotice(''); setPartial(''); setOutcome(undefined); setLiveSteps([]); setSourcesOpen(false); runId.current = ''; pinned.current = true
     if (replace?.now?.length) setHidden((ids) => new Set([...ids, ...replace.now!]))
@@ -317,6 +321,7 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
         setActions((all) => all.map((item) => proposed.includes(item.id) ? { ...item, anchor: answer.id } : item))
       }
       setLines(items); setPartial(''); setOutcome(terminal); setLiveSteps([])
+      if (voiceToken !== undefined && terminal.status === 'done' && answer && !known.has(answer.id)) void voice.speak(answer.id, answer.content, voiceToken)
       if (replace?.after?.length) setHidden((ids) => new Set([...ids, ...replace.after!]))
       // Pull preview, order and usage the server updated; not essential, so failures stay silent.
       void Promise.resolve().then(() => client.aiConversations()).then((list) => { if (Array.isArray(list)) mergeConversations(list) }).catch(() => undefined)
@@ -415,8 +420,8 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
     } catch (error) { setNotice(describe(error, 'Could not check run status. Check again before retrying.')) }
     finally { busy.current = false; setRunning(false) }
   }
-  const newChat = () => { if (busy.current || creationUncertain || recovering) return; setLoading(false); setKnowledgeScope(undefined); setSources([]); setConversationId(''); setLines([]); setPartial(''); setNotice(''); setHistoryOpen(false); clearRun(); setDraftSources(new Set(DEFAULT_SOURCES)); setPick(readChoice(DEFAULT_CHOICE_KEY)); setTimeout(() => field.current?.focus(), 0) }
-  const openChat = (item: AIConversation) => { setConversationId(item.id); setKnowledgeScope(item.tool_scope_json?.knowledge); setSources([]); setActions([]); setHistoryOpen(false); clearRun(); setPick(readChoice(chatChoiceKey(item.id)) ?? readChoice(DEFAULT_CHOICE_KEY)) }
+  const newChat = () => { if (busy.current || creationUncertain || recovering) return; voice.reset(); setLoading(false); setKnowledgeScope(undefined); setSources([]); setConversationId(''); setLines([]); setPartial(''); setNotice(''); setHistoryOpen(false); clearRun(); setDraftSources(new Set(DEFAULT_SOURCES)); setPick(readChoice(DEFAULT_CHOICE_KEY)); setTimeout(() => field.current?.focus(), 0) }
+  const openChat = (item: AIConversation) => { voice.reset(); setConversationId(item.id); setKnowledgeScope(item.tool_scope_json?.knowledge); setSources([]); setActions([]); setHistoryOpen(false); clearRun(); setPick(readChoice(chatChoiceKey(item.id)) ?? readChoice(DEFAULT_CHOICE_KEY)) }
 
   const togglePin = async (item: AIConversation) => {
     try { replaceConversation({ ...item, pinned: !item.pinned, ...await getSharedApiClient().updateAIConversation(item.id, { pinned: !item.pinned }) }) }
@@ -476,7 +481,7 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
   const percent = usedTokens ? Math.max(1, Math.min(100, usedTokens / windowTokens * 100)) : 0
   const costLabel = shown.length ? formatCost(conversation?.usage?.estimated_cost) : ''
   const draftRows = Math.min(6, Math.max(1, (message.match(/\n/g) ?? []).length + 1, Math.ceil(message.length / (compact ? 34 : 80))))
-  const canSend = !!message.trim() && !running && !loading && !recovering && !creationUncertain && storageReady && !!providerId && apiStatus === 'ready' && !uploading
+  const canSend = voice.phase === 'idle' && !!message.trim() && !running && !loading && !recovering && !creationUncertain && storageReady && !!providerId && apiStatus === 'ready' && !uploading
   const live = running
   const card = (item: ChatAction) => <ActionCard key={item.id} action={item} busy={actionBusy === item.id} onApprove={() => void decide(item.id, 'approve')} onReject={() => void decide(item.id, 'reject')} onAdjust={() => { setMessage((text) => text || `Change “${item.title}”: `); field.current?.focus() }} />
   const actionCards = (anchor: string) => actions.filter((item) => item.anchor === anchor).map(card)
@@ -484,7 +489,7 @@ export function useAi(apiStatus: ApiStatus, compact: boolean) {
   const answerIds = new Set(shown.flatMap((line) => line.role === 'assistant' ? [line.id] : []))
   const unanchored = actions.filter((item) => item.anchor !== LIVE && !answerIds.has(item.anchor ?? ''))
   const ask = (prompt: string) => void execute(prompt)
-  return { root, historyOpen, setHistoryOpen, search, setSearch, running, recovering, checkRun, creationUncertain, retryCreation, forgetRecovery, storageReady, newChat, groups, conversationId, loading, openChat, togglePin, selectedTitle, allProviders, active, applyChoice, isDefault, toggleDefault, scroller, pinned, shown, extras, feedback, lastAssistant, actionCards, unanchored, card, providerId, regenerate, rate, dividers, partial, live, liveSteps, actions, outcome, lastUser, execute, fastest, owner, providers, sharing, ask, sources, knowledgeScope, setKnowledgeScope, setConversationId, setLines, setSources, notice, submit, files, removeFile, pasteFiles, focused, setFocused, field, message, setMessage, draftRows, canSend, cancel, picker, attach, sourcesOpen, setSourcesOpen, toggleSource, costLabel, usedTokens, windowTokens, percent, activeProvider }
+  return { voice, root, historyOpen, setHistoryOpen, search, setSearch, running, recovering, checkRun, creationUncertain, retryCreation, forgetRecovery, storageReady, newChat, groups, conversationId, loading, openChat, togglePin, selectedTitle, allProviders, active, applyChoice, isDefault, toggleDefault, scroller, pinned, shown, extras, feedback, lastAssistant, actionCards, unanchored, card, providerId, regenerate, rate, dividers, partial, live, liveSteps, actions, outcome, lastUser, execute, fastest, owner, providers, sharing, ask, sources, knowledgeScope, setKnowledgeScope, setConversationId, setLines, setSources, notice, submit, files, removeFile, pasteFiles, focused, setFocused, field, message, setMessage, draftRows, canSend, cancel, picker, attach, sourcesOpen, setSourcesOpen, toggleSource, costLabel, usedTokens, windowTokens, percent, activeProvider }
 }
 
 export function SourceList({ sources }: { sources: readonly KnowledgeSource[] }) {
