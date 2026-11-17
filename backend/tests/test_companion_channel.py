@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 import uuid
 from contextlib import contextmanager
@@ -587,3 +588,18 @@ async def test_character_status_survives_real_socket_replacements(paired):
                     character = client.get(url, headers=bearer(owner)).json()['character']
                     assert character['current']['reason'] == 'calm'
                     assert character['recent']['reason'] == 'task_done'
+
+
+@pytest.mark.asyncio
+async def test_a_closed_channel_logs_who_closed_it_and_how(paired, caplog):
+    _, device_id, token = paired
+    caplog.set_level(logging.WARNING, logger='app.companion.channel')
+    with TestClient(app) as client:
+        with board(client, token) as socket:
+            socket.close(code=4321)  # the board goes away with a code of its own
+        with board(client, token) as first, board(client, token), pytest.raises(WebSocketDisconnect):  # the second replaces the first
+            first.receive_json()
+    closed = [r.getMessage() for r in caplog.records if 'companion channel closed' in r.getMessage()]
+    assert any('by=board code=4321' in line for line in closed)
+    assert any('by=replaced' in line for line in closed)
+    assert all(device_id[:8] in line and device_id not in line for line in closed)  # a short id, never the whole one
