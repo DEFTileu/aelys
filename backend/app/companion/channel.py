@@ -487,8 +487,8 @@ async def device_channel(websocket: WebSocket) -> None:
         opened = time.monotonic()
         done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         # Which side ended it and how: diagnosing the board's short drops (a code from the board, or the hub, the token or a send).
-        ended = [name for name, task in zip(("send", "board", "replaced", "session"), tasks, strict=True) if task in done]
-        logger.warning("companion channel closed device=%s by=%s code=%s after=%ds", device_id[:8], "+".join(ended),
+        closed_by = [name for name, task in zip(("send", "board", "replaced", "session"), tasks, strict=True) if task in done]
+        logger.warning("companion channel closed device=%s by=%s code=%s after=%ds", device_id[:8], "+".join(closed_by),
                        board_close.get("code"), round(time.monotonic() - opened))
         failed: Any = next((t.exception() for t in done if not t.cancelled() and t.exception()), None)
         if failed:
