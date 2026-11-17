@@ -93,6 +93,14 @@ class SnapWeather(_Utc):
     lo: int
     hours: list[SnapHour]  # the next hours, max 5
     updated: datetime  # when the forecast was fetched
+    feels: int | None = None  # v1.4: the apparent temperature now; the key is left out when unknown
+
+    @model_serializer(mode="wrap")
+    def _omit_unknown_feels(self, handler):
+        data = handler(self)
+        if data.get("feels") is None:
+            data.pop("feels", None)
+        return data
 
 
 class CompanionSnapshot(_Utc):

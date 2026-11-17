@@ -369,6 +369,7 @@ treat a missing key as "no weather". An older board ignores it.
 | `hi`, `lo` | int | Today's high and low, Celsius. |
 | `hours` | `{"h": int, "t": int, "c": int}[]` | Max 5 upcoming hours: `h` is the **city's local** hour 0-23, `t` Celsius, `c` WMO code. Hours already past are left out, so it can hold fewer than 5. |
 | `updated` | datetime | UTC, when the server fetched the forecast. The board shows "Updated HH:MM" when this is over 2 hours old. |
+| `feels` | int | v1.4, optional: the apparent ("feels like") temperature now, Celsius. **Absent** when unknown (a forecast cached before v1.4); an older board ignores it. |
 
 The owner picks a city in the app; the server stores its name (max 64
 characters) and coordinates **rounded to 0.1 degree (about 10 km)**, never a
@@ -379,7 +380,7 @@ Mac is off. The board never learns the city name or the coordinates. Without a
 city nothing is fetched. The weather counts towards the 3900-byte cap (about 200
 bytes).
 ```json
-{"weather": {"temp": -3, "code": 71, "hi": -1, "lo": -8, "hours": [{"h": 16, "t": -4, "c": 71}, {"h": 17, "t": -5, "c": 3}], "updated": "2026-11-13T09:30:00Z"}}
+{"weather": {"temp": -3, "code": 71, "hi": -1, "lo": -8, "hours": [{"h": 16, "t": -4, "c": 71}, {"h": 17, "t": -5, "c": 3}], "updated": "2026-11-13T09:30:00Z", "feels": -7}}
 ```
 
 Owner routes (owner devices only, like the other companion routes; a companion

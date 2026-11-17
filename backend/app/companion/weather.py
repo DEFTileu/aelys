@@ -36,7 +36,7 @@ def coarse(value: float) -> float:
 
 
 async def _get_json(lat: float, lon: float) -> dict:
-    params: dict[str, str | float | int] = {"latitude": lat, "longitude": lon, "timezone": "auto", "forecast_days": 2, "current": "temperature_2m,weather_code",
+    params: dict[str, str | float | int] = {"latitude": lat, "longitude": lon, "timezone": "auto", "forecast_days": 2, "current": "temperature_2m,apparent_temperature,weather_code",
               "hourly": "temperature_2m,weather_code", "daily": "temperature_2m_max,temperature_2m_min"}
     async with httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS) as client:
         response = await client.get(FORECAST_URL, params=params)
@@ -56,8 +56,11 @@ def parse_forecast(payload: dict, now: datetime) -> dict:
         if len(hours) == HOURS_KEPT:
             break
     current, daily = payload["current"], payload["daily"]
-    return {"t": round(current["temperature_2m"]), "c": int(current["weather_code"]), "hi": round(daily["temperature_2m_max"][0]),
-            "lo": round(daily["temperature_2m_min"][0]), "off": offset, "hours": hours}
+    cached = {"t": round(current["temperature_2m"]), "c": int(current["weather_code"]), "hi": round(daily["temperature_2m_max"][0]),
+              "lo": round(daily["temperature_2m_min"][0]), "off": offset, "hours": hours}
+    if current.get("apparent_temperature") is not None:  # optional: the board's "Feels" line, left out when Open-Meteo has none
+        cached["f"] = round(current["apparent_temperature"])
+    return cached
 
 
 async def refresh_if_due(owner_id: str, now: datetime) -> bool:
@@ -97,7 +100,8 @@ def snapshot_view(row: CompanionWeather | None, now: datetime) -> dict | None:
     offset = timedelta(seconds=forecast["off"])
     upcoming = [(datetime.fromisoformat(h["at"]), h) for h in forecast["hours"]]
     return {"temp": forecast["t"], "code": forecast["c"], "hi": forecast["hi"], "lo": forecast["lo"], "updated": fetched,
-            "hours": [{"h": (at + offset).hour, "t": h["t"], "c": h["c"]} for at, h in upcoming if at > now][:MAX_HOURS_SHOWN]}
+            "hours": [{"h": (at + offset).hour, "t": h["t"], "c": h["c"]} for at, h in upcoming if at > now][:MAX_HOURS_SHOWN],
+            "feels": forecast.get("f")}  # None for a forecast cached before v1.4
 
 
 async def refresh_loop(interval: float = 600.0) -> None:
