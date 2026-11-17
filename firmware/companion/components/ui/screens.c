@@ -538,9 +538,9 @@ static void show(scr_t s)
 #endif
     for (int i = 0; i < SCR_COUNT; i++)
         if (g.scr[i]) lv_obj_set_hidden(g.scr[i], i != (int)s);
-    if (s == SCR_WEATHER && g.cur != SCR_WEATHER) scr_weather_open(); /* each visit starts on Now */
     g.cur = s;
     scr_games_visible(s == SCR_GAMES);
+    scr_weather_visible(s == SCR_WEATHER);
 #ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
     if (sparse) {
         render();

@@ -5,8 +5,10 @@
  * server - "No weather yet / Set a city in the app". Once the forecast is over 2 hours old its hours are past: only Now, with
  * "Updated HH:MM". render() runs once a second for the visible screen; nothing redraws unless the weather, the view or the stale
  * state changed.
- * Deviations: no snow falling on the screen; the big temperature draws its own minus bar and degree ring (the clock font has
- * digits only); without "feels" from the server the line is just "H -1° L -8°". */
+ * On Now the weather moves behind the text: snow falls (the design's ten flakes), rain and drizzle streak down, a storm rains and
+ * its glyph flashes. Only small boxes round each flake or drop redraw, and only while Now is on screen.
+ * Deviations: the big temperature draws its own minus bar and degree ring (the clock font has digits only); without "feels" from
+ * the server the line is just "H -1° L -8°". */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +30,21 @@
 #define SIDE_GAP 8
 
 typedef enum { WV_NOW, WV_HOURS } wview_t;
+typedef enum { FX_NONE, FX_DRIZZLE, FX_RAIN, FX_SNOW, FX_STORM } fx_kind_t;
+
+#define FX_MS 33 /* 30 frames a second, as the face */
+#define FX_MAX 14
+#define FLASH_EVERY_MS 4500
+#define FLASH_MS 140
+/* the design's flakes: x, size, seconds to fall (tenths), phase (tenths); colour #CBC6D5 at 60 % */
+static const struct { int16_t x; uint8_t d; uint16_t fall, phase; } FLAKES[] = {
+    { 70, 6, 70, 0 }, { 130, 4, 90, 30 }, { 190, 7, 80, 50 }, { 250, 5, 100, 20 }, { 300, 6, 75, 60 },
+    { 360, 4, 90, 10 }, { 100, 5, 110, 70 }, { 330, 7, 85, 40 }, { 220, 4, 95, 80 }, { 400, 5, 80, 30 } };
+/* drops: x and phase spread over the screen; rain falls in about a second, drizzle slower and sparser */
+static const struct { int16_t x; uint16_t fall_ms, phase_ms; } DROPS[FX_MAX] = {
+    { 60, 1000, 0 }, { 95, 1150, 420 }, { 130, 950, 760 }, { 165, 1100, 210 }, { 200, 1050, 600 }, { 235, 980, 90 },
+    { 270, 1200, 830 }, { 305, 1020, 350 }, { 340, 1130, 690 }, { 375, 970, 150 }, { 410, 1080, 520 }, { 115, 1180, 900 },
+    { 250, 1010, 280 }, { 355, 1160, 640 } };
 
 static struct {
     lv_obj_t *root, *eb, *icon_box, *icon, *temp, *digits, *minus, *ring, *desc, *hl, *hours, *pill, *foot, *key, *e_title, *e_hint;
@@ -36,7 +53,12 @@ static struct {
     bool have_shown, shown_stale;
     wview_t view, shown_view;
     int sel, shown_sel, n_cols;
+    lv_obj_t *fx;
+    fx_kind_t fx_kind;
+    bool visible, flash;
+    lv_area_t fx_box[FX_MAX];
 } w;
+static lv_timer_t *fx_tm; /* outside w: a repeated setup (host tests) keeps the one timer */
 
 typedef struct { wx_icon_t icon; const char *text; } wx_t;
 
@@ -129,6 +151,114 @@ static void wet_line(const snap_weather_t *x, char *out, size_t cap)
     }
 }
 
+static fx_kind_t fx_of(uint8_t code)
+{
+    if (code >= 95) return FX_STORM;
+    if ((code >= 71 && code <= 77) || code == 85 || code == 86) return FX_SNOW;
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return FX_RAIN;
+    if (code >= 51 && code <= 57) return FX_DRIZZLE;
+    return FX_NONE;
+}
+
+static int fx_count(void)
+{
+    return w.fx_kind == FX_SNOW ? (int)(sizeof FLAKES / sizeof *FLAKES) : w.fx_kind == FX_DRIZZLE ? 8 : w.fx_kind ? FX_MAX : 0;
+}
+
+/* where particle i is at time t (ms): its box, and for a drop the line's two ends */
+static void fx_at(int i, uint32_t t, lv_area_t *box, lv_point_precise_t *a, lv_point_precise_t *b)
+{
+    int32_t x, y, len = 0, d = 0;
+    if (w.fx_kind == FX_SNOW) {
+        uint32_t fall = FLAKES[i].fall * 100u;
+        d = FLAKES[i].d;
+        x = FLAKES[i].x;
+        y = -12 + (int32_t)((uint64_t)(UI_SCREEN_SIZE + 24) * ((t + FLAKES[i].phase * 100u) % fall) / fall);
+        *box = (lv_area_t){ x - 1, y - 1, x + d + 1, y + d + 1 };
+        return;
+    }
+    uint32_t fall = DROPS[i].fall_ms * (w.fx_kind == FX_DRIZZLE ? 3u : 2u) / 2u; /* drizzle drifts down, rain streaks */
+    len = w.fx_kind == FX_DRIZZLE ? 10 : 18;
+    x = DROPS[i].x;
+    y = -len + (int32_t)((uint64_t)(UI_SCREEN_SIZE + 2 * len) * ((t + DROPS[i].phase_ms) % fall) / fall);
+    a->x = x; a->y = y; b->x = x - len / 4; b->y = y + len; /* a slight slant, as wind */
+    *box = (lv_area_t){ x - len / 4 - 3, y - 3, x + 3, y + len + 3 };
+}
+
+/* the round panel: a particle is drawn only when its box lies within the circle */
+static bool fx_inside(const lv_area_t *b)
+{
+    const int32_t c = UI_SCREEN_SIZE / 2, r = UI_SCREEN_SIZE / 2 - 2;
+    int32_t xs[2] = { b->x1, b->x2 }, ys[2] = { b->y1, b->y2 };
+    for (int i = 0; i < 2; i++)
+        for (int j = 0; j < 2; j++)
+            if ((xs[i] - c) * (xs[i] - c) + (ys[j] - c) * (ys[j] - c) > r * r) return false;
+    return true;
+}
+
+static void fx_draw(lv_event_t *e)
+{
+    if (!w.fx_kind) return;
+    lv_layer_t *layer = lv_event_get_layer(e);
+    uint32_t t = lv_tick_get();
+    lv_draw_rect_dsc_t r;
+    lv_draw_line_dsc_t l;
+    lv_draw_rect_dsc_init(&r);
+    r.bg_color = lv_color_hex(UI_COLOR_TEXT2);
+    r.bg_opa = LV_OPA_60;
+    r.radius = LV_RADIUS_CIRCLE;
+    lv_draw_line_dsc_init(&l);
+    l.color = lv_color_hex(COLOR_WEATHER);
+    l.opa = w.fx_kind == FX_DRIZZLE ? LV_OPA_40 : LV_OPA_60;
+    l.width = 2;
+    l.round_start = l.round_end = true;
+    for (int i = 0; i < fx_count(); i++) {
+        lv_area_t box;
+        fx_at(i, t, &box, &l.p1, &l.p2);
+        if (!fx_inside(&box)) continue;
+        if (w.fx_kind == FX_SNOW) {
+            lv_area_t dot = { box.x1 + 1, box.y1 + 1, box.x2 - 1, box.y2 - 1 };
+            lv_draw_rect(layer, &r, &dot);
+        } else lv_draw_line(layer, &l);
+    }
+}
+
+/* one frame: each particle's old and new boxes redraw, nothing else; a storm's glyph flashes now and then */
+static void fx_tick(lv_timer_t *t)
+{
+    (void)t;
+    uint32_t now = lv_tick_get();
+    lv_point_precise_t a, b;
+    for (int i = 0; i < fx_count(); i++) { /* one area per particle, old and new box together: 14 at most, under LVGL's 32 */
+        lv_area_t old = w.fx_box[i];
+        fx_at(i, now, &w.fx_box[i], &a, &b);
+        lv_area_t both = { LV_MIN(old.x1, w.fx_box[i].x1), LV_MIN(old.y1, w.fx_box[i].y1),
+                           LV_MAX(old.x2, w.fx_box[i].x2), LV_MAX(old.y2, w.fx_box[i].y2) };
+        if (both.y2 - both.y1 > 120) { lv_obj_invalidate_area(w.fx, &old); lv_obj_invalidate_area(w.fx, &w.fx_box[i]); } /* wrapped to the top */
+        else lv_obj_invalidate_area(w.fx, &both);
+    }
+    bool flash = w.fx_kind == FX_STORM && now % FLASH_EVERY_MS < FLASH_MS;
+    if (flash != w.flash) {
+        w.flash = flash;
+        lv_obj_set_style_image_recolor(w.icon, lv_color_hex(flash ? UI_COLOR_TEXT : COLOR_WEATHER), 0);
+    }
+}
+
+/* the particles run only while Now shows weather on a visible screen */
+static void fx_update(fx_kind_t kind)
+{
+    if (!w.visible) kind = FX_NONE;
+    if (kind == w.fx_kind) return;
+    if (w.flash) { w.flash = false; lv_obj_set_style_image_recolor(w.icon, lv_color_hex(COLOR_WEATHER), 0); }
+    lv_obj_invalidate(w.fx); /* the old particles go */
+    w.fx_kind = kind;
+    uint32_t now = lv_tick_get();
+    lv_point_precise_t a, b;
+    for (int i = 0; i < fx_count(); i++) fx_at(i, now, &w.fx_box[i], &a, &b);
+    if (kind) { lv_timer_reset(fx_tm); lv_timer_resume(fx_tm); }
+    else lv_timer_pause(fx_tm);
+}
+
 static void stack(lv_obj_t **col, const uint8_t *gap, int n)
 {
     ui_stack(col, gap, n, 0, UI_SCREEN_SIZE, -1);
@@ -215,6 +345,7 @@ static void apply(const snap_weather_t *x, bool stale)
     lv_obj_set_hidden(w.foot, !hours);
     ui_set_text(w.key, hours ? "Now" : "Hours");
     lv_obj_set_hidden(w.key, n_cols < 2);
+    fx_update(empty || hours ? FX_NONE : fx_of(x->code));
     if (empty) {
         set_icon(w.icon, &weather_icon_big[WX_CLOUD_SUN], UI_COLOR_DIM);
         lv_obj_set_hidden(w.eb, true);
@@ -249,12 +380,24 @@ void scr_weather_swipe(int dir)
     apply(&w.shown, w.shown_stale);
 }
 
-void scr_weather_open(void) { w.view = WV_NOW; w.sel = 0; }
+bool scr_weather_animating(void) { return w.fx_kind != FX_NONE; }
+
+void scr_weather_visible(bool on)
+{
+    if (on && !w.visible) { w.view = WV_NOW; w.sel = 0; w.have_shown = false; } /* each visit starts on Now, applied afresh */
+    w.visible = on;
+    if (!on) fx_update(FX_NONE); /* on: render() applies the view next, and the particles with it */
+}
 
 lv_obj_t *scr_weather_create(lv_obj_t *parent)
 {
     memset(&w, 0, sizeof w);
     w.root = ui_plain(parent, UI_SCREEN_SIZE, UI_SCREEN_SIZE);
+    w.fx = ui_plain(w.root, UI_SCREEN_SIZE, UI_SCREEN_SIZE); /* first: the particles fall behind the text */
+    lv_obj_set_user_flag(w.fx, 1, true); /* custom paint, see invalidate_painted() in screens.c */
+    lv_obj_add_event_cb(w.fx, fx_draw, LV_EVENT_DRAW_MAIN, NULL);
+    if (!fx_tm) fx_tm = lv_timer_create(fx_tick, FX_MS, NULL);
+    lv_timer_pause(fx_tm);
     w.eb = ui_label(w.root, &inter_16, UI_COLOR_SUBTLE, 260, 1, LV_TEXT_ALIGN_CENTER);
     lv_obj_set_style_text_letter_space(w.eb, 1, 0); /* the design's tracked eyebrow */
     w.icon_box = ui_plain(w.root, 48, 48);
