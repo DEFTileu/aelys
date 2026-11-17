@@ -62,6 +62,8 @@ bool proto_parse_login(const char *json, size_t len, char *token, size_t cap); /
 bool proto_error_code(const char *json, size_t len, char code[32]);           /* FastAPI {"detail":{"code":...}}; false when there is none */
 
 size_t proto_heartbeat(char *buf, size_t cap);
+/* {"type":"auth","token":"..."} (v1.5): a fresh access token on the open socket. 0 when it does not fit or is not a JWT (base64url and dots). */
+size_t proto_auth(char *buf, size_t cap, const char *token);
 size_t proto_metrics(char *buf, size_t cap, const proto_metrics_t *m);
 size_t proto_action(char *buf, size_t cap, const char id[37], act_kind_t k, const char *target_id /* NULL for focus.* */, const char *focus_mode /* NULL = omit */);
 size_t proto_command_ack(char *buf, size_t cap, const char *id, bool ok, const char *error_code /* NULL when ok */);

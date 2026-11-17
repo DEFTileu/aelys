@@ -300,8 +300,31 @@ async def _voice_cancel(link: _Link, message: dict) -> None:
             _cancel_voice(link)
 
 
+async def _auth(link: _Link, message: dict) -> None:
+    """v1.5: a fresh access token on the open channel. A board has no refresh token and signs in again with its key before its
+    15-minute token ends; this moves the channel to that new session instead of closing it with 4401 and reconnecting. A token
+    that is not this owner's and this board's, or whose session is no longer good, changes nothing: the old one still ends it."""
+    token = message.get("token")
+    try:
+        if not isinstance(token, str) or len(token) > 2048:
+            raise ValueError("token")
+        claims = decode_token(token)
+        session_id, exp = claims.get("sid"), int(claims["exp"])
+        if (claims.get("typ") != "access" or claims.get("sub") != link.owner_id or claims.get("device_id") != link.device_id
+                or not isinstance(session_id, str) or not session_id):
+            raise ValueError("claims")
+    except Exception:  # noqa: BLE001 - an untrusted credential is refused, never explained
+        await link.reply(_error("AUTH_REJECTED", "token not accepted"))
+        return
+    if await _validate(link.owner_id, link.device_id, session_id) is not None:
+        await link.reply(_error("AUTH_REJECTED", "token not accepted"))
+        return
+    link.session_id, link.token_exp = session_id, exp
+    await link.reply({"type": "auth_ok"})
+
+
 HANDLERS: dict[str, Callable[[_Link, dict], Awaitable[None]]] = {
-    "hello": _hello, "heartbeat": _heartbeat, "metrics": _metrics, "action": _action,
+    "auth": _auth, "hello": _hello, "heartbeat": _heartbeat, "metrics": _metrics, "action": _action,
     "command_ack": _command_ack, "wifi_scan_result": _wifi_scan_result, "wifi_state": _wifi_state,
     "character_state": _character_state, "voice_start": _voice_start, "voice_end": _voice_end, "voice_cancel": _voice_cancel}
 
@@ -347,10 +370,15 @@ async def _validate(owner_id: str, device_id: str, session_id: str) -> int | Non
     return None
 
 
-async def _supervise(link: _Link, session_id: str, token_exp: int) -> None:
+async def _supervise(link: _Link) -> None:
+    """The channel's current token and session (an "auth" frame may replace both): close at expiry or when it goes bad."""
     while True:
+        token_exp = link.token_exp or 0
         await asyncio.sleep(max(0.0, min(REVALIDATE_SECONDS, token_exp - time.time())))
-        code = AUTH_CLOSE_CODE if time.time() >= token_exp else await _validate(link.owner_id, link.device_id, session_id)
+        if link.token_exp != token_exp:
+            continue  # renewed meanwhile
+        session_id = link.session_id
+        code = AUTH_CLOSE_CODE if time.time() >= token_exp or not session_id else await _validate(link.owner_id, link.device_id, session_id)
         if code is not None:
             await link.close(code)
             return
@@ -483,7 +511,7 @@ async def device_channel(websocket: WebSocket) -> None:
             await close(ERROR_CLOSE_CODE)
             return
         tasks += [asyncio.create_task(reader()), asyncio.create_task(gone.wait()),
-                  asyncio.create_task(_supervise(link, session_id, int(claims["exp"])))]
+                  asyncio.create_task(_supervise(link))]
         opened = time.monotonic()
         done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         # Which side ended it and how: diagnosing the board's short drops (a code from the board, or the hub, the token or a send).

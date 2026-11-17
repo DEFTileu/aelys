@@ -740,8 +740,21 @@ static void test_voice(void)
     CHECK(!strcmp(m.id, "abc") && !strcmp(m.u.voice.text, "What's on tomorrow?"));
 }
 
+/* v1.5: a fresh token on the open socket. Only a JWT's alphabet goes out, so nothing in it can break the JSON. */
+static void test_auth_frame(void)
+{
+    char b[128];
+    const char *jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.sig-_A1";
+    CHECK(proto_auth(b, sizeof b, jwt) > 0);
+    CHECK(strcmp(b, "{\"type\":\"auth\",\"token\":\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.sig-_A1\"}") == 0);
+    CHECK_EQ(proto_auth(b, sizeof b, "abc\"}"), 0);                   /* not a JWT */
+    CHECK_EQ(proto_auth(b, sizeof b, ""), 0);
+    CHECK_EQ(proto_auth(b, 20, jwt), 0);                               /* does not fit */
+}
+
 int main(void)
 {
+    test_auth_frame();
     test_voice();
     test_wifi_seen_merge();
     test_parses_every_contract_example();

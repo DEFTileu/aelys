@@ -37,6 +37,8 @@
 #define HB_MS 30000u           /* heartbeat */
 #define METRICS_MS 300000u     /* spec section 4.6 */
 #define SILENCE_MS 75000u      /* no frame at all: the socket is dead */
+#define RENEW_MS 720000u       /* a token lasts 15 min: a new one goes over the open socket after 12 (protocol v1.5) */
+#define RENEW_RETRY_MS 60000u  /* a failed renewal tries again; the old token still holds until its end */
 #define READY_MS 15000u        /* from the connect action to the server's `ready` */
 #define HEAP_NEED 16384u       /* largest internal block before a TLS connect */
 #define NO_EVENT (-1)
@@ -92,6 +94,7 @@ static bool stable_sent, net_up, snap_dirty, wipe_retry;
 static bool snapshot_notify_pending, snapshot_notify_live; /* link task only */
 static uint32_t seen_seq;             /* paired_seq the task has acted on */
 static uint32_t login_seq;            /* identity that obtained the pending token */
+static uint32_t token_at, renew_tried; /* when the socket's token was signed for; the last renewal try */
 static uint8_t ui_posted;
 
 /* sign-in scratch, link task only (kept off the 6 KB stack, which identity_sign needs 4.3 KB of) */
@@ -431,8 +434,32 @@ static int do_login(void)
     link_heap_gate("login");
     h = link_http_login(ctx.url, ctx.cid, ctx.sig, link_mem->token, LINK_TOKEN_MAX);
     if (seq != paired_seq) { explicit_bzero(link_mem->token, LINK_TOKEN_MAX); return NO_EVENT; }
-    if (h == LH_OK) { login_seq = seq; return LE_LOGIN_OK; }
+    if (h == LH_OK) { login_seq = seq; token_at = ms(); return LE_LOGIN_OK; }
     return reject_or_fail(h, LE_LOGIN_REJECTED, LE_LOGIN_FAIL);
+}
+
+/* A fresh access token on the open socket before this one ends (protocol v1.5): the server moves the channel to the new session
+ * instead of closing it with 4401, so the board is never offline for a sign-in (that cost a few seconds every 15 minutes and
+ * could cut a voice question). A failure keeps the old token, which then ends the channel as before. */
+static void renew_token(void)
+{
+    renew_tried = ms();
+    uint32_t signed_at = token_at;
+    int r = do_login(); /* sets token_at on success */
+    bool sent = false;
+    if (r == LE_LOGIN_OK) {
+        xSemaphoreTake(pair_send_mu, portMAX_DELAY);
+        xSemaphoreTake(act_mu, portMAX_DELAY);
+        bool send_allowed = !pair_transition_pending;
+        xSemaphoreGive(act_mu);
+        size_t n = send_allowed && fsm.st == LS_ONLINE ? proto_auth(link_mem->tx, sizeof link_mem->tx, link_mem->token) : 0;
+        sent = link_send_raw(link_mem->tx, n);
+        explicit_bzero(link_mem->tx, sizeof link_mem->tx); /* it held the token */
+        xSemaphoreGive(pair_send_mu);
+    }
+    explicit_bzero(link_mem->token, LINK_TOKEN_MAX);
+    if (!sent) token_at = signed_at; /* the socket still runs on the old token: try again in a minute */
+    ESP_LOGW(TAG, "token renewal on the open socket: %s (%d)", sent ? "sent" : "failed", r);
 }
 
 /* challenge only: does the server still know this device? */
@@ -798,6 +825,7 @@ static void tick(void)
         }
     }
     if (fsm.st == LS_ONLINE) send_actions(); /* anything the queue missed */
+    if (fsm.st == LS_ONLINE && !voice_id[0] && ms() - token_at >= RENEW_MS && ms() - renew_tried >= RENEW_RETRY_MS) renew_token();
     if (fsm.st == LS_ONLINE && link_deps.lost_on && link_deps.lost_rev &&
         (!character_retry || (int32_t)(ms() - character_retry_at) >= 0)) {
         xSemaphoreTake(pair_send_mu, portMAX_DELAY);
