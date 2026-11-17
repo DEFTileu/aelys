@@ -125,7 +125,7 @@ async def test_calendar_round_trip_preserves_instant_and_rejects_stale_edits(cli
 
 @pytest.mark.asyncio
 async def test_focus_session_round_trip_persists_elapsed_time(client):
-    started = "2026-10-29T09:00:00Z"
+    started = (datetime.now(UTC) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")  # recent: a pomodoro older than 25 min completes itself
     body = {"started_at": started, "mode": "pomodoro"}
     session = (await client.post("/api/v1/focus/sessions", json=body, headers={"Idempotency-Key": "focus-start-1"})).json()
     assert session["status"] == "active"
@@ -163,6 +163,23 @@ async def test_focus_pause_resume_freezes_elapsed_and_checks_version(client):
     assert stopped["paused_seconds"] >= paused_again["paused_seconds"]
     assert stopped["elapsed_seconds"] <= paused["elapsed_seconds"] + 1
     assert (await client.post(f"{base}/pause")).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_pomodoro_completes_itself_when_its_planned_time_is_used(client):
+    started = datetime.now(UTC) - timedelta(minutes=30)
+    session = (await client.post("/api/v1/focus/sessions", json={"started_at": started.isoformat(), "planned_seconds": 1200})).json()
+    assert session["planned_seconds"] == 1200
+    listed = (await client.get("/api/v1/focus/sessions")).json()[0]
+    assert listed["status"] == "completed" and listed["elapsed_seconds"] == 1200
+    assert datetime.fromisoformat(listed["ended_at"]) == started + timedelta(seconds=1200)
+    default = (await client.post("/api/v1/focus/sessions", json={"started_at": datetime.now(UTC).isoformat()})).json()  # the slot is free again
+    assert default["planned_seconds"] == 1500 and default["status"] == "active"
+    await client.post(f"/api/v1/focus/sessions/{default['id']}/stop")
+    watch = (await client.post("/api/v1/focus/sessions", json={"started_at": (datetime.now(UTC) - timedelta(hours=3)).isoformat(), "mode": "stopwatch"})).json()
+    assert watch["planned_seconds"] is None
+    rows = {row["id"]: row for row in (await client.get("/api/v1/focus/sessions")).json()}
+    assert rows[watch["id"]]["status"] == "active"  # a stopwatch never ends by itself
 
 
 @pytest.mark.asyncio

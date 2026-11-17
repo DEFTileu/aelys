@@ -152,7 +152,7 @@ describe('connected workspaces', () => {
     client.resumeFocusSession.mockImplementation(async () => { client.focusSessions.mockResolvedValue([{ ...active, version: 3 }]); return active })
     client.stopFocusSession.mockImplementation(async () => { const stopped = { ...active, status: 'completed', elapsed_seconds: 31 }; client.focusSessions.mockResolvedValue([stopped]); return stopped })
     await render(<TimerView apiStatus="ready" />); await click('Start')
-    expect(client.startFocusSession).toHaveBeenCalledWith(expect.objectContaining({ mode: 'pomodoro' }), expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
+    expect(client.startFocusSession).toHaveBeenCalledWith(expect.objectContaining({ mode: 'pomodoro', planned_seconds: 1500 }), expect.objectContaining({ queueOnOffline: false, idempotencyKey: expect.any(String) }))
     expect(host.textContent).toMatch(/24:(29|30)/); expect(host.textContent).toContain('1 session')
     await click('Pause')
     expect(client.pauseFocusSession).toHaveBeenCalledWith('s1', 1)
@@ -161,6 +161,19 @@ describe('connected workspaces', () => {
     expect(client.resumeFocusSession).toHaveBeenCalledWith('s1', 2)
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Reset"]')!.click())
     expect(client.stopFocusSession).toHaveBeenCalledWith('s1', expect.objectContaining({ query: { version: 3 }, queueOnOffline: false }))
+    expect(host.textContent).toContain('completed'); expect(host.textContent).toContain('Ready')
+  })
+  it('counts down from the session planned length and reloads once it is used up', async () => {
+    const running = { id: 's2', version: 1, started_at: new Date(Date.now() - 10 * 60_000).toISOString(), mode: 'pomodoro', status: 'active', elapsed_seconds: 600, paused_seconds: 0, planned_seconds: 3000 }
+    client.focusSessions.mockResolvedValue([running]); client.tasks.mockResolvedValue([]); client.projects.mockResolvedValue([])
+    await render(<TimerView apiStatus="ready" />)
+    expect(host.textContent).toMatch(/(39|40):\d\d/)  // 50 min planned on another device, not this screen's 25
+    const calls = client.focusSessions.mock.calls.length
+    const due = { ...running, started_at: new Date(Date.now() - 51 * 60_000).toISOString() }
+    client.focusSessions.mockResolvedValueOnce([due]).mockResolvedValue([{ ...due, status: 'completed', elapsed_seconds: 3000 }])
+    await act(async () => { window.dispatchEvent(new CustomEvent('aelys:changes', { detail: ['focus'] })) })
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(client.focusSessions.mock.calls.length).toBeGreaterThan(calls + 1)
     expect(host.textContent).toContain('completed'); expect(host.textContent).toContain('Ready')
   })
   it('reloads the real session after a VERSION_CONFLICT on pause', async () => {

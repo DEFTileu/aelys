@@ -12,6 +12,7 @@ from app.companion.weather import snapshot_view
 from app.core.models import CalendarEvent, FocusSession, Notification, Task
 from app.domains.api import focus_elapsed
 from app.domains.briefings import TERMINAL_TASK_STATUSES
+from app.domains.focus_service import focus_due
 from app.domains.google_calendar_projection import project_google_calendar_events
 from app.domains.recurrence import utc
 from app.integrations.telegram_models import TelegramIntegration
@@ -210,7 +211,7 @@ async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> Comp
     session = (await db.execute(select(FocusSession).where(FocusSession.owner_id == owner_id, FocusSession.deleted_at.is_(None),
                                                            FocusSession.status.in_(("active", "paused"))).limit(1))).scalar_one_or_none()
     focus = None
-    if session:
+    if session and not focus_due(session, now):  # a finished pomodoro is completed on its next touch; the board already shows it done
         until = utc(session.paused_at) if session.status == "paused" and session.paused_at else now
         focus = SnapFocus(id=session.id, status=session.status, mode=session.mode, started_at=session.started_at,
                           elapsed_seconds=focus_elapsed(utc(session.started_at), session.paused_seconds, until))

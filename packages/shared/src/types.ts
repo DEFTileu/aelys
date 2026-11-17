@@ -268,6 +268,8 @@ export interface FocusIn {
   readonly project_id?: Id | null;
   readonly started_at: IsoDateTime;
   readonly mode?: string;
+  /** Focus length; the session completes itself once this much is focused. Pomodoros default to 1500. */
+  readonly planned_seconds?: number | null;
 }
 export interface FocusOut {
   readonly id: Id;
@@ -285,6 +287,8 @@ export interface FocusOut {
   readonly paused_at?: IsoDateTime | null;
   /** Accumulated paused time, excluded from elapsed_seconds. */
   readonly paused_seconds?: number;
+  /** Null for stopwatches: they run until stopped. */
+  readonly planned_seconds?: number | null;
 }
 
 export interface FinanceAccountIn {

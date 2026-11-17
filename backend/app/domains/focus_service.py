@@ -6,7 +6,7 @@ Failures raise HTTPException exactly as the routes always did.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from app.companion.hub import mark_dirty
@@ -24,22 +24,47 @@ def focus_elapsed(started_at: datetime, paused_seconds: int, until: datetime) ->
     return max(0, int((until - started_at).total_seconds()) - paused_seconds)
 
 
+POMODORO_SECONDS = 25 * 60
+
+
+def focus_due(item: FocusSession, now: datetime) -> bool:
+    """A running session with a planned length has used it all up."""
+    return item.status == "active" and bool(item.planned_seconds) and focus_elapsed(utc(item.started_at), item.paused_seconds, now) >= (item.planned_seconds or 0)
+
+
 async def active_focus(db: AsyncSession, owner_id: str) -> FocusSession | None:
     return (await db.execute(select(FocusSession).where(
         FocusSession.owner_id == owner_id, FocusSession.status.in_(("active", "paused"))))).scalar_one_or_none()
 
 
+async def complete_due(db: AsyncSession, owner_id: str) -> None:
+    """Nothing ticks on the server, so a finished pomodoro is completed on the next read or write that touches it."""
+    item = await active_focus(db, owner_id)
+    if item is None or not focus_due(item, datetime.now(UTC)):
+        return
+    planned = item.planned_seconds or 0
+    ended_at = utc(item.started_at) + timedelta(seconds=item.paused_seconds + planned)
+    result = await db.execute(update(FocusSession).where(FocusSession.id == item.id, FocusSession.version == item.version, FocusSession.status == "active").values(ended_at=ended_at, elapsed_seconds=planned, status="completed", version=item.version + 1))
+    if int(getattr(result, "rowcount", 0) or 0) == 1:  # 0: another device changed it first, its write stands
+        await db.refresh(item)
+        mark_dirty(db, owner_id, "focus")  # Core UPDATE: no mapper event fires
+
+
 async def start_focus(db: AsyncSession, owner_id: str, *, started_at: datetime, mode: str, task_id: str | None,
-                      idempotency_key: str | None, project_id: str | None = None) -> FocusSession:
+                      idempotency_key: str | None, project_id: str | None = None, planned_seconds: int | None = None) -> FocusSession:
     item_id = str(uuid5(NAMESPACE_URL, f"aelys:focus:{owner_id}:{idempotency_key}")) if idempotency_key else str(uuid4())
     existing = await db.get(FocusSession, item_id)
     if existing:
         if existing.task_id != task_id or existing.project_id != project_id or existing.mode != mode or utc(existing.started_at) != started_at:
             raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Focus start key is bound to another request"})
         return existing
+    await complete_due(db, owner_id)
     if await active_focus(db, owner_id):
         raise HTTPException(409, detail={"code": "TIMER_ACTIVE", "message": "Only one active focus session is allowed"})
-    item = FocusSession(id=item_id, owner_id=owner_id, started_at=started_at, mode=mode, task_id=task_id, project_id=project_id)
+    if planned_seconds is None and mode == "pomodoro":
+        planned_seconds = POMODORO_SECONDS  # clients that predate planned_seconds still get a pomodoro that ends
+    item = FocusSession(id=item_id, owner_id=owner_id, started_at=started_at, mode=mode, task_id=task_id, project_id=project_id,
+                        planned_seconds=None if mode == "stopwatch" else planned_seconds)
     db.add(item)
     try:
         await db.flush()  # the partial unique index rejects a racing second active session here
@@ -53,6 +78,7 @@ async def start_focus(db: AsyncSession, owner_id: str, *, started_at: datetime, 
 
 
 async def stop_focus(db: AsyncSession, owner_id: str, focus_id: str, version: int | None) -> FocusSession:
+    await complete_due(db, owner_id)
     item = await owner_obj(FocusSession, focus_id, owner_id, db)
     if item.status == "completed":
         return item
@@ -70,6 +96,7 @@ async def stop_focus(db: AsyncSession, owner_id: str, focus_id: str, version: in
 
 
 async def set_focus_paused(db: AsyncSession, owner_id: str, focus_id: str, paused: bool, version: int | None) -> FocusSession:
+    await complete_due(db, owner_id)
     item = await owner_obj(FocusSession, focus_id, owner_id, db)
     source, target = ("active", "paused") if paused else ("paused", "active")
     if item.status == target:

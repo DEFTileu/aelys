@@ -3424,6 +3424,8 @@ struct Focus {
     paused_at: Option<String>,
     #[serde(default)]
     paused_seconds: i64,
+    #[serde(default)]
+    planned_seconds: Option<i64>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -3433,6 +3435,8 @@ pub struct FocusInput {
     started_at: String,
     #[serde(default = "pomodoro")]
     mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    planned_seconds: Option<i64>,
 }
 fn pomodoro() -> String {
     "pomodoro".into()
@@ -3443,6 +3447,9 @@ fn valid_focus(focus: &FocusInput) -> bool {
         && !focus.started_at.is_empty()
         && focus.started_at.len() <= 64
         && matches!(focus.mode.as_str(), "pomodoro" | "stopwatch" | "custom")
+        && focus
+            .planned_seconds
+            .is_none_or(|seconds| (60..=86_400).contains(&seconds))
 }
 #[derive(Serialize, Deserialize)]
 struct MailMessage {
@@ -3773,6 +3780,15 @@ mod tests {
             sanitize_response("focus-session", old).unwrap()["paused_seconds"],
             0
         );
+        let start = |planned: Value| {
+            serde_json::from_value::<FocusInput>(
+                json!({"started_at":"2026-11-15T12:53:00Z","planned_seconds":planned}),
+            )
+            .map(|focus| valid_focus(&focus))
+        };
+        assert!(start(json!(1500)).unwrap());
+        assert!(!start(json!(10)).unwrap());
+        assert!(!start(json!(86_401)).unwrap());
     }
     #[test]
     fn gmail_browser_handoff_rejects_arbitrary_urls_and_credentials() {
@@ -4293,11 +4309,11 @@ mod tests {
 
     #[test]
     fn focus_start_and_stop_http_responses_are_single_objects() {
-        let focus = json!({"id":"focus-1","owner_id":"owner-1","task_id":null,"project_id":null,"started_at":"2026-10-30T00:00:00Z","mode":"pomodoro","ended_at":null,"elapsed_seconds":0,"status":"active","version":1,"paused_at":null,"paused_seconds":0});
+        let focus = json!({"id":"focus-1","owner_id":"owner-1","task_id":null,"project_id":null,"started_at":"2026-10-30T00:00:00Z","mode":"pomodoro","ended_at":null,"elapsed_seconds":0,"status":"active","version":1,"paused_at":null,"paused_seconds":0,"planned_seconds":1500});
         let mut backend_response = focus.clone();
         backend_response["server_only"] = json!("excluded");
         assert_domain_http_response(
-            json!({"type":"focus_start","focus":{"started_at":"2026-10-30T00:00:00Z"},"idempotency_key":"focus-key"}),
+            json!({"type":"focus_start","focus":{"started_at":"2026-10-30T00:00:00Z","planned_seconds":1500},"idempotency_key":"focus-key"}),
             "POST /api/v1/focus/sessions ",
             backend_response,
             focus.clone(),
