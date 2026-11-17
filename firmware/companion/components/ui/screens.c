@@ -53,7 +53,7 @@ static struct {
     bool face_down;      /* the board lies screen down (UI_EV_MOTION): she sleeps */
     bool screen_off;     /* the screen sink was last told off */
     uint32_t offline_since_ms; /* boot or the last drop from ONLINE: failed tries in between do not restart it */
-    bool batt_known, charging;
+    bool batt_known, charging, charge_doze; /* charge_doze: the minute after plugging in, until a touch */
     uint8_t batt_pct, charge_start_pct;
     uint32_t charge_start_ms, batt_next_ms;
     lv_timer_t *power_timer;
@@ -604,7 +604,7 @@ static void update_character(void)
     inputs.face_down = g.face_down;
     inputs.battery_known = g.batt_known;
     inputs.battery_percent = g.batt_pct;
-    inputs.charging = g.charging && now_ms - g.charge_start_ms < CHARGE_MOOD_MS;
+    inputs.charging = g.charging && g.charge_doze && now_ms - g.charge_start_ms < CHARGE_MOOD_MS;
     g.character_result = character_select(&g.character, &inputs, now_ms);
     if (character_status_sink) character_status_sink(g.character_result.mood, g.character_result.why, g.lost_rev, g.character_identity);
 #ifndef ESP_PLATFORM
@@ -674,7 +674,7 @@ static void power_poll(void)
     g.batt_known = true;
     g.charging = charging;
     g.batt_pct = pct > 100 ? 100 : pct;
-    if (charging && (!was_known || !was_charging)) { g.charge_start_ms = lv_tick_get(); g.charge_start_pct = g.batt_pct; }
+    if (charging && (!was_known || !was_charging)) { g.charge_start_ms = lv_tick_get(); g.charge_start_pct = g.batt_pct; g.charge_doze = true; }
     if (charging && was_known && !was_charging) power_card(false);
     else if (!charging && g.batt_pct < BATTERY_LOW_PCT && (!was_known || was_charging || was_pct >= BATTERY_LOW_PCT)) power_card(true);
 }
@@ -711,7 +711,9 @@ static void react(character_event_t e)
     };
     if (character_event(&g.character, e, lv_tick_get())) {
         arm_timer(&g.reaction_timer, reaction_timeout, character_reaction_ms(e));
-        ui_sound((sfx_t)voice[e]); /* only a reaction that shows makes a sound */
+        update_character();
+        /* only a reaction that shows makes a sound: lying face down or out of strength she does not react, and stays quiet */
+        if (g.character_result.why == character_event_why(e)) ui_sound((sfx_t)voice[e]);
     }
     render();
 }
@@ -859,7 +861,7 @@ void ui_setup(void)
     g.snap_valid = false; g.touch_after_idle = false; g.touch_character_valid = false;
     g.idle_sample_ms = lv_tick_get(); g.idle_elapsed_ms = 0;
     g.offline_since_ms = lv_tick_get();
-    g.batt_known = g.charging = false;
+    g.batt_known = g.charging = g.charge_doze = false;
     g.batt_pct = 0;
     g.batt_next_ms = lv_tick_get();
     stop_timer(&g.power_timer); /* a repeated setup (host tests) */
@@ -1042,6 +1044,7 @@ void ui_handle_event(const ui_event_t *ev)
         uint32_t now_ms = lv_tick_get();
         g.touch_after_idle = idle_advance(now_ms) >= SURPRISE_IDLE_MS;
         g.idle_elapsed_ms = 0;
+        g.charge_doze = false; /* a touch wakes her from the doze on the charger */
         if (!g.find && !g.lost && g.cur == SCR_HOME) render();
     } else if (ev->type == UI_EV_BTN && ev->len >= 1) {
         idle_advance(lv_tick_get());
