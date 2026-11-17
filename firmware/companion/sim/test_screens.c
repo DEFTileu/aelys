@@ -1229,9 +1229,14 @@ static void test_inbox_shot(void)
     fresh_fx();
 }
 
+/* The "Offline" view with the cached data: what a board shows that knows no owner contacts (with them, test_offline_contacts). */
 static void test_offline_shot(void)
 {
     lv_obj_t *scr = lv_screen_active();
+    owner_info_t none;
+    owner_defaults(&none);
+    none.phone[0] = none.telegram[0] = '\0';
+    post_owner(&none);
     CHECK(!shows_text(scr, "Offline"));
     link_state(LINK_UI_OFFLINE);
     sim_step(100);
@@ -1275,37 +1280,48 @@ static void test_offline_shot(void)
     check_inside_min("offline (no data)", 1000);
     CHECK(shows_text(scr, "Offline") && !shows_text(scr, "Showing data from --:--"));
     link_state(LINK_UI_ONLINE);
+    owner_defaults(&none);
+    post_owner(&none);
     fresh_fx();
 }
 
-/* An hour without the server: the offline view shows the owner's phone and Telegram for a finder. Failed tries in between
- * (CONNECTING) do not restart the hour; being online does. */
+/* Offline over 30 s, home is the lost page (owner, 2026-11-17): a finder sees whom to call. Nothing locks: the keys and the menu
+ * work, and her hidden face does not react. A failed try does not restart the 30 s; being online ends it. */
 static void test_offline_contacts(void)
 {
     lv_obj_t *scr = lv_screen_active();
-    char tg[48];
-    snprintf(tg, sizeof tg, "Telegram %s", OWNER_TELEGRAM);
     owner_info_t o;
     owner_defaults(&o);
     post_owner(&o);
+    link_state(LINK_UI_ONLINE);
     link_state(LINK_UI_OFFLINE);
-    sim_step(59u * 60u * 1000u);
-    CHECK(shows_text(scr, "Offline") && !shows_text(scr, OWNER_PHONE));
-    link_state(LINK_UI_CONNECTING);
-    sim_step(1000);
-    link_state(LINK_UI_OFFLINE);
-    sim_step(61u * 1000u);
-    CHECK(shows_text(scr, "If found") && shows_text(scr, OWNER_PHONE) && shows_text(scr, tg));
-    CHECK(!shows_text(scr, "Offline") && !shows_text(scr, "Showing data from 14:05"));
+    sim_step(100);
+    CHECK(shows_text(scr, "Offline") && !shows_text(scr, "This Aelys is lost")); /* the first seconds may be a reconnect */
+    sim_step(29000);
+    CHECK(!shows_text(scr, "This Aelys is lost"));
+    sim_step(1100);
+    CHECK(shows_text(scr, "This Aelys is lost") && shows_text(scr, OWNER_PHONE) && !shows_text(scr, "Offline"));
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
     CHECK_EQ(missing_glyphs(scr), 0);
-    check_inside("offline contacts");
+    check_inside("offline lost page");
+    tap_at(233, 233);
+    CHECK(!shows_text(scr, "Only the owner can turn this off")); /* not lost mode: no lock, no hint */
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    CHECK(!shows_text(scr, "This Aelys is lost"));
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sim_step(1100);
+    CHECK(shows_text(scr, "This Aelys is lost"));                 /* still offline */
+    link_state(LINK_UI_CONNECTING);
+    sim_step(1100);
+    CHECK(!shows_text(scr, "This Aelys is lost") && shows_text(scr, "3 left today"));
+    link_state(LINK_UI_OFFLINE);
+    sim_step(1100);
+    CHECK(shows_text(scr, "This Aelys is lost"));                 /* the failed try did not restart the 30 s */
     link_state(LINK_UI_ONLINE);
     sim_step(100);
-    CHECK(!shows_text(scr, "If found") && shows_text(scr, "3 left today"));
-    link_state(LINK_UI_OFFLINE);
-    sim_step(1000);
-    CHECK(shows_text(scr, "Offline") && !shows_text(scr, "If found"));
-    link_state(LINK_UI_ONLINE);
+    CHECK(!shows_text(scr, "This Aelys is lost") && shows_text(scr, "3 left today"));
     fresh_fx();
 }
 

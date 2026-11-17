@@ -22,7 +22,7 @@
 #define SURPRISE_IDLE_MS 300000u /* provisional: five minutes */
 #define NIGHT_IDLE_MS 600000u    /* provisional: ten minutes */
 #define IDLE_MAX_MS 3600000u     /* saturation at the boredom threshold */
-#define OFFLINE_CONTACTS_MS 3600000u /* an hour without the server: the offline view shows the owner's contacts for a finder */
+#define LOST_VIEW_AFTER_MS 30000u /* offline this long, home is the lost page: a boot connects in about 15 s and never flashes it */
 #define BATTERY_POLL_MS 3000u    /* the PMIC read: the charging card follows the plug within a few seconds */
 #define POWER_CARD_MS 6000u
 #define CHARGE_MOOD_MS 60000u    /* "dozing on the charger" for a minute after plugging in: a desk board lives on USB all day */
@@ -52,6 +52,7 @@ static struct {
     bool snap_valid, touch_after_idle, touch_character_valid;
     bool face_down;      /* the board lies screen down (UI_EV_MOTION): she sleeps */
     bool screen_off;     /* the screen sink was last told off */
+    bool owner_contacts, home_lost_view; /* home_lost_view: SCR_HOME shows the lost page (offline) */
     uint32_t offline_since_ms; /* boot or the last drop from ONLINE: failed tries in between do not restart it */
     bool batt_known, charging, charge_doze; /* charge_doze: the minute after plugging in, until a touch */
     uint8_t batt_pct, charge_start_pct;
@@ -538,6 +539,7 @@ static void show(scr_t s)
 #endif
     for (int i = 0; i < SCR_COUNT; i++)
         if (g.scr[i]) lv_obj_set_hidden(g.scr[i], i != (int)s);
+    g.home_lost_view = false; /* home shows itself again; render() puts the lost page back if the board is still offline */
     g.cur = s;
     scr_games_visible(s == SCR_GAMES);
     scr_weather_visible(s == SCR_WEATHER);
@@ -569,7 +571,7 @@ static void set_owner(const owner_info_t *o)
 {
     scr_lost_set_owner(o);
     scr_ice_set_owner(o);
-    scr_home_set_owner(o);
+    g.owner_contacts = o && (o->phone[0] || o->telegram[0] || o->email[0]);
 }
 
 #ifdef CONFIG_AELYS_PERF_PROBE
@@ -619,10 +621,16 @@ static void render(void)
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
     update_character();
-    scr_home_set_contacts(offline && lv_tick_elaps(g.offline_since_ms) >= OFFLINE_CONTACTS_MS);
     switch (g.cur) {
     case SCR_HOME: {
         scr_home_set_snap(s, now, g.voice_listening ? MOOD_ATTENTION : g.voice_thinking ? MOOD_THINKING : mood_from_character(g.character_result.mood), offline);
+        /* owner: without the server home is the lost page, so a finder sees whom to call; nothing locks, the keys and menu work */
+        bool lost_view = scr_home_offline_view() && g.owner_contacts && !g.lost && lv_tick_elaps(g.offline_since_ms) >= LOST_VIEW_AFTER_MS;
+        if (lost_view != g.home_lost_view) {
+            g.home_lost_view = lost_view;
+            lv_obj_set_hidden(g.scr[SCR_HOME], lost_view);
+            lv_obj_set_hidden(g.scr[SCR_LOST], !lost_view);
+        }
         break;
     }
     case SCR_TODAY: scr_today_set(s, now); break;
@@ -1217,7 +1225,7 @@ void ui_handle_event(const ui_event_t *ev)
         /* Focus paused: a finger held 800 ms stops the session (UI_EV_RELEASE or any gesture cancels it) */
         if (!g.lost && g.cur == SCR_FOCUS && scr_focus_view() == FV_PAUSED)
             arm_timer(&g.hold_timer, hold_timeout, HOLD_STOP_MS);
-        if (!g.lost && g.cur == SCR_HOME) arm_timer(&g.level_timer, level_hold_timeout, LEVEL_HOLD_MS);
+        if (!g.lost && g.cur == SCR_HOME && !g.home_lost_view) arm_timer(&g.level_timer, level_hold_timeout, LEVEL_HOLD_MS);
         next = screen_next(g.cur, g.lost, UI_EV_TOUCH);
         break;
     case UI_EV_RELEASE:
@@ -1234,7 +1242,7 @@ void ui_handle_event(const ui_event_t *ev)
         if (g.lost && g.cur == SCR_LOST && g.down_scr == SCR_LOST) scr_lost_show_hint();
         if (g.lost || ev->len < 4 || g.down_scr != g.cur) return;
         on_tap((int32_t)(ev->data[0] | ev->data[1] << 8), (int32_t)(ev->data[2] | ev->data[3] << 8), &next);
-        if (g.cur == SCR_HOME && next == SCR_HOME && physical_home_tap) {
+        if (g.cur == SCR_HOME && next == SCR_HOME && physical_home_tap && !g.home_lost_view) { /* her face is hidden: no reaction */
             uint32_t now_ms = lv_tick_get();
             memmove(&g.tap_ms[1], &g.tap_ms[0], sizeof g.tap_ms - sizeof *g.tap_ms);
             g.tap_ms[0] = now_ms | 1;
