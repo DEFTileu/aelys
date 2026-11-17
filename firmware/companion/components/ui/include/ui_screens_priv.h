@@ -179,7 +179,7 @@ void scr_home_set_wifi(uint8_t state); /* ui_wifi_state_t */
 void scr_home_set_paired(bool on);    /* paired: no "Not paired yet" line while there are no tasks */
 void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline); /* orbit, face mood and the "Offline" view */
 void scr_home_set_owner(const owner_info_t *o); /* phone and Telegram for the offline view's "If found" */
-void scr_home_set_contacts(bool on);            /* the offline view shows them instead of "Offline" (screens.c: after an hour) */
+void scr_home_set_contacts(bool on);            /* the offline view shows them instead of "Offline" (screens.c: whenever offline) */
 void scr_home_set_level(int32_t angle10); /* keeps both home faces level (face_set_level) */
 void scr_home_set_welcome(bool on);   /* first boot: "Hi, I'm Aelys / Connect me by USB ..." instead of the agenda line */
 

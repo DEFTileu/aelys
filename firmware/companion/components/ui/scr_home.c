@@ -2,7 +2,8 @@
  * (clock, face and agenda line in one centred column with 16 px gaps). Wi-Fi status sits below the column.
  * When the link is down it turns into the design's "Нет связи" frame: sleepy-eyed Aelys, "Offline", the time of the data
  * on screen and the tasks line. Deviation: no "Retry" hint (the top key has no retry action).
- * After an hour without the server the frame shows the owner's phone and Telegram under "If found" instead (owner, 2026-11-17). */
+ * Without the server the frame shows the owner's phone and Telegram under "If found" instead (owner, 2026-11-17); "Offline" with
+ * the cached data is left only for a board that knows no contacts. */
 #include <stdio.h>
 #include <string.h>
 #include "ui_screens_priv.h"

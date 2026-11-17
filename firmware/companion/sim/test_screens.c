@@ -1229,9 +1229,14 @@ static void test_inbox_shot(void)
     fresh_fx();
 }
 
+/* The "Offline" view with the cached data: what a board shows that knows no owner contacts (with them, test_offline_contacts). */
 static void test_offline_shot(void)
 {
     lv_obj_t *scr = lv_screen_active();
+    owner_info_t none;
+    owner_defaults(&none);
+    none.phone[0] = none.telegram[0] = '\0';
+    post_owner(&none);
     CHECK(!shows_text(scr, "Offline"));
     link_state(LINK_UI_OFFLINE);
     sim_step(100);
@@ -1275,11 +1280,13 @@ static void test_offline_shot(void)
     check_inside_min("offline (no data)", 1000);
     CHECK(shows_text(scr, "Offline") && !shows_text(scr, "Showing data from --:--"));
     link_state(LINK_UI_ONLINE);
+    owner_defaults(&none);
+    post_owner(&none);
     fresh_fx();
 }
 
-/* An hour without the server: the offline view shows the owner's phone and Telegram for a finder. Failed tries in between
- * (CONNECTING) do not restart the hour; being online does. */
+/* Without the server the board shows whom to call, at once (owner, 2026-11-17): "If found", the owner's phone and Telegram instead of
+ * "Offline". A failed try (CONNECTING) is the normal home; back online, the normal home. */
 static void test_offline_contacts(void)
 {
     lv_obj_t *scr = lv_screen_active();
@@ -1289,23 +1296,20 @@ static void test_offline_contacts(void)
     owner_defaults(&o);
     post_owner(&o);
     link_state(LINK_UI_OFFLINE);
-    sim_step(59u * 60u * 1000u);
-    CHECK(shows_text(scr, "Offline") && !shows_text(scr, OWNER_PHONE));
-    link_state(LINK_UI_CONNECTING);
-    sim_step(1000);
-    link_state(LINK_UI_OFFLINE);
-    sim_step(61u * 1000u);
+    sim_step(100);
     CHECK(shows_text(scr, "If found") && shows_text(scr, OWNER_PHONE) && shows_text(scr, tg));
     CHECK(!shows_text(scr, "Offline") && !shows_text(scr, "Showing data from 14:05"));
     CHECK_EQ(missing_glyphs(scr), 0);
     check_inside("offline contacts");
-    link_state(LINK_UI_ONLINE);
+    link_state(LINK_UI_CONNECTING);
     sim_step(100);
     CHECK(!shows_text(scr, "If found") && shows_text(scr, "3 left today"));
     link_state(LINK_UI_OFFLINE);
-    sim_step(1000);
-    CHECK(shows_text(scr, "Offline") && !shows_text(scr, "If found"));
+    sim_step(100);
+    CHECK(shows_text(scr, "If found"));
     link_state(LINK_UI_ONLINE);
+    sim_step(100);
+    CHECK(!shows_text(scr, "If found") && shows_text(scr, "3 left today"));
     fresh_fx();
 }
 
