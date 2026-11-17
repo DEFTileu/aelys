@@ -1,7 +1,8 @@
 /* Home: clock, Aelys face and the task orbit. Layout from the "Elis · main screen" frame of the design
  * (clock, face and agenda line in one centred column with 16 px gaps). Wi-Fi status sits below the column.
  * When the link is down it turns into the design's "Нет связи" frame: sleepy-eyed Aelys, "Offline", the time of the data
- * on screen and the tasks line. Deviation: no "Retry" hint (the top key has no retry action). */
+ * on screen and the tasks line. Deviation: no "Retry" hint (the top key has no retry action).
+ * After an hour without the server the frame shows the owner's phone and Telegram under "If found" instead (owner, 2026-11-17). */
 #include <stdio.h>
 #include <string.h>
 #include "ui_screens_priv.h"
@@ -10,7 +11,8 @@ static struct {
     lv_obj_t *orbit, *clock, *face, *agenda, *hint, *wifi;
     lv_obj_t *off_face, *off_title, *off_since, *off_tasks;
     int done, total;
-    bool welcome, paired, offline;
+    bool welcome, paired, offline, contacts, showing_contacts;
+    char phone[24], telegram[33];
     uint8_t wifi_state; /* ui_wifi_state_t */
     mood_t mood, off_mood;
 } h;
@@ -84,6 +86,14 @@ static void offline_restack(void)
     ui_stack(col, gap, 4, 0, UI_SCREEN_SIZE, -1);
 }
 
+void scr_home_set_owner(const owner_info_t *o)
+{
+    strlcpy(h.phone, o ? o->phone : "", sizeof h.phone);
+    strlcpy(h.telegram, o ? o->telegram : "", sizeof h.telegram);
+}
+
+void scr_home_set_contacts(bool on) { h.contacts = on; }
+
 void scr_home_set_level(int32_t angle10)
 {
     face_set_level(h.face, angle10);
@@ -110,6 +120,22 @@ void scr_home_set_snap(const snap_t *s, int64_t now, mood_t mood, bool offline)
     }
     if (!offline) return;
     char t[64], hm[8];
+    bool contacts = h.contacts && (h.phone[0] || h.telegram[0]);
+    if (contacts != h.showing_contacts) {
+        h.showing_contacts = contacts;
+        ui_set_text(h.off_title, contacts ? "If found" : "Offline");
+        ui_text_color(h.off_since, contacts ? UI_COLOR_TEXT : UI_COLOR_SUBTLE);
+        ui_text_color(h.off_tasks, contacts ? UI_COLOR_TEXT : UI_COLOR_MUTED);
+    }
+    if (contacts) {
+        ui_set_text(h.off_since, h.phone);
+        lv_obj_set_hidden(h.off_since, !h.phone[0]);
+        snprintf(t, sizeof t, "Telegram %s", h.telegram);
+        ui_set_text(h.off_tasks, t);
+        lv_obj_set_hidden(h.off_tasks, !h.telegram[0]);
+        offline_restack();
+        return;
+    }
     ui_fmt_hm(hm, s->generated);
     snprintf(t, sizeof t, "Showing data from %s", hm);
     ui_set_text(h.off_since, t);

@@ -21,6 +21,7 @@
 #define SURPRISE_IDLE_MS 300000u /* provisional: five minutes */
 #define NIGHT_IDLE_MS 600000u    /* provisional: ten minutes */
 #define IDLE_MAX_MS 3600000u     /* saturation at the boredom threshold */
+#define OFFLINE_CONTACTS_MS 3600000u /* an hour without the server: the offline view shows the owner's contacts for a finder */
 
 tribuf_t ui_voice_tb;
 static char (*voice_buf)[601];
@@ -47,6 +48,7 @@ static struct {
     bool snap_valid, touch_after_idle, touch_character_valid;
     bool face_down;      /* the board lies screen down (UI_EV_MOTION): she sleeps */
     bool screen_off;     /* the screen sink was last told off */
+    uint32_t offline_since_ms; /* boot or the last drop from ONLINE: failed tries in between do not restart it */
     void (*screen_sink)(bool on);
     uint32_t tap_ms[4];  /* the last taps on her face, newest first, 0 = none: a double tap tickles, four in a row annoy her */
     uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
@@ -558,6 +560,7 @@ static void set_owner(const owner_info_t *o)
 {
     scr_lost_set_owner(o);
     scr_ice_set_owner(o);
+    scr_home_set_owner(o);
 }
 
 #ifdef CONFIG_AELYS_PERF_PROBE
@@ -604,6 +607,7 @@ static void render(void)
     int64_t now = ui_now();
     bool offline = g.link == LINK_UI_OFFLINE;
     update_character();
+    scr_home_set_contacts(offline && lv_tick_elaps(g.offline_since_ms) >= OFFLINE_CONTACTS_MS);
     switch (g.cur) {
     case SCR_HOME: {
         scr_home_set_snap(s, now, g.voice_listening ? MOOD_ATTENTION : g.voice_thinking ? MOOD_THINKING : mood_from_character(g.character_result.mood), offline);
@@ -803,6 +807,7 @@ void ui_setup(void)
     g.lost_rev = g.character_identity = 0;
     g.snap_valid = false; g.touch_after_idle = false; g.touch_character_valid = false;
     g.idle_sample_ms = lv_tick_get(); g.idle_elapsed_ms = 0;
+    g.offline_since_ms = lv_tick_get();
     character_init(&g.character);
     g.character_result = (character_result_t){CHAR_CALM, WHY_CALM, CUE_NONE};
     scr_find_show(false);
@@ -1056,6 +1061,7 @@ void ui_handle_event(const ui_event_t *ev)
             (next_link == LINK_UI_CONNECTING && g.link == LINK_UI_ONLINE)) g.link_was_offline = true;
         if (next_link == LINK_UI_ONLINE) { g.link_was_offline = false; g.link_has_history = true; }
         else if (next_link == LINK_UI_UNPAIRED) g.link_was_offline = g.link_has_history = false;
+        if (g.link == LINK_UI_ONLINE && next_link != LINK_UI_ONLINE) g.offline_since_ms = lv_tick_get();
         g.link = next_link;
         if (reconnected) {
             bool accepted = character_event(&g.character, CHAR_EVENT_RECONNECTED, lv_tick_get());
