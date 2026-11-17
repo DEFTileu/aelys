@@ -63,6 +63,11 @@ void scr_wifi_card_hide(void);                             /* at once, timer sto
 /* The find overlay ("Here I am!"): full screen, on top of everything incl. lost mode and the ICE card; its own timer runs only while shown. */
 lv_obj_t *scr_find_create(lv_obj_t *parent);
 void scr_find_show(bool on);                               /* idempotent: showing it again does not restart the animation */
+lv_obj_t *scr_power_create(lv_obj_t *parent);              /* the charging / low-battery card, hidden */
+void scr_power_show(bool low, int pct, const char *line);  /* low: "12% left"; else the charge and line ("Full in ...") */
+void scr_power_hide(void);
+bool scr_power_visible(void);
+bool ui_settings_battery(uint8_t *pct, bool *charging);    /* the Settings battery hook; false without one or no answer */
 
 /* scr_today.c (design "Today · обзор") */
 lv_obj_t *scr_today_create(lv_obj_t *parent);

@@ -8,6 +8,7 @@
 #include <time.h>
 #include "motion.h"
 #include "gesture.h"
+#include "battery.h"
 #include "ui_screens_priv.h"
 
 #define ICE_TIMEOUT_MS 15000
@@ -22,6 +23,9 @@
 #define NIGHT_IDLE_MS 600000u    /* provisional: ten minutes */
 #define IDLE_MAX_MS 3600000u     /* saturation at the boredom threshold */
 #define OFFLINE_CONTACTS_MS 3600000u /* an hour without the server: the offline view shows the owner's contacts for a finder */
+#define BATTERY_POLL_MS 3000u    /* the PMIC read: the charging card follows the plug within a few seconds */
+#define POWER_CARD_MS 6000u
+#define CHARGE_MOOD_MS 60000u    /* "dozing on the charger" for a minute after plugging in: a desk board lives on USB all day */
 
 tribuf_t ui_voice_tb;
 static char (*voice_buf)[601];
@@ -49,6 +53,10 @@ static struct {
     bool face_down;      /* the board lies screen down (UI_EV_MOTION): she sleeps */
     bool screen_off;     /* the screen sink was last told off */
     uint32_t offline_since_ms; /* boot or the last drop from ONLINE: failed tries in between do not restart it */
+    bool batt_known, charging;
+    uint8_t batt_pct, charge_start_pct;
+    uint32_t charge_start_ms, batt_next_ms;
+    lv_timer_t *power_timer;
     void (*screen_sink)(bool on);
     uint32_t tap_ms[4];  /* the last taps on her face, newest first, 0 = none: a double tap tickles, four in a row annoy her */
     uint32_t idle_sample_ms, idle_elapsed_ms, lost_rev, character_identity;
@@ -543,7 +551,7 @@ static void show(scr_t s)
     scr_hold_set(0);
     stop_timer(&g.hold_timer);
     stop_timer(&g.level_timer);
-    if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) { scr_toast_hide(); scr_notice_hide(); }
+    if (s == SCR_LOST || s == SCR_ICE || s == SCR_PAIR) { scr_toast_hide(); scr_notice_hide(); stop_timer(&g.power_timer); scr_power_hide(); }
     if (s != SCR_LOST) scr_lost_hide_hint();
     if (s == SCR_ICE) arm_timer(&g.ice_timer, ice_timeout, ICE_TIMEOUT_MS);
     else stop_timer(&g.ice_timer);
@@ -593,6 +601,9 @@ static void update_character(void)
     inputs.no_touch_at_night = idle_ms >= NIGHT_IDLE_MS;
     inputs.face_down_known = true;
     inputs.face_down = g.face_down;
+    inputs.battery_known = g.batt_known;
+    inputs.battery_percent = g.batt_pct;
+    inputs.charging = g.charging && now_ms - g.charge_start_ms < CHARGE_MOOD_MS;
     g.character_result = character_select(&g.character, &inputs, now_ms);
     if (character_status_sink) character_status_sink(g.character_result.mood, g.character_result.why, g.lost_rev, g.character_identity);
 #ifndef ESP_PLATFORM
@@ -633,10 +644,48 @@ static void render(void)
     }
 }
 
+static void power_timeout(lv_timer_t *t)
+{
+    (void)t;
+    g.power_timer = NULL; /* one-shot */
+    scr_power_hide();
+}
+
+/* The design's charging and low-battery cards, for a few seconds, only over the everyday screens. */
+static void power_card(bool low)
+{
+    if (!toast_ok()) return;
+    char line[32];
+    battery_charge_text(line, sizeof line, battery_full_minutes(g.charge_start_ms, g.charge_start_pct, lv_tick_get(), g.batt_pct), g.batt_pct);
+    scr_power_show(low, g.batt_pct, line);
+    arm_timer(&g.power_timer, power_timeout, POWER_CARD_MS);
+}
+
+/* The PMIC every few seconds: the charger going in shows the charging card, falling under 15 % (or booting there, or unplugging there)
+ * the low-battery card. A board that boots on the charger shows nothing. */
+static void power_poll(void)
+{
+    uint8_t pct;
+    bool charging;
+    if (!ui_settings_battery(&pct, &charging)) return;
+    bool was_known = g.batt_known, was_charging = g.charging;
+    uint8_t was_pct = g.batt_pct;
+    g.batt_known = true;
+    g.charging = charging;
+    g.batt_pct = pct > 100 ? 100 : pct;
+    if (charging && (!was_known || !was_charging)) { g.charge_start_ms = lv_tick_get(); g.charge_start_pct = g.batt_pct; }
+    if (charging && was_known && !was_charging) power_card(false);
+    else if (!charging && g.batt_pct < BATTERY_LOW_PCT && (!was_known || was_charging || was_pct >= BATTERY_LOW_PCT)) power_card(true);
+}
+
 static void tick_timer_cb(lv_timer_t *t)
 {
     (void)t;
     idle_advance(lv_tick_get());
+    if ((int32_t)(lv_tick_get() - g.batt_next_ms) >= 0) {
+        g.batt_next_ms = lv_tick_get() + BATTERY_POLL_MS;
+        power_poll();
+    }
     if (g.voice_listening && !g.voice_warned && lv_tick_get() - g.voice_started_ms >= 17000u) {
         g.voice_warned = true;
         toast("3 seconds left");
@@ -790,6 +839,7 @@ void ui_setup(void)
     scr_hold_create(root); /* its opaque background also covers ordinary key hints */
     scr_notice_create(root);
     scr_toast_create(root);
+    scr_power_create(root); /* over the screens and the toast, under "Here I am!" */
     scr_find_create(root); /* last: on top of the toast and every screen */
     for (int i = 0; i < 3; i++) owner_defaults(&owner_buf[i]);
     voice_buf = lv_malloc_zeroed(3 * sizeof *voice_buf);
@@ -808,6 +858,10 @@ void ui_setup(void)
     g.snap_valid = false; g.touch_after_idle = false; g.touch_character_valid = false;
     g.idle_sample_ms = lv_tick_get(); g.idle_elapsed_ms = 0;
     g.offline_since_ms = lv_tick_get();
+    g.batt_known = g.charging = false;
+    g.batt_pct = 0;
+    g.batt_next_ms = lv_tick_get();
+    stop_timer(&g.power_timer); /* a repeated setup (host tests) */
     character_init(&g.character);
     g.character_result = (character_result_t){CHAR_CALM, WHY_CALM, CUE_NONE};
     scr_find_show(false);
@@ -992,6 +1046,12 @@ void ui_handle_event(const ui_event_t *ev)
         idle_advance(lv_tick_get());
         g.idle_elapsed_ms = 0;
     }
+    if (scr_power_visible() && (ev->type == UI_EV_TOUCH || ev->type == UI_EV_BTN)) { /* a tap or a key closes the power card, and only that */
+        stop_timer(&g.power_timer);
+        scr_power_hide();
+        if (ev->type == UI_EV_TOUCH) g.down_scr = SCR_COUNT;
+        return;
+    }
     if (g.find && ends_find(ev)) {
         g.find = false;
         scr_find_show(false);
@@ -1103,7 +1163,7 @@ void ui_handle_event(const ui_event_t *ev)
         }
         if (ev->len < 1) return;
         g.find = ev->data[0] != 0;
-        if (g.find) { scr_toast_hide(); scr_notice_hide(); } /* a toast or the Wi-Fi card must not come out from under the overlay when it ends */
+        if (g.find) { scr_toast_hide(); scr_notice_hide(); stop_timer(&g.power_timer); scr_power_hide(); } /* nothing may come out from under the overlay when it ends */
         scr_find_show(g.find);
         return;
     case UI_EV_COMBO_PROGRESS:

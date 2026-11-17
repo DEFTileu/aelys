@@ -65,6 +65,7 @@ static struct {
 } a;
 
 void ui_set_settings_hooks(const ui_settings_hooks_t *h) { hooks = h; }
+bool ui_settings_battery(uint8_t *pct, bool *charging) { return hooks && hooks->battery && hooks->battery(pct, charging); }
 
 void ui_settings_init(uint8_t brightness_pct, bool level_on, bool sound_on)
 {
