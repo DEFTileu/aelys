@@ -1285,31 +1285,43 @@ static void test_offline_shot(void)
     fresh_fx();
 }
 
-/* Without the server the board shows whom to call, at once (owner, 2026-11-17): "If found", the owner's phone and Telegram instead of
- * "Offline". A failed try (CONNECTING) is the normal home; back online, the normal home. */
+/* Offline over 30 s, home is the lost page (owner, 2026-11-17): a finder sees whom to call. Nothing locks: the keys and the menu
+ * work, and her hidden face does not react. A failed try does not restart the 30 s; being online ends it. */
 static void test_offline_contacts(void)
 {
     lv_obj_t *scr = lv_screen_active();
-    char tg[48];
-    snprintf(tg, sizeof tg, "Telegram %s", OWNER_TELEGRAM);
     owner_info_t o;
     owner_defaults(&o);
     post_owner(&o);
+    link_state(LINK_UI_ONLINE);
     link_state(LINK_UI_OFFLINE);
     sim_step(100);
-    CHECK(shows_text(scr, "If found") && shows_text(scr, OWNER_PHONE) && shows_text(scr, tg));
-    CHECK(!shows_text(scr, "Offline") && !shows_text(scr, "Showing data from 14:05"));
+    CHECK(shows_text(scr, "Offline") && !shows_text(scr, "This Aelys is lost")); /* the first seconds may be a reconnect */
+    sim_step(29000);
+    CHECK(!shows_text(scr, "This Aelys is lost"));
+    sim_step(1100);
+    CHECK(shows_text(scr, "This Aelys is lost") && shows_text(scr, OWNER_PHONE) && !shows_text(scr, "Offline"));
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
     CHECK_EQ(missing_glyphs(scr), 0);
-    check_inside("offline contacts");
+    check_inside("offline lost page");
+    tap_at(233, 233);
+    CHECK(!shows_text(scr, "Only the owner can turn this off")); /* not lost mode: no lock, no hint */
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    CHECK(!shows_text(scr, "This Aelys is lost"));
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    sim_step(1100);
+    CHECK(shows_text(scr, "This Aelys is lost"));                 /* still offline */
     link_state(LINK_UI_CONNECTING);
-    sim_step(100);
-    CHECK(!shows_text(scr, "If found") && shows_text(scr, "3 left today"));
+    sim_step(1100);
+    CHECK(!shows_text(scr, "This Aelys is lost") && shows_text(scr, "3 left today"));
     link_state(LINK_UI_OFFLINE);
-    sim_step(100);
-    CHECK(shows_text(scr, "If found"));
+    sim_step(1100);
+    CHECK(shows_text(scr, "This Aelys is lost"));                 /* the failed try did not restart the 30 s */
     link_state(LINK_UI_ONLINE);
     sim_step(100);
-    CHECK(!shows_text(scr, "If found") && shows_text(scr, "3 left today"));
+    CHECK(!shows_text(scr, "This Aelys is lost") && shows_text(scr, "3 left today"));
     fresh_fx();
 }
 
