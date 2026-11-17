@@ -49,6 +49,18 @@ static bool first_boot, boot_paired; /* first_boot: unpaired and no saved Wi-Fi,
  * still wins (it also drops a local save that is still pending), and an old or repeated rev is stale and leaves the local step alone. */
 static SemaphoreHandle_t settings_mu;
 static esp_timer_handle_t persist_timer;
+
+/* On USB the radio stays awake: modem sleep with this owner's weak router lost minutes of traffic while still associated
+ * (2026-11-17 logs). On battery it sleeps again between beacons. */
+static void wifi_ps_cb(void *arg)
+{
+    (void)arg;
+    static int applied = -1;
+    int usb = board_usb_power();
+    if (usb == applied || net_set_power_save(!usb) != ESP_OK) return; /* a failure retries on the next tick */
+    applied = usb;
+    ESP_LOGW(TAG, "wifi power save %s (usb %s)", usb ? "off" : "on", usb ? "in" : "out");
+}
 static volatile uint8_t local_pct;
 static volatile bool local_pending, level_pending, level_want, sound_pending, sound_want;
 /* The games' record: the ui task hands over a copy, the timer task saves it; the copy is a struct, so both sides take games_mux. */
@@ -511,6 +523,12 @@ void app_main(void)
     err = net_start(&nstore);
     if (err != ESP_OK) ESP_LOGE(TAG, "net start: %s", esp_err_to_name(err));
     ESP_LOGW(TAG, "wifi started: free_internal=%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    static esp_timer_handle_t wifi_ps_timer;
+    const esp_timer_create_args_t wargs = {.callback = wifi_ps_cb, .name = "wifi_ps"};
+    if (esp_timer_create(&wargs, &wifi_ps_timer) == ESP_OK) {
+        wifi_ps_cb(NULL);
+        esp_timer_start_periodic(wifi_ps_timer, 5 * 1000 * 1000);
+    }
     /* after the ui task ran ui_setup (the snapshot buffer exists) and after net_start (Wi-Fi is up or coming up) */
     static const link_deps_t ldeps = {.on_command = on_command, .save_snap = save_snap, .load_snap = load_snap,
                                       .erase_snap = erase_snap, .lost_on = lost_is_on, .lost_rev = lost_revision, .contact_phone = contact_phone, .contact_telegram = contact_telegram,

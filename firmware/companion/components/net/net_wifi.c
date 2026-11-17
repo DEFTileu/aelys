@@ -68,6 +68,8 @@ static atomic_bool rq_pending;          /* set by the caller once rq is filled; 
 
 void net_set_wifi_state(uint8_t s) { want_state = s; }
 bool net_wifi_online(void) { return online; }
+esp_err_t net_set_power_save(bool on) { return esp_wifi_set_ps(on ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE); }
+
 const char *net_wifi_current_ssid(void) { return cur_buf[atomic_load(&cur_i)]; }
 bool net_lost_on(void) { return !store.lost_on || store.lost_on(); }
 bool net_wifi_busy(void) { return attempting; }

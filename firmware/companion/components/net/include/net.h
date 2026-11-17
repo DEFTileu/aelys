@@ -27,6 +27,8 @@ int net_wifi_scan(wifi_seen_t *out, int max);
 /* The network in use, "" when offline. Written by the net task: copy it right away, from a task that is not racing a Wi-Fi change
  * (the command handler, before it calls net_wifi_try). */
 const char *net_wifi_current_ssid(void);
+/* Wi-Fi modem sleep between beacons (on: saves the battery; off: steadier with a weak router). After net_start(). */
+esp_err_t net_set_power_save(bool on);
 typedef enum { NET_TRY_OK, NET_TRY_FAILED, NET_TRY_NOT_RUN } net_try_t;
 /* Tries the network now (the provisioning path Improv uses): blocks up to ~18 s. The old link is dropped. NET_TRY_OK: connected and saved. NET_TRY_FAILED: the
  * attempt failed (wrong password, not found, timed out); nothing was saved and the saved networks reconnect at once. NET_TRY_NOT_RUN: it

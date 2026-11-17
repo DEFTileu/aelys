@@ -23,6 +23,8 @@ esp_err_t board_display_power(bool on);
 /* Battery state of charge (0..100) and whether it is charging, from the AXP2101 fuel gauge. False when there is no
  * battery or the PMIC does not answer; the outputs are then untouched. Safe from any task. */
 bool board_battery(uint8_t *pct, bool *charging);
+/* The PMIC sees power on the USB-C port (VBUS good); false on battery or when the PMIC does not answer. */
+bool board_usb_power(void);
 
 /* Starts the `ui` task (core 1, priority 6): LVGL init, display and buffers, then ui_setup() inside the
  * task, then lv_timer_handler() forever. Returns once ui_setup() has run (or on failure). */
