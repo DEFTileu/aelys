@@ -2812,32 +2812,66 @@ static void test_weather_screen(void)
     btn(BTN_TOP);
     CHECK_EQ(ui_current_screen(), SCR_WEATHER);
     sim_step(100);
+#define MN "\xE2\x88\x92" /* the true minus */
+#define DG "\xC2\xB0"
     CHECK(!shows_text(scr, "No weather yet"));
-    CHECK(shows_text(scr, "3") && shows_text(scr, "Light snow") && shows_text(scr, "H -1  L -8"));
-    CHECK(shows_text(scr, "15:00") && shows_text(scr, "17:00") && shows_text(scr, "19:00"));
-    CHECK(shows_text(scr, "-4") && shows_text(scr, "-6") && shows_text(scr, "-8"));
+    CHECK(shows_text(scr, "3") && shows_text(scr, "Light snow") && shows_text(scr, "Feels " MN "7" DG " \xC2\xB7 H " MN "1" DG " L " MN "8" DG));
+    CHECK(shows_text(scr, "Hours") && !shows_text(scr, "NEXT HOURS")); /* Now first; the top key's word says what comes next */
     CHECK(!shows_text(scr, "Updated 14:27"));
+    CHECK_EQ(missing_glyphs(scr), 0);
     check_inside("weather (snow)");
-    sim_step(1000);                                  /* a second tick changes nothing: no redraw while idle */
+    CHECK(scr_weather_animating());                  /* snow falls behind the text */
     uint32_t n = sim_flushes();
+    sim_step(100);
+    CHECK(sim_flushes() > n);
+
+    btn(BTN_TOP);                                    /* Next hours: Now and the next four, city-local */
+    sim_step(100);
+    CHECK(!scr_weather_animating());
+    sim_step(1000);                                  /* the hours stand still: no redraw while idle */
+    n = sim_flushes();
     sim_step(1000); sim_step(1000); sim_step(1000);
     CHECK_EQ(sim_flushes(), n);
+    CHECK(shows_text(scr, "NEXT HOURS") && shows_text(scr, "Now") && shows_text(scr, "15") && shows_text(scr, "18") && !shows_text(scr, "19"));
+    CHECK(shows_text(scr, MN "3" DG) && shows_text(scr, MN "4" DG) && shows_text(scr, MN "7" DG));
+    CHECK(shows_text(scr, "Snow until 16:00") && !shows_text(scr, "Light snow") && shows_text(scr, "Now"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    check_inside("weather (hours)");
+    swipe(UI_EV_SWIPE_LEFT); swipe(UI_EV_SWIPE_RIGHT); swipe(UI_EV_SWIPE_RIGHT); /* the highlight moves and stops at Now */
+    CHECK_EQ(ui_current_screen(), SCR_WEATHER);
+    btn(BTN_TOP);
+    CHECK(shows_text(scr, "Light snow") && !shows_text(scr, "NEXT HOURS"));
+    btn(BTN_TOP);                                    /* on Next hours, out and back in: each visit starts on Now */
+    btn(BTN_LOW);
+    CHECK_EQ(ui_current_screen(), SCR_MENU);
+    CHECK(!scr_weather_animating());                 /* off screen, nothing falls */
+    btn(BTN_TOP);
+    CHECK_EQ(ui_current_screen(), SCR_WEATHER);
+    sim_step(100);
+    CHECK(shows_text(scr, "Light snow") && !shows_text(scr, "NEXT HOURS") && scr_weather_animating());
 
     cal_at(FX_NOW + 2 * 3600 - 5 * 60);              /* exactly 2 h old: still fresh */
-    CHECK(shows_text(scr, "19:00") && !shows_text(scr, "Updated 14:27"));
-    cal_at(FX_NOW + 2 * 3600);                       /* 2 h 5 min old: stale */
-    CHECK(shows_text(scr, "Updated 14:27") && !shows_text(scr, "15:00") && shows_text(scr, "Light snow"));
+    CHECK(shows_text(scr, "Hours") && !shows_text(scr, "Updated 14:27"));
+    cal_at(FX_NOW + 2 * 3600);                       /* 2 h 5 min old: stale, its hours are past */
+    CHECK(shows_text(scr, "Updated 14:27") && shows_text(scr, "Light snow") && !shows_text(scr, "Hours"));
+    btn(BTN_TOP);
+    CHECK(!shows_text(scr, "NEXT HOURS"));            /* nothing to switch to */
     check_inside("weather (stale)");
     cal_now = 0;                                     /* no clock: nothing can be judged stale */
     sim_step(1100);
-    CHECK(!shows_text(scr, "Updated 14:27") && shows_text(scr, "15:00"));
+    CHECK(!shows_text(scr, "Updated 14:27") && shows_text(scr, "Hours"));
 
-    fx_weather(&fx);                                 /* positive, fewer hours, another glyph */
-    fx.weather.temp = 24; fx.weather.hi = 27; fx.weather.lo = 14; fx.weather.code = 2; fx.weather.n_hours = 2;
+    fx_weather(&fx);                                 /* positive, fewer hours, another glyph, an older server without "feels" */
+    fx.weather.temp = 24; fx.weather.hi = 27; fx.weather.lo = 14; fx.weather.code = 2; fx.weather.n_hours = 2; fx.weather.has_feels = false;
     cal_now = FX_NOW;
     post_fx();
-    CHECK(shows_text(scr, "Partly cloudy") && shows_text(scr, "H 27  L 14") && shows_text(scr, "16:00") && !shows_text(scr, "17:00"));
+    CHECK(shows_text(scr, "Partly cloudy") && shows_text(scr, "H 27" DG " L 14" DG) && !scr_weather_animating()); /* dry: still */
+    btn(BTN_TOP);
+    CHECK(shows_text(scr, "15") && shows_text(scr, "16") && !shows_text(scr, "17") && shows_text(scr, "24" DG));
     check_inside("weather (24)");
+    btn(BTN_TOP);
+#undef MN
+#undef DG
     fx.weather.present = false;                      /* the server dropped it (city removed): back to the empty state */
     post_fx();
     CHECK(shows_text(scr, "No weather yet") && !shows_text(scr, "Partly cloudy"));

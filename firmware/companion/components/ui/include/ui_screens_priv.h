@@ -97,6 +97,10 @@ void scr_calendar_set(const snap_t *s, int64_t now);
 /* scr_weather.c (design "Погода · сейчас и по часам"): the snapshot's weather - glyph, temperature, condition, high / low, the next hours */
 lv_obj_t *scr_weather_create(lv_obj_t *parent);
 void scr_weather_set(const snap_t *s, int64_t now);
+void scr_weather_top(void);       /* the top key: Now <-> Next hours (only while there are hours to show) */
+void scr_weather_swipe(int dir);  /* the hours view: the highlight one column on (+1) or back (-1) */
+void scr_weather_visible(bool on); /* shown: the Now view; hidden: the particles stop */
+bool scr_weather_animating(void);  /* snow, rain or a storm moving on Now (host tests) */
 void scr_weather_summary(const snap_t *s, char *out, size_t cap); /* one line for the menu: "-3 C Â· Light snow", or "" without weather */
 
 /* scr_notice.c (designs "Уведомление · всплывает", "Уведомление · Telegram"): the new-notice card, 6 s, over everyday screens only. A kind

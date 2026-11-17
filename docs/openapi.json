@@ -16242,6 +16242,17 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated"
+          },
+          "feels": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feels"
           }
         },
         "type": "object",

@@ -507,7 +507,7 @@ static void keys_create(lv_obj_t *root)
 static void keys_update(scr_t s)
 {
     if (!keys.top) return;
-    bool top_own = s == SCR_FOCUS || s == SCR_TIMER || s == SCR_TASKS || s == SCR_GAMES || s == SCR_ASK;
+    bool top_own = s == SCR_FOCUS || s == SCR_TIMER || s == SCR_TASKS || s == SCR_GAMES || s == SCR_ASK || s == SCR_WEATHER;
     const char *top = s == SCR_HOME || s == SCR_TODAY ? "Menu" : s == SCR_MENU ? "Open" : NULL;
     top_own |= s == SCR_SETTINGS; /* the top key selects a row there: the tick alone, the word would touch the first row */
     /* Today's low key goes home, but home and Today keep the same marks: a swipe between them redraws only the painted parts,
@@ -540,6 +540,7 @@ static void show(scr_t s)
         if (g.scr[i]) lv_obj_set_hidden(g.scr[i], i != (int)s);
     g.cur = s;
     scr_games_visible(s == SCR_GAMES);
+    scr_weather_visible(s == SCR_WEATHER);
 #ifdef CONFIG_AELYS_SPARSE_SCREEN_SWITCH
     if (sparse) {
         render();
@@ -1260,6 +1261,7 @@ void ui_handle_event(const ui_event_t *ev)
         if (g.cur == SCR_TIMER && !g.lost) scr_timer_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         if (g.cur == SCR_SETTINGS && !g.lost) scr_settings_step(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         if (g.cur == SCR_GAMES && !g.lost) scr_games_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
+        if (g.cur == SCR_WEATHER && !g.lost) scr_weather_swipe(ev->type == UI_EV_SWIPE_LEFT ? 1 : -1);
         break;
     case UI_EV_TALK:
         if (ev->len < 1) return;
@@ -1322,6 +1324,7 @@ void ui_handle_event(const ui_event_t *ev)
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TASKS) complete_task(0);
         if (ev->data[0] == BTN_TOP && g.cur == SCR_TIMER) scr_timer_top();
         if (ev->data[0] == BTN_TOP && g.cur == SCR_GAMES) scr_games_top();
+        if (ev->data[0] == BTN_TOP && g.cur == SCR_WEATHER) scr_weather_top();
         if (ev->data[0] == BTN_LOW && g.cur == SCR_GAMES && scr_games_back()) return; /* out of a game, back to the hub */
         next = g.cur == SCR_MENU && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_menu_target())
              : g.cur == SCR_SETTINGS && ev->data[0] == BTN_TOP ? screen_next_open(g.cur, g.lost, scr_settings_top())

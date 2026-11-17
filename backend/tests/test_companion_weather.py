@@ -22,7 +22,7 @@ def payload(now=NOW, temp=7.4):
     """An Open-Meteo answer: hourly local wall-clock stamps from the start of the local day, two days."""
     start = (now + timedelta(seconds=OFFSET)).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     stamps = [start + timedelta(hours=i) for i in range(48)]
-    return {"utc_offset_seconds": OFFSET, "current": {"temperature_2m": temp, "weather_code": 61},
+    return {"utc_offset_seconds": OFFSET, "current": {"temperature_2m": temp, "apparent_temperature": temp - 3.6, "weather_code": 61},
             "daily": {"temperature_2m_max": [9.6, 10.0], "temperature_2m_min": [-0.4, 1.0]},
             "hourly": {"time": [s.strftime("%Y-%m-%dT%H:%M") for s in stamps], "temperature_2m": [float(i) for i in range(48)],
                        "weather_code": [i % 4 for i in range(48)]}}
@@ -74,7 +74,8 @@ async def snap(owner_id, now=NOW):
 
 def test_parse_forecast_rounds_and_keeps_only_future_hours():
     cached = weather.parse_forecast(payload(), NOW)
-    assert (cached["t"], cached["c"], cached["hi"], cached["lo"], cached["off"]) == (7, 61, 10, -0, OFFSET)
+    assert (cached["t"], cached["c"], cached["hi"], cached["lo"], cached["off"], cached["f"]) == (7, 61, 10, -0, OFFSET, 4)
+    assert "f" not in weather.parse_forecast({**payload(), "current": {"temperature_2m": 7.4, "weather_code": 61}}, NOW)  # optional
     assert len(cached["hours"]) == weather.HOURS_KEPT
     assert cached["hours"][0]["at"] == "2026-11-13T10:00:00+00:00" and cached["hours"][0]["t"] == 13  # local 13:00 is index 13
     with pytest.raises(KeyError):
@@ -143,7 +144,8 @@ async def test_fetch_sends_only_rounded_coordinates_and_fills_the_snapshot(clien
     assert await weather.refresh_if_due(owner_id, NOW)
     assert fetches == [(12.3, 45.7)]
     w = (await snap(owner_id)).weather
-    assert (w.temp, w.code, w.hi, w.lo, w.updated) == (7, 61, 10, 0, NOW)
+    assert (w.temp, w.code, w.hi, w.lo, w.updated, w.feels) == (7, 61, 10, 0, NOW, 4)
+    assert json.loads((await snap(owner_id)).model_dump_json())["weather"]["feels"] == 4
     assert [(h.h, h.t, h.c) for h in w.hours] == [(13, 13, 1), (14, 14, 2), (15, 15, 3), (16, 16, 0), (17, 17, 1)]  # the next 5 hours, city-local
     wire = (await snap(owner_id)).model_dump_json()
     assert "Testville" not in wire and "55" not in wire  # the board gets neither the name nor coordinates
@@ -267,3 +269,13 @@ async def test_a_push_refreshes_a_due_forecast_once_and_a_broken_fetch_still_sen
         assert sent[2]["snapshot"]["weather"]["temp"] == 7
     finally:
         unregister()
+
+
+@pytest.mark.asyncio
+async def test_a_forecast_cached_without_feels_leaves_the_key_out(client, fetches):
+    session, owner_id = await owner_session(client)
+    await put_city(client, session)
+    fetches.set({**payload(), "current": {"temperature_2m": 7.4, "weather_code": 61}})
+    assert await weather.refresh_if_due(owner_id, NOW)
+    wire = json.loads((await snap(owner_id)).model_dump_json())["weather"]
+    assert "feels" not in wire and wire["temp"] == 7
