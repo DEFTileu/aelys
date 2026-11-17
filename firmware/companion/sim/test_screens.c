@@ -784,6 +784,48 @@ static int sounds_n;
 static uint8_t last_sound;
 static void capture_sound(uint8_t s) { sounds_n++; last_sound = s; }
 
+static uint8_t pw_pct = 50;
+static bool pw_charging;
+static bool pw_battery(uint8_t *p, bool *charging) { *p = pw_pct; *charging = pw_charging; return true; }
+static const ui_settings_hooks_t pw_hooks = { .battery = pw_battery };
+
+/* The charging and low-battery cards (design "Зарядка", "Батарея низкая"): shown on a change for a few seconds, closed by a tap. */
+static void test_power_cards(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    pw_pct = 50; pw_charging = false;
+    ui_set_settings_hooks(&pw_hooks);
+    sim_step(3100);
+    CHECK(!scr_power_visible());
+    pw_charging = true;
+    sim_step(3100);
+    CHECK(scr_power_visible() && shows_text(scr, "50") && shows_text(scr, "Charging"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    check_inside("charging card");
+    sim_step(6100);
+    CHECK(!scr_power_visible());                              /* gone by itself */
+    CHECK_EQ(ui_current_screen(), SCR_HOME);
+    pw_charging = false; pw_pct = 14;
+    sim_step(3100);
+    CHECK(scr_power_visible() && shows_text(scr, "14% left") && shows_text(scr, "Plug me in"));
+    check_inside("low battery card");
+    tap_at(233, 233);
+    CHECK(!scr_power_visible());
+    CHECK_EQ(ui_current_screen(), SCR_HOME);                  /* the tap only closed the card */
+    pw_pct = 13;
+    sim_step(3100);
+    CHECK(!scr_power_visible());                              /* once per fall under 15 % */
+    post_lost(1);
+    pw_charging = true;
+    sim_step(3100);
+    CHECK(!scr_power_visible());                              /* never over lost mode */
+    post_lost(0);
+    pw_pct = 50; pw_charging = false;
+    sim_step(3100);
+    ui_set_settings_hooks(NULL);
+    sim_step(6100);
+}
+
 static int screen_calls;
 static bool screen_on_now = true;
 static void capture_screen(bool on) { screen_calls++; screen_on_now = on; }
@@ -3417,6 +3459,7 @@ int main(void)
     test_character_body_and_taps();
     test_sounds();
     test_face_down_screen();
+    test_power_cards();
     test_reconnect_does_not_interrupt_task_reaction();
     test_character_reconnected();
     test_character_home_integration();
