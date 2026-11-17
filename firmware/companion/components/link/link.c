@@ -752,6 +752,7 @@ static void tick(void)
     bool up = net_ok();
     if (up != net_up) {
         net_up = up;
+        ESP_LOGW(TAG, "network %s", up ? "up" : "down"); /* Wi-Fi or its IP came or went: tells a radio drop from a server close */
         if (up && ++net_ups > 1) reconnects++;
         dispatch(up ? LE_NET_UP : LE_NET_DOWN, 0);
     }

@@ -447,10 +447,13 @@ async def device_channel(websocket: WebSocket) -> None:
                 if sent and not sent.done():
                     sent.set_exception(ConnectionError("channel closed"))
 
+    board_close: dict[str, Any] = {}
+
     async def reader() -> None:
         while True:
             event = await websocket.receive()
             if event["type"] == "websocket.disconnect":
+                board_close["code"] = event.get("code")
                 return
             if event.get("bytes") is not None:
                 await _audio(link, event["bytes"])
@@ -481,7 +484,12 @@ async def device_channel(websocket: WebSocket) -> None:
             return
         tasks += [asyncio.create_task(reader()), asyncio.create_task(gone.wait()),
                   asyncio.create_task(_supervise(link, session_id, int(claims["exp"])))]
+        opened = time.monotonic()
         done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        # Which side ended it and how: diagnosing the board's short drops (a code from the board, or the hub, the token or a send).
+        ended = [name for name, task in zip(("send", "board", "replaced", "session"), tasks, strict=True) if task in done]
+        logger.warning("companion channel closed device=%s by=%s code=%s after=%ds", device_id[:8], "+".join(ended),
+                       board_close.get("code"), round(time.monotonic() - opened))
         failed: Any = next((t.exception() for t in done if not t.cancelled() and t.exception()), None)
         if failed:
             logger.warning("companion channel failed device=%s reason=%s", device_id, type(failed).__name__)

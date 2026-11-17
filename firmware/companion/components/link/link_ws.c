@@ -135,12 +135,16 @@ static void on_data(uint32_t gen, const esp_websocket_event_data_t *e)
     }
 }
 
-static void closed(uint32_t gen, int code)
+static void closed(uint32_t gen, int code, bool disconnected)
 {
     if (ws.closed_gen == gen) return; /* DISCONNECTED and CLOSED can both fire */
     ws.closed_gen = gen;
+    int sent = code, frame = ws.close_code;
     if (code == 0) code = ws.close_code;
     if (code == 0) code = ws.hs_status == 401 ? 4401 : ws.hs_status == 403 ? 4403 : 0; /* refused before the upgrade */
+    /* why the board's link drops: a close frame's code (the server or its proxy), or none (the TCP connection just went) */
+    ESP_LOGW(TAG, "ws %s code=%d frame=%d event=%d hs=%d rx_age_ms=%u", disconnected ? "disconnected" : "closed", code, frame, sent,
+             ws.hs_status, (unsigned)(now_ms() - ws.last_rx_ms));
     link_q_post(LQ_WS_CLOSED, gen, code, 0);
 }
 
@@ -184,7 +188,7 @@ static void on_ws(void *arg, esp_event_base_t base, int32_t id, void *data)
         break;
     case WEBSOCKET_EVENT_CLOSED:
     case WEBSOCKET_EVENT_DISCONNECTED:
-        closed(gen, e->close_status_code);
+        closed(gen, e->close_status_code, id == WEBSOCKET_EVENT_DISCONNECTED);
         break;
     default:
         break;
