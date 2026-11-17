@@ -14,6 +14,8 @@ typedef struct {
     uint8_t code;                    /* WMO weather code now */
     uint8_t n_hours;
     snap_hour_t hours[5];            /* the next hours, at most SNAP_MAX_HOURS (5) */
+    int8_t feels;                    /* Celsius, the apparent temperature now (server v1.4) */
+    bool has_feels;                  /* false: an older server or a forecast cached before v1.4 */
 } snap_weather_t;
 typedef enum { FOCUS_NONE, FOCUS_ACTIVE, FOCUS_PAUSED } focus_status_t;
 typedef struct { char id[40]; uint8_t status; char mode[16]; int64_t started; int32_t elapsed_s; } snap_focus_t;

@@ -266,6 +266,10 @@ static void parse_weather(const P *p, int o, snap_t *s)
     if (!get_int(p, v, "temp", &temp, S_REQ) || !get_int(p, v, "code", &code, S_REQ) || !get_int(p, v, "hi", &hi, S_REQ) ||
         !get_int(p, v, "lo", &lo, S_REQ) || !get_time(p, v, "updated", &w.updated, S_REQ)) return;
     w.temp = clamp_temp(temp); w.hi = clamp_temp(hi); w.lo = clamp_temp(lo);
+    int64_t feels = 0;
+    if (find(p, v, "feels") >= 0 && !is_null(p, find(p, v, "feels"))) { /* v1.4, optional: a bad one is dropped, the weather kept */
+        if (get_int(p, v, "feels", &feels, S_REQ)) { w.feels = clamp_temp(feels); w.has_feels = true; }
+    }
     w.code = (uint8_t)(code < 0 ? 0 : code > 99 ? 99 : code);
     int h = find(p, v, "hours"), i = h + 1;
     if (h >= 0 && p->t[h].type == JSMN_ARRAY) {

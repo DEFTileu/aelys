@@ -239,6 +239,13 @@ static void test_snapshot_weather(void)
     CHECK_EQ(w->n_hours, 5);
     CHECK(w->hours[0].hour == 16 && w->hours[0].temp == -4 && w->hours[0].code == 71 && w->hours[4].hour == 20 && w->hours[4].temp == -9 && w->hours[4].code == 0);
     CHECK_EQ(g_m.u.snap.n_tasks, 3); /* the rest of the snapshot is read as before */
+    CHECK(!w->has_feels);            /* v1.3 sends no "feels" */
+    CHECK(parse_str(SNAP_HEAD "\"unread_count\":4,\"weather\":{\"temp\":-3,\"code\":71,\"hi\":-1,\"lo\":-8,"
+                    "\"updated\":\"2026-11-13T09:30:00Z\",\"feels\":-7}}}"));
+    CHECK(g_m.u.snap.weather.present && g_m.u.snap.weather.has_feels && g_m.u.snap.weather.feels == -7);
+    CHECK(parse_str(SNAP_HEAD "\"unread_count\":4,\"weather\":{\"temp\":-3,\"code\":71,\"hi\":-1,\"lo\":-8,"
+                    "\"updated\":\"2026-11-13T09:30:00Z\",\"feels\":\"cold\"}}}"));
+    CHECK(g_m.u.snap.weather.present && !g_m.u.snap.weather.has_feels); /* a bad v1.4 field drops only itself */
 
     /* an older server, a null, a lost-mode snapshot: no weather, and the board keeps working */
     CHECK(parse_file("snapshot_v12"));

@@ -1,4 +1,4 @@
-/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|ask|ask_listen|ask_think|ask_answer|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|weather|weather_empty|weather_stale|weather_hot|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|charging|battery_low|face:<mood> --out file.bmp [--scale 100] [--zoom 1000] [--at ms]:
+/* companion_sim --shot today|aelys|aelys_offline|aelys_offline_wifi|focus_none|focus_active|focus_paused|focus_done|inbox|menu|ask|ask_listen|ask_think|ask_answer|timer_set|timer_running|timer_done|stopwatch|calendar|calendar_empty|calendar_list|weather|weather_hours|weather_hours2|weather_empty|weather_stale|weather_hot|notice_popup|notice_telegram|tasks|tasks_done|tasks_empty|settings|settings_level|settings_wifi|settings_wifi_wrong|settings_about|games|games_hub<0..4>|games_ask|games_ask_think|games_ask_answer|games_coin|games_coin_flip|games_dice|games_dice_roll|games_react|games_react_wait|games_react_go|games_react_done|games_react_early|games_maze|games_maze_done|games_maze_l<1..99>|home|lost|lost_hint|ice|ice_progress|lost_max|ice_max|ice_defaults|lost_cyr|ice_cyr|pair|pair_done|welcome|wifi_connecting|wifi_connected|wifi_wrong|wifi_wrong_long|find|find_lost|charging|battery_low|face:<mood> --out file.bmp [--scale 100] [--zoom 1000] [--at ms]:
  * renders one screen headless. The screens show fake demo data, never the real owner contacts. */
 #define _POSIX_C_SOURCE 200809L /* localtime_r, setenv, tzset under -std=c11 */
 #include <stdio.h>
@@ -328,6 +328,14 @@ static int companion_shot(const char *shot)
             sim_step(200);
         }
         post_ev(UI_EV_BTN, BTN_TOP);
+        if (strstr(shot, "hours")) { /* weather_hours: the top key to Next hours; weather_hours2: the highlight one on */
+            sim_step(100);
+            post_ev(UI_EV_BTN, BTN_TOP);
+            if (shot[strlen(shot) - 1] == '2') {
+                sim_post(UI_EV_TOUCH, (const uint8_t[]){ 233, 0, 233, 0 }, 4);
+                sim_post(UI_EV_SWIPE_LEFT, NULL, 0);
+            }
+        }
     }
     else if (!strcmp(shot, "notice_popup") || !strcmp(shot, "notice_telegram")) { /* a notice the board has not seen, over the home screen */
         bool tg = !strcmp(shot, "notice_telegram");

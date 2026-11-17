@@ -65,7 +65,8 @@ static inline void fx_lists(snap_t *s)
 static inline void fx_weather(snap_t *s)
 {
     s->weather = (snap_weather_t){ .updated = FX_NOW - 5 * 60, .present = true, .temp = -3, .hi = -1, .lo = -8, .code = 71, .n_hours = 5,
-                                   .hours = { { 15, 71, -4 }, { 16, 3, -5 }, { 17, 3, -6 }, { 18, 2, -7 }, { 19, 0, -8 } } };
+                                   .hours = { { 15, 71, -4 }, { 16, 3, -5 }, { 17, 3, -6 }, { 18, 2, -7 }, { 19, 0, -8 } },
+                                   .feels = -7, .has_feels = true };
 }
 
 /* publish into ui_snap_tb and tell the UI */

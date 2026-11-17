@@ -335,7 +335,7 @@ static void fill_snap(snap_t *s)
     s->events[0].ends = 1794501000;
     strcpy(s->events[1].id, "e-23"); strcpy(s->events[1].title, "Holiday"); s->events[1].starts = 1794520000; s->events[1].all_day = true;
     s->weather = (snap_weather_t){ .updated = 1794493000, .present = true, .temp = -3, .hi = -1, .lo = -8, .code = 71, .n_hours = 2,
-                                   .hours = { { 16, 71, -4 }, { 17, 3, -5 } } };
+                                   .hours = { { 16, 71, -4 }, { 17, 3, -5 } }, .feels = -7, .has_feels = true };
 }
 
 static void test_snap_roundtrip(void)
@@ -434,6 +434,11 @@ static void test_owned_snapshot(void)
     CHECK(strcmp(out.tasks[0].id, "t-101") == 0 && strcmp(out.events[1].title, "Holiday") == 0 && out.events[1].all_day);
     CHECK(out.weather.present && out.weather.temp == -3 && out.weather.hi == -1 && out.weather.lo == -8 && out.weather.code == 71);
     CHECK(out.weather.updated == 1794493000 && out.weather.n_hours == 2 && out.weather.hours[1].hour == 17 && out.weather.hours[1].temp == -5);
+    CHECK(out.weather.has_feels && out.weather.feels == -7);
+    b[1 + 65 + offsetof(snap_t, weather.has_feels)] = 2;   /* not a bool: the blob is refused, never read into one */
+    reseal(b, n);
+    CHECK(!store_decode_snap_owned(b, n, owner, &out));
+    CHECK_EQ(store_encode_snap_owned(&in, owner, b, TEST_BOUND_BLOB), n);
     memcpy(canonical, b, n);
     /* Deliberately dirty structure padding and the unused tail of a string. */
     ((uint8_t *)&in)[offsetof(snap_t, task) + offsetof(snap_task_t, title) + sizeof in.task.title] = 0xcc;

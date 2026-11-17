@@ -245,6 +245,7 @@ bool store_decode_snap(const uint8_t *buf, size_t len, snap_t *out)
 {
     const uint8_t *p = unseal(STORE_SNAP_VERSION, buf, len, sizeof *out);
     if (!p) return false;
+    if (p[offsetof(snap_t, weather.has_feels)] > 1) return false; /* the legacy raw layout kept padding there: never read it as a bool */
     snap_t s;
     memcpy(&s, p, sizeof s);
     if (s.n_notices > 5 || s.n_tasks > SNAP_MAX_TASKS || s.n_events > SNAP_MAX_EVENTS || s.focus.status > FOCUS_PAUSED ||
@@ -291,7 +292,7 @@ static void snapshot_payload(uint8_t *p, const snap_t *s)
     STRING(focus.id); SCALAR(focus.status); STRING(focus.mode); SCALAR(focus.started); SCALAR(focus.elapsed_s);
     SCALAR(n_tasks); SCALAR(n_events);
     SCALAR(weather.updated); SCALAR(weather.present); SCALAR(weather.temp); SCALAR(weather.hi); SCALAR(weather.lo); SCALAR(weather.code);
-    SCALAR(weather.n_hours);
+    SCALAR(weather.n_hours); SCALAR(weather.feels); SCALAR(weather.has_feels); /* in the old tail padding: an older blob reads as no feels */
     for (size_t i = 0; i < s->weather.n_hours && i < SNAP_MAX_HOURS; i++) { /* only the hours in use; the rest stays zero */
         size_t base = offsetof(snap_t, weather.hours) + i * sizeof(snap_hour_t);
         memcpy(p + base, &s->weather.hours[i], sizeof(snap_hour_t));
@@ -339,7 +340,8 @@ bool store_decode_snap_owned(const uint8_t *buf, size_t len, const uint8_t *owne
         p[offsetof(snap_t, event.all_day)] > 1 || p[offsetof(snap_t, event.has_end)] > 1 ||
         p[offsetof(snap_t, n_notices)] > 5 || p[offsetof(snap_t, focus.status)] > FOCUS_PAUSED ||
         p[offsetof(snap_t, n_tasks)] > SNAP_MAX_TASKS || p[offsetof(snap_t, n_events)] > SNAP_MAX_EVENTS ||
-        p[offsetof(snap_t, weather.present)] > 1 || p[offsetof(snap_t, weather.n_hours)] > SNAP_MAX_HOURS) return false;
+        p[offsetof(snap_t, weather.present)] > 1 || p[offsetof(snap_t, weather.n_hours)] > SNAP_MAX_HOURS ||
+        p[offsetof(snap_t, weather.has_feels)] > 1) return false;
     for (int i = 0; i < SNAP_MAX_EVENTS; i++) {
         size_t base = offsetof(snap_t, events) + i * sizeof(snap_event_t);
         if (p[base + offsetof(snap_event_t, all_day)] > 1 || p[base + offsetof(snap_event_t, has_end)] > 1) return false;
