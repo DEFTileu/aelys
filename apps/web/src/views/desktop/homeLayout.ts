@@ -29,7 +29,7 @@ export type WidgetDefinition = {
 export const WIDGET_CATALOG: Record<WidgetId, WidgetDefinition> = {
   today: { title: 'Today', icon: SquareCheck, color: 'blue', description: 'Tasks with checkboxes' },
   cal: { title: 'Calendar', icon: Calendar, color: 'red', description: 'Upcoming events', link: { label: 'Open', route: '/calendar' } },
-  focus: { title: 'Focus', icon: Timer, color: 'coral', description: 'Active focus timer' },
+  focus: { title: 'Focus', icon: Timer, color: 'coral', description: 'Active focus timer', link: { label: 'Open', route: '/timer' } },
   weather: { title: 'Weather', icon: CloudSun, color: 'blue', description: 'Temperature and forecast' },
   proj: { title: 'Projects', icon: Folder, color: 'violet', description: 'Progress across projects', link: { label: 'All', route: '/projects' } },
   notes: { title: 'Notes', icon: NotebookText, color: 'orange', description: 'Most recent notes', link: { label: 'All', route: '/notes' } },
