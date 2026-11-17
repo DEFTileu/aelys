@@ -6,16 +6,17 @@ import './timer-mobile.css'
 
 // One column: the timer card with its start and stop controls sits above the session history.
 export function TimerMobile({ apiStatus }: { apiStatus: ApiStatus }) {
-  const { shown, locked, pickMode, writeBlocked, status, notice, linksNotice, tasks, taskId, setTaskId, active, paused, busy, primary, time, preset, setPreset, mode, breakStart, pendingStart, setBreakStart, setNotice, stop, projectName, todayTotal, todays, secondsOf, recent, taskTitle, breakRunning } = useTimer(apiStatus)
+  const { shown, locked, pickMode, writeBlocked, status, notice, linksNotice, tasks, taskId, setTaskId, active, paused, busy, primary, time, filled, preset, setPreset, mode, breakStart, pendingStart, setBreakStart, setNotice, stop, projectName, todayTotal, todays, secondsOf, recent, taskTitle, breakRunning } = useTimer(apiStatus)
   return <div className="timer-m">
-    <h1 className="timer-m-title">Focus</h1>
     {status === 'ready' && writeBlocked && <p className="timer-m-note" role="status">Cached focus history is available. Starting and stopping need a connection.</p>}
     {notice && <p className="timer-m-note" role="status">{notice}</p>}
     {status !== 'ready' ? <StateCard status={status} title={status === 'loading' ? 'Loading focus sessions' : 'Focus sessions unavailable'} description="Check your connection and owner session." /> : <>
       <section className="timer-m-card" aria-label="Timer">
         <div className="timer-m-modes" role="tablist" aria-label="Timer mode">{MODES.map((item) => <button key={item.id} type="button" role="tab" aria-selected={shown === item.id} disabled={locked && shown !== item.id} onClick={() => pickMode(item.id)}>{item.label}</button>)}</div>
-        <div className="timer-m-time" aria-label="Elapsed focus time">{clock(time)}</div>
-        <p className="timer-m-status">{paused ? 'Paused' : active ? `Started ${new Date(active.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : breakRunning ? 'Break in progress' : 'Ready'}</p>
+        <div className="timer-m-ring" style={{ background: `conic-gradient(from 0deg, #F9C29A, #F06A58 ${filled}%, var(--tm-track) ${filled}%)` }}><div>
+          <div className="timer-m-time" aria-label="Elapsed focus time">{clock(time)}</div>
+          <p className="timer-m-status">{paused ? 'Paused' : active ? `Started ${new Date(active.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : breakRunning ? 'Break in progress' : 'Ready'}</p>
+        </div></div>
         {PRESETS[shown].length > 0 && <div className="timer-m-chips" role="radiogroup" aria-label="Duration">{PRESETS[shown].map((minutes) => <button key={minutes} type="button" role="radio" aria-checked={preset === minutes} disabled={locked} onClick={() => setPreset(minutes)}>{minutes}</button>)}</div>}
         {shown !== 'break' && <label className="timer-m-task"><span>Linked task</span>
           <select aria-label="Linked task" value={active?.task_id ?? taskId} disabled={locked} onChange={(event) => setTaskId(event.target.value)}>

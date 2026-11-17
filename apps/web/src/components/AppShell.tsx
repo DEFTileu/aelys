@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Wallet, type AelysIconComponent } from '../icons'
+import { BookOpen, Calendar, Folder, House, LayoutGrid, Mail, MessageSquareText, Moon, NotebookText, Search, Settings, SquareCheck, Sun, Timer, Wallet, type AelysIconComponent } from '../icons'
 import { accentColors } from '../data/desktop/settings'
 import { useDesktopState, useWindowWidth, type DesktopSettings } from '../lib/desktopStore'
 import { useWallpaper } from '../lib/wallpaper'
@@ -63,6 +63,7 @@ const NAV: NavItem[] = [
   { id: 'mail', label: 'Mail', icon: Mail, route: '/mail' },
   { id: 'finance', label: 'Finances', icon: Wallet, route: '/finance' },
   { id: 'kb', label: 'Knowledge base', icon: BookOpen, route: '/knowledge' },
+  { id: 'focus', label: 'Focus', icon: Timer, route: '/timer' },
   { id: 'utilities', label: 'Apps', icon: LayoutGrid, route: '/apps' },
 ]
 
@@ -91,7 +92,7 @@ const HEROES: Partial<Record<RoutePath, { title: string; sub?: string; dated?: b
 
 function screenFor(route: RoutePath): string | null {
   if (route === '/settings') return 'settings'
-  if (route === '/timer' || route === '/english' || route === '/automation' || route === '/messages' || route === '/notification-log' || route === '/app-limits' || route === '/developer') return 'utilities'
+  if (route === '/english' || route === '/automation' || route === '/messages' || route === '/notification-log' || route === '/app-limits' || route === '/developer') return 'utilities'
   return NAV.find((item) => item.route === route)?.id ?? null
 }
 

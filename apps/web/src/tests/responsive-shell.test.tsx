@@ -41,7 +41,7 @@ it('renders the reference sidebar list and module hero copy on desktop', async (
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host)
   await act(async () => root!.render(<AppShell route="/tasks" apiStatus="offline" theme="light" onToggleTheme={() => {}}><div /></AppShell>))
   const labels = [...host.querySelectorAll('nav[aria-label="Primary"] button')].map(button => button.getAttribute('aria-label'))
-  expect(labels).toEqual(['Home', 'AI Chat', 'Tasks', 'Calendar', 'Projects', 'Notes', 'Mail', 'Finances', 'Knowledge base', 'Apps'])
+  expect(labels).toEqual(['Home', 'AI Chat', 'Tasks', 'Calendar', 'Projects', 'Notes', 'Mail', 'Finances', 'Knowledge base', 'Focus', 'Apps'])
   const hero = host.querySelector('.shell-hero')!
   expect(hero.querySelector('h1')?.textContent).toBe('My tasks')
   expect(hero.textContent).toContain('More focus. More results.')

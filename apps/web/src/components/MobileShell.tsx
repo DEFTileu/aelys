@@ -24,7 +24,7 @@ const APPS: App[] = [
   { label: 'Settings', route: '/settings', icon: Settings, color: 'gray' },
   { label: 'Search', route: '/search', icon: Search, color: 'blue' },
   { label: 'Knowledge base', route: '/knowledge', icon: BookOpen, color: 'orange' },
-  { label: 'Timer', route: '/timer', icon: Timer, color: 'red' },
+  { label: 'Focus', route: '/timer', icon: Timer, color: 'red' },
   { label: 'English', route: '/english', icon: GraduationCap, color: 'green' },
   { label: 'Apps', route: '/apps', icon: Blocks, color: 'violet' },
   { label: 'Developer Hub', route: '/developer', icon: Terminal, color: 'gray' },
