@@ -32,6 +32,7 @@ static const event_rule_t EVENTS[CHAR_EVENT_COUNT] = {
 };
 
 uint32_t character_reaction_ms(character_event_t e) { return e == CHAR_EVENT_POKES ? POKES_REACTION_MS : REACTION_MS; }
+character_reason_t character_event_why(character_event_t e) { return e > CHAR_EVENT_NONE && e < CHAR_EVENT_COUNT ? EVENTS[e].why : WHY_CALM; }
 
 void character_init(character_state_t *s)
 {

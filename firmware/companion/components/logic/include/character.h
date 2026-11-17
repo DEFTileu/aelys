@@ -56,4 +56,6 @@ void character_init(character_state_t *state);
 bool character_event(character_state_t *state, character_event_t event, uint32_t now_ms);
 /* How long a reaction to `event` shows, ms. */
 uint32_t character_reaction_ms(character_event_t event);
+/* The reason a selected result carries while this event's reaction shows (WHY_CALM for an unknown event). */
+character_reason_t character_event_why(character_event_t event);
 character_result_t character_select(character_state_t *state, const character_inputs_t *inputs, uint32_t now_ms);

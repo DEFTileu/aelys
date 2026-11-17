@@ -826,6 +826,44 @@ static void test_power_cards(void)
     sim_step(6100);
 }
 
+/* A reaction and its sound go together: dozing on the charger a touch wakes her (face and sound), out of strength she shows
+ * neither. Before the battery reached her moods a tap made a sound while the charging face stayed. */
+static void test_battery_moods_and_taps(void)
+{
+    uint8_t day[] = {14, 32};
+    sim_post(UI_EV_TIME, day, 2);
+    ui_set_sound_sink(capture_sound);
+    ui_sound_set(true, false);
+    pw_pct = 50; pw_charging = false;
+    ui_set_settings_hooks(&pw_hooks);
+    sim_step(3100);
+    pw_charging = true;
+    sim_step(3100);
+    CHECK(scr_power_visible());
+    sim_step(6100);                                           /* the card goes by itself; she dozes */
+    CHECK_EQ(ui_character_last().mood, CHAR_CHARGING);
+    int n = sounds_n;
+    tap_at(233, 233);
+    CHECK(ui_character_last().mood != CHAR_CHARGING);         /* the touch woke her: the reaction shows ... */
+    CHECK_EQ(sounds_n, n + 1);                                /* ... with its sound */
+    sim_step(6100);
+    CHECK(ui_character_last().mood != CHAR_CHARGING);         /* and she stays awake on the charger */
+    pw_charging = false; pw_pct = 10;
+    sim_step(3100);
+    tap_at(233, 233);                                         /* closes the low-battery card */
+    sim_step(1100);
+    CHECK_EQ(ui_character_last().mood, CHAR_EXHAUSTED);
+    n = sounds_n;
+    tap_at(233, 233);
+    CHECK_EQ(ui_character_last().mood, CHAR_EXHAUSTED);       /* no strength to react ... */
+    CHECK_EQ(sounds_n, n);                                    /* ... and no sound without the face */
+    pw_pct = 50;
+    sim_step(3100);
+    ui_set_settings_hooks(NULL);
+    ui_sound_set(false, false);
+    sim_step(6100);
+}
+
 static int screen_calls;
 static bool screen_on_now = true;
 static void capture_screen(bool on) { screen_calls++; screen_on_now = on; }
@@ -3494,6 +3532,7 @@ int main(void)
     test_sounds();
     test_face_down_screen();
     test_power_cards();
+    test_battery_moods_and_taps();
     test_reconnect_does_not_interrupt_task_reaction();
     test_character_reconnected();
     test_character_home_integration();
