@@ -3419,6 +3419,11 @@ struct Focus {
     elapsed_seconds: i64,
     status: String,
     version: u64,
+    // The client derives a running session's time from these; dropping them counts pauses as focus.
+    #[serde(default)]
+    paused_at: Option<String>,
+    #[serde(default)]
+    paused_seconds: i64,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -3757,6 +3762,18 @@ fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn focus_sessions_keep_pause_fields() {
+        let session = json!({"id":"f1","owner_id":"o1","task_id":null,"project_id":null,"started_at":"2026-11-15T12:53:00Z","mode":"pomodoro","ended_at":null,"elapsed_seconds":6240,"status":"active","version":4,"paused_at":null,"paused_seconds":182400});
+        let kept = sanitize_response("focus-sessions", json!([session])).unwrap();
+        assert_eq!(kept[0]["paused_seconds"], 182400);
+        assert!(kept[0].get("paused_at").is_some());
+        let old = json!({"id":"f1","owner_id":"o1","task_id":null,"project_id":null,"started_at":"2026-11-15T12:53:00Z","mode":"pomodoro","ended_at":null,"elapsed_seconds":5,"status":"active","version":1});
+        assert_eq!(
+            sanitize_response("focus-session", old).unwrap()["paused_seconds"],
+            0
+        );
+    }
     #[test]
     fn gmail_browser_handoff_rejects_arbitrary_urls_and_credentials() {
         let ticket = "x".repeat(43);
@@ -4276,7 +4293,7 @@ mod tests {
 
     #[test]
     fn focus_start_and_stop_http_responses_are_single_objects() {
-        let focus = json!({"id":"focus-1","owner_id":"owner-1","task_id":null,"project_id":null,"started_at":"2026-10-30T00:00:00Z","mode":"pomodoro","ended_at":null,"elapsed_seconds":0,"status":"active","version":1});
+        let focus = json!({"id":"focus-1","owner_id":"owner-1","task_id":null,"project_id":null,"started_at":"2026-10-30T00:00:00Z","mode":"pomodoro","ended_at":null,"elapsed_seconds":0,"status":"active","version":1,"paused_at":null,"paused_seconds":0});
         let mut backend_response = focus.clone();
         backend_response["server_only"] = json!("excluded");
         assert_domain_http_response(
