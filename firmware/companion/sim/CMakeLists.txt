@@ -61,6 +61,7 @@ foreach(t test_combo test_pwrkey test_screen_fsm test_store test_improv test_cod
     target_link_libraries(${t} PRIVATE logic)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
+target_include_directories(test_screens PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main) # example owner contacts
 target_compile_definitions(test_proto PRIVATE PROTO_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/proto_corpus")
 find_package(Threads REQUIRED)
 target_link_libraries(test_tribuf PRIVATE Threads::Threads)

@@ -10,6 +10,7 @@
 #include "gesture.h"
 #include "sim_display.h"
 #include "snap_fixture.h"
+#include "owner_contact.example.h"
 #include "src/misc/lv_text_private.h" /* lv_text_encoded_next */
 #include "ui_screens_priv.h"
 
@@ -1193,6 +1194,37 @@ static void test_offline_shot(void)
     sim_step(100);
     check_inside_min("offline (no data)", 1000);
     CHECK(shows_text(scr, "Offline") && !shows_text(scr, "Showing data from --:--"));
+    link_state(LINK_UI_ONLINE);
+    fresh_fx();
+}
+
+/* An hour without the server: the offline view shows the owner's phone and Telegram for a finder. Failed tries in between
+ * (CONNECTING) do not restart the hour; being online does. */
+static void test_offline_contacts(void)
+{
+    lv_obj_t *scr = lv_screen_active();
+    char tg[48];
+    snprintf(tg, sizeof tg, "Telegram %s", OWNER_TELEGRAM);
+    owner_info_t o;
+    owner_defaults(&o);
+    post_owner(&o);
+    link_state(LINK_UI_OFFLINE);
+    sim_step(59u * 60u * 1000u);
+    CHECK(shows_text(scr, "Offline") && !shows_text(scr, OWNER_PHONE));
+    link_state(LINK_UI_CONNECTING);
+    sim_step(1000);
+    link_state(LINK_UI_OFFLINE);
+    sim_step(61u * 1000u);
+    CHECK(shows_text(scr, "If found") && shows_text(scr, OWNER_PHONE) && shows_text(scr, tg));
+    CHECK(!shows_text(scr, "Offline") && !shows_text(scr, "Showing data from 14:05"));
+    CHECK_EQ(missing_glyphs(scr), 0);
+    check_inside("offline contacts");
+    link_state(LINK_UI_ONLINE);
+    sim_step(100);
+    CHECK(!shows_text(scr, "If found") && shows_text(scr, "3 left today"));
+    link_state(LINK_UI_OFFLINE);
+    sim_step(1000);
+    CHECK(shows_text(scr, "Offline") && !shows_text(scr, "If found"));
     link_state(LINK_UI_ONLINE);
     fresh_fx();
 }
@@ -3393,6 +3425,7 @@ int main(void)
     test_tap_sends_task_complete();
     test_inbox_shot();
     test_offline_shot();
+    test_offline_contacts();
     test_focus_shots();
     test_hidden_focus_refreshes_on_entry();
     test_snapshot_received_under_card_is_shown_on_entry();
