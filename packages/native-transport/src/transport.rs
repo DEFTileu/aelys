@@ -955,6 +955,12 @@ pub enum Operation {
         project_id: Option<String>,
     },
     Notes {},
+    KnowledgeSearch {
+        query: String,
+        #[serde(default)]
+        note_ids: Vec<String>,
+        project_id: Option<String>,
+    },
     ReadPage {
         resource: String,
         limit: u16,
@@ -1616,6 +1622,24 @@ fn route(op: Operation) -> Result<(Method, String, Option<Value>), String> {
                 format!("/api/v1/read/mail/{id}")
             };
             Ok((Method::GET, path, None))
+        }
+        Operation::KnowledgeSearch {
+            query,
+            note_ids,
+            project_id,
+        } if !query.trim().is_empty()
+            && query.chars().count() <= 4000
+            && note_ids.len() <= 20
+            && note_ids.iter().all(|id| valid_id(id))
+            && project_id
+                .as_deref()
+                .is_none_or(|id| id.len() <= 36 && valid_id(id)) =>
+        {
+            Ok((
+                Method::POST,
+                "/api/v1/knowledge/search".into(),
+                Some(json!({"query": query, "note_ids": note_ids, "project_id": project_id})),
+            ))
         }
         Operation::NoteCreate { note } if valid_note(&note) => {
             Ok((Method::POST, "/api/v1/notes".into(), Some(json!(note))))
@@ -2753,6 +2777,8 @@ async fn execute_operation_inner(
         "mail-page"
     } else if path.starts_with("/api/v1/read/mail/") {
         "mail-message"
+    } else if path == "/api/v1/knowledge/search" {
+        "knowledge-sources"
     } else if path == "/api/v1/me" {
         "me"
     } else if path == "/api/v1/projects" {
@@ -2874,7 +2900,7 @@ async fn execute_operation_inner(
     } else {
         "task"
     };
-    let is_mutation = method != Method::GET;
+    let is_mutation = method != Method::GET && kind != "knowledge-sources";
     let mut diagnostic_data = Value::Null;
     let capture = diagnostic.is_some() && method == Method::POST && path == "/api/v1/ai/runs";
     let response: Result<Value, String> = if is_api {
@@ -3698,6 +3724,18 @@ struct ReadPageResult<T> {
     not_modified: bool,
     facets: Option<ReadFacets>,
 }
+#[derive(Serialize, Deserialize)]
+struct KnowledgeCitation {
+    label: String,
+    note_id: String,
+    title: String,
+    version: u64,
+    heading: String,
+    start: usize,
+    end: usize,
+    excerpt: String,
+}
+
 fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
     fn convert<T: DeserializeOwned + Serialize>(value: Value) -> Result<Value, String> {
         let parsed: T = serde_json::from_value(value).map_err(|_| err("INVALID_RESPONSE"))?;
@@ -3709,6 +3747,7 @@ fn sanitize_response(kind: &str, value: Value) -> Result<Value, String> {
         "projects" => convert::<Vec<Project>>(value),
         "project" => convert::<Project>(value),
         "tasks" => convert::<Vec<Task>>(value),
+        "knowledge-sources" => convert::<Vec<KnowledgeCitation>>(value),
         "notes" => convert::<Vec<Note>>(value),
         "notes-page" => convert::<ReadPageResult<Note>>(value),
         "mail-page" => convert::<ReadPageResult<MailMessage>>(value),

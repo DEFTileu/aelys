@@ -15,6 +15,7 @@ Run the installed signed application once, sign in, then enable owner data acces
 
 ```sh
 ~/Applications/Aelys.app/Contents/MacOS/aelys-desktop --mcp enable
+claude mcp add --scope user aelys -- ~/Applications/Aelys.app/Contents/MacOS/aelys-desktop --mcp stdio
 codex mcp add aelys -- ~/Applications/Aelys.app/Contents/MacOS/aelys-desktop --mcp stdio
 ```
 
@@ -50,6 +51,15 @@ continues to be enforced by the native session and backend.
   "note_create","note":{"title":"Plan","markdown_body":"Next steps"}}}`.
   Supported writes include projects, tasks, notes, calendar events/reminders,
   finance ledger records, focus sessions, mail drafts and notification read state.
+
+For personal tasks use `tasks`, `task_create`, `task_patch` (including status
+`done`), and `task_delete`. Resolve the target and preserve unrelated fields
+when patching. For Knowledge, send `{"operation":{"type":"knowledge_search",
+"query":"milestones"}}` to `aelys_read`. Optional `note_ids` and `project_id`
+narrow the search; only enabled sources are searched. Results include versioned
+citations and excerpts. No model is invoked. An empty result is valid. Manage
+sources with note CRUD and explicit `knowledge_enabled` consent. Removing
+consent preserves the note; deleting a note also removes it from Notes.
 
 Use actual current versions for edits. Decimal money must be JSON strings.
 Typed validation, ownership, backend policy and version checks remain in effect.

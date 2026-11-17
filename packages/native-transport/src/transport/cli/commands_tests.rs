@@ -55,7 +55,7 @@ fn note_result() -> Value {
 fn every_catalogue_example_is_accepted_by_the_native_validator() {
     let catalogue: Value = serde_json::from_str(catalogue()).unwrap();
     let examples = catalogue["typed_operations"].as_array().unwrap();
-    assert_eq!(examples.len(), 58);
+    assert_eq!(examples.len(), 59);
     for example in examples {
         assert!(describe(example).is_ok(), "{}", example["type"]);
     }
