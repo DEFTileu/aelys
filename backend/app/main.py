@@ -34,6 +34,7 @@ from .domains.google_calendar_api import router as calendar_router
 from .domains.google_calendar_oauth import router as calendar_oauth_router
 from .domains.paged_reads import router as paged_reads_router
 from .focus.api import router as focus_router
+from .integrations import telegram_answer_trace
 from .sync.api import router as sync_router
 
 
@@ -86,10 +87,21 @@ async def request_id(request: Request, call_next):
     response.headers["Server-Timing"] = f"app;dur={(time.perf_counter() - started) * 1000:.1f}"
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
+    path = request.url.path
+    if path in telegram_answer_trace.STATIC_PATHS:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; script-src 'self' https://telegram.org/js/telegram-web-app.js; "
+            "style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; "
+            "frame-ancestors https://web.telegram.org"
+        )
+    else:
+        response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)"
-    if (request.url.path.startswith("/api/v1/auth/") or request.url.path.startswith("/api/v1/integrations/telegram/")):
+    if (
+        path == telegram_answer_trace.API_PREFIX
+        or path.startswith(("/api/v1/auth/", "/api/v1/integrations/telegram/", telegram_answer_trace.API_PREFIX + "/"))
+    ):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -134,6 +146,8 @@ app.include_router(calendar_router, prefix="/api/v1")
 from .integrations.telegram_api import router as telegram_router
 
 app.include_router(telegram_router, prefix="/api/v1")
+app.include_router(telegram_answer_trace.router, prefix="/api/v1")
+app.include_router(telegram_answer_trace.static_router)
 
 async def init_db():
     async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)

@@ -8428,6 +8428,45 @@
         }
       }
     },
+    "/api/v1/telegram/answer-trace/{run_id}": {
+      "get": {
+        "summary": "Answer Trace",
+        "operationId": "answer_trace_api_v1_telegram_answer_trace__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerTraceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/search": {
       "post": {
         "tags": [
@@ -9753,6 +9792,76 @@
           "detail"
         ],
         "title": "AdaptationOut"
+      },
+      "AnswerTraceOut": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/TraceStep"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Steps"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/TraceSource"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Sources"
+          },
+          "history_message_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Message Count"
+          },
+          "memory_facts": {
+            "items": {
+              "$ref": "#/components/schemas/TraceMemoryFact"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Memory Facts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "duration_ms",
+          "model",
+          "steps",
+          "sources",
+          "history_message_count",
+          "memory_facts"
+        ],
+        "title": "AnswerTraceOut"
       },
       "AttachmentIn": {
         "properties": {
@@ -17112,6 +17221,103 @@
           "title"
         ],
         "title": "TomorrowTask"
+      },
+      "TraceMemoryFact": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "version"
+        ],
+        "title": "TraceMemoryFact"
+      },
+      "TraceSource": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Url"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "title"
+        ],
+        "title": "TraceSource"
+      },
+      "TraceStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/TraceSource"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "query",
+          "status"
+        ],
+        "title": "TraceStep"
       },
       "TransactionIn": {
         "properties": {

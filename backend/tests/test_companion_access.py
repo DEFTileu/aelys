@@ -50,6 +50,12 @@ PUBLIC_ROUTES = {
     ('GET', '/api/v1/mail/gmail/callback'),
     ('GET', '/api/v1/calendar/google/authorize'),
     ('GET', '/api/v1/calendar/google/callback'),
+    # Data uses separate Telegram initData authentication, outside current_principal.
+    ('GET', '/api/v1/telegram/answer-trace/{run_id}'),
+    # The Mini App shell and its explicit assets are public.
+    ('GET', '/telegram/answer-trace'),
+    ('GET', '/telegram/answer-trace/app.js'),
+    ('GET', '/telegram/answer-trace/style.css'),
 }
 
 
@@ -149,6 +155,28 @@ async def test_companion_denied_everywhere_but_allow_list(client):
         checked.add((method, template))
     for named in (('POST', f'{B}/pairing/invite'), ('POST', f'{B}/pairing/{{pairing_id}}/approve'), ('POST', f'{B}/devices/{{device_id}}/revoke'), ('POST', f'{B}/devices/register-key'), ('GET', f'{B}/sync/pull')):
         assert named in checked, named
+
+
+@pytest.mark.asyncio
+async def test_companion_bearer_cannot_read_trace_but_static_assets_are_public(client):
+    _, key, device_id = await pair_companion(client)
+    headers = {'Authorization': f'Bearer {await companion_token(client, key, device_id)}'}
+    response = await client.get(
+        f'{B}/telegram/answer-trace/00000000-0000-4000-8000-000000000000', headers=headers,
+    )
+    assert response.status_code == 401
+    assert response.json()['detail']['code'] == 'UNAUTHORIZED'
+    assert response.headers['cache-control'] == 'no-store'
+
+    for path, content_type in (
+        ('/telegram/answer-trace', 'text/html'),
+        ('/telegram/answer-trace/app.js', 'text/javascript'),
+        ('/telegram/answer-trace/style.css', 'text/css'),
+    ):
+        for request_headers in ({}, headers):
+            response = await client.get(path, headers=request_headers)
+            assert response.status_code == 200, path
+            assert response.headers['content-type'].startswith(content_type)
 
 
 def test_public_routes_are_exactly_the_known_ones():

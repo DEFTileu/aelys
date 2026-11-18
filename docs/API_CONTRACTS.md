@@ -877,3 +877,26 @@ GET /api/v1/changes   (owner app session; Accept: text/event-stream)
   poll, and catches up once after an outage. Native hosts open the same stream
   through the `native_ai_events` command with `changes: true`, whose event
   allow-list includes `changes.hint`.
+
+
+### Telegram answer trace (2026-11-18)
+
+`GET /api/v1/telegram/answer-trace/{run_id}` is a read-only Mini App endpoint,
+separate from device/native bearer authentication. It accepts only
+`Authorization: tma <Telegram.WebApp.initData>` and returns `Cache-Control:
+no-store`. The bot-token HMAC, auth_date (maximum age 3600 seconds, owner-approved),
+Telegram owner identity, and personal job/run ownership are checked server-side.
+The run ID is not a capability. An inaccessible run and a missing run both return
+404. Native API_ALLOWLIST intentionally excludes this route.
+
+The response projects duration, model, bounded tool steps/query/status/source
+metadata, final sources, the number of history messages, and current versions of
+used memory facts. Raw event payloads, model reasoning, system prompts, credentials,
+and Business content are excluded. Legacy runs without context counters return
+an unknown count rather than an inferred value.
+
+`/telegram/answer-trace` serves the public static Mini App shell and its local
+assets. A bot Main Mini App must point to its public HTTPS URL before live use.
+The outgoing personal answer receives `https://t.me/<bot_username>?startapp=run__<run_id>`;
+the saved AIMessage and subsequent model history do not receive this link.
+See [execution and acceptance plan](superpowers/plans/2026-11-18-answer-trace.md).
