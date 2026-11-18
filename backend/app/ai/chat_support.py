@@ -10,55 +10,125 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.core.models import AIAction, AIMessage, AIRun, Task
+from app.core.models import AIAction, AIConversation, AIMessage, AIRun, AIRunEvent, Task
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from .models import ChatMessage
 from .tools import ToolRegistry
+
+
+async def filter_history_messages(
+    db: AsyncSession, owner_id: str, messages: list[AIMessage], *, current_id: str | None = None,
+) -> list[AIMessage]:
+    """Filter owner history in descending (created_at, id) order without page-boundary leaks.
+
+    Callers select conversations and page bounds. Recorded reply/run prompt
+    links take precedence; legacy answers use the preceding persisted user in
+    that conversation, including answers beyond the selected page bounds.
+    Only the exact current owner user message bypasses memory/run filtering.
+    """
+    from .memory import active_memory_versions
+
+    if not messages:
+        return []
+    conversation_ids = set((await db.scalars(select(AIConversation.id).where(
+        AIConversation.owner_id == owner_id, AIConversation.deleted_at.is_(None),
+        AIConversation.id.in_({entry.conversation_id for entry in messages}),
+    ))).all())
+    prior = [entry for entry in messages if entry.conversation_id in conversation_ids
+             and entry.role in {"user", "assistant"}]
+    if not prior:
+        return []
+    user_ids = {entry.id for entry in prior if entry.role == "user" and entry.id != current_id}
+    answer_rows: list[tuple[str, Any, str]] = []
+    if user_ids:
+        # Compute each user's answer interval once. Restrict the join to the
+        # selected questions, without running a preceding-user scan per answer.
+        order = (AIMessage.created_at, AIMessage.id)
+        users = select(
+            AIMessage.id, AIMessage.conversation_id, AIMessage.created_at,
+            func.lead(AIMessage.id).over(partition_by=AIMessage.conversation_id, order_by=order).label("next_id"),
+            func.lead(AIMessage.created_at).over(
+                partition_by=AIMessage.conversation_id, order_by=order,
+            ).label("next_at"),
+        ).where(AIMessage.conversation_id.in_(conversation_ids), AIMessage.role == "user").cte("history_users")
+        selected = select(users).where(users.c.id.in_(user_ids)).cte("selected_questions")
+        legacy = list((await db.execute(select(
+            AIMessage.id, AIMessage.source_refs_json, selected.c.id.label("prompt_id"),
+        ).join(selected, and_(
+            AIMessage.conversation_id == selected.c.conversation_id,
+            or_(AIMessage.created_at > selected.c.created_at,
+                and_(AIMessage.created_at == selected.c.created_at, AIMessage.id > selected.c.id)),
+            or_(selected.c.next_id.is_(None), AIMessage.created_at < selected.c.next_at,
+                and_(AIMessage.created_at == selected.c.next_at, AIMessage.id < selected.c.next_id)),
+        )).where(AIMessage.role == "assistant"))).all())
+        # Fetch exact links for selected prompts even beyond their temporal
+        # interval. Also resolve links on legacy candidates so an interleaved
+        # Web prompt never inherits a Telegram answer belonging to another run.
+        question = aliased(AIMessage)
+        reply_id = AIRunEvent.payload["reply_message_id"].as_string()
+        exact = (await db.execute(select(
+            AIMessage.id, AIMessage.source_refs_json, question.id.label("prompt_id"),
+        ).select_from(AIRun).join(AIRunEvent, AIRunEvent.run_id == AIRun.id).join(
+            AIMessage, and_(AIMessage.id == reply_id, AIMessage.conversation_id == AIRun.conversation_id,
+                            AIMessage.role == "assistant"),
+        ).join(question, and_(question.id == AIRun.prompt_message_id,
+                             question.conversation_id == AIRun.conversation_id, question.role == "user")).where(
+            AIRun.owner_id == owner_id, AIRun.conversation_id.in_(conversation_ids),
+            AIRunEvent.event_type == "ai.run.completed",
+            or_(question.id.in_(user_ids), AIMessage.id.in_([row.id for row in legacy])),
+        ))).all()
+        linked_ids = {row.id for row in exact}
+        answer_rows = [(row.id, row.source_refs_json, row.prompt_id) for row in legacy if row.id not in linked_ids]
+        answer_rows.extend((row.id, row.source_refs_json, row.prompt_id) for row in exact if row.prompt_id in user_ids)
+
+    provenance: list[tuple[str, Any, str | None]] = [(entry.id, entry.source_refs_json, None) for entry in prior]
+    provenance.extend(answer_rows)
+    refs = sorted({ref["id"] for _, source_refs, _ in provenance for ref in (source_refs or [])
+                   if isinstance(ref, dict) and ref.get("kind") == "owner_memory_fact"
+                   and isinstance(ref.get("id"), str) and 1 <= len(ref["id"]) <= 36})
+    versions: dict[str, int] = {}
+    for offset in range(0, len(refs), 200):
+        versions.update(await active_memory_versions(db, owner_id, set(refs[offset:offset + 200])))
+    excluded: set[str] = set()
+    for message_id, source_refs, prompt_id in provenance:
+        if any(ref.get("kind") == "owner_memory_fact" and not (
+            isinstance(ref.get("id"), str) and type(ref.get("version")) is int
+            and versions.get(ref["id"]) == ref["version"]
+        ) for ref in (source_refs or []) if isinstance(ref, dict)):
+            excluded.add(message_id)
+            if prompt_id is not None:
+                excluded.add(prompt_id)
+
+    statuses: dict[tuple[str, str], set[str]] = {}
+    if user_ids:
+        run_rows = (await db.execute(select(AIRun.conversation_id, AIRun.prompt_message_id, AIRun.status).where(
+            AIRun.owner_id == owner_id, AIRun.conversation_id.in_(conversation_ids),
+            AIRun.prompt_message_id.in_(user_ids),
+        ))).all()
+        for conversation_id, prompt_id, status in run_rows:
+            if prompt_id is not None:
+                statuses.setdefault((conversation_id, prompt_id), set()).add(status)
+    return [entry for entry in prior if (entry.role == "user" and entry.id == current_id) or (
+        entry.id not in excluded and (entry.role != "user"
+            or (entry.conversation_id, entry.id) not in statuses
+            or "completed" in statuses[(entry.conversation_id, entry.id)]))]
 
 
 async def conversation_history(
     db: AsyncSession, owner_id: str, conversation_id: str, current: AIMessage, *, limit: int,
 ) -> tuple[ChatMessage, ...]:
     """Collect persisted turns up to the current question, excluding unfinished runs."""
-    from .memory import active_memory_versions
-
     prior = list((await db.scalars(select(AIMessage).where(
         AIMessage.conversation_id == conversation_id,
         AIMessage.role.in_(["user", "assistant"]),
         or_(AIMessage.created_at < current.created_at,
             and_(AIMessage.created_at == current.created_at, AIMessage.id <= current.id)),
     ).order_by(AIMessage.created_at.desc(), AIMessage.id.desc()).limit(limit))).all())
-    refs = {ref["id"] for entry in prior for ref in (entry.source_refs_json or [])
-            if isinstance(ref, dict) and ref.get("kind") == "owner_memory_fact" and isinstance(ref.get("id"), str)}
-    versions = await active_memory_versions(db, owner_id, set(sorted(refs)[:200]))
-    def memory_is_current(entry: AIMessage) -> bool:
-        return all(
-            ref.get("kind") != "owner_memory_fact" or
-            (isinstance(ref.get("id"), str) and type(ref.get("version")) is int and versions.get(ref["id"]) == ref["version"])
-            for ref in (entry.source_refs_json or []) if isinstance(ref, dict))
-
-    excluded: set[str] = set()
-    for index, entry in enumerate(prior):
-        if entry.id == current.id or memory_is_current(entry):
-            continue
-        excluded.add(entry.id)
-        if entry.role == "assistant":
-            previous = next((candidate for candidate in prior[index + 1:] if candidate.role == "user"), None)
-            if previous is not None and previous.id != current.id:
-                excluded.add(previous.id)
-    prior = [entry for entry in prior if entry.id not in excluded]
-    ids = [entry.id for entry in prior if entry.role == "user" and entry.id != current.id]
-    run_rows = (await db.execute(select(AIRun.prompt_message_id, AIRun.status).where(
-        AIRun.owner_id == owner_id, AIRun.conversation_id == conversation_id, AIRun.prompt_message_id.in_(ids)))).all()
-    statuses: dict[str, set[str]] = {}
-    for prompt_id, status in run_rows:
-        if prompt_id is not None:
-            statuses.setdefault(prompt_id, set()).add(status)
-    prior = [entry for entry in prior if entry.role != "user" or entry.id == current.id
-             or entry.id not in statuses or "completed" in statuses[entry.id]]
+    prior = await filter_history_messages(db, owner_id, prior, current_id=current.id)
     return tuple(ChatMessage(entry.role, entry.content,
         untrusted=any(ref.get("untrusted") is True for ref in (entry.source_refs_json or []) if isinstance(ref, dict)),
         memory_refs=tuple((ref["id"], ref["version"]) for ref in (entry.source_refs_json or [])
@@ -121,6 +191,8 @@ def system_prompt(timezone: str, *, tools: bool, channel: str = "app") -> str:
     now = datetime.now(ZoneInfo(timezone))
     # Telegram writes execute directly on the owner's request, so their policy differs from app chat's approval gate.
     policy = TELEGRAM_POLICY if channel in {"telegram", "voice"} else SYSTEM_POLICY if tools else _NO_TOOLS
+    if channel == "telegram" and tools:
+        policy += " Read chat history only when the current question depends on earlier conversation."
     if channel == "voice":
         policy += " " + VOICE_STYLE
     return f"{_IDENTITY}{policy}\nCurrent owner time: {now:%Y-%m-%d %H:%M} ({now:%A}), timezone {timezone}."
