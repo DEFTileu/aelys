@@ -3,35 +3,37 @@
   'use strict';
 
   const byId = (id) => document.getElementById(id);
-  const telegram = window.Telegram?.WebApp;
+  let telegram;
   const dialog = byId('step-dialog');
   let returnFocus = null;
   let fetching = false;
 
-  // The official SDK has already copied launch data into WebApp.initData.
-  // Keep authentication in memory, but remove its SDK cache and URL copy.
-  try {
-    const key = '__telegram__initParams';
-    const cached = window.sessionStorage.getItem(key);
-    if (cached) {
-      try {
-        const params = JSON.parse(cached);
-        delete params.tgWebAppData;
-        window.sessionStorage.setItem(key, JSON.stringify(params));
-      } catch {
-        window.sessionStorage.removeItem(key);
+  function clearLaunchCopies() {
+    // Run only after the official SDK has copied launch data into WebApp.initData.
+    // Keep authentication in memory, but remove its SDK cache and URL copy.
+    try {
+      const key = '__telegram__initParams';
+      const cached = window.sessionStorage.getItem(key);
+      if (cached) {
+        try {
+          const params = JSON.parse(cached);
+          delete params.tgWebAppData;
+          window.sessionStorage.setItem(key, JSON.stringify(params));
+        } catch {
+          window.sessionStorage.removeItem(key);
+        }
       }
+    } catch {
+      // Storage can be unavailable in restricted WebViews; auth remains in memory.
     }
-  } catch {
-    // Storage can be unavailable in restricted WebViews; auth remains in memory.
-  }
-  const launchUrl = new URL(window.location.href);
-  const launchHash = new URLSearchParams(launchUrl.hash.slice(1));
-  if (launchHash.has('tgWebAppData') || launchUrl.searchParams.has('tgWebAppData')) {
-    launchHash.delete('tgWebAppData');
-    launchUrl.searchParams.delete('tgWebAppData');
-    launchUrl.hash = launchHash.toString();
-    window.history.replaceState(window.history.state, '', launchUrl);
+    const launchUrl = new URL(window.location.href);
+    const launchHash = new URLSearchParams(launchUrl.hash.slice(1));
+    if (launchHash.has('tgWebAppData') || launchUrl.searchParams.has('tgWebAppData')) {
+      launchHash.delete('tgWebAppData');
+      launchUrl.searchParams.delete('tgWebAppData');
+      launchUrl.hash = launchHash.toString();
+      window.history.replaceState(window.history.state, '', launchUrl);
+    }
   }
 
   const text = (value, limit = 2000) => typeof value === 'string' ? value.slice(0, limit) : '';
@@ -235,7 +237,7 @@
     }
   }
 
-  byId('retry').addEventListener('click', load);
+  byId('retry').addEventListener('click', () => telegram ? load() : window.location.reload());
   byId('close-detail').addEventListener('click', closeDetails);
   dialog.addEventListener('click', (event) => {
     if (event.target !== dialog) return;
@@ -247,15 +249,44 @@
     telegram?.BackButton?.hide();
     returnFocus?.focus();
   });
-  if (telegram) {
+  function start() {
+    if (telegram) return;
+    telegram = window.Telegram?.WebApp;
+    if (!telegram) {
+      showError('Откройте из Telegram', 'Откройте ссылку под ответом бота в Telegram.');
+      byId('loading').hidden = true;
+      return;
+    }
+    clearLaunchCopies();
     byId('close-app').hidden = false;
     byId('close-app').addEventListener('click', () => telegram.close());
     telegram.BackButton?.onClick(closeDetails);
     telegram.BackButton?.hide();
     telegram.onEvent?.('themeChanged', applyTheme);
+    applyTheme();
     telegram.ready();
     telegram.expand();
+    byId('loading').textContent = 'Загружаю шаги ответа…';
+    load();
   }
   applyTheme();
-  load();
+  const sdk = byId('telegram-sdk');
+  byId('loading').textContent = 'Подключаю Telegram…';
+  if (window.Telegram?.WebApp) {
+    start();
+  } else {
+    const unavailable = () => {
+      byId('loading').hidden = true;
+      showError('Не удалось подключить Telegram', 'Проверьте подключение и откройте ссылку заново в Telegram.', true);
+    };
+    const timeout = setTimeout(unavailable, 15000);
+    sdk.addEventListener('load', () => {
+      clearTimeout(timeout);
+      start();
+    }, { once: true });
+    sdk.addEventListener('error', () => {
+      clearTimeout(timeout);
+      unavailable();
+    }, { once: true });
+  }
 })();

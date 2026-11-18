@@ -61,6 +61,7 @@ async def run_tool_turn(
     on_text: Callable[[str], Awaitable[None]] | None = None,
     max_steps: int = 8,
     usage_before_check: bool = False,
+    append_search_sources: bool = True,
 ) -> ToolTurnResult:
     """Only server scopes authorize tools; provider results always return as data.
 
@@ -225,7 +226,7 @@ async def run_tool_turn(
     final_text = '\n'.join(text)
     if search_started:
         final_text = _filter_urls(final_text, tuple(search_sources))
-    if search_sources:
+    if search_sources and append_search_sources:
         final_text += ('\n' if final_text else '') + 'Источники:\n' + '\n'.join(search_sources)
     if search_started and on_text:
         await on_text(final_text)

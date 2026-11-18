@@ -121,6 +121,9 @@ def system_prompt(timezone: str, *, tools: bool, channel: str = "app") -> str:
     now = datetime.now(ZoneInfo(timezone))
     # Telegram writes execute directly on the owner's request, so their policy differs from app chat's approval gate.
     policy = TELEGRAM_POLICY if channel in {"telegram", "voice"} else SYSTEM_POLICY if tools else _NO_TOOLS
+    if channel == "telegram":
+        policy += (" Search sources are available in the answer trace. Do not add a sources list, "
+                   "bibliography, or citation links in the reply. Include links the owner directly requests.")
     if channel == "voice":
         policy += " " + VOICE_STYLE
     return f"{_IDENTITY}{policy}\nCurrent owner time: {now:%Y-%m-%d %H:%M} ({now:%A}), timezone {timezone}."

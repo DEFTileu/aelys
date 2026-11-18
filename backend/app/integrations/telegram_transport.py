@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from types import TracebackType
 from typing import Any, Self
 
@@ -234,12 +234,15 @@ class TelegramClient:
     async def send_message(
         self, chat_id: int, text: str, *, business_connection_id: str | None = None,
         reply_to_message_id: int | None = None, reply_markup: Mapping[str, Any] | None = None,
+        entities: Sequence[Mapping[str, object]] = (),
     ) -> dict[str, Any]:
         if not 1 <= len(text) <= 4096:
             raise ValueError("message text must contain 1 to 4096 characters")
         payload: dict[str, Any] = {
             "chat_id": chat_id, "text": text, "link_preview_options": {"is_disabled": True}
         }
+        if entities:
+            payload["entities"] = list(entities)
         if business_connection_id is not None:
             payload["business_connection_id"] = business_connection_id
         if reply_to_message_id is not None:

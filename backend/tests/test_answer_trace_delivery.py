@@ -27,8 +27,19 @@ async def _finish_turn(integration_id):
     await dialogue.wait_for_personal_turns()
 
 
-@pytest.mark.parametrize('answer', ['Ответ', 'x' * 9000, 'x' * 4075], ids=['short', 'split', 'full-tail'])
-async def test_answer_trace_link_is_delivered_whole_with_previews_disabled(setup, monkeypatch, answer):
+def entity_text(text, entity):
+    start = 2 * entity['offset']
+    end = start + 2 * entity['length']
+    return text.encode('utf-16-le')[start:end].decode('utf-16-le')
+
+
+@pytest.mark.parametrize(('answer', 'visible'), [
+    ('Ответ', 'Ответ'),
+    ('x' * 9000, 'x' * 9000),
+    ('x' * 4096, 'x' * 4096),
+    ('😀 **Жауап**', '😀 Жауап'),
+], ids=['short', 'split', 'full-tail', 'formatted'])
+async def test_answer_trace_link_is_delivered_whole_with_previews_disabled(setup, monkeypatch, answer, visible):
     _, sessions, fake, integration_id = await bound(setup)
     await provider(sessions, integration_id)
     async with sessions() as db:
@@ -62,18 +73,61 @@ async def test_answer_trace_link_is_delivered_whole_with_previews_disabled(setup
         run = (await db.scalars(select(AIRun))).one()
     link = f'https://t.me/trace_delivery_test_bot?startapp=run__{run.id}'
     texts = [payload['text'] for payload in sent]
-    assert texts[-1].splitlines()[-1] == link
-    assert all(1 <= len(text) <= 4096 for text in texts)
-    assert all(payload['link_preview_options'] == {'is_disabled': True} for payload in sent)
-    assert ''.join(texts).removesuffix(link).rstrip('\n') == answer
-    if len(answer) < 4096 - len(link) - 2:
-        assert texts == [f'{answer}\n\n{link}']
+    label = 'Как я ответил'
+    assert texts[-1].splitlines()[-1] == label
+    assert all(1 <= len(text.encode('utf-16-le')) // 2 <= 4096 for text in texts)
+    assert all(link not in text for text in texts)
+    assert all(payload['link_preview_options'] == {'is_disabled': True} and 'parse_mode' not in payload for payload in sent)
+    links = [(payload['text'], entity) for payload in sent for entity in payload.get('entities', [])
+             if entity['type'] == 'text_link']
+    [(link_text, link_entity)] = links
+    assert link_entity['url'] == link
+    assert entity_text(link_text, link_entity) == label
+    assert ''.join(texts).removesuffix(label).rstrip('\n') == visible
+    if visible == '😀 Жауап':
+        assert sent[0]['entities'][0] == {'type': 'bold', 'offset': 3, 'length': 5}
+    if len(visible.encode('utf-16-le')) // 2 + 2 + len(label) <= 4096:
+        assert texts == [f'{visible}\n\n{label}']
 
     fake.updates = [ordinary(2, 'Следующий вопрос')]
     await service.poll_once(integration_id, timeout=0)
     await _finish_turn(integration_id)
     assert [message.content for message in model.requests[1][0] if message.role == 'assistant'] == [answer]
     assert all(link not in message.content for message in model.requests[1][0])
+
+
+async def test_partial_formatted_delivery_is_never_retried(setup, monkeypatch):
+    from app.core.models import Notification
+    from app.integrations.telegram_transport import TelegramError
+
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+    model = Service()
+    model.requests = []
+    model.response = SimpleNamespace(text='**' + 'ж' * 9000 + '**', tool_calls=())
+    monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: model)
+    original_send = fake.send_message
+    attempts = []
+
+    async def send(self, chat_id, text, **kwargs):
+        attempts.append(text)
+        if len(attempts) == 2:
+            raise TelegramError('timeout')
+        return await original_send(self, chat_id, text, **kwargs)
+
+    monkeypatch.setattr(fake, 'send_message', send)
+    fake.updates = [ordinary(1, 'Длинный ответ')]
+    await service.poll_once(integration_id, timeout=0)
+    await _finish_turn(integration_id)
+    await _finish_turn(integration_id)
+    assert attempts == ['ж' * 4096] * 2
+    assert len(model.requests) == 1
+    async with sessions() as db:
+        assert (await db.scalars(select(AIRun))).one().status == 'completed'
+        notice = (await db.scalars(select(Notification).where(
+            Notification.kind == 'telegram.personal.delivery',
+        ))).one()
+        assert notice.body is None
 
 
 async def test_sent_trace_resolves_memory_inherited_from_the_exact_saved_reply(setup, monkeypatch):
@@ -115,9 +169,11 @@ async def test_sent_trace_resolves_memory_inherited_from_the_exact_saved_reply(s
         ))).one()
     assert all(ref['kind'] != 'owner_memory_fact' for ref in prompt.source_refs_json)
     assert reply.source_refs_json == [{'kind': 'owner_memory_fact', 'id': fact_id, 'version': version}]
-    reply_text, link = fake.sent[-1][1].rsplit('\n\n', 1)
-    assert reply_text == reply.content
-    start_param, = parse_qs(urlsplit(link).query)['startapp']
+    _, delivered, options = fake.sent[-1]
+    assert delivered == f'{reply.content}\n\nКак я ответил'
+    trace, = options['entities']
+    assert entity_text(delivered, trace) == 'Как я ответил'
+    start_param, = parse_qs(urlsplit(trace['url']).query)['startapp']
     assert start_param == f'run__{run.id}'
     response = await client.get(
         f'/api/v1/telegram/answer-trace/{start_param.removeprefix("run__")}',

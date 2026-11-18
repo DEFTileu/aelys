@@ -14,6 +14,7 @@ from app.core.models import (
     AIProvider,
     AIProviderSecret,
     AIRun,
+    AIRunEvent,
     TaskReminder,
     now,
 )
@@ -24,6 +25,7 @@ from app.integrations.telegram_models import (
     TelegramUpdateReceipt,
 )
 from sqlalchemy import select
+from test_telegram_business import OWNER, TOKEN
 from test_telegram_personal import bound, ordinary
 
 pytest_plugins = ('test_telegram_business',)
@@ -93,9 +95,9 @@ async def test_history_omits_unanswered_owner_turns_but_keeps_answered_pairs(set
     assert history == ([("user", old_text), ("assistant", 'Сегодня суббота.')] if answered else []) + [('user', 'Какие новости NASA?')]
 
 
-async def test_owner_web_search_shows_query_and_cited_answer(setup, monkeypatch):
+async def test_owner_web_search_shows_query_and_keeps_sources_in_trace(setup, monkeypatch):
     from app.integrations import telegram_personal_dialogue as dialogue
-    _, sessions, fake, integration_id = await bound(setup)
+    client, sessions, fake, integration_id = await bound(setup)
     await provider(sessions, integration_id)
 
     class SearchService(Service):
@@ -104,24 +106,43 @@ async def test_owner_web_search_shows_query_and_cited_answer(setup, monkeypatch)
             self.calls += 1
             if kwargs.get('web_search'):
                 assert any('current weather' in sent[1] for sent in fake.sent)
-                response = SimpleNamespace(text='Fact', tool_calls=(), search_used=True, sources=('https://example.org/fact',))
+                response = SimpleNamespace(text='Fact', tool_calls=(), search_used=True, sources=('https://example.org/fact', 'https://example.org/other-source'))
             elif self.calls == 1:
+                self.prompt = messages[0].content
                 assert 'web_search' in {tool['name'] for tool in kwargs['tools']}
                 response = SimpleNamespace(text='', tool_calls=({'id':'one','name':'web_search','input':{'query':'current weather'}},))
             else:
-                response = SimpleNamespace(text='Fact', tool_calls=())
+                response = SimpleNamespace(text='Fact [requested page](https://example.org/fact)', tool_calls=())
             return SimpleNamespace(provider=ProviderKind.CLAUDE, model='test', response=response,
                                    usage=SimpleNamespace(usage=Usage(5,2), estimated_cost=Decimal('0.01')))
 
-    monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: SearchService())
-    fake.updates = [ordinary(1, 'Какая сейчас погода?')]
+    model = SearchService()
+    monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: model)
+    fake.updates = [ordinary(1, 'Какая сейчас погода? Дай ссылку на прогноз.')]
     await service.poll_once(integration_id, timeout=0)
     await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
     sent = '\n'.join(value[1] for value in fake.sent)
-    assert 'current weather' in sent and 'https://example.org/fact' in sent
+    assert 'current weather' in sent
+    assert 'Источники:' not in sent and 'https://example.org/other-source' not in sent
+    assert fake.sent[-1][1] == 'Fact requested page\n\nКак я ответил'
+    assert fake.sent[-1][2]['entities'][0] == {
+        'type': 'text_link', 'offset': 5, 'length': 14, 'url': 'https://example.org/fact',
+    }
+    assert 'Do not add a sources list' in model.prompt
     async with sessions() as db:
         recorded = (await db.execute(select(AIRun))).scalar_one()
         assert recorded.cost_estimate == Decimal('0.03')
+        cited = (await db.scalars(select(AIRunEvent).where(AIRunEvent.event_type == 'ai.tool.result'))).one()
+        assert cited.payload['result']['sources'] == [
+            {'url': 'https://example.org/fact', 'title': ''},
+            {'url': 'https://example.org/other-source', 'title': ''},
+        ]
+        saved = (await db.scalars(select(AIMessage).where(AIMessage.role == 'assistant'))).one()
+        assert saved.content == 'Fact [requested page](https://example.org/fact)'
+    from test_telegram_answer_trace import headers, signed
+    trace = await client.get(f'/api/v1/telegram/answer-trace/{recorded.id}', headers=headers(signed(token=TOKEN, user_id=OWNER)))
+    assert trace.status_code == 200
+    assert trace.json()['sources'] == cited.payload['result']['sources']
 
 
 async def test_durable_poll_does_not_wait_for_long_turn(setup, monkeypatch):
@@ -202,8 +223,9 @@ async def test_budget_and_long_plain_reply_and_new_conversation(setup,monkeypatc
     assert all(1 <= len(chunk) <= 4096 for chunk in chunks)
     reply_tail, link = chunks[-1].rsplit('\n\n', 1)
     assert ''.join([*chunks[:-1], reply_tail]) == 'x' * 9000
-    assert link == f'https://t.me/{bot_username}?startapp=run__{job.run_id}'
-    assert all(not s[2] for s in fake.sent)
+    assert link == 'Как я ответил'
+    assert fake.sent[-1][2]['entities'][-1]['url'] == f'https://t.me/{bot_username}?startapp=run__{job.run_id}'
+    assert all(not sent[2] for sent in fake.sent[:-1])
     fake.updates=[ordinary(3,'/new'),ordinary(4,'Другая беседа')];await service.poll_once(integration_id,timeout=0)
     await dialogue.personal_iteration(integration_id);await dialogue.wait_for_personal_turns()
     async with sessions() as db:
@@ -384,7 +406,8 @@ async def test_reply_streams_as_draft_and_is_delivered_once(setup, monkeypatch):
     assert [c[3] for c in calls[1:]] == ['Сейчас', 'Сейчас посмотрю']
     assert {c[1] for c in calls} == {owner_chat} and all(c[2] != 0 for c in calls[1:])
     replies = fake.sent[sent_before:]
-    assert [r[1] for r in replies] == [f'Сейчас посмотрю\n\n{link}']
+    assert [r[1] for r in replies] == ['Сейчас посмотрю\n\nКак я ответил']
+    assert replies[0][2]['entities'][-1]['url'] == link
 
 
 async def test_draft_failure_turns_preview_off_but_still_replies(setup, monkeypatch):
@@ -411,7 +434,8 @@ async def test_draft_failure_turns_preview_off_but_still_replies(setup, monkeypa
         job = (await db.scalars(select(TelegramPersonalJob))).one()
         assert job.state == 'done' and job.run_id is not None
         bot_username = (await db.get(TelegramIntegration, integration_id)).bot_username
-    assert fake.sent[-1][1] == f'Сейчас посмотрю\n\nhttps://t.me/{bot_username}?startapp=run__{job.run_id}'
+    assert fake.sent[-1][1] == 'Сейчас посмотрю\n\nКак я ответил'
+    assert fake.sent[-1][2]['entities'][-1]['url'] == f'https://t.me/{bot_username}?startapp=run__{job.run_id}'
 
 
 async def test_owner_memory_is_placed_before_current_question(setup, monkeypatch):

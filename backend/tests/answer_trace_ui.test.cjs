@@ -49,7 +49,8 @@ after(async () => {
 });
 
 async function openApp(t, { data = trace, status = 200, telegram = true,
-  startParam = `run__${runId}`, suffix = '', offline = false, officialSdk = false } = {}) {
+  startParam = `run__${runId}`, suffix = '', offline = false, officialSdk = false,
+  sdkGate = Promise.resolve(), sdkFailure = false, beforeSdk } = {}) {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
   t.after(() => context.close());
   const page = await context.newPage();
@@ -58,9 +59,11 @@ async function openApp(t, { data = trace, status = 200, telegram = true,
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const sdk = officialSdk ? await readFile(process.env.ANSWER_TRACE_TELEGRAM_SDK, 'utf8') : '// SDK replaced by test fixture';
-  await page.route('https://telegram.org/js/telegram-web-app.js*', route => route.fulfill({
-    contentType: 'text/javascript', body: sdk,
-  }));
+  await page.route('https://telegram.org/js/telegram-web-app.js*', async route => {
+    await sdkGate;
+    if (sdkFailure) return route.abort();
+    await route.fulfill({ contentType: 'text/javascript', body: sdk });
+  });
   await page.route('**/api/v1/telegram/answer-trace/**', async route => {
     requests.push({ url: route.request().url(), headers: route.request().headers() });
     if (offline) return route.abort();
@@ -83,10 +86,46 @@ async function openApp(t, { data = trace, status = 200, telegram = true,
       BackButton: { show() {}, hide() {}, onClick(callback) { window.testBack = callback; } },
     } };
   }, { startParam });
-  await page.goto(`${origin}/telegram/answer-trace${suffix}`);
+  await page.goto(`${origin}/telegram/answer-trace${suffix}`, { waitUntil: 'commit' });
+  if (beforeSdk) await beforeSdk(page, requests);
   await page.locator('#loading').waitFor({ state: 'hidden' });
   return { page, requests, external, errors };
 }
+
+test('delayed official SDK leaves startup responsive and preserves launch authentication', {
+  skip: !process.env.ANSWER_TRACE_TELEGRAM_SDK && 'Set ANSWER_TRACE_TELEGRAM_SDK to a locally downloaded official SDK',
+}, async t => {
+  let releaseSdk;
+  const sdkGate = new Promise(resolve => { releaseSdk = resolve; });
+  const initData = `auth_date=1&start_param=run__${runId}&hash=synthetic-delay-signature`;
+  const launch = new URLSearchParams({ tgWebAppData: initData, tgWebAppVersion: '8.0', tgWebAppPlatform: 'web' });
+  const { page, requests, errors } = await openApp(t, { officialSdk: true, sdkGate, suffix: `#${launch}`,
+    beforeSdk: async (page, requests) => {
+      try {
+        await page.waitForFunction(() => document.querySelector('#loading')?.textContent === 'Подключаю Telegram…', null, { timeout: 1500 });
+        assert.equal(requests.length, 0);
+        assert.equal(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('tgWebAppData'), initData);
+        assert.equal(await page.locator('#error').isVisible(), false);
+      } finally {
+        releaseSdk();
+      }
+    },
+  });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].headers.authorization, `tma ${initData}`);
+  assert.equal(await page.locator('#trace').isVisible(), true);
+  assert.equal(new URL(page.url()).hash.includes('tgWebAppData'), false);
+  assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('__telegram__initParams')).tgWebAppData), undefined);
+  assert.deepEqual(errors, []);
+});
+
+test('SDK network failure shows a safe retry without requesting protected data', async t => {
+  const { page, requests, errors } = await openApp(t, { telegram: false, sdkFailure: true });
+  assert.match(await page.locator('#error-title').innerText(), /подключить Telegram/);
+  assert.equal(await page.getByRole('button', { name: 'Повторить' }).isVisible(), true);
+  assert.equal(requests.length, 0);
+  assert.deepEqual(errors, []);
+});
 
 test('official SDK launch removes persisted credentials but preserves in-memory retry auth', {
   skip: !process.env.ANSWER_TRACE_TELEGRAM_SDK && 'Set ANSWER_TRACE_TELEGRAM_SDK to a locally downloaded official SDK',

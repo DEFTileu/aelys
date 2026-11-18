@@ -12,7 +12,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -49,6 +49,7 @@ from app.core.models import (
 )
 from sqlalchemy import select, update
 
+from .telegram_answer_format import TEXT_LIMIT, MessageEntity, answer_chunks
 from .telegram_models import TelegramIntegration, TelegramPersonalJob
 from .telegram_personal import authorize
 from .telegram_personal_queue import (
@@ -58,7 +59,6 @@ from .telegram_personal_queue import (
 
 logger = logging.getLogger(__name__)
 PERSONAL_TIMEOUT_SECONDS = 90
-_TELEGRAM_TEXT_LIMIT = 4096
 _active_turns: dict[str, asyncio.Task[None]] = {}
 _active_jobs: dict[str, str] = {}
 # The source of a turn decides what it may do, not the wording of the request:
@@ -118,20 +118,19 @@ async def _send_owner(integration_id: str, text: str, *, answer_run_id: str | No
         token, chat_id = decrypt_secret(item.encrypted_token), item.owner_telegram_id
         trace_url = (
             f'https://t.me/{item.bot_username}?startapp=run__{answer_run_id}'
-            if answer_run_id is not None else None
+            if answer_run_id is not None and re.fullmatch(r'[A-Za-z0-9_]{1,64}', item.bot_username or '') else None
         )
         await db.commit()
-    chunks = [text[start:start + _TELEGRAM_TEXT_LIMIT] for start in range(0, len(text), _TELEGRAM_TEXT_LIMIT)]
-    if trace_url:
-        if chunks and len(chunks[-1]) + 2 + len(trace_url) <= _TELEGRAM_TEXT_LIMIT:
-            chunks[-1] += f'\n\n{trace_url}'
-        else:
-            chunks.append(trace_url)
-    # send_message uses plain text and disables link previews. Never retry a partial send.
+    plain: Iterator[tuple[str, list[MessageEntity]]] = ((text[start:start + TEXT_LIMIT], []) for start in range(0, len(text), TEXT_LIMIT))
+    chunks = answer_chunks(text, trace_url) if answer_run_id is not None else plain
+    # Never retry a partially delivered answer.
     async with TelegramClient(token) as client:
-        for chunk in chunks:
+        for chunk, entities in chunks:
             authorize(item, 'telegram.notify_owner', external=True)
-            await client.send_message(chat_id, chunk)
+            if entities:
+                await client.send_message(chat_id, chunk, entities=entities)
+            else:
+                await client.send_message(chat_id, chunk)
 
 
 class _LiveDraft:
@@ -162,7 +161,7 @@ class _LiveDraft:
         await self._call('send_chat_action', 'typing')
 
     async def __call__(self, text: str) -> None:
-        text = text.strip()[:_TELEGRAM_TEXT_LIMIT]
+        text = text.strip()[:TEXT_LIMIT]
         if not self._enabled or not text or time.monotonic() - self._sent_at < self.INTERVAL_SECONDS:
             return
         self._sent_at = time.monotonic()
@@ -388,7 +387,8 @@ async def _process(job_id: str) -> None:
                 await live.typing()
                 result = await run_tool_turn(service, UUID(run_id), request, messages, registry, context,
                                              parse_call=ai_api._tool_call, on_event=event, on_usage=account,
-                                             refresh_messages=refresh_memory_messages, cancel_check=check, on_text=live)
+                                             refresh_messages=refresh_memory_messages, cancel_check=check, on_text=live,
+                                             append_search_sources=False)
             finally:
                 await live.close()
             if await check():
