@@ -58,6 +58,7 @@ from .telegram_personal_queue import (
 
 logger = logging.getLogger(__name__)
 PERSONAL_TIMEOUT_SECONDS = 90
+_TELEGRAM_TEXT_LIMIT = 4096
 _active_turns: dict[str, asyncio.Task[None]] = {}
 _active_jobs: dict[str, str] = {}
 # The source of a turn decides what it may do, not the wording of the request:
@@ -107,7 +108,7 @@ def owner_scopes(text: str, *, quoted: bool = False) -> frozenset[str]:
     return frozenset(scopes)
 
 
-async def _send_owner(integration_id: str, text: str) -> None:
+async def _send_owner(integration_id: str, text: str, *, answer_run_id: str | None = None) -> None:
     from .telegram_service import TelegramClient
     async with database.SessionLocal() as db:
         item = await db.get(TelegramIntegration, integration_id)
@@ -115,12 +116,22 @@ async def _send_owner(integration_id: str, text: str) -> None:
             return
         authorize(item, 'telegram.notify_owner', external=True)
         token, chat_id = decrypt_secret(item.encrypted_token), item.owner_telegram_id
+        trace_url = (
+            f'https://t.me/{item.bot_username}?startapp=run__{answer_run_id}'
+            if answer_run_id is not None else None
+        )
         await db.commit()
-    # No parse_mode. At-most-once attempt for each segment, never retry a partial send.
+    chunks = [text[start:start + _TELEGRAM_TEXT_LIMIT] for start in range(0, len(text), _TELEGRAM_TEXT_LIMIT)]
+    if trace_url:
+        if chunks and len(chunks[-1]) + 2 + len(trace_url) <= _TELEGRAM_TEXT_LIMIT:
+            chunks[-1] += f'\n\n{trace_url}'
+        else:
+            chunks.append(trace_url)
+    # send_message uses plain text and disables link previews. Never retry a partial send.
     async with TelegramClient(token) as client:
-        for start in range(0, len(text), 4096):
+        for chunk in chunks:
             authorize(item, 'telegram.notify_owner', external=True)
-            await client.send_message(chat_id, text[start:start+4096])
+            await client.send_message(chat_id, chunk)
 
 
 class _LiveDraft:
@@ -151,7 +162,7 @@ class _LiveDraft:
         await self._call('send_chat_action', 'typing')
 
     async def __call__(self, text: str) -> None:
-        text = text.strip()[:4096]
+        text = text.strip()[:_TELEGRAM_TEXT_LIMIT]
         if not self._enabled or not text or time.monotonic() - self._sent_at < self.INTERVAL_SECONDS:
             return
         self._sent_at = time.monotonic()
@@ -282,6 +293,10 @@ async def _process(job_id: str) -> None:
             from app.ai.chat_support import conversation_history
             from app.ai.memory import active_memory_versions
             history = await conversation_history(db, owner_id, conversation_id, message, limit=20)
+            # History ends with the current owner question. Track prior messages by identity
+            # so injected memory, quotes and tool-loop messages never enter the count.
+            prior_message_ids = {id(entry) for entry in history[:-1]}
+            history_message_count = started_history_message_count = 0
             memory_refs.update(ref for entry in history for ref in entry.memory_refs)
             messages = (ChatMessage('system', system_prompt(owner_timezone(item.timezone), tools=True, channel='telegram')), *history)
             if not file_turn:
@@ -328,7 +343,14 @@ async def _process(job_id: str) -> None:
                 return inactive
 
             async def event(kind: str, payload: Mapping[str, Any]) -> None:
+                nonlocal started_history_message_count
                 authorize(item, 'ai.personal.write')
+                if kind == 'ai.run.started':
+                    started_history_message_count = history_message_count
+                    payload = {**payload, 'history_message_count': history_message_count}
+                elif kind == 'ai.run.completed' and history_message_count != started_history_message_count:
+                    # A memory change can shorten the history before a later model call.
+                    payload = {**payload, 'history_message_count': history_message_count}
                 if kind == 'ai.tool.result' and payload.get('tool') in {'remember','forget'}:
                     output = payload.get('result')
                     if isinstance(output, dict) and isinstance(output.get('id'), str) and type(output.get('version')) is int:
@@ -344,11 +366,16 @@ async def _process(job_id: str) -> None:
                     await _send_owner(integration_id, 'Поиск в вебе: ' + str(payload.get('query', '')))
 
             async def refresh_memory_messages(current: tuple[ChatMessage, ...]) -> tuple[ChatMessage, ...]:
+                nonlocal history_message_count
                 ids = {fact_id for chat in current for fact_id, _ in chat.memory_refs}
                 versions = await active_memory_versions(db, owner_id, set(sorted(ids)[:200]))
                 await db.commit()
-                return tuple(chat for chat in current if all(versions.get(fact_id) == version
-                                                             for fact_id, version in chat.memory_refs))
+                refreshed = tuple(
+                    chat for chat in current
+                    if all(versions.get(fact_id) == version for fact_id, version in chat.memory_refs)
+                )
+                history_message_count = sum(id(chat) in prior_message_ids for chat in refreshed)
+                return refreshed
 
             async def account(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
                 authorize(item, 'ai.personal.write')
@@ -372,15 +399,23 @@ async def _process(job_id: str) -> None:
             if result.followup_pending:
                 reply += '\nДостигнут лимит шагов. Выполненные действия сохранены; уточни следующий шаг.'
             reply = reply.strip() or 'Готово.'
-            db.add(AIMessage(conversation_id=conversation_id, role='assistant', content=reply,
-                             source_refs_json=[{'kind':'owner_memory_fact','id':fact_id,'version':version}
-                                               for fact_id, version in sorted(memory_refs)]))
+            reply_message = AIMessage(
+                conversation_id=conversation_id, role='assistant', content=reply, source_refs_json=[
+                    {'kind': 'owner_memory_fact', 'id': fact_id, 'version': version}
+                    for fact_id, version in sorted(memory_refs)
+                ],
+            )
+            db.add(reply_message)
             run.status, run.completed_at = 'completed', now()
             run.token_counts, run.cost_estimate = {'input': result.input_tokens, 'output': result.output_tokens}, result.cost
             job.state, job.finished_at = 'done', now(); job.version += 1
-            await event('ai.run.completed', {'run_id': run_id, 'estimated_cost': str(result.cost), 'text_length':len(reply)})
+            await db.flush()
+            await event('ai.run.completed', {
+                'run_id': run_id, 'estimated_cost': str(result.cost), 'text_length': len(reply),
+                'reply_message_id': reply_message.id,
+            })
         try:
-            await _send_owner(integration_id, reply)
+            await _send_owner(integration_id, reply, answer_run_id=run_id)
         except Exception:  # noqa: BLE001 - completed tools are never replayed on delivery failure
             async with database.SessionLocal() as db:
                 item = await db.get(TelegramIntegration, integration_id)

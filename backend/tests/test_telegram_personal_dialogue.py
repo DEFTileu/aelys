@@ -188,10 +188,21 @@ async def test_budget_and_long_plain_reply_and_new_conversation(setup,monkeypatc
         item=await db.get(TelegramIntegration,integration_id);old=item.personal_conversation_id
         for n in range(30): db.add(AIMessage(conversation_id=old,role='user',content=f'Prior {n}'))
         await db.commit()
+    sent_before = len(fake.sent)
     fake.updates=[ordinary(2,'Продолжим')];await service.poll_once(integration_id,timeout=0)
     await dialogue.personal_iteration(integration_id);await dialogue.wait_for_personal_turns()
     assert sum(m.role in {'user','assistant'} and not m.untrusted for m in model.requests[0][0])<=20
-    assert [len(s[1]) for s in fake.sent[-3:]]==[4096,4096,808]
+    async with sessions() as db:
+        job = (await db.scalars(select(TelegramPersonalJob).where(
+            TelegramPersonalJob.integration_id == integration_id, TelegramPersonalJob.telegram_update_id == 2,
+        ))).one()
+        assert job.state == 'done' and job.run_id is not None
+        bot_username = (await db.get(TelegramIntegration, integration_id)).bot_username
+    chunks = [sent[1] for sent in fake.sent[sent_before:]]
+    assert all(1 <= len(chunk) <= 4096 for chunk in chunks)
+    reply_tail, link = chunks[-1].rsplit('\n\n', 1)
+    assert ''.join([*chunks[:-1], reply_tail]) == 'x' * 9000
+    assert link == f'https://t.me/{bot_username}?startapp=run__{job.run_id}'
     assert all(not s[2] for s in fake.sent)
     fake.updates=[ordinary(3,'/new'),ordinary(4,'Другая беседа')];await service.poll_once(integration_id,timeout=0)
     await dialogue.personal_iteration(integration_id);await dialogue.wait_for_personal_turns()
@@ -364,12 +375,16 @@ async def test_reply_streams_as_draft_and_is_delivered_once(setup, monkeypatch):
     sent_before = len(fake.sent)
     await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
     async with sessions() as db:
-        owner_chat = (await db.get(TelegramIntegration, integration_id)).owner_telegram_id
+        integration = await db.get(TelegramIntegration, integration_id)
+        owner_chat = integration.owner_telegram_id
+        job = (await db.scalars(select(TelegramPersonalJob))).one()
+        assert job.state == 'done' and job.run_id is not None
+        link = f'https://t.me/{integration.bot_username}?startapp=run__{job.run_id}'
     assert calls[0] == ('action', owner_chat, 'typing')
     assert [c[3] for c in calls[1:]] == ['Сейчас', 'Сейчас посмотрю']
     assert {c[1] for c in calls} == {owner_chat} and all(c[2] != 0 for c in calls[1:])
     replies = fake.sent[sent_before:]
-    assert [r[1] for r in replies] == ['Сейчас посмотрю']
+    assert [r[1] for r in replies] == [f'Сейчас посмотрю\n\n{link}']
 
 
 async def test_draft_failure_turns_preview_off_but_still_replies(setup, monkeypatch):
@@ -392,9 +407,11 @@ async def test_draft_failure_turns_preview_off_but_still_replies(setup, monkeypa
     await service.poll_once(integration_id, timeout=0)
     await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
     assert attempts == ['Сейчас']
-    assert fake.sent[-1][1] == 'Сейчас посмотрю'
     async with sessions() as db:
-        assert (await db.execute(select(TelegramPersonalJob))).scalar_one().state == 'done'
+        job = (await db.scalars(select(TelegramPersonalJob))).one()
+        assert job.state == 'done' and job.run_id is not None
+        bot_username = (await db.get(TelegramIntegration, integration_id)).bot_username
+    assert fake.sent[-1][1] == f'Сейчас посмотрю\n\nhttps://t.me/{bot_username}?startapp=run__{job.run_id}'
 
 
 async def test_owner_memory_is_placed_before_current_question(setup, monkeypatch):
