@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import ipaddress
 import json
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
@@ -13,7 +13,14 @@ from urllib.parse import urlsplit
 
 from .egress import ensure_safe_payload
 from .errors import ProviderError, RunCancelled, redact_error
-from .models import ChatMessage, ProviderKind, ProviderRequest, ProviderResponse, Usage
+from .models import (
+    ChatMessage,
+    ProviderKind,
+    ProviderRequest,
+    ProviderResponse,
+    SourceDetail,
+    Usage,
+)
 from .secrets import SecretRef, SecretStore
 
 
@@ -95,23 +102,40 @@ def _bounded_sources(urls: list[Any]) -> tuple[str, ...]:
     return tuple(result)
 
 
-def _claude_sources(content: Any) -> tuple[str, ...]:
-    urls: list[Any] = []
+def _bounded_source_details(entries: Sequence[Mapping[str, Any]]) -> tuple[SourceDetail, ...]:
+    # Trace metadata has its own bound; legacy answer URL/count budgets stay unchanged.
+    result: dict[str, SourceDetail] = {}
+    for entry in entries:
+        url = _safe_source_url(entry.get("url"))
+        if url is None:
+            continue
+        raw_title = entry.get("title")
+        # JSON may decode lone surrogates that cannot be persisted/sent as UTF-8.
+        title = " ".join(raw_title.encode("utf-8", errors="replace").decode("utf-8").split())[:300] if isinstance(raw_title, str) else ""
+        if url in result:
+            if not result[url].title and title:
+                result[url] = SourceDetail(url, title)
+        elif len(result) < 10:
+            result[url] = SourceDetail(url, title)
+    return tuple(result.values())
+
+
+def _claude_source_entries(content: Any) -> list[Mapping[str, Any]]:
+    entries: list[Mapping[str, Any]] = []
     for part in content if isinstance(content, list) else ():
         if not isinstance(part, Mapping):
             continue
         if part.get("type") == "web_search_tool_result" and isinstance(part.get("content"), list):
-            urls.extend(item.get("url") for item in part["content"] if isinstance(item, Mapping) and item.get("type") == "web_search_result")
+            entries.extend(item for item in part["content"] if isinstance(item, Mapping) and item.get("type") == "web_search_result")
         citations = part.get("citations")
         if isinstance(citations, list):
-            urls.extend(item.get("url") for item in citations if isinstance(item, Mapping) and item.get("type") == "web_search_result_location")
-    return _bounded_sources(urls)
+            entries.extend(item for item in citations if isinstance(item, Mapping) and item.get("type") == "web_search_result_location")
+    return entries
 
 
-def _openrouter_sources(message: Mapping[str, Any]) -> tuple[str, ...]:
+def _openrouter_source_entries(message: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     annotations = message.get("annotations")
-    urls = [item["url_citation"].get("url") for item in annotations if isinstance(item, Mapping) and item.get("type") == "url_citation" and isinstance(item.get("url_citation"), Mapping)] if isinstance(annotations, list) else []
-    return _bounded_sources(urls)
+    return [item["url_citation"] for item in annotations if isinstance(item, Mapping) and item.get("type") == "url_citation" and isinstance(item.get("url_citation"), Mapping)] if isinstance(annotations, list) else []
 
 
 def _streamed_usage(request: ProviderRequest, usage: Usage, output: str) -> Usage:
@@ -260,8 +284,10 @@ class ClaudeAdapter(_BaseAdapter):
         text = "".join(str(part.get("text", "")) for part in content if isinstance(part, Mapping) and part.get("type") == "text")
         calls = tuple(part for part in content if isinstance(part, Mapping) and part.get("type") == "tool_use")
         usage = _usage(response.body)
-        sources = _claude_sources(content) if request.web_search else ()
-        return ProviderResponse(text, usage, response.body.get("id"), calls, sources, bool(sources))
+        entries = _claude_source_entries(content) if request.web_search else []
+        sources = _bounded_sources([entry.get("url") for entry in entries])
+        return ProviderResponse(text, usage, response.body.get("id"), calls, sources, bool(sources),
+                                source_details=_bounded_source_details(entries))
 
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:
         self.last_usage = Usage()
@@ -330,8 +356,10 @@ class OpenRouterAdapter(_BaseAdapter):
         self.last_usage = usage
         choices = response.body.get("choices", [])
         message = choices[0].get("message", {}) if choices else {}
-        sources = _openrouter_sources(message) if request.web_search else ()
-        return ProviderResponse(str(message.get("content", "")), usage, response.body.get("id"), tuple(message.get("tool_calls", ())), sources, bool(sources))
+        entries = _openrouter_source_entries(message) if request.web_search else []
+        sources = _bounded_sources([entry.get("url") for entry in entries])
+        return ProviderResponse(str(message.get("content", "")), usage, response.body.get("id"), tuple(message.get("tool_calls", ())), sources, bool(sources),
+                                source_details=_bounded_source_details(entries))
 
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:
         self.last_usage = Usage()

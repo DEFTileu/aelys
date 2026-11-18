@@ -105,11 +105,12 @@ def payloads(events, kind):
     return [data for name, data in events if name == kind]
 
 
-async def test_web_search_available_without_personal_sources_and_visible_in_events(tmp_path, monkeypatch):
+@pytest.mark.parametrize("title, expected_title", [("Weather facts", "Weather facts"), ("Bad \ud800 title", "Bad ? title")])
+async def test_web_search_available_without_personal_sources_and_visible_in_events(tmp_path, monkeypatch, title, expected_title):
     from decimal import Decimal
     from types import SimpleNamespace
 
-    from app.ai.models import Capability, ProviderKind, Usage
+    from app.ai.models import Capability, ProviderKind, SourceDetail, Usage
 
     class SearchService:
         models = (SimpleNamespace(capabilities=frozenset({Capability.TOOL_CALLING})),)
@@ -117,7 +118,9 @@ async def test_web_search_available_without_personal_sources_and_visible_in_even
         async def complete(self, run_id, request, messages, **kwargs):
             self.calls += 1
             if kwargs.get('web_search'):
-                response = SimpleNamespace(text='Fact', tool_calls=(), search_used=True, sources=('https://example.org/fact',))
+                response = SimpleNamespace(text='Raw search summary must not enter the result event',
+                    tool_calls=(), search_used=True, sources=('https://example.org/fact',),
+                    source_details=(SourceDetail('https://example.org/fact', title),))
             elif self.calls == 1:
                 assert 'web_search' in {tool['name'] for tool in kwargs['tools']}
                 response = SimpleNamespace(text='', tool_calls=({'id':'s','name':'web_search','input':{'query':'weather now'}},))
@@ -133,7 +136,13 @@ async def test_web_search_available_without_personal_sources_and_visible_in_even
         requested = payloads(events, 'ai.tool.requested')[0]
         assert 'weather now' in requested['label'] or 'weather now' in requested.get('detail', '')
         assert 'https://example.org/fact' in ''.join(data['text'] for data in payloads(events, 'ai.text.delta'))
-        assert 'https://example.org/fact' not in str(payloads(events, 'ai.tool.result'))
+        results = payloads(events, 'ai.tool.result')
+        assert len(results) == 1
+        assert results[0]['result'] == {
+            'status': 'ok',
+            'sources': [{'url': 'https://example.org/fact', 'title': expected_title}],
+        }
+        assert 'Raw search summary' not in str(results)
 
 
 async def test_exhausted_search_budget_is_reported_in_web_chat(tmp_path, monkeypatch):

@@ -108,6 +108,12 @@ class Usage:
 
 
 @dataclass(frozen=True)
+class SourceDetail:
+    url: str
+    title: str = ""
+
+
+@dataclass(frozen=True)
 class ProviderResponse:
     text: str
     usage: Usage = Usage()
@@ -115,6 +121,7 @@ class ProviderResponse:
     tool_calls: tuple[Mapping[str, Any], ...] = ()
     sources: tuple[str, ...] = ()
     search_used: bool = False
+    source_details: tuple[SourceDetail, ...] = ()
 
 
 @dataclass(frozen=True)

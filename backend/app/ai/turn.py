@@ -19,6 +19,7 @@ from .errors import (
 )
 from .execution import AIExecutionService
 from .models import ChatMessage, PermissionContext, RoutingRequest, ToolCall
+from .providers import _bounded_source_details
 from .tools import ToolRegistry
 from .web_search import WebSearch
 
@@ -78,6 +79,7 @@ async def run_tool_turn(
     search_count = 0
     search_started = False
     search_sources: list[str] = []
+    search_trace_sources: list[dict[str, str]] = []
     schemas = tuple(schema for schema in registry.schemas()
                     if registry.descriptor(str(schema['name'])).required_scope in context.scopes)
 
@@ -90,7 +92,7 @@ async def run_tool_turn(
             await on_event(kind, {'run_id': str(run_id), **payload})
 
     async def search(query: str) -> Mapping[str, Any]:
-        nonlocal cost, input_tokens, output_tokens
+        nonlocal cost, input_tokens, output_tokens, search_trace_sources
         remaining = request.request_budget - cost
         if remaining <= 0:
             return {'error': 'BUDGET_EXCEEDED: Search budget exhausted', 'untrusted': True}
@@ -113,6 +115,12 @@ async def run_tool_turn(
         for source in result.response.sources:
             if source not in search_sources and len(search_sources) < 5:
                 search_sources.append(source)
+        details = getattr(result.response, 'source_details', ())
+        entries = ([{'url': source.url, 'title': source.title} for source in details]
+                   if details else [{'url': url, 'title': ''} for url in result.response.sources])
+        search_trace_sources = [{'url': source.url, 'title': source.title}
+                                for source in _bounded_source_details(entries)]
+        # Trace titles and extra URLs must not change the model payload or egress checks.
         return {'text': _filter_urls(result.response.text[:1200]), 'sources': list(result.response.sources), 'untrusted': True}
 
     try:
@@ -180,6 +188,7 @@ async def run_tool_turn(
                 descriptor = None
             write = bool(descriptor and (descriptor.required_scope.endswith('.write') or descriptor.required_scope in {'memory.remember', 'memory.forget'}))
             if is_search:
+                search_trace_sources = []
                 registry.authorize(call, context)
                 search_started = True
                 search_count += 1
@@ -200,7 +209,7 @@ async def run_tool_turn(
             if 'error' not in output:
                 await emit('ai.tool.approved', tool=call.name, call_id=call.call_id)
             search_code = str(output.get('error', '')).split(':', 1)[0]
-            search_event = ({'error': search_code if search_code in {'POLICY_DENIED', 'BUDGET_EXCEEDED', 'SEARCH_UNAVAILABLE'} else 'TOOL_ERROR'} if 'error' in output else {'status': 'ok'}) if is_search else output
+            search_event = ({'error': search_code if search_code in {'POLICY_DENIED', 'BUDGET_EXCEEDED', 'SEARCH_UNAVAILABLE'} else 'TOOL_ERROR'} if 'error' in output else {'status': 'ok', 'sources': search_trace_sources}) if is_search else output
             await emit('ai.tool.result', tool=call.name, call_id=call.call_id,
                        result=search_event,
                        **({'query': query} if is_search else {}))
