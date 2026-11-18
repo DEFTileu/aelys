@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <title>Как я ответил · Aelys</title>
+    <link rel="stylesheet" href="/telegram/answer-trace/style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+    <script src="/telegram/answer-trace/app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header class="page-header">
+        <h1>Как я ответил</h1>
+        <button id="close-app" class="quiet-button" type="button" aria-label="Закрыть приложение" hidden>Закрыть</button>
+      </header>
+
+      <p id="loading" role="status">Загружаю шаги ответа…</p>
+      <section id="error" role="alert" hidden>
+        <h2 id="error-title">Не удалось загрузить</h2>
+        <p id="error-message"></p>
+        <button id="retry" type="button">Повторить</button>
+      </section>
+
+      <article id="trace" hidden>
+        <header class="run-summary">
+          <h2 id="duration"></h2>
+          <p id="model" class="secondary"></p>
+        </header>
+        <section aria-labelledby="steps-title">
+          <h2 id="steps-title" class="section-title">Шаги ответа</h2>
+          <ol id="steps" class="step-list"></ol>
+        </section>
+        <section class="context-section" aria-labelledby="context-title">
+          <h2 id="context-title" class="section-title">Контекст</h2>
+          <p id="history-count"></p>
+          <h3 class="section-title">Использованная память</h3>
+          <ul id="memory-facts" class="memory-list"></ul>
+        </section>
+        <section class="sources-section" aria-labelledby="source-count">
+          <h2 id="source-count" class="section-title">Источники 0</h2>
+          <ul id="sources" class="source-list"></ul>
+        </section>
+      </article>
+    </main>
+
+    <dialog id="step-dialog" aria-labelledby="detail-title">
+      <div class="sheet-header">
+        <h2 id="detail-title" tabindex="-1"></h2>
+        <button id="close-detail" class="quiet-button" type="button" aria-label="Закрыть детали">Закрыть</button>
+      </div>
+      <div class="sheet-body">
+        <p id="detail-status" class="secondary"></p>
+        <section id="query-section" aria-labelledby="query-title" hidden>
+          <h3 id="query-title" class="section-title">Запрос</h3>
+          <p id="detail-query" class="query"></p>
+        </section>
+        <section aria-labelledby="detail-sources-title">
+          <h3 id="detail-sources-title" class="section-title">Источники шага</h3>
+          <ul id="detail-sources" class="source-list"></ul>
+        </section>
+      </div>
+    </dialog>
+    <noscript>Для просмотра шагов ответа включите JavaScript и откройте ссылку из Telegram.</noscript>
+  </body>
+</html>
