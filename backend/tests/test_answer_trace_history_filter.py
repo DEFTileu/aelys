@@ -193,7 +193,7 @@ async def test_large_history_batches_memory_without_per_message_queries(history_
 async def test_conversation_history_keeps_limit_current_and_metadata(history_db):
     db = history_db
     ref = fact(db, "fact")
-    message(db, 1)
+    question = message(db, 1)
     answer = message(db, 2, role="assistant", refs=[ref, {"untrusted": True}])
     current = message(db, 3)
     message(db, 4)
@@ -204,9 +204,37 @@ async def test_conversation_history_keeps_limit_current_and_metadata(history_db)
         history = await chat_support.conversation_history(db, "owner", "chat", current, limit=limit)
         assert [row.content for row in history] == ["message 1", "message 2", "message 3"]
         assert history[1].untrusted is True
+        assert history[0].memory_refs == (("fact", 1),)
         assert history[1].memory_refs == (("fact", 1),)
+        assert question.source_refs_json == []
     limited = await chat_support.conversation_history(db, "owner", "chat", current, limit=2)
     assert [row.content for row in limited] == [answer.content, current.content]
+
+
+async def test_question_inherits_refs_from_exact_answer_beyond_history_bounds(history_db):
+    db = history_db
+    own_ref = fact(db, "question-fact")
+    answer_ref = fact(db, "answer-fact")
+    question = message(db, 1, refs=[own_ref])
+    interleaved = message(db, 2)
+    current = message(db, 3)
+    answer = message(db, 4, role="assistant", refs=[own_ref, answer_ref])
+    await db.flush()
+    linked = AIRun(owner_id="owner", conversation_id="chat", prompt_message_id=question.id,
+                   provider="claude", model="test", status="completed")
+    db.add(linked)
+    await db.flush()
+    db.add(AIRunEvent(run_id=linked.id, sequence=1, event_id=f"{linked.id}:1",
+                      event_type="ai.run.completed", payload={"reply_message_id": answer.id}))
+    await db.flush()
+
+    history = await chat_support.conversation_history(db, "owner", "chat", current, limit=3)
+    assert [(row.content, row.memory_refs) for row in history] == [
+        (question.content, (("answer-fact", 1), ("question-fact", 1))),
+        (interleaved.content, ()),
+        (current.content, ()),
+    ]
+    assert question.source_refs_json == [own_ref]
 
 
 @pytest.mark.parametrize("channel,tools,present", [

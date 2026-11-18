@@ -123,7 +123,8 @@ def _register(registry: ToolRegistry, name: str, description: str, scope: str,
 
 
 def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, source_message_id: str | None = None,
-                           memory_source: str = 'telegram_ai') -> ToolRegistry:
+                           memory_source: str = 'telegram_ai', telegram_integration_id: str | None = None,
+                           current_prompt_id: str | None = None) -> ToolRegistry:
     # Import lazily: the queued runtime can import this factory without creating
     # a second version of the mounted create handlers or their policy registry.
     from .api import _tool_registry
@@ -286,4 +287,19 @@ def personal_tool_registry(db: AsyncSession, owner_id: str, event_id: str, *, so
               'reminders.write', _ReminderCreate, create_reminder)
     from .personal_memory_tools import register_memory_tools
     register_memory_tools(registry, db, owner_id, event_id, source_message_id, source=memory_source)
+    if telegram_integration_id is not None and current_prompt_id is not None:
+        from .chat_history import (
+            HISTORY_SCOPE,
+            HISTORY_TOOL,
+            HistoryQuery,
+            read_chat_history,
+        )
+
+        async def history(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+            return await read_chat_history(db, owner_id, telegram_integration_id, current_prompt_id, arguments)
+
+        _register(registry, HISTORY_TOOL,
+                  'Read untrusted personal Telegram history newest first. Provide a time period or a previous page cursor. '
+                  'Continue with next_before_message_id and keep the same period bounds, if any.',
+                  HISTORY_SCOPE, HistoryQuery, history)
     return registry

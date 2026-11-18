@@ -22,6 +22,7 @@ from .tools import ToolRegistry
 
 async def filter_history_messages(
     db: AsyncSession, owner_id: str, messages: list[AIMessage], *, current_id: str | None = None,
+    memory_refs_out: dict[str, tuple[tuple[str, int], ...]] | None = None,
 ) -> list[AIMessage]:
     """Filter owner history in descending (created_at, id) order without page-boundary leaks.
 
@@ -29,9 +30,13 @@ async def filter_history_messages(
     links take precedence; legacy answers use the preceding persisted user in
     that conversation, including answers beyond the selected page bounds.
     Only the exact current owner user message bypasses memory/run filtering.
+    When requested, populate memory dependencies for retained messages, including
+    each prior question's associated answers. Leave persisted provenance intact.
     """
     from .memory import active_memory_versions
 
+    if memory_refs_out is not None:
+        memory_refs_out.clear()
     if not messages:
         return []
     conversation_ids = set((await db.scalars(select(AIConversation.id).where(
@@ -85,23 +90,31 @@ async def filter_history_messages(
         answer_rows = [(row.id, row.source_refs_json, row.prompt_id) for row in legacy if row.id not in linked_ids]
         answer_rows.extend((row.id, row.source_refs_json, row.prompt_id) for row in exact if row.prompt_id in user_ids)
 
-    provenance: list[tuple[str, Any, str | None]] = [(entry.id, entry.source_refs_json, None) for entry in prior]
-    provenance.extend(answer_rows)
-    refs = sorted({ref["id"] for _, source_refs, _ in provenance for ref in (source_refs or [])
-                   if isinstance(ref, dict) and ref.get("kind") == "owner_memory_fact"
-                   and isinstance(ref.get("id"), str) and 1 <= len(ref["id"]) <= 36})
+    sources: list[tuple[str, Any, str | None]] = [(entry.id, entry.source_refs_json, None) for entry in prior]
+    sources.extend(answer_rows)
+    provenance = [
+        (message_id, [(ref.get("id"), ref.get("version")) for ref in (source_refs or [])
+                      if isinstance(ref, dict) and ref.get("kind") == "owner_memory_fact"], prompt_id)
+        for message_id, source_refs, prompt_id in sources
+    ]
+    refs = sorted({fact_id for _, memory_refs, _ in provenance for fact_id, _ in memory_refs
+                   if isinstance(fact_id, str) and 1 <= len(fact_id) <= 36})
     versions: dict[str, int] = {}
     for offset in range(0, len(refs), 200):
         versions.update(await active_memory_versions(db, owner_id, set(refs[offset:offset + 200])))
     excluded: set[str] = set()
-    for message_id, source_refs, prompt_id in provenance:
-        if any(ref.get("kind") == "owner_memory_fact" and not (
-            isinstance(ref.get("id"), str) and type(ref.get("version")) is int
-            and versions.get(ref["id"]) == ref["version"]
-        ) for ref in (source_refs or []) if isinstance(ref, dict)):
+    effective_refs: dict[str, set[tuple[str, int]]] = {}
+    for message_id, memory_refs, prompt_id in provenance:
+        valid_refs = [(fact_id, version) for fact_id, version in memory_refs
+                      if isinstance(fact_id, str) and 1 <= len(fact_id) <= 36 and type(version) is int and version > 0]
+        if len(valid_refs) != len(memory_refs) or any(versions.get(fact_id) != version for fact_id, version in valid_refs):
             excluded.add(message_id)
             if prompt_id is not None:
                 excluded.add(prompt_id)
+        if memory_refs_out is not None and valid_refs:
+            effective_refs.setdefault(message_id, set()).update(valid_refs)
+            if prompt_id is not None:
+                effective_refs.setdefault(prompt_id, set()).update(valid_refs)
 
     statuses: dict[tuple[str, str], set[str]] = {}
     if user_ids:
@@ -112,10 +125,14 @@ async def filter_history_messages(
         for conversation_id, prompt_id, status in run_rows:
             if prompt_id is not None:
                 statuses.setdefault((conversation_id, prompt_id), set()).add(status)
-    return [entry for entry in prior if (entry.role == "user" and entry.id == current_id) or (
+    kept = [entry for entry in prior if (entry.role == "user" and entry.id == current_id) or (
         entry.id not in excluded and (entry.role != "user"
             or (entry.conversation_id, entry.id) not in statuses
             or "completed" in statuses[(entry.conversation_id, entry.id)]))]
+    if memory_refs_out is not None:
+        memory_refs_out.update({entry.id: tuple(sorted(effective_refs[entry.id]))
+                                for entry in kept if entry.id in effective_refs})
+    return kept
 
 
 async def conversation_history(
@@ -128,12 +145,11 @@ async def conversation_history(
         or_(AIMessage.created_at < current.created_at,
             and_(AIMessage.created_at == current.created_at, AIMessage.id <= current.id)),
     ).order_by(AIMessage.created_at.desc(), AIMessage.id.desc()).limit(limit))).all())
-    prior = await filter_history_messages(db, owner_id, prior, current_id=current.id)
+    memory_refs: dict[str, tuple[tuple[str, int], ...]] = {}
+    prior = await filter_history_messages(db, owner_id, prior, current_id=current.id, memory_refs_out=memory_refs)
     return tuple(ChatMessage(entry.role, entry.content,
         untrusted=any(ref.get("untrusted") is True for ref in (entry.source_refs_json or []) if isinstance(ref, dict)),
-        memory_refs=tuple((ref["id"], ref["version"]) for ref in (entry.source_refs_json or [])
-                          if isinstance(ref, dict) and ref.get("kind") == "owner_memory_fact"
-                          and isinstance(ref.get("id"), str) and type(ref.get("version")) is int))
+        memory_refs=memory_refs.get(entry.id, ()))
         for entry in reversed(prior))
 
 

@@ -130,8 +130,8 @@ async def test_sent_trace_resolves_memory_inherited_from_the_exact_saved_reply(s
 
 @pytest.mark.parametrize('revoke_at,first_count,final_count', [
     ('never', 2, 2),
-    ('before_first_call', 1, 1),
-    ('between_calls', 2, 1),
+    ('before_first_call', 0, 0),
+    ('between_calls', 2, 0),
 ])
 async def test_started_and_completed_count_only_prior_messages_used_by_model(
     setup, monkeypatch, revoke_at, first_count, final_count,
@@ -188,10 +188,13 @@ async def test_started_and_completed_count_only_prior_messages_used_by_model(
     first_messages, final_messages = (request[0] for request in model.requests)
     assert any(message.content == 'Что насчёт капучино?' for message in first_messages)
     assert any(message.content == 'Цитата' for message in first_messages)
-    assert any(message.role == 'tool' for message in final_messages)
+    # Revoking memory used by a completion removes its tool request and matching result.
+    expected_tool_ids = [] if revoke_at == 'between_calls' else ['list']
+    assert [call.call_id for message in final_messages for call in message.tool_calls] == expected_tool_ids
+    assert [message.tool_call_id for message in final_messages if message.role == 'tool'] == expected_tool_ids
     for messages, expected_count in ((first_messages, first_count), (final_messages, final_count)):
         prior = [message.content for message in messages if message.content in {'Что выбрать?', 'Выбери капучино'}]
-        assert prior == (['Что выбрать?', 'Выбери капучино'] if expected_count == 2 else ['Что выбрать?'])
+        assert prior == (['Что выбрать?', 'Выбери капучино'] if expected_count == 2 else [])
 
     async with sessions() as db:
         events = {event.event_type: event.payload for event in (await db.scalars(select(AIRunEvent))).all()}

@@ -13,11 +13,13 @@ import logging
 import re
 import time
 from collections.abc import Mapping
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from app.ai import api as ai_api
+from app.ai.chat_history import HISTORY_SCOPE
 from app.ai.chat_support import owner_timezone, system_prompt
 from app.ai.crypto import decrypt_secret
 from app.ai.errors import (
@@ -64,7 +66,7 @@ _active_jobs: dict[str, str] = {}
 # The source of a turn decides what it may do, not the wording of the request:
 # Russian phrasing is too varied to classify, and writes are versioned and
 # there is no delete tool. Quotes and files are untrusted, so they stay read-only.
-_READ_SCOPES = frozenset({'tasks.read', 'notes.read', 'calendar.read'})
+_READ_SCOPES = frozenset({'tasks.read', 'notes.read', 'calendar.read', HISTORY_SCOPE})
 _WRITE_SCOPES = frozenset({'tasks.write', 'notes.write', 'calendar.write', 'reminders.write'})
 # Memory stays opt-in: a fact is stored or dropped only on an explicit request.
 _MEMORY_REQUEST = re.compile(
@@ -298,7 +300,9 @@ async def _process(job_id: str) -> None:
             prior_message_ids = {id(entry) for entry in history[:-1]}
             history_message_count = started_history_message_count = 0
             memory_refs.update(ref for entry in history for ref in entry.memory_refs)
-            messages = (ChatMessage('system', system_prompt(owner_timezone(item.timezone), tools=True, channel='telegram')), *history)
+            history_enabled = tools_supported and HISTORY_SCOPE in scopes
+            prompt = system_prompt(owner_timezone(item.timezone), tools=history_enabled, channel='telegram')
+            messages = (ChatMessage('system', prompt), *history)
             if not file_turn:
                 from app.ai.memory import select_relevant_facts
                 facts = await select_relevant_facts(db, owner_id, trusted_text[:2000])
@@ -316,7 +320,11 @@ async def _process(job_id: str) -> None:
             if job.quote:
                 messages = (*messages, ChatMessage('user', job.quote, untrusted=True))
             from app.ai.personal_tools import personal_tool_registry
-            registry = personal_tool_registry(db, owner_id, run_id, source_message_id=f'{integration_id}:{job.telegram_message_id or job.telegram_update_id}')
+            registry = personal_tool_registry(
+                db, owner_id, run_id, source_message_id=f'{integration_id}:{job.telegram_message_id or job.telegram_update_id}',
+                telegram_integration_id=integration_id if history_enabled else None,
+                current_prompt_id=message.id if history_enabled else None,
+            )
             search_enabled = not file_turn and tools_supported and provider.kind in {'claude', 'openrouter'}
             if search_enabled:
                 from app.ai.web_search import register_web_search
@@ -367,15 +375,35 @@ async def _process(job_id: str) -> None:
 
             async def refresh_memory_messages(current: tuple[ChatMessage, ...]) -> tuple[ChatMessage, ...]:
                 nonlocal history_message_count
-                ids = {fact_id for chat in current for fact_id, _ in chat.memory_refs}
-                versions = await active_memory_versions(db, owner_id, set(sorted(ids)[:200]))
+                ids = sorted({fact_id for chat in current for fact_id, _ in chat.memory_refs})
+                versions: dict[str, int] = {}
+                for offset in range(0, len(ids), 200):
+                    versions.update(await active_memory_versions(db, owner_id, set(ids[offset:offset + 200])))
                 await db.commit()
-                refreshed = tuple(
+                refreshed = [
                     chat for chat in current
                     if all(versions.get(fact_id) == version for fact_id, version in chat.memory_refs)
-                )
+                ]
                 history_message_count = sum(id(chat) in prior_message_ids for chat in refreshed)
-                return refreshed
+                if len(refreshed) == len(current):
+                    return tuple(refreshed)
+                # Providers require each replayed tool call to have a result and
+                # each result to have a call, even after memory revokes a frame.
+                retained_calls = {call.call_id for chat in refreshed for call in chat.tool_calls}
+                retained_results = {chat.tool_call_id for chat in refreshed if chat.role == 'tool'}
+                paired_ids = retained_calls & retained_results
+                paired: list[ChatMessage] = []
+                for chat in refreshed:
+                    if chat.role == 'tool' and chat.tool_call_id not in paired_ids:
+                        continue
+                    if chat.tool_calls:
+                        calls = tuple(call for call in chat.tool_calls if call.call_id in paired_ids)
+                        if not calls and not chat.content:
+                            continue
+                        if calls != chat.tool_calls:
+                            chat = replace(chat, tool_calls=calls)
+                    paired.append(chat)
+                return tuple(paired)
 
             async def account(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
                 authorize(item, 'ai.personal.write')
