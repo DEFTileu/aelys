@@ -149,8 +149,9 @@ initData в заголовке `Authorization: tma <initData>`, никогда �
 https://core.telegram.org/api/links#main-mini-app-links (2026-11-18).
 Main Mini App открывается через `?startapp=run__<UUID>`; параметр приходит как
 `start_param` в initData и `tgWebAppStartParam`. UUID с префиксом — 41 ASCII символ
-из букв, цифр, `_` и `-`; общий предел startapp дополнительно сверяется перед
-финальным отчётом. Неподписанный параметр выбирает ресурс, но не даёт доступ.
+из букв, цифр, `_` и `-` (безопасный base64url алфавит deep links).
+Предел startapp — 512 символов: [Bot API 6.8 changelog](https://core.telegram.org/bots/api-changelog#august-18-2023).
+Не путать с 64 символами обычного bot `start`; наш payload — 41 символ. Неподписанный параметр выбирает ресурс, но не даёт доступ.
 BotFather: `/mybots` → выбрать бота → Bot Settings → Configure Mini App → Enable
 Mini App; указать публичный HTTPS URL страницы. Это действие выполняет владелец.
 Подпись: разобрать query string, исключить hash, остальные поля сортировать по
@@ -161,49 +162,49 @@ constant-time. Затем проверить auth_date (не будущее, в�
 
 ### Task 1: endpoint и вход (GPT-6.2 Sol)
 
-- [ ] Тесты подписи, срока, владельца, одинакового 404, Web/Business isolation,
+- [x] Тесты подписи, срока, владельца, одинакового 404, Web/Business isolation,
   отсутствия секретов и рассуждений, актуальности версий памяти, ограничений данных.
-- [ ] Новый `backend/app/integrations/telegram_answer_trace.py`, тесты
+- [x] Новый `backend/app/integrations/telegram_answer_trace.py`, тесты
   `backend/tests/test_telegram_answer_trace.py`, подключение в `backend/app/main.py`.
-- [ ] Ответ: `run_id`, `duration_ms`, `model`, `steps` (id/kind/label/query/status/
+- [x] Ответ: `run_id`, `duration_ms`, `model`, `steps` (id/kind/label/query/status/
   sources), `sources`, `history_message_count`, `memory_facts` (id/text/version).
   Только явная проекция событий, не сырые payload. До 10 источников на шаг,
   запрос ≤2000, заголовок ≤300, URL ≤2048, до 100 шагов. Старый запуск без
   счётчика истории отдаёт null, не выдуманное число.
-- [ ] pytest целевого файла и ruff; проверка другой моделью, исправления, коммит.
+- [x] pytest целевого файла и ruff; проверка другой моделью, исправления, коммит.
 
 ### Task 2: источники поиска (GPT-6.1 Sol, параллельно Task 1)
 
-- [ ] Тесты title/url из Claude и OpenRouter, лимитов и событий web_search.
-- [ ] Правки только `backend/app/ai/models.py`, `providers.py`, `turn.py` и
+- [x] Тесты title/url из Claude и OpenRouter, лимитов и событий web_search.
+- [x] Правки только `backend/app/ai/models.py`, `providers.py`, `turn.py` и
   соответствующих provider/turn tests. Сохранить прежние sources URL для
   совместимости, добавить source_details; событие результата содержит
   `sources: [{url,title}]` (до 10). Не менять search budget, URL filter, write gate.
-- [ ] pytest provider/turn tests, ruff, review GPT-6.2 Sol, атомарный коммит.
+- [x] pytest provider/turn tests, ruff, review GPT-6.2 Sol, атомарный коммит.
 
 ### Task 3: экран (GPT-6.1 Sol, параллельно Task 1/2)
 
-- [ ] Статические `backend/app/integrations/answer_trace_static/{index.html,app.js,style.css}`.
+- [x] Статические `backend/app/integrations/answer_trace_static/{index.html,app.js,style.css}`.
   Страница обращается к контракту Task 1; загрузка Telegram WebApp JS без SDK npm.
-- [ ] Тема Telegram, «Работал …», шаги, доступный dialog снизу, источники с
+- [x] Тема Telegram, «Работал …», шаги, доступный dialog снизу, источники с
   заголовком/доменом и буквой домена, счётчик; память и размер истории.
   Без innerHTML для данных, внешних favicon и хранения initData; ошибки входа.
-- [ ] Проверка UI поведения и локального HTTP, review GPT-6.2 Sol.
+- [x] Проверка UI поведения и локального HTTP, review GPT-6.2 Sol.
 
 ### Task 4: ссылка и snapshot контекста (GPT-6.2 Sol)
 
-- [ ] Правки `telegram_personal_dialogue.py` и отдельного тестового файла.
+- [x] Правки `telegram_personal_dialogue.py` и отдельного тестового файла.
   Ссылку дописать только при отправке после сохранения AIMessage; сохранить её
   при разбиении длинного ответа, отключить preview. Имя брать из интеграции.
-- [ ] В существующем JSON события записать число реально использованных сообщений
+- [x] В существующем JSON события записать число реально использованных сообщений
   истории; факты показывать через существующие versioned refs. Без таблиц/миграций.
-- [ ] Тесты доставки/сохранения/context count; review GPT-6.1 Sol, коммит.
+- [x] Тесты доставки/сохранения/context count; review GPT-6.1 Sol, коммит.
 
 ### Task 5: интеграция части 1
 
-- [ ] Общий targeted backend suite, ruff, security/контрактные проверки;
+- [x] Общий targeted backend suite, ruff, security/контрактные проверки;
   итоговое review другой моделью; зафиксировать ограничения live acceptance.
-- [ ] Обновить этот план точными результатами и коммитами. Без deploy, BotFather
+- [x] Обновить этот план точными результатами и коммитами. Без deploy, BotFather
   и живых provider requests. Не менять API_ALLOWLIST.
 
 ### Task 6: история чата (новая ветка после части 1)
@@ -226,3 +227,49 @@ constant-time. Затем проверить auth_date (не будущее, в�
 **Остановки владельца:** BotFather, новые PROPOSED решения, необходимость миграций,
 деплой/живые запросы. Разрешение на них не предполагается. Новых миграций не
 планируется; все факты исполнения фиксируются ниже.
+
+### Проверки части 1
+
+- Коммиты: `7f6e1b43` (план), `664cd7cc` (доставка и snapshot),
+  `47dce41e` (источники), `9b12f9c6` (экран), `ce45aa01` (endpoint/контракты).
+- Endpoint: 21 passed; вместе с companion inventory/auth: 29 passed.
+  Delivery + связанный Telegram regression: 216 passed, 45 skipped.
+  Поиск после review fixes: 91 passed, 1 skipped. UI: 19 passed, 0 skipped,
+  включая официальный Telegram SDK с синтетическими launch-данными.
+- `ruff check backend/app backend/tests` — passed. OpenAPI совпадает с app.openapi().
+  Bandit изменённых production-файлов `-ll` — exit 0.
+- `mypy --explicit-package-bases backend/app --ignore-missing-imports --check-untyped-defs`:
+  только две исходные ошибки `companion/channel.py:490,491` (list[str]/Event),
+  новые файлы проходят. Исходному тестовому окружению недоставало объявленного
+  pypdf; установлен в изолированную ignored папку, исходный PDF тест прошёл.
+- Ревью противоположными моделями: endpoint/delivery — GPT-6.1 Sol,
+  sources/UI — GPT-6.2 Sol. Исправлены влияние trace title на egress модели,
+  некорректный Unicode источников, SDK sessionStorage-копия initData и перекрытие
+  фокуса header шторки. После очистки initData перезагрузка требует повторно
+  открыть Mini App из Telegram; retry в открытом окне использует данные в памяти.
+- Chrome 375×812: настоящий backend/CSP/static assets, тестовые данные,
+  открытие/закрытие шторки, без горизонтального скролла и ошибок консоли.
+- Legacy runs без счётчика возвращают null; без reply_message_id используют
+  prompt memory refs, поэтому history-only provenance может отсутствовать.
+- Отложенное неблокирующее замечание review: добавить постоянный длинный Unicode/
+  exact-fit тест доставки; отдельный reviewer probe из 8 случаев прошёл.
+- Не выполнялись миграции, deploy, BotFather, реальные Telegram/provider запросы.
+  PostgreSQL opt-in проверки пропущены, production/device acceptance не заявляется.
+
+Команды воспроизведения (из `backend`, Python окружение с зависимостями проекта):
+
+```sh
+python -m pytest -q tests
+python -m pytest -q tests/test_telegram_answer_trace.py tests/test_companion_access.py
+python -m pytest -q tests/test_answer_trace_delivery.py tests/test_answer_trace_sources.py
+ANSWER_TRACE_PLAYWRIGHT_MODULE=<installed-playwright-path> \
+ANSWER_TRACE_TELEGRAM_SDK=<local-official-telegram-web-app.js> \
+node --test tests/answer_trace_ui.test.cjs
+```
+
+Для SDK fixture скачать публичный `https://telegram.org/js/telegram-web-app.js`;
+используется только синтетический initData, живое подключение не требуется.
+Библиотека Playwright нужна только для локальной проверки, в продукт не добавлена.
+
+Чистый общий прогон части 1: **1844 passed, 184 skipped, 1 warning**, 235.09 s.
+Итоговое integration review GPT-6.2 Sol — APPROVED; live gates остаются открыты.
