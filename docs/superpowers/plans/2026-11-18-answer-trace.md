@@ -130,4 +130,99 @@
 
 ## План исполнения
 
-_Дописывает исполнитель перед началом работы._
+**Scope:** Phase 4 / task 4, Search + provenance + redaction. Часть 1 —
+`codex/answer-trace`; часть 2 — новая `codex/answer-trace-history` от проверенного
+коммита части 1. Worktree изолирована; исходный checkout не меняется.
+
+**Решения владельца в чате 2026-11-18:** срок initData утверждён — 3600 секунд;
+недоступную GPT-6.1 Terra заменить GPT-6.2 Sol. Реализация GPT-6.1 Sol проверяется
+GPT-6.2 Sol и наоборот. Коммиты делает только ведущий агент.
+
+**Архитектура:** статическая страница backend `/telegram/answer-trace` и один
+JSON GET `/api/v1/telegram/answer-trace/{run_id}`. Факт выбора: web App находится
+за AuthGate, RunStep — модель состояния, а не самостоятельный экран. Отдельная
+страница избегает загрузки owner shell и native transport, использует тот же
+HTTPS origin и не требует зависимостей. Страница публична, данные — только после
+initData в заголовке `Authorization: tma <initData>`, никогда в URL/cookie/storage.
+
+**Telegram:** проверено по https://core.telegram.org/bots/webapps и
+https://core.telegram.org/api/links#main-mini-app-links (2026-11-18).
+Main Mini App открывается через `?startapp=run__<UUID>`; параметр приходит как
+`start_param` в initData и `tgWebAppStartParam`. UUID с префиксом — 41 ASCII символ
+из букв, цифр, `_` и `-`; общий предел startapp дополнительно сверяется перед
+финальным отчётом. Неподписанный параметр выбирает ресурс, но не даёт доступ.
+BotFather: `/mybots` → выбрать бота → Bot Settings → Configure Mini App → Enable
+Mini App; указать публичный HTTPS URL страницы. Это действие выполняет владелец.
+Подпись: разобрать query string, исключить hash, остальные поля сортировать по
+ключу и соединить `key=value` через LF; secret = HMAC-SHA256(key=WebAppData,
+message=bot_token), expected = HMAC-SHA256(secret, data_check_string); сравнить
+constant-time. Затем проверить auth_date (не будущее, возраст ≤3600), user.id и
+принадлежность личного запуска интеграции. Дубликаты и некорректные поля отклонять.
+
+### Task 1: endpoint и вход (GPT-6.2 Sol)
+
+- [ ] Тесты подписи, срока, владельца, одинакового 404, Web/Business isolation,
+  отсутствия секретов и рассуждений, актуальности версий памяти, ограничений данных.
+- [ ] Новый `backend/app/integrations/telegram_answer_trace.py`, тесты
+  `backend/tests/test_telegram_answer_trace.py`, подключение в `backend/app/main.py`.
+- [ ] Ответ: `run_id`, `duration_ms`, `model`, `steps` (id/kind/label/query/status/
+  sources), `sources`, `history_message_count`, `memory_facts` (id/text/version).
+  Только явная проекция событий, не сырые payload. До 10 источников на шаг,
+  запрос ≤2000, заголовок ≤300, URL ≤2048, до 100 шагов. Старый запуск без
+  счётчика истории отдаёт null, не выдуманное число.
+- [ ] pytest целевого файла и ruff; проверка другой моделью, исправления, коммит.
+
+### Task 2: источники поиска (GPT-6.1 Sol, параллельно Task 1)
+
+- [ ] Тесты title/url из Claude и OpenRouter, лимитов и событий web_search.
+- [ ] Правки только `backend/app/ai/models.py`, `providers.py`, `turn.py` и
+  соответствующих provider/turn tests. Сохранить прежние sources URL для
+  совместимости, добавить source_details; событие результата содержит
+  `sources: [{url,title}]` (до 10). Не менять search budget, URL filter, write gate.
+- [ ] pytest provider/turn tests, ruff, review GPT-6.2 Sol, атомарный коммит.
+
+### Task 3: экран (GPT-6.1 Sol, параллельно Task 1/2)
+
+- [ ] Статические `backend/app/integrations/answer_trace_static/{index.html,app.js,style.css}`.
+  Страница обращается к контракту Task 1; загрузка Telegram WebApp JS без SDK npm.
+- [ ] Тема Telegram, «Работал …», шаги, доступный dialog снизу, источники с
+  заголовком/доменом и буквой домена, счётчик; память и размер истории.
+  Без innerHTML для данных, внешних favicon и хранения initData; ошибки входа.
+- [ ] Проверка UI поведения и локального HTTP, review GPT-6.2 Sol.
+
+### Task 4: ссылка и snapshot контекста (GPT-6.2 Sol)
+
+- [ ] Правки `telegram_personal_dialogue.py` и отдельного тестового файла.
+  Ссылку дописать только при отправке после сохранения AIMessage; сохранить её
+  при разбиении длинного ответа, отключить preview. Имя брать из интеграции.
+- [ ] В существующем JSON события записать число реально использованных сообщений
+  истории; факты показывать через существующие versioned refs. Без таблиц/миграций.
+- [ ] Тесты доставки/сохранения/context count; review GPT-6.1 Sol, коммит.
+
+### Task 5: интеграция части 1
+
+- [ ] Общий targeted backend suite, ruff, security/контрактные проверки;
+  итоговое review другой моделью; зафиксировать ограничения live acceptance.
+- [ ] Обновить этот план точными результатами и коммитами. Без deploy, BotFather
+  и живых provider requests. Не менять API_ALLOWLIST.
+
+### Task 6: история чата (новая ветка после части 1)
+
+- [ ] Переиспользовать фильтрацию `conversation_history` в общем helper; не
+  возвращать незавершённые вопросы, stale/deleted/expired memory provenance.
+- [ ] Добавить типизированный read_chat_history по TelegramPersonalJob/integration
+  связи, с периодом или before_message_id, bounded limit и обратной пагинацией.
+  Никакого отбора по названию; только owner personal bot, без Web/Business.
+- [ ] Зарегистрировать только personal tool через существующий Policy Engine;
+  untrusted результат, сохранение memory refs и проверка актуальности перед LLM.
+  В событии только период/счётчик, без текстов. Одна строка инструкции.
+- [ ] Тесты прошлой беседы, isolation, пагинации, stale memory и create_task после
+  history; противоположная модель проверяет код, затем suite/ruff и коммит.
+
+**Review focus:** неизвестные/повреждённые payload событий, длинный Telegram ответ,
+смена/удаление памяти между вызовами, совпадающие timestamp пагинации, попытки
+передать Web/Business run под валидной подписью. Эти случаи входят в тесты.
+
+**Остановки владельца:** BotFather, новые PROPOSED решения, необходимость миграций,
+деплой/живые запросы. Разрешение на них не предполагается. Новых миграций не
+планируется; все факты исполнения фиксируются ниже.
