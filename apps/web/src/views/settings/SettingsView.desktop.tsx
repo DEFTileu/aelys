@@ -5,6 +5,7 @@ import { AboutPanel, ConnectionPanel, NotificationsPanel, ProfilePanel, Security
 import { WeatherPanel } from './WeatherPanel'
 import { AccountsPanel } from './AccountsPanel'
 import { DevicesPanel } from './devices/DevicesPanel'
+import { StatusPanel } from './StatusPanel'
 import { GoogleCalendarSettings } from '../GoogleCalendarSettings'
 import { MemorySettings } from '../MemorySettings'
 import { ProviderSettings } from '../ProviderSettings'
@@ -44,6 +45,7 @@ export function SettingsDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
       {panel === 'ai' && <ProviderSettings />}
       {panel === 'telegram' && <TelegramSettings />}
       {panel === 'accounts' && <AccountsPanel apiStatus={apiStatus} onGo={go} />}
+      {panel === 'status' && <StatusPanel apiStatus={apiStatus} />}
       {panel === 'connection' && <ConnectionPanel apiStatus={apiStatus} owner={owner} />}
       {panel === 'devices' && <DevicesPanel owner={owner} />}
       {panel === 'security' && <SecurityPanel />}

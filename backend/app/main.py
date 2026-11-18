@@ -28,6 +28,7 @@ from .core.db import Base, engine
 from .core.device_auth import announce_first_run_token
 from .core.device_auth import router as device_auth_router
 from .core.native_auth import router as native_auth_router
+from .core.status_api import router as system_status_router
 from .domains.api import router as domain_router
 from .domains.gmail import router as gmail_router
 from .domains.google_calendar_api import router as calendar_router
@@ -88,7 +89,7 @@ async def request_id(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)"
-    if (request.url.path.startswith("/api/v1/auth/") or request.url.path.startswith("/api/v1/integrations/telegram/")):
+    if (request.url.path.startswith("/api/v1/auth/") or request.url.path.startswith("/api/v1/integrations/telegram/") or request.url.path in {"/api/v1/system/status", "/api/v1/system/events"}):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -120,6 +121,7 @@ app.include_router(companion_router, prefix="/api/v1")
 app.include_router(changes_router, prefix="/api/v1")
 app.include_router(browser_auth_router, prefix="/api/v1")
 app.include_router(native_auth_router, prefix="/api/v1")
+app.include_router(system_status_router, prefix="/api/v1")
 app.include_router(domain_router, prefix="/api/v1")
 app.include_router(paged_reads_router, prefix="/api/v1")
 app.include_router(sync_router, prefix="/api/v1")

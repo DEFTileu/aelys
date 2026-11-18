@@ -376,7 +376,7 @@ describe('Add companion', () => {
 
   it('devices nav item sits between Connection and Security', () => {
     const system = GROUPS.find((g) => g.title === 'System')!.items
-    expect(system.map((i) => i.id)).toEqual(['accounts', 'connection', 'devices', 'security', 'about'])
+    expect(system.map((i) => i.id)).toEqual(['accounts', 'status', 'connection', 'devices', 'security', 'about'])
     expect(system.find((i) => i.id === 'devices')).toMatchObject({ title: 'Devices', desc: 'Companions paired with Aelys', tone: 'violet' })
   })
 })

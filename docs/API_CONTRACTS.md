@@ -31,6 +31,21 @@ POST /api/v1/devices/{id}/revoke
 
 ## 3. Core & resources
 
+### Operational status (owner-requested 2026-11-18)
+
+`GET /api/v1/system/status` requires an active owner session and returns
+`{checked_at, api: "ok", database: "ok", uptime_seconds}`. Database reachability
+means the authenticated identity query succeeded; unavailable authentication or
+database access must not yield a healthy snapshot. Uptime is per API process.
+
+`GET /api/v1/system/events?limit=50` returns `{items: [{id, action, decision,
+outcome, created_at}]}` from the owner's audit records, newest first. Limit is
+1–100. Only recognized fixed event labels are exposed; arbitrary metadata,
+scope, actors, correlation values, process output and CLI transcripts are absent.
+Both responses are `Cache-Control: no-store`. Clients must not substitute cached
+success when these live requests fail. This is an audit journal, not raw server
+stdout or a comprehensive health check of workers and integrations.
+
 ```http
 GET    /api/v1/projects
 POST   /api/v1/projects
