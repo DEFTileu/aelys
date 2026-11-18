@@ -495,3 +495,26 @@ async def test_delete_after_post_edit_read_is_not_restored_at_commit(setup, monk
             telegram_models.TelegramBusinessMessage.telegram_message_id == 21))).scalar_one()
         assert row.deleted_at and not row.text
         assert (await jobs(sessions))[0].state == 'unknown'
+
+
+async def test_ai_failure_notifies_owner_with_safe_code_and_command_reference(setup, monkeypatch, caplog):
+    from app.ai.errors import ModelUnavailable
+    _, sessions, fake, integration_id, _, _ = await configured(setup, monkeypatch)
+
+    class BrokenService:
+        async def complete(self, *args, **kwargs):
+            raise ModelUnavailable('sk-private-secret private prompt')
+
+    monkeypatch.setattr(ai_api, '_service', lambda *args, **kwargs: BrokenService())
+    await ingest(sessions, integration_id, command_update(), fake)
+    await run_command(integration_id)
+    job = (await jobs(sessions))[0]
+    assert job.error_code == 'MODEL_UNAVAILABLE'
+    assert job.state == 'failed'
+    assert not fake.edits
+    assert len(fake.sent) == 1 and fake.sent[0][0] == OWNER
+    text = fake.sent[0][1]
+    assert 'модель' in text and 'MODEL_UNAVAILABLE' in text and job.id in text
+    assert 'MODEL_UNAVAILABLE' in caplog.text and job.id in caplog.text
+    assert 'sk-private' not in text + caplog.text
+    assert 'private prompt' not in text + caplog.text
