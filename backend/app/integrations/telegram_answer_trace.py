@@ -6,7 +6,7 @@ import json
 import re
 import time
 from collections.abc import Callable, Coroutine
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import parse_qsl
@@ -39,6 +39,8 @@ _MILLISECOND = timedelta(milliseconds=1)
 MAX_STEPS = 100
 MAX_STEP_SOURCES = 10
 MAX_MEMORY_REFS = 200
+MAX_QUESTION = 4000
+MAX_ANSWER = 20000
 TOOL_LABELS = {
     "list_tasks": "Чтение задач",
     "create_task": "Создание задачи",
@@ -108,6 +110,11 @@ class AnswerTraceOut(BaseModel):
     sources: list[TraceSource] = Field(max_length=MAX_STEPS * MAX_STEP_SOURCES)
     history_message_count: int | None
     memory_facts: list[TraceMemoryFact] = Field(max_length=MAX_MEMORY_REFS)
+    # The owner's own message and the saved reply; model reasoning and tool output stay private.
+    question: str | None = Field(default=None, max_length=MAX_QUESTION)
+    quote: str | None = Field(default=None, max_length=MAX_QUESTION)
+    answer: str | None = Field(default=None, max_length=MAX_ANSWER)
+    asked_at: datetime | None = None
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
@@ -320,7 +327,19 @@ async def answer_trace(
         max(0, (utc(run.completed_at) - utc(run.started_at)) // _MILLISECOND)
         if run.started_at is not None and run.completed_at is not None else None
     )
+    asked = await db.scalar(select(job).where(
+        job.run_id == run.id, job.conversation_id == run.conversation_id,
+        job.owner_id == integration.owner_id, job.integration_id == integration.id,
+        job.state == "done", job.deleted_at.is_(None),
+    ).limit(1))
+    answer = await db.scalar(select(AIMessage.content).where(
+        AIMessage.id == reply_id, AIMessage.conversation_id == run.conversation_id, AIMessage.role == "assistant",
+    )) if reply_id else None
     return AnswerTraceOut(
+        question=asked.text[:MAX_QUESTION] if asked and asked.text else None,
+        quote=asked.quote[:MAX_QUESTION] if asked and asked.quote else None,
+        answer=answer[:MAX_ANSWER] if isinstance(answer, str) and answer else None,
+        asked_at=utc(asked.started_at or run.started_at) if asked and (asked.started_at or run.started_at) else None,
         run_id=parsed_run_id, duration_ms=duration_ms, model=model,
         steps=list(steps.values()), sources=list(sources.values()),
         history_message_count=completed_count if completed_count is not None else started_count,

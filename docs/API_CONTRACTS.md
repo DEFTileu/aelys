@@ -891,7 +891,9 @@ The run ID is not a capability. An inaccessible run and a missing run both retur
 
 The response projects duration, model, bounded tool steps/query/status/source
 metadata, final sources, the number of history messages, and current versions of
-used memory facts. Raw event payloads, model reasoning, system prompts, credentials,
+used memory facts. It also returns the owner's own question, the quoted message
+it replied to, when it was asked, and the saved reply of this run (Markdown,
+rendered as text by the page). Raw event payloads, model reasoning, system prompts, credentials,
 and Business content are excluded. Legacy runs without context counters return
 an unknown count rather than an inferred value.
 

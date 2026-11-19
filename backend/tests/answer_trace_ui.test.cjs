@@ -207,7 +207,7 @@ test('diagnostics snapshot exposes only allowlisted launch fields', {
   await page.getByText('Диагностика запуска', { exact: true }).click({ timeout: 1000 });
   const output = await log.innerText();
   assert.doesNotMatch(output, /SECRET/);
-  assert.match(output, /^\+\d+ мс · Сборка launch-v2/m);
+  assert.match(output, /^\+\d+ мс · Сборка design-v1/m);
   assert.match(output, /SDK: да; платформа: unknown; версия: неизвестна/);
   assert.ok(output.includes(`initData: есть; длина ${initData.length}`));
   assert.ok(output.includes(`Подписанный start_param: строка; длина 41; UUID ${runId}`));
@@ -265,15 +265,15 @@ test('renders all backend-bounded memory facts and aggregate sources', async t =
 
 test('static entry uses absolute asset paths and accessible markup', async () => {
   const html = await readFile(join(assetRoot, 'index.html'), 'utf8');
-  assert.match(html, /src="\/telegram\/answer-trace\/app\.js\?v=launch-v2"/);
-  assert.match(html, /href="\/telegram\/answer-trace\/style\.css\?v=launch-v2"/);
+  assert.match(html, /src="\/telegram\/answer-trace\/app\.js\?v=design-v1"/);
+  assert.match(html, /href="\/telegram\/answer-trace\/style\.css\?v=design-v1"/);
   assert.match(html, /<dialog[^>]+aria-labelledby=/);
   assert.match(html, /name="referrer" content="no-referrer"/);
 });
 
 test('renders authenticated trace with safe text and no credential storage', async t => {
   const { page, requests, external, errors } = await openApp(t);
-  assert.equal(await page.locator('#duration').innerText(), 'Работал 8 с');
+  assert.equal(await page.locator('#duration').innerText(), '8 с');
   assert.equal(await page.locator('#model').innerText(), 'test/model');
   assert.match(await page.locator('#history-count').innerText(), /12/);
   assert.equal(await page.locator('#memory-facts').innerText(), '<b>Пишу по-русски</b>');
@@ -371,7 +371,7 @@ test('network failure is actionable and retry succeeds', async t => {
 test('Telegram theme changes, narrow/landscape layout and modal focus confinement', async t => {
   const { page, errors } = await openApp(t, { suffix: '/' });
   assert.equal(await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(23, 33, 43)');
-  assert.equal(await page.locator('#steps button').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(35, 47, 59)');
+  assert.equal(await page.locator('#steps .source-stack').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(35, 47, 59)');
   if (process.env.ANSWER_TRACE_SCREENSHOTS) {
     await mkdir(process.env.ANSWER_TRACE_SCREENSHOTS, { recursive: true });
     await page.screenshot({ path: join(process.env.ANSWER_TRACE_SCREENSHOTS, 'dark.png'), fullPage: true });
@@ -385,7 +385,7 @@ test('Telegram theme changes, narrow/landscape layout and modal focus confinemen
     window.testTelegramEvents.themeChanged();
   });
   assert.equal(await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)');
-  assert.equal(await page.locator('#steps button').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(240, 242, 244)');
+  assert.equal(await page.locator('#steps .source-stack').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(240, 242, 244)');
   for (const viewport of [{ width: 320, height: 640 }, { width: 812, height: 375 }]) {
     await page.setViewportSize(viewport);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -428,4 +428,25 @@ test('source links fall back to domain titles and deduplicate URLs', async t => 
   assert.equal(await page.locator('#sources .source-title').innerText(), 'example.org');
   assert.equal(await page.locator('#sources .domain-letter').innerText(), 'E');
   assert.equal(await page.locator('#source-count').innerText(), 'Источники 1');
+});
+
+test('start page shows question, quote and a safely rendered answer with sources popover', async t => {
+  const { page, errors } = await openApp(t, { data: { ...trace, question: 'Что он имеет в виду?', quote: 'Цитата <i>x</i>',
+    asked_at: '2026-11-19T07:12:00Z',
+    answer: 'Речь об **энергетике** <img src=x onerror=alert(1)>\n\n- Первый `пункт`\n- [ссылка](javascript:alert(1))' } });
+  assert.equal(await page.locator('#question').innerText(), 'Что он имеет в виду?');
+  assert.equal(await page.locator('#quote').innerText(), 'Цитата <i>x</i>');
+  assert.equal(await page.locator('#summary-title').innerText(), 'Проверил 1 источник');
+  assert.equal(await page.locator('#answer b').innerText(), 'энергетике');
+  assert.equal(await page.locator('#answer li').count(), 2);
+  assert.equal(await page.locator('#answer img, #answer a, #answer i').count(), 0);
+  assert.match(await page.locator('#answer').innerText(), /<img src=x/);
+  assert.equal(await page.locator('#sources-popover').isVisible(), false);
+  await page.locator('#sources-toggle').click();
+  assert.equal(await page.locator('#sources-popover a').isVisible(), true);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#sources-popover').isVisible(), false);
+  await page.locator('#summary-toggle').click();
+  assert.equal(await page.locator('#steps').isVisible(), false);
+  assert.deepEqual(errors, []);
 });
