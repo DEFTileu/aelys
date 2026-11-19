@@ -538,11 +538,28 @@ async def _deliver_guest_reply(
         )
         delivery_status = "unknown" if ambiguous else "failed"
         delivery_error = service.remote_code(exc)
-        logger.info("Telegram guest reply delivery unavailable")
-    except Exception:  # noqa: BLE001 - never log credentials, payloads, or user content
+        logger.exception(
+            "Telegram guest reply delivery failed",
+            extra={
+                "integration_id": integration_id,
+                "job_id": job_id,
+                "run_id": answer_run_id,
+                "delivery_status": delivery_status,
+                "error_code": delivery_error,
+            },
+        )
+    except Exception:
         delivery_status = "unknown"
         delivery_error = "TELEGRAM_UNAVAILABLE"
-        logger.info("Telegram guest reply delivery unavailable")
+        logger.exception(
+            "Unexpected error during Telegram guest reply delivery",
+            extra={
+                "integration_id": integration_id,
+                "job_id": job_id,
+                "run_id": answer_run_id,
+                "delivery_status": delivery_status,
+            },
+        )
 
     async with database.SessionLocal() as db:
         job = await db.get(TelegramGuestJob, job_id)
@@ -924,7 +941,7 @@ async def _process(job_id: str) -> None:
             await _deliver_guest_reply(integration_id, job_id, guest_query_id, reply, answer_run_id=run_id)
     except asyncio.CancelledError:
         raise
-    except Exception as exc:  # noqa: BLE001 - fixed safe errors only
+    except Exception as exc:
         code = (
             exc.code
             if isinstance(exc, AIError)
@@ -934,6 +951,7 @@ async def _process(job_id: str) -> None:
         )
         if code not in _GUEST_FAILURES:
             code = "AI_ERROR"
+        logger.exception("Telegram guest turn failed", extra={"job_id": job_id, "error_code": code})
         await _failure(job_id, code, usage=tuple(service.usage.records()) if service else ())
 
 
@@ -942,7 +960,23 @@ async def _bounded_process(job_id: str) -> None:
         async with asyncio.timeout(GUEST_TIMEOUT_SECONDS):
             await _process(job_id)
     except TimeoutError:
+        logger.exception(
+            "Telegram guest turn timed out",
+            extra={"job_id": job_id, "timeout_seconds": GUEST_TIMEOUT_SECONDS},
+        )
         await _failure(job_id, "AI_TIMEOUT")
+
+
+def _log_guest_task_result(integration_id: str, job_id: str, task: asyncio.Task[None]) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error(
+            "Unhandled exception in Telegram guest background task",
+            exc_info=(type(exc), exc, exc.__traceback__),
+            extra={"integration_id": integration_id, "job_id": job_id},
+        )
 
 
 async def guest_iteration(integration_id: str) -> None:
@@ -951,19 +985,25 @@ async def guest_iteration(integration_id: str) -> None:
     if previous and not previous.done():
         return
     if previous:
-        if not previous.cancelled() and previous.exception():
-            interrupted_id = _active_guest_jobs.get(integration_id)
-            if interrupted_id:
-                await _failure(interrupted_id, INTERRUPTED, reply=False)
-            logger.info("Telegram guest task ended unexpectedly")
+        if not previous.cancelled():
+            exc = previous.exception()
+            if exc is not None:
+                interrupted_id = _active_guest_jobs.get(integration_id)
+                if interrupted_id:
+                    await _failure(interrupted_id, INTERRUPTED, reply=False)
+                logger.error(
+                    "Telegram guest task ended unexpectedly; marked interrupted",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                    extra={"integration_id": integration_id, "job_id": interrupted_id},
+                )
         _active_guest_turns.pop(integration_id, None)
         _active_guest_jobs.pop(integration_id, None)
     job_id = await claim_guest_job(integration_id, now())
     if job_id:
         _active_guest_jobs[integration_id] = job_id
-        _active_guest_turns[integration_id] = asyncio.create_task(
-            _bounded_process(job_id), name="telegram-guest-turn"
-        )
+        task = asyncio.create_task(_bounded_process(job_id), name="telegram-guest-turn")
+        task.add_done_callback(lambda done: _log_guest_task_result(integration_id, job_id, done))
+        _active_guest_turns[integration_id] = task
 
 
 async def wait_for_guest_turns() -> None:

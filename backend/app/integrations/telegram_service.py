@@ -289,6 +289,10 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
     try:
         sent_at = datetime.fromtimestamp(raw["date"], UTC)
     except (ValueError, OSError, OverflowError):
+        logger.warning(
+            "Ignoring Telegram business message with invalid timestamp",
+            extra={"integration_id": item.id, "chat_id": chat["id"]},
+        )
         return None
     if sent_at > now() + timedelta(minutes=5) or sent_at < now() - timedelta(days=7):
         return None
@@ -380,8 +384,11 @@ async def poll_once(integration_id: str, *, timeout: int = 20) -> int | None:
                         try:
                             authorize(item, "telegram.notify_owner", external=True)
                             await client.send_message(item.owner_telegram_id, response_text)
-                        except Exception:  # noqa: BLE001 - confirmation failure cannot replay capture
-                            logger.info("Telegram owner confirmation unavailable")
+                        except Exception:
+                            logger.exception(
+                                "Telegram owner confirmation delivery failed",
+                                extra={"integration_id": item.id, "update_id": update_id},
+                            )
                 await db.execute(update(TelegramIntegration).where(TelegramIntegration.id == integration_id, TelegramIntegration.lease_owner == lease).values(last_polled_at=now(), last_error_code=None))
                 await db.commit()
                 return processed
@@ -390,6 +397,10 @@ async def poll_once(integration_id: str, *, timeout: int = 20) -> int | None:
             if exc.code == 429 and exc.retry_after is not None:
                 retry_after = now() + timedelta(seconds=min(max(exc.retry_after, 1), 86400))
             code = "TELEGRAM_WEBHOOK_CONFLICT" if exc.code == "webhook_conflict" else remote_code(exc)
+            logger.exception(
+                "Telegram polling failed",
+                extra={"integration_id": integration_id, "error_code": code},
+            )
             await db.execute(update(TelegramIntegration).where(TelegramIntegration.id == integration_id, TelegramIntegration.lease_owner == lease).values(last_error_code=code))
             await db.commit()
             raise error(409 if code in {"TELEGRAM_WEBHOOK_CONFLICT", "TELEGRAM_POLL_CONFLICT"} else 503, code, "Не удалось получить обновления Telegram.") from None
@@ -478,9 +489,16 @@ async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: T
                 authorize(item, "telegram.notify_owner", external=True)
                 async with TelegramClient(decrypt_secret(item.encrypted_token)) as client:
                     await client.send_message(item.owner_telegram_id, f"{message.chat_title}\n{draft.owner_note}")
-            except Exception:  # noqa: BLE001 - durable Notification survives failed Telegram delivery
-                logger.info("Telegram handoff notification unavailable")
+            except Exception:
+                logger.exception(
+                    "Telegram handoff notification delivery failed",
+                    extra={"integration_id": item.id, "message_id": message.id},
+                )
     except TelegramAIError as exc:
+        logger.exception(
+            "Telegram business draft generation failed",
+            extra={"integration_id": item.id, "message_id": message.id, "error_code": exc.code},
+        )
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version).values(draft_status="failed", draft_error_code=exc.code, version=TelegramBusinessMessage.version + 1))
         await db.commit()
         raise error(409, exc.code, "Не удалось подготовить AI-ответ. Проверьте провайдера и лимит.") from None
@@ -554,6 +572,10 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
                 sent = await client.send_sticker(message.chat_id, sticker["file_id"], business_connection_id=connection.id)
         except TelegramError as exc:
             ambiguous = exc.code in {"timeout", "network_error", "invalid_response"} or (isinstance(exc.code, int) and exc.code >= 500)
+            logger.exception(
+                "Telegram business reply send failed",
+                extra={"integration_id": item.id, "message_id": message.id, "ambiguous": ambiguous, "error_code": remote_code(exc)},
+            )
             if exc.code == 429:
                 # Share the bot-wide cooldown with polling and manual sends.
                 item.last_error_code = "TELEGRAM_RATE_LIMITED"
@@ -568,8 +590,11 @@ async def send_reply(db: AsyncSession, item: TelegramIntegration, message: Teleg
         if text.strip() and sticker:
             try:
                 await client.send_sticker(message.chat_id, sticker["file_id"], business_connection_id=connection.id)
-            except Exception:  # noqa: BLE001 - the text reply is already sent; a sticker is never retried
-                logger.info("Telegram sticker delivery unavailable")
+            except Exception:
+                logger.exception(
+                    "Telegram business sticker delivery failed",
+                    extra={"integration_id": item.id, "message_id": message.id},
+                )
         await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version).values(draft_status="sent", reply_message_id=sent["message_id"], draft_error_code=None, version=TelegramBusinessMessage.version + 1))
         # Reuse the inbound record as reply history without persisting an entire
         # raw Telegram response. The draft contains the actual sent text.
@@ -616,6 +641,10 @@ async def auto_reply_once(integration_id: str) -> None:
                         continue
                     await send_reply(db, item, prepared, prepared.version, prepared.draft_text or "", automatic=True)
             except (HTTPException, TelegramError):
+                logger.exception(
+                    "Telegram automatic reply candidate failed",
+                    extra={"integration_id": integration_id, "message_id": message_id},
+                )
                 await db.rollback()
                 continue
 
@@ -678,8 +707,11 @@ async def digest_once(integration_id: str, *, at: datetime | None = None) -> Non
         try:
             async with TelegramClient(decrypt_secret(item.encrypted_token)) as client:
                 await client.send_message(item.owner_telegram_id, text)
-        except Exception:  # noqa: BLE001 - claimed day is durable; do not duplicate delivery
-            logger.info("Telegram digest delivery unavailable")
+        except Exception:
+            logger.exception(
+                "Telegram digest delivery failed",
+                extra={"integration_id": integration_id, "day": day.isoformat()},
+            )
 
 
 async def poll_integration_safely(integration_id: str) -> bool:
@@ -698,8 +730,11 @@ async def poll_integration_safely(integration_id: str) -> bool:
         await personal_iteration(integration_id)
         from .telegram_guest import guest_iteration
         await guest_iteration(integration_id)
-    except Exception:  # noqa: BLE001 - isolate one integration from the supervisor
-        # No customer text, token, request URL or provider exception is emitted.
+    except Exception:
+        logger.exception(
+            "Telegram integration poll iteration failed",
+            extra={"integration_id": integration_id},
+        )
         return False
     return True
 
@@ -743,7 +778,8 @@ async def connector_loop() -> None:
                 await connector_iteration()
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001 - retry while database migrations finish
+            except Exception:
+                logger.exception("Telegram connector loop iteration failed; will retry")
                 await asyncio.sleep(0)
             await asyncio.sleep(3)
     finally:

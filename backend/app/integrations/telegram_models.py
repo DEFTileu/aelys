@@ -1,5 +1,6 @@
 """Persistence for Telegram Business; raw updates and plaintext tokens are excluded."""
 import json
+import logging
 from datetime import date, datetime
 
 from app.ai.crypto import decrypt_secret, encrypt_secret
@@ -20,6 +21,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
+
+logger = logging.getLogger(__name__)
 
 
 class EncryptedText(TypeDecorator[str]):
@@ -130,6 +133,10 @@ class TelegramBusinessMessage(Owned):
                 media|={'emoji':emoji if isinstance(emoji,str) else None,'animated':value.get('mime_type')!='image/webp'}
             return media
         except (ValueError,TypeError,AttributeError):
+            logger.exception(
+                "Failed to parse persisted TelegramBusinessMessage.media_metadata",
+                extra={"message_id": self.id, "integration_id": self.integration_id},
+            )
             return None
 
     @property

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import re
 import time
 from collections.abc import Callable, Coroutine
@@ -56,6 +57,7 @@ TOOL_LABELS = {
     "web_search": "Поиск в интернете",
 }
 EVENT_TYPES = ("ai.run.started", "ai.run.completed", "ai.tool.requested", "ai.tool.result")
+logger = logging.getLogger(__name__)
 
 
 class _TraceRoute(APIRoute):
@@ -67,7 +69,11 @@ class _TraceRoute(APIRoute):
                 return await handler(request)
             except HTTPException:
                 raise
-            except Exception:  # noqa: BLE001 - do not serialize errors containing persisted payloads
+            except Exception:
+                logger.exception(
+                    "Unhandled error while serving Telegram answer trace",
+                    extra={"path": request.url.path, "run_id": request.path_params.get("run_id")},
+                )
                 return JSONResponse(
                     status_code=500,
                     content={"detail": {"code": "INTERNAL_ERROR", "message": "Answer trace unavailable"}},
@@ -149,7 +155,11 @@ def _init_data(request: Request) -> tuple[int, bytes, str]:
         user_id = user.get("id") if isinstance(user, dict) else None
         if type(user_id) is not int or not 0 < user_id <= 2**52:
             raise ValueError("Invalid Telegram user")
-    except (KeyError, ValueError, RecursionError):
+    except (KeyError, ValueError, RecursionError) as exc:
+        logger.warning(
+            "Rejected invalid Telegram Mini App initData",
+            extra={"error_type": type(exc).__name__},
+        )
         raise _unauthorized() from None
 
     message = "\n".join(f"{key}={value}" for key, value in sorted(fields.items())).encode()
@@ -172,6 +182,10 @@ async def _authenticate(request: Request, db: AsyncSession) -> TelegramIntegrati
         try:
             token = decrypt_secret(encrypted_token)
         except (InvalidTag, ValueError):
+            logger.exception(
+                "Failed to decrypt Telegram integration token during answer trace authentication",
+                extra={"integration_id": candidate.id, "owner_id": candidate.owner_id},
+            )
             continue
         key = hmac.digest(b"WebAppData", token.encode(), "sha256")
         if hmac.compare_digest(hmac.digest(key, message, "sha256").hex(), supplied):

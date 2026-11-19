@@ -9,6 +9,8 @@ from typing import Any, Self
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 _ALLOWED_UPDATES = (
     "message",
     "guest_message",
@@ -116,17 +118,33 @@ class TelegramClient:
                     await response.aread()
                 finally:
                     await response.aclose()
-        except (httpx.TimeoutException, TimeoutError):
+        except (httpx.TimeoutException, TimeoutError) as exc:
+            logger.warning(
+                "Telegram API request timed out",
+                extra={"method": method, "error_type": type(exc).__name__},
+            )
             raise TelegramError("timeout") from None
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "Telegram API HTTP transport error",
+                extra={"method": method, "error_type": type(exc).__name__},
+            )
             raise TelegramError("network_error") from None
-        except Exception:  # noqa: BLE001 - custom transport errors may contain bot URLs
+        except Exception as exc:  # noqa: BLE001 - custom transport errors may contain bot URLs
+            logger.error(
+                "Unexpected Telegram API transport error",
+                extra={"method": method, "error_type": type(exc).__name__},
+            )
             raise TelegramError("network_error") from None
 
         status = response.status_code
         try:
             data = response.json()
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError) as exc:
+            logger.warning(
+                "Telegram API returned non-JSON response",
+                extra={"method": method, "status_code": status, "error_type": type(exc).__name__},
+            )
             raise TelegramError(status if status >= 300 else "invalid_response") from None
         if not isinstance(data, dict):
             raise TelegramError(status if status >= 300 else "invalid_response")
@@ -209,9 +227,17 @@ class TelegramClient:
                     await response.aclose()
         except TelegramError:
             raise
-        except (httpx.TimeoutException, TimeoutError):
+        except (httpx.TimeoutException, TimeoutError) as exc:
+            logger.warning(
+                "Telegram file download timed out",
+                extra={"error_type": type(exc).__name__},
+            )
             raise TelegramError('timeout') from None
-        except Exception:  # noqa: BLE001 - transport exceptions can contain token-bearing paths
+        except Exception as exc:  # noqa: BLE001 - transport exceptions can contain token-bearing paths
+            logger.error(
+                "Telegram file download failed",
+                extra={"error_type": type(exc).__name__},
+            )
             raise TelegramError('network_error') from None
 
     async def get_webhook_info(self) -> dict[str, Any]:
