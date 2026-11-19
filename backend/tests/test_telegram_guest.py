@@ -678,6 +678,10 @@ async def test_guest_answer_trace_access_and_safe_projection(setup, monkeypatch,
     assert body["steps"][1]["query"] is None
     assert body["steps"][2]["query"] is None
     assert body["sources"] == [{"url": "https://example.org/docs", "title": "Официальная справка"}]
+    assert body["question"] == job.prompt_text and body["question"]
+    assert body["quote"] is None
+    assert body["asked_at"] is not None
+    assert body["answer"] == "Готово, задача создана."
     # Only active kept memory fact appears; deleted fact is excluded
     assert [f["id"] for f in body["memory_facts"]] == [kept_fact.id]
 
