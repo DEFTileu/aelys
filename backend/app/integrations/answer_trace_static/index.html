@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="referrer" content="no-referrer">
     <title>Как я ответил · Aelys</title>
-    <link rel="stylesheet" href="/telegram/answer-trace/style.css?v=launch-v2">
+    <link rel="stylesheet" href="/telegram/answer-trace/style.css?v=design-v1">
     <script id="telegram-sdk" src="https://telegram.org/js/telegram-web-app.js" async></script>
-    <script src="/telegram/answer-trace/app.js?v=launch-v2" defer></script>
+    <script src="/telegram/answer-trace/app.js?v=design-v1" defer></script>
   </head>
   <body>
     <main>
@@ -23,24 +23,46 @@
       </section>
 
       <article id="trace" hidden>
-        <header class="run-summary">
-          <h2 id="duration"></h2>
-          <p id="model" class="secondary"></p>
+        <header class="asker">
+          <span id="asker-avatar" class="avatar" aria-hidden="true"></span>
+          <b id="asker-name"></b>
+          <time id="asked-at" class="secondary"></time>
         </header>
-        <section aria-labelledby="steps-title">
-          <h2 id="steps-title" class="section-title">Шаги ответа</h2>
-          <ol id="steps" class="step-list"></ol>
+        <section id="question-bubble" class="bubble" aria-label="Вопрос" hidden>
+          <blockquote id="quote" hidden></blockquote>
+          <p id="question"></p>
         </section>
-        <section class="context-section" aria-labelledby="context-title">
-          <h2 id="context-title" class="section-title">Контекст</h2>
-          <p id="history-count"></p>
-          <h3 class="section-title">Использованная память</h3>
-          <ul id="memory-facts" class="memory-list"></ul>
-        </section>
-        <section class="sources-section" aria-labelledby="source-count">
-          <h2 id="source-count" class="section-title">Источники 0</h2>
-          <ul id="sources" class="source-list"></ul>
-        </section>
+        <button id="summary-toggle" class="summary" type="button" aria-expanded="true" aria-controls="trace-panel">
+          <span id="summary-title"></span>
+          <span id="duration" class="secondary"></span>
+          <span class="chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div id="trace-panel">
+          <section aria-labelledby="steps-title">
+            <h2 id="steps-title" class="section-title">Шаги ответа</h2>
+            <ol id="steps" class="step-list"></ol>
+          </section>
+          <section class="context-section" aria-labelledby="context-title">
+            <h2 id="context-title" class="section-title">Контекст</h2>
+            <p id="history-count"></p>
+            <p id="model" class="secondary"></p>
+            <h3 class="section-title">Использованная память</h3>
+            <ul id="memory-facts" class="memory-list"></ul>
+          </section>
+        </div>
+        <div id="answer" class="answer" hidden></div>
+        <footer class="answer-footer">
+          <div class="sources-anchor">
+            <button id="sources-toggle" class="sources-pill" type="button" aria-expanded="false" aria-controls="sources-popover">
+              <span id="sources-stack" class="source-stack" aria-hidden="true"></span>
+              <span id="source-count">Источники 0</span>
+            </button>
+            <div id="sources-popover" class="popover" hidden>
+              <ul id="sources" class="source-list"></ul>
+            </div>
+          </div>
+          <button id="copy-answer" class="icon-button" type="button" aria-label="Скопировать ответ" hidden>⧉</button>
+        </footer>
       </article>
       <details id="diagnostics">
         <summary>Диагностика запуска</summary>
@@ -49,9 +71,10 @@
     </main>
 
     <dialog id="step-dialog" aria-labelledby="detail-title">
+      <div class="sheet-grip" aria-hidden="true"></div>
       <div class="sheet-header">
         <h2 id="detail-title" tabindex="-1"></h2>
-        <button id="close-detail" class="quiet-button" type="button" aria-label="Закрыть детали">Закрыть</button>
+        <button id="close-detail" class="quiet-button" type="button" aria-label="Закрыть детали">×</button>
       </div>
       <div class="sheet-body">
         <p id="detail-status" class="secondary"></p>
@@ -61,7 +84,7 @@
         </section>
         <section aria-labelledby="detail-sources-title">
           <h3 id="detail-sources-title" class="section-title">Источники шага</h3>
-          <ul id="detail-sources" class="source-list"></ul>
+          <ul id="detail-sources" class="source-list card"></ul>
         </section>
       </div>
     </dialog>

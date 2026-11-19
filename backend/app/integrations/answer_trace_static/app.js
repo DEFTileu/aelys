@@ -8,6 +8,7 @@
   let returnFocus = null;
   let fetching = false;
   let runId;
+  let answerText = '';
   const diagnostics = byId('diagnostics');
   const diagnosticsLog = byId('diagnostics-log');
   const diagnosticEntries = [];
@@ -129,6 +130,16 @@
     return result;
   }
 
+  function domainTile(domain) {
+    const tile = element('span', domain.charAt(0).toLocaleUpperCase('ru'), 'domain-letter');
+    tile.setAttribute('aria-hidden', 'true');
+    // A stable hue per domain stands in for favicons, which would leak the viewer to third parties.
+    let hash = 0;
+    for (const char of domain) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+    tile.style.setProperty('--hue', String(hash));
+    return tile;
+  }
+
   function renderSources(target, sources, emptyMessage) {
     target.replaceChildren();
     if (!sources.length) {
@@ -142,12 +153,13 @@
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.referrerPolicy = 'no-referrer';
-      const letter = element('span', source.domain.charAt(0).toLocaleUpperCase('ru'), 'domain-letter');
-      letter.setAttribute('aria-hidden', 'true');
+      const letter = domainTile(source.domain);
       const copy = element('span', undefined, 'source-copy');
       copy.append(element('span', source.title || source.domain, 'source-title'),
         element('span', source.domain, 'source-domain secondary'));
-      link.append(letter, copy);
+      const arrow = element('span', '↗', 'source-arrow');
+      arrow.setAttribute('aria-hidden', 'true');
+      link.append(letter, copy, arrow);
       row.append(link);
       target.append(row);
     }
@@ -159,6 +171,8 @@
       skipped: 'Пропущено', running: 'Выполняется', pending: 'В ожидании',
       requested: 'Запрошено', approved: 'Разрешено' })[status] || 'Статус не указан';
   }
+
+  const DONE = new Set(['completed', 'succeeded', 'success']);
 
   function stepLabel(step) {
     return text(step.label, 300) || ({ web_search: 'Поиск в интернете',
@@ -182,10 +196,71 @@
     telegram?.BackButton?.show();
   }
 
+  function plural(count, one, few, many) {
+    const tens = count % 100;
+    const units = count % 10;
+    if (tens > 10 && tens < 20) return many;
+    return units === 1 ? one : units > 1 && units < 5 ? few : many;
+  }
+
+  // Minimal Markdown for the saved reply: paragraphs, lists, headings, bold, code.
+  // Every piece is inserted as text, so the reply can never inject markup.
+  function renderInline(node, value) {
+    for (const part of value.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\))/)) {
+      if (!part) continue;
+      if (/^\*\*[^*]+\*\*$/.test(part)) node.append(element('b', part.slice(2, -2)));
+      else if (/^`[^`]+`$/.test(part)) node.append(element('code', part.slice(1, -1)));
+      else if (/^\[[^\]]+\]\(/.test(part)) node.append(part.slice(1, part.indexOf('](')));
+      else node.append(part);
+    }
+  }
+
+  function renderAnswer(target, value) {
+    target.replaceChildren();
+    let list = null;
+    for (const line of value.split('\n')) {
+      if (!line.trim()) { list = null; continue; }
+      const item = /^\s*([-*•]|\d+[.)])\s+(.*)$/.exec(line);
+      if (item) {
+        const tag = /\d/.test(item[1]) ? 'ol' : 'ul';
+        if (list?.tagName.toLowerCase() !== tag) { list = element(tag); target.append(list); }
+        const row = element('li');
+        renderInline(row, item[2]);
+        list.append(row);
+        continue;
+      }
+      list = null;
+      const heading = /^#{1,6}\s+(.*)$/.exec(line);
+      const block = element(heading ? 'h3' : 'p');
+      renderInline(block, heading ? heading[1] : line);
+      target.append(block);
+    }
+  }
+
+  function renderHeader(data) {
+    const name = text(telegram?.initDataUnsafe?.user?.first_name, 64).trim() || 'Вы';
+    byId('asker-avatar').textContent = name.charAt(0).toLocaleUpperCase('ru');
+    byId('asker-name').textContent = name;
+    const asked = typeof data.asked_at === 'string' ? new Date(data.asked_at) : null;
+    const valid = asked && !Number.isNaN(asked.getTime());
+    byId('asked-at').textContent = valid
+      ? `· ${asked.toLocaleString('ru', asked.toDateString() === new Date().toDateString()
+        ? { hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+      : '';
+    if (valid) byId('asked-at').dateTime = asked.toISOString();
+    const question = text(data.question, 4000);
+    const quote = text(data.quote, 4000);
+    byId('question').textContent = question;
+    byId('quote').textContent = quote;
+    byId('quote').hidden = !quote;
+    byId('question-bubble').hidden = !question && !quote;
+  }
+
   function renderTrace(data) {
+    renderHeader(data);
     byId('duration').textContent = typeof data.duration_ms === 'number' && Number.isFinite(data.duration_ms) && data.duration_ms >= 0
-      ? `Работал ${new Intl.NumberFormat('ru', { maximumFractionDigits: 1 }).format(data.duration_ms / 1000)} с`
-      : 'Время работы не указано';
+      ? `${new Intl.NumberFormat('ru', { maximumFractionDigits: 1 }).format(data.duration_ms / 1000)} с`
+      : 'Время не указано';
     byId('model').textContent = text(data.model, 160) || 'Модель не указана';
     const steps = byId('steps');
     steps.replaceChildren();
@@ -196,12 +271,21 @@
       button.type = 'button';
       button.setAttribute('aria-haspopup', 'dialog');
       button.setAttribute('aria-controls', 'step-dialog');
+      const icon = element('span', step.kind === 'web_search' ? '⌕' : step.kind === 'read_chat_history' ? '☰' : '•', 'step-icon');
+      icon.setAttribute('aria-hidden', 'true');
       const copy = element('span', undefined, 'step-copy');
-      copy.append(element('span', stepLabel(step), 'step-label'),
-        element('span', statusLabel(step.status), 'step-status secondary'));
-      const arrow = element('span', '›', 'step-arrow');
-      arrow.setAttribute('aria-hidden', 'true');
-      button.append(copy, arrow);
+      copy.append(element('span', stepLabel(step), 'step-label'));
+      const query = text(step.query, 300);
+      if (query) copy.append(element('span', `«${query}»`, 'step-query'));
+      if (!DONE.has(step.status)) copy.append(element('span', statusLabel(step.status), 'step-status secondary'));
+      button.append(icon, copy);
+      const stepSources = safeSources(step.sources);
+      if (stepSources.length) {
+        const stack = element('span', undefined, 'source-stack');
+        stack.append(...stepSources.slice(0, 3).map((source) => domainTile(source.domain)),
+          element('span', String(stepSources.length), 'source-stack-count'));
+        button.append(stack);
+      }
       button.addEventListener('click', () => showDetails(step, button));
       row.append(button);
       steps.append(row);
@@ -222,7 +306,16 @@
     if (!memory.children.length) memory.append(element('li', 'Актуальные факты памяти не использовались.', 'empty secondary'));
     const sources = safeSources(data.sources, 1000);
     byId('source-count').textContent = `Источники ${sources.length}`;
+    byId('sources-stack').replaceChildren(...sources.slice(0, 3).map((source) => domainTile(source.domain)));
     renderSources(byId('sources'), sources, 'Источники для этого ответа не сохранены.');
+    const stepCount = steps.querySelectorAll('.step-button').length;
+    byId('summary-title').textContent = sources.length
+      ? `Проверил ${sources.length} ${plural(sources.length, 'источник', 'источника', 'источников')}`
+      : stepCount ? `${stepCount} ${plural(stepCount, 'шаг', 'шага', 'шагов')}` : 'Ответил без поиска';
+    answerText = text(data.answer, 20000);
+    renderAnswer(byId('answer'), answerText);
+    byId('answer').hidden = !answerText;
+    byId('copy-answer').hidden = !answerText;
     byId('trace').hidden = false;
   }
 
@@ -296,6 +389,35 @@
 
   byId('retry').addEventListener('click', () => telegram ? load() : window.location.reload());
   byId('close-detail').addEventListener('click', closeDetails);
+  const summary = byId('summary-toggle');
+  summary.addEventListener('click', () => {
+    const open = summary.getAttribute('aria-expanded') !== 'true';
+    summary.setAttribute('aria-expanded', String(open));
+    byId('trace-panel').hidden = !open;
+  });
+  const sourcesToggle = byId('sources-toggle');
+  const popover = byId('sources-popover');
+  const setSources = (open) => {
+    popover.hidden = !open;
+    sourcesToggle.setAttribute('aria-expanded', String(open));
+  };
+  sourcesToggle.addEventListener('click', () => setSources(popover.hidden));
+  document.addEventListener('click', (event) => {
+    if (!popover.hidden && !event.target.closest?.('.sources-anchor')) setSources(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !popover.hidden) { setSources(false); sourcesToggle.focus(); }
+  });
+  const copy = byId('copy-answer');
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(answerText);
+      copy.textContent = '✓';
+      setTimeout(() => { copy.textContent = '⧉'; }, 1500);
+    } catch {
+      // Clipboard can be blocked inside a WebView; the text stays selectable.
+    }
+  });
   dialog.addEventListener('click', (event) => {
     if (event.target !== dialog) return;
     const bounds = dialog.getBoundingClientRect();
@@ -326,7 +448,7 @@
     load();
   }
   applyTheme();
-  recordDiagnostic('Сборка launch-v2');
+  recordDiagnostic('Сборка design-v1');
   const sdk = byId('telegram-sdk');
   byId('loading').textContent = 'Подключаю Telegram…';
   if (window.Telegram?.WebApp) {

@@ -23,6 +23,7 @@ OTHER_TOKEN = "12346:synthetic-fixture-token"
 OWNER = 100001
 AT = datetime(2026, 1, 1, tzinfo=UTC)
 PRIVATE = "must-never-appear-in-answer-trace"
+QUESTION = "Какая завтра погода?"
 
 
 def signed(*, token=TOKEN, user_id=OWNER, age=0, **overrides):
@@ -79,7 +80,7 @@ async def new_run(session, integration, *, personal=True, status="completed", up
         session.add(TelegramPersonalJob(
             owner_id=integration.owner_id, integration_id=integration.id, telegram_update_id=update_id,
             run_id=run.id, conversation_id=conversation.id, state="done" if status == "completed" else "running",
-            text=PRIVATE,
+            text=QUESTION, quote="Прошлый ответ",
         ))
     return run
 
@@ -128,7 +129,10 @@ async def test_projects_steps_sources_and_final_history_count(trace_db):
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-frame-options"] == "DENY"
     payload = response.json()
-    assert set(payload) == {"run_id", "duration_ms", "model", "steps", "sources", "history_message_count", "memory_facts"}
+    assert set(payload) == {"run_id", "duration_ms", "model", "steps", "sources", "history_message_count", "memory_facts",
+                            "question", "quote", "answer", "asked_at"}
+    assert (payload["question"], payload["quote"], payload["answer"]) == (QUESTION, "Прошлый ответ", None)
+    assert payload["asked_at"].startswith(AT.strftime("%Y-%m-%dT%H:%M"))
     assert payload["run_id"] == run.id
     assert payload["duration_ms"] == 8123
     assert payload["model"] == "actual-model"
@@ -236,7 +240,7 @@ async def test_returns_only_active_exact_memory_refs_and_rechecks_edits(trace_db
             {"kind": "owner_memory_fact", "id": fact.id, "version": 1, "text": PRIVATE}
             for name, fact in facts.items() if name != "unreferenced"
         ]
-        reply = AIMessage(conversation_id=run.conversation_id, role="assistant", content=PRIVATE, source_refs_json=refs)
+        reply = AIMessage(conversation_id=run.conversation_id, role="assistant", content="Ответ этого запуска", source_refs_json=refs)
         session.add(reply)
         session.add(AIMessage(
             conversation_id=run.conversation_id, role="assistant", content=PRIVATE,
@@ -338,3 +342,20 @@ async def test_trace_server_error_is_generic_and_non_cacheable(trace_db, monkeyp
     assert response.headers["cache-control"] == "no-store"
     assert PRIVATE not in response.text
     assert response.json()["detail"]["code"] == "INTERNAL_ERROR"
+
+
+async def test_returns_saved_reply_of_this_run_only(trace_db):
+    client, sessions, run, _ = trace_db
+    async with sessions.begin() as session:
+        reply = AIMessage(conversation_id=run.conversation_id, role="assistant", content="**Солнечно**, +5")
+        foreign = AIMessage(conversation_id=run.conversation_id, role="user", content=PRIVATE)
+        session.add_all([reply, foreign])
+        await session.flush()
+        session.add(event(run, 1, "ai.run.completed", {"reply_message_id": reply.id}))
+    body = (await client.get(f"{API}/{run.id}", headers=headers())).json()
+    assert body["answer"] == "**Солнечно**, +5"
+    async with sessions.begin() as session:
+        session.add(event(run, 2, "ai.run.completed", {"reply_message_id": foreign.id}))
+    response = await client.get(f"{API}/{run.id}", headers=headers())
+    assert response.json()["answer"] is None
+    assert PRIVATE not in response.text
