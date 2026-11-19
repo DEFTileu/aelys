@@ -144,3 +144,49 @@ def answer_chunks(markdown: str, trace_url: str | None) -> Iterator[tuple[str, l
         tail = (f'{chunk}\n\n{TRACE_LABEL}' if chunk else TRACE_LABEL), chunk_entities
     if tail is not None:
         yield tail
+
+
+def single_answer_message(markdown: str, trace_url: str | None) -> tuple[str, list[MessageEntity]]:
+    """Render Markdown into one Telegram message (<= 4096 UTF-16 units) for one-shot replies."""
+    text, entities = _render(markdown)
+    footer_reserve = (2 + len(TRACE_LABEL)) if trace_url else 0
+    body_limit = TEXT_LIMIT - footer_reserve
+    positions = list(accumulate((1 + (ord(char) > 0xFFFF) for char in text), initial=0))
+    if positions[-1] <= body_limit:
+        body = text.rstrip()
+        trimmed_offset = _utf16_length(body)
+        body_entities: list[MessageEntity] = []
+        for entity in entities:
+            if entity['offset'] >= trimmed_offset:
+                break
+            length = min(entity['offset'] + entity['length'], trimmed_offset) - entity['offset']
+            if length > 0:
+                body_entities.append({**entity, 'length': length})
+    else:
+        cut_index = bisect_right(positions, max(0, body_limit - 1)) - 1
+        body = text[:cut_index].rstrip()
+        trimmed_offset = _utf16_length(body)
+        body_entities = []
+        for entity in entities:
+            if entity['offset'] >= trimmed_offset:
+                break
+            length = min(entity['offset'] + entity['length'], trimmed_offset) - entity['offset']
+            if length > 0:
+                body_entities.append({**entity, 'length': length})
+        body = f'{body}…' if body else '…'
+
+    if not _NONSPACE.search(body):
+        body = ''
+        body_entities = []
+
+    if trace_url:
+        if body:
+            offset = _utf16_length(body) + 2
+            body = f'{body}\n\n{TRACE_LABEL}'
+        else:
+            offset = 0
+            body = TRACE_LABEL
+        body_entities.append({'type': 'text_link', 'offset': offset, 'length': len(TRACE_LABEL), 'url': trace_url})
+    elif not body:
+        body = 'Готово.'
+    return body, body_entities

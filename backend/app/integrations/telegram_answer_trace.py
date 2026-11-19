@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .telegram_models import TelegramIntegration, TelegramPersonalJob
+from .telegram_models import TelegramGuestJob, TelegramIntegration, TelegramPersonalJob
 from .telegram_personal import authorize
 
 PAGE = "/telegram/answer-trace"
@@ -278,11 +278,18 @@ async def answer_trace(
         job.owner_id == integration.owner_id, job.integration_id == integration.id,
         job.state == "done", job.deleted_at.is_(None),
     ).exists()
+    guest_job = TelegramGuestJob
+    bound_guest_job = select(guest_job.id).where(
+        guest_job.run_id == AIRun.id, guest_job.conversation_id == AIRun.conversation_id,
+        guest_job.owner_id == integration.owner_id, guest_job.integration_id == integration.id,
+        guest_job.caller_telegram_id == integration.owner_telegram_id,
+        guest_job.state == "done", guest_job.deleted_at.is_(None),
+    ).exists()
     run = await db.scalar(select(AIRun).join(AIConversation, AIRun.conversation_id == AIConversation.id).where(
         AIRun.id == str(parsed_run_id), AIRun.owner_id == integration.owner_id,
         AIRun.status == "completed", AIRun.deleted_at.is_(None),
         AIConversation.owner_id == integration.owner_id, AIConversation.deleted_at.is_(None),
-        bound_job,
+        or_(bound_job, bound_guest_job),
     ))
     if run is None:
         raise _error(404, "NOT_FOUND", "Answer trace not found")
