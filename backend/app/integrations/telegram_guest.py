@@ -73,7 +73,8 @@ INTERRUPTED = "AI_INTERRUPTED"
 
 _GUEST_READ_SCOPES = frozenset({"tasks.read", "notes.read", "calendar.read", "knowledge.read"})
 _GUEST_WRITE_SCOPES = frozenset({"tasks.write", "notes.write", "calendar.write", "reminders.write"})
-_TRAILING_MARKER = re.compile(r"(?i)(?:^|\s)aelys\s*$")
+_TRAILING_MARKER = re.compile(r"(?i)(?:^|\s)(aelys)\s*$")
+_UNTRUSTED_ENTITY_TYPES = ("code", "pre", "blockquote", "expandable_blockquote")
 
 _GUEST_FAILURES = {
     "BUDGET_EXCEEDED": "AI-бюджет исчерпан. Проверь лимит в настройках.",
@@ -121,11 +122,51 @@ def _bounded_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and abs(value) <= 2**52
 
 
-def _strip_bot_mention(raw: str, bot_username: str | None) -> str:
+def _strip_bot_mention(raw: str, bot_username: str | None, *, preserve_offsets: bool = False) -> str:
     if not bot_username or not re.fullmatch(r"[A-Za-z0-9_]{1,64}", bot_username):
         return raw
     pattern = re.compile(rf"(?<![\w@])@{re.escape(bot_username)}(?!\w)", re.IGNORECASE)
-    return pattern.sub(" ", raw)
+    return pattern.sub(lambda match: " " * len(match[0]) if preserve_offsets else " ", raw)
+
+
+def _native_guest_text(raw: str, entities: Any) -> tuple[str, list[str]] | None:
+    """Mask native code and quotes using Telegram's UTF-16 character boundaries."""
+    if not isinstance(entities, list):
+        return None
+    if not entities:
+        return raw, []
+
+    boundaries = {0: 0}
+    offset = 0
+    for index, character in enumerate(raw, 1):
+        offset += 2 if ord(character) > 0xFFFF else 1
+        boundaries[offset] = index
+
+    masked = [False] * len(raw)
+    for entity in entities:
+        if not isinstance(entity, Mapping) or not isinstance(entity.get("type"), str):
+            return None
+        if entity["type"] not in _UNTRUSTED_ENTITY_TYPES:
+            continue
+        start, length = entity.get("offset"), entity.get("length")
+        if type(start) is not int or type(length) is not int or length <= 0:
+            return None
+        end = start + length
+        if start not in boundaries or end not in boundaries:
+            return None
+        left, right = boundaries[start], boundaries[end]
+        masked[left:right] = [True] * (right - left)
+
+    # Mask whole words when a native entity covers only part of one.
+    for word in re.finditer(r"\w+", raw):
+        left, right = word.span()
+        if any(masked[left:right]):
+            masked[left:right] = [True] * (right - left)
+
+    mask = "".join("1" if hidden else "0" for hidden in masked)
+    trusted = "".join(" " if hidden else char for char, hidden in zip(raw, masked, strict=True))
+    fragments = [raw[span.start():span.end()] for span in re.finditer(r"1+", mask)]
+    return trusted, fragments
 
 
 def parse_guest_invocation(message: Mapping[str, Any], bot_username: str | None) -> ParsedGuestInvocation | None:
@@ -152,14 +193,24 @@ def parse_guest_invocation(message: Mapping[str, Any], bot_username: str | None)
     )
     quote = quote_candidate[:4096] if isinstance(quote_candidate, str) and quote_candidate.strip() else None
 
-    stripped_mention = _strip_bot_mention(raw_text, bot_username)
-    raw_match = _TRAILING_MARKER.search(stripped_mention)
-    trusted_match = _TRAILING_MARKER.search(_trusted_owner_text(stripped_mention))
+    native = _native_guest_text(raw_text, message.get("entities", []))
+    trusted_raw, fragments = native if native is not None else ("", [raw_text])
+    quote = "\n\n".join(part for part in [quote, *fragments] if part and part.strip()) or None
+
+    prompt_text = _strip_bot_mention(trusted_raw, bot_username).strip()
     tools_unlocked = False
-    prompt_text = stripped_mention.strip()
-    if raw_match is not None and trusted_match is not None:
-        before_marker = stripped_mention[: raw_match.start()].strip()
-        if before_marker:
+    raw_match = _TRAILING_MARKER.search(_strip_bot_mention(raw_text, bot_username, preserve_offsets=True))
+    if raw_match is not None:
+        marker_start, marker_end = raw_match.span(1)
+        # Check the original marker's position so masking cannot expose an earlier marker.
+        marker_trusted = trusted_raw[marker_start:marker_end] == raw_text[marker_start:marker_end]
+        before_marker = _strip_bot_mention(trusted_raw[:marker_start], bot_username).strip()
+        if (
+            marker_trusted
+            and _TRAILING_MARKER.search(_trusted_owner_text(prompt_text))
+            and _TRAILING_MARKER.search(_trusted_owner_text(_strip_bot_mention(raw_text, bot_username)))
+            and before_marker
+        ):
             tools_unlocked = True
             prompt_text = before_marker
 

@@ -102,6 +102,84 @@ def test_deterministic_marker_parsing(text: str, expected_unlocked: bool, expect
     assert parsed.prompt_text == expected_prompt
 
 
+@pytest.mark.parametrize("kind", ["code", "pre", "blockquote", "expandable_blockquote"])
+@pytest.mark.parametrize("formatted", ["aelys", "elys"])
+def test_native_formatting_cannot_supply_last_marker(kind, formatted):
+    prefix = "@aelys_ibot 😀 объясни " + ("a" if formatted == "elys" else "")
+    entity = {"type": kind, "offset": len(prefix.encode("utf-16-le")) // 2, "length": len(formatted)}
+    parsed = guest.parse_guest_invocation({"text": prefix + formatted, "entities": [entity]}, "aelys_ibot")
+    assert parsed is not None
+    assert not parsed.tools_unlocked
+    assert formatted in (parsed.quote or "")
+    assert not guest.guest_scopes(parsed.prompt_text, tools_unlocked=parsed.tools_unlocked)
+
+
+@pytest.mark.parametrize("kind", ["code", "pre", "blockquote", "expandable_blockquote"])
+@pytest.mark.parametrize(("verb", "scope"), [("remember", "memory.remember"), ("забудь", "memory.forget")])
+def test_native_formatting_cannot_grant_memory_scope(kind, verb, scope):
+    prefix = "@aelys_ibot 😀 объясни. "
+    formatted = f"{verb} the 🐈"
+    text = f"{prefix}{formatted} aelys"
+    entity = {
+        "type": kind,
+        "offset": len(prefix.encode("utf-16-le")) // 2,
+        "length": len(formatted.encode("utf-16-le")) // 2,
+    }
+    parsed = guest.parse_guest_invocation({"text": text, "entities": [entity]}, "aelys_ibot")
+    assert parsed is not None
+    assert parsed.tools_unlocked
+    assert parsed.prompt_text == "😀 объясни."
+    assert parsed.quote == formatted
+    scopes = guest.guest_scopes(parsed.prompt_text, tools_unlocked=parsed.tools_unlocked)
+    assert "tasks.read" in scopes
+    assert scope not in scopes
+
+
+def test_native_quote_with_explicit_owner_memory_request_and_marker():
+    text = "@aelys_ibot 😀 quoted\nRemember the preference aelys"
+    parsed = guest.parse_guest_invocation(
+        {"text": text, "entities": [{"type": "blockquote", "offset": 12, "length": 9}],
+         "quote": {"text": "selected reply"}},
+        "aelys_ibot",
+    )
+    assert parsed is not None
+    assert parsed.tools_unlocked
+    assert parsed.prompt_text == "Remember the preference"
+    assert parsed.quote == "selected reply\n\n😀 quoted"
+    assert "memory.remember" in guest.guest_scopes(parsed.prompt_text, tools_unlocked=parsed.tools_unlocked)
+
+
+@pytest.mark.parametrize(
+    ("text", "offset", "length", "unlocked"),
+    [
+        ("explain aelys aelys", 14, 5, False),
+        ("quoted request aelys", 0, 14, False),
+        ("remembering this aelys", 8, 3, True),
+    ],
+)
+def test_native_span_removal_does_not_create_permissions(text, offset, length, unlocked):
+    parsed = guest.parse_guest_invocation(
+        {"text": text, "entities": [{"type": "code", "offset": offset, "length": length}]}, None,
+    )
+    assert parsed is not None
+    assert parsed.tools_unlocked is unlocked
+    assert "memory.remember" not in guest.guest_scopes(parsed.prompt_text, tools_unlocked=parsed.tools_unlocked)
+
+
+@pytest.mark.parametrize(
+    ("offset", "length"),
+    [(1, 1), (0, 1), (-1, 5), (0, 100), (0, 0), (False, 2), (0, True), ("0", 2), (0, None)],
+)
+def test_malformed_native_entity_fails_closed(offset, length):
+    text = "😀 remember this aelys"
+    parsed = guest.parse_guest_invocation(
+        {"text": text, "entities": [{"type": "code", "offset": offset, "length": length}]}, None,
+    )
+    assert parsed is not None
+    assert not parsed.tools_unlocked
+    assert not guest.guest_scopes(parsed.prompt_text, tools_unlocked=parsed.tools_unlocked)
+
+
 def test_marker_in_quote_or_reply_never_unlocks():
     parsed_quote = guest.parse_guest_invocation(
         {
