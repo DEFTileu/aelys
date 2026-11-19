@@ -203,3 +203,30 @@ class TelegramBusinessCommand(Owned):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(80))
+
+
+class TelegramGuestJob(Owned):
+    """Only verified owner Guest Mode invocations enter this encrypted, at-most-once queue."""
+    __tablename__ = "telegram_guest_jobs"
+    __table_args__ = (
+        UniqueConstraint("integration_id", "telegram_update_id", name="uq_telegram_guest_job_update"),
+        UniqueConstraint("integration_id", "guest_query_id_hash", name="uq_telegram_guest_job_query"),
+    )
+
+    integration_id: Mapped[str] = mapped_column(String(36), ForeignKey("telegram_integrations.id"), index=True)
+    telegram_update_id: Mapped[int] = mapped_column(BigInteger)
+    guest_query_id_hash: Mapped[str] = mapped_column(String(64))
+    guest_query_id: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    caller_telegram_id: Mapped[int] = mapped_column(BigInteger)
+    chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    prompt_text: Mapped[str] = mapped_column(EncryptedText(), default="")
+    quote: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    tools_unlocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    state: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    delivery_status: Mapped[str] = mapped_column(String(24), default="pending", server_default="pending")
+    conversation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_conversations.id"), nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_runs.id"), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)

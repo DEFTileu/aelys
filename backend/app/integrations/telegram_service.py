@@ -26,6 +26,7 @@ from .telegram_models import (
     TelegramBusinessConnection,
     TelegramBusinessMessage,
     TelegramChatSend,
+    TelegramGuestJob,
     TelegramIntegration,
     TelegramUpdateReceipt,
 )
@@ -137,6 +138,7 @@ async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None
     forget(item.id)
     item.owner_name = None
     await db.execute(delete(TelegramBusinessCommand).where(TelegramBusinessCommand.integration_id == item.id))
+    await db.execute(delete(TelegramGuestJob).where(TelegramGuestJob.integration_id == item.id))
     await db.execute(delete(TelegramChatSend).where(TelegramChatSend.integration_id == item.id))
     await db.execute(delete(TelegramBusinessMessage).where(TelegramBusinessMessage.integration_id == item.id))
     await db.execute(delete(TelegramBusinessConnection).where(TelegramBusinessConnection.integration_id == item.id))
@@ -191,6 +193,11 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
     connection_raw = payload.get("business_connection")
     if isinstance(connection_raw, dict):
         await accept_connection(db, item, connection_raw)
+        return None
+    guest = payload.get("guest_message")
+    if isinstance(guest, dict):
+        from .telegram_guest import enqueue_guest_message
+        await enqueue_guest_message(db, item, payload, now())
         return None
     ordinary = payload.get("message")
     if isinstance(ordinary, dict):
@@ -689,6 +696,8 @@ async def poll_integration_safely(integration_id: str) -> bool:
         await digest_once(integration_id)
         from .telegram_personal_dialogue import personal_iteration
         await personal_iteration(integration_id)
+        from .telegram_guest import guest_iteration
+        await guest_iteration(integration_id)
     except Exception:  # noqa: BLE001 - isolate one integration from the supervisor
         # No customer text, token, request URL or provider exception is emitted.
         return False
@@ -726,8 +735,10 @@ async def connector_loop() -> None:
         while True:
             try:
                 if not recovered:
+                    from .telegram_guest import fail_interrupted_guest_jobs
                     from .telegram_personal_queue import fail_interrupted_personal_jobs
                     await fail_interrupted_personal_jobs()
+                    await fail_interrupted_guest_jobs()
                     recovered = True
                 await connector_iteration()
             except asyncio.CancelledError:
@@ -736,5 +747,7 @@ async def connector_loop() -> None:
                 await asyncio.sleep(0)
             await asyncio.sleep(3)
     finally:
+        from .telegram_guest import stop_guest_turns
         from .telegram_personal_dialogue import stop_personal_turns
         await stop_personal_turns()
+        await stop_guest_turns()

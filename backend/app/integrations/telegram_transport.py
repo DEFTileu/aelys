@@ -11,6 +11,7 @@ import httpx
 
 _ALLOWED_UPDATES = (
     "message",
+    "guest_message",
     "business_connection",
     "business_message",
     "edited_business_message",
@@ -263,6 +264,44 @@ class TelegramClient:
         if type(result) is not bool:
             raise TelegramError("invalid_response")
         return result
+
+    async def answer_guest_query(
+        self,
+        guest_query_id: str,
+        text: str,
+        *,
+        result_id: str,
+        title: str = "Aelys",
+        entities: Sequence[Mapping[str, object]] = (),
+    ) -> dict[str, Any]:
+        if not isinstance(guest_query_id, str) or not 1 <= len(guest_query_id.encode("utf-8")) <= 256:
+            raise ValueError("guest_query_id must contain 1 to 256 UTF-8 bytes")
+        if not isinstance(result_id, str) or not 1 <= len(result_id.encode("utf-8")) <= 64:
+            raise ValueError("result_id must contain 1 to 64 UTF-8 bytes")
+        if not isinstance(text, str) or not text:
+            raise ValueError("message text must contain 1 to 4096 UTF-16 code units")
+        utf16_len = len(text) + sum(ord(char) > 0xFFFF for char in text)
+        if not 1 <= utf16_len <= 4096:
+            raise ValueError("message text must contain 1 to 4096 UTF-16 code units")
+        safe_title = title.strip()[:128] if isinstance(title, str) and title.strip() else "Aelys"
+        content: dict[str, Any] = {
+            "message_text": text,
+            "link_preview_options": {"is_disabled": True},
+        }
+        if entities:
+            content["entities"] = list(entities)
+        return await self._object(
+            "answerGuestQuery",
+            {
+                "guest_query_id": guest_query_id,
+                "result": {
+                    "type": "article",
+                    "id": result_id,
+                    "title": safe_title,
+                    "input_message_content": content,
+                },
+            },
+        )
 
     async def edit_message_reply_markup(
         self, chat_id: int, message_id: int, reply_markup: Mapping[str, Any] | None = None,

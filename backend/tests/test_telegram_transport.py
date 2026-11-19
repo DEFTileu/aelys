@@ -28,11 +28,52 @@ async def test_methods_and_payloads(caplog):
     assert all(r.method == "POST" and r.url.host == "api.telegram.org" and r.url.scheme == "https" for r in requests)
     bodies = [json.loads(r.content) for r in requests]
     assert bodies[:2] == [{}, {}]
-    assert bodies[2] == {"offset": 42, "timeout": 20, "allowed_updates": ["message", "business_connection", "business_message", "edited_business_message", "deleted_business_messages", "callback_query"]}
+    assert bodies[2] == {"offset": 42, "timeout": 20, "allowed_updates": ["message", "guest_message", "business_connection", "business_message", "edited_business_message", "deleted_business_messages", "callback_query"]}
     assert bodies[3] == {"business_connection_id": "bc"}
     assert bodies[4] == {"chat_id": 7, "text": "hello", "business_connection_id": "bc", "reply_parameters": {"message_id": 9}, "link_preview_options": {"is_disabled": True}}
     assert TOKEN not in caplog.text
     assert "hello" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_answer_guest_query_payload_and_validation(caplog):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {"inline_message_id": "guest-msg-1"}})
+
+    entities = [{"type": "text_link", "offset": 7, "length": 13, "url": "https://t.me/aelys_ibot?startapp=run__1"}]
+    with caplog.at_level(logging.DEBUG):
+        async with TelegramClient(TOKEN, httpx.MockTransport(handler)) as client:
+            result = await client.answer_guest_query(
+                "gq-123",
+                "Ответ\n\nКак я ответил",
+                result_id="run-1",
+                entities=entities,
+            )
+            with pytest.raises(ValueError):
+                await client.answer_guest_query("", "hi", result_id="run-1")
+            with pytest.raises(ValueError):
+                await client.answer_guest_query("gq-123", "😀" * 2049, result_id="run-1")
+
+    assert result == {"inline_message_id": "guest-msg-1"}
+    assert len(requests) == 1
+    assert requests[0].url.path == f"/bot{TOKEN}/answerGuestQuery"
+    assert json.loads(requests[0].content) == {
+        "guest_query_id": "gq-123",
+        "result": {
+            "type": "article",
+            "id": "run-1",
+            "title": "Aelys",
+            "input_message_content": {
+                "message_text": "Ответ\n\nКак я ответил",
+                "link_preview_options": {"is_disabled": True},
+                "entities": entities,
+            },
+        },
+    }
+    assert TOKEN not in caplog.text
 
 
 @pytest.mark.asyncio
