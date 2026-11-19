@@ -339,14 +339,25 @@ async def answer_trace(
         job.owner_id == integration.owner_id, job.integration_id == integration.id,
         job.state == "done", job.deleted_at.is_(None),
     ).limit(1))
+    # Guest Mode runs keep the owner's request in their own job table.
+    guest = None if asked else await db.scalar(select(guest_job).where(
+        guest_job.run_id == run.id, guest_job.conversation_id == run.conversation_id,
+        guest_job.owner_id == integration.owner_id, guest_job.integration_id == integration.id,
+        guest_job.caller_telegram_id == integration.owner_telegram_id,
+        guest_job.state == "done", guest_job.deleted_at.is_(None),
+    ).limit(1))
+    question = asked.text if asked else guest.prompt_text if guest else None
+    quote = asked.quote if asked else guest.quote if guest else None
+    origin = asked or guest
+    asked_at = (origin.started_at or run.started_at) if origin else None
     answer = await db.scalar(select(AIMessage.content).where(
         AIMessage.id == reply_id, AIMessage.conversation_id == run.conversation_id, AIMessage.role == "assistant",
     )) if reply_id else None
     return AnswerTraceOut(
-        question=asked.text[:MAX_QUESTION] if asked and asked.text else None,
-        quote=asked.quote[:MAX_QUESTION] if asked and asked.quote else None,
+        question=question[:MAX_QUESTION] if question else None,
+        quote=quote[:MAX_QUESTION] if quote else None,
         answer=answer[:MAX_ANSWER] if isinstance(answer, str) and answer else None,
-        asked_at=utc(asked.started_at or run.started_at) if asked and (asked.started_at or run.started_at) else None,
+        asked_at=utc(asked_at) if asked_at else None,
         run_id=parsed_run_id, duration_ms=duration_ms, model=model,
         steps=list(steps.values()), sources=list(sources.values()),
         history_message_count=completed_count if completed_count is not None else started_count,
