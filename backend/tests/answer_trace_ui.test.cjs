@@ -50,7 +50,7 @@ after(async () => {
 
 async function openApp(t, { data = trace, status = 200, telegram = true,
   startParam = `run__${runId}`, suffix = '', offline = false, officialSdk = false,
-  sdkGate = Promise.resolve(), sdkFailure = false, beforeSdk } = {}) {
+  sdkGate = Promise.resolve(), sdkFailure = false, sdkCache, beforeSdk } = {}) {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
   t.after(() => context.close());
   const page = await context.newPage();
@@ -74,6 +74,9 @@ async function openApp(t, { data = trace, status = 200, telegram = true,
       external.push(request.url());
     }
   });
+  if (sdkCache) await page.addInitScript(cache => {
+    sessionStorage.setItem('__telegram__initParams', JSON.stringify(cache));
+  }, sdkCache);
   if (telegram && !officialSdk) await page.addInitScript(({ startParam }) => {
     const events = {};
     window.testTelegramEvents = events;
@@ -154,6 +157,42 @@ test('official SDK launch removes persisted credentials but preserves in-memory 
   assert.match(await page.locator('#error').innerText(), /Telegram/);
   assert.deepEqual(errors, []);
 });
+
+for (const { name, cachedRun, explicitStart, rejected } of [
+  { name: 'uses the SDK outer start parameter when the launch omits it', cachedRun: runId },
+  { name: 'prefers the current launch over a different cached run',
+    cachedRun: '22222222-2222-4222-8222-222222222222', explicitStart: `run__${runId}` },
+  { name: 'rejects a malformed explicit start parameter despite a valid cached run',
+    cachedRun: runId, explicitStart: 'run__invalid', rejected: true },
+]) {
+  test(`official SDK ${name}`, {
+    skip: !process.env.ANSWER_TRACE_TELEGRAM_SDK && 'Set ANSWER_TRACE_TELEGRAM_SDK to a locally downloaded official SDK',
+  }, async t => {
+    const initData = 'auth_date=1&hash=synthetic-current-signature';
+    const launch = new URLSearchParams({ tgWebAppData: initData, tgWebAppVersion: '8.0', tgWebAppPlatform: 'web' });
+    const query = explicitStart ? `?tgWebAppStartParam=${explicitStart}` : '';
+    const cachedStart = `run__${cachedRun}`;
+    const { page, requests, errors } = await openApp(t, {
+      officialSdk: true, suffix: `${query}#${launch}`,
+      sdkCache: { tgWebAppStartParam: cachedStart, tgWebAppData: 'auth_date=0&hash=synthetic-stale-signature' },
+    });
+    const stored = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__telegram__initParams')));
+    assert.equal(stored.tgWebAppData, undefined);
+    assert.equal(stored.tgWebAppStartParam, cachedStart);
+    assert.equal(await page.evaluate(() => Telegram.WebApp.initData), initData);
+    assert.deepEqual(errors, []);
+    if (rejected) {
+      assert.equal(await page.locator('#error-title').innerText(), 'Нет ссылки на ответ');
+      assert.equal(requests.length, 0);
+      return;
+    }
+    assert.equal(await page.locator('#error').isVisible(), false, await page.locator('#error-title').textContent());
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, `${origin}/api/v1/telegram/answer-trace/${runId}`);
+    assert.equal(requests[0].headers.authorization, `tma ${initData}`);
+    assert.equal(await page.locator('#trace').isVisible(), true);
+  });
+}
 
 test('sheet links remain visible in forward and reverse tab order on short enlarged viewport', async t => {
   const sources = Array.from({ length: 10 }, (_, n) => ({ url: `https://example.org/${n}`, title: `Source ${n}` }));

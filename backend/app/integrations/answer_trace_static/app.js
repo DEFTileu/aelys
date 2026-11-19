@@ -202,7 +202,8 @@
       const start = new URLSearchParams(initData).get('start_param')
         || telegram.initDataUnsafe?.start_param
         || new URLSearchParams(window.location.search).get('tgWebAppStartParam')
-        || new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam');
+        || new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam')
+        || window.Telegram?.WebView?.initParams?.tgWebAppStartParam;
       const match = typeof start === 'string'
         ? /^run__([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(start) : null;
       if (!match) {
