@@ -11,6 +11,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.models import AIAction, AIMessage, AIRun, Task
+from app.integrations.telegram_answer_format import TELEGRAM_ANSWER_STYLE
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,6 +123,7 @@ def system_prompt(timezone: str, *, tools: bool, channel: str = "app") -> str:
     # Telegram writes execute directly on the owner's request, so their policy differs from app chat's approval gate.
     policy = TELEGRAM_POLICY if channel in {"telegram", "voice"} else SYSTEM_POLICY if tools else _NO_TOOLS
     if channel == "telegram":
+        policy += " " + TELEGRAM_ANSWER_STYLE
         policy += (" Search sources are available in the answer trace. Do not add a sources list, "
                    "bibliography, or citation links in the reply. Include links the owner directly requests.")
     if channel == "voice":

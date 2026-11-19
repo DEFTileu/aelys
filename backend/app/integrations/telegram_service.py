@@ -373,7 +373,9 @@ async def poll_once(integration_id: str, *, timeout: int = 20) -> int | None:
                     callback = payload.get('callback_query')
                     if isinstance(callback, dict):
                         from .telegram_task_controls import handle_task_callback
-                        await handle_task_callback(db, item, callback, client)
+                        from .telegram_turn_progress import handle_turn_callback
+                        if not await handle_turn_callback(db, item, callback, client):
+                            await handle_task_callback(db, item, callback, client)
                     if response_text and item.owner_telegram_id:
                         # Shortcut: confirmations are at-most-once. A failed send never
                         # rolls back capture or retries a committed update (no duplicates).

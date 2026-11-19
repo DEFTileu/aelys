@@ -13,6 +13,15 @@ from app.ai.providers import _safe_source_url
 
 TEXT_LIMIT = 4096
 TRACE_LABEL = 'Как я ответил'
+TELEGRAM_ANSWER_STYLE = (
+    "Start with a concise, natural summary of 1–3 sentences in the user's language. "
+    "For a short answer, stop there: do not repeat it as details. "
+    "When details are necessary, separate them from the summary with a blank line. "
+    "Use Markdown for details, code and requested links; the application collapses details. "
+    "Do not generate blockquotes, a trace footer, or a separate sources list."
+)
+LONG_ANSWER_NOTICE = 'Полный ответ — в MiniApp по ссылке «Как я ответил».'
+SHORT_ANSWER_LIMIT = 600
 
 # One pass over flat spans. Code consumes its contents before inline markup
 # can interpret it. Unsupported or unclosed constructs remain plain text.
@@ -146,47 +155,74 @@ def answer_chunks(markdown: str, trace_url: str | None) -> Iterator[tuple[str, l
         yield tail
 
 
-def single_answer_message(markdown: str, trace_url: str | None) -> tuple[str, list[MessageEntity]]:
-    """Render Markdown into one Telegram message (<= 4096 UTF-16 units) for one-shot replies."""
-    text, entities = _render(markdown)
-    footer_reserve = (2 + len(TRACE_LABEL)) if trace_url else 0
-    body_limit = TEXT_LIMIT - footer_reserve
-    positions = list(accumulate((1 + (ord(char) > 0xFFFF) for char in text), initial=0))
-    if positions[-1] <= body_limit:
-        body = text.rstrip()
-        trimmed_offset = _utf16_length(body)
-        body_entities: list[MessageEntity] = []
-        for entity in entities:
-            if entity['offset'] >= trimmed_offset:
-                break
-            length = min(entity['offset'] + entity['length'], trimmed_offset) - entity['offset']
-            if length > 0:
-                body_entities.append({**entity, 'length': length})
-    else:
-        cut_index = bisect_right(positions, max(0, body_limit - 1)) - 1
-        body = text[:cut_index].rstrip()
-        trimmed_offset = _utf16_length(body)
-        body_entities = []
-        for entity in entities:
-            if entity['offset'] >= trimmed_offset:
-                break
-            length = min(entity['offset'] + entity['length'], trimmed_offset) - entity['offset']
-            if length > 0:
-                body_entities.append({**entity, 'length': length})
-        body = f'{body}…' if body else '…'
+def presented_answer_message(markdown: str, trace_url: str | None) -> tuple[str, list[MessageEntity]]:
+    """One message: summary, collapsible details, overflow notice and trace link.
 
+    The original answer must remain stored by the caller for the MiniApp. Without
+    a trace URL the notice explicitly reports truncation instead of promising a link.
+    Code/pre and links stay on unquoted lines: Telegram forbids their nesting
+    inside blockquotes. Existing Markdown entities are preserved, never flattened.
+    """
+    text, entities = _render(markdown)
+    text = text.rstrip()
+    footer = ('\n\n' + TRACE_LABEL) if trace_url else ''
+    overflow = _utf16_length(text + footer) > TEXT_LIMIT
+    notice = ''
+    if overflow:
+        notice = ('\n\n' + LONG_ANSWER_NOTICE if trace_url else
+                  '\n\nОтвет сокращён: полный текст не помещается в Telegram.')
+    limit = TEXT_LIMIT - _utf16_length(footer + notice) - int(overflow)
+    positions = list(accumulate((1 + (ord(char) > 0xFFFF) for char in text), initial=0))
+    cut = bisect_right(positions, limit) - 1
+    body = text[:cut].rstrip()
+    body_end = _utf16_length(body)
+    result_entities: list[MessageEntity] = [
+        {**entity, 'length': min(entity['length'], body_end - entity['offset'])}
+        for entity in entities if entity['offset'] < body_end
+    ]
+
+    # The prompt supplies a summary paragraph. Legacy answers without one stay
+    # readable; never fabricate a summary or duplicate any of the answer.
+    separator = body.find('\n\n')
+    if _utf16_length(text) > SHORT_ANSWER_LIMIT and 0 < separator <= SHORT_ANSWER_LIMIT:
+        details_start = separator + 2
+        detail_offset = _utf16_length(body[:details_start])
+        # Do not split an entity at the summary boundary.
+        if not any(e['offset'] < detail_offset < e['offset'] + e['length'] for e in result_entities):
+            blocked = [e for e in result_entities if e['type'] not in {'bold', 'italic', 'underline', 'strikethrough', 'spoiler'}]
+            run_start: int | None = None
+            offset = detail_offset
+            for line in body[details_start:].splitlines(keepends=True):
+                end = offset + _utf16_length(line)
+                unsafe = any(e['offset'] < end and e['offset'] + e['length'] > offset for e in blocked)
+                if unsafe:
+                    if run_start is not None and offset > run_start:
+                        result_entities.append({'type': 'expandable_blockquote', 'offset': run_start, 'length': offset - run_start})
+                    run_start = None
+                elif run_start is None:
+                    run_start = offset
+                offset = end
+            if run_start is not None and offset > run_start:
+                result_entities.append({'type': 'expandable_blockquote', 'offset': run_start, 'length': offset - run_start})
+    # A style spanning a quoted/unquoted boundary would partially overlap the
+    # blockquote, which Telegram rejects. Keep that text expanded instead.
+    result_entities = [q for q in result_entities if q['type'] != 'expandable_blockquote' or not any(
+        e['offset'] < q['offset'] < e['offset'] + e['length'] or
+        e['offset'] < q['offset'] + q['length'] < e['offset'] + e['length']
+        for e in result_entities if e['type'] != 'expandable_blockquote'
+    )]
+    result_entities.sort(key=lambda e: (e['offset'], -e['length']))
+    body += ('…' if overflow else '') + notice
     if not _NONSPACE.search(body):
         body = ''
-        body_entities = []
-
+        result_entities = []
     if trace_url:
-        if body:
-            offset = _utf16_length(body) + 2
-            body = f'{body}\n\n{TRACE_LABEL}'
-        else:
-            offset = 0
-            body = TRACE_LABEL
-        body_entities.append({'type': 'text_link', 'offset': offset, 'length': len(TRACE_LABEL), 'url': trace_url})
-    elif not body:
-        body = 'Готово.'
-    return body, body_entities
+        offset = _utf16_length(body) + (2 if body else 0)
+        body = (body + '\n\n' if body else '') + TRACE_LABEL
+        result_entities.append({'type': 'text_link', 'offset': offset, 'length': len(TRACE_LABEL), 'url': trace_url})
+    return body or 'Готово.', result_entities
+
+
+def single_answer_message(markdown: str, trace_url: str | None) -> tuple[str, list[MessageEntity]]:
+    """Compatibility entry point for the shared summary/details presentation."""
+    return presented_answer_message(markdown, trace_url)

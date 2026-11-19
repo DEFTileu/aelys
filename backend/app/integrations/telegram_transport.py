@@ -273,6 +273,7 @@ class TelegramClient:
         result_id: str,
         title: str = "Aelys",
         entities: Sequence[Mapping[str, object]] = (),
+        reply_markup: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not isinstance(guest_query_id, str) or not 1 <= len(guest_query_id.encode("utf-8")) <= 256:
             raise ValueError("guest_query_id must contain 1 to 256 UTF-8 bytes")
@@ -290,18 +291,13 @@ class TelegramClient:
         }
         if entities:
             content["entities"] = list(entities)
-        return await self._object(
-            "answerGuestQuery",
-            {
-                "guest_query_id": guest_query_id,
-                "result": {
-                    "type": "article",
-                    "id": result_id,
-                    "title": safe_title,
-                    "input_message_content": content,
-                },
-            },
-        )
+        result: dict[str, Any] = {
+            "type": "article", "id": result_id, "title": safe_title,
+            "input_message_content": content,
+        }
+        if reply_markup is not None:
+            result["reply_markup"] = _inline_keyboard(reply_markup)
+        return await self._object("answerGuestQuery", {"guest_query_id": guest_query_id, "result": result})
 
     async def edit_message_reply_markup(
         self, chat_id: int, message_id: int, reply_markup: Mapping[str, Any] | None = None,
@@ -316,22 +312,44 @@ class TelegramClient:
         })
 
     async def edit_message_text(
-        self, chat_id: int, message_id: int, text: str, *, business_connection_id: str
+        self, chat_id: int, message_id: int, text: str, *, business_connection_id: str | None = None,
+        entities: Sequence[Mapping[str, object]] = (), reply_markup: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if type(chat_id) is not int or chat_id == 0 or abs(chat_id) > 2**52:
+            raise ValueError("chat_id must be a bounded integer")
         if type(message_id) is not int or message_id <= 0:
             raise ValueError("message_id must be a positive integer")
-        if not isinstance(text, str) or not 1 <= len(text) <= 4096:
-            raise ValueError("message text must contain 1 to 4096 characters")
-        return await self._object(
-            "editMessageText",
-            {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text,
-                "business_connection_id": business_connection_id,
-                "link_preview_options": {"is_disabled": True},
-            },
-        )
+        payload = self._edit_text_payload(text, entities, reply_markup)
+        payload.update(chat_id=chat_id, message_id=message_id)
+        if business_connection_id is not None:
+            payload["business_connection_id"] = business_connection_id
+        return await self._object("editMessageText", payload)
+
+    @staticmethod
+    def _edit_text_payload(
+        text: str, entities: Sequence[Mapping[str, object]], reply_markup: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        if not isinstance(text, str) or not 1 <= len(text) + sum(ord(char) > 0xFFFF for char in text) <= 4096:
+            raise ValueError("message text must contain 1 to 4096 UTF-16 code units")
+        payload: dict[str, Any] = {"text": text, "link_preview_options": {"is_disabled": True}}
+        if entities:
+            payload["entities"] = list(entities)
+        if reply_markup is not None:
+            payload["reply_markup"] = _inline_keyboard(reply_markup, allow_empty=True)
+        return payload
+
+    async def edit_inline_message_text(
+        self, inline_message_id: str, text: str, *, entities: Sequence[Mapping[str, object]] = (),
+        reply_markup: Mapping[str, Any] | None = None,
+    ) -> bool:
+        if not isinstance(inline_message_id, str) or not 1 <= len(inline_message_id.encode("utf-8")) <= 256:
+            raise ValueError("inline_message_id must contain 1 to 256 UTF-8 bytes")
+        payload = self._edit_text_payload(text, entities, reply_markup)
+        payload["inline_message_id"] = inline_message_id
+        result = await self._request("editMessageText", payload)
+        if type(result) is not bool:
+            raise TelegramError("invalid_response")
+        return result
 
     async def send_sticker(self, chat_id: int, file_id: str, *, business_connection_id: str) -> dict[str, Any]:
         return await self._object("sendSticker", {"chat_id": chat_id, "sticker": file_id, "business_connection_id": business_connection_id})

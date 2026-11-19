@@ -278,3 +278,38 @@ async def test_callback_methods_reject_values_outside_telegram_bounds():
             await client.answer_callback_query("" * 257, "ok")
         with pytest.raises(ValueError):
             await client.edit_message_reply_markup(111, True, {"inline_keyboard": []})
+
+
+@pytest.mark.asyncio
+async def test_progress_markup_and_final_edits():
+    requests = []
+    def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        return httpx.Response(200, json={"ok": True, "result": True if "inline_message_id" in body else {"message_id": 9}})
+
+    keyboard = {"inline_keyboard": [[{"text": "Остановить", "callback_data": "turn:stop:1"}]]}
+    entities = [{"type": "bold", "offset": 0, "length": 5}]
+    async with TelegramClient(TOKEN, httpx.MockTransport(handler)) as client:
+        await client.answer_guest_query("q", "Думаю", result_id="r", reply_markup=keyboard)
+        await client.edit_message_text(7, 9, "Ответ", entities=entities, reply_markup={"inline_keyboard": []})
+        assert await client.edit_inline_message_text("inline-1", "Ответ", entities=entities, reply_markup={"inline_keyboard": []}) is True
+    assert requests[0]["result"]["reply_markup"] == keyboard
+    assert "business_connection_id" not in requests[1]
+    assert requests[1]["entities"] == entities
+    assert requests[1]["reply_markup"] == {"inline_keyboard": []}
+    assert requests[2]["inline_message_id"] == "inline-1"
+    assert "chat_id" not in requests[2]
+    assert requests[2]["entities"] == entities
+    assert requests[2]["reply_markup"] == {"inline_keyboard": []}
+
+
+@pytest.mark.asyncio
+async def test_progress_edits_reject_oversize_utf16_and_empty_inline_id():
+    async with TelegramClient(TOKEN) as client:
+        with pytest.raises(ValueError):
+            await client.edit_message_text(7, 9, "😀" * 2049)
+        with pytest.raises(ValueError):
+            await client.edit_inline_message_text("inline", "😀" * 2049)
+        with pytest.raises(ValueError):
+            await client.edit_inline_message_text("", "Ответ")

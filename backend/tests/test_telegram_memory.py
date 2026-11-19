@@ -131,6 +131,11 @@ async def test_forget_drops_fact_before_next_provider_step_in_same_turn(setup,mo
     from app.ai.memory import remember
     from app.integrations import telegram_personal_dialogue as dialogue
     _,sessions,fake,integration_id=await bound(setup);await provider(sessions,integration_id)
+    edits = []
+    async def edit_reply(self, chat_id, message_id, text, **kwargs):
+        edits.append((chat_id, message_id, text, kwargs))
+        return {'message_id': message_id}
+    monkeypatch.setattr(fake, 'edit_message_text', edit_reply, raising=False)
     marker='PRIVATE_MEMORY_MARKER'
     async with sessions() as db:
         item=await db.get(TelegramIntegration,integration_id)
@@ -149,7 +154,9 @@ async def test_forget_drops_fact_before_next_provider_step_in_same_turn(setup,mo
     model=Model();monkeypatch.setattr(ai_api,'_service',lambda *a,**kw:model)
     fake.updates=[ordinary(1,'Забудь чай')];await service.poll_once(integration_id,timeout=0)
     await dialogue.personal_iteration(integration_id);await dialogue.wait_for_personal_turns()
-    assert model.calls==2 and 'Забыл' in fake.sent[-1][1]
+    assert model.calls == 2 and 'Забыл' in edits[-1][2]
+    assert edits[-1][3]['reply_markup'] == {'inline_keyboard': []}
+    assert len(fake.sent) == 1
 
 
 async def test_command_savepoint_cannot_commit_before_caller_receipt_transaction(setup):
