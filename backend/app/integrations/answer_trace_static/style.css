@@ -84,6 +84,19 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outlin
 .empty { font-size: .9375rem; }
 #loading, #error { padding-block: 1rem; }
 #error p { margin-block: 1rem; }
+#diagnostics { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--soft); }
+#diagnostics summary { cursor: pointer; }
+#diagnostics-log {
+  margin-bottom: 0;
+  padding: .875rem;
+  border-radius: .75rem;
+  background: var(--soft);
+  font-size: .8125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
 
 dialog {
   position: fixed;

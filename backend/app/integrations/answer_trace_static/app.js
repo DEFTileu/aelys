@@ -7,6 +7,55 @@
   const dialog = byId('step-dialog');
   let returnFocus = null;
   let fetching = false;
+  let runId;
+  const diagnostics = byId('diagnostics');
+  const diagnosticsLog = byId('diagnostics-log');
+  const diagnosticEntries = [];
+  const startedAt = performance.now();
+  const platforms = new Set(['ios', 'android', 'tdesktop', 'macos', 'web', 'weba', 'webk', 'unigram', 'unknown']);
+
+  function recordDiagnostic(entry) {
+    diagnosticEntries.push(`+${Math.round(performance.now() - startedAt)} мс · ${entry}`);
+    if (diagnosticEntries.length > 20) diagnosticEntries.shift();
+    diagnosticsLog.textContent = diagnosticEntries.join('\n');
+  }
+
+  function parseRunId(value) {
+    return typeof value === 'string'
+      ? /^run__([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(value)?.[1]
+      : undefined;
+  }
+
+  function describeCandidate(value) {
+    if (value == null) return 'отсутствует';
+    if (typeof value !== 'string') return `тип ${typeof value}`;
+    const id = parseRunId(value);
+    return `строка; длина ${value.length}; ${id ? `UUID ${id}` : 'неверный формат'}`;
+  }
+
+  function snapshotLaunch(sdkStatus = '') {
+    const { platform, version, initData, initDataUnsafe } = telegram || {};
+    const safePlatform = platforms.has(platform) ? platform : 'unknown';
+    const safeVersion = typeof version === 'string' && version.length <= 11
+      && /^[0-9]{1,3}(?:\.[0-9]{1,3}){0,2}$/.test(version) ? version : 'неизвестна';
+    recordDiagnostic(telegram
+      ? `SDK: да; платформа: ${safePlatform}; версия: ${safeVersion}`
+      : `SDK: нет${sdkStatus ? `; ${sdkStatus}` : ''}`);
+    const authLength = typeof initData === 'string' ? initData.length : 0;
+    recordDiagnostic(`initData: ${authLength ? 'есть' : 'нет'}; длина ${authLength}`);
+    const candidates = [
+      ['Подписанный start_param', new URLSearchParams(authLength ? initData : '').get('start_param')],
+      ['Непроверенный start_param', initDataUnsafe?.start_param],
+      ['URL query', new URLSearchParams(window.location.search).get('tgWebAppStartParam')],
+      ['URL hash', new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam')],
+      ['Параметр SDK', window.Telegram?.WebView?.initParams?.tgWebAppStartParam],
+    ];
+    for (const [label, value] of candidates) recordDiagnostic(`${label}: ${describeCandidate(value)}`);
+    // Select by launch precedence before validating the UUID. Only the server verifies access.
+    const selected = candidates.find(([, value]) => value);
+    recordDiagnostic(`Источник: ${selected?.[0] ?? 'отсутствует'}`);
+    return parseRunId(selected?.[1]);
+  }
 
   function clearLaunchCopies() {
     // Run only after the official SDK has copied launch data into WebApp.initData.
@@ -183,6 +232,11 @@
     byId('error-message').textContent = message;
     byId('retry').hidden = !retry;
     byId('error').hidden = false;
+    diagnostics.open = true;
+  }
+
+  function showLoadError() {
+    showError('Не удалось загрузить шаги', 'Проверьте подключение к интернету и повторите попытку.', true);
   }
 
   async function load() {
@@ -192,28 +246,23 @@
     byId('loading').hidden = false;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
+    let readingResponse = false;
     try {
       const initData = telegram?.initData;
       if (typeof initData !== 'string' || !initData) {
         showError('Откройте из Telegram', 'Откройте ссылку под ответом бота в Telegram.');
         return;
       }
-      // The parameter selects a run; only the server-verified signature grants access.
-      const start = new URLSearchParams(initData).get('start_param')
-        || telegram.initDataUnsafe?.start_param
-        || new URLSearchParams(window.location.search).get('tgWebAppStartParam')
-        || new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam')
-        || window.Telegram?.WebView?.initParams?.tgWebAppStartParam;
-      const match = typeof start === 'string'
-        ? /^run__([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(start) : null;
-      if (!match) {
+      if (!runId) {
         showError('Нет ссылки на ответ', 'Откройте ссылку под конкретным ответом бота в Telegram.');
         return;
       }
-      const response = await fetch(`/api/v1/telegram/answer-trace/${match[1]}`, {
+      recordDiagnostic('Запрос отправлен');
+      const response = await fetch(`/api/v1/telegram/answer-trace/${runId}`, {
         method: 'GET', headers: { Authorization: `tma ${initData}`, Accept: 'application/json' },
         cache: 'no-store', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal: controller.signal,
       });
+      recordDiagnostic(`HTTP ${response.status}`);
       if (response.status === 401 || response.status === 403) {
         showError('Вход через Telegram истёк или недоступен', 'Закройте окно и откройте ссылку заново в Telegram из чата владельца с ботом.');
         return;
@@ -222,15 +271,22 @@
         showError('Ответ не найден', 'Проверьте, что открыли ссылку из своего чата с ботом.');
         return;
       }
-      if (!response.ok) throw new Error('Request failed');
+      if (!response.ok) {
+        showLoadError();
+        return;
+      }
+      readingResponse = true;
       const data = await response.json();
-      if (!data || typeof data !== 'object' || data.run_id?.toLowerCase() !== match[1].toLowerCase()
+      if (!data || typeof data !== 'object' || typeof data.run_id !== 'string' || data.run_id.toLowerCase() !== runId.toLowerCase()
         || !Array.isArray(data.steps) || !Array.isArray(data.sources) || !Array.isArray(data.memory_facts)) {
         throw new Error('Invalid trace');
       }
       renderTrace(data);
+      recordDiagnostic(`Загружено: шагов ${data.steps.length}, источников ${data.sources.length}`);
     } catch {
-      showError('Не удалось загрузить шаги', 'Проверьте подключение к интернету и повторите попытку.', true);
+      recordDiagnostic(controller.signal.aborted ? 'Время ожидания запроса истекло'
+        : readingResponse ? 'Некорректный ответ' : 'Ошибка сети');
+      showLoadError();
     } finally {
       clearTimeout(timeout);
       fetching = false;
@@ -253,14 +309,13 @@
   function start() {
     if (telegram) return;
     telegram = window.Telegram?.WebApp;
+    runId = snapshotLaunch();
     if (!telegram) {
       showError('Откройте из Telegram', 'Откройте ссылку под ответом бота в Telegram.');
       byId('loading').hidden = true;
       return;
     }
     clearLaunchCopies();
-    byId('close-app').hidden = false;
-    byId('close-app').addEventListener('click', () => telegram.close());
     telegram.BackButton?.onClick(closeDetails);
     telegram.BackButton?.hide();
     telegram.onEvent?.('themeChanged', applyTheme);
@@ -271,23 +326,25 @@
     load();
   }
   applyTheme();
+  recordDiagnostic('Сборка launch-v2');
   const sdk = byId('telegram-sdk');
   byId('loading').textContent = 'Подключаю Telegram…';
   if (window.Telegram?.WebApp) {
     start();
   } else {
-    const unavailable = () => {
+    const unavailable = (status) => {
+      snapshotLaunch(status);
       byId('loading').hidden = true;
       showError('Не удалось подключить Telegram', 'Проверьте подключение и откройте ссылку заново в Telegram.', true);
     };
-    const timeout = setTimeout(unavailable, 15000);
+    const timeout = setTimeout(() => unavailable('время ожидания истекло'), 15000);
     sdk.addEventListener('load', () => {
       clearTimeout(timeout);
       start();
     }, { once: true });
     sdk.addEventListener('error', () => {
       clearTimeout(timeout);
-      unavailable();
+      unavailable('ошибка загрузки');
     }, { once: true });
   }
 })();

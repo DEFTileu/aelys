@@ -30,3 +30,19 @@ no access. There are no migrations or changes to part 2 history.
   cached run, invalid explicit parameter rejection and credential cleanup.
 - This proves a failure path, not the cause of the owner's actual Telegram launch.
   Live device acceptance remains outstanding. No deployment is claimed here.
+
+## Owner-requested on-page diagnostics
+
+The owner confirmed that closing the Mini App and reopening the answer link still
+produced the error, and requested visible diagnostics, removal of the redundant
+app close button, and publication. The diagnostic panel opens automatically on
+errors. It records bounded in-memory timing and allowlisted launch metadata,
+parameter presence/shape, selected source, request status and completion counts.
+Raw Telegram authentication, signatures, user data, arbitrary launch values,
+exception messages and response bodies are never displayed or persisted.
+The native Telegram close control remains; the step dialog still has its own
+close action. A visible build label distinguishes this diagnostic release.
+
+Diagnostics validation: 26 browser tests passed with the official SDK, zero
+skips; parent rerun confirmed. JavaScript syntax and diff whitespace checks
+passed. GPT-6.1 Sol reviewed GPT-6.2 Sol changes with no actionable findings.

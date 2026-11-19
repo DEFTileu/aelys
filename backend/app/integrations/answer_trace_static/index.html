@@ -5,15 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="referrer" content="no-referrer">
     <title>Как я ответил · Aelys</title>
-    <link rel="stylesheet" href="/telegram/answer-trace/style.css">
+    <link rel="stylesheet" href="/telegram/answer-trace/style.css?v=launch-v2">
     <script id="telegram-sdk" src="https://telegram.org/js/telegram-web-app.js" async></script>
-    <script src="/telegram/answer-trace/app.js" defer></script>
+    <script src="/telegram/answer-trace/app.js?v=launch-v2" defer></script>
   </head>
   <body>
     <main>
       <header class="page-header">
         <h1>Как я ответил</h1>
-        <button id="close-app" class="quiet-button" type="button" aria-label="Закрыть приложение" hidden>Закрыть</button>
       </header>
 
       <p id="loading" role="status">Загружаю шаги ответа…</p>
@@ -43,6 +42,10 @@
           <ul id="sources" class="source-list"></ul>
         </section>
       </article>
+      <details id="diagnostics">
+        <summary>Диагностика запуска</summary>
+        <pre id="diagnostics-log"></pre>
+      </details>
     </main>
 
     <dialog id="step-dialog" aria-labelledby="detail-title">

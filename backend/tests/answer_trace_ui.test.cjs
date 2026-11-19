@@ -84,7 +84,7 @@ async function openApp(t, { data = trace, status = 200, telegram = true,
       initData: `auth_date=1&start_param=${startParam}&hash=fake-test-signature`,
       initDataUnsafe: { start_param: startParam }, colorScheme: 'dark',
       themeParams: { bg_color: '#17212b', text_color: '#ffffff', hint_color: '#a3b5c6' },
-      ready() {}, expand() {}, close() { window.testClosed = true; },
+      ready() {}, expand() {},
       onEvent(name, callback) { events[name] = callback; },
       BackButton: { show() {}, hide() {}, onClick(callback) { window.testBack = callback; } },
     } };
@@ -125,6 +125,8 @@ test('delayed official SDK leaves startup responsive and preserves launch authen
 test('SDK network failure shows a safe retry without requesting protected data', async t => {
   const { page, requests, errors } = await openApp(t, { telegram: false, sdkFailure: true });
   assert.match(await page.locator('#error-title').innerText(), /подключить Telegram/);
+  assert.equal(await page.locator('#diagnostics-log').isVisible(), true);
+  assert.match(await page.locator('#diagnostics-log').innerText({ timeout: 1000 }), /SDK: нет.*ошибка загрузки/);
   assert.equal(await page.getByRole('button', { name: 'Повторить' }).isVisible(), true);
   assert.equal(requests.length, 0);
   assert.deepEqual(errors, []);
@@ -150,7 +152,6 @@ test('official SDK launch removes persisted credentials but preserves in-memory 
   });
   await page.getByRole('button', { name: 'Повторить' }).click();
   await page.locator('#trace').waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'Закрыть приложение' }).click();
   await page.reload();
   await page.locator('#loading').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => Telegram.WebApp.initData), '');
@@ -194,6 +195,41 @@ for (const { name, cachedRun, explicitStart, rejected } of [
   });
 }
 
+test('diagnostics snapshot exposes only allowlisted launch fields', {
+  skip: !process.env.ANSWER_TRACE_TELEGRAM_SDK && 'Set ANSWER_TRACE_TELEGRAM_SDK to a locally downloaded official SDK',
+}, async t => {
+  const initData = `auth_date=1&start_param=run__${runId}&hash=SECRET_SIGNATURE&user=SECRET_USER`;
+  const launch = new URLSearchParams({ tgWebAppData: initData, tgWebAppVersion: 'SECRET_VERSION',
+    tgWebAppPlatform: 'SECRETPLATFORM', tgWebAppStartParam: 'SECRET_HASH', SECRET_KEY: 'SECRET_VALUE' });
+  const { page } = await openApp(t, { officialSdk: true, suffix: `?tgWebAppStartParam=SECRET_QUERY#${launch}` });
+  const log = page.locator('#diagnostics-log');
+  assert.equal(await log.isVisible(), false);
+  await page.getByText('Диагностика запуска', { exact: true }).click({ timeout: 1000 });
+  const output = await log.innerText();
+  assert.doesNotMatch(output, /SECRET/);
+  assert.match(output, /^\+\d+ мс · Сборка launch-v2/m);
+  assert.match(output, /SDK: да; платформа: unknown; версия: неизвестна/);
+  assert.ok(output.includes(`initData: есть; длина ${initData.length}`));
+  assert.ok(output.includes(`Подписанный start_param: строка; длина 41; UUID ${runId}`));
+  assert.match(output, /URL query: строка; длина 12; неверный формат/);
+  assert.match(output, /URL hash: строка; длина 11; неверный формат/);
+  assert.match(output, /Источник: Подписанный start_param/);
+  assert.match(output, /Запрос отправлен[\s\S]*HTTP 200[\s\S]*Загружено: шагов 1, источников 1/);
+});
+
+test('HTTP 200 with malformed JSON is diagnosed as an invalid response', async t => {
+  const { page } = await openApp(t, { offline: true });
+  await page.unroute('**/api/v1/telegram/answer-trace/**');
+  await page.route('**/api/v1/telegram/answer-trace/**', route => route.fulfill({
+    contentType: 'application/json', body: 'SECRET_RESPONSE',
+  }));
+  await page.getByRole('button', { name: 'Повторить' }).click();
+  await page.locator('#error').waitFor({ state: 'visible' });
+  const output = await page.locator('#diagnostics-log').innerText({ timeout: 1000 });
+  assert.match(output, /HTTP 200[\s\S]*Некорректный ответ/);
+  assert.doesNotMatch(output.split('HTTP 200').at(-1), /Ошибка сети|SECRET_RESPONSE/);
+});
+
 test('sheet links remain visible in forward and reverse tab order on short enlarged viewport', async t => {
   const sources = Array.from({ length: 10 }, (_, n) => ({ url: `https://example.org/${n}`, title: `Source ${n}` }));
   const { page } = await openApp(t, { data: { ...trace, steps: [{ ...trace.steps[0],
@@ -229,8 +265,8 @@ test('renders all backend-bounded memory facts and aggregate sources', async t =
 
 test('static entry uses absolute asset paths and accessible markup', async () => {
   const html = await readFile(join(assetRoot, 'index.html'), 'utf8');
-  assert.match(html, /src="\/telegram\/answer-trace\/app\.js"/);
-  assert.match(html, /href="\/telegram\/answer-trace\/style\.css"/);
+  assert.match(html, /src="\/telegram\/answer-trace\/app\.js\?v=launch-v2"/);
+  assert.match(html, /href="\/telegram\/answer-trace\/style\.css\?v=launch-v2"/);
   assert.match(html, /<dialog[^>]+aria-labelledby=/);
   assert.match(html, /name="referrer" content="no-referrer"/);
 });
@@ -272,8 +308,7 @@ test('step sheet has query, source title/domain/letter and keyboard close restor
   await step.click();
   await page.evaluate(() => window.testBack());
   assert.equal(await page.locator('dialog').evaluate(dialog => dialog.open), false);
-  await page.getByRole('button', { name: 'Закрыть приложение' }).click();
-  assert.equal(await page.evaluate(() => window.testClosed), true);
+  assert.equal(await page.locator('#close-app').count(), 0);
 });
 
 test('rejects unsafe links and caps step sources at ten', async t => {
@@ -303,6 +338,8 @@ for (const status of [401, 403, 404, 500]) {
     assert.equal(await page.locator('#error').isVisible(), true);
     assert.equal(await page.locator('#trace').isVisible(), false);
     assert.doesNotMatch(await page.locator('body').innerText(), /sensitive-server-diagnostic/);
+    assert.equal(await page.locator('#diagnostics-log').isVisible(), true);
+    assert.match(await page.locator('#diagnostics-log').innerText({ timeout: 1000 }), new RegExp(`HTTP ${status}`));
     assert.match(await page.locator('#error').innerText(), status === 404 ? /не найден/ : status < 500 ? /Telegram/ : /загрузить/);
   });
 }
@@ -324,6 +361,7 @@ test('URL start parameter fallback works without putting initData in the request
 test('network failure is actionable and retry succeeds', async t => {
   const { page } = await openApp(t, { offline: true });
   assert.match(await page.locator('#error').innerText(), /загрузить/);
+  assert.match(await page.locator('#diagnostics-log').innerText({ timeout: 1000 }), /Ошибка сети/);
   await page.unroute('**/api/v1/telegram/answer-trace/**');
   await page.route('**/api/v1/telegram/answer-trace/**', route => route.fulfill({ json: trace }));
   await page.getByRole('button', { name: 'Повторить' }).click();
@@ -377,6 +415,7 @@ test('malformed or wrong-run responses fail safely', async t => {
     const { page, errors } = await openApp(t, { data });
     assert.equal(await page.locator('#error').isVisible(), true);
     assert.equal(await page.locator('#trace').isVisible(), false);
+    assert.match(await page.locator('#diagnostics-log').innerText({ timeout: 1000 }), /Некорректный ответ/);
     assert.deepEqual(errors, []);
   }
 });
