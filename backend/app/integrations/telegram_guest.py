@@ -810,6 +810,10 @@ async def _process(job_id: str) -> None:
                         untrusted=True,
                     ),
                 )
+            from app.ai.youtube import youtube_transcript_message
+
+            if subtitles := await youtube_transcript_message(job.prompt_text, job.quote):
+                messages = (*messages, subtitles)
 
             if job.tools_unlocked:
                 from app.ai.personal_tools import personal_tool_registry
