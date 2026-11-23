@@ -2,16 +2,19 @@
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   font-size: 16px;
   line-height: 1.45;
-  --page-text: var(--tg-theme-text-color, #17212b);
-  --page-bg: var(--tg-theme-bg-color, #fff);
+  color-scheme: dark;
+  --page-text: #ece8f8;
+  --page-bg: #09070f;
+  --surface: #140f22;
+  --secondary: #9a90b8;
+  --accent: #b794f6;
+  --soft: #1b1430;
+  --button: #7c3aed;
+  --button-text: #fff;
+  --line: rgb(167 139 250 / .18);
+  --tile-l: 44%;
   color: var(--page-text);
   background: var(--page-bg);
-  --surface: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff));
-  --secondary: var(--tg-theme-hint-color, #707579);
-  --accent: var(--tg-theme-link-color, #1766a3);
-  --soft: var(--tg-theme-secondary-bg-color, #f0f2f4);
-  --line: color-mix(in srgb, var(--secondary) 22%, transparent);
-  --tile-l: 42%;
 }
 
 * { box-sizing: border-box; }
@@ -37,8 +40,8 @@ button {
   padding: .625rem 1rem;
   border: 0;
   border-radius: .875rem;
-  background: var(--tg-theme-button-color, #1766a3);
-  color: var(--tg-theme-button-text-color, #fff);
+  background: var(--button);
+  color: var(--button-text);
 }
 button:active, a:active { opacity: .7; }
 button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
@@ -172,7 +175,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outlin
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 50%;
-  background: hsl(var(--hue, 210) 62% var(--tile-l));
+  background: hsl(var(--hue, 265) 62% var(--tile-l));
   color: #fff;
   font-size: .9375rem;
   font-weight: 700;
@@ -215,56 +218,34 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outlin
   user-select: text;
 }
 
-/* Step details: a floating bottom sheet with a grip. */
+/* Step details: a plain bottom sheet. */
 dialog {
   position: fixed;
   inset: auto 0 0;
-  width: min(calc(100% - 1rem), 40rem);
+  width: min(100%, 40rem);
   max-width: 100%;
   max-height: 85vh;
   max-height: 85dvh;
-  margin: 0 auto max(.5rem, env(safe-area-inset-bottom));
+  margin: 0 auto;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 1.75rem;
+  border: 0;
+  border-radius: 1.25rem 1.25rem 0 0;
   background: var(--surface);
   color: inherit;
   overscroll-behavior: contain;
   overflow: hidden;
 }
 dialog[open] { display: flex; flex-direction: column; }
-dialog::backdrop { background: rgb(0 0 0 / .55); }
-.sheet-grip { flex: none; width: 2.5rem; height: .3125rem; margin: .625rem auto 0; border-radius: 999px; background: var(--line); }
+dialog::backdrop { background: rgb(0 0 0 / .6); }
+.sheet-grip { flex: none; width: 2.5rem; height: .25rem; margin: .5rem auto 0; border-radius: 999px; background: var(--line); }
 .sheet-header { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; padding: .75rem 1.25rem 0; }
-.sheet-header h2 { font-size: 1.25rem; font-weight: 700; padding-top: .375rem; }
-.quiet-button { flex-shrink: 0; width: 2.5rem; min-height: 2.5rem; padding: 0; border-radius: 50%; background: var(--soft); color: var(--secondary); font-size: 1.375rem; line-height: 1; }
-.sheet-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: .5rem; padding: 0 1.25rem 1.25rem; }
-#detail-status { margin-top: .125rem; }
+.sheet-header h2 { font-size: 1.125rem; font-weight: 600; padding-top: .375rem; }
+.quiet-button { flex-shrink: 0; width: 2.25rem; min-height: 2.25rem; padding: 0; border-radius: 50%; background: var(--soft); color: var(--secondary); font-size: 1.25rem; line-height: 1; }
+.sheet-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: .5rem; padding: 0 1.25rem max(1.25rem, env(safe-area-inset-bottom)); }
+#detail-status { margin-top: .125rem; font-size: .9375rem; }
 .sheet-body section { margin-top: 1.25rem; }
-.query { white-space: pre-wrap; padding: .75rem .875rem; background: var(--soft); border-radius: .875rem; }
+.query { white-space: pre-wrap; padding: .75rem .875rem; background: var(--soft); border-radius: .75rem; font-size: .9375rem; }
 html:has(dialog[open]) { overflow: hidden; }
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    --page-text: var(--tg-theme-text-color, #f5f5f5);
-    --page-bg: var(--tg-theme-bg-color, #17212b);
-    --surface: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #17212b));
-    --secondary: var(--tg-theme-hint-color, #a3b5c6);
-    --accent: var(--tg-theme-link-color, #7fc5ff);
-    --soft: var(--tg-theme-secondary-bg-color, #232f3b);
-    --tile-l: 44%;
-  }
-}
-
-:root[data-theme="dark"] {
-  --page-text: var(--tg-theme-text-color, #f5f5f5);
-  --page-bg: var(--tg-theme-bg-color, #17212b);
-  --surface: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #17212b));
-  --secondary: var(--tg-theme-hint-color, #a3b5c6);
-  --accent: var(--tg-theme-link-color, #7fc5ff);
-  --soft: var(--tg-theme-secondary-bg-color, #232f3b);
-  --tile-l: 44%;
-}
 
 @media (prefers-reduced-motion: no-preference) {
   button, a { transition: opacity 100ms ease; }
