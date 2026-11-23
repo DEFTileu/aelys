@@ -402,7 +402,7 @@ async def test_rejected_personal_placeholder_still_delivers_final(setup, monkeyp
 
     async def send_message(self, chat_id, text, **kwargs):
         if kwargs.get('reply_markup'):
-            attempts.append(text)
+            attempts.append(kwargs.get("entities", []))
             raise TelegramError(400)
         return await send(self, chat_id, text, **kwargs)
 
@@ -412,7 +412,9 @@ async def test_rejected_personal_placeholder_still_delivers_final(setup, monkeyp
     await dialogue.personal_iteration(integration_id)
     await dialogue.wait_for_personal_turns()
 
-    assert len(attempts) == 1
+    assert len(attempts) == 2
+    assert any(e["type"] == "custom_emoji" for e in attempts[0])
+    assert all(e["type"] != "custom_emoji" for e in attempts[1])
     assert [message[1] for message in fake.sent] == ['Готовый ответ\n\nКак я ответил']
 
 
