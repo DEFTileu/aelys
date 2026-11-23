@@ -299,6 +299,10 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
                                                     untrusted=True, media=media_content))
             if job.quote:
                 messages = (*messages, ChatMessage('user', job.quote, untrusted=True))
+            if not file_turn:
+                from app.ai.youtube import youtube_transcript_message
+                if subtitles := await youtube_transcript_message(trusted_text, job.quote):
+                    messages = (*messages, subtitles)
             from app.ai.personal_tools import personal_tool_registry
             registry = personal_tool_registry(db, owner_id, run_id, source_message_id=f'{integration_id}:{job.telegram_message_id or job.telegram_update_id}')
             search_enabled = not file_turn and tools_supported and provider.kind in {'claude', 'openrouter'}

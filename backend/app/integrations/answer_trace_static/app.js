@@ -96,18 +96,10 @@
   };
 
   function applyTheme() {
-    if (telegram) document.documentElement.dataset.theme = telegram.colorScheme === 'dark' ? 'dark' : 'light';
-    document.documentElement.style.colorScheme = telegram?.colorScheme === 'dark' ? 'dark' : 'light';
-    for (const name of ['bg_color', 'text_color', 'hint_color', 'link_color',
-      'button_color', 'button_text_color', 'secondary_bg_color', 'section_bg_color']) {
-      const color = telegram?.themeParams?.[name];
-      const property = `--tg-theme-${name.replaceAll('_', '-')}`;
-      // Only color values enter CSS; custom Telegram themes remain supported.
-      if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) {
-        document.documentElement.style.setProperty(property, color);
-      } else {
-        document.documentElement.style.removeProperty(property);
-      }
+    // The page keeps its own black and purple look, whatever theme Telegram uses.
+    document.documentElement.dataset.theme = 'dark';
+    for (const call of ['setHeaderColor', 'setBackgroundColor', 'setBottomBarColor']) {
+      try { telegram?.[call]?.('#09070f'); } catch { /* older clients lack these calls */ }
     }
   }
 
@@ -448,7 +440,7 @@
     load();
   }
   applyTheme();
-  recordDiagnostic('Сборка design-v1');
+  recordDiagnostic('Сборка design-v3');
   const sdk = byId('telegram-sdk');
   byId('loading').textContent = 'Подключаю Telegram…';
   if (window.Telegram?.WebApp) {

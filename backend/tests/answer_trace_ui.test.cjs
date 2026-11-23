@@ -207,7 +207,7 @@ test('diagnostics snapshot exposes only allowlisted launch fields', {
   await page.getByText('Диагностика запуска', { exact: true }).click({ timeout: 1000 });
   const output = await log.innerText();
   assert.doesNotMatch(output, /SECRET/);
-  assert.match(output, /^\+\d+ мс · Сборка design-v1/m);
+  assert.match(output, /^\+\d+ мс · Сборка design-v3/m);
   assert.match(output, /SDK: да; платформа: unknown; версия: неизвестна/);
   assert.ok(output.includes(`initData: есть; длина ${initData.length}`));
   assert.ok(output.includes(`Подписанный start_param: строка; длина 41; UUID ${runId}`));
@@ -265,8 +265,8 @@ test('renders all backend-bounded memory facts and aggregate sources', async t =
 
 test('static entry uses absolute asset paths and accessible markup', async () => {
   const html = await readFile(join(assetRoot, 'index.html'), 'utf8');
-  assert.match(html, /src="\/telegram\/answer-trace\/app\.js\?v=design-v1"/);
-  assert.match(html, /href="\/telegram\/answer-trace\/style\.css\?v=design-v1"/);
+  assert.match(html, /src="\/telegram\/answer-trace\/app\.js\?v=design-v3"/);
+  assert.match(html, /href="\/telegram\/answer-trace\/style\.css\?v=design-v3"/);
   assert.match(html, /<dialog[^>]+aria-labelledby=/);
   assert.match(html, /name="referrer" content="no-referrer"/);
 });
