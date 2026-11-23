@@ -131,7 +131,7 @@ async def test_final_edit_timeout_keeps_trace_on_the_only_sent_message(setup, mo
     assert edits[0][1] == 500 and 'Полный ответ' in edits[0][2]
     [(chat_id, status, options)] = fake.sent
     assert chat_id == edits[0][0] == OWNER
-    [trace] = options['entities']
+    [trace] = [e for e in options['entities'] if e['type'] == 'text_link']
     assert entity_text(status, trace) == 'Как я ответил'
     assert len(model.requests) == 1
     async with sessions() as db:

@@ -88,3 +88,29 @@
 
 Disposable PostgreSQL использовался только для тестов; production БД и деплой
 в этой задаче не изменялись. Ветка: `codex/telegram-answer-layout`.
+
+## Подключение набора aelys_status — 2026-11-23
+
+Владелец предоставил https://t.me/addemoji/aelys_status. Read-only `getStickerSet`
+подтвердил восемь animated custom emoji. Для уже существующих этапов выбраны:
+
+- Подготовка ответа: 🤔, `5188364800450670260`.
+- Веб-поиск: 🔍, `5199622193201333717`.
+
+Статусы отправляют explicit `custom_emoji` entity поверх соответствующего
+обычного emoji; ссылка trace и Stop сохраняются. Дополнительных запросов за
+набором на каждом ходе нет. Остальные эмодзи набора не создают новых этапов.
+Если Telegram явно отклоняет сообщение с custom emoji (HTTP 400), одна повторная
+попытка без custom entity сохраняет рабочий статус. При неопределённой отправке
+(timeout/network/5xx) повторного начального сообщения нет. Это особенно важно
+для Guest Mode, где право на custom emoji отличается от прямых сообщений бота.
+Документация: https://core.telegram.org/bots/api#formatting-options.
+
+Проверка подключения: целевой прогон status_emoji, turn_progress, guest,
+answer_trace_delivery, answer_format и transport — **139 passed, 1 skipped**.
+Пропущен существующий PostgreSQL Stop concurrency test без disposable DSN;
+не засчитывается как успех, логика транзакции отмены в этой правке не менялась.
+Ruff всего backend, mypy (149 файлов), `git diff --check` — pass.
+Перекрёстная проверка GPT-6.1 Sol: замечаний нет. Набор проверен read-only
+через Telegram API; фактический показ анимации в клиенте ещё не проверен.
+Коммит локальный, выкатывание этой правкой не выполнялось.

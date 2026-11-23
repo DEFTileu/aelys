@@ -5,7 +5,7 @@ import asyncio
 import hashlib
 import logging
 import re
-from collections.abc import Coroutine, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from decimal import Decimal
 from typing import Any, TypeGuard
 
@@ -18,7 +18,7 @@ from app.core.models import AIRun, now
 from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .telegram_answer_format import presented_answer_message
+from .telegram_answer_format import MessageEntity, presented_answer_message
 from .telegram_models import TelegramIntegration, TelegramPersonalJob
 from .telegram_personal import authorize
 from .telegram_transport import TelegramClient, TelegramError
@@ -26,7 +26,9 @@ from .telegram_transport import TelegramClient, TelegramError
 logger = logging.getLogger(__name__)
 PREFIX = "turn:"
 _CALLBACK = re.compile(r"turn:stop:([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})")
-WORKING = "⏳ Готовлю ответ…"
+WORKING = "🤔 Готовлю ответ…"
+_THINKING_EMOJI_ID = "5188364800450670260"
+_SEARCH_EMOJI_ID = "5199622193201333717"
 STOPPED = "Остановлено. Уже выполненные действия сохранены."
 CLEAR: dict[str, Any] = {"inline_keyboard": []}
 CANCELLED = "CANCELLED"
@@ -135,6 +137,23 @@ class TurnProgress:
         self.delivery_status = "pending"
         self._last_status = WORKING
         self._trace_url: str | None = None
+        self._custom_emoji_enabled = True
+
+    async def _with_status_emoji[T](
+        self, send: Callable[[Sequence[Mapping[str, object]]], Awaitable[T]],
+        entities: Sequence[Mapping[str, object]], emoji_id: str | None,
+    ) -> T:
+        if self._custom_emoji_enabled and emoji_id is not None:
+            emoji: MessageEntity = {
+                "type": "custom_emoji", "offset": 0, "length": 2, "custom_emoji_id": emoji_id,
+            }
+            try:
+                return await send([emoji, *entities])
+            except TelegramError as exc:
+                if exc.code != 400:
+                    raise
+                self._custom_emoji_enabled = False
+        return await send(entities)
 
     @classmethod
     def restore_guest(cls, item: TelegramIntegration, run: AIRun) -> TurnProgress | None:
@@ -173,16 +192,23 @@ class TurnProgress:
         try:
             authorize(item, "telegram.guest_reply" if self.guest else "telegram.notify_owner", external=True)
             async with asyncio.timeout(5), TelegramClient(decrypt_secret(item.encrypted_token or "")) as client:
-                if self.guest:
-                    response = await client.answer_guest_query(
-                        guest_query_id or "", text, result_id=run.id, entities=entities, reply_markup=markup,
-                    )
-                    value = response.get("inline_message_id")
-                    self.message = value if _bounded_string(value) else None
-                elif self.owner_chat is not None:
-                    response = await client.send_message(self.owner_chat, text, entities=entities, reply_markup=markup)
-                    value = response.get("message_id")
-                    self.message = value if type(value) is int and 0 < value <= 2**52 else None
+                async def send(status_entities: Sequence[Mapping[str, object]]) -> str | int | None:
+                    if self.guest:
+                        response = await client.answer_guest_query(
+                            guest_query_id or "", text, result_id=run.id, entities=status_entities,
+                            reply_markup=markup,
+                        )
+                        value = response.get("inline_message_id")
+                        return value if _bounded_string(value) else None
+                    if self.owner_chat is not None:
+                        response = await client.send_message(
+                            self.owner_chat, text, entities=status_entities, reply_markup=markup,
+                        )
+                        value = response.get("message_id")
+                        return value if type(value) is int and 0 < value <= 2**52 else None
+                    return None
+
+                self.message = await self._with_status_emoji(send, entities, _THINKING_EMOJI_ID)
         except TelegramError as exc:
             if type(exc.code) is int and 400 <= exc.code < 500:
                 self.delivery_status = "failed"
@@ -215,13 +241,13 @@ class TurnProgress:
             ensure_safe_payload(query, known_secrets=known_secrets)
         except SensitiveDataBlocked:
             query = ""
-        text = f"🔎 Поиск в вебе: {query[:300]}" if query else "🔎 Поиск в вебе…"
+        text = f"🔍 Поиск в вебе: {query[:300]}" if query else "🔍 Поиск в вебе…"
         if text != self._last_status:
             # A cancelled progress update must settle before the terminal edit
             # clears its keyboard.
             literal = re.sub(r"([\\`*_\[\]])", r"\\\1", text)
             status, entities = presented_answer_message(literal, self._trace_url)
-            edit = asyncio.create_task(self._edit(status, entities=entities, clear=False))
+            edit = asyncio.create_task(self._edit(status, entities=entities, clear=False, emoji_id=_SEARCH_EMOJI_ID))
             try:
                 if await asyncio.shield(edit):
                     self._last_status = text
@@ -234,6 +260,7 @@ class TurnProgress:
 
     async def _edit(
         self, text: str, *, entities: Sequence[Mapping[str, object]] = (), clear: bool,
+        emoji_id: str | None = None,
     ) -> bool:
         from .telegram_service import TelegramClient
 
@@ -253,18 +280,22 @@ class TurnProgress:
                 "inline_keyboard": [[{"text": "Остановить", "callback_data": f"{PREFIX}stop:{self.run_id}"}]],
             }
             async with TelegramClient(token) as client:
+                async def edit(status_entities: Sequence[Mapping[str, object]]) -> bool:
+                    if isinstance(self.message, str):
+                        return await client.edit_inline_message_text(
+                            self.message, text, entities=status_entities, reply_markup=markup,
+                        )
+                    if self.message is not None and self.owner_chat is not None:
+                        await client.edit_message_text(
+                            self.owner_chat, self.message, text, entities=status_entities, reply_markup=markup,
+                        )
+                        return True
+                    return False
+
                 for attempt in range(2 if clear else 1):
                     try:
                         async with asyncio.timeout(3 if clear else 5):
-                            if isinstance(self.message, str):
-                                return await client.edit_inline_message_text(
-                                    self.message, text, entities=entities, reply_markup=markup,
-                                )
-                            if self.owner_chat is not None:
-                                await client.edit_message_text(
-                                    self.owner_chat, self.message, text, entities=entities, reply_markup=markup,
-                                )
-                                return True
+                            return await self._with_status_emoji(edit, entities, emoji_id)
                     except (TelegramError, TimeoutError) as exc:
                         transient = isinstance(exc, TimeoutError) or (
                             isinstance(exc, TelegramError) and (

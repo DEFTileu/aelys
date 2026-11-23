@@ -49,6 +49,7 @@ class MessageEntity(TypedDict):
     length: int
     url: NotRequired[str]
     language: NotRequired[str]
+    custom_emoji_id: NotRequired[str]
 
 
 def _utf16_length(text: str) -> int:

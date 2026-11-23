@@ -356,8 +356,8 @@ async def test_owner_without_marker_allows_web_search_and_blocks_personal_data(s
     ]
     assert delivered[0][1]["guest_query_id"] == "gq-news"
     initial = delivered[0][1]["result"]["input_message_content"]
-    assert initial["message_text"] == f"⏳ Готовлю ответ…\n\n{TRACE_LABEL}"
-    assert delivered[1][1]["text"] == f"🔎 Поиск в вебе: последние новости\n\n{TRACE_LABEL}"
+    assert initial["message_text"] == f"🤔 Готовлю ответ…\n\n{TRACE_LABEL}"
+    assert delivered[1][1]["text"] == f"🔍 Поиск в вебе: последние новости\n\n{TRACE_LABEL}"
     assert initial["entities"][-1]["url"] == delivered[1][1]["entities"][-1]["url"]
     assert delivered[1][1]["entities"][-1]["url"] == delivered[-1][1]["entities"][-1]["url"]
     content = delivered[-1][1]
