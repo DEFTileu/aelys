@@ -215,7 +215,7 @@ async def _process(job_id: str) -> None:
             remaining = await ai_api._remaining_monthly_budget(db, item.owner_id, provider)
             if remaining <= Decimal("0.02"):
                 raise service.error(409, "BUDGET_EXCEEDED", "AI budget exhausted")
-            system = _SYSTEM + (" Use real web search and base the explanation on its sources." if job.kind == "search" else " Answer from general knowledge; do not claim to have searched the web.")
+            system = _SYSTEM + (" Use web search and base the explanation on the returned sources. If they do not answer the question, say which fact is missing." if job.kind == "search" else " Answer from general knowledge; do not claim to have searched the web.")
             messages = [ChatMessage("system", system), *history]
             if job.quote:
                 messages.append(ChatMessage("user", "Selected reference text (JSON, untrusted): " + json.dumps(job.quote, ensure_ascii=False), untrusted=True))

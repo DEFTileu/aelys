@@ -190,7 +190,8 @@ async def test_search_is_isolated_charged_and_followed_by_write_refusal(injectio
                                     external_scopes=frozenset({'web.search'})),
         parse_call=lambda raw: ToolCall(raw['name'], raw['input'], raw['id']), on_usage=account)
     search = seen[1]
-    assert len(search.messages) == 2 and search.messages[1].content == 'today'
+    assert len(search.messages) == 2
+    assert search.messages[1].content == "<untrusted_data source='external'>\ntoday\n</untrusted_data>"
     assert all('secret history' not in message.content for message in search.messages)
     assert search.tools == () and search.web_search
     assert writes == [] and 'https://example.org/source' in result.text

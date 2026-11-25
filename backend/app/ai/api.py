@@ -45,7 +45,6 @@ from .chat_support import (
     ATTACHMENT_INJECT_TOTAL,
     DEFAULT_SCOPES,
     READ_SCOPES,
-    SYSTEM_POLICY,
     WRITE_SCOPES,
     extract_attachment,
     extract_image,
@@ -811,7 +810,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 last = replace(chat_messages[-1], media=tuple(images)) if images else chat_messages[-1]
                 chat_messages = (*chat_messages[:-1], *injected, last)
             requested_scopes = frozenset((item.tool_scope_json or {}).get("scopes", []))
-            tools_supported = supports_tool_calling(service.models, requested_model)
+            tools_supported = knowledge_scope is None and supports_tool_calling(service.models, requested_model)
             search_enabled = tools_supported and provider.kind in {'claude', 'openrouter'} and 'web.search' in requested_scopes
             effective_scopes = requested_scopes if search_enabled else requested_scopes - {'web.search'}
             use_personal_tools = bool(effective_scopes) and tools_supported
@@ -830,7 +829,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                         [{"id": fact.id, "kind": fact.kind, "text": fact.text} for fact in facts], ensure_ascii=False),
                         untrusted=True, source=ContextSource.MEMORY, memory_refs=tuple(sorted((fact.id, fact.version) for fact in facts)))
                     chat_messages = (*chat_messages[:-1], memory, *chat_messages[-1:])
-                chat_messages = (ChatMessage("system", system_prompt(timezone, tools=use_personal_tools)), *chat_messages)
+                chat_messages = (ChatMessage("system", system_prompt(timezone, tools=use_personal_tools, public_tools=use_public_tools)), *chat_messages)
             if use_tools:
                 from .personal_tools import personal_tool_registry
                 from .public_information import (
@@ -870,8 +869,6 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                     proposals += kind == "ai.action.proposed"
                     live.put_nowait(await emit(kind, payload))
                 gate_writes(registry, db, user.id, conversation_id=item.conversation_id, run_id=run_id, message_id=item.prompt_message_id, announce=tool_event)
-                if knowledge_scope is not None:
-                    chat_messages = (ChatMessage("system", SYSTEM_POLICY), *chat_messages)
                 from app.integrations.telegram_personal_dialogue import owner_scopes
                 # Memory stays opt-in as in Telegram: only an explicit "remember"/"forget" exposes those tools.
                 memory_scopes = frozenset(scope for scope in owner_scopes(last_message.content) if scope.startswith("memory."))

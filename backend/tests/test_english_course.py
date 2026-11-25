@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -159,7 +160,7 @@ async def test_lesson_generation_is_idempotent_with_vocab_and_warmup(client, ai)
     assert content["listening"]["live"]["source"] == "BBC 6 Minute English" and content["listening"]["tts_rate"] == 1.0
     assert [q["n"] for q in content["listening"]["questions"]] == [1, 2, 3, 4, 5] and all("answer" not in q for q in content["listening"]["questions"])
     assert content["listening"]["script_visible"] is False and content["blocks"][0] == {"key": "warmup", "title": "Разминка", "minutes": 10}
-    assert "Present tenses" in calls[0][0] and "exactly 8 useful topic words" in calls[0][0] and "harvest" in calls[0][0]
+    assert "Present tenses" in calls[0][0] and "exactly 8 useful topic words" in calls[0][0] and "harvest" in json.loads(calls[0][1])["excluded_words"]
     again = (await api.post(f"{API}/lessons/today", json={"day": iso(TODAY)})).json()
     assert again == lesson and len(calls) == 1
     async with sessions() as session:
@@ -275,7 +276,7 @@ async def test_speaking_rounds_store_criteria_and_finish_after_round_two(client,
     replies.append(reply)
     round4 = (await api.post(path, json={"round": 4, "transcript": "I goed to the library. <b>x</b>", "duration_sec": 200})).json()
     assert round4 == {"round": 4, "criteria": {"fluency": "≈5.5", "lexical": "≈6.0", "grammar": "≈5.5"}, "corrected_html_safe": reply["corrected_html_safe"], "tips": reply["tips"], "pauses": 5, "linkers_used": 2}
-    assert "<b>x</b>" in calls[1][1] and "A place you study" in calls[1][0] and "not score" in calls[1][0]
+    assert "<b>x</b>" in calls[1][1] and json.loads(calls[1][1])["topic"] == "A place you study" and "A place you study" not in calls[1][0] and "not score" in calls[1][0]
     stored = (await api.get(f"{API}/lessons/{lesson['id']}")).json()["progress"]["speaking"]
     assert stored.get("done") is None and stored["rounds"]["4"] == {**round4, "duration_sec": 200}  # everything the UI needs to re-render the round
     replies.append(reply)
@@ -332,7 +333,9 @@ async def test_task2_report_has_criteria(client, ai, monkeypatch):
     replies.append(correction(criteria={"task_response": "6", "coherence": "≈6.5", "lexical": " 5.5", "grammar": "≈5.0"}))
     body = (await api.post(f"{API}/reports", json={"day": iso(TODAY), "text": "x" * 30, "kind": "task2"})).json()
     assert body["result"]["kind"] == "task2" and body["result"]["criteria"] == {"task_response": "≈6.0", "coherence": "≈6.5", "lexical": "≈5.5", "grammar": "≈5.0"}
-    assert "Task 2" in calls[-1][0] and "uniforms" in calls[-1][0] and calls[-1][1] == "x" * 30
+    assert "Task 2" in calls[-1][0] and "uniforms" not in calls[-1][0]
+    material = json.loads(calls[-1][1])
+    assert "uniforms" in material["essay_prompt"] and material["learner_text"] == "x" * 30
     stored = (await api.get(f"{API}/reports")).json()[0]["result"]
     assert stored["kind"] == "task2" and stored["criteria"]["lexical"] == "≈5.5"
     assert (await api.get(f"{API}/lessons/{lesson['id']}")).json()["progress"]["writing"]["done"] is True

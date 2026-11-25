@@ -237,7 +237,7 @@ async def test_read_tools_follow_source_scopes_and_report_usage(tmp_path, monkey
         assert payloads(events, "ai.tool.result")[0]["detail"] == "1 task"
         done = payloads(events, "ai.run.completed")[0]
         assert (done["input_tokens"], done["output_tokens"]) == (20, 10) and float(done["estimated_cost"]) > 0
-        assert "Aelys reads, never changes data without asking" in script.requests[0]["system"]
+        assert "propose a change for owner approval" in script.requests[0]["system"]
 
         listed = (await client.get("/api/v1/ai/conversations")).json()[0]
         assert listed["pinned"] is False and listed["updated_at"] and listed["preview"] == "You have one task."
@@ -446,6 +446,24 @@ async def test_public_tools_are_available_without_personal_sources(tmp_path, mon
         assert {tool["name"] for tool in script.requests[0]["tools"]} == {"get_weather", "get_exchange_rate"}
 
 
+async def test_knowledge_run_omits_tools_even_with_tool_capable_model(tmp_path, monkeypatch):
+    async with chat(tmp_path, monkeypatch, [[{"type": "text", "text": "Only excerpts."}]]) as (client, script, _):
+        note = await client.post("/api/v1/notes", json={
+            "title": "Orchid protocol", "markdown_body": "Orchid protocol uses local storage.", "knowledge_enabled": True,
+        })
+        assert note.is_success
+        conversation = await client.post("/api/v1/ai/conversations", json={
+            "knowledge": {"note_ids": [note.json()["id"]]},
+            "tool_scope": {"scopes": ["tasks.read", "web.search"]},
+        })
+        assert conversation.is_success
+        events = await run(client, conversation.json()["id"], "Orchid protocol", "knowledge-no-tools")
+        assert payloads(events, "ai.run.completed")
+        assert not payloads(events, "ai.action.proposed")
+        assert len(script.requests) == 1 and "tools" not in script.requests[0]
+        assert "Orchid protocol uses local storage." in str(script.requests[0]["messages"])
+
+
 # Every app chat run tells the model who it is, the owner's time, and the relevant memory.
 async def _plain_run(client, message: str, key: str, **routing):
     conversation = (await client.post("/api/v1/ai/conversations", json={"tool_scope": {"scopes": []}})).json()
@@ -463,7 +481,7 @@ async def test_plain_chat_gets_identity_owner_time_and_relevant_memory(tmp_path,
         assert events[-1][0] == "ai.run.completed"
         request = script.requests[-1]
         assert "You are Aelys" in request["system"] and "timezone Asia/Almaty" in request["system"]
-        assert "cannot see or change" in request["system"]
+        assert "No personal data tools" in request["system"]
         assert any("рабочий день начинается" in str(message["content"]) for message in request["messages"][:-1])
 
 
@@ -608,3 +626,21 @@ async def test_unavailable_tool_cannot_be_loaded_or_invoked_before_discovery(tmp
             assert "search_knowledge" not in names and "create_event" not in names
         assert "TOOL_UNAVAILABLE" in json.dumps(script.requests[1]["messages"])
         assert "TOOL_NOT_LOADED" in json.dumps(script.requests[2]["messages"])
+
+
+@pytest.mark.asyncio
+async def test_model_claim_of_creation_cannot_execute_a_pending_note(tmp_path, monkeypatch):
+    replies = [
+        [tool_use("create_note", "note", title="Agenda", markdown_body="Review draft")],
+        [{"type": "text", "text": "I created the Agenda note."}],
+    ]
+    async with chat(tmp_path, monkeypatch, replies) as (client, script, factory):
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        events = await run(client, conversation["id"], "Create an Agenda note", "premature-success")
+        assert payloads(events, "ai.action.proposed")[0]["tool"] == "create_note"
+        assert "Describe a proposal as pending" in script.requests[-1]["system"]
+        assert "pending_approval" in script.requests[-1]["messages"][-1]["content"][0]["content"]
+        actions = (await client.get(f"/api/v1/ai/conversations/{conversation['id']}/actions")).json()
+        assert [action["status"] for action in actions] == ["pending"]
+        async with factory() as session:
+            assert (await session.scalars(select(Note))).all() == []

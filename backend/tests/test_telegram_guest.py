@@ -782,4 +782,5 @@ async def test_guest_respects_selected_model_tool_capabilities(setup, monkeypatc
             assert job.state == "done"
             [(messages, options)] = model.requests
             assert options["tools"] == ()
-            assert "never pretend to read" in messages[0].content.lower()
+            assert "No tools are available" in messages[0].content
+            assert "web_search" not in messages[0].content

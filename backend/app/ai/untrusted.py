@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from html import escape
 
 _TOKEN = re.compile(r"(?i)(sk-[A-Za-z0-9_-]{8,}|(?:api[_-]?key|token|secret)\s*[:=]\s*\S+)")
 
@@ -17,5 +18,5 @@ class UntrustedData:
         return UntrustedData(self.source, _TOKEN.sub("[REDACTED]", self.text))
 
     def as_context(self) -> str:
-        value = self.redacted().text
-        return f"<untrusted_data source={self.source!r}>\n{value}\n</untrusted_data>"
+        value = escape(self.redacted().text, quote=False)
+        return f"<untrusted_data source='{escape(self.source, quote=True)}'>\n{value}\n</untrusted_data>"

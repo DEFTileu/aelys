@@ -300,7 +300,7 @@ async def test_timeout_is_terminal_without_retry(setup,monkeypatch,editable_tran
     await provider(sessions,integration_id)
     model=Service();model.gate=asyncio.Event();model.requests=[]
     monkeypatch.setattr(ai_api,'_service',lambda *a,**kw:model)
-    monkeypatch.setattr(dialogue,'PERSONAL_TIMEOUT_SECONDS',0.1)
+    monkeypatch.setattr(dialogue, 'PERSONAL_TIMEOUT_SECONDS', 2)
     fake.updates=[ordinary(1,'Привет')];await service.poll_once(integration_id,timeout=0)
     await dialogue.personal_iteration(integration_id)
     await dialogue.wait_for_personal_turns()

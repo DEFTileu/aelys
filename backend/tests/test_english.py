@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -85,7 +86,7 @@ async def test_generate_is_idempotent_and_drops_duplicates(client, fake_ai):
     assert body["new_words"][0]["box"] == 1 and body["new_words"][0]["due_on"] == iso(TODAY + timedelta(days=1))
     assert body["new_words"][0]["collocations"] == ["big orchard"]
     assert body["stats"] == {"total": 3, "mastered": 0, "streak": 0}
-    assert "harvest" in calls[0][0]  # existing lemma sent as an exclusion
+    assert json.loads(calls[0][1])["excluded_words"] == ["harvest"] and "harvest" not in calls[0][0]
     again = await api.post("/api/v1/english/today/words", json={"day": iso(TODAY), "count": 5})
     assert again.status_code == 200 and again.json() == body
     assert len(calls) == 1
@@ -142,7 +143,7 @@ async def test_report_submit_replaces_same_day_and_lists(client, fake_ai):
     first = await api.post("/api/v1/english/reports", json={"day": iso(TODAY), "text": "  I goed to the harvest today.  "})
     assert first.status_code == 200, first.text
     assert first.json()["text"] == "I goed to the harvest today." and first.json()["result"]["errors"][0]["type"] == "tense"
-    assert "harvest" in calls[0][0] and calls[0][1] == "I goed to the harvest today."
+    assert json.loads(calls[0][1]) == {"learner_text": "I goed to the harvest today.", "target_words": ["harvest"]}
     second = await api.post("/api/v1/english/reports", json={"day": iso(TODAY), "text": "A second, better attempt today."})
     assert second.json()["id"] == first.json()["id"] and second.json()["cefr"] == "C1"
     listing = (await api.get("/api/v1/english/reports")).json()
@@ -274,7 +275,7 @@ async def test_prompts_have_no_context_without_history(client, fake_ai):
     replies.extend([{"words": [word("a")]}, correction()])
     await api.post("/api/v1/english/today/words", json={"day": iso(TODAY), "count": 5})
     await api.post("/api/v1/english/reports", json={"day": iso(TODAY), "text": "x" * 30})
-    assert calls[0][1] == "Generate today's words." and "Recurring" not in calls[1][0]
+    assert json.loads(calls[0][1]) == {"excluded_words": [], "learner_context": ""} and "Recurring" not in calls[1][0]
 
 
 @pytest.mark.asyncio
