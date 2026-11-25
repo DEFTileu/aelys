@@ -327,3 +327,131 @@ async def test_search_knowledge_reads_only_enabled_owner_notes(setup):
     await setup.db.flush()
     found = await invoke(setup, 'search_knowledge', {'query': 'telegram'}, context=context)
     assert found['items'] and {item['note_id'] for item in found['items']} == {'note'} and found['items'][0]['label'] == 'N1'
+
+
+@pytest.mark.parametrize('field', ['due_at', 'created_at', 'completed_at'])
+async def test_task_period_boundaries_and_pagination(setup, field):
+    # Yesterday in Almaty: UTC 19:00 on the previous date to 19:00 yesterday.
+    lower = datetime(2026, 11, 23, 19, tzinfo=UTC)
+    upper = lower + timedelta(days=1)
+    for i, stamp in enumerate([lower - timedelta(seconds=1), lower, upper - timedelta(seconds=1), upper]):
+        setup.db.add(Task(id=f'period-{i}', owner_id='owner', title='Period',
+                          **{field: stamp}))
+    setup.db.add(Task(id='period-foreign', owner_id='other', title='Period', **{field: lower}))
+    setup.db.add(Task(id='period-deleted', owner_id='owner', title='Period', deleted_at=upper, **{field: lower}))
+    await setup.db.flush()
+    args = {'query': 'Period', 'date_field': field, 'starts_at': '2026-11-24T00:00:00+05:00',
+            'ends_at': '2026-11-25T00:00:00+05:00', 'limit': 1}
+    first = await invoke(setup, 'list_tasks', args)
+    assert first['truncated'] and first['next_offset'] == 1
+    second = await invoke(setup, 'list_tasks', {**args, 'offset': first['next_offset']})
+    assert not second['truncated'] and second['next_offset'] is None
+    assert {first['items'][0]['id'], second['items'][0]['id']} == {'period-1', 'period-2'}
+    assert first['items'][0]['created_at']
+
+
+@pytest.mark.parametrize('args', [
+    {'date_field': 'completed_at'}, {'starts_at': '2026-11-24T00:00:00Z'},
+    {'date_field': 'updated_at', 'starts_at': AT.isoformat(), 'ends_at': (AT + timedelta(days=1)).isoformat()},
+    {'date_field': 'due_at', 'starts_at': AT.isoformat(), 'ends_at': AT.isoformat()},
+    {'date_field': 'due_at', 'starts_at': '2026-11-24T00:00:00', 'ends_at': AT.isoformat()},
+    {'offset': -1}, {'offset': 10001}, {'offset': True},
+])
+async def test_task_period_invalid_arguments(setup, args):
+    with pytest.raises(ToolValidationError):
+        await invoke(setup, 'list_tasks', args)
+
+
+async def test_task_list_does_not_infer_completion_from_status_or_due_date(setup):
+    task = await setup.db.get(Task, 'task')
+    task.status = 'completed'
+    await setup.db.flush()
+    result = await invoke(setup, 'list_tasks', {'status': 'completed'})
+    row = result['items'][0]
+    assert row['id'] == 'task' and row['due_at'] and row['completed_at'] is None
+    assert not (await invoke(setup, 'list_tasks', {'date_field': 'completed_at',
+        'starts_at': (AT - timedelta(days=1)).isoformat(), 'ends_at': (AT + timedelta(days=1)).isoformat()}))['items']
+
+
+@pytest.mark.parametrize('provider', ['claude', 'openrouter'])
+async def test_real_task_descriptor_survives_provider_request(setup, provider):
+    from app.ai.chat_support import system_prompt
+    from app.ai.models import ChatMessage, ProviderRequest
+    from app.ai.providers import ClaudeAdapter, HttpResponse, OpenRouterAdapter
+    from app.ai.secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
+
+    payloads = []
+    class Transport:
+        async def post(self, url, *, headers, json):
+            payloads.append(json)
+            return HttpResponse(200, {'content': [{'type': 'text', 'text': 'ok'}],
+                'choices': [{'message': {'content': 'ok'}}], 'usage': {}})
+    store = SecretStore(AuthenticatedStreamCipher(b'x' * 32))
+    ref = SecretRef(provider, 'test/provider')
+    store.put(ref, 'test-key')
+    cls = ClaudeAdapter if provider == 'claude' else OpenRouterAdapter
+    schema = next(s for s in setup.registry.schemas() if s['name'] == 'list_tasks')
+    await cls(Transport(), store, ref, 'https://example.test').complete(ProviderRequest(
+        'test-model', (ChatMessage('system', system_prompt('Asia/Almaty', tools=True)),
+                       ChatMessage('user', 'Yesterday tasks')), tools=(schema,)))
+    tool = payloads[0]['tools'][0]
+    sent = tool['input_schema'] if provider == 'claude' else tool['function']['parameters']
+    assert sent == schema['input_schema']
+    assert sent['properties']['date_field']['anyOf'][0]['enum'] == ['due_at', 'created_at', 'completed_at']
+    assert 'Current owner time:' in json.dumps(payloads[0])
+
+
+@pytest.mark.parametrize('start,end,hours', [
+    ('2026-03-08T00:00:00-05:00', '2026-03-09T00:00:00-04:00', 23),
+    ('2026-11-01T00:00:00-04:00', '2026-11-02T00:00:00-05:00', 25),
+])
+async def test_task_period_dst_uses_instants_not_fixed_24_hours(setup, start, end, hours):
+    lower, upper = datetime.fromisoformat(start), datetime.fromisoformat(end)
+    assert (upper - lower).total_seconds() == hours * 3600
+    setup.db.add_all([
+        Task(id='dst-inside', owner_id='owner', title='DST', due_at=utc(upper) - timedelta(seconds=1)),
+        Task(id='dst-outside', owner_id='owner', title='DST', due_at=utc(upper)),
+    ])
+    await setup.db.flush()
+    result = await invoke(setup, 'list_tasks', {'query': 'DST', 'date_field': 'due_at', 'starts_at': start, 'ends_at': end})
+    assert [row['id'] for row in result['items']] == ['dst-inside']
+
+
+async def test_yesterday_task_turn_filters_old_records_and_returns_evidence(setup):
+    from decimal import Decimal
+    from uuid import uuid4
+
+    from app.ai.chat_support import trusted_time_context
+    from app.ai.models import ChatMessage, RoutingRequest, TaskKind, Usage
+    from app.ai.turn import run_tool_turn
+
+    setup.db.add_all([Task(id=f'old-{i}', owner_id='owner', title='Old task', due_at=AT) for i in range(55)])
+    setup.db.add(Task(id='yesterday', owner_id='owner', title='Yesterday deadline',
+                      due_at=datetime(2026, 11, 24, 12, tzinfo=UTC)))
+    await setup.db.flush()
+    requests = []
+    class Service:
+        async def complete(self, run_id, request, messages, **kwargs):
+            requests.append(messages)
+            assert {s['name'] for s in kwargs['tools']} == {'list_tasks'}
+            if len(requests) == 1:
+                assert '2026-11-24T00:00:00+05:00' in messages[0].content
+                calls = ({'id': 'read-yesterday', 'name': 'list_tasks', 'input': {
+                    'date_field': 'due_at', 'starts_at': '2026-11-24T00:00:00+05:00',
+                    'ends_at': '2026-11-25T00:00:00+05:00'}},)
+            else:
+                calls = ()
+                result = json.loads(messages[-1].content)
+                assert messages[-1].untrusted and messages[-1].tool_call_id == 'read-yesterday'
+                assert [row['id'] for row in result['items']] == ['yesterday']
+                assert result['items'][0]['completed_at'] is None
+                assert not result['truncated']
+            return SimpleNamespace(provider=SimpleNamespace(value='claude'), model='test',
+                response=SimpleNamespace(text='' if calls else 'Recorded deadline yesterday', tool_calls=calls),
+                usage=SimpleNamespace(usage=Usage(), estimated_cost=Decimal(0)))
+    result = await run_tool_turn(Service(), uuid4(), RoutingRequest(TaskKind.TOOL_ACTION),
+        (ChatMessage('system', trusted_time_context('Asia/Almaty', at=datetime(2026, 11, 25, 11, 18, tzinfo=UTC))),
+         ChatMessage('user', 'Менде кеше қандай задача болды?')),
+        setup.registry, PermissionContext(actor='test', scopes=frozenset({'tasks.read'})),
+        parse_call=lambda raw: ToolCall(raw['name'], raw['input'], raw['id']))
+    assert result.steps == 2 and result.text == 'Recorded deadline yesterday'

@@ -54,6 +54,10 @@ Logging: provider, model, token usage, estimated cost, routing reason codes; *no
 
 ## 5. Tool registry
 
+The following is the original design catalogue, not the mounted LLM registry.
+For actual names, schemas, channel visibility and approval behavior see
+[AI_TOOL_INVENTORY.md](AI_TOOL_INVENTORY.md).
+
 Typed tools initially:
 
 | Tool | Operation | Policy scope |

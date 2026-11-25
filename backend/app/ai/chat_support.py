@@ -204,10 +204,40 @@ VOICE_STYLE = ("Answer in 1–3 short sentences, without markdown or links. Answ
                "Say plainly when something cannot be done by voice.")
 
 
+DATA_GROUNDING_POLICY = (
+    "Use the available read tools before claiming facts about personal records. "
+    "If a source is unavailable, say so; never substitute guesses. "
+    "For task dates distinguish due_at (scheduled deadline), created_at (creation), and completed_at "
+    "(current recorded completion, nullable and cleared on reopening). Ask which meaning is intended if ambiguous. "
+    "Current status is not historical status; list_tasks cannot reconstruct what was open on a past day "
+    "or every past completion. Null timestamps mean unknown, not proof nothing happened. "
+    "Use date_field and exact starts_at inclusive / ends_at exclusive bounds for task periods. "
+    "Use owner-local calendar midnights with their correct UTC offsets, including DST, not a rolling 24 hours. "
+    "A truncated page is not the full set: continue with next_offset and identical filters or explicitly report a partial result. "
+)
+
+
+def trusted_time_context(timezone: str, *, at: datetime | None = None) -> str:
+    """Server clock only; shared context conveys no permissions or personal records."""
+    timezone = owner_timezone(timezone)
+    instant = at if at is not None else datetime.now(UTC)
+    if instant.tzinfo is None:
+        raise ValueError("Trusted clock must be timezone-aware")
+    local = instant.astimezone(ZoneInfo(timezone))
+    today = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday = today - timedelta(days=1)
+    return (f"Current owner time: {local.isoformat()} ({local:%A}), timezone {timezone}. "
+            f"Yesterday: [{yesterday.isoformat()}, {today.isoformat()}); "
+            "these are local calendar day bounds, start inclusive and end exclusive.")
+
+
 def system_prompt(timezone: str, *, tools: bool, channel: str = "app") -> str:
-    now = datetime.now(ZoneInfo(timezone))
     # Telegram writes execute directly on the owner's request, so their policy differs from app chat's approval gate.
-    policy = TELEGRAM_POLICY if channel in {"telegram", "voice"} else SYSTEM_POLICY if tools else _NO_TOOLS
+    if not tools:
+        policy = (_NO_TOOLS if channel == "app" else
+                  "No personal data tools are available for this turn. Do not claim to read or change personal records. ")
+    else:
+        policy = TELEGRAM_POLICY if channel in {"telegram", "voice"} else SYSTEM_POLICY
     if channel == "telegram":
         policy += " " + TELEGRAM_ANSWER_STYLE
         policy += (" Search sources are available in the answer trace. Do not add a sources list, "
@@ -216,7 +246,7 @@ def system_prompt(timezone: str, *, tools: bool, channel: str = "app") -> str:
         policy += " Read chat history only when the current question depends on earlier conversation."
     if channel == "voice":
         policy += " " + VOICE_STYLE
-    return f"{_IDENTITY}{policy}\nCurrent owner time: {now:%Y-%m-%d %H:%M} ({now:%A}), timezone {timezone}."
+    return f"{_IDENTITY}{policy} {DATA_GROUNDING_POLICY}\n{trusted_time_context(timezone)}"
 
 
 _SOURCE = {"list_tasks": "tasks", "create_task": "tasks", "update_task": "tasks", "complete_task": "tasks",
@@ -301,6 +331,7 @@ def gate_writes(registry: ToolRegistry, db: AsyncSession, owner_id: str, *, conv
             return {"proposed": True, "action_id": action.id, "status": "pending_approval", "untrusted": True,
                     "note": "Shown to the owner as an approval card; do not propose it again."}
 
+        descriptor.description = "Propose for owner approval; does not execute until approved. " + descriptor.description
         descriptor.handler = propose
 
 

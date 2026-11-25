@@ -69,6 +69,8 @@ Tasks:
    Physical-device microphone/playback acceptance remains separate.
 2. Run orchestration and limits (steps, time, tokens/cost).
 3. Read and create_task tools via domain services.
+   Owner-requested tool/context audit (2026-11-25): [actual LLM registry and limits](AI_TOOL_INVENTORY.md),
+   [validation notes](optimization/ai-tool-context-audit.md).
    Owner-requested companion voice extension (2026-11-15): restricted
    voice tools, ElevenLabs BYOK and the companion PCM channel are tracked in
    [the approved phase 5 plan](superpowers/plans/2026-11-15-companion-voice.md).
