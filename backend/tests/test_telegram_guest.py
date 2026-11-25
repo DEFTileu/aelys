@@ -639,6 +639,11 @@ async def test_guest_answer_trace_access_and_safe_projection(setup, monkeypatch,
         await forget(db, job.owner_id, fact_id=deleted_fact.id)
         await db.commit()
 
+    # Telegram keeps the answer and trace, while the internal conversation stays out of AI Chat.
+    chats = await client.get("/api/v1/ai/conversations")
+    assert chats.status_code == 200
+    assert job.conversation_id not in {row["id"] for row in chats.json()}
+
     # 1. Missing auth -> 401
     assert (await client.get(f"/api/v1/telegram/answer-trace/{run_id}")).status_code == 401
     # 2. Forged signature -> 401
@@ -719,3 +724,25 @@ async def test_guest_rate_limit_blocks_excess_calls_per_chat(setup, monkeypatch)
     async with sessions() as db:
         jobs = list((await db.scalars(select(TelegramGuestJob))).all())
         assert len(jobs) == guest.GUEST_CHAT_RATE_LIMIT_PER_MINUTE
+
+
+async def test_guest_chats_are_hidden_by_origin_even_when_renamed_or_pinned(setup):
+    client, sessions, fake, integration_id = await bound(setup)
+    ordinary = await client.post('/api/v1/ai/conversations', json={'title': 'Telegram guest'})
+    assert ordinary.status_code == 200
+    personal = await client.post('/api/v1/ai/conversations', json={'title': 'Telegram assistant'})
+    assert personal.status_code == 200
+    fake.updates = [guest_update(901, 'hello', query_id='visibility-test')]
+    await service.poll_once(integration_id, timeout=0)
+    async with sessions() as db:
+        job = (await db.scalars(select(TelegramGuestJob))).one()
+        conversation = await db.get(AIConversation, job.conversation_id)
+        conversation.title = 'Renamed guest answer'
+        conversation.pinned = True
+        await db.commit()
+    chats = await client.get('/api/v1/ai/conversations')
+    assert chats.status_code == 200
+    assert {row['id'] for row in chats.json()} == {ordinary.json()['id'], personal.json()['id']}
+    async with sessions() as db:
+        conversation = await db.get(AIConversation, job.conversation_id)
+        assert conversation.deleted_at is None

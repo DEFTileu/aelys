@@ -31,6 +31,7 @@ from app.core.models import (
 )
 from app.core.security import bearer_scheme, current_principal, decode_token
 from app.domains import capture
+from app.integrations.telegram_models import TelegramGuestJob
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -490,7 +491,15 @@ async def create_conversation(
 @router.get("/ai/conversations")
 async def conversations(principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
     user, _ = principal
-    rows = list((await db.execute(select(AIConversation).where(AIConversation.owner_id == user.id, AIConversation.deleted_at.is_(None)).order_by(AIConversation.updated_at.desc()))).scalars())
+    # Guest invocations belong to Telegram, including existing and renamed chats.
+    # Keep their records active so delivery and authenticated answer traces still work.
+    guest_chat = select(TelegramGuestJob.id).where(
+        TelegramGuestJob.conversation_id == AIConversation.id,
+        TelegramGuestJob.owner_id == AIConversation.owner_id,
+    ).exists()
+    rows = list((await db.execute(select(AIConversation).where(
+        AIConversation.owner_id == user.id, AIConversation.deleted_at.is_(None), ~guest_chat,
+    ).order_by(AIConversation.updated_at.desc()))).scalars())
     ids = [row.id for row in rows]
     latest: dict[str, str] = {}
     usage: dict[str, dict[str, Any]] = {}
