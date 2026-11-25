@@ -25,9 +25,10 @@ describe('project detail actions', () => {
     expect(button('Unarchive')).toBeTruthy()
   })
   it('confirms and deletes the selected project', async () => {
-    client.deleteProject.mockResolvedValue({}); vi.spyOn(window, 'confirm').mockReturnValue(true)
+    client.deleteProject.mockResolvedValue({})
     await act(async () => host.querySelector<HTMLButtonElement>('.pv-card-open')!.click())
     await click('Delete')
+    await act(async () => host.querySelector<HTMLButtonElement>('[role=dialog] .delete-confirm__delete')!.click())
     expect(client.deleteProject).toHaveBeenCalledWith('p1', undefined, { queueOnOffline: false })
     expect(host.textContent).toContain('No projects here')
   })

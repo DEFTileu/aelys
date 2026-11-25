@@ -39,6 +39,8 @@ export function useNotes(apiStatus: ApiStatus) {
   const [message, setMessage] = useState('')
   const [savedNotice, setSavedNotice] = useState<Pick<NoteOut, 'id' | 'title' | 'markdown_body'> | null>(null)
   const [writing, setWriting] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<NoteOut | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const [conflictId, setConflictId] = useState<string | null>(null)
   const [latestConflict, setLatestConflict] = useState<NoteOut | null>(null)
   const [createUncertain, setCreateUncertain] = useState(false)
@@ -144,14 +146,20 @@ export function useNotes(apiStatus: ApiStatus) {
     }
     finally { endWrite() }
   }
-  const deleteNote = async () => {
-    if (!selected || !canWrite || writing || !window.confirm(`Delete ${selected.title || 'Untitled'}? Unsaved changes to this note will be lost.`) || !beginWrite()) return
+  const deleteNote = () => {
+    if (!selected || !canWrite || writing) return
+    setDeleteError(''); setDeleteTarget(selected)
+  }
+  const confirmDeleteNote = async () => {
+    const selected = deleteTarget
+    if (!selected || !canWrite || writing || !beginWrite()) return
+    setDeleteError('')
     try {
       await getSharedApiClient().deleteNote(selected.id, { queueOnOffline: false })
       setNotes((current) => current.filter((note) => note.id !== selected.id))
       setDrafts((current) => { const next = { ...current }; delete next[selected.id]; return next })
-      setSelectedId(null); setMobileEditor(false); setMessage('Note deleted.')
-    } catch { setMessage('Could not confirm deletion. Your draft is preserved; reload before retrying.') }
+      setSelectedId(null); setMobileEditor(false); setDeleteTarget(null); setMessage('Note deleted.')
+    } catch { setDeleteError('Could not confirm deletion. Your draft is preserved; reload before retrying.') }
     finally { endWrite() }
   }
 
@@ -167,5 +175,5 @@ export function useNotes(apiStatus: ApiStatus) {
     setNotes((current) => current.map((note) => note.id === latestConflict.id ? latestConflict : note))
     setConflictId(null); setLatestConflict(null); setMessage('Latest version selected. Your draft is unchanged; save when ready.')
   }
-  return { projects, projectsAvailable, query, setQuery, folder, setFolder, tag, setTag, newTag, setNewTag, compactEditor, mobileEditor, setMobileEditor, selected, setSelectedId, tags, draft, drafts, status, draftStatus, notes, titleInput, message, writing, conflictId, latestConflict, collection, load, folders, visible, editDraft, canWrite, showSavedNotice, newNote, saveNote, togglePin, deleteNote, reviewLatest, useLatestVersion }
+  return { projects, projectsAvailable, query, setQuery, folder, setFolder, tag, setTag, newTag, setNewTag, compactEditor, mobileEditor, setMobileEditor, selected, setSelectedId, tags, draft, drafts, status, draftStatus, notes, titleInput, message, writing, conflictId, latestConflict, collection, load, folders, visible, editDraft, canWrite, showSavedNotice, newNote, saveNote, togglePin, deleteNote, deleteTarget, deleteError, setDeleteTarget, confirmDeleteNote, reviewLatest, useLatestVersion }
 }

@@ -1,3 +1,4 @@
+import { DeleteConfirm } from '../../components/DeleteConfirm'
 import { Check, FileText, Folder, Plus, Save, Search, SquarePen, Trash2, X } from '../../icons'
 import '../desktop/page-tokens.css'
 import { RichTextEditor } from '../../components/RichTextEditor'
@@ -13,8 +14,9 @@ function NotesState({ status, retry }: { status: ApiStatus; retry: () => void })
 }
 
 export function NotesMobile({ apiStatus }: { apiStatus: ApiStatus }) {
-  const { projects, projectsAvailable, query, setQuery, folder, setFolder, tag, setTag, newTag, setNewTag, compactEditor, mobileEditor, setMobileEditor, selected, setSelectedId, tags, draft, drafts, status, draftStatus, notes, titleInput, message, writing, conflictId, latestConflict, collection, load, folders, visible, editDraft, canWrite, showSavedNotice, newNote, saveNote, togglePin, deleteNote, reviewLatest, useLatestVersion } = useNotes(apiStatus)
+  const { projects, projectsAvailable, query, setQuery, folder, setFolder, tag, setTag, newTag, setNewTag, compactEditor, mobileEditor, setMobileEditor, selected, setSelectedId, tags, draft, drafts, status, draftStatus, notes, titleInput, message, writing, conflictId, latestConflict, collection, load, folders, visible, editDraft, canWrite, showSavedNotice, newNote, saveNote, togglePin, deleteNote, deleteTarget, deleteError, setDeleteTarget, confirmDeleteNote, reviewLatest, useLatestVersion } = useNotes(apiStatus)
   return <div className={`notes-live page${mobileEditor ? ' notes-live--editing' : ''}`} >
+    {deleteTarget && <DeleteConfirm kind="note" name={deleteTarget.title || 'Untitled'} busy={writing} error={deleteError} onCancel={() => setDeleteTarget(null)} onConfirm={() => void confirmDeleteNote()} />}
     <MobileHeader sub={mobileEditor ? undefined : `${notes.length} notes`} action={mobileEditor ? undefined : <button type="button" onClick={() => void newNote()}><SquarePen size={16} />New</button>} />
     <div className="nl-toolbar"><h1>Notes</h1><button className="nl-btn" type="button" disabled={collection.refreshing} onClick={() => void load()}>Refresh notes</button>{status !== 'ready' && notes.length === 0 && <button className="nl-btn nl-btn--primary" type="button" onClick={() => void newNote()}><Plus size={16} />New note</button>}</div>
     {collection.source === 'cached' && <p className="nl-message" role="status">Saved on this device. Connect to verify the latest version.</p>}

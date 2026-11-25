@@ -1,0 +1,7 @@
+.delete-confirm-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: #0008; }
+.delete-confirm { width: min(100%, 420px); padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-solid, #fff); color: var(--ink, #222); box-shadow: 0 24px 70px #0004; }
+.delete-confirm h2 { margin: 0 0 12px; font-size: 1.2rem; }
+.delete-confirm p { overflow-wrap: anywhere; }
+.delete-confirm [role=alert] { color: #c22; }
+.delete-confirm__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.delete-confirm__delete { color: #c22; }

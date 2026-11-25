@@ -1,3 +1,4 @@
+import { DeleteConfirm } from '../../components/DeleteConfirm'
 import { Icon } from '../../components/Icon'
 import { StateCard } from '../../components/StateCard'
 import { PageSkeleton } from '../../components/PageSkeleton'
@@ -15,8 +16,9 @@ function EmptyProjects({ status, retry }: { status: ApiStatus; retry: () => void
 }
 
 export function ProjectsDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
-  const { projects, query, setQuery, selected, setSelectedId, tasks, filter, setFilter, status, load, formOpen, setFormOpen, name, setName, description, setDescription, message, editing, setEditing, busy, menuId, setMenuId, notes, taskTitle, setTaskTitle, taskUncertain, visible, projectTasks, createProject, updateProject, deleteProject, createTask, toggleTask, openNote } = useProjects(apiStatus)
+  const { projects, query, setQuery, selected, setSelectedId, tasks, filter, setFilter, status, load, formOpen, setFormOpen, name, setName, description, setDescription, message, editing, setEditing, busy, menuId, setMenuId, notes, taskTitle, setTaskTitle, taskUncertain, visible, projectTasks, createProject, updateProject, deleteProject, deleteTarget, deleteError, setDeleteTarget, confirmDeleteProject, createTask, toggleTask, openNote } = useProjects(apiStatus)
   return <div className="page projects-view">
+    {deleteTarget && <DeleteConfirm kind="project" name={deleteTarget.name} busy={busy} error={deleteError} onCancel={() => setDeleteTarget(null)} onConfirm={() => void confirmDeleteProject()} />}
     <MobileHeader sub={selected ? 'Project' : `${projects.filter((project) => project.status !== 'archived').length} active projects`} />
     {!selected && <div className="pv-toolbar">
       <div className="pv-filters" role="group" aria-label="Filter projects">{(['active', 'archived', 'all'] as const).map((item) => <button key={item} type="button" aria-pressed={filter === item} onClick={() => { setFilter(item); setSelectedId(null) }}>{item[0].toUpperCase() + item.slice(1)} <span>{item === 'all' ? projects.length : projects.filter((project) => item === 'archived' ? project.status === 'archived' : project.status !== 'archived').length}</span></button>)}</div>

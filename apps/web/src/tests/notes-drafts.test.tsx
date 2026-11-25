@@ -179,8 +179,9 @@ describe('note drafts', () => {
   })
 
   it('confirms deletion and removes only the selected note after success', async () => {
-    client.deleteNote.mockResolvedValue({}); vi.spyOn(window, 'confirm').mockReturnValue(true)
+    client.deleteNote.mockResolvedValue({})
     await mount(); await click('Delete note')
+    await act(async () => host.querySelector<HTMLButtonElement>('[role=dialog] .delete-confirm__delete')!.click())
     expect(client.deleteNote).toHaveBeenCalledWith('1', { queueOnOffline: false })
     expect(host.querySelector('.nl-note-list')?.textContent).not.toContain('Alpha')
     expect(host.querySelector('.nl-note-list')?.textContent).toContain('Beta')

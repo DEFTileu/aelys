@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { NoteOut, ProjectResponse, TaskOut } from '@aelys/shared'
 import { ApiError, OfflineQueuedError } from '@aelys/shared'
 import { getSharedApiClient } from '../../lib/api'
@@ -29,6 +29,9 @@ export function useProjects(apiStatus: ApiStatus) {
   const [message, setMessage] = useState('')
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ProjectCard | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const deleteLock = useRef(false)
   const [menuId, setMenuId] = useState<string | null>(null)
   const [notes, setNotes] = useState<readonly NoteOut[] | null>(null)
   const [taskTitle, setTaskTitle] = useState('')
@@ -93,14 +96,20 @@ export function useProjects(apiStatus: ApiStatus) {
     } catch (error) { setMessage(error instanceof ApiError ? `${error.code}: ${error.message}` : 'Could not update this project. Your changes are preserved.') }
     finally { setBusy(false) }
   }
-  const deleteProject = async (target = selected) => {
-    if (!target || busy || !window.confirm(`Delete ${target.name}?`)) return
-    setBusy(true); setMessage('')
+  const deleteProject = (target = selected) => {
+    if (!target || busy || deleteLock.current) return
+    setDeleteError(''); setDeleteTarget(target)
+  }
+  const confirmDeleteProject = async () => {
+    const target = deleteTarget
+    if (!target || busy || deleteLock.current) return
+    deleteLock.current = true
+    setBusy(true); setDeleteError(''); setMessage('')
     try {
       await getSharedApiClient().deleteProject(target.id, undefined, { queueOnOffline: false })
-      setProjects((current) => current.filter((project) => project.id !== target.id)); setSelectedId(null)
-    } catch (error) { setMessage(error instanceof ApiError ? `${error.code}: ${error.message}` : 'Could not delete this project.') }
-    finally { setBusy(false) }
+      setProjects((current) => current.filter((project) => project.id !== target.id)); setSelectedId(null); setDeleteTarget(null)
+    } catch (error) { setDeleteError(error instanceof ApiError ? `${error.code}: ${error.message}` : 'Could not delete this project.') }
+    finally { deleteLock.current = false; setBusy(false) }
   }
 
   const upsertTask = (saved: TaskOut) => {
@@ -134,5 +143,5 @@ export function useProjects(apiStatus: ApiStatus) {
     finally { setBusy(false) }
   }
   const openNote = (id: string) => { window.history.pushState({}, '', `/notes?note=${encodeURIComponent(id)}`); window.dispatchEvent(new PopStateEvent('popstate')) }
-  return { projects, query, setQuery, selected, setSelectedId, tasks, filter, setFilter, status, load, formOpen, setFormOpen, name, setName, description, setDescription, message, editing, setEditing, busy, menuId, setMenuId, notes, taskTitle, setTaskTitle, taskUncertain, visible, projectTasks, createProject, updateProject, deleteProject, createTask, toggleTask, openNote }
+  return { projects, query, setQuery, selected, setSelectedId, tasks, filter, setFilter, status, load, formOpen, setFormOpen, name, setName, description, setDescription, message, editing, setEditing, busy, menuId, setMenuId, notes, taskTitle, setTaskTitle, taskUncertain, visible, projectTasks, createProject, updateProject, deleteProject, deleteTarget, deleteError, setDeleteTarget, confirmDeleteProject, createTask, toggleTask, openNote }
 }
