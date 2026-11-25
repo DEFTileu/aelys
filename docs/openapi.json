@@ -16452,6 +16452,17 @@
           "elapsed_seconds": {
             "type": "integer",
             "title": "Elapsed Seconds"
+          },
+          "planned_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Seconds"
           }
         },
         "type": "object",

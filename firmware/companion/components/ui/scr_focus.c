@@ -1,5 +1,5 @@
-/* Focus (design "Focus · идёт", "Focus · пауза", "Focus · сессия завершена"): coral ring that melts away over the 25 min
- * pomodoro, a small Aelys, the time left, and the top-key hint at the key on the right edge. A stopwatch counts up and has
+/* Focus (design "Focus · идёт", "Focus · пауза", "Focus · сессия завершена"): coral ring that melts away over the pomodoro
+ * (the length the app chose, 25 min when it sent none or the board started it), a small Aelys, the time left, and the top-key hint at the key on the right edge. A stopwatch counts up and has
  * no ring. Deviations: no sparkles on "Session done", no "n of 4" counter or task name (the snapshot has neither), no
  * break view; the hint of "Session done" says "Done" (focus.stop), as the brief asks, not the design's "Break". */
 #include <stdio.h>
@@ -50,7 +50,8 @@ focus_view_t scr_focus_set(const snap_t *s, uint32_t snap_ms, uint32_t now_ms)
 {
     const snap_focus_t *f = &s->focus;
     bool running = f->status == FOCUS_ACTIVE, stopwatch = !strcmp(f->mode, "stopwatch");
-    int elapsed = f->elapsed_s + (running ? (int)((now_ms - snap_ms) / 1000) : 0), left = POMODORO_S - elapsed;
+    int total = f->planned_s > 0 ? f->planned_s : POMODORO_S;
+    int elapsed = f->elapsed_s + (running ? (int)((now_ms - snap_ms) / 1000) : 0), left = total - elapsed;
     focus_view_t v = f->status == FOCUS_NONE ? FV_NONE : running ? FV_ACTIVE : FV_PAUSED;
     if (v == FV_ACTIVE && !stopwatch && left <= 0) v = FV_DONE;
     h.view = v;
@@ -81,7 +82,7 @@ focus_view_t scr_focus_set(const snap_t *s, uint32_t snap_ms, uint32_t now_ms)
 
     lv_obj_set_hidden(h.ring.obj, !ring);
     if (ring) {
-        int pct = v == FV_DONE ? 100 : left * 100 / POMODORO_S;
+        int pct = v == FV_DONE ? 100 : left * 100 / total;
         if (v == FV_DONE || v == FV_ACTIVE) ui_arc_set(&h.ring, pct, COLOR_FOCUS, COLOR_FOCUS_TRACK);
         else ui_arc_set(&h.ring, pct, COLOR_PAUSED, COLOR_PAUSED_TRACK); /* paused: frozen and dimmed */
     }

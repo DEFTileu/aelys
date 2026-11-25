@@ -289,7 +289,7 @@ static void snapshot_payload(uint8_t *p, const snap_t *s)
 #undef NOTICE_STRING
         memcpy(p + base + offsetof(snap_notice_t, created), &s->notices[i].created, sizeof s->notices[i].created);
     }
-    STRING(focus.id); SCALAR(focus.status); STRING(focus.mode); SCALAR(focus.started); SCALAR(focus.elapsed_s);
+    STRING(focus.id); SCALAR(focus.status); STRING(focus.mode); SCALAR(focus.started); SCALAR(focus.elapsed_s); SCALAR(focus.planned_s);
     SCALAR(n_tasks); SCALAR(n_events);
     SCALAR(weather.updated); SCALAR(weather.present); SCALAR(weather.temp); SCALAR(weather.hi); SCALAR(weather.lo); SCALAR(weather.code);
     SCALAR(weather.n_hours); SCALAR(weather.feels); SCALAR(weather.has_feels); /* in the old tail padding: an older blob reads as no feels */

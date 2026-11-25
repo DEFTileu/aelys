@@ -46,6 +46,13 @@ async def test_start_with_same_key_replays_and_other_request_conflicts(session):
     with pytest.raises(HTTPException) as caught:
         await focus_service.start_focus(session, 'owner', **{**args, 'mode': 'stopwatch'})
     assert caught.value.detail['code'] == 'IDEMPOTENCY_CONFLICT'
+    with pytest.raises(HTTPException) as caught:
+        await focus_service.start_focus(session, 'owner', **args, planned_seconds=3000)
+    assert caught.value.detail['code'] == 'IDEMPOTENCY_CONFLICT'
+
+
+async def test_start_keeps_the_planned_length(session):
+    assert (await start(session, planned_seconds=3000)).planned_seconds == 3000
 
 
 async def test_pause_resume_stop_elapsed_matches_focus_elapsed(session):

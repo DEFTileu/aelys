@@ -79,6 +79,7 @@ class SnapFocus(_Utc):
     mode: str
     started_at: datetime
     elapsed_seconds: int
+    planned_seconds: int | None = None  # pomodoro length; null means the 25 min default
 
 
 class SnapHour(BaseModel):
@@ -214,7 +215,7 @@ async def build_snapshot(db: AsyncSession, owner_id: str, now: datetime) -> Comp
     if session and not focus_due(session, now):  # a finished pomodoro is completed on its next touch; the board already shows it done
         until = utc(session.paused_at) if session.status == "paused" and session.paused_at else now
         focus = SnapFocus(id=session.id, status=session.status, mode=session.mode, started_at=session.started_at,
-                          elapsed_seconds=focus_elapsed(utc(session.started_at), session.paused_seconds, until))
+                          elapsed_seconds=focus_elapsed(utc(session.started_at), session.paused_seconds, until), planned_seconds=session.planned_seconds)
 
     return _fit(CompanionSnapshot(
         generated_at=now, next_task=SnapTask.model_validate(next_task) if next_task else None, overdue_count=overdue,

@@ -442,6 +442,14 @@ See TELEGRAM_PERSONAL_ASSISTANT_REPORT.md for acceptance and sync limitations.
   paused. A paused session still occupies the owner's single timer slot and
   can be stopped. Migration `0025_focus_pause`.
 
+### Focus length (2026-11-15)
+
+- `FocusIn` and `FocusOut` gain `planned_seconds` (int 60 to 86400, or null):
+  the pomodoro length picked in the app. Pomodoros default to 25 minutes;
+  stopwatches have no planned length. It is part of the start idempotency
+  check, and the board snapshot carries it so the board counts down the same
+  length. Migration `0063_focus_planned_seconds`.
+
 ### Agent session display metadata and stop
 
 - `AgentSession` (`GET /agents/sessions`) gains optional, non-secret display

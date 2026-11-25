@@ -219,10 +219,13 @@ static bool parse_notice(const P *p, int o, snap_notice_t *n)
 static bool parse_focus(const P *p, int o, snap_focus_t *f)
 {
     char st[10];
-    int64_t el = 0;
+    int64_t el = 0, planned = 0;
     if (!get_str(p, o, "id", f->id, sizeof f->id, S_REQ) || !get_str(p, o, "status", st, sizeof st, S_REQ) ||
         !get_str(p, o, "mode", f->mode, sizeof f->mode, S_REQ) || !get_time(p, o, "started_at", &f->started, S_REQ) ||
         !get_int(p, o, "elapsed_seconds", &el, S_REQ)) return false;
+    /* optional (server 2026-11-15): absent, null, malformed or out of the server's range means the 25 min default */
+    if (!get_int(p, o, "planned_seconds", &planned, 0) || planned < 60 || planned > 86400) planned = 0;
+    f->planned_s = (int32_t)planned;
     f->status = strcmp(st, "active") == 0 ? FOCUS_ACTIVE : strcmp(st, "paused") == 0 ? FOCUS_PAUSED : FOCUS_NONE;
     f->elapsed_s = (int32_t)(el < 0 ? 0 : el > INT32_MAX ? INT32_MAX : el);
     return f->status != FOCUS_NONE;

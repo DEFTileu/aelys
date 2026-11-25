@@ -53,16 +53,15 @@ async def complete_due(db: AsyncSession, owner_id: str) -> None:
 async def start_focus(db: AsyncSession, owner_id: str, *, started_at: datetime, mode: str, task_id: str | None,
                       idempotency_key: str | None, project_id: str | None = None, planned_seconds: int | None = None) -> FocusSession:
     item_id = str(uuid5(NAMESPACE_URL, f"aelys:focus:{owner_id}:{idempotency_key}")) if idempotency_key else str(uuid4())
+    planned_seconds = None if mode == "stopwatch" else (POMODORO_SECONDS if mode == "pomodoro" and planned_seconds is None else planned_seconds)
     existing = await db.get(FocusSession, item_id)
     if existing:
-        if existing.task_id != task_id or existing.project_id != project_id or existing.mode != mode or utc(existing.started_at) != started_at:
+        if existing.task_id != task_id or existing.project_id != project_id or existing.mode != mode or existing.planned_seconds != planned_seconds or utc(existing.started_at) != started_at:
             raise HTTPException(409, detail={"code": "IDEMPOTENCY_CONFLICT", "message": "Focus start key is bound to another request"})
         return existing
     await complete_due(db, owner_id)
     if await active_focus(db, owner_id):
         raise HTTPException(409, detail={"code": "TIMER_ACTIVE", "message": "Only one active focus session is allowed"})
-    if planned_seconds is None and mode == "pomodoro":
-        planned_seconds = POMODORO_SECONDS  # clients that predate planned_seconds still get a pomodoro that ends
     item = FocusSession(id=item_id, owner_id=owner_id, started_at=started_at, mode=mode, task_id=task_id, project_id=project_id,
                         planned_seconds=None if mode == "stopwatch" else planned_seconds)
     db.add(item)

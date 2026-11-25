@@ -68,6 +68,7 @@ static void test_parses_every_contract_example(void)
     CHECK(strcmp(s->focus.id, "f-3") == 0 && strcmp(s->focus.mode, "pomodoro") == 0);
     CHECK_EQ(s->focus.started, iso("2026-11-13T09:10:00Z"));
     CHECK_EQ(s->focus.elapsed_s, 1200);
+    CHECK_EQ(s->focus.planned_s, 0); /* an older server: no length, the 25 min default */
     CHECK_EQ(s->today_total, -1);
     CHECK_EQ(s->today_done, -1);
     CHECK_EQ(s->other_unread, -1);
@@ -293,7 +294,7 @@ static void test_fullest_snapshot_fits_the_token_table(void)
         "\"unread_count\":5,\"notices\":[");
     for (int i = 0; i < 5; i++)
         n += snprintf(json + n, sizeof json - (size_t)n, "%s{\"id\":\"n%d\",\"kind\":\"task.reminder\",\"title\":\"N\",\"created_at\":\"2026-11-13T09:00:00Z\"}", i ? "," : "", i);
-    n += snprintf(json + n, sizeof json - (size_t)n, "],\"focus\":{\"id\":\"f\",\"status\":\"active\",\"mode\":\"m\",\"started_at\":\"2026-11-13T09:10:00Z\",\"elapsed_seconds\":1},"
+    n += snprintf(json + n, sizeof json - (size_t)n, "],\"focus\":{\"id\":\"f\",\"status\":\"active\",\"mode\":\"m\",\"started_at\":\"2026-11-13T09:10:00Z\",\"elapsed_seconds\":1,\"planned_seconds\":3000},"
         "\"today_done\":1,\"today_total\":2,\"other_unread_count\":1,\"tasks_today\":[");
     for (int i = 0; i < 5; i++)
         n += snprintf(json + n, sizeof json - (size_t)n, "%s{\"id\":\"t%d\",\"title\":\"T\",\"due_at\":\"2026-11-13T10:00:00Z\"}", i ? "," : "", i);
@@ -740,6 +741,20 @@ static void test_voice(void)
     CHECK(!strcmp(m.id, "abc") && !strcmp(m.u.voice.text, "What's on tomorrow?"));
 }
 
+/* The pomodoro length the app chose; anything unusable falls back to the default and never costs the snapshot. */
+static void test_focus_planned_length(void)
+{
+    const char *cases[][2] = { { "3000", "3000" }, { "null", "0" }, { "30", "0" }, { "\"50m\"", "0" } };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        char j[400];
+        snprintf(j, sizeof j, "{\"type\":\"snapshot\",\"snapshot\":{\"generated_at\":\"2026-11-13T09:30:00Z\",\"focus\":{\"id\":\"f\","
+                 "\"status\":\"active\",\"mode\":\"pomodoro\",\"started_at\":\"2026-11-13T09:10:00Z\",\"elapsed_seconds\":5,\"planned_seconds\":%s}}}", cases[i][0]);
+        CHECK(proto_parse(j, strlen(j), &g_m));
+        CHECK_EQ(g_m.u.snap.focus.status, FOCUS_ACTIVE);
+        CHECK_EQ(g_m.u.snap.focus.planned_s, atoi(cases[i][1]));
+    }
+}
+
 int main(void)
 {
     test_voice();
@@ -751,6 +766,7 @@ int main(void)
     test_fullest_snapshot_fits_the_token_table();
     test_command_unknown_name_is_not_rejected();
     test_snapshot_nulls_and_missing_optional();
+    test_focus_planned_length();
     test_more_than_5_notices_keeps_first_5();
     test_command_rev();
     test_titles_cut_on_utf8_boundary();

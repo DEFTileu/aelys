@@ -13,7 +13,7 @@ import { WidgetBody, isDone } from './widgetBodies'
 import { dayTasks } from './desktopBodies'
 
 export type HomeData = { tasks: readonly TaskOut[]; events: readonly EventOut[]; projects: readonly ProjectResponse[]; notes: readonly NoteOut[]; finance: readonly FinanceTransaction[]; mail?: readonly MailMessage[]; budgets?: readonly FinanceBudget[]; activity?: readonly ActivityEvent[]; focusSessions?: readonly FocusOut[]; states?: Partial<Record<WidgetId | 'activity', ApiStatus>> }
-export type FocusTimer = { elapsed: number; stopwatch: boolean; running: boolean; paused: boolean; live: boolean; disabled: boolean; toggle: () => void; reset: () => void }
+export type FocusTimer = { elapsed: number; length: number; stopwatch: boolean; running: boolean; paused: boolean; live: boolean; disabled: boolean; toggle: () => void; reset: () => void }
 
 export type HomeWidgetProps = {
   id: WidgetId; editing: boolean; mobile?: boolean
