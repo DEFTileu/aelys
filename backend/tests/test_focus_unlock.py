@@ -265,3 +265,28 @@ async def test_cap_window_is_a_rolling_24_hours_of_server_time(focus):
     assert (state["ai_grants_left"], state["requests_left"]) == (0, 6)
     denied = (await _ask(client, headers, day=_days()[0])).json()
     assert denied["granted"] is False and len(judge.calls) == 1
+
+
+async def test_unlock_keeps_focus_history_and_usage_without_a_chat(focus):
+    from app.core.models import AIConversation, AIRun
+
+    client, factory, headers, _ = focus
+    await _provider(client, headers)
+    chat = await client.post('/api/v1/ai/conversations', json={'title': 'My chat'}, headers=headers)
+    assert chat.status_code == 200
+    result = await _ask(client, headers, reason='urgent work call')
+    assert result.status_code == 200
+    history = await client.get('/api/v1/focus/requests', headers=headers)
+    assert history.status_code == 200
+    assert history.json()[0]['reason'] == 'urgent work call'
+    assert history.json()[0]['message'] == 'ok'
+    chats = await client.get('/api/v1/ai/conversations', headers=headers)
+    assert chats.status_code == 200
+    assert [row['id'] for row in chats.json()] == [chat.json()['id']]
+    async with factory() as db:
+        request = (await db.execute(select(FocusUnlockRequest))).scalar_one()
+        run = await db.get(AIRun, request.ai_run_id)
+        assert run is not None and run.status == 'completed'
+        assert run.token_counts == {'input': 3, 'output': 4}
+        conversation = await db.get(AIConversation, run.conversation_id)
+        assert conversation is not None and conversation.deleted_at is not None

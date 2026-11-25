@@ -39,7 +39,8 @@ async def one_shot_json(db: AsyncSession, owner_id: str, feature: str, title: st
         service = ai_api._service(provider, decrypt_secret(secret.encrypted_value))
         request = RoutingRequest(TaskKind.UNKNOWN, privacy=PrivacyClass.PERSONAL, manual_model=model, request_budget=min(Decimal(100), remaining))
         result = await asyncio.wait_for(service.complete(run_id, request, (ChatMessage("system", system), ChatMessage("user", text, untrusted=True)), max_tokens=max_tokens, tools=()), timeout=45)
-        conversation = AIConversation(owner_id=owner_id, title=title, tool_scope_json={})
+        # Keep usage accounting without listing an internal helper as an empty user chat.
+        conversation = AIConversation(owner_id=owner_id, title=title, tool_scope_json={}, deleted_at=started)
         db.add(conversation)
         await db.flush()
         db.add(AIRun(id=str(run_id), owner_id=owner_id, conversation_id=conversation.id, prompt_message_id=None, provider_id=provider.id, provider=getattr(result.provider, "value", result.provider), model=result.model, status="completed", tool_scope_json={}, token_counts={"input": result.usage.usage.input_tokens, "output": result.usage.usage.output_tokens}, cost_estimate=result.usage.estimated_cost, started_at=started, completed_at=datetime.now(UTC)))
