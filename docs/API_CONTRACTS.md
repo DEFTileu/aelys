@@ -925,3 +925,35 @@ Voice errors use `detail.code`: `VOICE_NOT_CONFIGURED` (409), `BUDGET_EXCEEDED`
 (429), `VOICE_EMPTY` (422), `VOICE_UNAVAILABLE` (502). Upload validation uses
 `AUDIO_UNSUPPORTED` (415), `AUDIO_TOO_LARGE` (413), and `AUDIO_EMPTY` or
 `AUDIO_INVALID` (422). Provider diagnostic bodies, keys and URLs are redacted.
+
+### Personal Telegram history tool
+
+`read_chat_history` is an internal, read-only tool for the owner's personal
+Telegram bot. It is not an HTTP endpoint and is not registered for Web, voice
+assistant or Business/secretary runs. A Telegram voice message uses the personal
+bot's permissions; it is distinct from the app voice assistant. The existing
+Policy Engine authorizes the `chat.history.read` scope.
+
+Arguments are `start_at` (inclusive) and `end_at` (exclusive), both timezone-aware
+ISO 8601 timestamps, or `before_message_id` (exclusive UUID cursor). A cursor can
+be combined with the same period to continue a query. `limit` defaults to 20
+and is bounded to 1–100; messages are returned newest first by `(created_at,id)`.
+The response contains `messages`, `next_before_message_id` and `untrusted: true`.
+A page can contain fewer visible messages after filtering; continue while its
+cursor is present. Message text is capped at 1200 characters and the page has a
+24,000-byte text-record budget. Internal memory refs are carried separately from
+model-visible JSON.
+
+The tool follows the bot integration's persisted personal jobs/runs across
+conversation rotation. A conversation title alone never establishes access.
+Unfinished questions and messages depending on stale, deleted or expired memory
+facts are filtered by the same helper as ordinary conversation context. Returned
+text remains untrusted; it cannot grant write permission. A current direct owner
+request can still authorize a task write after history is read.
+
+The trace event records the requested period/cursor and returned message count,
+not message content. Memory provenance follows history results into subsequent
+model context and is rechecked before the next completion. A question inherits
+the memory dependencies of its associated answer even when that answer is
+outside the selected page, so revocation also removes question-only history
+results and their derived context. Stored message metadata is not rewritten.

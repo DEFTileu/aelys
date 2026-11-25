@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid5
 
+from .chat_history import HISTORY_TOOL, history_event_query, history_memory_refs
 from .errors import (
     BudgetExceeded,
     ModelUnavailable,
@@ -183,6 +184,7 @@ async def run_tool_turn(
             seen.add(call.call_id)
             await check()
             is_search = call.name == 'web_search' and isinstance(search_handler, WebSearch)
+            is_history = call.name == HISTORY_TOOL
             try:
                 descriptor = registry.descriptor(call.name)
             except ToolValidationError:
@@ -194,8 +196,9 @@ async def run_tool_turn(
                 search_started = True
                 search_count += 1
             query = str(call.arguments.get('query', ''))[:300] if is_search else ''
+            history_query = history_event_query(call.arguments) if is_history else {}
             await emit('ai.tool.requested', tool=call.name, call_id=call.call_id,
-                       **({'query': query} if is_search else {}))
+                       **({'query': query} if is_search else history_query))
             output: Mapping[str, Any]
             try:
                 if search_started and write:
@@ -206,17 +209,30 @@ async def run_tool_turn(
                     output = await registry.invoke(call, context)
             except (ToolValidationError, RuntimeError) as error:
                 # Bad arguments or a stale id are the model's to fix; policy denials still end the run.
-                output = {'error': str(error)[:300], 'untrusted': True}
+                output = {'error': 'HISTORY_UNAVAILABLE' if is_history else str(error)[:300], 'untrusted': True}
             if 'error' not in output:
                 await emit('ai.tool.approved', tool=call.name, call_id=call.call_id)
-            search_code = str(output.get('error', '')).split(':', 1)[0]
-            search_event = ({'error': search_code if search_code in {'POLICY_DENIED', 'BUDGET_EXCEEDED', 'SEARCH_UNAVAILABLE'} else 'TOOL_ERROR'} if 'error' in output else {'status': 'ok', 'sources': search_trace_sources}) if is_search else output
+            event_result: Mapping[str, Any] = output
+            tool_refs: tuple[tuple[str, int], ...] = ()
+            if is_history:
+                tool_refs = history_memory_refs(output.get('memory_refs')) if 'error' not in output else ()
+                output = {key: value for key, value in output.items() if key != 'memory_refs'}
+                history_messages = output.get('messages')
+                event_result = ({'error': 'HISTORY_UNAVAILABLE'} if 'error' in output else
+                                {'status': 'ok', 'count': len(history_messages) if isinstance(history_messages, list) else 0})
+            elif is_search:
+                search_code = str(output.get('error', '')).split(':', 1)[0]
+                event_result = {'status': 'ok', 'sources': search_trace_sources}
+                if 'error' in output:
+                    event_result = {'error': search_code if search_code in {
+                        'POLICY_DENIED', 'BUDGET_EXCEEDED', 'SEARCH_UNAVAILABLE',
+                    } else 'TOOL_ERROR'}
             await emit('ai.tool.result', tool=call.name, call_id=call.call_id,
-                       result=search_event,
+                       result=event_result,
                        **({'query': query} if is_search else {}))
             calls.append(call)
             outputs.append(ChatMessage('tool', json.dumps(output, ensure_ascii=False, default=str),
-                                       untrusted=True, tool_call_id=call.call_id))
+                                       untrusted=True, memory_refs=tool_refs, tool_call_id=call.call_id))
         if not outputs or step == max_steps:
             break
         # The model must see its own calls next to their results, or it repeats them on the next step.

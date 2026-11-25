@@ -12,6 +12,7 @@ from typing import Annotated, Any, Literal
 from urllib.parse import parse_qsl
 from uuid import UUID
 
+from app.ai.chat_history import HISTORY_TOOL, MAX_HISTORY_MESSAGES, history_event_query
 from app.ai.crypto import decrypt_secret
 from app.ai.memory import active_memory_versions
 from app.ai.memory_models import OwnerMemoryFact
@@ -56,6 +57,7 @@ TOOL_LABELS = {
     "remember": "Сохранение факта",
     "forget": "Удаление факта",
     "web_search": "Поиск в интернете",
+    HISTORY_TOOL: "Чтение истории чата",
 }
 EVENT_TYPES = ("ai.run.started", "ai.run.completed", "ai.tool.requested", "ai.tool.result")
 
@@ -255,9 +257,19 @@ def _project_step(steps: dict[str, TraceStep], event: AIRunEvent) -> None:
         if step is not None or len(steps) >= MAX_STEPS:
             return
         query = event.payload.get("query")
+        if tool == HISTORY_TOOL:
+            metadata = history_event_query({
+                key: event.payload[key] for key in ("start_at", "end_at", "before_message_id") if key in event.payload
+            })
+            details = []
+            if "start_at" in metadata:
+                details.append(f'{metadata["start_at"]} — {metadata["end_at"]}')
+            if "before_message_id" in metadata:
+                details.append(f'До сообщения {metadata["before_message_id"]}')
+            query = "\n".join(details) or None
         steps[call_id] = TraceStep(
             id=event.id, kind=tool, label=TOOL_LABELS[tool],
-            query=query[:2000] if tool == "web_search" and isinstance(query, str) else None,
+            query=query[:2000] if tool in {"web_search", HISTORY_TOOL} and isinstance(query, str) else None,
             status="pending",
         )
     elif step is not None and step.kind == tool and step.status == "pending":
@@ -266,6 +278,10 @@ def _project_step(steps: dict[str, TraceStep], event: AIRunEvent) -> None:
             step.status = "failed" if "error" in result else "completed"
             if tool == "web_search" and step.status == "completed":
                 step.sources = _sources(result.get("sources"))
+            elif tool == HISTORY_TOOL and step.status == "completed":
+                count = result.get("count")
+                if type(count) is int and 0 <= count <= MAX_HISTORY_MESSAGES:
+                    step.label = f"{step.label} · сообщений: {count}"
 
 
 @router.get(f"{PAGE}/{{run_id}}", response_model=AnswerTraceOut)

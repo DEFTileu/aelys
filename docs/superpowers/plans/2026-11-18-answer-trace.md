@@ -1,6 +1,7 @@
 # «Как я ответил»: мини-приложение Telegram и чтение истории чата
 
-**Статус:** задание владельца, 2026-11-18. Кода нет. Это единственный источник
+**Статус:** обе части реализованы и проверены локально. Deploy и живая приёмка ожидают владельца.
+Исходное задание владельца от 2026-11-18. Это единственный источник
 требований для ветки `codex/answer-trace`; план исполнения дописать ниже, в
 раздел «План исполнения», и работать по нему.
 
@@ -209,15 +210,15 @@ constant-time. Затем проверить auth_date (не будущее, в�
 
 ### Task 6: история чата (новая ветка после части 1)
 
-- [ ] Переиспользовать фильтрацию `conversation_history` в общем helper; не
+- [x] Переиспользовать фильтрацию `conversation_history` в общем helper; не
   возвращать незавершённые вопросы, stale/deleted/expired memory provenance.
-- [ ] Добавить типизированный read_chat_history по TelegramPersonalJob/integration
+- [x] Добавить типизированный read_chat_history по TelegramPersonalJob/integration
   связи, с периодом или before_message_id, bounded limit и обратной пагинацией.
   Никакого отбора по названию; только owner personal bot, без Web/Business.
-- [ ] Зарегистрировать только personal tool через существующий Policy Engine;
+- [x] Зарегистрировать только personal tool через существующий Policy Engine;
   untrusted результат, сохранение memory refs и проверка актуальности перед LLM.
   В событии только период/счётчик, без текстов. Одна строка инструкции.
-- [ ] Тесты прошлой беседы, isolation, пагинации, stale memory и create_task после
+- [x] Тесты прошлой беседы, isolation, пагинации, stale memory и create_task после
   history; противоположная модель проверяет код, затем suite/ruff и коммит.
 
 **Review focus:** неизвестные/повреждённые payload событий, длинный Telegram ответ,
@@ -273,3 +274,68 @@ node --test tests/answer_trace_ui.test.cjs
 
 Чистый общий прогон части 1: **1844 passed, 184 skipped, 1 warning**, 235.09 s.
 Итоговое integration review GPT-6.2 Sol — APPROVED; live gates остаются открыты.
+
+### План исполнения части 2 — уточнённые интерфейсы
+
+Ветка `codex/answer-trace-history` создана от `32054d51`. GPT-6.1 Sol владеет
+`chat_support.py` и тестами общего `filter_history_messages`; GPT-6.2 Sol —
+инструментом, регистрацией, loop provenance и trace-проекцией. Проверяют друг друга.
+Общий helper принимает сообщения в обратном `(created_at,id)` порядке и сохраняет
+его; исключение текущего вопроса применяется только при обычной сборке контекста.
+Пагинация history tool исключает текущий вопрос и сохраняет границы при отфильтрованных
+сообщениях. Строка инструкции добавляется только Telegram с tools, не voice/Web.
+Регистрация явно получает интеграцию, потому что personal_tool_registry используется
+также Web/voice. Доступ и provenance связываются с Telegram jobs/runs, не заголовками.
+
+### Проверки части 2
+
+- Общий helper связывает новый ответ с вопросом по completion.reply_message_id
+  и AIRun.prompt_message_id; legacy fallback использует временной порядок.
+  После review исправлены смешение Web/Telegram в одной беседе и повторный
+  коррелированный поиск по всей истории. Регрессия проверяет 3000 чередующихся
+  сообщений под ограничением SQLite VM steps.
+- Инструмент: период [start_at,end_at) в UTC или exclusive before_message_id;
+  limit 1–100 (20 по умолчанию), до 1200 символов на сообщение и 24000 байт
+  записей на страницу. Курсор сохраняется и для страниц, очищенных фильтром.
+- Старые ответы без reply_message_id включаются только при единственном
+  кандидате в интервале completed_at → completion event и отсутствии
+  пересекающегося run. Неоднозначные старые ответы пропускаются. Историческая
+  привязка — integration_id; схема не хранит отдельную историю физических bot/user
+  IDs при перенастройке одной интеграции.
+- Targeted filter/tool/trace: 72 passed; расширенный worker regression:
+  182 passed, 1 skipped (PostgreSQL opt-in). Ruff всего backend и Bandit изменённых
+  production-файлов проходят. Mypy: только две исходные ошибки companion/channel.py.
+- Review выявило потерю answer-derived memory refs у страницы только с вопросом.
+  Общий helper теперь возвращает effective refs отдельно от ORM rows, инструмент
+  и обычный conversation_history используют их для refresh. Реальный worker test
+  проверяет отзыв памяти между completions, удаление history/derived frames и
+  сохранение использованного provenance у ответа. Fix-targeted: 116 passed.
+- Первый общий прогон: 1894 passed, 184 skipped, 1 failed — старое ожидание
+  orphan tool result при отзыве памяти. Тест теперь проверяет обе части пары
+  call/result и обнуление счётчика зависимой истории. Повторный чистый прогон: **1897 passed, 184 skipped, 1 warning**, 236.93 s.
+- UI регрессия с официальным SDK: 19 passed, 0 skipped. OpenAPI совпадает с app.
+- Перекрёстное review: helper GPT-6.1 Sol проверен GPT-6.2 Sol; инструмент
+  GPT-6.2 Sol проверен GPT-6.1 Sol. Все выявленные P1/P2 исправлены и повторно
+  проверены. Финальное integration review GPT-6.2 Sol — APPROVED.
+- Коммиты части 2: `69cbeb23` — общий фильтр,
+  `4b55970` — инструмент/контракт/provenance и regression tests.
+- Миграции не требуются и не запускались. Ветки сохранены локально; push/merge,
+  deploy, BotFather и живые Telegram/provider запросы не выполнялись.
+
+Команды проверки части 2 (из backend, зависимости проекта установлены):
+
+```sh
+python -m pytest -q tests
+python -m pytest -q tests/test_read_chat_history.py tests/test_answer_trace_history_filter.py \
+  tests/test_answer_trace_delivery.py tests/test_telegram_answer_trace.py \
+  tests/test_telegram_memory.py tests/test_telegram_personal_dialogue.py \
+  tests/ai_automation/test_web_unanswered_history.py
+python -m ruff check app tests
+```
+
+Перед живой приёмкой владелец включает Main Mini App в BotFather и указывает
+публичный HTTPS `/telegram/answer-trace`, затем отдельно разрешает deploy и
+проверку на реальном Telegram. Ожидается: открыть ссылку под личным ответом,
+увидеть шаги/источники и повторить вопрос о прошлой беседе; запись задачи из
+истории выполняется только по текущей прямой просьбе. PostgreSQL opt-in проверки
+требуют отдельной тестовой БД; они не заменены утверждением о production readiness.
