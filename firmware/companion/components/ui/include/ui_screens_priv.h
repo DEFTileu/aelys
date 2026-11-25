@@ -207,3 +207,9 @@ void scr_ask_set(ask_view_t v);
 void scr_ask_question(const char *text);                  /* shown in quotes while it thinks */
 void scr_ask_reply(const char *text);                     /* shown while it answers */
 void scr_ask_set_level_source(uint8_t (*fn)(void));       /* the microphone level 0-255 the bars follow; NULL = still */
+
+#ifndef ESP_PLATFORM
+/* Host tests submit through the same serialized action path as a gesture. */
+bool ui_test_action(act_kind_t k, const char *target);
+void ui_test_reset_actions(void);
+#endif

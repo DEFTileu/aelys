@@ -98,7 +98,7 @@ static uint32_t token_at, renew_tried; /* when the socket's token was signed for
 static uint8_t ui_posted;
 
 /* sign-in scratch, link task only (kept off the 6 KB stack, which identity_sign needs 4.3 KB of) */
-static struct { char dev[40], url[129], cid[40], nonce[80], msg[160], sig[87]; link_act_t expired[LINK_ACT_MAX]; } ctx;
+static struct { char dev[40], url[129], cid[40], nonce[80], msg[160], sig[87]; } ctx;
 
 static uint32_t ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 static bool due(uint32_t deadline) { return (int32_t)(ms() - deadline) >= 0; }
@@ -158,13 +158,6 @@ static void sync_ui(void)
     if (v == ui_posted) return;
     ui_event_t ev = {.type = UI_EV_LINK, .len = 1, .data = {v}};
     if (lv_port_post(&ev)) ui_posted = v; /* a full queue is retried on the next tick */
-}
-
-static void post_action_result(act_kind_t k, bool ok, const char *err)
-{
-    ui_event_t ev = {.type = UI_EV_ACTION, .len = 26, .data = {(uint8_t)k, ok}};
-    strlcpy((char *)&ev.data[2], ok ? "" : (err && *err ? err : "ACTION_FAILED"), 24);
-    ui_post(&ev);
 }
 
 static void publish_snapshot(const snap_t *s, bool live)
@@ -252,18 +245,25 @@ static void send_metrics(void)
     link_send_raw(link_mem->tx, proto_metrics(link_mem->tx, sizeof link_mem->tx, &m));
 }
 
+static bool lookup_supported;
+
 static void send_actions(void)
 {
     for (;;) {
         /* Pairing may change on the net task. Its commit must not pass an in-flight send. */
         xSemaphoreTake(pair_send_mu, portMAX_DELAY);
         xSemaphoreTake(act_mu, portMAX_DELAY);
-        const link_act_t *a = ws_online ? link_acts_next_unsent(&acts) : NULL;
+        const link_act_t *a = ws_online && !pair_transition_pending && link_deps.lost_on && !link_deps.lost_on() ? link_acts_next_unsent(&acts) : NULL;
         link_act_t cur;
         if (a) cur = *a;
         xSemaphoreGive(act_mu);
         if (!a) { xSemaphoreGive(pair_send_mu); return; }
         size_t n = proto_action(link_mem->tx, sizeof link_mem->tx, cur.id, cur.kind, cur.target[0] ? cur.target : NULL, NULL);
+        if (n) {
+            xSemaphoreTake(act_mu, portMAX_DELAY);
+            link_acts_attempted(&acts, cur.id);
+            xSemaphoreGive(act_mu);
+        }
         bool sent = link_send_raw(link_mem->tx, n);
         if (sent) {
             xSemaphoreTake(act_mu, portMAX_DELAY);
@@ -275,15 +275,32 @@ static void send_actions(void)
     }
 }
 
-bool link_post_action(act_kind_t k, const char *target_id)
+static void send_lookups(void)
 {
-    if (!q) return false;
+    xSemaphoreTake(pair_send_mu, portMAX_DELAY);
+    xSemaphoreTake(act_mu, portMAX_DELAY);
+    const link_act_t *a = ws_online && lookup_supported && !pair_transition_pending &&
+        link_deps.lost_on && !link_deps.lost_on() ? link_acts_next_lookup(&acts, ms()) : NULL;
+    char id[37];
+    if (a) { memcpy(id, a->id, sizeof id); link_acts_lookup_attempted(&acts, id, ms()); }
+    xSemaphoreGive(act_mu);
+    if (a) {
+        size_t n = proto_action_lookup(link_mem->tx, sizeof link_mem->tx, id);
+        link_send_raw(link_mem->tx, n);
+    }
+    xSemaphoreGive(pair_send_mu);
+}
+
+bool link_post_action(act_kind_t k, const char *target_id, char out_id[37])
+{
+    if (!q || !out_id) return false;
     uint8_t r[16];
     char id[37];
     esp_fill_random(r, sizeof r);
     uuid4_format(r, id);
     if (xSemaphoreTake(act_mu, 0) != pdTRUE) return false;
-    bool ok = ws_online && link_acts_add(&acts, id, k, target_id, ms());
+    bool ok = ws_online && !pair_transition_pending && link_deps.lost_on && !link_deps.lost_on() && link_acts_add(&acts, id, k, target_id, ms());
+    if (ok) memcpy(out_id, id, sizeof id);
     xSemaphoreGive(act_mu);
     if (ok) link_q_post(LQ_ACTION, 0, 0, 0); /* if the queue is full, tick() sends it within 100 ms anyway */
     return ok;
@@ -535,7 +552,7 @@ static void on_online(void)
     link_send_wifi_state();
     xSemaphoreTake(act_mu, portMAX_DELAY);
     ws_online = !pair_transition_pending;
-    link_acts_unsend_all(&acts, ms()); /* every open action goes out again with its own id */
+    link_acts_unsend_all(&acts, ms());
     xSemaphoreGive(act_mu);
     /* The tick sends actions after the frame handler releases pair_send_mu. */
 }
@@ -543,6 +560,7 @@ static void on_online(void)
 static void on_offline(void)
 {
     if (voice_id[0]) { voice_stop(true, false); voice_post(VOICE_UI_ERROR, "OFFLINE"); }
+    lookup_supported = false;
     xSemaphoreTake(act_mu, portMAX_DELAY);
     ws_online = false;
     link_acts_unsend_all(&acts, ms());
@@ -601,7 +619,17 @@ static void handle_frame_locked(int slot, int len)
     bool ok = proto_parse(link_mem->rx[slot], (size_t)len, m);
     link_ws_slot_free(slot);
     if (m->type == MSG_COMMAND) { /* a bad-args command still has its id: it gets BAD_ARGS */
+        bool old_lost = link_deps.lost_on && link_deps.lost_on();
+        uint32_t old_rev = link_deps.lost_rev ? link_deps.lost_rev() : 0;
         if (fsm.st == LS_ONLINE) link_cmd_handle(m, ok);
+        bool new_lost = link_deps.lost_on && link_deps.lost_on();
+        uint32_t new_rev = link_deps.lost_rev ? link_deps.lost_rev() : 0;
+        if (old_lost != new_lost || old_rev != new_rev) {
+            /* Actions not yet attempted must not cross a lost-mode boundary. */
+            xSemaphoreTake(act_mu, portMAX_DELAY);
+            link_acts_unsend_all(&acts, ms());
+            xSemaphoreGive(act_mu);
+        }
         return;
     }
     if (!ok) { ESP_LOGW(TAG, "bad frame ignored"); return; }
@@ -613,6 +641,7 @@ static void handle_frame_locked(int slot, int len)
             dispatch(LE_WS_CLOSED, 0);
             return;
         }
+        lookup_supported = m->u.ready.action_lookup;
         dispatch(LE_WS_OPEN, 0);
         if (fsm.st == LS_ONLINE) on_online();
         return;
@@ -649,12 +678,16 @@ static void handle_frame_locked(int slot, int len)
         publish_snapshot(&link_mem->snap, true);
         snap_dirty = true;
         break;
-    case MSG_ACTION_RESULT: {
-        act_kind_t k;
+    case MSG_ACTION_LOOKUP_RESULT:
+        if (!lookup_supported || !m->u.lookup.found) break;
         xSemaphoreTake(act_mu, portMAX_DELAY);
-        bool found = link_acts_done(&acts, m->id, &k);
+        link_acts_result(&acts, m->id, m->u.lookup.ok, m->u.lookup.error);
         xSemaphoreGive(act_mu);
-        if (found) post_action_result(k, m->u.result.ok, m->u.result.error);
+        break;
+    case MSG_ACTION_RESULT: {
+        xSemaphoreTake(act_mu, portMAX_DELAY);
+        link_acts_result(&acts, m->id, m->u.result.ok, m->u.result.error);
+        xSemaphoreGive(act_mu);
         break;
     }
     case MSG_ERROR: /* against a v1 server, wifi_state draws UNKNOWN_MESSAGE: only the code is logged */
@@ -824,7 +857,7 @@ static void tick(void)
             xSemaphoreGive(pair_send_mu);
         }
     }
-    if (fsm.st == LS_ONLINE) send_actions(); /* anything the queue missed */
+    if (fsm.st == LS_ONLINE) { send_actions(); send_lookups(); }
     if (fsm.st == LS_ONLINE && !voice_id[0] && ms() - token_at >= RENEW_MS && ms() - renew_tried >= RENEW_RETRY_MS) renew_token();
     if (fsm.st == LS_ONLINE && link_deps.lost_on && link_deps.lost_rev &&
         (!character_retry || (int32_t)(ms() - character_retry_at) >= 0)) {
@@ -843,10 +876,22 @@ static void tick(void)
         }
         xSemaphoreGive(pair_send_mu);
     }
+    /* Pair commits cannot pass publication; a full UI queue leaves the slot intact. */
+    xSemaphoreTake(pair_send_mu, portMAX_DELAY);
     xSemaphoreTake(act_mu, portMAX_DELAY);
-    size_t k = link_acts_expire(&acts, ms(), ctx.expired);
+    if (!pair_transition_pending) {
+        link_acts_stage_expired(&acts, ms());
+        if (link_deps.lost_on && !link_deps.lost_on()) {
+            const ui_event_t *ev;
+            while ((ev = link_acts_pending_result(&acts)) != NULL) {
+                char id[37]; memcpy(id, &ev->data[26], 36); id[36] = 0;
+                if (!lv_port_post(ev)) break;
+                link_acts_delivered(&acts, id);
+            }
+        }
+    }
     xSemaphoreGive(act_mu);
-    for (size_t i = 0; i < k; i++) post_action_result(ctx.expired[i].kind, false, ctx.expired[i].sent ? "TIMEOUT" : "OFFLINE");
+    xSemaphoreGive(pair_send_mu);
     /* Capture and save under the pairing barrier, so the current identity cannot
        change between selecting the snapshot and tagging/writing its owner. */
     xSemaphoreTake(pair_send_mu, portMAX_DELAY);

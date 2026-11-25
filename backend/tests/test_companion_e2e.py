@@ -56,7 +56,7 @@ async def test_companion_full_flow(engine):
         token = login.json()['access_token']
 
     with TestClient(app) as client, client.websocket_connect(CHANNEL, headers={'Authorization': f'Bearer {token}'}) as socket:
-        assert recv(socket) == {'type': 'ready', 'device_id': device_id}
+        assert recv(socket) == {'type': 'ready', 'device_id': device_id, 'capabilities': ['action_lookup']}
         first = next_of_type(socket, 'snapshot')
         assert first['snapshot']['next_task'] is None
 

@@ -46,7 +46,8 @@ link_pair_result_t link_pair_commit(const char *device_id);
 
 /* ui task: queue an action for the server. False when the board is not online (the UI shows "No connection") or four
  * actions are already waiting. The answer arrives as UI_EV_ACTION. target_id: notification or task id, NULL for focus.* */
-bool link_post_action(act_kind_t k, const char *target_id);
+/* out_id must have room for 37 bytes; written only on success. */
+bool link_post_action(act_kind_t k, const char *target_id, char out_id[37]);
 /* UI task: bounded atomic publication, never waits for network or queue capacity. */
 void link_post_character(character_mood_t mood, character_reason_t why, uint32_t lost_rev, uint32_t identity);
 /* Link task only, at pairing reset: fence status from the old identity. */

@@ -14,6 +14,8 @@
 #include "src/misc/lv_text_private.h" /* lv_text_encoded_next */
 #include "ui_screens_priv.h"
 
+void ui_test_action_allocation_fail(bool fail);
+
 #define R 233 /* display radius, px */
 
 static void fill_w(char *dst, size_t cap)
@@ -477,20 +479,43 @@ static void close_focus(void) { btn(BTN_LOW); swipe(UI_EV_SWIPE_RIGHT); sim_step
 static void link_state(uint8_t st) { sim_post(UI_EV_LINK, &st, 1); }
 
 static struct { int n; act_kind_t kind; char id[40]; bool accept; } sink;
-static bool test_sink(act_kind_t k, const char *id)
+static unsigned next_action_id;
+static struct { act_kind_t kind; char uuid[37]; bool pending; } sent[2048];
+static unsigned sent_count;
+static bool test_sink(act_kind_t k, const char *id, char out_id[37])
 {
     if (!sink.accept) return false;
     sink.n++;
     sink.kind = k;
     snprintf(sink.id, sizeof sink.id, "%s", id ? id : "");
+    snprintf(out_id, 37, "00000000-0000-4000-8000-%012u", ++next_action_id);
+    CHECK(sent_count < sizeof sent / sizeof sent[0]);
+    if (sent_count < sizeof sent / sizeof sent[0]) {
+        sent[sent_count].kind = k;
+        memcpy(sent[sent_count].uuid, out_id, 37);
+        sent[sent_count++].pending = true;
+    }
     return true;
+}
+
+static void action_result_id(act_kind_t k, bool ok, const char *err, const char *id)
+{
+    uint8_t d[62] = { (uint8_t)k, ok };
+    if (err) strncpy((char *)d + 2, err, 23);
+    memcpy(d + 26, id, 36);
+    sim_post(UI_EV_ACTION, d, sizeof d);
 }
 
 static void action_result(act_kind_t k, bool ok, const char *err)
 {
-    uint8_t d[26] = { (uint8_t)k, ok };
-    if (err) strncpy((char *)d + 2, err, 23);
-    sim_post(UI_EV_ACTION, d, sizeof d);
+    unsigned i;
+    for (i = 0; i < sent_count; ++i) if (sent[i].pending && sent[i].kind == k) break;
+    if (i == sent_count) {
+        if (!ui_test_action(k, k == ACT_TASK_COMPLETE ? "test-task" : NULL)) return;
+        i = sent_count - 1;
+    }
+    sent[i].pending = false;
+    action_result_id(k, ok, err && !strcmp(err, "TIMEOUT") ? "REJECTED" : err, sent[i].uuid);
 }
 
 static snap_t fx;
@@ -1346,6 +1371,7 @@ static void test_focus_shots(void)
     tap_at(233, 300);                                /* a tap starts */
     CHECK_EQ(sink.n, 1);
     CHECK_EQ(sink.kind, ACT_FOCUS_START);
+    action_result(ACT_FOCUS_START, true, NULL);       /* first request resolved */
     sink.n = 0;
     btn(BTN_TOP);                                    /* so does the top key */
     CHECK_EQ(sink.n, 1);
@@ -3518,52 +3544,236 @@ static void test_voice_flow(void)
     close_focus(); ui_set_voice_hooks(NULL);
 }
 
+/* Results must affect only the operation admitted with the same UUID. */
+static void test_correlated_out_of_order_and_unknown(void)
+{
+    fresh_fx(); swipe(UI_EV_SWIPE_RIGHT); tap_label("3 new");
+    tap_label("Ship pairing ADR"); tap_label("Design review");
+    CHECK_EQ(sent_count, 2);
+    CHECK(ui_marked_read("n-1") && ui_marked_read("n-2"));
+    action_result_id(ACT_TASK_COMPLETE, true, NULL, sent[1].uuid); /* wrong kind cannot consume it */
+    CHECK(ui_marked_read("n-1") && ui_marked_read("n-2"));
+    action_result_id(ACT_NOTIFICATION_READ, false, "REJECTED", sent[1].uuid);
+    CHECK(ui_marked_read("n-1") && !ui_marked_read("n-2"));
+    action_result_id(ACT_NOTIFICATION_READ, true, NULL, sent[0].uuid);
+    CHECK(ui_marked_read("n-1"));
+    btn(BTN_LOW); swipe(UI_EV_SWIPE_LEFT);
+    fresh_fx(); swipe(UI_EV_SWIPE_RIGHT); tap_label("Ship pairing ADR");
+    unsigned task = sent_count - 1; int count = sink.n;
+    action_result_id(ACT_TASK_COMPLETE, false, "TIMEOUT", sent[task].uuid);
+    fx.has_task = false; post_fx(); fresh_fx(); /* snapshots do not resolve the timeout */
+    tap_label("Ship pairing ADR"); CHECK_EQ(sink.n, count);
+    action_result_id(ACT_TASK_COMPLETE, false, "REJECTED", sent[task].uuid);
+    tap_label("Ship pairing ADR"); CHECK_EQ(sink.n, count + 1);
+    action_result_id(ACT_TASK_COMPLETE, true, NULL, sent[sent_count - 1].uuid);
+    CHECK(ui_marked_done("t-101"));
+    sink.accept = false;
+    CHECK(!ui_test_action(ACT_FOCUS_START, NULL));
+    CHECK(ui_marked_done("t-101")); /* a refused request cannot erase a known outcome */
+    sink.accept = true; swipe(UI_EV_SWIPE_LEFT); fresh_fx();
+}
+
+static void test_stale_replies_and_capacity(void)
+{
+    fresh_fx(); ui_set_character_cue_sink(capture_cue); cue_count = 0;
+    CHECK(ui_test_action(ACT_TASK_COMPLETE, "old-task"));
+    unsigned old = sent_count - 1;
+    post_lost(1); post_lost(0);
+    action_result_id(ACT_TASK_COMPLETE, false, "TIMEOUT", sent[old].uuid);
+    CHECK(!ui_test_action(ACT_TASK_COMPLETE, "old-task")); /* stale timeout remains unknown */
+    action_result_id(ACT_TASK_COMPLETE, true, NULL, sent[old].uuid);
+    CHECK_EQ(cue_count, 0);
+    CHECK(ui_test_action(ACT_TASK_COMPLETE, "another-task"));
+    old = sent_count - 1;
+    const uint8_t identity[] = {0, 0, 0, 0, 0, 121, 0, 0, 0};
+    sim_post(UI_EV_LOST, identity, sizeof identity);
+    action_result_id(ACT_TASK_COMPLETE, true, NULL, sent[old].uuid);
+    CHECK_EQ(cue_count, 0);
+    fresh_fx();
+    for (int i = 0; i < 4; ++i) {
+        char target[10]; snprintf(target, sizeof target, "target-%d", i);
+        CHECK(ui_test_action(ACT_NOTIFICATION_READ, target));
+        action_result_id(ACT_NOTIFICATION_READ, false, "TIMEOUT", sent[sent_count - 1].uuid);
+    }
+    int n = sink.n;
+    CHECK(!ui_test_action(ACT_FOCUS_START, NULL)); CHECK_EQ(sink.n, n);
+    action_result_id(ACT_NOTIFICATION_READ, true, NULL, sent[sent_count - 1].uuid);
+    CHECK(ui_test_action(ACT_FOCUS_START, NULL));
+    ui_set_character_cue_sink(NULL); fresh_fx();
+}
+
+static void test_repair_frees_four_pending_actions(void)
+{
+    for (int i = 0; i < 4; ++i) {
+        char target[16]; snprintf(target, sizeof target, "pending-%d", i);
+        CHECK(ui_test_action(ACT_NOTIFICATION_READ, target));
+    }
+    unsigned old = sent_count - 1;
+    CHECK(!ui_test_action(ACT_FOCUS_START, NULL));
+    const uint8_t identity[] = {0, 0, 0, 0, 0, 211, 0, 0, 0};
+    sim_post(UI_EV_LOST, identity, sizeof identity);
+    CHECK(ui_test_action(ACT_FOCUS_START, NULL));
+    action_result_id(ACT_NOTIFICATION_READ, false, "REJECTED", sent[old].uuid);
+    CHECK(!ui_test_action(ACT_FOCUS_START, NULL));
+}
+
+static void test_lost_cycle_failure_clears_only_its_marks(void)
+{
+    fresh_fx(); swipe(UI_EV_SWIPE_RIGHT);
+    tap_label("Ship pairing ADR"); unsigned task = sent_count - 1;
+    tap_label("3 new"); tap_label("Ship pairing ADR"); unsigned notice = sent_count - 1;
+    tap_label("Design review");
+    CHECK(ui_marked_done("t-101") && ui_marked_read("n-1") && ui_marked_read("n-2"));
+    ui_set_character_cue_sink(capture_cue); cue_count = 0;
+    post_lost(1); post_lost(0);
+    action_result_id(ACT_TASK_COMPLETE, false, "REJECTED", sent[task].uuid);
+    action_result_id(ACT_NOTIFICATION_READ, false, "REJECTED", sent[notice].uuid);
+    CHECK(!ui_marked_done("t-101") && !ui_marked_read("n-1"));
+    CHECK(ui_marked_read("n-2")); CHECK_EQ(cue_count, 0);
+    ui_set_character_cue_sink(NULL);
+    fresh_fx();
+}
+
+static void test_old_identity_failure_preserves_new_same_target_mark(void)
+{
+    fresh_fx(); swipe(UI_EV_SWIPE_RIGHT); tap_label("Ship pairing ADR");
+    unsigned old = sent_count - 1; CHECK(ui_marked_done("t-101"));
+    const uint8_t identity[] = {0, 0, 0, 0, 0, 212, 0, 0, 0};
+    sim_post(UI_EV_LOST, identity, sizeof identity);
+    fresh_fx(); swipe(UI_EV_SWIPE_RIGHT); tap_label("Ship pairing ADR");
+    CHECK(ui_marked_done("t-101"));
+    action_result_id(ACT_TASK_COMPLETE, false, "REJECTED", sent[old].uuid);
+    CHECK(ui_marked_done("t-101"));
+    swipe(UI_EV_SWIPE_LEFT); fresh_fx();
+}
+
+static void test_replayed_stale_failure_preserves_new_same_target_mark(void)
+{
+    fx.has_task = false; post_fx();
+    fresh_fx(); swipe(UI_EV_SWIPE_RIGHT); tap_label("Ship pairing ADR");
+    unsigned old = sent_count - 1;
+    post_lost(1); post_lost(0);
+    fx.has_task = false; post_fx(); /* snapshot prunes the original mark */
+    action_result_id(ACT_TASK_COMPLETE, true, NULL, sent[old].uuid);
+    fresh_fx(); swipe(UI_EV_SWIPE_RIGHT); tap_label("Ship pairing ADR");
+    CHECK(ui_marked_done("t-101"));
+    action_result_id(ACT_TASK_COMPLETE, false, "REJECTED", sent[old].uuid);
+    CHECK(ui_marked_done("t-101"));
+    swipe(UI_EV_SWIPE_LEFT); fresh_fx();
+}
+
+static void test_action_ledger_allocation_failure_fails_closed(void)
+{
+    ui_test_action_allocation_fail(true);
+    int before = sink.n;
+    CHECK(!ui_test_action(ACT_FOCUS_START, NULL));
+    CHECK_EQ(sink.n, before);
+    const uint8_t identity[] = {0, 0, 0, 0, 0, 213, 0, 0, 0};
+    sim_post(UI_EV_LOST, identity, sizeof identity);
+    post_lost(1); post_lost(0);
+    action_result_id(ACT_FOCUS_START, true, NULL, "00000000-0000-4000-8000-000000000001");
+    ui_test_reset_actions();
+    CHECK(!ui_test_action(ACT_FOCUS_START, NULL));
+    CHECK_EQ(sink.n, before);
+    ui_test_action_allocation_fail(false);
+    CHECK(ui_test_action(ACT_FOCUS_START, NULL));
+}
+
 int main(void)
 {
     sim_init();
+    ui_test_reset_actions(); sent_count = 0;
     test_flow();
+    ui_test_reset_actions(); sent_count = 0;
     test_hold_ring();
+    ui_test_reset_actions(); sent_count = 0;
     test_wifi_status();
+    ui_test_reset_actions(); sent_count = 0;
     test_short_data();
+    ui_test_reset_actions(); sent_count = 0;
     test_ice_defaults();
+    ui_test_reset_actions(); sent_count = 0;
     test_ice_relation_and_show_bits();
+    ui_test_reset_actions(); sent_count = 0;
     test_lost_fields_follow_show_bits();
+    ui_test_reset_actions(); sent_count = 0;
     test_cyrillic_and_kazakh_render();
+    ui_test_reset_actions(); sent_count = 0;
     test_max_length();
+    ui_test_reset_actions(); sent_count = 0;
     test_home_paired_line();
+    ui_test_reset_actions(); sent_count = 0;
     test_pair_screen_shot();
+    ui_test_reset_actions(); sent_count = 0;
     test_first_boot_welcome();
     test_companion_setup();
+    ui_test_reset_actions(); sent_count = 0;
+    test_correlated_out_of_order_and_unknown();
+    ui_test_reset_actions(); sent_count = 0;
+    test_stale_replies_and_capacity();
+    ui_test_reset_actions(); sent_count = 0;
+    test_repair_frees_four_pending_actions();
+    ui_test_reset_actions(); sent_count = 0;
+    test_lost_cycle_failure_clears_only_its_marks();
+    ui_test_reset_actions(); sent_count = 0;
+    test_old_identity_failure_preserves_new_same_target_mark();
+    ui_test_reset_actions(); sent_count = 0;
+    test_replayed_stale_failure_preserves_new_same_target_mark();
+    ui_test_reset_actions(); sent_count = 0;
+    test_action_ledger_allocation_failure_fails_closed();
+    ui_test_reset_actions(); sent_count = 0;
     test_home_larger_face();
     test_home_bigger_eyes();
     test_level_event_turns_home_faces_only();
+    ui_test_reset_actions(); sent_count = 0;
     test_all_large_home_moods();
+    ui_test_reset_actions(); sent_count = 0;
     test_character_status_while_home_hidden();
+    ui_test_reset_actions(); sent_count = 0;
     test_lost_mode_discards_old_reaction_before_publishing_new_revision();
+    ui_test_reset_actions(); sent_count = 0;
     test_identity_change_clears_old_optimistic_marks();
+    ui_test_reset_actions(); sent_count = 0;
     test_identity_change_drops_old_snapshot_before_reporting();
+    ui_test_reset_actions(); sent_count = 0;
     test_character_cue_delivery();
+    ui_test_reset_actions(); sent_count = 0;
     test_character_tap_and_idle();
     test_character_body_and_taps();
     test_sounds();
     test_face_down_screen();
     test_power_cards();
     test_battery_moods_and_taps();
+    ui_test_reset_actions(); sent_count = 0;
     test_reconnect_does_not_interrupt_task_reaction();
+    ui_test_reset_actions(); sent_count = 0;
     test_character_reconnected();
+    ui_test_reset_actions(); sent_count = 0;
     test_character_home_integration();
+    ui_test_reset_actions(); sent_count = 0;
     test_last_task_reaction();
+    ui_test_reset_actions(); sent_count = 0;
     test_today_shot();
+    ui_test_reset_actions(); sent_count = 0;
     test_tap_sends_task_complete();
+    ui_test_reset_actions(); sent_count = 0;
     test_inbox_shot();
+    ui_test_reset_actions(); sent_count = 0;
     test_offline_shot();
     test_offline_contacts();
+    ui_test_reset_actions(); sent_count = 0;
     test_focus_shots();
+    ui_test_reset_actions(); sent_count = 0;
     test_hidden_focus_refreshes_on_entry();
+    ui_test_reset_actions(); sent_count = 0;
     test_snapshot_received_under_card_is_shown_on_entry();
+    ui_test_reset_actions(); sent_count = 0;
     test_failed_read_clears_only_that_notice();
+    ui_test_reset_actions(); sent_count = 0;
     test_done_ring_is_closed();
+    ui_test_reset_actions(); sent_count = 0;
     test_idle_screens_do_not_redraw();
+    ui_test_reset_actions(); sent_count = 0;
     test_gestures_and_lost_mode();
     test_menu_wheel();
     test_settings_screens();
@@ -3575,10 +3785,15 @@ int main(void)
     test_calendar_list();
     test_weather_screen();
     test_notice_popup();
+    ui_test_reset_actions(); sent_count = 0;
     test_lost_hint_toast_shot();
+    ui_test_reset_actions(); sent_count = 0;
     test_wifi_toast_shots();
+    ui_test_reset_actions(); sent_count = 0;
     test_find_overlay_shot();
+    ui_test_reset_actions(); sent_count = 0;
     test_find_overlay_in_lost_mode();
+    ui_test_reset_actions(); sent_count = 0;
     test_probe_never_sends_actions();
     test_voice_flow();
     return g_failed ? 1 : 0;

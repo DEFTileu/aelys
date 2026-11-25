@@ -17,20 +17,29 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from app.companion.actions import ActionIn, run_action
+from app.ai.errors import PolicyDenied
+from app.ai.models import PermissionContext, ToolCall
+from app.ai.policy import ServerPolicyEngine
+from app.companion.actions import (
+    ACTION_SCOPES,
+    BOARD_ERROR_CODES,
+    COMPANION_SCOPES,
+    ActionIn,
+    _Tool,
+    run_action,
+)
 from app.companion.character import REACTION_REASONS, CharacterStateIn
-
 from app.companion.firmware import offer_on_hello
 from app.companion.hub import hub
-from app.companion.models import CompanionState
+from app.companion.models import CompanionAction, CompanionState
 from app.companion.state import locked_state, record_ack, valid_command
 from app.companion.voice import VOICE_MAX_BYTES, run_voice_turn
 from app.core import db as core_db
 from app.core.models import AuthSession, Device
 from app.core.security import decode_token
 from fastapi import APIRouter, WebSocket
-from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import update
+from pydantic import UUID4, BaseModel, Field, ValidationError
+from sqlalchemy import select, text, update
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -41,6 +50,7 @@ OUTBOX_SIZE = 64
 AUTH_CLOSE_CODE = 4401
 DEVICE_CLOSE_CODE = 4403
 ERROR_CLOSE_CODE = 1011
+LOOKUP_SEND_TIMEOUT_SECONDS = 1.0
 
 
 class HelloContacts(BaseModel):
@@ -65,6 +75,10 @@ class MetricsIn(BaseModel):
     battery_pct: int | None = Field(default=None, ge=0, le=100)  # v1.1, optional
     charging: bool | None = None
     heap_at_connect_min: int | None = Field(default=None, ge=0)
+
+
+class ActionLookupIn(BaseModel):
+    id: UUID4
 
 
 class CommandAckIn(BaseModel):
@@ -109,6 +123,8 @@ class _Link:
     voice: _Voice | None = None
     voice_output: Callable[[dict | bytes, _Voice], Awaitable[None]] | None = None
     voice_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    enqueue_lookup: Callable[[Callable[[], Awaitable[None]]], Awaitable[None]] | None = None
+    direct_reply: Callable[[dict], Awaitable[None]] | None = None
 
 
 async def _begin_character_session(link: _Link) -> int:
@@ -328,8 +344,101 @@ async def _auth(link: _Link, message: dict) -> None:
     await link.reply({"type": "auth_ok"})
 
 
+async def _action_lookup(link: _Link, message: dict) -> None:
+    body = ActionLookupIn.model_validate(message)
+    async def deliver() -> None:
+        await _deliver_lookup(link, message["id"], str(body.id))
+
+    if link.enqueue_lookup is None:
+        await deliver()
+    else:
+        await link.enqueue_lookup(deliver)
+
+
+async def _deliver_lookup(link: _Link, requested_id: str, action_id: str) -> None:
+    # Bound database lock acquisition as well as either response path. A stalled
+    # lookup must release lifecycle locks so revocation can make progress.
+    async with asyncio.timeout(LOOKUP_SEND_TIMEOUT_SECONDS) as deadline:
+        await _deliver_lookup_fenced(link, requested_id, action_id)
+    if deadline.expired():
+        raise TimeoutError("companion lookup timed out")
+
+
+async def _deliver_lookup_fenced(link: _Link, requested_id: str, action_id: str) -> None:
+    response: dict[str, Any] = {"type": "action_lookup_result", "id": requested_id, "found": False}
+    close_code = None
+    # A missing committed receipt contains no private data. Avoid blocking on
+    # an in-flight insert; it can commit later and a subsequent lookup may find it.
+    async with core_db.SessionLocal() as read_db:
+        exists = await read_db.scalar(select(CompanionAction.id).where(
+            CompanionAction.device_id == link.device_id, CompanionAction.owner_id == link.owner_id,
+            CompanionAction.id == action_id))
+    if exists is None:
+        code = (AUTH_CLOSE_CODE if not link.session_id or
+                (link.token_exp is not None and time.time() >= link.token_exp)
+                else await _validate(link.owner_id, link.device_id, link.session_id))
+        if code is not None:
+            await link.close(code)
+        else:
+            await (link.direct_reply or link.reply)(response)
+        return
+    async with core_db.SessionLocal() as db:
+        # SQLite has no row locks. BEGIN IMMEDIATE fences all concurrent writes.
+        # PostgreSQL locks the device even when no state exists: inserting a
+        # state row must acquire a conflicting foreign-key lock on the device.
+        dialect = db.get_bind().dialect.name
+        if dialect == "sqlite":
+            await db.execute(text("BEGIN IMMEDIATE"))
+        elif dialect != "postgresql":
+            raise RuntimeError("companion lookup requires PostgreSQL or SQLite")
+        device = (await db.execute(select(Device).where(Device.id == link.device_id)
+                                   .with_for_update())).scalar_one_or_none()
+        session = await db.get(AuthSession, link.session_id, with_for_update=True) if link.session_id else None
+        if (not session or session.revoked_at or session.owner_id != link.owner_id or
+                session.device_id != link.device_id or _expired(session.expires_at) or
+                (link.token_exp is not None and time.time() >= link.token_exp)):
+            close_code = AUTH_CLOSE_CODE
+        elif not device or device.revoked_at or device.platform != "companion" or device.owner_id != link.owner_id:
+            close_code = DEVICE_CLOSE_CODE
+        else:
+            state = await db.get(CompanionState, link.device_id, with_for_update=True)
+            if not state or not (state.lost_mode_json or {}).get("on"):
+                row = (await db.execute(select(CompanionAction).where(
+                    CompanionAction.device_id == link.device_id, CompanionAction.owner_id == link.owner_id,
+                    CompanionAction.id == action_id))).scalar_one_or_none()
+                if row and (scope := ACTION_SCOPES.get(row.kind)):
+                    try:
+                        ServerPolicyEngine().authorize(
+                            _Tool(row.kind, scope), ToolCall(name=row.kind, arguments={}),
+                            PermissionContext(actor=f"device:{link.device_id}", scopes=COMPANION_SCOPES,
+                                              policy_id="companion-device"))
+                    except PolicyDenied:
+                        pass
+                    else:
+                        result = row.result_json
+                        if (isinstance(result, dict) and set(result) <= {"ok", "error_code"}
+                                and type(result.get("ok")) is bool):
+                            code = result.get("error_code")
+                            if (code is None or (not result["ok"] and isinstance(code, str)
+                                                 and code in (BOARD_ERROR_CODES | {"VALIDATION_ERROR", "NO_ACTIVE_FOCUS",
+                                                                                   "POLICY_DENIED", "ACTION_UNKNOWN", "ACTION_FAILED"}))):
+                                response.update(found=True, ok=result["ok"])
+                                if code is not None:
+                                    response["error_code"] = code
+        if close_code is None:
+            # The callback is the actual socket writer, not an enqueue operation.
+            # A cooperative ASGI send is cancelled on timeout; rollback releases
+            # the lifecycle fence before the writer closes the channel.
+            async with asyncio.timeout(LOOKUP_SEND_TIMEOUT_SECONDS) as deadline:
+                await (link.direct_reply or link.reply)(response)
+            if deadline.expired():
+                raise TimeoutError("companion lookup send timed out")
+    if close_code is not None:
+        await link.close(close_code)
+
+
 HANDLERS: dict[str, Callable[[_Link, dict], Awaitable[None]]] = {
-    "auth": _auth, "hello": _hello, "heartbeat": _heartbeat, "metrics": _metrics, "action": _action,
+    "auth": _auth, "hello": _hello, "heartbeat": _heartbeat, "metrics": _metrics, "action": _action, "action_lookup": _action_lookup,
     "command_ack": _command_ack, "wifi_scan_result": _wifi_scan_result, "wifi_state": _wifi_state,
     "character_state": _character_state, "voice_start": _voice_start, "voice_end": _voice_end, "voice_cancel": _voice_cancel}
 
@@ -414,7 +523,7 @@ async def device_channel(websocket: WebSocket) -> None:
         return
 
     await websocket.accept()
-    outbox: asyncio.Queue[tuple[dict | bytes, asyncio.Future[None] | None, _Voice | None]] = asyncio.Queue(OUTBOX_SIZE)
+    outbox: asyncio.Queue[tuple[dict | bytes | Callable[[], Awaitable[None]], asyncio.Future[None] | None, _Voice | None]] = asyncio.Queue(OUTBOX_SIZE)
     ended = asyncio.Event()  # the writer is gone: nothing queued from now on would ever be sent
     gone = asyncio.Event()  # somebody closed the socket
 
@@ -435,6 +544,10 @@ async def device_channel(websocket: WebSocket) -> None:
         if ended.is_set():
             raise ConnectionError("channel closed")
         await outbox.put((message, None, voice))
+    async def enqueue_lookup(deliver: Callable[[], Awaitable[None]]) -> None:
+        if ended.is_set():
+            raise ConnectionError("channel closed")
+        await outbox.put((deliver, None, None))
 
     async def close(code: int) -> None:
         if gone.is_set():
@@ -448,7 +561,9 @@ async def device_channel(websocket: WebSocket) -> None:
             while True:
                 message, sent, voice = await outbox.get()
                 try:
-                    if voice is not None:
+                    if callable(message):
+                        await message()
+                    elif voice is not None:
                         async with link.voice_lock, core_db.SessionLocal() as db:
                             device = await db.get(Device, link.device_id, with_for_update=True, populate_existing=True)
                             state = await locked_state(db, link.device_id, link.owner_id)
@@ -496,10 +611,16 @@ async def device_channel(websocket: WebSocket) -> None:
                 await _dispatch(link, event.get("text"))
 
     link = _Link(device_id, owner_id, reply, close, session_id=session_id, token_exp=int(claims["exp"]), voice_output=voice_output)
+    async def direct_send(message: dict) -> None:
+        await websocket.send_json(message)
+
+    # Only lookup work runs on the writer and can use the direct send callback.
+    link.enqueue_lookup = enqueue_lookup
+    link.direct_reply = direct_send
     tasks: list[asyncio.Task[Any]] = [asyncio.create_task(writer())]
     unregister: Callable[[], None] | None = None
     try:
-        await reply({"type": "ready", "device_id": device_id})
+        await reply({"type": "ready", "device_id": device_id, "capabilities": ["action_lookup"]})
         # Registration order and epoch allocation must agree, even when two
         # reconnects race while one awaits database I/O.
         async with hub.connection_lock(device_id):

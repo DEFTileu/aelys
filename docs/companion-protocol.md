@@ -559,3 +559,70 @@ owner.
 ### Rollback rule
 The board marks a new app valid only after `ready` and `snapshot` were received
 and `hello` was sent; otherwise it rolls back after 10 minutes of uptime.
+
+## Experimental additive extension (v1.2, provisional)
+
+Status: PROVISIONAL; implementation is available for testing and is not an
+owner-approved replacement of the DECIDED v1 contract or a decision promotion.
+This extension adds an optional field and messages while retaining the earlier
+contract. Firmware must negotiate support on each connection.
+
+The v1 description above says to resend with a new ID after a timeout. A timeout
+does not show that the original action failed: it may still commit, so a new ID
+can duplicate an effect. This is an unresolved safety discrepancy, not a change
+in retry behavior or an approval of a revised retry policy. Likewise, the
+existing action implementation replays an already-stored result before its
+lost-mode check; the v1 statement about every action being denied in lost mode
+does not describe that replay path. The lookup rules below hide receipts.
+
+### Extended `ready`
+
+```json
+{"type":"ready","device_id":"7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d","capabilities":["action_lookup"]}
+```
+
+### `action_lookup` (optional capability)
+
+A `ready` frame may contain `capabilities`, an array of strings. Only send this
+request when it includes `action_lookup`; an absent array or absent entry means
+support is not advertised on this connection. Ignore unknown capability names.
+Older servers return `error` with `code: "UNKNOWN_MESSAGE"` for an unknown type;
+that error has no request id, so do not confuse it with a lookup result. A timeout,
+disconnect, or uncorrelated error gives no answer about the action.
+
+```json
+{"type":"action_lookup","id":"5f0c2a7e-3b1d-4c8e-9a6f-2d7b1e4c9a10"}
+```
+
+`id` must be the original action UUID v4; malformed input gets the usual
+uncorrelated `VALIDATION_ERROR`. This is a read-only query of committed ledger
+receipts for the authenticated owner and current device: it does not execute,
+retry, reserve, or write an action. A matching receipt is hidden when lost mode
+is on, current policy denies its action scope, or its kind has no known scope.
+Revoked or expired credentials close the connection. A hidden receipt is
+indistinguishable from a missing one.
+
+The reader handles frames on one socket in arrival order and sends replies in
+that order through the shared writer; snapshots and commands may interleave.
+An action handled earlier on that same connection finishes before a later lookup
+is processed, but other connections and HTTP requests can be in flight. A
+lookup observes committed state at its read, not future commits. `found: false`
+means strictly unknown: the action may not exist, may be hidden, or may still
+commit later. It does not establish failure, non-execution, or safety of any
+retry, including one with a new id. Keep the outcome unresolved until a
+receipt or other authoritative evidence arrives. Repeated queries do not alter
+this guarantee.
+
+### `action_lookup_result`
+
+The response echoes the requested `id`. `ok` is present only when `found` is
+true; `error_code` is present only for a found failed receipt when recorded.
+No receipt is encoded as `found: false`, with neither field; it is not an
+`action_result` failure.
+
+```json
+{"type":"action_lookup_result","id":"5f0c2a7e-3b1d-4c8e-9a6f-2d7b1e4c9a10","found":true,"ok":false,"error_code":"NO_ACTIVE_FOCUS"}
+```
+```json
+{"type":"action_lookup_result","id":"5f0c2a7e-3b1d-4c8e-9a6f-2d7b1e4c9a10","found":false}
+```

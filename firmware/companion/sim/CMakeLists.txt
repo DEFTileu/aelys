@@ -51,12 +51,15 @@ add_executable(companion_sim sim_main.c)
 target_link_libraries(companion_sim PRIVATE simlib)
 
 enable_testing()
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME test_boot_gate COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/boot_gate/test.py)
+set_tests_properties(test_boot_gate PROPERTIES TIMEOUT 10)
 foreach(t test_face_transform test_face_raster_visual test_face_moods test_face_geometry test_bmp test_mood_rules test_screens test_screen_damage test_cue)
     add_executable(${t} ${t}.c)
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
-foreach(t test_combo test_pwrkey test_screen_fsm test_store test_improv test_codec_util test_tribuf test_owner test_proto test_link_fsm test_link_core test_gesture test_beep test_perf_probe test_timer_core test_character test_character_report test_face_raster test_face_spring test_level test_games_core test_motion test_sfx test_voice_buf test_battery test_ota_logic test_power_fsm test_orient)
+foreach(t test_action_journal test_combo test_pwrkey test_screen_fsm test_store test_improv test_codec_util test_tribuf test_owner test_proto test_link_fsm test_link_core test_gesture test_beep test_perf_probe test_timer_core test_character test_character_report test_face_raster test_face_spring test_level test_games_core test_motion test_sfx test_voice_buf test_battery test_ota_logic test_power_fsm test_orient)
     add_executable(${t} ${t}.c)
     target_compile_options(${t} PRIVATE -Wall -Wextra)
     target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main) # example owner contacts
@@ -128,3 +131,14 @@ target_compile_definitions(test_owned_nvs PRIVATE explicit_bzero=owned_nvs_expli
 target_compile_options(test_owned_nvs PRIVATE -Wall -Wextra)
 add_test(NAME test_owned_nvs COMMAND test_owned_nvs)
 
+add_executable(test_ui_action_ledger test_ui_action_ledger.c ../components/ui/ui_action_ledger.c)
+target_include_directories(test_ui_action_ledger PRIVATE ../components/ui/include)
+target_compile_options(test_ui_action_ledger PRIVATE -Wall -Wextra)
+add_test(NAME test_ui_action_ledger COMMAND test_ui_action_ledger)
+
+# Exercise the actual NVS adapter against deterministic host failure injection.
+add_executable(test_action_journal_store action_journal_store/test.c ../main/action_journal_store.c)
+target_include_directories(test_action_journal_store PRIVATE action_journal_store/include ../main)
+target_compile_options(test_action_journal_store PRIVATE -Wall -Wextra -UNDEBUG)
+target_link_libraries(test_action_journal_store PRIVATE logic)
+add_test(NAME test_action_journal_store COMMAND test_action_journal_store)

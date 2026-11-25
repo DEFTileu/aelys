@@ -767,10 +767,32 @@ static void test_auth_frame(void)
     CHECK_EQ(proto_auth(b, 20, jwt), 0);                               /* does not fit */
 }
 
+static void test_lookup_protocol(void)
+{
+    const char *ready = "{\"type\":\"ready\",\"device_id\":\"d\",\"capabilities\":[\"other\",\"action_lookup\"]}";
+    CHECK(proto_parse(ready, strlen(ready), &g_m) && g_m.type == MSG_READY && g_m.u.ready.action_lookup);
+    ready = "{\"type\":\"ready\",\"device_id\":\"d\"}";
+    CHECK(proto_parse(ready, strlen(ready), &g_m) && !g_m.u.ready.action_lookup);
+    const char *found = "{\"type\":\"action_lookup_result\",\"id\":\"x\",\"found\":true,\"ok\":false,\"error_code\":\"DENIED\"}";
+    CHECK(proto_parse(found, strlen(found), &g_m) && g_m.type == MSG_ACTION_LOOKUP_RESULT && g_m.u.lookup.found && !g_m.u.lookup.ok && !strcmp(g_m.u.lookup.error, "DENIED"));
+    const char *unknown = "{\"type\":\"action_lookup_result\",\"id\":\"x\",\"found\":false}";
+    CHECK(proto_parse(unknown, strlen(unknown), &g_m) && !g_m.u.lookup.found);
+    const char *bad_bool = "{\"type\":\"action_lookup_result\",\"id\":\"x\",\"found\":truejunk,\"ok\":true}";
+    CHECK(!proto_parse(bad_bool, strlen(bad_bool), &g_m));
+    bad_bool = "{\"type\":\"action_result\",\"id\":\"x\",\"ok\":falsejunk}";
+    CHECK(!proto_parse(bad_bool, strlen(bad_bool), &g_m));
+    const char *bad = "{\"type\":\"action_lookup_result\",\"id\":\"x\",\"found\":true}";
+    CHECK(!proto_parse(bad, strlen(bad), &g_m));
+    char b[128];
+    CHECK(proto_action_lookup(b, sizeof b, "abc") && !strcmp(b, "{\"type\":\"action_lookup\",\"id\":\"abc\"}"));
+    CHECK(!proto_action_lookup(b, 5, "abc"));
+}
+
 int main(void)
 {
     test_auth_frame();
     test_voice();
+    test_lookup_protocol();
     test_wifi_seen_merge();
     test_parses_every_contract_example();
     test_parses_v11_examples();
