@@ -34,6 +34,7 @@ scope filtering. Compare real tool-selection accuracy, input tokens and
 end-to-end latency before changing discovery. See
 [Anthropic on tool search](https://www.anthropic.com/research/advanced-tool-use)
 and [tool evaluation](https://www.anthropic.com/research/writing-tools-for-agents).
+The follow-up adds [on-demand tool discovery](ai-tool-discovery.md).
 
 The regression cases reproduce wrong-model routing and an empty answer at the
 step limit before the fix. The test adapters exercise the protocol and use

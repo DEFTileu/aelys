@@ -10,7 +10,9 @@ JSON Schema ниже получены из personal_tool_registry с включ�
 `ai/api.py:_tool_registry` создаёт create_task/create_note. `personal_tools.py` добавляет
 чтение, изменение, календарь и memory tools. read_chat_history регистрируется только с
 integration ID и current prompt ID. Channel builder добавляет web_search и серверные scopes.
-`turn.py:run_tool_turn` фильтрует schemas по required_scope **до отправки модели**.
+`tool_discovery.py` проверяет серверную policy **до отправки схем модели**.
+В каталоге из восьми и более разрешённых функций часть схем выдаётся по запросу
+через `load_tools`. Механика и примеры описаны в [исследовании выдачи инструментов](optimization/ai-tool-discovery.md).
 RoutingRequest требует TOOL_CALLING (и IMAGES/DOCUMENTS для соответствующих media).
 `execution.py` → ModelRouter проверяет manual model, capabilities, privacy, budget.
 Предварительная проверка «есть tool-capable модель» не отменяет окончательную проверку router.

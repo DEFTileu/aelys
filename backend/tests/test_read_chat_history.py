@@ -205,13 +205,17 @@ async def test_worker_history_provenance_trace_and_write(setup, monkeypatch, rev
         async def complete(self, run_id, request, messages, **kwargs):
             self.calls += 1
             seen_context.append(messages)
-            assert NAME in {tool['name'] for tool in kwargs['tools']}
+            tools = {tool['name'] for tool in kwargs['tools']}
             assert messages[0].content.count(HISTORY_INSTRUCTION) == 1
             calls = ()
             if self.calls == 1:
+                assert 'load_tools' in tools and NAME not in tools
                 assert all(not message.memory_refs for message in messages)
-                calls = ({'id': 'history', 'name': NAME, 'input': args},)
+                calls = ({'id': 'load', 'name': 'load_tools', 'input': {'names': [NAME]}},)
             elif self.calls == 2:
+                assert NAME in tools
+                calls = ({'id': 'history', 'name': NAME, 'input': args},)
+            elif self.calls == 3:
                 history = next(m for m in messages if m.tool_call_id == 'history')
                 assert history.untrusted
                 assert fact_id not in history.content
@@ -233,15 +237,15 @@ async def test_worker_history_provenance_trace_and_write(setup, monkeypatch, rev
     await service.poll_once(integration_id, timeout=0)
     await dialogue.personal_iteration(integration_id)
     await dialogue.wait_for_personal_turns()
-    assert model.calls == 3
-    final_context = seen_context[2]
-    expected_calls = [] if revoked else ['history', 'task']
+    assert model.calls == 4
+    final_context = seen_context[3]
+    expected_calls = ['load'] if revoked else ['load', 'history', 'task']
     assert [call.call_id for message in final_context for call in message.tool_calls] == expected_calls
     assert [message.tool_call_id for message in final_context if message.role == 'tool'] == expected_calls
     if revoked:
         assert all(past_question not in message.content and 'Past Telegram answer' not in message.content
                    for message in final_context)
-    history_context = next(message for message in seen_context[1] if message.tool_call_id == 'history')
+    history_context = next(message for message in seen_context[2] if message.tool_call_id == 'history')
     assert history_context.memory_refs == ((fact_id, version),)
     async with sessions() as db:
         task = await db.scalar(select(Task).where(Task.owner_id == owner_id))

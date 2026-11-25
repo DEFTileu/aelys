@@ -358,7 +358,7 @@ class OpenRouterAdapter(_BaseAdapter):
         message = choices[0].get("message", {}) if choices else {}
         entries = _openrouter_source_entries(message) if request.web_search else []
         sources = _bounded_sources([entry.get("url") for entry in entries])
-        return ProviderResponse(str(message.get("content", "")), usage, response.body.get("id"), tuple(message.get("tool_calls", ())), sources, bool(sources),
+        return ProviderResponse(str(message.get("content") or ""), usage, response.body.get("id"), tuple(message.get("tool_calls", ())), sources, bool(sources),
                                 source_details=_bounded_source_details(entries))
 
     async def stream(self, request: ProviderRequest) -> AsyncIterator[str]:

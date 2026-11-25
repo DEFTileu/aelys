@@ -24,12 +24,24 @@ async def test_task_clocks_and_history_survive_mixed_writers_and_offline_conflic
     await provider(sessions,integration_id)
     class Model(Service):
         calls=0
-        async def complete(self,*args,**kwargs):
-            self.calls+=1
-            return SimpleNamespace(provider=ProviderKind.CLAUDE,model='test',
-                response=SimpleNamespace(text='Готово' if self.calls>1 else '',tool_calls=({'id':'start-task','name':'update_task',
-                    'input':{'task_id':created['id'],'version':1,'status':'in_progress'}},) if self.calls==1 else ()),
-                usage=SimpleNamespace(usage=Usage(),estimated_cost=Decimal(0)))
+        async def complete(self, *args, **kwargs):
+            self.calls += 1
+            tools = {tool['name'] for tool in kwargs['tools']}
+            calls = ()
+            if self.calls == 1:
+                assert 'load_tools' in tools and 'update_task' not in tools
+                calls = ({'id': 'load', 'name': 'load_tools', 'input': {'names': ['update_task']}},)
+            elif self.calls == 2:
+                assert 'update_task' in tools
+                calls = ({
+                    'id': 'start-task', 'name': 'update_task',
+                    'input': {'task_id': created['id'], 'version': 1, 'status': 'in_progress'},
+                },)
+            return SimpleNamespace(
+                provider=ProviderKind.CLAUDE, model='test',
+                response=SimpleNamespace(text='' if calls else 'Готово', tool_calls=calls),
+                usage=SimpleNamespace(usage=Usage(), estimated_cost=Decimal(0)),
+            )
     model=Model();monkeypatch.setattr(ai_api,'_service',lambda *a,**kw:model)
     fake.updates=[ordinary(2,'Измени задачу Cross-channel task: статус in_progress')]
     await service.poll_once(integration_id,timeout=0);await dialogue.personal_iteration(integration_id);await dialogue.wait_for_personal_turns()

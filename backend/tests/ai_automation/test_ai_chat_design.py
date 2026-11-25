@@ -285,7 +285,8 @@ async def test_conversation_patch_rules(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_write_tools_only_propose_until_approved(tmp_path, monkeypatch):
-    replies = [[tool_use("create_note", "n1", title="Plan", markdown_body="body"), tool_use("complete_task", "n2", task_id="missing", version=1)],
+    replies = [[tool_use("load_tools", "load", names=["complete_task"])],
+               [tool_use("create_note", "n1", title="Plan", markdown_body="body"), tool_use("complete_task", "n2", task_id="missing", version=1)],
                [{"type": "text", "text": "Prepared."}]]
     async with chat(tmp_path, monkeypatch, replies) as (client, script, factory):
         conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
@@ -301,7 +302,7 @@ async def test_write_tools_only_propose_until_approved(tmp_path, monkeypatch):
         note_action, task_action = actions
 
         # The next step sees its own calls with their results, so it does not propose them again.
-        follow_up = script.requests[1]["messages"]
+        follow_up = script.requests[2]["messages"]
         assert [block["id"] for block in follow_up[-2]["content"] if block["type"] == "tool_use"] == ["n1", "n2"]
         assert [block["tool_use_id"] for block in follow_up[-1]["content"]] == ["n1", "n2"]
         assert "pending_approval" in follow_up[-1]["content"][0]["content"]
@@ -555,3 +556,46 @@ async def test_app_synthesizes_tasks_and_calendar_after_both_tool_results(tmp_pa
         serialized_messages = json.dumps(final_input["messages"])
         assert "Draft release notes" in serialized_messages and "Release review" in serialized_messages
         assert "".join(row["text"] for row in payloads(events, "ai.text.delta")) == answer
+
+
+async def test_app_loads_event_tool_on_demand_and_still_requires_approval(tmp_path, monkeypatch):
+    replies = [
+        [tool_use("load_tools", "load", names=["create_event"])],
+        [tool_use("create_event", "event", title="Review",
+                  starts_at="2026-11-25T11:00:00Z", ends_at="2026-11-25T11:30:00Z", timezone="UTC")],
+        [{"type": "text", "text": "Ready for approval."}],
+    ]
+    async with chat(tmp_path, monkeypatch, replies) as (client, script, _):
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        events = await run(client, conversation["id"], "Put a review on my calendar", "lazy-event")
+
+        first = {tool["name"]: tool for tool in script.requests[0]["tools"]}
+        assert "list_tasks" in first and "read_calendar" in first
+        assert "create_event" not in first and "create_reminder" not in first
+        names = first["load_tools"]["input_schema"]["properties"]["names"]["items"]["enum"]
+        assert "create_event" in names
+        assert "search_knowledge" not in names and "read_chat_history" not in names
+        second = {tool["name"]: tool for tool in script.requests[1]["tools"]}
+        assert "create_event" in second and "create_reminder" not in second
+        assert "owner approval" in second["create_event"]["description"]
+        assert payloads(events, "ai.action.proposed")[0]["tool"] == "create_event"
+        assert (await client.get("/api/v1/calendar/events")).json() == []
+
+
+async def test_unavailable_tool_cannot_be_loaded_or_invoked_before_discovery(tmp_path, monkeypatch):
+    replies = [
+        [tool_use("load_tools", "load", names=["create_event", "search_knowledge"])],
+        [tool_use("create_event", "event", title="Review",
+                  starts_at="2026-11-25T11:00:00Z", ends_at="2026-11-25T11:30:00Z", timezone="UTC")],
+        [{"type": "text", "text": "I could not load the tool."}],
+    ]
+    async with chat(tmp_path, monkeypatch, replies) as (client, script, _):
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        events = await run(client, conversation["id"], "Put a review on my calendar", "lazy-denied")
+
+        assert not payloads(events, "ai.action.proposed")
+        for request in script.requests:
+            names = {tool["name"] for tool in request["tools"]}
+            assert "search_knowledge" not in names and "create_event" not in names
+        assert "TOOL_UNAVAILABLE" in json.dumps(script.requests[1]["messages"])
+        assert "TOOL_NOT_LOADED" in json.dumps(script.requests[2]["messages"])

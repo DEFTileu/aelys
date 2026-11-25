@@ -1,4 +1,5 @@
 """One reusable bounded tool turn, including repeated tool-call protection."""
+import json
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
@@ -104,6 +105,80 @@ async def test_real_usage_tracker_charges_each_provider_completion():
         parse_call=lambda r:ToolCall(r['name'],r['input'],r['id']))
     assert result.input_tokens==600 and result.cost==Decimal('0.6')
     assert len(service.usage.records())==3
+
+
+async def test_openrouter_loads_schemas_between_completions_only():
+    from app.ai.api import _tool_call
+    from app.ai.execution import AIExecutionService
+    from app.ai.models import Capability, ModelSpec, ProviderKind
+    from app.ai.providers import HttpResponse, OpenRouterAdapter
+    from app.ai.secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
+    from app.ai.turn import run_tool_turn
+
+    registry = ToolRegistry(ServerPolicyEngine())
+    writes = []
+
+    async def create_event(args):
+        writes.append(args["title"])
+        return {"id": "event-1"}
+
+    async def read(_args):
+        return {"items": []}
+
+    for name in ("list_tasks", "read_calendar", "read_note", "search_notes", "search_knowledge",
+                 "read_chat_history", "create_reminder"):
+        registry.register(ToolDescriptor(name, name, "permitted", dict, read))
+    registry.register(ToolDescriptor("create_event", "Create event", "permitted", dict, create_event))
+    registry.register(ToolDescriptor("web_search", "Search the web", "permitted", dict, read, external_effect=True))
+
+    class Transport:
+        def __init__(self):
+            self.requests = []
+
+        async def post(self, _url, *, headers, json):
+            self.requests.append(json)
+            message = replies[len(self.requests) - 1]
+            return HttpResponse(200, {"choices": [{"message": message}]})
+
+    def call(name, call_id, **arguments):
+        return {"id": call_id, "type": "function", "function": {
+            "name": name, "arguments": json.dumps(arguments),
+        }}
+
+    replies = [
+        {"content": None, "tool_calls": [
+            call("load_tools", "load", names=["create_event", "create_reminder"]),
+            call("create_event", "early", title="Too soon"),
+        ]},
+        {"content": None, "tool_calls": [call("create_event", "create", title="Review")]},
+        {"content": "Scheduled the review."},
+        {"content": "Hello."},
+    ]
+    transport = Transport()
+    store = SecretStore(AuthenticatedStreamCipher(b"x" * 32))
+    ref = SecretRef("provider", "test")
+    store.put(ref, "synthetic-provider-credential")
+    adapter = OpenRouterAdapter(transport, store, ref, "https://provider.invalid")
+    model = ModelSpec(ProviderKind.OPENROUTER, "test", frozenset({Capability.TOOL_CALLING}),
+                      10000, Decimal(0), Decimal(0))
+    service = AIExecutionService([model], {ProviderKind.OPENROUTER: adapter})
+    context = PermissionContext(actor="owner", scopes=frozenset({"permitted"}))
+    request = RoutingRequest(TaskKind.TOOL_ACTION)
+    result = await run_tool_turn(service, uuid4(), request, (ChatMessage("user", "Schedule the review"),),
+                                 registry, context, parse_call=_tool_call)
+    assert result.text == "Scheduled the review." and writes == ["Review"]
+    await run_tool_turn(service, uuid4(), request, (ChatMessage("user", "Hello"),),
+                        registry, context, parse_call=_tool_call)
+    first, second, _, next_turn = transport.requests
+    assert "web_search" not in {tool["function"]["name"] for tool in first["tools"]}
+    assert first["tools"] == next_turn["tools"]
+    assert second["tools"][:len(first["tools"])] == first["tools"]
+    assert [tool["function"]["name"] for tool in second["tools"][len(first["tools"]):]] == [
+        "create_reminder", "create_event",
+    ]
+    selection, early = second["messages"][-2:]
+    assert selection["tool_call_id"] == "load" and '"loaded"' in selection["content"]
+    assert early["tool_call_id"] == "early" and "TOOL_NOT_LOADED" in early["content"]
 
 
 async def test_monthly_budget_includes_failed_and_running_checkpoints(ai_test_engine):

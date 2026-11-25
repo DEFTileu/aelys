@@ -21,6 +21,7 @@ from .errors import (
 from .execution import AIExecutionService
 from .models import ChatMessage, PermissionContext, RoutingRequest, ToolCall
 from .providers import _bounded_source_details
+from .tool_discovery import LOAD_TOOLS, ToolDiscovery
 from .tools import ToolRegistry
 from .web_search import WebSearch
 
@@ -82,8 +83,7 @@ async def run_tool_turn(
     search_started = False
     search_sources: list[str] = []
     search_trace_sources: list[dict[str, str]] = []
-    schemas = tuple(schema for schema in registry.schemas()
-                    if registry.descriptor(str(schema['name'])).required_scope in context.scopes)
+    discovery = ToolDiscovery(registry, context)
 
     async def check() -> None:
         if (cancel and cancel.is_set()) or (cancel_check and await cancel_check()):
@@ -157,6 +157,8 @@ async def run_tool_turn(
 
         # Only streaming callers pass on_text, so existing services and fakes keep their signature.
         streaming: dict[str, Any] = {'on_text': stream_text} if on_text else {}
+        schemas = discovery.schemas()
+        offered_tools = {schema["name"] for schema in schemas}
         result = await service.complete(completion_id, replace(request, request_budget=remaining),
                                         messages, tools=schemas, cancel=cancel,
                                         **streaming)
@@ -183,6 +185,12 @@ async def run_tool_turn(
                 continue
             seen.add(call.call_id)
             await check()
+            if call.name == LOAD_TOOLS:
+                # Loading a schema is provider context management, not a domain operation.
+                selection = discovery.load(call)
+                calls.append(call)
+                outputs.append(ChatMessage('tool', json.dumps(selection), untrusted=True, tool_call_id=call.call_id))
+                continue
             is_search = call.name == 'web_search' and isinstance(search_handler, WebSearch)
             is_history = call.name == HISTORY_TOOL
             try:
@@ -201,7 +209,9 @@ async def run_tool_turn(
                        **({'query': query} if is_search else history_query))
             output: Mapping[str, Any]
             try:
-                if search_started and write:
+                if call.name in discovery.deferred and call.name not in offered_tools:
+                    output = {'error': 'TOOL_NOT_LOADED', 'message': 'Call load_tools before using this tool.', 'untrusted': True}
+                elif search_started and write:
                     output = {'error': 'POLICY_DENIED: Repeat the write request in a new turn', 'untrusted': True}
                 elif is_search and search_count > 2:
                     output = {'error': 'POLICY_DENIED: Search limit reached', 'untrusted': True}
