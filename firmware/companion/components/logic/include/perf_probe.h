@@ -3,10 +3,16 @@
 #include <stdint.h>
 #include "tribuf.h"
 
+/* Accumulated UI-task time spent submitting or waiting, plus delivered area. */
+typedef struct { uint32_t submit_us, dma_wait_us, pixels, flushes; } perf_probe_io_t;
+
 /* Cumulative diagnostics, owned by the UI task. Histogram: 5 ms bins, last = >=100 ms. */
 typedef struct {
     uint32_t seq, sampled_ms, screen;
     uint32_t frames, n17, n25, worst_us, worst_te_us, work_max_us, work_n17;
+    uint32_t worst_screen, work_max_screen;
+    perf_probe_io_t worst_io, sw_max_io;
+    uint32_t sw_max_queue_us, sw_max_wait_us, sw_max_frame_us, sw_max_te_us, sw_max_screen;
     uint32_t handler_max_us, ev_max_us, ev_max_type, snaps, snap_max_us;
     uint32_t sw_ok, sw_refused, sw_timeout, sw_interrupted, sw_max_us, sw_last_us, sw_hist[21];
     uint32_t sw_dropped;
@@ -23,6 +29,9 @@ typedef struct { tribuf_t tb; perf_probe_stats_t slots[3]; } perf_probe_mailbox_
 
 void perf_probe_init(perf_probe_t *p);
 void perf_probe_frame(perf_probe_t *p, uint32_t start_us, uint32_t end_us, uint32_t te_us, uint32_t screen);
+/* io must be non-NULL; values are copied synchronously. */
+void perf_probe_frame_io(perf_probe_t *p, uint32_t start_us, uint32_t end_us, uint32_t te_us, uint32_t screen,
+                         const perf_probe_io_t *io);
 void perf_probe_swipe_begin(perf_probe_t *p, uint32_t posted_us, uint32_t handled_us, bool accepted, uint32_t screen);
 void perf_probe_interrupt(perf_probe_t *p);
 void perf_probe_expire(perf_probe_t *p, uint32_t now_us);

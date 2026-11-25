@@ -37,13 +37,20 @@ void perf_probe_expire(perf_probe_t *p, uint32_t now_us)
 
 void perf_probe_frame(perf_probe_t *p, uint32_t start_us, uint32_t end_us, uint32_t te_us, uint32_t screen)
 {
+    const perf_probe_io_t none = {0};
+    perf_probe_frame_io(p, start_us, end_us, te_us, screen, &none);
+}
+
+void perf_probe_frame_io(perf_probe_t *p, uint32_t start_us, uint32_t end_us, uint32_t te_us, uint32_t screen,
+                         const perf_probe_io_t *io)
+{
     perf_probe_stats_t *s = &p->stats;
     uint32_t d = end_us - start_us, work = d - (te_us > d ? d : te_us);
     s->frames++;
     if (d > 16700) s->n17++;
     if (d > 25000) s->n25++;
-    if (d > s->worst_us) { s->worst_us = d; s->worst_te_us = te_us; }
-    if (work > s->work_max_us) s->work_max_us = work;
+    if (d > s->worst_us) { s->worst_us = d; s->worst_te_us = te_us; s->worst_screen = screen; s->worst_io = *io; }
+    if (work > s->work_max_us) { s->work_max_us = work; s->work_max_screen = screen; }
     if (work > 16700) s->work_n17++;
     if (!p->pending) return;
     if (screen != p->target_screen) { perf_probe_interrupt(p); return; }
@@ -53,7 +60,15 @@ void perf_probe_frame(perf_probe_t *p, uint32_t start_us, uint32_t end_us, uint3
     uint32_t latency = end_us - p->posted_us;
     s->sw_ok++;
     s->sw_last_us = latency;
-    if (latency > s->sw_max_us) s->sw_max_us = latency;
+    if (latency > s->sw_max_us) {
+        s->sw_max_us = latency;
+        s->sw_max_queue_us = p->handled_us - p->posted_us;
+        s->sw_max_wait_us = start_us - p->handled_us;
+        s->sw_max_frame_us = d;
+        s->sw_max_te_us = te_us;
+        s->sw_max_screen = screen;
+        s->sw_max_io = *io;
+    }
     uint32_t bin = latency / 5000;
     s->sw_hist[bin < 20 ? bin : 20]++;
 }

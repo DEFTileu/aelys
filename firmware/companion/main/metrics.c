@@ -173,6 +173,15 @@ static void probe_task(void *arg)
                      (unsigned)p.worst_te_us, (unsigned)p.work_max_us, (unsigned)p.work_n17,
                      (unsigned)p.handler_max_us, (unsigned)p.ev_max_us, (unsigned)p.ev_max_type,
                      (unsigned)p.snaps, (unsigned)p.snap_max_us);
+            ESP_LOGW(TAG, "perf_attr worst_screen=%u work_screen=%u swipe_screen=%u queue_us=%u wait_us=%u frame_us=%u te_us=%u",
+                     (unsigned)p.worst_screen, (unsigned)p.work_max_screen, (unsigned)p.sw_max_screen,
+                     (unsigned)p.sw_max_queue_us, (unsigned)p.sw_max_wait_us, (unsigned)p.sw_max_frame_us,
+                     (unsigned)p.sw_max_te_us);
+            ESP_LOGW(TAG, "perf_io worst_submit_us=%u worst_dma_wait_us=%u worst_pixels=%u worst_flushes=%u swipe_submit_us=%u swipe_dma_wait_us=%u swipe_pixels=%u swipe_flushes=%u",
+                     (unsigned)p.worst_io.submit_us, (unsigned)p.worst_io.dma_wait_us,
+                     (unsigned)p.worst_io.pixels, (unsigned)p.worst_io.flushes,
+                     (unsigned)p.sw_max_io.submit_us, (unsigned)p.sw_max_io.dma_wait_us,
+                     (unsigned)p.sw_max_io.pixels, (unsigned)p.sw_max_io.flushes);
             ESP_LOGW(TAG, "perf_swipe ok=%u refused=%u timeout=%u interrupted=%u dropped=%u max_us=%u last_us=%u frame_failed=%u transfer_failed=%u",
                      (unsigned)p.sw_ok, (unsigned)p.sw_refused, (unsigned)p.sw_timeout,
                      (unsigned)p.sw_interrupted, (unsigned)p.sw_dropped, (unsigned)p.sw_max_us, (unsigned)p.sw_last_us,

@@ -1,5 +1,132 @@
 # Firmware budgets (spec §4.6)
 
+## Paired-board continuation (2026-11-14)
+
+Measured on S1 `5af7fa4` with physical sound disabled. The owner-authorized
+app-only flashes were hash-verified; no Wi-Fi configuration was changed.
+The ordinary 64 KiB cache build (`f17cac4`, probe and chaos off) reported
+`heap_int=64747` and `heap_int_min=31488` bytes in each of five minute samples;
+the device was shown Online in Aelys. The steady free-heap target of 80 KB
+therefore **FAILS** for this configuration and observation window.
+
+A 310-second, instrumented 64 KiB cache run had 289 complete numerical samples,
+233 of them Online. Online free heap was 51871–52403 bytes; the minimum since
+boot was 18880 bytes. Its cumulative worst refresh was 52401 µs and maximum
+synthetic screen-switch latency was 55767 µs across 157 successful switches:
+the 25 ms refresh and 50 ms switch budgets both **FAIL**. No queue/transfer
+failures were reported; `tls_fail` was zero in all 31 complete metrics lines.
+The probe adds overhead, forces a reconnect every 60 seconds, and includes
+startup and screen transitions in cumulative maxima; incomplete serial lines
+were excluded. The figures do not establish sustained face FPS.
+
+A similarly instrumented 32 KiB cache run had 309 samples, all without Wi-Fi
+or Online status. Free heap was 96559–96631 bytes, minimum since boot 56736;
+worst refresh was 47632 µs and maximum synthetic switch latency 51744 µs
+across 158 successful switches. Both timing budgets **FAIL** in that run.
+Because network conditions differ, the two runs do not establish a causal
+cache-size improvement or comparable Online heap. The earlier 32 KiB Online
+measurements remain historical; a day-long heap measurement remains
+**PENDING**. Afterward, an ordinary 32 KiB build with probe,
+chaos and physical sound off was app-flashed and hash-verified; Aelys displayed
+the companion Online. Its three minute samples each reported `heap_int=96739`
+and `heap_int_min=63476` bytes (`wifi_ip=1`, `tls_fail=0`). This is a short
+checkpoint rather than day-long acceptance; the ordinary 64 and 32 KiB samples
+were taken at different times and on adjacent commits. A subsequent 310-second
+probe32 repetition captured 286 complete samples, 222 Online. Online heap was
+84147–84339 bytes and the boot minimum was 50912 bytes. Its cumulative worst
+refresh was 51017 µs and its maximum synthetic switch was 55546 µs across 156
+successful switches; both timing budgets still **FAIL**. No queue or transfer
+failures were reported, and `tls_fail` was zero in 31 complete metrics lines.
+Different connection histories and natural workload variation limit causal
+comparisons. A separate 65-second task sample placed UI on core 1 and link and
+input on core 0; tcpip was unpinned. In six roughly 10-second intervals, UI
+runtime was 0.434–0.633 seconds; these averages do not explain worst-frame
+latency. The task affinity field does not establish where unpinned tasks ran.
+A follow-up 130-second attribution probe on `d688d04` recorded 120 complete
+samples, 109 Online. Its worst frame was 39640 µs on Today. The longest of
+69 synthetic switches was 49221 µs, also to Today: 14509 µs queued, 36 µs
+waiting for refresh, and 34676 µs in the frame, including 12806 µs waiting for
+TE. The separately observed maximum non-TE frame time was 27356 µs on Today.
+These are maxima from one short run, not proof of a root cause; added probe
+logging and different network conditions affect comparisons. Sanitized samples
+and the summary script are in the local S1 ledger, not in the repository.
+
+A subsequent selective-IRAM experiment moved five arc-path functions to IRAM:
+static DIRAM grew by 6104 bytes, from 163642 to 169746. Its 310-second run
+captured 309 samples, all Offline, so no Online memory or latency conclusion is
+available. Compared with the earlier Offline probe32 run, each had 150 switches
+in five complete histogram windows: p50 was [30,35) ms, p90 [45,50) ms and
+p99 [50,55) ms for both. The observed worst frame fell from 47632 to 36338 µs,
+but TE wait on those worst frames also differed (43648 versus 14513 µs), so
+the difference does not establish a speedup. With no clear switch improvement
+and additional internal-memory cost, the experiment was removed. These are
+short, separate runs and do not isolate all workload variability.
+
+A separate 130-second display-I/O attribution run on `c7e4f19` had 130
+complete samples, all Offline. Its slowest of 69 successful switches took
+51811 µs: 15695 µs queued, 35 µs before refresh, and 36081 µs for the
+frame, including 13574 µs TE wait. That frame submitted 217156 pixels in 15
+flushes; the UI task spent 2287 µs in submission calls and 3640 µs waiting
+on the completion semaphore. These are elapsed task times, which can include
+scheduling delays and do not measure total DMA duration. The remaining frame
+time includes drawing and instrumentation; it is not a direct CPU profile.
+The extra timing calls affect this short probe, and Offline results must not be
+compared as if the network workload were identical.
+
+An experimental 22-region sparse redraw (`5403d57`) passed the host
+partial-vs-full framebuffer regression. An exhaustive comparison of the old
+30 ring rectangles with the 22 replacements found no uncovered pixels; the
+new set adds 3556 pixels. In roughly 320 seconds on the board it produced 306
+complete samples, 99 Online, and 174 successful switches; worst frame was
+42062 µs and worst switch 52736 µs, so both absolute budgets **FAIL**. Five
+complete histogram windows containing 149 switches gave p50 [25,30) ms,
+p90 [35,40) ms and p99 [50,55) ms. No queue or transfer failures were reported.
+
+A subsequent 310-second full-redraw control used the same branch, profiler,
+32 KiB cache and reconnect settings; its configuration differed only in the
+sparse flag. It had 310 complete samples, all Offline, and 163 successful
+switches; worst frame was 36710 µs and worst switch 52250 µs. Five complete
+windows with 150 switches gave p50 [35,40) ms, p90 [45,50) ms and p99
+[50,55) ms. In the first 60-second window of each run, when both were Offline,
+sparse p50/p90 were [20,25)/[30,35) ms versus [30,35)/[45,50) ms for full
+redraw (30 switches each). A conservative sampled-Online analysis retained only
+single completed switches between consecutive, complete Online records with
+unchanged error counters: 110 baseline samples had p50/p90 30593/43354 µs;
+48 sparse samples had 30153/43688 µs. State was sampled, not continuously
+observed, and the baseline lacked the later I/O instrumentation; differing
+network availability, snapshots, animation phases and sample sizes limit the
+comparison. An Online improvement was not established, so the experimental
+band change was removed; it does not close S1's performance gates. The board was
+returned to the normal sound/probe/chaos/sparse-off app and hash verified.
+
+### Matched redraw decision
+
+The full-redraw control and sparse22 run used the same firmware revision and
+instrumentation, and their build configurations differed only in the sparse
+flag. To match observed network state and sample count, the local analysis
+selected the earliest complete single-switch observations from each run's
+initial Offline period with one snapshot, consecutive probe records, and no
+new error counters. It selected 21 switches to each screen per run. Network
+state is sampled rather than continuously observed; snapshots, animation
+phases and timing can still differ.
+
+| Mode | Matched switches | p50 | p90 | p99 | Max |
+|---|---:|---:|---:|---:|---:|
+| Full redraw | 42 | 35.827 ms | 45.283 ms | 50.951 ms | 50.951 ms |
+| Sparse22 | 42 | 22.394 ms | 32.576 ms | 41.390 ms | 41.390 ms |
+
+Percentiles use nearest-rank; with 42 samples p99 is the maximum. Across the
+whole control run, 310 valid state samples were Offline; sparse22 had 306,
+of which 99 were Online, 188 waiting for network and 19 logging in or
+connecting. The matched subset is entirely Offline. A matched Online control
+with identical instrumentation does not exist. Across the complete sparse
+run, the maximum switch was 52.736 ms and worst frame 42.062 ms, so the
+absolute 50/25 ms gates still fail. **Decision: reject enabling sparse22 for
+now.** The experimental band change was reverted; ordinary sparse redraw also
+remains disabled. The positive Offline comparison is retained as evidence,
+not generalized to Online use. Reproduction is in the local S1 ledger's
+`matched_redraw_report.py` and sanitized capture files.
+
 Board: Waveshare ESP32-S3-Touch-AMOLED-1.75C, ESP-IDF v6.1, firmware `0.1.0`, release log level WARN.
 Runtime figures come from the `metrics` line (`main/metrics.c`): one WARN line per period.
 

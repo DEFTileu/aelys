@@ -9,6 +9,7 @@
 
 static jmp_buf restart_target;
 static int token, takes, draws;
+static int64_t fake_us;
 static bool complete_on_take;
 static bool complete_on_timeout;
 static bool complete_in_submit;
@@ -22,7 +23,7 @@ static uint8_t pixels[32];
 } } while (0)
 
 void esp_restart(void) { longjmp(restart_target, 1); }
-int64_t esp_timer_get_time(void) { return 0; }
+int64_t esp_timer_get_time(void) { return fake_us; }
 void fake_log_warning(const char *tag)
 {
     (void)tag;
@@ -38,6 +39,7 @@ esp_err_t esp_lcd_panel_draw_bitmap(esp_lcd_panel_handle_t panel, int x1, int y1
 {
     if (panel != &token || x1 != 2 || y1 != 4 || x2 != 6 || y2 != 8 || px != pixels) abort();
     draws++;
+    fake_us += 40;
     if (complete_in_submit) color_done(NULL, NULL, NULL);
     return draw_result;
 }
@@ -54,6 +56,7 @@ BaseType_t xSemaphoreTake(SemaphoreHandle_t sem, TickType_t timeout)
 {
     if (sem != dma_sem || timeout != pdMS_TO_TICKS(100)) abort();
     takes++;
+    fake_us += 70;
     if (token) { token = 0; return pdTRUE; }
     if (complete_on_take) {
         complete_on_take = false;
@@ -78,6 +81,7 @@ static void reset_fakes(void)
 #ifdef CONFIG_AELYS_PERF_PROBE
     pr_transfer_failed = false;
 #endif
+    fake_us = 0;
     token = takes = draws = 0;
     complete_on_take = complete_on_timeout = complete_in_submit = complete_on_warning = false;
     draw_result = ESP_OK;
@@ -93,6 +97,20 @@ static int test_normal_completion(void)
     CHECK(!dma_busy && takes == 1);
     return 0;
 }
+
+#ifdef CONFIG_AELYS_PERF_PROBE
+static int test_dma_timing_and_pixel_counts(void)
+{
+    reset_fakes();
+    pr_submit_us = pr_dma_wait_us = pr_flush_pixels = pr_flush_count = 0;
+    flush_cb(NULL, &area, pixels);
+    complete_on_take = true;
+    flush_wait(NULL);
+    CHECK(pr_submit_us == 40 && pr_dma_wait_us == 70);
+    CHECK(pr_flush_pixels == 16 && pr_flush_count == 1);
+    return 0;
+}
+#endif
 
 static int test_completion_before_wait(void)
 {
@@ -180,6 +198,9 @@ int main(void)
 {
     struct { const char *name; int (*run)(void); } cases[] = {
         { "normal completion", test_normal_completion },
+#ifdef CONFIG_AELYS_PERF_PROBE
+        { "DMA timing and pixel counts", test_dma_timing_and_pixel_counts },
+#endif
         { "completion before wait", test_completion_before_wait },
         { "stale semaphore", test_stale_semaphore },
         { "completion races timeout", test_completion_racing_timeout },

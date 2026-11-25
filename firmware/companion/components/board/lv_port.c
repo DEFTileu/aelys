@@ -48,6 +48,7 @@ static volatile uint32_t out_fps_x10, out_worst_us, last_flush_end_us, first_flu
 
 #ifdef CONFIG_AELYS_PERF_PROBE
 static int64_t pr_te_us;
+static uint32_t pr_submit_us, pr_dma_wait_us, pr_flush_pixels, pr_flush_count;
 static bool pr_transfer_failed;
 static perf_probe_t pr;
 static perf_probe_mailbox_t pr_mail;
@@ -111,7 +112,16 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
     }
     frame_flushed = true;
     atomic_store_explicit(&dma_busy, true, memory_order_release);
-    if (esp_lcd_panel_draw_bitmap(board_panel(), a->x1, a->y1, a->x2 + 1, a->y2 + 1, px) != ESP_OK) {
+#ifdef CONFIG_AELYS_PERF_PROBE
+    int64_t submit_start = esp_timer_get_time();
+#endif
+    esp_err_t submit_result = esp_lcd_panel_draw_bitmap(board_panel(), a->x1, a->y1, a->x2 + 1, a->y2 + 1, px);
+#ifdef CONFIG_AELYS_PERF_PROBE
+    pr_submit_us += (uint32_t)(esp_timer_get_time() - submit_start);
+    pr_flush_pixels += (uint32_t)(a->x2 - a->x1 + 1) * (uint32_t)(a->y2 - a->y1 + 1);
+    pr_flush_count++;
+#endif
+    if (submit_result != ESP_OK) {
 #ifdef CONFIG_AELYS_PERF_PROBE
         pr_transfer_failed = true;
 #endif
@@ -126,7 +136,14 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 static void flush_wait(lv_display_t *d)
 {
     while (atomic_load_explicit(&dma_busy, memory_order_acquire)) {
-        if (xSemaphoreTake(dma_sem, pdMS_TO_TICKS(100)) != pdTRUE) {
+#ifdef CONFIG_AELYS_PERF_PROBE
+        int64_t wait_start = esp_timer_get_time();
+#endif
+        BaseType_t taken = xSemaphoreTake(dma_sem, pdMS_TO_TICKS(100));
+#ifdef CONFIG_AELYS_PERF_PROBE
+        pr_dma_wait_us += (uint32_t)(esp_timer_get_time() - wait_start);
+#endif
+        if (taken != pdTRUE) {
             /* Completion can race the semaphore timeout. */
             if (!atomic_load_explicit(&dma_busy, memory_order_acquire)) break;
 #ifdef CONFIG_AELYS_PERF_PROBE
@@ -169,6 +186,7 @@ static void disp_event(lv_event_t *e)
         refr_start = now;
 #ifdef CONFIG_AELYS_PERF_PROBE
         pr_te_us = 0;
+        pr_submit_us = pr_dma_wait_us = pr_flush_pixels = pr_flush_count = 0;
         pr_transfer_failed = false;
 #endif
         need_te = true;
@@ -193,7 +211,8 @@ static void disp_event(lv_event_t *e)
         sec_frames++;
         if ((uint32_t)(now - refr_start) > sec_worst) sec_worst = (uint32_t)(now - refr_start);
 #ifdef CONFIG_AELYS_PERF_PROBE
-        perf_probe_frame(&pr, (uint32_t)refr_start, (uint32_t)now, (uint32_t)pr_te_us, probe_screen());
+        perf_probe_io_t io = { pr_submit_us, pr_dma_wait_us, pr_flush_pixels, pr_flush_count };
+        perf_probe_frame_io(&pr, (uint32_t)refr_start, (uint32_t)now, (uint32_t)pr_te_us, probe_screen(), &io);
 #endif
         stats_tick(now);
         break;
