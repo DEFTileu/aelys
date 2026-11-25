@@ -47,6 +47,19 @@ esp_err_t board_init(void)
 #define AXP_STATUS2 0x01
 #define AXP_SOC     0xA4
 
+bool board_usb_power(void)
+{
+    static i2c_master_dev_handle_t dev;
+    if (!dev) {
+        const i2c_device_config_t cfg = {.dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = I2C_ADDR_AXP2101,
+                                         .scl_speed_hz = 400000};
+        if (i2c_master_bus_add_device(board_i2c_bus(), &cfg, &dev) != ESP_OK) { dev = NULL; return false; }
+    }
+    const uint8_t reg = AXP_STATUS1;
+    uint8_t v = 0;
+    return i2c_master_transmit_receive(dev, &reg, 1, &v, 1, 50) == ESP_OK && (v & (1u << 5)); /* VBUS good */
+}
+
 bool board_battery(uint8_t *pct, bool *charging)
 {
     static i2c_master_dev_handle_t dev;

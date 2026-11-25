@@ -565,6 +565,18 @@ size_t proto_hello(char *buf, size_t cap, const char *fw, const char *board, con
     return w_done(&w);
 }
 
+size_t proto_auth(char *buf, size_t cap, const char *token)
+{
+    if (!token || !token[0]) return 0;
+    for (const char *c = token; *c; c++) /* a JWT needs no escaping: anything else is not one */
+        if (!((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-' || *c == '_' || *c == '.')) return 0;
+    W w; w_init(&w, buf, cap);
+    wr(&w, "{\"type\":\"auth\",\"token\":\"");
+    wr(&w, token);
+    wr(&w, "\"}");
+    return w_done(&w);
+}
+
 size_t proto_heartbeat(char *buf, size_t cap)
 {
     W w; w_init(&w, buf, cap);

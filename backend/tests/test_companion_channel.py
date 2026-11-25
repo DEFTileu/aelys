@@ -603,3 +603,71 @@ async def test_a_closed_channel_logs_who_closed_it_and_how(paired, caplog):
     assert any('by=board code=4321' in line for line in closed)
     assert any('by=replaced' in line for line in closed)
     assert all(device_id[:8] in line and device_id not in line for line in closed)  # a short id, never the whole one
+
+
+async def _owner_and_session(device_id):
+    async with db.SessionLocal() as session:
+        sid = (await session.execute(select(AuthSession.id).where(AuthSession.device_id == device_id))).scalars().first()
+        return (await session.get(Device, device_id)).owner_id, sid
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_token_on_the_channel_keeps_it_open_past_the_old_expiry(paired):
+    _, device_id, _ = paired
+    owner_id, sid = await _owner_and_session(device_id)
+    short = create_token(owner_id, 'access', 2, device_id, sid)
+    fresh = create_token(owner_id, 'access', 900, device_id, sid)
+    with TestClient(app) as client, board(client, short) as socket:
+        socket.send_json({'type': 'auth', 'token': fresh})
+        assert socket.receive_json() == {'type': 'auth_ok'}
+        time.sleep(3)  # noqa: ASYNC251 - the TestClient's app runs on its own thread; past the first token's end, still open
+        socket.send_json({'type': 'heartbeat'})
+        assert socket.receive_json() == {'type': 'heartbeat_ack'}
+
+
+@pytest.mark.asyncio
+async def test_a_token_for_another_board_or_type_is_refused_and_changes_nothing(paired):
+    _, device_id, _ = paired
+    owner_id, sid = await _owner_and_session(device_id)
+    short = create_token(owner_id, 'access', 2, device_id, sid)
+    bad = [create_token(owner_id, 'access', 900, str(uuid.uuid4()), sid),       # another device
+           create_token(owner_id, 'refresh', 900, device_id, sid),               # not an access token
+           create_token(str(uuid.uuid4()), 'access', 900, device_id, sid),       # another owner
+           create_token(owner_id, 'access', 900, device_id, str(uuid.uuid4())),  # no such session
+           'not-a-token']
+    with TestClient(app) as client, board(client, short) as socket:
+        for token in bad:
+            socket.send_json({'type': 'auth', 'token': token})
+            reply = socket.receive_json()
+            assert reply['type'] == 'error' and reply['code'] == 'AUTH_REJECTED'
+        with pytest.raises(WebSocketDisconnect) as info:  # the old token still ends the channel
+            socket.receive_json()
+        assert info.value.code == 4401
+
+@pytest.mark.asyncio
+async def test_supervisor_ignores_stale_validation_after_renewal(monkeypatch):
+    started, release = asyncio.Event(), asyncio.Event()
+    closed = []
+    async def reply(_message):
+        pass
+    async def close(code):
+        closed.append(code)
+    async def validate(_owner, _device, session):
+        if session == 'old':
+            started.set()
+            await release.wait()
+            return 4401
+        return None
+    monkeypatch.setattr(channel_module, '_validate', validate)
+    monkeypatch.setattr(channel_module, 'REVALIDATE_SECONDS', 0.001)
+    link = channel_module._Link('device', 'owner', reply, close, session_id='old', token_exp=int(time.time()) + 60)
+    task = asyncio.create_task(channel_module._supervise(link))
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        link.session_id, link.token_exp = 'new', int(time.time()) + 120
+        release.set()
+        await asyncio.sleep(0.02)
+        assert closed == []
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

@@ -45,7 +45,7 @@ commands and routes added for the app pages and firmware.
 
 | Code | Meaning | Board behaviour |
 |---|---|---|
-| `4401` | Auth: token or session invalid or expired | Re-login by device signature, then reconnect. Expected roughly every 15 min (the access-token lifetime), so it is normal, not an error. |
+| `4401` | Auth: token or session invalid or expired | Re-login by device signature, then reconnect. Since v1.5 a board sends a fresh token with `auth` before the old one ends, so this only follows a failed renewal. |
 | `4403` | Device revoked, missing, or not a companion | Call `/auth/device/challenge`. Wipe pairing ONLY if it answers `401 UNAUTHORIZED`. A `429`, a `5xx` or a network error never wipes pairing: back off and retry. |
 | `1011` | Server error or failed send (for example the first snapshot could not be built or sent) | Back off and reconnect with the same token; a fresh snapshot follows. |
 | `4000` | Replaced by a newer connection of the same device | This socket is closed and must not reconnect; the newer connection is live. |
@@ -66,6 +66,16 @@ never clears lost mode locally.
 ```json
 {"type": "heartbeat"}
 ```
+
+### `auth` (v1.5)
+```json
+{"type": "auth", "token": "<a fresh access token>"}
+```
+A board has no refresh token: it signs in again with its key (`/auth/device/challenge`, `/auth/device/login`) about 3 minutes
+before its 15-minute token ends and sends the new token on the open socket. The server accepts it only when it is an access
+token for this owner and this board whose session is still good; the channel then runs on that session and token, answers
+`{"type": "auth_ok"}`, and does not close with `4401`. Anything else gets `error` `AUTH_REJECTED` and changes nothing: the old
+token still ends the channel. A board sends it only between voice turns; an older server answers `UNKNOWN_MESSAGE`.
 
 ### `metrics`
 `heap_min_internal` and `largest_block` are bytes; `psram_free` is bytes;
@@ -237,6 +247,12 @@ Queueing while the board is offline:
   commands are deduplicated by name; the newest replaces the older.
 - `play_sound`, `wifi_add` and `wifi_scan` are never queued. The server answers
   the app with `409 DEVICE_OFFLINE`.
+
+### `auth_ok` (v1.5)
+```json
+{"type": "auth_ok"}
+```
+The `auth` token was accepted; an older board ignores the unknown type.
 
 ### `error`
 ```json
