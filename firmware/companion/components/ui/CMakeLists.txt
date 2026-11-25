@@ -6,7 +6,7 @@ set(UI_SRCS
     fonts/inter_20.c fonts/inter_28.c fonts/inter_40.c fonts/inter_clock_96.c)
 
 if(ESP_PLATFORM)
-    idf_component_register(SRCS ${UI_SRCS} INCLUDE_DIRS include REQUIRES lvgl__lvgl logic)
+    idf_component_register(SRCS ${UI_SRCS} LDFRAGMENTS linker.lf INCLUDE_DIRS include REQUIRES lvgl__lvgl logic)
 else()
     add_library(ui STATIC ${UI_SRCS})
     target_include_directories(ui PUBLIC include)

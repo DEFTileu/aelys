@@ -1,0 +1,6 @@
+# No ISR or cache-disabled code touches this component's .bss, so it can live in PSRAM
+[mapping:ui_extram]
+archive: libui.a
+entries:
+    if SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY = y:
+        * (extram_bss)
