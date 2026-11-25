@@ -327,6 +327,9 @@ async fn request_api(
     if let Some(key) = idempotency_key {
         builder = builder.header("Idempotency-Key", key);
     }
+    send_api(builder).await
+}
+async fn send_api(builder: reqwest::RequestBuilder) -> Result<Value, String> {
     let mut response = builder.send().await.map_err(|_| err("NETWORK_ERROR"))?;
     let status = response.status();
     let mut bytes = Vec::new();
@@ -1231,6 +1234,7 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "resources"),
     ("POST", "resource-links"),
     ("DELETE", "resource-links/*"),
+    ("GET", "companion/devices/*/coredumps"),
     ("GET", "companion/devices"),
     ("GET", "companion/devices/*"),
     ("PUT", "companion/devices/*/lost-mode"),
@@ -1326,6 +1330,7 @@ fn route_listed(list: &[(&str, &str)], method: &str, path: &str) -> bool {
 const BINARY_ALLOWLIST: &[&str] = &[
     "integrations/telegram/messages/*/media",
     "integrations/telegram/chats/*/avatar",
+    "companion/devices/*/coredumps/*",
 ];
 const BINARY_TYPES: &[&str] = &[
     "image/jpeg",
@@ -1404,11 +1409,27 @@ fn binary_allowed(path: &str) -> bool {
                 .all(|(w, s)| if *w == "*" { valid_id(s) } else { w == s })
     })
 }
-async fn request_binary(client: &Client, url: &str, access: &str) -> Result<Value, String> {
+/// Only owner crash dumps (raw core bytes) may come back as `application/octet-stream`.
+fn is_dump_path(path: &str) -> bool {
+    path.contains("/companion/devices/") && path.contains("/coredumps/")
+}
+async fn request_binary(
+    client: &Client,
+    url: &str,
+    access: &str,
+    dump: bool,
+) -> Result<Value, String> {
     let mut response = client
         .get(url)
         .bearer_auth(access)
-        .header("Accept", "image/*,audio/*")
+        .header(
+            "Accept",
+            if dump {
+                "application/octet-stream"
+            } else {
+                "image/*,audio/*"
+            },
+        )
         .send()
         .await
         .map_err(|_| err("NETWORK_ERROR"))?;
@@ -1456,7 +1477,9 @@ async fn request_binary(client: &Client, url: &str, access: &str) -> Result<Valu
         }
         return Err(err("BACKEND_ERROR"));
     }
-    if !BINARY_TYPES.contains(&content_type.as_str()) {
+    if !(BINARY_TYPES.contains(&content_type.as_str())
+        || dump && content_type == "application/octet-stream")
+    {
         return Err(err("415:TELEGRAM_MEDIA_UNSUPPORTED"));
     }
     Ok(json!({
@@ -1498,7 +1521,13 @@ async fn execute_binary(state: &NativeState, origin: &str, path: &str) -> Result
             .map(|s| s.access.clone())
             .ok_or_else(|| err("SIGN_IN_REQUIRED"))?
     };
-    let response = request_binary(&client()?, &format!("{origin}{path}"), &access).await;
+    let response = request_binary(
+        &client()?,
+        &format!("{origin}{path}"),
+        &access,
+        is_dump_path(path),
+    )
+    .await;
     let value = session_response(state, origin, &access, response).await?;
     ensure_operation_session(state, origin, &access, false).await?;
     Ok(value)
@@ -5096,6 +5125,27 @@ mod tests {
             "/api/v1/integrations/telegram/messages/abc/media/x"
         ));
         assert!(!binary_allowed("/api/v1/me"));
+        assert!(binary_allowed(
+            "/api/v1/companion/devices/dev-1/coredumps/dump_2"
+        ));
+        assert!(!binary_allowed("/api/v1/companion/devices/dev-1/coredumps"));
+        // The list is JSON (`api`); a single dump is raw bytes (`api_binary` only).
+        assert!(api_allowed(
+            "GET",
+            "/api/v1/companion/devices/dev-1/coredumps"
+        ));
+        assert!(!api_allowed(
+            "POST",
+            "/api/v1/companion/devices/dev-1/coredumps"
+        ));
+        assert!(!api_allowed(
+            "GET",
+            "/api/v1/companion/devices/dev-1/coredumps/dump_2"
+        ));
+        assert!(!binary_allowed(
+            "/api/v1/companion/devices/dev-1/coredumps/a/b"
+        ));
+        assert!(!binary_allowed("/api/v1/companion/firmware/0.3.0"));
         assert!(!binary_allowed(
             "/api/v1/integrations/telegram/messages/../media"
         ));

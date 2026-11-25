@@ -19,6 +19,8 @@ from typing import Annotated, Any
 
 from app.companion.actions import ActionIn, run_action
 from app.companion.character import REACTION_REASONS, CharacterStateIn
+
+from app.companion.firmware import offer_on_hello
 from app.companion.hub import hub
 from app.companion.models import CompanionState
 from app.companion.state import locked_state, record_ack, valid_command
@@ -58,6 +60,8 @@ class MetricsIn(BaseModel):
     psram_free: int = Field(ge=0)
     wifi_reconnects: int = Field(ge=0)
     uptime_s: int = Field(ge=0)
+    light_sleep_pct: int | None = Field(default=None, ge=0, le=100)
+    ui_wakes_per_s: int | None = Field(default=None, ge=0)
     battery_pct: int | None = Field(default=None, ge=0, le=100)  # v1.1, optional
     charging: bool | None = None
     heap_at_connect_min: int | None = Field(default=None, ge=0)
@@ -159,6 +163,7 @@ async def _hello(link: _Link, message: dict) -> None:
             logger.warning("companion skipped a malformed pending command device=%s", link.device_id)
             continue
         await link.reply({"type": "command", "id": command["id"], "name": command["name"], "args": command["args"]})
+    await offer_on_hello(link.owner_id, body.fw_version, link.reply)
 
 
 async def _heartbeat(link: _Link, message: dict) -> None:

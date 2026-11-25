@@ -20,6 +20,8 @@ FetchContent_Declare(lvgl
     GIT_TAG v9.6.0
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(lvgl)
+# GCC >= 14 in strict C11 does not declare strnlen (lv_string_clib.c) without POSIX
+target_compile_definitions(lvgl PRIVATE _POSIX_C_SOURCE=200809L)
 target_compile_definitions(lvgl PUBLIC LV_INV_BUF_SIZE=64)
 # lv_conf.h pulls in ui_lv_font.h (default font), so every LVGL file needs the ui include dir
 target_include_directories(lvgl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../components/ui/include)
@@ -54,7 +56,7 @@ foreach(t test_face_transform test_face_raster_visual test_face_moods test_face_
     target_link_libraries(${t} PRIVATE simlib)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
-foreach(t test_combo test_pwrkey test_screen_fsm test_store test_improv test_codec_util test_tribuf test_owner test_proto test_link_fsm test_link_core test_gesture test_beep test_perf_probe test_timer_core test_character test_character_report test_face_raster test_face_spring test_level test_games_core test_motion test_sfx test_voice_buf test_battery)
+foreach(t test_combo test_pwrkey test_screen_fsm test_store test_improv test_codec_util test_tribuf test_owner test_proto test_link_fsm test_link_core test_gesture test_beep test_perf_probe test_timer_core test_character test_character_report test_face_raster test_face_spring test_level test_games_core test_motion test_sfx test_voice_buf test_battery test_ota_logic test_power_fsm test_orient)
     add_executable(${t} ${t}.c)
     target_compile_options(${t} PRIVATE -Wall -Wextra)
     target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../main) # example owner contacts

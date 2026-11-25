@@ -16,6 +16,7 @@ pub(super) const HELP: &str = "\nDomain commands:\n\
   aelys --origin URL api METHOD /api/v1/PATH [--body FILE] [--query FILE] [--apply]\n\
   aelys --origin URL connect gmail|calendar --receipt FILE [--apply]\n\
   aelys --origin URL devices revoke ID --receipt FILE [--apply]\n\
+  aelys --origin URL companion firmware-upload FILE --version X.Y.Z --min-version X.Y.Z [--receipt FILE] [--apply]\n\
   aelys --origin URL receipt FILE             # local operation receipt\n\
 Use '-' as input for secret-bearing operations; --receipt PATH is required when\n\
 applying stdin mutations. File mutations default to preview; reads execute.\n\
@@ -59,7 +60,13 @@ impl Invocation {
     pub(super) fn preview_value(&self) -> Value {
         json!({"preview":true,"operation_count":self.operations.len(),"operations":self.operations.iter().map(|value| {
             let (method,path,_) = describe(value).expect("validated operation");
-            json!({"type":value["type"],"method":method.as_str(),"path":path,"mutation":mutates(&method,&path),"secret_input":has_secret(value)})
+            let mut entry = json!({"type":value["type"],"method":method.as_str(),"path":path,"mutation":mutates(&method,&path),"secret_input":has_secret(value)});
+            if value["type"] == "companion_firmware_upload" {
+                for key in ["version", "min_version", "size", "sha256"] {
+                    entry[key] = value[key].clone();
+                }
+            }
+            entry
         }).collect::<Vec<_>>()})
     }
 }
@@ -144,12 +151,67 @@ fn redact(value: &mut Value, private: &[String]) {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum CliOperation {
     Devices {},
-    DeviceRevoke { id: String },
-    GoogleConnect { provider: String },
+    DeviceRevoke {
+        id: String,
+    },
+    GoogleConnect {
+        provider: String,
+    },
+    CompanionFirmwareUpload {
+        file: String,
+        version: String,
+        min_version: String,
+        size: u64,
+        sha256: String,
+    },
+}
+const MAX_FIRMWARE: u64 = 4_194_304; // one ota_N partition (0x400000)
+fn valid_version(value: &str) -> bool {
+    let parts: Vec<&str> = value.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| (1..=3).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit()))
+}
+/// Reads the whole image (size-capped); the caller hashes it. Never follows more than a regular file.
+fn read_firmware(path: &str) -> Result<Vec<u8>, String> {
+    let file = File::open(path).map_err(|_| err("INPUT_READ_FAILED"))?;
+    let metadata = file.metadata().map_err(|_| err("INPUT_READ_FAILED"))?;
+    if !metadata.is_file() {
+        return Err(err("INPUT_NOT_REGULAR_FILE"));
+    }
+    if metadata.len() == 0 || metadata.len() > MAX_FIRMWARE {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_FIRMWARE + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| err("INPUT_READ_FAILED"))?;
+    if bytes.is_empty() || bytes.len() as u64 > MAX_FIRMWARE {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    Ok(bytes)
+}
+fn firmware_operation(file: &str, version: &str, min_version: &str) -> Result<Value, String> {
+    if !valid_version(version) || !valid_version(min_version) {
+        return Err(err("VALIDATION_ERROR"));
+    }
+    let bytes = read_firmware(file)?;
+    Ok(
+        json!({"type":"companion_firmware_upload","file":file,"version":version,
+        "min_version":min_version,"size":bytes.len(),"sha256":hash(&bytes)}),
+    )
 }
 fn special(value: &Value) -> Result<Option<(Method, String)>, String> {
     let kind = value["type"].as_str().unwrap_or("");
-    if !["devices", "device_revoke", "google_connect"].contains(&kind) {
+    if ![
+        "devices",
+        "device_revoke",
+        "google_connect",
+        "companion_firmware_upload",
+    ]
+    .contains(&kind)
+    {
         return Ok(None);
     }
     let operation: CliOperation =
@@ -166,6 +228,26 @@ fn special(value: &Value) -> Result<Option<(Method, String)>, String> {
             Method::POST,
             "/api/v1/calendar/google/browser-connect".into(),
         ),
+        CliOperation::CompanionFirmwareUpload {
+            file,
+            version,
+            min_version,
+            size,
+            sha256,
+        } if !file.is_empty()
+            && valid_version(&version)
+            && valid_version(&min_version)
+            && (1..=MAX_FIRMWARE).contains(&size)
+            && sha256.len() == 64
+            && sha256
+                .bytes()
+                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) =>
+        {
+            (
+                Method::PUT,
+                format!("/api/v1/companion/firmware/{version}?min_version={min_version}"),
+            )
+        }
         _ => return Err(err("VALIDATION_ERROR")),
     };
     Ok(Some(route))
@@ -418,18 +500,22 @@ pub(super) fn parse(args: &[String]) -> Result<Option<Invocation>, String> {
     let mut receipt = None;
     let mut body = None;
     let mut query = None;
+    let mut version = None;
+    let mut min_version = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--apply" if !apply => apply = true,
             "--unlock-keychain" if !unlock => unlock = true,
-            "--receipt" | "--body" | "--query" => {
+            "--receipt" | "--body" | "--query" | "--version" | "--min-version" => {
                 let flag = args[index].as_str();
                 index += 1;
                 let path = args.get(index).ok_or_else(|| err("USAGE_ERROR"))?.clone();
                 let target = match flag {
                     "--receipt" => &mut receipt,
                     "--body" => &mut body,
+                    "--version" => &mut version,
+                    "--min-version" => &mut min_version,
                     _ => &mut query,
                 };
                 if target.replace(path).is_some() {
@@ -446,7 +532,31 @@ pub(super) fn parse(args: &[String]) -> Result<Option<Invocation>, String> {
         .first()
         .map(String::as_str)
         .ok_or_else(|| err("USAGE_ERROR"))?;
+    if (version.is_some() || min_version.is_some()) && command != "companion" {
+        return Err(err("USAGE_ERROR"));
+    }
     match command {
+        "companion"
+            if positionals.len() == 3
+                && positionals[1] == "firmware-upload"
+                && body.is_none()
+                && query.is_none() =>
+        {
+            let (Some(version), Some(min_version)) = (&version, &min_version) else {
+                return Err(err("USAGE_ERROR"));
+            };
+            let value = firmware_operation(&positionals[2], version, min_version)?;
+            // Like `create FILE`: the receipt defaults beside the input file.
+            finish(
+                vec![value],
+                Some(&positionals[2]),
+                apply,
+                unlock,
+                receipt,
+                false,
+            )
+            .map(Some)
+        }
         "exec" | "batch" if positionals.len() == 2 && body.is_none() && query.is_none() => {
             let (value, stdin) = input(&positionals[1])?;
             let operations = if command == "batch" {
@@ -639,6 +749,28 @@ async fn connect_google(session: &Session, provider: &str, path: &str) -> Result
     }
     Ok(json!({"browser_opened":true,"provider":provider,"consent_required":true}))
 }
+async fn upload_firmware(
+    session: &Session,
+    value: &Value,
+    method: Method,
+    path: &str,
+) -> Result<Value, String> {
+    let operation = value.as_object().ok_or_else(|| err("INVALID_OPERATION"))?;
+    let bytes = read_firmware(operation["file"].as_str().unwrap_or_default())?;
+    // The image must be exactly what the preview/receipt described.
+    if operation["size"] != bytes.len() || operation["sha256"] != hash(&bytes).as_str() {
+        return Err(err("INPUT_CHANGED"));
+    }
+    send_api(
+        client_with_timeout(Duration::from_secs(120))?
+            .request(method, format!("{}{path}", session.origin))
+            .bearer_auth(&session.access)
+            .header("Content-Type", "application/octet-stream")
+            .header("X-Content-Sha256", hash(&bytes))
+            .body(bytes),
+    )
+    .await
+}
 pub(super) async fn execute(session: &Session, invocation: Invocation) -> Result<Value, String> {
     let writes = invocation
         .operations
@@ -684,7 +816,9 @@ pub(super) async fn execute(session: &Session, invocation: Invocation) -> Result
             save_receipt(invocation.receipt.as_ref().expect("receipt path"), saved)?;
         }
         let response = if let Some((method, path)) = special(value)? {
-            if value["type"] == "google_connect" {
+            if value["type"] == "companion_firmware_upload" {
+                upload_firmware(session, value, method, &path).await
+            } else if value["type"] == "google_connect" {
                 connect_google(
                     session,
                     value["provider"].as_str().expect("validated provider"),

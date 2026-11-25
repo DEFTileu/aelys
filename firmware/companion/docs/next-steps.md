@@ -16,6 +16,11 @@ Plan 1 (`docs/superpowers/plans/2026-11-12-companion-firmware-base.md`) is done.
 - Touch latency on real taps: median 27 ms, max 35 ms (budget 50 ms).
 - Ring centred on the round edge: OK, so the panel x offset of 6 px is right.
 
+## QEMU smoke limits (`tools/qemu_smoke.sh`)
+- `board_init` hangs in display setup under QEMU (no panel/touch), so nothing past the boot banner runs.
+- The 32 MB emulated PSRAM fills the flash mmap range, so loading partitions fails. NVS, OTA and the partition table are not exercised; a PASS means bootloader + app start + banner, no crash signature.
+- To cover more, give the QEMU build a smaller PSRAM and skip display init (a `CONFIG_`-gated stub board).
+
 ## Known limits left as they are
 - The two-button hold ring runs at ~48 fps (worst frame 35–42 ms) during the 2 s hold; the rest of the UI holds 60 fps.
 - LVGL 9 allocates internally per draw call; the rule is "no app-level allocations per frame".

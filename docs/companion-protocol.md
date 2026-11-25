@@ -484,3 +484,78 @@ recorded in the command log.
 The authenticated companion channel supports one push-to-talk turn at a time. The board sends `voice_start` with a device-unique `id` (1–40 characters), `rate: 16000`, `format: "pcm_s16le"` and boolean `speak`, followed by binary mono 16-bit little-endian PCM, then `voice_end` or `voice_cancel` with the same `id`. Audio outside an open recording is ignored. The limit is 640,000 bytes (20 seconds); exceeding it discards the recording and returns `VOICE_TOO_LONG`. A new start cancels the prior turn and fences its queued output.
 
 The server sends `voice_state` with `id` and `state` (`thinking`, `speaking`, `done`, or `error`), `voice_heard` with the `id` and the transcribed question (at most 600 characters) once speech is recognised, `voice_text` with the `id` and at most 600 characters of the reply, and binary PCM frames of at most 4096 bytes, each an even number of bytes. `done` follows the final audio frame; `speak: false` skips synthesis. Errors contain `error_code`: `VOICE_NOT_CONFIGURED`, `BUDGET_EXCEEDED`, `VOICE_TOO_LONG`, `VOICE_EMPTY`, or `VOICE_UNAVAILABLE`. Lost mode refuses voice. The board controls sound suppression for night and its Sounds setting. Audio is transient and never stored; the conversation text is stored in the owner's AI chat and never logged.
+
+## Version 2 additions (OTA)
+
+Status: PROPOSED until ADR-031 is approved by the owner.
+
+This section extends v1 additively: nothing above changes, and a v1 board keeps
+working. It supersedes the note "Firmware OTA is not part of v1 (plan 4)". A
+board ignores server message `type`s it does not know, so a v1 board receiving
+`ota_available` is defined behaviour.
+
+### `ota_available` (server to board)
+Sent after `hello` when a newer release exists and the board's `fw_version` is
+at least the release's `min_version`, and to online boards right after an
+upload. The board then calls `GET /api/v1/devices/{device_id}/firmware`.
+```json
+{"type": "ota_available", "version": "0.3.0"}
+```
+
+### `metrics` additions (board to server)
+Two optional fields; old boards may omit them.
+- `light_sleep_pct` — int 0–100, share of the last period spent in light sleep.
+- `ui_wakes_per_s` — int, UI wakes per second.
+
+### HTTP endpoints
+Errors are `{"detail": {"code", "message"}}`. Every endpoint needs a valid
+bearer token (401 otherwise); the firmware endpoints and the owner crash-dump
+endpoints also need a device that holds a registered key (403
+`TRUSTED_DEVICE_REQUIRED`).
+
+**Version format.** A version is `MAJOR.MINOR.PATCH`, regex
+`[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}` (full match, no `v` prefix, no suffix).
+A board whose `fw_version` is outside it gets no `ota_available` and no
+firmware offer, and its crash dumps are rejected with 422. Releases compare by
+numeric version, not upload time; the server keeps the 3 highest versions per
+owner.
+
+- `PUT /api/v1/companion/firmware/{version}?min_version=` (owner only; a
+  board gets 403 `DEVICE_SCOPE_DENIED`). Raw body is the signed app image, with
+  header `X-Content-Sha256` (hex SHA-256 of the body). Returns
+  `{version, sha256, size, min_version}`: 201 for a new release, 200 when the
+  same version with the same contents already exists. Errors: 422
+  `FIRMWARE_INVALID` (bad `version` or `min_version`, `min_version` above
+  `version`, or an image that is not an ESP-IDF app image for project
+  `companion` with this version), 422 `FIRMWARE_UNSIGNED` (no signature block),
+  422 `FIRMWARE_HASH_MISMATCH` (`X-Content-Sha256` is not the body's hash), 413
+  `FIRMWARE_TOO_LARGE` (body over 4 194 304 bytes), 409 `FIRMWARE_EXISTS`
+  (this version is already released with other contents).
+- `GET /api/v1/devices/{device_id}/firmware` (owner, or the board itself)
+  returns 200 `{version, url, sha256, size, min_version}` (`size` ≤ 4 194 304
+  bytes, the OTA slot size) for the highest release. `url` is a path starting
+  with `/api/v1/companion/firmware/`, joined by the board with its own API
+  base; it is never an absolute URL. Errors: 404 `FIRMWARE_NONE` (nothing
+  released), 403 `DEVICE_SCOPE_DENIED` (a board asked for another device), 404
+  `NOT_FOUND` (owner caller: not their companion, or revoked).
+- `GET {url}` (the owner or any of the owner's trusted devices) returns 200
+  `application/octet-stream`; 404 `FIRMWARE_NONE` when that version is not
+  released.
+- `POST /api/v1/companion/coredumps` (paired board only; anyone else gets 403
+  `COMPANION_ONLY`). Raw body of at most 64 KB (65 536 bytes), header
+  `X-Fw-Version` (version format above) and optional `X-Elf-Sha256` (64 hex
+  digits). Returns `{id}`: 201 for a new dump, 200 with the existing id when
+  the same body (SHA-256) was already stored for this board. Errors: 422
+  `VALIDATION_ERROR` (bad or missing `X-Fw-Version`, bad `X-Elf-Sha256`, or an
+  empty body), 413 `COREDUMP_TOO_LARGE`. The server keeps the 5 newest dumps
+  per board.
+- `GET /api/v1/companion/devices/{device_id}/coredumps` (owner only) returns
+  200 `[{id, fw_version, elf_sha256, size, created_at}]`, newest first.
+  `GET /api/v1/companion/devices/{device_id}/coredumps/{dump_id}` (owner only)
+  returns 200 `application/octet-stream`. A board gets 403
+  `DEVICE_SCOPE_DENIED`; a device that is not the owner's live companion gets
+  404 `NOT_FOUND`, and so does an unknown `dump_id`.
+
+### Rollback rule
+The board marks a new app valid only after `ready` and `snapshot` were received
+and `hello` was sent; otherwise it rolls back after 10 minutes of uptime.

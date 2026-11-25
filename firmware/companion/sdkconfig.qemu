@@ -1,0 +1,16 @@
+# QEMU-only overlay on sdkconfig.defaults, used by tools/qemu_smoke.sh; never for the real board.
+# No radio: QEMU has no Wi-Fi.
+CONFIG_AELYS_NO_WIFI=y
+# QEMU wires the first UART to stdio; it does not emulate the USB-Serial/JTAG console.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+# QEMU's SPI flash model takes 2/4/8/16 MB images only (the board has 32 MB).
+# partitions.qemu.csv is partitions.csv with the storage partition cut to end at 16 MB.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_FILENAME="partitions.qemu.csv"
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.qemu.csv"
+# Octal PSRAM (-global ssi_psram,is_octal) hangs the boot silently in QEMU 9.2.2; quad works.
+CONFIG_SPIRAM_MODE_QUAD=y
+CONFIG_SPIRAM_SPEED_40M=y
+# Boot log visible: the pass check reads it and a hang is diagnosable.
+CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

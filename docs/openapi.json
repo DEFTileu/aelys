@@ -1735,6 +1735,333 @@
         ]
       }
     },
+    "/api/v1/companion/firmware/{version}": {
+      "put": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Upload Firmware",
+        "operationId": "upload_firmware_api_v1_companion_firmware__version__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "min_version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Min Version"
+            }
+          },
+          {
+            "name": "X-Content-Sha256",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Content-Sha256"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{device_id}/firmware": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Firmware For Device",
+        "operationId": "firmware_for_device_api_v1_devices__device_id__firmware_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseMetaOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/firmware/{version}/image": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Firmware Image",
+        "operationId": "firmware_image_api_v1_companion_firmware__version__image_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/coredumps": {
+      "post": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Upload Coredump",
+        "operationId": "upload_coredump_api_v1_companion_coredumps_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Fw-Version",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Fw-Version"
+            }
+          },
+          {
+            "name": "X-Elf-Sha256",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Elf-Sha256"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DumpId"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/coredumps": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "List Coredumps",
+        "operationId": "list_coredumps_api_v1_companion_devices__device_id__coredumps_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DumpOut"
+                  },
+                  "title": "Response List Coredumps Api V1 Companion Devices  Device Id  Coredumps Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companion/devices/{device_id}/coredumps/{dump_id}": {
+      "get": {
+        "tags": [
+          "companion"
+        ],
+        "summary": "Download Coredump",
+        "operationId": "download_coredump_api_v1_companion_devices__device_id__coredumps__dump_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dump_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dump Id"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/browser/status": {
       "get": {
         "tags": [
@@ -11313,22 +11640,22 @@
         "properties": {
           "task_response": {
             "type": "string",
-            "pattern": "^\u2248?[0-9](\\.[05])?$",
+            "pattern": "^≈?[0-9](\\.[05])?$",
             "title": "Task Response"
           },
           "coherence": {
             "type": "string",
-            "pattern": "^\u2248?[0-9](\\.[05])?$",
+            "pattern": "^≈?[0-9](\\.[05])?$",
             "title": "Coherence"
           },
           "lexical": {
             "type": "string",
-            "pattern": "^\u2248?[0-9](\\.[05])?$",
+            "pattern": "^≈?[0-9](\\.[05])?$",
             "title": "Lexical"
           },
           "grammar": {
             "type": "string",
-            "pattern": "^\u2248?[0-9](\\.[05])?$",
+            "pattern": "^≈?[0-9](\\.[05])?$",
             "title": "Grammar"
           }
         },
@@ -11802,6 +12129,60 @@
           "version"
         ],
         "title": "DraftPatch"
+      },
+      "DumpId": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "DumpId"
+      },
+      "DumpOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "fw_version": {
+            "type": "string",
+            "title": "Fw Version"
+          },
+          "elf_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elf Sha256"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "fw_version",
+          "elf_sha256",
+          "size",
+          "created_at"
+        ],
+        "title": "DumpOut"
       },
       "EnglishCourse": {
         "properties": {
@@ -15505,6 +15886,67 @@
           "signature"
         ],
         "title": "Reauth"
+      },
+      "ReleaseMetaOut": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "min_version": {
+            "type": "string",
+            "title": "Min Version"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "sha256",
+          "size",
+          "min_version",
+          "url"
+        ],
+        "title": "ReleaseMetaOut"
+      },
+      "ReleaseOut": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "min_version": {
+            "type": "string",
+            "title": "Min Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "sha256",
+          "size",
+          "min_version"
+        ],
+        "title": "ReleaseOut"
       },
       "ReminderIn": {
         "properties": {
