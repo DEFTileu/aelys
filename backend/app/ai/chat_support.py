@@ -215,6 +215,8 @@ DATA_GROUNDING_POLICY = (
     "Use owner-local calendar midnights with their correct UTC offsets, including DST, not a rolling 24 hours. "
     "For requests that span several sources, read each relevant source before synthesizing. Reuse successful results instead of repeating calls. "
     "A truncated page is not the full set: continue with next_offset and identical filters or explicitly report a partial result. "
+    "Use the weather or exchange-rate tool for current forecasts or rates when available. State the city and local forecast date "
+    "or the rate's effective date. If a lookup fails, say the data is unavailable. "
 )
 
 

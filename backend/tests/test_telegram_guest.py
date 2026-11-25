@@ -312,7 +312,7 @@ async def test_owner_without_marker_allows_web_search_and_blocks_personal_data(s
             calls += 1
             self.requests.append((messages, tools))
             tool_names = [tool["name"] for tool in tools]
-            assert tool_names == ["web_search"]
+            assert set(tool_names) == {"web_search", "get_weather", "get_exchange_rate"}
             combined = "\n".join(m.content for m in messages)
             assert "Личный факт" not in combined
             assert "пароль от сейфа" not in combined

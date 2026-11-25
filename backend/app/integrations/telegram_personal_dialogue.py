@@ -317,13 +317,21 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
             )
             search_enabled = not file_turn and tools_supported and provider.kind in {'claude', 'openrouter'}
             if search_enabled:
+                from app.ai.public_information import (
+                    PUBLIC_INFORMATION_SCOPES,
+                    register_public_information,
+                )
                 from app.ai.web_search import register_web_search
                 register_web_search(registry)
+                register_public_information(registry)
+                external_scopes = PUBLIC_INFORMATION_SCOPES | {'web.search'}
+            else:
+                external_scopes = frozenset()
             projects = frozenset((await db.execute(select(Project.id).where(Project.owner_id == owner_id,
                                                                             Project.deleted_at.is_(None)))).scalars())
-            context = PermissionContext(actor=f'telegram-personal:{run_id}', scopes=(scopes | frozenset({'web.search'}) if search_enabled else scopes) if tools_supported else frozenset(),
-                                        project_ids=projects, policy_id='telegram-owner', external_scopes=frozenset({'web.search'}) if search_enabled else frozenset())
-            use_tools = bool(scopes) and tools_supported
+            context = PermissionContext(actor=f'telegram-personal:{run_id}', scopes=(scopes | external_scopes) if tools_supported else frozenset(),
+                                        project_ids=projects, policy_id='telegram-owner', external_scopes=external_scopes)
+            use_tools = bool(context.scopes)
             request = RoutingRequest(TaskKind.TOOL_ACTION if use_tools else TaskKind.UNKNOWN,
                                      required_capabilities=media_capabilities | (frozenset({Capability.TOOL_CALLING}) if use_tools else frozenset()),
                                      privacy=PrivacyClass.PERSONAL, manual_model=manual_model,

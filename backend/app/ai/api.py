@@ -812,7 +812,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
             tools_supported = supports_tool_calling(service.models, requested_model)
             search_enabled = tools_supported and provider.kind in {'claude', 'openrouter'} and 'web.search' in requested_scopes
             effective_scopes = requested_scopes if search_enabled else requested_scopes - {'web.search'}
-            use_tools = bool(effective_scopes) and tools_supported
+            use_personal_tools = bool(effective_scopes) and tools_supported
+            use_public_tools = tools_supported and provider.kind in {'claude', 'openrouter'}
+            use_tools = use_personal_tools or use_public_tools
             from app.integrations.telegram_models import TelegramIntegration
             telegram_tz = (await db.execute(select(TelegramIntegration.timezone).where(TelegramIntegration.owner_id == user.id))).scalar_one_or_none()
             timezone = owner_timezone((item.tool_scope_json or {}).get("timezone"), (user.settings_json or {}).get("timezone"), telegram_tz)
@@ -826,10 +828,18 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                         [{"id": fact.id, "kind": fact.kind, "text": fact.text} for fact in facts], ensure_ascii=False),
                         untrusted=True, memory_refs=tuple(sorted((fact.id, fact.version) for fact in facts)))
                     chat_messages = (*chat_messages[:-1], memory, *chat_messages[-1:])
-                chat_messages = (ChatMessage("system", system_prompt(timezone, tools=use_tools)), *chat_messages)
+                chat_messages = (ChatMessage("system", system_prompt(timezone, tools=use_personal_tools)), *chat_messages)
             if use_tools:
                 from .personal_tools import personal_tool_registry
-                registry = personal_tool_registry(db, user.id, run_id, memory_source="app_ai")
+                from .public_information import (
+                    PUBLIC_INFORMATION_SCOPES,
+                    register_public_information,
+                )
+                registry = (personal_tool_registry(db, user.id, run_id, memory_source="app_ai")
+                            if use_personal_tools else ToolRegistry(ServerPolicyEngine()))
+                public_scopes = PUBLIC_INFORMATION_SCOPES if use_public_tools else frozenset()
+                if use_public_tools:
+                    register_public_information(registry)
                 if search_enabled:
                     from .web_search import register_web_search
                     register_web_search(registry)
@@ -863,7 +873,9 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 from app.integrations.telegram_personal_dialogue import owner_scopes
                 # Memory stays opt-in as in Telegram: only an explicit "remember"/"forget" exposes those tools.
                 memory_scopes = frozenset(scope for scope in owner_scopes(last_message.content) if scope.startswith("memory."))
-                context = PermissionContext(actor=f"ai:{run_id}", scopes=effective_scopes | WRITE_SCOPES | memory_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai", external_scopes=frozenset({'web.search'}) if search_enabled else frozenset())
+                personal_scopes = effective_scopes | WRITE_SCOPES | memory_scopes if use_personal_tools else frozenset()
+                external_scopes = public_scopes | ({'web.search'} if search_enabled else set())
+                context = PermissionContext(actor=f"ai:{run_id}", scopes=personal_scopes | public_scopes, project_ids=frozenset({conversation.project_id}) if conversation and conversation.project_id else frozenset(), policy_id="ai", external_scopes=external_scopes)
                 tool_request = RoutingRequest(TaskKind.TOOL_ACTION, required_capabilities=frozenset({Capability.TOOL_CALLING}), privacy=PrivacyClass.PERSONAL, manual_model=requested_model, request_budget=min(Decimal(100), remaining_budget), effort=(item.tool_scope_json or {}).get("effort"))
                 async def account_tool_usage(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
                     item.cost_estimate = cost

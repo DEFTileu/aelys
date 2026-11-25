@@ -260,7 +260,7 @@ def _guest_system_prompt(timezone: str, *, tools_unlocked: bool) -> str:
         return (
             base
             + " Personal modules (tasks, notes, calendar, knowledge base, memory) and write actions are disabled for this turn. "
-            "You may answer generally or use web_search when current information is needed. "
+            "Use weather and exchange-rate tools for current weather and rates, or web_search for other current information when available. "
             "Never pretend to read or change personal data."
         )
     return (
@@ -854,21 +854,24 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
 
             search_enabled = tools_supported and provider.kind in {"claude", "openrouter"}
             if search_enabled:
+                from app.ai.public_information import (
+                    PUBLIC_INFORMATION_SCOPES,
+                    register_public_information,
+                )
                 from app.ai.web_search import register_web_search
 
                 register_web_search(registry)
-
-            effective_scopes = (
-                (personal_scopes | frozenset({"web.search"}) if search_enabled else personal_scopes)
-                if tools_supported
-                else frozenset()
-            )
+                register_public_information(registry)
+                external_scopes = PUBLIC_INFORMATION_SCOPES | {"web.search"}
+            else:
+                external_scopes = frozenset()
+            effective_scopes = (personal_scopes | external_scopes) if tools_supported else frozenset()
             context = PermissionContext(
                 actor=f"telegram-guest:{run_id}",
                 scopes=effective_scopes,
                 project_ids=projects,
                 policy_id="telegram-guest",
-                external_scopes=frozenset({"web.search"}) if search_enabled else frozenset(),
+                external_scopes=external_scopes,
             )
             use_tools = bool(effective_scopes) and tools_supported
             request = RoutingRequest(

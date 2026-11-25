@@ -17,6 +17,8 @@ _DEFERRED_PURPOSES = {
     "create_reminder": "set a reminder for a task",
     "search_knowledge": "find relevant documents in the knowledge base",
     "read_chat_history": "check earlier personal Telegram messages",
+    "get_weather": "look up current weather and a daily forecast for a city",
+    "get_exchange_rate": "look up official exchange rates and convert currencies",
 }
 
 

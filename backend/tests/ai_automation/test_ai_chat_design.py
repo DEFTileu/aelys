@@ -431,10 +431,19 @@ async def test_message_feedback(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_plain_stream_completion_reports_tokens(tmp_path, monkeypatch):
-    async with chat(tmp_path, monkeypatch, [[]]) as (client, _, _):
+    text_only = {**PRICED_MODEL, "capabilities": ["streaming"]}
+    async with chat(tmp_path, monkeypatch, [[]], models=[text_only]) as (client, _, _):
         conversation = (await client.post("/api/v1/ai/conversations", json={"tool_scope": {"scopes": []}})).json()
         done = payloads(await run(client, conversation["id"], "hi", "p1"), "ai.run.completed")[0]
         assert (done["input_tokens"], done["output_tokens"]) == (7, 3)
+
+
+async def test_public_tools_are_available_without_personal_sources(tmp_path, monkeypatch):
+    async with chat(tmp_path, monkeypatch, [[{"type": "text", "text": "Hello."}]]) as (client, script, _):
+        conversation = (await client.post("/api/v1/ai/conversations", json={"tool_scope": {"scopes": []}})).json()
+        events = await run(client, conversation["id"], "hello", "public-only")
+        assert payloads(events, "ai.run.completed")
+        assert {tool["name"] for tool in script.requests[0]["tools"]} == {"get_weather", "get_exchange_rate"}
 
 
 # Every app chat run tells the model who it is, the owner's time, and the relevant memory.
