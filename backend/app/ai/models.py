@@ -69,6 +69,20 @@ class MediaContent:
             raise ValueError("Media data must be nonempty bytes")
 
 
+class ContextTrust(str, Enum):
+    INSTRUCTION = "instruction"
+    DIALOGUE = "dialogue"
+    EVIDENCE = "evidence"
+
+
+class ContextSource(str, Enum):
+    CURRENT = "current"
+    HISTORY = "history"
+    KNOWLEDGE = "knowledge"
+    MEMORY = "memory"
+    TOOL = "tool"
+
+
 @dataclass(frozen=True)
 class ChatMessage:
     role: str
@@ -79,8 +93,20 @@ class ChatMessage:
     # Assistant turns carry the calls they made; role "tool" messages answer one call by id.
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str | None = None
+    source: ContextSource | None = None
+    source_id: str | None = field(default=None, repr=False)
+
+    @property
+    def trust(self) -> ContextTrust:
+        if self.untrusted or self.role == "tool":
+            return ContextTrust.EVIDENCE
+        return ContextTrust.INSTRUCTION if self.role == "system" else ContextTrust.DIALOGUE
 
     def __post_init__(self) -> None:
+        if self.source is ContextSource.HISTORY and (self.role not in {"user", "assistant"} or self.tool_calls or self.tool_call_id):
+            raise ValueError("Only persisted dialogue can be evicted as history")
+        if self.source in (ContextSource.KNOWLEDGE, ContextSource.MEMORY, ContextSource.TOOL) and not self.untrusted:
+            raise ValueError("Evidence must be marked untrusted")
         if not isinstance(self.media, tuple) or any(not isinstance(value, MediaContent) for value in self.media):
             raise ValueError("Media must be a tuple of MediaContent attachments")
         if self.media and self.role != "user":
@@ -97,6 +123,7 @@ class ProviderRequest:
     stream: bool = False
     effort: str | None = None
     web_search: bool = False
+    output_limit: int | None = None
 
 
 @dataclass(frozen=True)

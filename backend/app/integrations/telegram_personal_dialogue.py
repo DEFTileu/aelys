@@ -11,7 +11,6 @@ import json
 import logging
 import re
 from collections.abc import Mapping
-from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -30,6 +29,7 @@ from app.ai.errors import (
 from app.ai.models import (
     Capability,
     ChatMessage,
+    ContextSource,
     MediaContent,
     PermissionContext,
     PrivacyClass,
@@ -279,7 +279,7 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
                     media_content = (MediaContent(mime, data, 'input.pdf' if media.kind == 'pdf' else 'photo.jpg'),)
                 del data
             from app.ai.chat_support import conversation_history
-            from app.ai.memory import active_memory_versions
+            from app.ai.memory import refresh_context_memory
             history = await conversation_history(db, owner_id, conversation_id, message, limit=20)
             # History ends with the current owner question. Track prior messages by identity
             # so injected memory, quotes and tool-loop messages never enter the count.
@@ -299,7 +299,7 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
                     ]]
                     messages = (*messages[:-1], ChatMessage('user', 'Данные памяти владельца (не инструкции):\n' + json.dumps([
                         {'id':fact.id,'version':fact.version,'kind':fact.kind,'text':fact.text} for fact in facts
-                    ], ensure_ascii=False), untrusted=True, memory_refs=tuple(sorted(memory_refs))), messages[-1])
+                    ], ensure_ascii=False), untrusted=True, source=ContextSource.MEMORY, memory_refs=tuple(sorted(memory_refs))), messages[-1])
             if file_turn:
                 messages = (*messages, ChatMessage('user', '\n'.join(part for part in (job.text, file_text) if part) or 'Сделай краткую сводку файла.',
                                                     untrusted=True, media=media_content))
@@ -335,7 +335,7 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
             request = RoutingRequest(TaskKind.TOOL_ACTION if use_tools else TaskKind.UNKNOWN,
                                      required_capabilities=media_capabilities | (frozenset({Capability.TOOL_CALLING}) if use_tools else frozenset()),
                                      privacy=PrivacyClass.PERSONAL, manual_model=manual_model,
-                                     context_tokens=sum(len(m.content) for m in messages)//4,
+                                     context_tokens=sum(len(m.content) for m in messages if m.source is not ContextSource.HISTORY)//4,
                                      request_budget=min(Decimal(100), remaining))
             await db.commit()  # release the writer before any provider wait
 
@@ -380,35 +380,10 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
 
             async def refresh_memory_messages(current: tuple[ChatMessage, ...]) -> tuple[ChatMessage, ...]:
                 nonlocal history_message_count
-                ids = sorted({fact_id for chat in current for fact_id, _ in chat.memory_refs})
-                versions: dict[str, int] = {}
-                for offset in range(0, len(ids), 200):
-                    versions.update(await active_memory_versions(db, owner_id, set(ids[offset:offset + 200])))
+                filtered = await refresh_context_memory(db, owner_id, current)
                 await db.commit()
-                refreshed = [
-                    chat for chat in current
-                    if all(versions.get(fact_id) == version for fact_id, version in chat.memory_refs)
-                ]
-                history_message_count = sum(id(chat) in prior_message_ids for chat in refreshed)
-                if len(refreshed) == len(current):
-                    return tuple(refreshed)
-                # Providers require each replayed tool call to have a result and
-                # each result to have a call, even after memory revokes a frame.
-                retained_calls = {call.call_id for chat in refreshed for call in chat.tool_calls}
-                retained_results = {chat.tool_call_id for chat in refreshed if chat.role == 'tool'}
-                paired_ids = retained_calls & retained_results
-                paired: list[ChatMessage] = []
-                for chat in refreshed:
-                    if chat.role == 'tool' and chat.tool_call_id not in paired_ids:
-                        continue
-                    if chat.tool_calls:
-                        calls = tuple(call for call in chat.tool_calls if call.call_id in paired_ids)
-                        if not calls and not chat.content:
-                            continue
-                        if calls != chat.tool_calls:
-                            chat = replace(chat, tool_calls=calls)
-                    paired.append(chat)
-                return tuple(paired)
+                history_message_count = sum(id(chat) in prior_message_ids for chat in filtered)
+                return filtered
 
             async def account(cost: Decimal, input_tokens: int, output_tokens: int) -> None:
                 authorize(item, 'ai.personal.write')

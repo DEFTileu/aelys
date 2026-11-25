@@ -17,7 +17,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from .models import ChatMessage
+from .models import ChatMessage, ContextSource
 from .tools import ToolRegistry
 
 
@@ -140,7 +140,8 @@ async def conversation_history(
     db: AsyncSession, owner_id: str, conversation_id: str, current: AIMessage, *, limit: int,
 ) -> tuple[ChatMessage, ...]:
     """Collect persisted turns up to the current question, excluding unfinished runs."""
-    prior = list((await db.scalars(select(AIMessage).where(
+    prior = list((await db.scalars(select(AIMessage).join(AIConversation, AIMessage.conversation_id == AIConversation.id).where(
+        AIConversation.owner_id == owner_id,
         AIMessage.conversation_id == conversation_id,
         AIMessage.role.in_(["user", "assistant"]),
         or_(AIMessage.created_at < current.created_at,
@@ -149,6 +150,7 @@ async def conversation_history(
     memory_refs: dict[str, tuple[tuple[str, int], ...]] = {}
     prior = await filter_history_messages(db, owner_id, prior, current_id=current.id, memory_refs_out=memory_refs)
     return tuple(ChatMessage(entry.role, entry.content,
+        source=ContextSource.HISTORY if entry.id != current.id else ContextSource.CURRENT, source_id=entry.id,
         untrusted=any(ref.get("untrusted") is True for ref in (entry.source_refs_json or []) if isinstance(ref, dict)),
         memory_refs=memory_refs.get(entry.id, ()))
         for entry in reversed(prior))

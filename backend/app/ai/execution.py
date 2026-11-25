@@ -14,10 +14,12 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
+from .context import fit_context
 from .egress import ensure_safe_request
 from .errors import AIError, BudgetExceeded, ProviderError, RunCancelled, redact_error
 from .models import (
     ChatMessage,
+    ContextTrust,
     ModelSpec,
     ProviderKind,
     ProviderRequest,
@@ -37,11 +39,11 @@ _UNTRUSTED_NOTICE = (
 
 def apply_untrusted_boundary(messages: tuple[ChatMessage, ...]) -> tuple[ChatMessage, ...]:
     """Fence externally authored messages so the provider sees them as data, with obvious tokens redacted."""
-    if not any(message.untrusted for message in messages):
+    if not any(message.trust is ContextTrust.EVIDENCE for message in messages):
         return messages
     fenced = tuple(
         replace(message, role="user" if message.role == "system" else message.role,
-                content=UntrustedData("external", message.content).as_context(), untrusted=False) if message.untrusted else message
+                content=UntrustedData(message.source.value if message.source else "external", message.content).as_context()) if message.trust is ContextTrust.EVIDENCE else message
         for message in messages
     )
     if fenced and fenced[0].role == "system":
@@ -74,6 +76,16 @@ class AIExecutionService:
     def select(self, request: RoutingRequest):
         return self.router.choose(request)
 
+    def _assemble(self, request: ProviderRequest, model: ModelSpec) -> ProviderRequest:
+        # Row identifiers serve local provenance and never enter the wire payload.
+        request = replace(request, messages=tuple(replace(m, source_id=None) if m.source_id else m
+                                                  for m in request.messages))
+        ensure_safe_request(request)
+        floor = getattr(self.adapters[model.provider], "preferred_output_tokens", 0)
+        reserve = max(request.max_tokens, min(floor, model.context_tokens // 4))
+        return fit_context(replace(request, messages=apply_untrusted_boundary(request.messages),
+                                   output_limit=reserve), model.context_tokens)
+
     async def complete(self, run_id: UUID, request: RoutingRequest, messages: tuple[ChatMessage, ...], *, max_tokens: int = 1024, tools: tuple[Mapping[str, object], ...] = (), cancel: asyncio.Event | None = None, on_text: Callable[[str], Awaitable[None]] | None = None, web_search: bool = False) -> ExecutionResult:
         decision = self.select(request)
         if web_search:
@@ -90,8 +102,9 @@ class AIExecutionService:
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
         # Inspect original messages before UntrustedData can redact token-like text.
-        ensure_safe_request(ProviderRequest(decision.model, messages, max_tokens=max_tokens, tools=tools, effort=request.effort, web_search=web_search))
-        provider_request = ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, tools=tools, effort=request.effort, web_search=web_search)
+        model = next(m for m in self.models if m.provider == decision.provider and m.model == decision.model)
+        provider_request = self._assemble(ProviderRequest(decision.model, messages, max_tokens=max_tokens, tools=tools,
+                                                       effort=request.effort, web_search=web_search), model)
         streaming = getattr(adapter, "complete_streaming", None) if on_text else None
         if streaming:
             response = await streaming(provider_request, on_text)
@@ -101,7 +114,7 @@ class AIExecutionService:
                 await on_text(response.text)
         if cancel and cancel.is_set():
             raise RunCancelled("run cancelled")
-        usage = self.usage.record(run_id, decision.provider, next(m for m in self.models if m.provider == decision.provider and m.model == decision.model), response.usage)
+        usage = self.usage.record(run_id, decision.provider, model, response.usage)
         return ExecutionResult(run_id, decision.provider, decision.model, response, usage)
 
     async def stream_sse(self, run_id: UUID, request: RoutingRequest, messages: tuple[ChatMessage, ...], *, max_tokens: int = 1024, cancel: asyncio.Event | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None) -> AsyncIterator[str]:
@@ -115,17 +128,17 @@ class AIExecutionService:
                 raise ProviderError("configured provider adapter is unavailable")
             if await cancelled():
                 raise RunCancelled("run cancelled")
-            ensure_safe_request(ProviderRequest(decision.model, messages, max_tokens=max_tokens, stream=True, effort=request.effort))
+            model = next(m for m in self.models if m.provider == decision.provider and m.model == decision.model)
+            provider_request = self._assemble(ProviderRequest(decision.model, messages, max_tokens=max_tokens, stream=True, effort=request.effort), model)
             yield self._event("ai.run.started", {"run_id": str(run_id), "provider": decision.provider.value, "model": decision.model, **({"effort": request.effort} if request.effort else {})})
             text = []
-            async for chunk in adapter.stream(ProviderRequest(decision.model, apply_untrusted_boundary(messages), max_tokens=max_tokens, stream=True, effort=request.effort)):
+            async for chunk in adapter.stream(provider_request):
                 if await cancelled():
                     raise RunCancelled("run cancelled")
                 text.append(chunk)
                 yield self._event("ai.text.delta", {"run_id": str(run_id), "text": chunk})
             if await cancelled():
                 raise RunCancelled("run cancelled")
-            model = next(m for m in self.models if m.provider == decision.provider and m.model == decision.model)
             # Streaming providers may report usage only in a terminal frame. The
             # conservative zero-count record avoids inventing cost data.
             usage = self.usage.record(run_id, decision.provider, model, getattr(adapter, "last_usage", Usage()))

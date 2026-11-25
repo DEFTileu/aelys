@@ -19,7 +19,13 @@ from .errors import (
     ToolValidationError,
 )
 from .execution import AIExecutionService
-from .models import ChatMessage, PermissionContext, RoutingRequest, ToolCall
+from .models import (
+    ChatMessage,
+    ContextSource,
+    PermissionContext,
+    RoutingRequest,
+    ToolCall,
+)
 from .providers import _bounded_source_details
 from .tool_discovery import LOAD_TOOLS, ToolDiscovery
 from .tools import ToolRegistry
@@ -179,6 +185,7 @@ async def run_tool_turn(
             text.append(result.response.text)
         outputs: list[ChatMessage] = []
         calls: list[ToolCall] = []
+        exchange_refs = set(completion_refs)
         for raw_call in result.response.tool_calls:
             call = parse_call(raw_call)
             if call.call_id in seen:
@@ -189,7 +196,8 @@ async def run_tool_turn(
                 # Loading a schema is provider context management, not a domain operation.
                 selection = discovery.load(call)
                 calls.append(call)
-                outputs.append(ChatMessage('tool', json.dumps(selection), untrusted=True, tool_call_id=call.call_id))
+                outputs.append(ChatMessage('tool', json.dumps(selection), untrusted=True,
+                                           tool_call_id=call.call_id, source=ContextSource.TOOL))
                 continue
             is_search = call.name == 'web_search' and isinstance(search_handler, WebSearch)
             is_history = call.name == HISTORY_TOOL
@@ -240,14 +248,20 @@ async def run_tool_turn(
             await emit('ai.tool.result', tool=call.name, call_id=call.call_id,
                        result=event_result,
                        **({'query': query} if is_search else {}))
+            if (call.name == "remember" and output.get("remembered") is True
+                    and isinstance(output.get("id"), str) and type(output.get("version")) is int):
+                exchange_refs.add((output["id"], output["version"]))
+            exchange_refs.update(tool_refs)
             calls.append(call)
             outputs.append(ChatMessage('tool', json.dumps(output, ensure_ascii=False, default=str),
-                                       untrusted=True, memory_refs=tool_refs, tool_call_id=call.call_id))
+                                       untrusted=True, tool_call_id=call.call_id, source=ContextSource.TOOL))
+        used_memory_refs.update(exchange_refs)
         if not outputs or step == max_steps:
             break
         # The model must see its own calls next to their results, or it repeats them on the next step.
-        messages = (*messages, ChatMessage('assistant', result.response.text, memory_refs=completion_refs,
-                                           tool_calls=tuple(calls)), *outputs)
+        refs = tuple(sorted(exchange_refs))
+        messages = (*messages, ChatMessage('assistant', result.response.text, memory_refs=refs,
+                                           tool_calls=tuple(calls)), *(replace(output, memory_refs=refs) for output in outputs))
     await check()
     final_text = '\n'.join(text)
     if search_started:

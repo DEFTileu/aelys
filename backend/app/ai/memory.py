@@ -12,7 +12,7 @@ import json
 import re
 import unicodedata
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from app.core.models import User, now
@@ -23,8 +23,9 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
+from .errors import RunCancelled
 from .memory_models import OwnerMemoryFact
-from .models import PermissionContext, ToolCall
+from .models import ChatMessage, ContextSource, PermissionContext, ToolCall
 from .policy import ServerPolicyEngine
 
 KINDS = frozenset({'preference', 'fact', 'goal', 'context'})
@@ -287,3 +288,42 @@ async def active_memory_versions(db: AsyncSession, owner_id: str, ids: set[str],
         OwnerMemoryFact.owner_id == owner_id, OwnerMemoryFact.id.in_(ids), *_active(instant),
     ))).all()
     return {fact_id: version for fact_id, version in rows}
+
+
+async def refresh_context_memory(
+    db: AsyncSession, owner_id: str, messages: tuple[ChatMessage, ...],
+) -> tuple[ChatMessage, ...]:
+    ids = sorted({identifier for message in messages for identifier, _ in message.memory_refs})
+    if not ids:
+        return messages
+    versions: dict[str, int] = {}
+    for offset in range(0, len(ids), READ_BATCH):
+        versions.update(await active_memory_versions(db, owner_id, set(ids[offset:offset + READ_BATCH])))
+    selected = []
+    for message in messages:
+        if all(versions.get(identifier) == version for identifier, version in message.memory_refs):
+            selected.append(message)
+        elif message.source is ContextSource.CURRENT:
+            raise RunCancelled("Current request depends on revoked memory")
+    if len(selected) == len(messages):
+        return messages
+    # The provider requires a result for each call and a call for each result.
+    retained_calls = {call.call_id for message in selected for call in message.tool_calls}
+    retained_results = {message.tool_call_id for message in selected if message.role == "tool"}
+    paired_ids = retained_calls & retained_results
+    paired = []
+    for message in selected:
+        if message.role == "tool" and message.tool_call_id not in paired_ids:
+            continue
+        if message.tool_calls:
+            calls = tuple(call for call in message.tool_calls if call.call_id in paired_ids)
+            if not calls and not message.content:
+                continue
+            if calls != message.tool_calls:
+                message = replace(message, tool_calls=calls)
+        paired.append(message)
+    return tuple(paired)
+
+
+def memory_sources(refs: tuple[tuple[str, int], ...]) -> list[dict]:
+    return [{"kind": "owner_memory_fact", "id": identifier, "version": version} for identifier, version in refs]

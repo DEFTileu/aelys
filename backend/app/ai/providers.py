@@ -257,6 +257,7 @@ CLAUDE_MIN_MAX_TOKENS = 16000
 
 
 class ClaudeAdapter(_BaseAdapter):
+    preferred_output_tokens = CLAUDE_MIN_MAX_TOKENS
     kind = ProviderKind.CLAUDE
 
     def _headers(self) -> dict[str, str]:
@@ -269,7 +270,7 @@ class ClaudeAdapter(_BaseAdapter):
         # Thinking is on by default and counts against max_tokens, so leave it room.
         tools = ([{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}]
                  if request.web_search else list(request.tools))
-        payload: dict[str, Any] = {"model": request.model, "max_tokens": max(request.max_tokens, CLAUDE_MIN_MAX_TOKENS), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": tools} if tools else {})}
+        payload: dict[str, Any] = {"model": request.model, "max_tokens": request.output_limit or max(request.max_tokens, CLAUDE_MIN_MAX_TOKENS), "messages": messages, "stream": request.stream, **({"system": "\n".join(system)} if system else {}), **({"tools": tools} if tools else {})}
         # Caches the prompt up to the last block, so the next tool step or chat turn skips re-reading it (from 512 tokens).
         payload["cache_control"] = {"type": "ephemeral"}
         if request.effort:
