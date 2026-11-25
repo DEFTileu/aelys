@@ -5,7 +5,7 @@ import type {
   AIRun, AIRunIn, AutomationDispatchResponse, AutomationDraft, AutomationDraftIn, AutomationDryRunResponse, AutomationRun, AutomationEventIn, AutomationExecution, AutomationRule,
   AutomationRuleIn, FocusConfig, FocusOverview, FocusState, FocusRequestRow, FocusUnlockResult, CredentialLeaseIn, CredentialLeaseResponse, ConversationIn, DeleteResponse, DeviceEnroll, DeviceEnrollmentResponse,
   DeviceResponse, DraftIn, EventIn, EventOut, FinanceAccount, FinanceAccountIn, FinanceBudget, FinanceBudgetIn, FinanceBudgetPut, FinanceCategory,
-  FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, EnglishCourse, EnglishLesson, EnglishListeningResult, EnglishMock, EnglishMockIn, EnglishBlockKey, EnglishProfile, EnglishReport, EnglishSentenceResult, EnglishSettings, EnglishSpeakingIn, EnglishSpeakingRound, EnglishTasksResult, EnglishToday, EnglishTranscription, EnglishWord, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
+  FinanceCategoryIn, FinanceSummary, FinanceTransaction, FinanceTransfer, FinanceTransferIn, EnglishCourse, EnglishLesson, EnglishListeningResult, EnglishMock, EnglishMockIn, EnglishBlockKey, EnglishProfile, EnglishReport, EnglishSentenceResult, EnglishSettings, EnglishSpeakingIn, EnglishSpeakingRound, EnglishTasksResult, EnglishToday, EnglishTranscription, AIVoiceTranscription, AIVoiceSpeech, EnglishWord, FocusIn, FocusOut, HistoryEntry, JsonObject, LoginRequest, MailAccount,
   MailAccountIn, MailDraft, MailMessage, MailMessageReadIn, MeResponse, MessageIn, NoteIn, NoteOut, NoteRevision, Notification, NotificationCreate,
   ProjectCreate, ProjectGrantCreate, ProjectGrantResponse, ProjectPatch, ProjectResponse, ProviderIn, RefreshRequest, ReminderIn,
   ResourceCreate, ResourceLinkCreate, ResourceLinkResponse, ResourceResponse, RevokeResponse, SearchResponse, SessionSearch, SessionSearchResponse, AgentSession, AgentSessionStopResponse,
@@ -26,6 +26,7 @@ export interface RequestOptions {
   readonly query?: Query;
   readonly body?: unknown;
   readonly headers?: Readonly<Record<string, string>>;
+  readonly cache?: RequestCache;
   readonly idempotencyKey?: string;
   readonly cacheKey?: string;
   readonly cacheTtlMs?: number;
@@ -327,7 +328,7 @@ export class ApiClient {
       if (this.isOnline?.() === false) throw new NetworkError("Device is offline");
       const cached = snapshot ? await snapshot : undefined;
       if (cached?.etag) headers["If-None-Match"] = cached.etag;
-      const fetchResponse = () => this.fetchImpl(url, { method, headers: { ...headers }, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal });
+      const fetchResponse = () => this.fetchImpl(url, { method, headers: { ...headers }, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal, cache: options.cache });
       let response = await fetchResponse();
       let value: T;
       if (response.status === 304) {
@@ -546,6 +547,29 @@ export class ApiClient {
     const value = await this.parseResponse<EnglishTranscription>(response);
     await this.invalidateAfterWrite("/api/v1/english/speech/transcribe");
     return value;
+  }
+  /** Raw audio body; bytes are sent only for this request and never enter cache or outbox. */
+  public async aiVoiceTranscribe(audio: Blob): Promise<AIVoiceTranscription> {
+    const token = this.getTokenValue ? await this.getTokenValue() : this.tokenValue;
+    const headers: Record<string, string> = { "Content-Type": audio.type, Accept: "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timer = globalThis.setTimeout(() => controller.abort(), 90_000);
+    try {
+      if (this.isOnline?.() === false) throw new NetworkError("Device is offline");
+      const response = await this.fetchImpl(`${this.baseUrl}/api/v1/ai/voice/transcribe`, {
+        method: "POST", headers, body: audio, signal: controller.signal, cache: "no-store",
+      });
+      return await this.parseResponse<AIVoiceTranscription>(response);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new OfflineWriteUnavailableError(error instanceof NetworkError ? error : new NetworkError("Network request failed", error));
+    } finally {
+      globalThis.clearTimeout(timer);
+    }
+  }
+  public aiVoiceSpeak(text: string): Promise<AIVoiceSpeech> {
+    return this.request<AIVoiceSpeech>("/api/v1/ai/voice/speak", this.write({ text }, { queueOnOffline: false, timeoutMs: 90_000, cache: "no-store" }));
   }
   public englishMocks(options?: RequestOptions) { return this.request<readonly EnglishMock[]>("/api/v1/english/mocks", this.read(options, "english-mocks")); }
   public englishCreateMock(body: EnglishMockIn, options?: RequestOptions) { return this.request<EnglishMock>("/api/v1/english/mocks", this.write(body, { queueOnOffline: false, ...options })); }

@@ -704,6 +704,78 @@ describe("ApiClient", () => {
     expect(init.body).toBe(audio);
   });
 
+  it("sends AI voice transcription as raw transient audio without touching caches", async () => {
+    const store = new MemoryStore();
+    store.cache.set("ai-providers", [{ id: "provider" }]);
+    store.cache.set("english-today", { words: [] });
+    const invalidate = vi.spyOn(store, "invalidateCache");
+    const fetchImpl = vi.fn(async () => json({ text: "spoken words" }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, token: "tok", offlineStore: store });
+    const audio = new Blob(["ephemeral bytes"], { type: "audio/webm" });
+
+    await expect(client.aiVoiceTranscribe(audio)).resolves.toEqual({ text: "spoken words" });
+
+    const [url, init] = (fetchImpl.mock.calls as unknown as [string, RequestInit][])[0]!;
+    expect(url).toBe("https://api.example.test/api/v1/ai/voice/transcribe");
+    expect(init).toMatchObject({ method: "POST", cache: "no-store", headers: { "Content-Type": "audio/webm", Authorization: "Bearer tok" } });
+    expect(init.body).toBe(audio);
+    expect([...store.cache.keys()]).toEqual(["ai-providers", "english-today"]);
+    expect(store.outbox).toHaveLength(0);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("speaks AI text with a 90-second timeout without invalidating caches", async () => {
+    const store = new MemoryStore();
+    store.cache.set("ai-providers", [{ id: "provider" }]);
+    store.cache.set("english-today", { words: [] });
+    const invalidate = vi.spyOn(store, "invalidateCache");
+    const fetchImpl = vi.fn(async () => json({ audio: "bXAz", content_type: "audio/mpeg" }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, offlineStore: store });
+
+    await expect(client.aiVoiceSpeak("Hello there")).resolves.toEqual({ audio: "bXAz", content_type: "audio/mpeg" });
+
+    const [url, init] = (fetchImpl.mock.calls as unknown as [string, RequestInit][])[0]!;
+    expect(url).toBe("https://api.example.test/api/v1/ai/voice/speak");
+    expect(init.cache).toBe("no-store");
+    expect(JSON.parse(init.body as string)).toEqual({ text: "Hello there" });
+    expect((init.signal as AbortSignal).aborted).toBe(false);
+    expect([...store.cache.keys()]).toEqual(["ai-providers", "english-today"]);
+    expect(store.outbox).toHaveLength(0);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("does not queue AI voice transcription when its request times out", async () => {
+    vi.useFakeTimers();
+    const store = new MemoryStore();
+    const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, offlineStore: store });
+    const pending = client.aiVoiceTranscribe(new Blob(["audio"], { type: "audio/webm" }));
+    const rejection = expect(pending).rejects.toMatchObject({ code: "OFFLINE_WRITE_UNAVAILABLE" });
+
+    await vi.advanceTimersByTimeAsync(90_000);
+    await rejection;
+    expect(store.outbox).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it("does not queue AI voice speech when its request times out", async () => {
+    vi.useFakeTimers();
+    const store = new MemoryStore();
+    const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    }));
+    const client = new ApiClient({ baseUrl: "https://api.example.test", fetch: fetchImpl, offlineStore: store });
+    const pending = client.aiVoiceSpeak("Hello there");
+    const rejection = expect(pending).rejects.toMatchObject({ code: "OFFLINE_WRITE_UNAVAILABLE" });
+
+    await vi.advanceTimersByTimeAsync(90_000);
+    await rejection;
+    expect(store.outbox).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
   it("reads the ledger cache through an unavailable reverse proxy but rejects revoked access", async () => {
     const store = new MemoryStore();
     store.cache.set("finance-transactions", [{ id: "cached-posting", amount: "1250.5001" }]);

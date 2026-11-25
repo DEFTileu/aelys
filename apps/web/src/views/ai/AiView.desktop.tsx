@@ -3,7 +3,7 @@ import { PageSkeleton } from '../../components/PageSkeleton'
 import { AelysMark } from '../../components/AelysMark'
 import { ModelPicker } from '../../components/ModelPicker'
 import { MarkdownContent } from '../../components/MarkdownContent'
-import { ArrowLeft, ArrowUp, CircleAlert, Eye, Lock, MessageSquareText, Paperclip, Pin, Repeat, RotateCcw, Search, Square, SquarePen, Zap } from '../../icons'
+import { ArrowLeft, ArrowUp, CircleAlert, Eye, Lock, MessageSquareText, Mic, Paperclip, Pin, Repeat, RotateCcw, Search, Square, SquarePen, Zap } from '../../icons'
 import { EFFORT_SHORT, modelName, providerLabel, supportsThinking, type Effort } from '../../data/aiModels'
 import { navigate } from '../../lib/router'
 import type { ApiStatus } from '../../types'
@@ -14,7 +14,7 @@ import '../desktop/page-tokens.css'
 import './ai-chat.css'
 
 export function AiDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
-  const { root, historyOpen, setHistoryOpen, search, setSearch, running, recovering, checkRun, creationUncertain, retryCreation, forgetRecovery, storageReady, newChat, groups, conversationId, loading, openChat, togglePin, selectedTitle, allProviders, active, applyChoice, isDefault, toggleDefault, scroller, pinned, shown, extras, feedback, lastAssistant, actionCards, unanchored, card, providerId, regenerate, rate, dividers, partial, live, liveSteps, actions, outcome, lastUser, execute, fastest, owner, providers, sharing, ask, sources, knowledgeScope, setKnowledgeScope, setConversationId, setLines, setSources, notice, submit, files, removeFile, pasteFiles, focused, setFocused, field, message, setMessage, draftRows, canSend, cancel, picker, attach, sourcesOpen, setSourcesOpen, toggleSource, costLabel, usedTokens, windowTokens, percent, activeProvider } = useAi(apiStatus, false)
+  const { voice, root, historyOpen, setHistoryOpen, search, setSearch, running, recovering, checkRun, creationUncertain, retryCreation, forgetRecovery, storageReady, newChat, groups, conversationId, loading, openChat, togglePin, selectedTitle, allProviders, active, applyChoice, isDefault, toggleDefault, scroller, pinned, shown, extras, feedback, lastAssistant, actionCards, unanchored, card, providerId, regenerate, rate, dividers, partial, live, liveSteps, actions, outcome, lastUser, execute, fastest, owner, providers, sharing, ask, sources, knowledgeScope, setKnowledgeScope, setConversationId, setLines, setSources, notice, submit, files, removeFile, pasteFiles, focused, setFocused, field, message, setMessage, draftRows, canSend, cancel, picker, attach, sourcesOpen, setSourcesOpen, toggleSource, costLabel, usedTokens, windowTokens, percent, activeProvider } = useAi(apiStatus, false)
   return <div ref={root} className={`actual-ai${historyOpen ? ' actual-ai--history-open' : ''}`}>
     <aside className="actual-ai__history" aria-label="Conversations">
       <div className="actual-ai__history-search">
@@ -63,7 +63,7 @@ export function AiDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
                   {(extra?.steps.length || line.steps?.length) ? <RunSteps steps={extra?.steps ?? savedSteps(line.steps)} live={false} /> : null}
                   <div className="actual-ai__bubble"><MarkdownContent text={line.content} />{line.source_refs_json?.length ? <SourceList sources={line.source_refs_json} /> : null}</div>
                   {actionCards(line.id)}{line === lastAssistant && unanchored.map(card)}
-                  {line.role === 'assistant' && <AnswerActions text={line.content} {...(extra?.meta ? { meta: extra.meta } : {})} feedback={feedback[line.id] ?? line.feedback ?? null} canRegenerate={line === lastAssistant} regenDisabled={running || loading || !providerId} canRate={!line.id.startsWith('stopped-')} onRegenerate={regenerate} onFeedback={(next) => void rate(line, next)} />}
+                  {line.role === 'assistant' && <AnswerActions reading={voice.reading === line.id} onRead={() => voice.reading === line.id ? voice.stopReading() : void voice.speak(line.id, line.content)} text={line.content} {...(extra?.meta ? { meta: extra.meta } : {})} feedback={feedback[line.id] ?? line.feedback ?? null} canRegenerate={line === lastAssistant} regenDisabled={running || loading || !providerId} canRate={!line.id.startsWith('stopped-')} onRegenerate={regenerate} onFeedback={(next) => void rate(line, next)} />}
                 </div>
               </article>}
             {dividers.filter((item) => item.chat === conversationId && item.after === line.id).map((item) => <div key={item.text + item.after} className="actual-ai__divider"><span /><Repeat size={12} />{item.text}<span /></div>)}
@@ -88,7 +88,7 @@ export function AiDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
           {providers.length > 0 && <div className="actual-ai__suggestions">{SUGGESTIONS.map((item) => <button type="button" key={item.title} onClick={() => ask(item.prompt)}><Tile tone={item} size={17} /><span><b>{item.title}</b><span>{item.hint}</span></span></button>)}</div>}</div>}
       </div>
       {sources.length > 0 && running && <SourceList sources={sources} />}
-      {knowledgeScope && <p className="actual-ai__notice">Knowledge question · {knowledgeScope.note_ids?.length ? 'selected document' : knowledgeScope.project_id ? 'selected project' : 'enabled library'} · excerpts go to the selected provider <button type="button" disabled={running} onClick={() => { setKnowledgeScope(undefined); setConversationId(''); setLines([]); setSources([]) }}>Clear sources</button></p>}
+      {knowledgeScope && <p className="actual-ai__notice">Knowledge question · {knowledgeScope.note_ids?.length ? 'selected document' : knowledgeScope.project_id ? 'selected project' : 'enabled library'} · excerpts go to the selected provider <button type="button" disabled={running} onClick={() => { voice.reset(); setKnowledgeScope(undefined); setConversationId(''); setLines([]); setSources([]) }}>Clear sources</button></p>}
       {!storageReady && <p className="actual-ai__notice" role="status">Opening local recovery storage…</p>}
       {creationUncertain && <div className="actual-ai__notice" role="status"><button type="button" disabled={running} onClick={() => void retryCreation()}>Retry same request</button><button type="button" disabled={running} onClick={() => void forgetRecovery()}>Forget recovery record</button></div>}
       {recovering && <div className="actual-ai__notice" role="status"><button type="button" disabled={running} onClick={() => void checkRun()}>Check run status</button><button type="button" disabled={running} onClick={() => void forgetRecovery()}>Forget recovery record</button></div>}
@@ -106,6 +106,7 @@ export function AiDesktop({ apiStatus }: { apiStatus: ApiStatus }) {
           <div className="actual-ai__compose-row">
             <input ref={picker} type="file" hidden multiple accept={ACCEPTED_FILES.map((item) => `.${item}`).join(',')} aria-label="Attach files" onChange={(event) => void attach(event.target.files)} />
             <button type="button" className="actual-ai__icon" aria-label="Attach a file" title="Attach a file" onClick={() => picker.current?.click()}><Paperclip size={17} /></button>
+            {voice.supported && <button type="button" className="actual-ai__icon" aria-label={voice.phase === 'recording' ? 'Stop recording' : 'Record voice'} title={voice.phase === 'recording' ? 'Stop recording' : 'Record voice'} disabled={voice.phase === 'starting' || voice.phase === 'transcribing' || (voice.phase !== 'recording' && (running || loading || recovering || creationUncertain || !storageReady || !providerId || apiStatus !== 'ready'))} onClick={() => void (voice.phase === 'recording' ? voice.stop() : voice.start())}>{voice.phase === 'recording' ? <><Square size={17} /><span role="timer">{voice.clock}</span></> : <Mic size={17} />}</button>}
             <span className="actual-ai__src-wrap">
               <button type="button" className="actual-ai__chip" title="What Aelys can see" aria-haspopup="dialog" aria-expanded={sourcesOpen} onClick={() => setSourcesOpen(!sourcesOpen)}><Eye size={14} />{knowledgeScope && sources.length ? `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}` : sourceChip(sharing.size)}</button>
               {sourcesOpen && <SourcesPopover on={sharing} onToggle={(id, next) => void toggleSource(id, next)} onClose={() => setSourcesOpen(false)} />}

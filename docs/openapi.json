@@ -6379,6 +6379,74 @@
         }
       }
     },
+    "/api/v1/ai/voice/transcribe": {
+      "post": {
+        "summary": "Voice Transcribe",
+        "description": "A raw audio/* body (or multipart field `audio`) from the chat's microphone; answers with the words heard.",
+        "operationId": "voice_transcribe_api_v1_ai_voice_transcribe_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceText"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/voice/speak": {
+      "post": {
+        "summary": "Voice Speak",
+        "description": "An answer read aloud in the board's voice, as base64 MP3.",
+        "operationId": "voice_speak_api_v1_ai_voice_speak_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeakIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeakOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/ai/memory": {
       "get": {
         "summary": "List Facts",
@@ -16449,6 +16517,39 @@
         ],
         "title": "SnapWeather"
       },
+      "SpeakIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "SpeakIn"
+      },
+      "SpeakOut": {
+        "properties": {
+          "audio": {
+            "type": "string",
+            "title": "Audio"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "audio",
+          "content_type"
+        ],
+        "title": "SpeakOut"
+      },
       "SpeakingIn": {
         "properties": {
           "round": {
@@ -17712,6 +17813,19 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VoiceText": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "VoiceText"
       },
       "WeatherIn": {
         "properties": {

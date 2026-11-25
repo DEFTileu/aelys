@@ -7,7 +7,7 @@ let root: ReturnType<typeof createRoot>
 const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
 beforeEach(async () => {
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
-  await act(async () => root.render(<AnswerActions text="answer" feedback={null} canRegenerate={false} regenDisabled={false} canRate={false} onRegenerate={() => {}} onFeedback={() => {}} />))
+  await act(async () => root.render(<AnswerActions reading={false} onRead={() => {}} text="answer" feedback={null} canRegenerate={false} regenDisabled={false} canRate={false} onRegenerate={() => {}} onFeedback={() => {}} />))
 })
 afterEach(() => { act(() => root.unmount()); host.remove(); if (original) Object.defineProperty(navigator, 'clipboard', original); else delete (navigator as { clipboard?: Clipboard }).clipboard })
 it('reports copied only after clipboard succeeds', async () => {

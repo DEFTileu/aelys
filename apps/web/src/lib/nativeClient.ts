@@ -91,13 +91,16 @@ function genericOperation(url: URL, init?: RequestInit): NativeOperation | undef
   }
 }
 
-// Speech practice sends raw audio. Rust enforces the route, audio type and 10 MB cap; this only
+// Transcription routes send raw audio. Rust enforces the route, audio type and 10 MB cap; this only
 // turns a Blob (or FormData field `audio`) into the base64 `upload` the bridge carries.
-const UPLOAD_PATH = '/api/v1/english/speech/transcribe'
+const UPLOAD_PATHS = new Set([
+  '/api/v1/english/speech/transcribe',
+  '/api/v1/ai/voice/transcribe',
+])
 const MAX_UPLOAD = 10 * 1024 * 1024
 
 async function uploadOperation(url: URL, init?: RequestInit): Promise<NativeOperation | Response | undefined> {
-  if ((init?.method ?? 'GET').toUpperCase() !== 'POST' || url.pathname !== UPLOAD_PATH) return undefined
+  if ((init?.method ?? 'GET').toUpperCase() !== 'POST' || !UPLOAD_PATHS.has(url.pathname)) return undefined
   const raw = init?.body instanceof FormData ? init.body.get('audio') : init?.body
   if (!(raw instanceof Blob)) return undefined
   if (raw.size > MAX_UPLOAD) return jsonResponse({ detail: { code: 'AUDIO_TOO_LARGE', message: 'The recording is too large.' } }, 413)
@@ -313,7 +316,7 @@ export function createNativeFetch(transport: NativeTransport, origin: string): t
     }
     if (method === 'GET' && url.pathname === '/api/v1/changes') return nativeAIEventResponse(transport, origin, '', init?.signal, undefined, true)
     // Only the audio upload awaits; any extra tick here would let an early abort beat the native invoke.
-    const upload = url.pathname === UPLOAD_PATH ? await uploadOperation(url, init) : undefined
+    const upload = UPLOAD_PATHS.has(url.pathname) ? await uploadOperation(url, init) : undefined
     if (upload instanceof Response) return upload
     const operation = upload ?? operationFor(url, init)
     if (!operation) return jsonResponse({ detail: { code: 'NATIVE_OPERATION_UNSUPPORTED', message: 'This module is not available in the native pilot.' } }, 501)

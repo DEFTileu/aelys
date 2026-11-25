@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { AIAction, AIFeedback } from '@aelys/shared'
-import { Calendar, Check, ChevronDown, ChevronRight, Copy, FileText, RotateCcw, Sparkles, ThumbsDown, ThumbsUp, X } from '../../icons'
+import { Calendar, Check, ChevronDown, ChevronRight, Copy, FileText, RotateCcw, Sparkles, Square, Volume2, ThumbsDown, ThumbsUp, X } from '../../icons'
 import { SOURCES, formatBytes, stepsSummary, type RunStep, type SourceId, type Tone } from './chatModel'
 
 const tile = (tone: Pick<Tone, 'color' | 'soft'>) => ({ '--tc': tone.color, '--ts': tone.soft }) as CSSProperties
@@ -84,7 +84,7 @@ export function FileChip({ name, size, onRemove, pending }: { name: string; size
 }
 
 /** Copy, regenerate, thumbs and the run meta under a finished answer. */
-export function AnswerActions({ text, meta, feedback, canRegenerate, regenDisabled, canRate, onRegenerate, onFeedback }: { text: string; meta?: string; feedback: AIFeedback; canRegenerate: boolean; regenDisabled: boolean; canRate: boolean; onRegenerate: () => void; onFeedback: (next: AIFeedback) => void }) {
+export function AnswerActions({ text, meta, feedback, canRegenerate, regenDisabled, canRate, onRegenerate, onFeedback, reading, onRead }: { reading: boolean; onRead: () => void; text: string; meta?: string; feedback: AIFeedback; canRegenerate: boolean; regenDisabled: boolean; canRate: boolean; onRegenerate: () => void; onFeedback: (next: AIFeedback) => void }) {
   const [copied, setCopied] = useState(false)
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 1500); return () => clearTimeout(timer) }, [copied])
   const [copyError, setCopyError] = useState('')
@@ -99,6 +99,7 @@ export function AnswerActions({ text, meta, feedback, canRegenerate, regenDisabl
   return <div className="actual-ai__tools">
     <button type="button" className="actual-ai__tool" aria-label="Copy" title="Copy" onClick={copy}>{copied ? <><Check size={15} />Copied</> : <Copy size={15} />}</button>
     {copyError && <span role="status">{copyError}</span>}
+    <button type="button" className="actual-ai__tool" aria-label={reading ? "Stop reading" : "Read aloud"} title={reading ? "Stop reading" : "Read aloud"} onClick={onRead}>{reading ? <Square size={15} /> : <Volume2 size={15} />}</button>
     {canRegenerate && <button type="button" className="actual-ai__tool" aria-label="Regenerate" title="Regenerate" disabled={regenDisabled} onClick={onRegenerate}><RotateCcw size={15} /></button>}
     <button type="button" className="actual-ai__tool" aria-label="Good answer" aria-pressed={feedback === 'up'} data-on={feedback === 'up' || undefined} disabled={!canRate} onClick={() => onFeedback(feedback === 'up' ? null : 'up')}><ThumbsUp size={15} /></button>
     <button type="button" className="actual-ai__tool actual-ai__tool--down" aria-label="Bad answer" aria-pressed={feedback === 'down'} data-on={feedback === 'down' || undefined} disabled={!canRate} onClick={() => onFeedback(feedback === 'down' ? null : 'down')}><ThumbsDown size={15} /></button>
