@@ -216,7 +216,8 @@ def test_single_answer_message_preserves_formatting_and_truncates_with_trace_lin
 
     long_text, long_entities = single_answer_message("**" + "ж" * 6000 + "**", trace_url)
     assert len(long_text.encode("utf-16-le")) // 2 <= 4096
-    assert long_text.endswith(f"…\n\n{TRACE_LABEL}")
+    assert "Полный ответ — в MiniApp" in long_text
+    assert long_text.endswith(f"\n\n{TRACE_LABEL}")
     assert long_entities[-1]["type"] == "text_link"
     assert long_entities[-1]["url"] == trace_url
     assert entity_text(long_text, long_entities[-1]) == TRACE_LABEL
@@ -342,7 +343,7 @@ async def test_owner_without_marker_allows_web_search_and_blocks_personal_data(s
 
     async def telegram(request):
         delivered.append((request.url.path, json.loads(request.content)))
-        return httpx.Response(200, json={"ok": True, "result": {"inline_message_id": "guest-1"}})
+        return httpx.Response(200, json={"ok": True, "result": True if request.url.path.endswith("/editMessageText") else {"inline_message_id": "guest-1"}})
 
     fake.updates = [guest_update(10, "@aelys_ibot найди последние новости", query_id="gq-news")]
     await service.poll_once(integration_id, timeout=0)
@@ -350,13 +351,20 @@ async def test_owner_without_marker_allows_web_search_and_blocks_personal_data(s
         mock.setattr(service, "TelegramClient", lambda token: TelegramClient(token, httpx.MockTransport(telegram)))
         await _finish_guest(integration_id)
 
-    assert len(delivered) == 1
-    path, payload = delivered[0]
-    assert path.endswith("/answerGuestQuery")
-    assert payload["guest_query_id"] == "gq-news"
-    content = payload["result"]["input_message_content"]
+    assert [path.rsplit("/", 1)[-1] for path, _ in delivered] == [
+        "answerGuestQuery", "editMessageText", "editMessageText",
+    ]
+    assert delivered[0][1]["guest_query_id"] == "gq-news"
+    initial = delivered[0][1]["result"]["input_message_content"]
+    assert initial["message_text"] == f"🤔 Готовлю ответ…\n\n{TRACE_LABEL}"
+    assert delivered[1][1]["text"] == f"🔍 Поиск в вебе: последние новости\n\n{TRACE_LABEL}"
+    assert initial["entities"][-1]["url"] == delivered[1][1]["entities"][-1]["url"]
+    assert delivered[1][1]["entities"][-1]["url"] == delivered[-1][1]["entities"][-1]["url"]
+    content = delivered[-1][1]
+    assert content["inline_message_id"] == "guest-1"
+    assert content["reply_markup"] == {"inline_keyboard": []}
     assert content["link_preview_options"] == {"is_disabled": True}
-    assert content["message_text"] == f"Главное: свежие новости найдены.\n\n{TRACE_LABEL}"
+    assert content["text"] == f"Главное: свежие новости найдены.\n\n{TRACE_LABEL}"
 
     async with sessions() as db:
         job = (await db.scalars(select(TelegramGuestJob))).one()
@@ -372,7 +380,7 @@ async def test_owner_without_marker_allows_web_search_and_blocks_personal_data(s
     link_entities = [e for e in content["entities"] if e["type"] == "text_link"]
     assert len(link_entities) == 1
     assert link_entities[0]["url"] == f"https://t.me/aelys_ibot?startapp=run__{job.run_id}"
-    assert entity_text(content["message_text"], link_entities[0]) == TRACE_LABEL
+    assert entity_text(content["text"], link_entities[0]) == TRACE_LABEL
 
 
 async def test_owner_with_marker_uses_policy_checked_tools_and_next_call_without_marker_is_isolated(setup, monkeypatch):
@@ -431,7 +439,7 @@ async def test_owner_with_marker_uses_policy_checked_tools_and_next_call_without
 
     async def telegram(request):
         delivered.append(json.loads(request.content))
-        return httpx.Response(200, json={"ok": True, "result": {"inline_message_id": f"m-{len(delivered)}"}})
+        return httpx.Response(200, json={"ok": True, "result": True if request.url.path.endswith("/editMessageText") else {"inline_message_id": f"m-{len(delivered)}"}})
 
     # First call WITH trailing marker
     fake.updates = [guest_update(20, "@aelys_ibot создай задачу купить молоко aelys", query_id="gq-create")]
@@ -482,7 +490,10 @@ async def test_duplicate_update_delivery_failure_and_restart_never_duplicate_wri
     model.requests = []
     monkeypatch.setattr(ai_api, "_service", lambda *args, **kwargs: model)
 
+    remote_methods = []
+
     async def failing_telegram(request):
+        remote_methods.append(request.url.path.rsplit("/", 1)[-1])
         raise httpx.ReadTimeout("timeout")
 
     # Deliver same update twice and another update with same guest_query_id
@@ -498,6 +509,8 @@ async def test_duplicate_update_delivery_failure_and_restart_never_duplicate_wri
 
     # Re-running worker iteration must NOT replay the write!
     await _finish_guest(integration_id)
+
+    assert remote_methods == ["answerGuestQuery"]
 
     async with sessions() as db:
         tasks = list((await db.scalars(select(Task))).all())
@@ -610,7 +623,7 @@ async def test_guest_answer_trace_access_and_safe_projection(setup, monkeypatch,
     monkeypatch.setattr(ai_api, "_service", lambda *args, **kwargs: model)
 
     async def telegram(request):
-        return httpx.Response(200, json={"ok": True, "result": {"inline_message_id": "g-trace"}})
+        return httpx.Response(200, json={"ok": True, "result": True if request.url.path.endswith("/editMessageText") else {"inline_message_id": "g-trace"}})
 
     with caplog.at_level(logging.INFO):
         fake.updates = [guest_update(40, "@aelys_ibot проверь список и создай задачу aelys", query_id="gq-trace")]

@@ -6,13 +6,11 @@ long provider waits do not hold the polling loop or a database writer lock.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
 import json
 import logging
 import re
-import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -37,6 +35,7 @@ from app.ai.models import (
     TaskKind,
 )
 from app.ai.turn import run_tool_turn
+from app.ai.usage import UsageRecord
 from app.core import db as database
 from app.core.models import (
     AIMessage,
@@ -47,14 +46,23 @@ from app.core.models import (
     Project,
     now,
 )
-from sqlalchemy import select, update
+from sqlalchemy import select
 
-from .telegram_answer_format import TEXT_LIMIT, MessageEntity, answer_chunks
+from .telegram_answer_format import TEXT_LIMIT, presented_answer_message
 from .telegram_models import TelegramIntegration, TelegramPersonalJob
 from .telegram_personal import authorize
 from .telegram_personal_queue import (
     claim_personal_job,
     notify_interrupted_personal_jobs,
+)
+from .telegram_turn_progress import (
+    CANCELLED,
+    STOPPED,
+    TurnProgress,
+    execute_turn,
+    fail_run,
+    guard_running,
+    run_cancelled,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,11 +116,19 @@ def owner_scopes(text: str, *, quoted: bool = False) -> frozenset[str]:
     return frozenset(scopes)
 
 
-async def _send_owner(integration_id: str, text: str, *, answer_run_id: str | None = None) -> None:
+async def _send_owner(
+    integration_id: str, text: str, *, answer_run_id: str | None = None,
+    progress: TurnProgress | None = None,
+) -> None:
     from .telegram_service import TelegramClient
     async with database.SessionLocal() as db:
         item = await db.get(TelegramIntegration, integration_id)
         if not item or not item.enabled or item.deleted_at or not item.encrypted_token or not item.owner_telegram_id:
+            return
+        if progress and progress.run_id and (
+            item.owner_id != progress.owner_id or item.owner_telegram_id != progress.owner_chat
+            or item.bot_id != progress.bot_id
+        ):
             return
         authorize(item, 'telegram.notify_owner', external=True)
         token, chat_id = decrypt_secret(item.encrypted_token), item.owner_telegram_id
@@ -120,60 +136,26 @@ async def _send_owner(integration_id: str, text: str, *, answer_run_id: str | No
             f'https://t.me/{item.bot_username}?startapp=run__{answer_run_id}'
             if answer_run_id is not None and re.fullmatch(r'[A-Za-z0-9_]{1,64}', item.bot_username or '') else None
         )
-        await db.commit()
-    plain: Iterator[tuple[str, list[MessageEntity]]] = ((text[start:start + TEXT_LIMIT], []) for start in range(0, len(text), TEXT_LIMIT))
-    chunks = answer_chunks(text, trace_url) if answer_run_id is not None else plain
-    # Never retry a partially delivered answer.
+    if answer_run_id is not None:
+        chunks = [presented_answer_message(text, trace_url)]
+    else:
+        chunks = [(text[start:start + TEXT_LIMIT], []) for start in range(0, len(text), TEXT_LIMIT)]
+    if progress and progress.message is not None:
+        formatted, entities = chunks[0]
+        if not await progress.finish(formatted, entities):
+            raise RuntimeError('Telegram status edit unavailable')
+        return
+    if progress and progress.delivery_status == 'unknown':
+        raise RuntimeError('Telegram status delivery unknown')
     async with TelegramClient(token) as client:
         for chunk, entities in chunks:
-            authorize(item, 'telegram.notify_owner', external=True)
             if entities:
                 await client.send_message(chat_id, chunk, entities=entities)
             else:
                 await client.send_message(chat_id, chunk)
 
 
-class _LiveDraft:
-    """Best-effort preview of the reply while the model writes it.
-
-    The final sendMessage stays the only delivered reply. Any draft failure (old Bot API,
-    rate limit, network) turns the preview off for this turn and never fails the turn.
-    """
-    INTERVAL_SECONDS = 1.0
-
-    def __init__(self, item: TelegramIntegration, draft_id: int) -> None:
-        from .telegram_service import TelegramClient
-        self._item, self._chat_id, self._draft_id = item, item.owner_telegram_id, draft_id or 1
-        self._client = TelegramClient(decrypt_secret(item.encrypted_token or ''))
-        self._sent_at = 0.0
-        self._enabled = True
-
-    async def _call(self, method: str, *args: Any) -> bool:
-        try:
-            authorize(self._item, 'telegram.notify_owner', external=True)
-            async with asyncio.timeout(5):
-                await getattr(self._client, method)(self._chat_id, *args)
-            return True
-        except Exception:  # noqa: BLE001 - a preview never affects the turn
-            return False
-
-    async def typing(self) -> None:
-        await self._call('send_chat_action', 'typing')
-
-    async def __call__(self, text: str) -> None:
-        text = text.strip()[:TEXT_LIMIT]
-        if not self._enabled or not text or time.monotonic() - self._sent_at < self.INTERVAL_SECONDS:
-            return
-        self._sent_at = time.monotonic()
-        self._enabled = await self._call('send_message_draft', self._draft_id, text)
-
-    async def close(self) -> None:
-        # Closing a dead connection must not mask the error that ended the dialogue.
-        with contextlib.suppress(Exception):
-            await self._client.aclose()
-
-
-async def _failure(job_id: str, code: str, *, usage: tuple = (), notify: bool = True) -> None:
+async def _failure(job_id: str, code: str, *, usage: tuple[UsageRecord, ...] = (), notify: bool = True, progress: TurnProgress | None = None) -> None:
     async with database.SessionLocal() as db:
         job = await db.get(TelegramPersonalJob, job_id)
         if not job or job.state != 'running':
@@ -184,12 +166,9 @@ async def _failure(job_id: str, code: str, *, usage: tuple = (), notify: bool = 
         authorize(item, 'ai.personal.write')
         job.state, job.error_code, job.finished_at = 'failed', code, now()
         job.version += 1
-        if job.run_id:
-            await db.execute(update(AIRun).where(AIRun.id == job.run_id, AIRun.owner_id == job.owner_id,
-                                                 AIRun.status == 'running').values(
-                status='failed', completed_at=now(), **({'cost_estimate': sum((r.estimated_cost for r in usage), Decimal(0)),
-                'token_counts': {'input': sum(r.usage.input_tokens for r in usage), 'output': sum(r.usage.output_tokens for r in usage)}} if usage else {})))
-        if notify:
+        if job.run_id and await fail_run(db, job.run_id, job.owner_id, usage):
+            code = job.error_code = CANCELLED
+        if notify and code != CANCELLED:
             authorize(item, 'notifications.write')
             db.add(Notification(owner_id=job.owner_id, kind='telegram.personal.failed', title='Assistant request failed',
                                 body=None, data_json={'job_id': job.id, 'code': code}, dedup_key=f'telegram-personal-failed:{job.id}'))
@@ -198,21 +177,22 @@ async def _failure(job_id: str, code: str, *, usage: tuple = (), notify: bool = 
     if not notify:
         return
     try:
-        await _send_owner(integration_id, _FAILURES.get(code, _FAILURES['AI_ERROR']))
+        await _send_owner(integration_id, STOPPED if code == CANCELLED else _FAILURES.get(code, _FAILURES['AI_ERROR']), progress=progress)
     except Exception:  # noqa: BLE001 - no request bodies or provider/token errors in logs
         logger.info('Telegram personal failure notice unavailable')
 
 
-async def _process(job_id: str) -> None:
+async def _process(job_id: str, progress: TurnProgress) -> None:
     service = None
     try:
         async with database.SessionLocal() as db:
             job = await db.get(TelegramPersonalJob, job_id)
             if not job or job.state != 'running':
                 return
-            item = await db.get(TelegramIntegration, job.integration_id)
-            if not item or item.owner_id != job.owner_id or not item.enabled or not item.owner_telegram_id:
+            integration = await db.get(TelegramIntegration, job.integration_id)
+            if not integration or integration.owner_id != job.owner_id or not integration.enabled or not integration.owner_telegram_id:
                 raise PolicyDenied('inactive owner connection')
+            item = integration
             owner_id, integration_id = job.owner_id, item.id
             authorize(item, 'ai.personal.write')
             media = None
@@ -271,7 +251,12 @@ async def _process(job_id: str) -> None:
             remaining = await ai_api._remaining_monthly_budget(db, owner_id, provider)
             if remaining <= 0:
                 raise BudgetExceeded('Configured monthly budget exhausted')
-            service = ai_api._service(provider, decrypt_secret(secret.encrypted_value))
+            provider_secret = decrypt_secret(secret.encrypted_value)
+
+            async def cancelled() -> bool:
+                return await run_cancelled(run_id, owner_id)
+
+            service = ai_api._service(provider, provider_secret, cancel_check=cancelled)
             tools_supported = any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)
             if scopes and not tools_supported:
                 raise ModelUnavailable('Configured model does not support tools')
@@ -314,6 +299,10 @@ async def _process(job_id: str) -> None:
                                                     untrusted=True, media=media_content))
             if job.quote:
                 messages = (*messages, ChatMessage('user', job.quote, untrusted=True))
+            if not file_turn:
+                from app.ai.youtube import youtube_transcript_message
+                if subtitles := await youtube_transcript_message(trusted_text, job.quote):
+                    messages = (*messages, subtitles)
             from app.ai.personal_tools import personal_tool_registry
             registry = personal_tool_registry(db, owner_id, run_id, source_message_id=f'{integration_id}:{job.telegram_message_id or job.telegram_update_id}')
             search_enabled = not file_turn and tools_supported and provider.kind in {'claude', 'openrouter'}
@@ -335,11 +324,12 @@ async def _process(job_id: str) -> None:
             async def check() -> bool:
                 await db.refresh(item); await db.refresh(job)
                 inactive = (not item.enabled or item.deleted_at is not None or not item.encrypted_token
-                            or not item.owner_telegram_id or job.state != 'running')
+                            or item.owner_telegram_id != progress.owner_chat or item.bot_id != progress.bot_id
+                            or job.state != 'running')
                 if not inactive:
                     authorize(item, 'ai.personal.generate', external=True)
                 await db.commit()
-                return inactive
+                return inactive or await cancelled()
 
             async def event(kind: str, payload: Mapping[str, Any]) -> None:
                 nonlocal started_history_message_count
@@ -360,9 +350,15 @@ async def _process(job_id: str) -> None:
                         ]
                 await ai_api._persist_event(db, run_id,
                     f'event: {kind}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n')
-                await db.commit()  # includes successful tool mutation + shared change-log
-                if kind == 'ai.tool.requested' and payload.get('tool') == 'web_search':
-                    await _send_owner(integration_id, 'Поиск в вебе: ' + str(payload.get('query', '')))
+                if kind != 'ai.tool.approved':
+                    await db.commit()  # includes tool mutation and its result
+                if kind == 'ai.tool.requested':
+                    if payload.get('tool') == 'web_search':
+                        await progress.search(payload.get('query'), known_secrets=(provider_secret, decrypt_secret(item.encrypted_token or '')))
+                        if await cancelled():
+                            raise RunCancelled('run cancelled')
+                    else:
+                        await guard_running(db, run_id, owner_id)
 
             async def refresh_memory_messages(current: tuple[ChatMessage, ...]) -> tuple[ChatMessage, ...]:
                 nonlocal history_message_count
@@ -382,17 +378,16 @@ async def _process(job_id: str) -> None:
                 run.token_counts = {'input': input_tokens, 'output': output_tokens}
                 await db.commit()
 
-            live = _LiveDraft(item, job.telegram_update_id)
-            try:
-                await live.typing()
-                result = await run_tool_turn(service, UUID(run_id), request, messages, registry, context,
-                                             parse_call=ai_api._tool_call, on_event=event, on_usage=account,
-                                             refresh_messages=refresh_memory_messages, cancel_check=check, on_text=live,
-                                             append_search_sources=False)
-            finally:
-                await live.close()
+            await progress.start(db, item, run)
+            result = await execute_turn(run_id, run_tool_turn(
+                service, UUID(run_id), request, messages, registry, context,
+                parse_call=ai_api._tool_call, on_event=event, on_usage=account,
+                refresh_messages=refresh_memory_messages, cancel_check=check,
+                append_search_sources=False,
+            ))
             if await check():
                 raise RunCancelled('Owner connection changed')
+            await guard_running(db, run_id, owner_id)
             authorize(item, 'ai.personal.write')
             memory_refs.update(result.memory_refs)
             reply = result.text or ''
@@ -415,13 +410,13 @@ async def _process(job_id: str) -> None:
                 'reply_message_id': reply_message.id,
             })
         try:
-            await _send_owner(integration_id, reply, answer_run_id=run_id)
+            await _send_owner(integration_id, reply, answer_run_id=run_id, progress=progress)
         except Exception:  # noqa: BLE001 - completed tools are never replayed on delivery failure
             async with database.SessionLocal() as db:
-                item = await db.get(TelegramIntegration, integration_id)
-                if item:
-                    authorize(item, 'ai.personal.write')
-                    authorize(item, 'notifications.write')
+                delivery_item = await db.get(TelegramIntegration, integration_id)
+                if delivery_item:
+                    authorize(delivery_item, 'ai.personal.write')
+                    authorize(delivery_item, 'notifications.write')
                     db.add(Notification(owner_id=owner_id, kind='telegram.personal.delivery', title='Assistant reply delivery uncertain',
                                         body=None, data_json={'job_id':job_id}, dedup_key=f'telegram-personal-delivery:{job_id}'))
                     await db.commit()
@@ -434,18 +429,19 @@ async def _process(job_id: str) -> None:
         code = exc.code if isinstance(exc, (AIError, TelegramMediaError, TranscriptionError)) else 'TOOL_ERROR' if isinstance(exc, RuntimeError) else 'AI_ERROR'
         if code not in _FAILURES:
             code = 'AI_ERROR'
-        await _failure(job_id, code, usage=tuple(service.usage.records()) if service else ())
+        await _failure(job_id, code, usage=tuple(service.usage.records()) if service else (), progress=progress)
 
 
 async def _bounded_process(integration_id: str, job_id: str | None) -> None:
+    progress = TurnProgress()
     try:
         async with asyncio.timeout(PERSONAL_TIMEOUT_SECONDS):
             await notify_interrupted_personal_jobs(integration_id)
             if job_id:
-                await _process(job_id)
+                await _process(job_id, progress)
     except TimeoutError:
         if job_id:
-            await _failure(job_id, 'AI_TIMEOUT')
+            await _failure(job_id, 'AI_TIMEOUT', progress=progress)
 
 
 async def personal_iteration(integration_id: str) -> None:

@@ -74,3 +74,67 @@ def test_large_blank_gap_does_not_drop_indented_code_or_emit_empty_message():
     assert chunks[1][0] == '\n' * (4096 - len('    print(42)')) + '    print(42)'
     assert entity_spans(*chunks[1]) == [('pre', chunks[1][0])]
     assert chunks[-1][0] == LABEL
+
+
+def test_presented_summary_details_code_links_and_footer():
+    from app.integrations.telegram_answer_format import presented_answer_message
+    source = ('Итог 😀.\n\n**Детали 😀** ' + 'текст ' * 120 +
+              '\n[ссылка](https://example.org)\n```py\nprint("😀")\n```\nещё `код`\nКонец.')
+    text, entities = presented_answer_message(source, TRACE)
+    spans = entity_spans(text, entities)
+    assert ('bold', 'Детали 😀') in spans
+    assert ('text_link', 'ссылка') in spans
+    assert ('pre', 'print("😀")') in spans
+    assert ('code', 'код') in spans
+    assert text.count('Итог 😀.') == 1
+    assert spans[-1] == ('text_link', LABEL)
+    quotes = [e for e in entities if e['type'] == 'expandable_blockquote']
+    assert len(quotes) == 2
+    assert quotes[0]['offset'] == len('Итог 😀.\n\n'.encode('utf-16-le')) // 2
+    for q in quotes:
+        for e in entities:
+            if e is q or e['type'] in {'bold', 'italic'}:
+                continue
+            assert e['offset'] >= q['offset'] + q['length'] or e['offset'] + e['length'] <= q['offset']
+
+
+@pytest.mark.parametrize('source', ['😀' * 3000, '**' + 'я' * 6000 + '**',
+                                    'Итог.\n\n```py\n' + '😀' * 3000 + '\n```'])
+@pytest.mark.parametrize('trace', [TRACE, None])
+def test_presented_overflow_visible_and_utf16_valid(source, trace):
+    from app.integrations.telegram_answer_format import presented_answer_message
+    text, entities = presented_answer_message(source, trace)
+    size = len(text.encode('utf-16-le')) // 2
+    assert size <= 4096
+    assert ('Полный ответ — в MiniApp' if trace else 'Ответ сокращён') in text
+    entity_spans(text, entities)
+    for e in entities:
+        assert 0 <= e['offset'] < e['offset'] + e['length'] <= size
+    if trace:
+        assert entity_spans(text, entities)[-1] == ('text_link', LABEL)
+
+
+def test_presented_short_and_compatibility():
+    from app.integrations.telegram_answer_format import (
+        presented_answer_message,
+        single_answer_message,
+    )
+    source = '😀 **Готово** с `кодом`'
+    text, entities = presented_answer_message(source, TRACE)
+    assert (text, entities) == single_answer_message(source, TRACE)
+    assert text == f'😀 Готово с кодом\n\n{LABEL}'
+    assert [t for t, _ in entity_spans(text, entities)] == ['bold', 'code', 'text_link']
+
+
+def test_summary_boundary_cannot_cross_multiline_entity():
+    from app.integrations.telegram_answer_format import presented_answer_message
+    _, entities = presented_answer_message('**Summary\n\n' + 'detail ' * 110 + '**', TRACE)
+    assert not any(e['type'] == 'expandable_blockquote' for e in entities)
+
+
+def test_telegram_prompt_uses_shared_style():
+    from app.ai.chat_support import system_prompt
+    from app.integrations.telegram_answer_format import TELEGRAM_ANSWER_STYLE
+    assert TELEGRAM_ANSWER_STYLE in system_prompt('UTC', tools=True, channel='telegram')
+    assert TELEGRAM_ANSWER_STYLE not in system_prompt('UTC', tools=True)
+    assert TELEGRAM_ANSWER_STYLE not in system_prompt('UTC', tools=True, channel='voice')

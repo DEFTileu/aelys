@@ -31,6 +31,8 @@ OWNER = 424242
 def _alembic_config(sync_url: str) -> Config:
     backend_dir = Path(__file__).resolve().parents[1]
     config = Config(str(backend_dir / "alembic.ini"))
+    # Keep migration logging from disabling the host pytest capture loggers.
+    config.file_config.remove_section("loggers")
     config.set_main_option("script_location", str(backend_dir / "alembic"))
     config.set_main_option("sqlalchemy.url", sync_url)
     return config

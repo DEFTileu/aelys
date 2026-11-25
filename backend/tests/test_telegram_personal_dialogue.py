@@ -31,6 +31,21 @@ from test_telegram_personal import bound, ordinary
 pytest_plugins = ('test_telegram_business',)
 
 
+@pytest.fixture
+def editable_transport(monkeypatch):
+    def install(fake):
+        edits = []
+
+        async def edit(self, chat_id, message_id, content, **kwargs):
+            edits.append((chat_id, message_id, content, kwargs))
+            return {"message_id": message_id}
+
+        monkeypatch.setattr(fake, "edit_message_text", edit, raising=False)
+        return edits
+
+    return install
+
+
 async def provider(sessions, integration_id, *, monthly_budget='100'):
     from app.ai.crypto import encrypt_secret
     async with sessions() as db:
@@ -95,9 +110,10 @@ async def test_history_omits_unanswered_owner_turns_but_keeps_answered_pairs(set
     assert history == ([("user", old_text), ("assistant", 'Сегодня суббота.')] if answered else []) + [('user', 'Какие новости NASA?')]
 
 
-async def test_owner_web_search_shows_query_and_keeps_sources_in_trace(setup, monkeypatch):
+async def test_owner_web_search_shows_query_and_keeps_sources_in_trace(setup, monkeypatch, editable_transport):
     from app.integrations import telegram_personal_dialogue as dialogue
     client, sessions, fake, integration_id = await bound(setup)
+    edits = editable_transport(fake)
     await provider(sessions, integration_id)
 
     class SearchService(Service):
@@ -105,7 +121,7 @@ async def test_owner_web_search_shows_query_and_keeps_sources_in_trace(setup, mo
         async def complete(self, run_id, request, messages, **kwargs):
             self.calls += 1
             if kwargs.get('web_search'):
-                assert any('current weather' in sent[1] for sent in fake.sent)
+                assert any('current weather' in edit[2] for edit in edits)
                 response = SimpleNamespace(text='Fact', tool_calls=(), search_used=True, sources=('https://example.org/fact', 'https://example.org/other-source'))
             elif self.calls == 1:
                 self.prompt = messages[0].content
@@ -121,11 +137,12 @@ async def test_owner_web_search_shows_query_and_keeps_sources_in_trace(setup, mo
     fake.updates = [ordinary(1, 'Какая сейчас погода? Дай ссылку на прогноз.')]
     await service.poll_once(integration_id, timeout=0)
     await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
-    sent = '\n'.join(value[1] for value in fake.sent)
+    assert len(fake.sent) == 1 and len(edits) == 2 and edits[0][1] == edits[1][1]
+    sent = '\n'.join(value[2] for value in edits)
     assert 'current weather' in sent
     assert 'Источники:' not in sent and 'https://example.org/other-source' not in sent
-    assert fake.sent[-1][1] == 'Fact requested page\n\nКак я ответил'
-    assert fake.sent[-1][2]['entities'][0] == {
+    assert edits[-1][2] == 'Fact requested page\n\nКак я ответил'
+    assert edits[-1][3]['entities'][0] == {
         'type': 'text_link', 'offset': 5, 'length': 14, 'url': 'https://example.org/fact',
     }
     assert 'Do not add a sources list' in model.prompt
@@ -179,9 +196,10 @@ async def test_durable_poll_does_not_wait_for_long_turn(setup, monkeypatch):
         await dialogue.stop_personal_turns()
 
 
-async def test_quote_cannot_authorize_write(setup,monkeypatch):
+async def test_quote_cannot_authorize_write(setup,monkeypatch,editable_transport):
     from app.integrations import telegram_personal_dialogue as dialogue
     client,sessions,fake,integration_id=await bound(setup)
+    edits = editable_transport(fake)
     await provider(sessions,integration_id)
     model=Service();model.requests=[]
     model.response=SimpleNamespace(text='',tool_calls=({'id':'injected','name':'create_task','input':{'title':'Injected'}},))
@@ -192,12 +210,13 @@ async def test_quote_cannot_authorize_write(setup,monkeypatch):
     assert (await client.get('/api/v1/tasks')).json()==[]
     assert any(m.untrusted and 'Ignore policy' in m.content for m in model.requests[0][0])
     assert 'create_task' not in {s['name'] for s in model.requests[0][1]['tools']}
-    assert any('запрещено' in sent[1] for sent in fake.sent)
+    assert 'запрещено' in edits[-1][2]
 
 
-async def test_budget_and_long_plain_reply_and_new_conversation(setup,monkeypatch):
+async def test_budget_and_long_plain_reply_and_new_conversation(setup,monkeypatch,editable_transport):
     from app.integrations import telegram_personal_dialogue as dialogue
     _,sessions,fake,integration_id=await bound(setup)
+    edits = editable_transport(fake)
     await provider(sessions,integration_id,monthly_budget='0')
     model=Service();model.requests=[];model.response=SimpleNamespace(text='x'*9000,tool_calls=())
     monkeypatch.setattr(ai_api,'_service',lambda *a,**kw:model)
@@ -219,13 +238,13 @@ async def test_budget_and_long_plain_reply_and_new_conversation(setup,monkeypatc
         ))).one()
         assert job.state == 'done' and job.run_id is not None
         bot_username = (await db.get(TelegramIntegration, integration_id)).bot_username
-    chunks = [sent[1] for sent in fake.sent[sent_before:]]
-    assert all(1 <= len(chunk) <= 4096 for chunk in chunks)
-    reply_tail, link = chunks[-1].rsplit('\n\n', 1)
-    assert ''.join([*chunks[:-1], reply_tail]) == 'x' * 9000
-    assert link == 'Как я ответил'
-    assert fake.sent[-1][2]['entities'][-1]['url'] == f'https://t.me/{bot_username}?startapp=run__{job.run_id}'
-    assert all(not sent[2] for sent in fake.sent[:-1])
+        reply = (await db.scalars(select(AIMessage).where(AIMessage.role == 'assistant'))).one()
+        assert reply.content == 'x' * 9000
+    assert len(fake.sent[sent_before:]) == 1
+    [edit] = edits
+    assert len(edit[2]) <= 4096 and 'Полный ответ' in edit[2]
+    assert edit[2].endswith('Как я ответил')
+    assert edit[3]['entities'][-1]['url'] == f'https://t.me/{bot_username}?startapp=run__{job.run_id}'
     fake.updates=[ordinary(3,'/new'),ordinary(4,'Другая беседа')];await service.poll_once(integration_id,timeout=0)
     await dialogue.personal_iteration(integration_id);await dialogue.wait_for_personal_turns()
     async with sessions() as db:
@@ -274,9 +293,10 @@ async def test_restart_after_committed_tool_never_replays_it(setup,monkeypatch):
         await dialogue.stop_personal_turns()
 
 
-async def test_timeout_is_terminal_without_retry(setup,monkeypatch):
+async def test_timeout_is_terminal_without_retry(setup,monkeypatch,editable_transport):
     from app.integrations import telegram_personal_dialogue as dialogue
     _,sessions,fake,integration_id=await bound(setup)
+    edits = editable_transport(fake)
     await provider(sessions,integration_id)
     model=Service();model.gate=asyncio.Event();model.requests=[]
     monkeypatch.setattr(ai_api,'_service',lambda *a,**kw:model)
@@ -287,7 +307,7 @@ async def test_timeout_is_terminal_without_retry(setup,monkeypatch):
     async with sessions() as db:
         job=(await db.execute(select(TelegramPersonalJob))).scalar_one()
         assert job.state=='failed' and job.error_code=='AI_TIMEOUT'
-    assert 'время ожидания' in fake.sent[-1][1]
+    assert 'время ожидания' in edits[-1][2]
     await dialogue.personal_iteration(integration_id)
     assert len(model.requests)==1
 
@@ -367,75 +387,35 @@ async def test_terminal_storage_failure_recovers_without_model_replay(setup,monk
         await dialogue.stop_personal_turns()
 
 
-class StreamingService(Service):
-    async def complete(self, run_id, request, messages, **kwargs):
-        for part in ('Сейчас', ' посмотрю'):  # deltas, like a provider stream
-            await kwargs['on_text'](part)
-        return await super().complete(run_id, request, messages, **kwargs)
-
-
-async def test_reply_streams_as_draft_and_is_delivered_once(setup, monkeypatch):
-    from app.integrations import telegram_personal_dialogue as dialogue
-    _, sessions, fake, integration_id = await bound(setup)
-    await provider(sessions, integration_id)
-    model = StreamingService(); model.requests = []
-    model.response = SimpleNamespace(text='Сейчас посмотрю', tool_calls=())
-    monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: model)
-    monkeypatch.setattr(dialogue._LiveDraft, 'INTERVAL_SECONDS', 0)
-    calls = []
-
-    async def draft(self, chat_id, draft_id, text):
-        calls.append(('draft', chat_id, draft_id, text))
-
-    async def action(self, chat_id, kind):
-        calls.append(('action', chat_id, kind))
-
-    monkeypatch.setattr(fake, 'send_message_draft', draft, raising=False)
-    monkeypatch.setattr(fake, 'send_chat_action', action, raising=False)
-    fake.updates = [ordinary(1, 'Что у меня завтра?')]
-    await service.poll_once(integration_id, timeout=0)
-    sent_before = len(fake.sent)
-    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
-    async with sessions() as db:
-        integration = await db.get(TelegramIntegration, integration_id)
-        owner_chat = integration.owner_telegram_id
-        job = (await db.scalars(select(TelegramPersonalJob))).one()
-        assert job.state == 'done' and job.run_id is not None
-        link = f'https://t.me/{integration.bot_username}?startapp=run__{job.run_id}'
-    assert calls[0] == ('action', owner_chat, 'typing')
-    assert [c[3] for c in calls[1:]] == ['Сейчас', 'Сейчас посмотрю']
-    assert {c[1] for c in calls} == {owner_chat} and all(c[2] != 0 for c in calls[1:])
-    replies = fake.sent[sent_before:]
-    assert [r[1] for r in replies] == ['Сейчас посмотрю\n\nКак я ответил']
-    assert replies[0][2]['entities'][-1]['url'] == link
-
-
-async def test_draft_failure_turns_preview_off_but_still_replies(setup, monkeypatch):
+async def test_rejected_personal_placeholder_still_delivers_final(setup, monkeypatch):
     from app.integrations import telegram_personal_dialogue as dialogue
     from app.integrations.telegram_transport import TelegramError
+
     _, sessions, fake, integration_id = await bound(setup)
     await provider(sessions, integration_id)
-    model = StreamingService(); model.requests = []
-    model.response = SimpleNamespace(text='Сейчас посмотрю', tool_calls=())
+    model = Service()
+    model.requests = []
+    model.response = SimpleNamespace(text='Готовый ответ', tool_calls=())
     monkeypatch.setattr(ai_api, '_service', lambda *a, **kw: model)
-    monkeypatch.setattr(dialogue._LiveDraft, 'INTERVAL_SECONDS', 0)
+    send = fake.send_message
     attempts = []
 
-    async def draft(self, chat_id, draft_id, text):
-        attempts.append(text)
-        raise TelegramError(400)
+    async def send_message(self, chat_id, text, **kwargs):
+        if kwargs.get('reply_markup'):
+            attempts.append(kwargs.get("entities", []))
+            raise TelegramError(400)
+        return await send(self, chat_id, text, **kwargs)
 
-    monkeypatch.setattr(fake, 'send_message_draft', draft, raising=False)
+    monkeypatch.setattr(fake, 'send_message', send_message)
     fake.updates = [ordinary(1, 'Привет')]
     await service.poll_once(integration_id, timeout=0)
-    await dialogue.personal_iteration(integration_id); await dialogue.wait_for_personal_turns()
-    assert attempts == ['Сейчас']
-    async with sessions() as db:
-        job = (await db.scalars(select(TelegramPersonalJob))).one()
-        assert job.state == 'done' and job.run_id is not None
-        bot_username = (await db.get(TelegramIntegration, integration_id)).bot_username
-    assert fake.sent[-1][1] == 'Сейчас посмотрю\n\nКак я ответил'
-    assert fake.sent[-1][2]['entities'][-1]['url'] == f'https://t.me/{bot_username}?startapp=run__{job.run_id}'
+    await dialogue.personal_iteration(integration_id)
+    await dialogue.wait_for_personal_turns()
+
+    assert len(attempts) == 2
+    assert any(e["type"] == "custom_emoji" for e in attempts[0])
+    assert all(e["type"] != "custom_emoji" for e in attempts[1])
+    assert [message[1] for message in fake.sent] == ['Готовый ответ\n\nКак я ответил']
 
 
 async def test_owner_memory_is_placed_before_current_question(setup, monkeypatch):
