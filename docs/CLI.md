@@ -98,7 +98,7 @@ legacy refresh replacement without revoking the saved sign-in.
 
 ## Commands for every existing server module
 
-The CLI now exposes all 58 typed native operations and the 76 explicit domain
+The CLI now exposes all 59 typed native operations and the 76 explicit domain
 API routes used by the app. This covers Projects, Tasks, Notes/revisions,
 Calendar/reminders, Finance, Focus, Mail/drafts, AI/providers/memory/actions,
 Knowledge/search, Activity/notifications, Telegram, Automations and the existing

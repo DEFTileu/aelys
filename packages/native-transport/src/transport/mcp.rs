@@ -64,6 +64,7 @@ impl McpPolicyEngine {
             "projects",
             "tasks",
             "notes",
+            "knowledge_search",
             "read_page",
             "read_item",
             "calendar_occurrences",
@@ -430,6 +431,33 @@ mod tests {
             assert!(McpPolicyEngine::authorize(&value, false).is_err());
         }
     }
+    #[test]
+    fn knowledge_search_is_a_scoped_read() {
+        let v = json!({"type":"knowledge_search","query":"milestones","project_id":"project-1","note_ids":["note-1"]});
+        let op = McpPolicyEngine::authorize(&v, false).unwrap();
+        let (method, path, body) = route(op).unwrap();
+        assert_eq!(method, Method::POST);
+        assert_eq!(path, "/api/v1/knowledge/search");
+        assert_eq!(
+            body.unwrap(),
+            json!({"query":"milestones","project_id":"project-1","note_ids":["note-1"]})
+        );
+        assert!(McpPolicyEngine::authorize(&v, true).is_err());
+        for invalid in [
+            json!({"query":" "}),
+            json!({"query":"x","note_ids":vec!["n";21]}),
+            json!({"query":"x","owner_id":"other"}),
+        ] {
+            let mut op = invalid;
+            op["type"] = json!("knowledge_search");
+            assert!(McpPolicyEngine::authorize(&op, false).is_err());
+        }
+        let src = json!({"note_id":"n","label":"N1","title":"T","version":2,"heading":"H","start":0,"end":1,"excerpt":"x","private":"hidden"});
+        let citations = sanitize_response("knowledge-sources", json!([src])).unwrap();
+        assert_eq!(citations[0]["excerpt"], "x");
+        assert!(citations[0].get("private").is_none());
+    }
+
     #[test]
     fn policy_separates_reads_and_writes() {
         let v = json!({"type":"project_create","project":{"name":"Test"}});
