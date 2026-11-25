@@ -1077,3 +1077,21 @@ export interface EnglishMockIn {
   readonly note?: string;
 }
 export interface EnglishMock { readonly id: Id; readonly day: string; readonly listening: string | null; readonly reading: string | null; readonly writing: string | null; readonly speaking: string | null; readonly note: string }
+export interface SystemStatus {
+  readonly checked_at: string;
+  readonly api: 'ok';
+  readonly database: 'ok';
+  readonly uptime_seconds: number;
+}
+
+export interface SystemEvent {
+  readonly id: string;
+  readonly action: string;
+  readonly decision: string;
+  readonly outcome: string;
+  readonly created_at: string;
+}
+
+export interface SystemEventsResponse {
+  readonly items: readonly SystemEvent[];
+}

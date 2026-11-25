@@ -3,7 +3,7 @@ import { useOwner } from '../../lib/owner'
 import { Bell, Calendar, CloudSun, Info, Mail, Paintbrush, Send, Shield, Smartphone, Sparkles, User, Wifi, type AelysIconComponent } from '../../icons'
 import type { ApiStatus } from '../../types'
 
-export type PanelId = 'profile' | 'notifications' | 'appearance' | 'weather' | 'calendar' | 'ai' | 'memory' | 'telegram' | 'accounts' | 'connection' | 'devices' | 'security' | 'about'
+export type PanelId = 'profile' | 'notifications' | 'appearance' | 'weather' | 'calendar' | 'ai' | 'memory' | 'telegram' | 'accounts' | 'status' | 'connection' | 'devices' | 'security' | 'about'
 export type Section = { id: PanelId; title: string; desc: string; icon: AelysIconComponent; tone: string }
 
 // Groups, titles, descriptions and tile colors are the design's. Memory and Google Calendar are Aelys sections the design lacks.
@@ -24,6 +24,7 @@ export const GROUPS: readonly { title: string; items: readonly Section[] }[] = [
   ] },
   { title: 'System', items: [
     { id: 'accounts', title: 'Connected accounts', desc: 'Gmail and Telegram', icon: Mail, tone: 'blue' },
+    { id: 'status', title: 'Статус', desc: 'Сервер, синхронизация и события', icon: Wifi, tone: 'green' },
     { id: 'connection', title: 'Connection', desc: 'Backend address and your session', icon: Wifi, tone: 'green' },
     { id: 'devices', title: 'Devices', desc: 'Companions paired with Aelys', icon: Smartphone, tone: 'violet' },
     { id: 'security', title: 'Security', desc: 'Touch ID and session unlock', icon: Shield, tone: 'coral' },

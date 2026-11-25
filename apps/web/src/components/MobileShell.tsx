@@ -32,7 +32,7 @@ const APPS: App[] = [
 ]
 
 
-const SETTINGS_TITLES: Record<string, string> = { profile: 'Profile', notifications: 'Notifications', appearance: 'Appearance', weather: 'Weather & location', calendar: 'Google Calendar', ai: 'AI & models', memory: 'Memory', telegram: 'Telegram', accounts: 'Connected accounts', connection: 'Connection', security: 'Security', about: 'Data & about' }
+const SETTINGS_TITLES: Record<string, string> = { profile: 'Profile', notifications: 'Notifications', appearance: 'Appearance', weather: 'Weather & location', calendar: 'Google Calendar', ai: 'AI & models', memory: 'Memory', telegram: 'Telegram', accounts: 'Connected accounts', connection: 'Connection', status: 'Статус', security: 'Security', about: 'Data & about' }
 
 // The design's subtitle under each inner title. Screens with data-dependent ones (tasks, calendar, notes) set them via MobileHeader.
 const STATIC_SUBS: Partial<Record<RoutePath, string>> = {

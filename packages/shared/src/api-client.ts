@@ -1,4 +1,5 @@
 import type {
+  SystemStatus, SystemEventsResponse,
   KnowledgeSource, KnowledgeScope,
   MemoryFactIn, MemoryFactPatch, OwnerMemoryFact,
   ActivityEvent, AgentDevice, AgentRun, AgentRunIn, AIAction, AIAttachment, AIAttachmentIn, AIConversation, AIFeedback, AIMessage, AIMessageIn, ConversationPatch, AIProvider, AIProviderSecretResponse,
@@ -464,6 +465,13 @@ export class ApiClient {
   public logout(options?: RequestOptions) { return this.request<{ readonly logged_out: boolean }>("/api/v1/auth/logout", this.write(undefined, { ...options, queueOnOffline: false })); }
   public me(options?: RequestOptions) { return this.request<MeResponse>("/api/v1/me", this.read(options)); }
   public devices(options?: RequestOptions) { return this.request<readonly DeviceResponse[]>("/api/v1/devices", this.read(options)); }
+  /** Operational data is live-only: never persist or replay a healthy snapshot. */
+  public getSystemStatus(options?: RequestOptions) {
+    return this.request<SystemStatus>("/api/v1/system/status", { signal: options?.signal, timeoutMs: options?.timeoutMs, allowCacheFallback: false, forceRefresh: true });
+  }
+  public getSystemEvents(limit = 50, options?: RequestOptions) {
+    return this.request<SystemEventsResponse>("/api/v1/system/events", { signal: options?.signal, timeoutMs: options?.timeoutMs, query: { limit }, allowCacheFallback: false, forceRefresh: true });
+  }
   public enrollDevice(body: DeviceEnroll, options?: RequestOptions) { return this.request<DeviceEnrollmentResponse>("/api/v1/devices/enroll", this.write(body, options)); }
   public revokeDevice(deviceId: Id, options?: RequestOptions) { return this.request<RevokeResponse>(`/api/v1/devices/${encodeURIComponent(deviceId)}/revoke`, this.write(undefined, options)); }
 

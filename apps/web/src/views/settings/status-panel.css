@@ -1,0 +1,18 @@
+.sys-panel { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.sys-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sys-value { color: var(--st-ink-2); font-size: 13px; text-align: right; }
+.sys-value[data-healthy='true'] { color: var(--st-green-ink); font-weight: 600; }
+.sys-events-toolbar { padding: 12px 16px; border-bottom: 1px solid var(--st-rule); }
+.sys-events-toolbar .st-input { margin: 0; }
+.sys-events-scroll { max-width: 100%; overflow-x: auto; }
+.sys-events { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+.sys-events th, .sys-events td { padding: 11px 14px; border-bottom: 1px solid var(--st-rule); white-space: nowrap; }
+.sys-events th { color: var(--st-mute); font-weight: 600; }
+.sys-events td { color: var(--st-ink-2); }
+.sys-events tr:last-child td { border-bottom: 0; }
+@media (max-width: 700px) {
+  .sys-toolbar { align-items: flex-start; }
+  .sys-toolbar .st-hint { flex: 1; }
+  .sys-panel .st-row { align-items: flex-start; }
+  .sys-value { max-width: 48%; }
+}
