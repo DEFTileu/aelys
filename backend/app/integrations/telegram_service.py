@@ -130,8 +130,10 @@ async def clear_messages(db: AsyncSession, integration_id: str, connection_id: s
 
 
 async def purge_integration(db: AsyncSession, item: TelegramIntegration) -> None:
+    from .telegram_group import purge_groups
     from .telegram_task_suggestions import invalidate_suggestions
     await invalidate_suggestions(db, integration_id=item.id, at=now())
+    await purge_groups(db, item.id)
     item.task_suggestions_chat_id = None
     item.task_suggestions_enabled_at = None
     from .telegram_avatar import forget
@@ -200,6 +202,10 @@ async def ingest_update(db: AsyncSession, item: TelegramIntegration, payload: di
         await enqueue_guest_message(db, item, payload, now())
         return None
     ordinary = payload.get("message")
+    if (isinstance(payload.get("my_chat_member"), dict) or isinstance(payload.get("edited_message"), dict)
+            or mapping(mapping(ordinary).get("chat")).get("type") in {"group", "supergroup"}):
+        from .telegram_group import ingest_group_update
+        return await ingest_group_update(db, item, payload)
     if isinstance(ordinary, dict):
         text = ordinary.get("text", "")
         sender = mapping(ordinary.get("from")); chat = mapping(ordinary.get("chat"))
@@ -700,6 +706,8 @@ async def poll_integration_safely(integration_id: str) -> bool:
         await personal_iteration(integration_id)
         from .telegram_guest import guest_iteration
         await guest_iteration(integration_id)
+        from .telegram_group import schedule_group_turn
+        schedule_group_turn(integration_id)
     except Exception:  # noqa: BLE001 - isolate one integration from the supervisor
         # No customer text, token, request URL or provider exception is emitted.
         return False
@@ -749,7 +757,9 @@ async def connector_loop() -> None:
                 await asyncio.sleep(0)
             await asyncio.sleep(3)
     finally:
+        from .telegram_group import stop_group_turns
         from .telegram_guest import stop_guest_turns
         from .telegram_personal_dialogue import stop_personal_turns
         await stop_personal_turns()
         await stop_guest_turns()
+        await stop_group_turns()

@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 from app.ai.crypto import decrypt_secret, encrypt_secret
 from app.core.db import Base
-from app.core.models import Owned, now
+from app.core.models import Owned, now, uid
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -12,6 +12,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -230,3 +231,35 @@ class TelegramGuestJob(Owned):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class TelegramGroup(Base):
+    """A group explicitly enabled by the bound Telegram owner."""
+
+    __tablename__ = "telegram_groups"
+    __table_args__ = (UniqueConstraint("integration_id", "chat_id", name="uq_telegram_group_chat"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    integration_id: Mapped[str] = mapped_column(ForeignKey("telegram_integrations.id"))
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("ai_conversations.id"))
+
+
+class TelegramGroupMessage(Base):
+    __tablename__ = "telegram_group_messages"
+    __table_args__ = (
+        Index("ix_telegram_group_history", "group_id", "thread_id", "message_id"),
+        Index("ix_telegram_group_pending", "group_id", "reply_state", "queued_at"),
+    )
+
+    group_id: Mapped[str] = mapped_column(ForeignKey("telegram_groups.id", ondelete="CASCADE"), primary_key=True)
+    message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    thread_id: Mapped[int] = mapped_column(BigInteger, default=0)
+    sender_name: Mapped[str] = mapped_column(EncryptedText(), default="")
+    body: Mapped[str] = mapped_column(EncryptedText(), default="")
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reply_to_id: Mapped[int | None] = mapped_column(BigInteger)
+    reply_state: Mapped[str] = mapped_column(String(16), default="none")
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("ai_runs.id"))

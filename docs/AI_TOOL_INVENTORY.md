@@ -1,9 +1,9 @@
 # Реестр LLM tools и аудит — 2026-11-25
 
 Задача: IMPLEMENTATION_PLAN Phase 4 / task 3 (typed domain tools). База: c57cf96.
-Это фактический реестр backend, не REST/MCP каталог и не перечень проектируемых возможностей.
-JSON Schema ниже получены из personal_tool_registry с включённой personal Telegram history
-и register_web_search. Создание registry не вызывает handlers.
+В приложении приведены схемы из исходного personal_tool_registry с включённой personal
+Telegram history и register_web_search. Погода, курсы и поиск по группам описаны ниже.
+Создание registry не вызывает handlers.
 
 ## Registry → provider → execution
 
@@ -33,20 +33,28 @@ role=tool. В обоих случаях ID связывает вызов и ре
 R = list_tasks, read_note, search_notes, read_calendar.
 W = create_task, update_task, complete_task, create_note, create_event, create_reminder.
 K = search_knowledge; M = remember/forget; H = read_chat_history; S = web_search.
+P = get_weather, get_exchange_rate.
 
 | Канал | Передаваемые tools | Граница |
 |---|---|---|
-| App chat | R/K согласно sources; W при активном tool loop; M по explicit запросу; S opt-in | W создают pending AIAction, реальное исполнение через approve. M имеют отдельные scopes и не проходят gate_writes |
-| App без источников/tool model | Нет tool loop | Память может быть отдельно injected как data, что не даёт tools |
-| App knowledge | Excerpts и tools согласно tool_scope | Отдельный knowledge prompt; trusted time добавлен без замены этого prompt |
-| Personal Telegram text/транскрибированная owner voice | R + W + H + S, M по explicit запросу | Прямые writes, без app approval card |
-| Personal Telegram quote | R + H + S | W/M запрещены |
+| App chat | P; R/K согласно sources; W при активных личных sources; M по explicit запросу; S opt-in | W создают pending AIAction, реальное исполнение через approve. M имеют отдельные scopes и не проходят gate_writes |
+| App без личных источников и веб-поиска | P | Память может быть отдельно injected как data |
+| App с text-only моделью | Нет tool loop | Режим обычного ответа |
+| App knowledge | P; excerpts и tools согласно tool_scope | Отдельный knowledge prompt и trusted time |
+| Personal Telegram text/транскрибированная owner voice | R + W + H + S + P, M по explicit запросу | Прямые writes, без app approval card |
+| Personal Telegram quote | R + H + S + P | W/M запрещены |
 | Personal Telegram file/media | Нет личных tools и S | Фото/PDF/text untrusted; capabilities проверяются отдельно |
-| Guest без marker | S при tool-capable model | Personal registry/memory/history отсутствуют; numeric owner verification обязателен |
-| Guest с marker в текущем trusted owner turn | R + W + K + S; M по explicit запросу | Изолированная conversation, без H; quote сам не разрешает marker |
+| Guest без marker | S + P при tool-capable model | Personal registry/memory/history отсутствуют; numeric owner verification обязателен |
+| Guest с marker в текущем trusted owner turn | R + W + K + S + P; M по explicit запросу | Изолированная conversation, без H; quote сам не разрешает marker |
 | Companion voice | list_tasks, read_calendar, create_task, create_note | VOICE_TOOLS allowlist, device/lost-mode checks, прямые writes |
 | App voice | Обычный app chat после STT | Отдельного registry нет, ephemeral handling сохранён |
 | Companion action lookup/buttons | Не LLM tools | Отдельные typed device actions |
+| Подключённая Telegram-группа | `read_group_history`, `get_weather`, `get_exchange_rate` | История только внутри текущей темы, без личных scopes |
+
+Публичные `get_weather` и `get_exchange_rate` доступны модели с tool calling в AI Chat,
+личном Telegram и Guest Mode. Они работают и когда личные источники AI Chat отключены.
+Текстовая модель без tool calling отвечает в обычном режиме. Каталог и условия доступа
+для группы описаны в [групповом режиме Telegram](optimization/telegram-group-memory.md).
 
 Executable builders: ai/api.py, integrations/telegram_personal_dialogue.py,
 integrations/telegram_guest.py, companion/voice.py. Tool может **существовать**, но не

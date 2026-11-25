@@ -28,7 +28,7 @@ async def test_methods_and_payloads(caplog):
     assert all(r.method == "POST" and r.url.host == "api.telegram.org" and r.url.scheme == "https" for r in requests)
     bodies = [json.loads(r.content) for r in requests]
     assert bodies[:2] == [{}, {}]
-    assert bodies[2] == {"offset": 42, "timeout": 20, "allowed_updates": ["message", "guest_message", "business_connection", "business_message", "edited_business_message", "deleted_business_messages", "callback_query"]}
+    assert bodies[2] == {"offset": 42, "timeout": 20, "allowed_updates": ["message", "edited_message", "my_chat_member", "guest_message", "business_connection", "business_message", "edited_business_message", "deleted_business_messages", "callback_query"]}
     assert bodies[3] == {"business_connection_id": "bc"}
     assert bodies[4] == {"chat_id": 7, "text": "hello", "business_connection_id": "bc", "reply_parameters": {"message_id": 9}, "link_preview_options": {"is_disabled": True}}
     assert TOKEN not in caplog.text

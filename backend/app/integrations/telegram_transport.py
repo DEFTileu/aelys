@@ -11,6 +11,8 @@ import httpx
 
 _ALLOWED_UPDATES = (
     "message",
+    "edited_message",
+    "my_chat_member",
     "guest_message",
     "business_connection",
     "business_message",
@@ -236,6 +238,7 @@ class TelegramClient:
         self, chat_id: int, text: str, *, business_connection_id: str | None = None,
         reply_to_message_id: int | None = None, reply_markup: Mapping[str, Any] | None = None,
         entities: Sequence[Mapping[str, object]] = (),
+        message_thread_id: int | None = None,
     ) -> dict[str, Any]:
         if not 1 <= len(text) <= 4096:
             raise ValueError("message text must contain 1 to 4096 characters")
@@ -248,6 +251,8 @@ class TelegramClient:
             payload["business_connection_id"] = business_connection_id
         if reply_to_message_id is not None:
             payload["reply_parameters"] = {"message_id": reply_to_message_id}
+        if message_thread_id is not None:
+            payload["message_thread_id"] = message_thread_id
         if reply_markup is not None:
             payload["reply_markup"] = _inline_keyboard(reply_markup)
         return await self._object("sendMessage", payload)
