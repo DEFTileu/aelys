@@ -1,6 +1,6 @@
 [package]
 name = "aelys-mobile"
-version = "0.3.1"
+version = "0.3.2"
 description = "Aelys Android/mobile Tauri shell"
 authors = ["Aelys contributors"]
 edition = "2021"
