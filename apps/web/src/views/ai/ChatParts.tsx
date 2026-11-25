@@ -87,9 +87,18 @@ export function FileChip({ name, size, onRemove, pending }: { name: string; size
 export function AnswerActions({ text, meta, feedback, canRegenerate, regenDisabled, canRate, onRegenerate, onFeedback }: { text: string; meta?: string; feedback: AIFeedback; canRegenerate: boolean; regenDisabled: boolean; canRate: boolean; onRegenerate: () => void; onFeedback: (next: AIFeedback) => void }) {
   const [copied, setCopied] = useState(false)
   useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 1500); return () => clearTimeout(timer) }, [copied])
-  const copy = () => { void Promise.resolve(navigator.clipboard?.writeText(text)).catch(() => undefined); setCopied(true) }
+  const [copyError, setCopyError] = useState('')
+  const copy = async () => {
+    setCopied(false); setCopyError('')
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    } catch { setCopyError('Could not copy to clipboard.') }
+  }
   return <div className="actual-ai__tools">
     <button type="button" className="actual-ai__tool" aria-label="Copy" title="Copy" onClick={copy}>{copied ? <><Check size={15} />Copied</> : <Copy size={15} />}</button>
+    {copyError && <span role="status">{copyError}</span>}
     {canRegenerate && <button type="button" className="actual-ai__tool" aria-label="Regenerate" title="Regenerate" disabled={regenDisabled} onClick={onRegenerate}><RotateCcw size={15} /></button>}
     <button type="button" className="actual-ai__tool" aria-label="Good answer" aria-pressed={feedback === 'up'} data-on={feedback === 'up' || undefined} disabled={!canRate} onClick={() => onFeedback(feedback === 'up' ? null : 'up')}><ThumbsUp size={15} /></button>
     <button type="button" className="actual-ai__tool actual-ai__tool--down" aria-label="Bad answer" aria-pressed={feedback === 'down'} data-on={feedback === 'down' || undefined} disabled={!canRate} onClick={() => onFeedback(feedback === 'down' ? null : 'down')}><ThumbsDown size={15} /></button>
