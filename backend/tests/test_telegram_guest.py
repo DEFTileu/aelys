@@ -746,3 +746,40 @@ async def test_guest_chats_are_hidden_by_origin_even_when_renamed_or_pinned(setu
     async with sessions() as db:
         conversation = await db.get(AIConversation, job.conversation_id)
         assert conversation.deleted_at is None
+
+
+@pytest.mark.parametrize("marker", ["", " aelys"])
+async def test_guest_respects_selected_model_tool_capabilities(setup, monkeypatch, marker):
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+    async with sessions() as db:
+        integration = await db.get(TelegramIntegration, integration_id)
+        integration.model = "text-only"
+        await db.commit()
+
+    model = Service()
+    model.requests = []
+    model.models = (*Service.models, SimpleNamespace(
+        model="text-only", enabled=True, privacy_classes={"personal"}, capabilities=frozenset(),
+    ))
+    monkeypatch.setattr(ai_api, "_service", lambda *args, **kwargs: model)
+
+    async def telegram(request):
+        result = True if request.url.path.endswith("/editMessageText") else {"inline_message_id": "guest-text"}
+        return httpx.Response(200, json={"ok": True, "result": result})
+
+    fake.updates = [guest_update(10, f"Какие у меня задачи?{marker}")]
+    await service.poll_once(integration_id, timeout=0)
+    monkeypatch.setattr(service, "TelegramClient", lambda token: TelegramClient(token, httpx.MockTransport(telegram)))
+    await _finish_guest(integration_id)
+
+    async with sessions() as db:
+        job = (await db.scalars(select(TelegramGuestJob))).one()
+        if marker:
+            assert job.error_code == "MODEL_UNAVAILABLE"
+            assert not model.requests
+        else:
+            assert job.state == "done"
+            [(messages, options)] = model.requests
+            assert options["tools"] == ()
+            assert "never pretend to read" in messages[0].content.lower()

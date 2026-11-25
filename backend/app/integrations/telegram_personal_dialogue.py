@@ -36,6 +36,7 @@ from app.ai.models import (
     RoutingRequest,
     TaskKind,
 )
+from app.ai.router import supports_tool_calling
 from app.ai.turn import run_tool_turn
 from app.ai.usage import UsageRecord
 from app.core import db as database
@@ -259,11 +260,12 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
                 return await run_cancelled(run_id, owner_id)
 
             service = ai_api._service(provider, provider_secret, cancel_check=cancelled)
-            tools_supported = any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)
+            manual_model = item.model if item.model and item.model != 'auto' else None
+            tools_supported = supports_tool_calling(service.models, manual_model)
             if scopes and not tools_supported:
                 raise ModelUnavailable('Configured model does not support tools')
             media_capabilities = frozenset({Capability.IMAGES if media.kind == 'photo' else Capability.DOCUMENTS}) if media and media.kind in {'photo','pdf'} else frozenset()
-            if media_capabilities and not any(media_capabilities <= spec.capabilities and (not item.model or getattr(spec, 'model', item.model) == item.model) for spec in service.models):
+            if media_capabilities and not any(media_capabilities <= spec.capabilities and (not manual_model or spec.model == manual_model) for spec in service.models):
                 from .telegram_media import TelegramMediaError
                 raise TelegramMediaError('MEDIA_MODEL_UNAVAILABLE')
             if media and file_turn:
@@ -324,7 +326,7 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
             use_tools = bool(scopes) and tools_supported
             request = RoutingRequest(TaskKind.TOOL_ACTION if use_tools else TaskKind.UNKNOWN,
                                      required_capabilities=media_capabilities | (frozenset({Capability.TOOL_CALLING}) if use_tools else frozenset()),
-                                     privacy=PrivacyClass.PERSONAL, manual_model=item.model or None,
+                                     privacy=PrivacyClass.PERSONAL, manual_model=manual_model,
                                      context_tokens=sum(len(m.content) for m in messages)//4,
                                      request_budget=min(Decimal(100), remaining))
             await db.commit()  # release the writer before any provider wait

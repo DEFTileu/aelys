@@ -63,7 +63,7 @@ class Script:
 
 
 @asynccontextmanager
-async def chat(tmp_path, monkeypatch, replies):
+async def chat(tmp_path, monkeypatch, replies, *, models=None):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/chat.db")
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
@@ -75,7 +75,7 @@ async def chat(tmp_path, monkeypatch, replies):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             boot = await client.post("/api/v1/auth/bootstrap", json={"email": "chat@example.com", "password": "correct horse battery staple"})
             client.headers["Authorization"] = f"Bearer {boot.json()['access_token']}"
-            provider = await client.post("/api/v1/ai/providers", json={"kind": "claude", "model_policy": {"models": [PRICED_MODEL]}})
+            provider = await client.post("/api/v1/ai/providers", json={"kind": "claude", "model_policy": {"models": [PRICED_MODEL] if models is None else models}})
             await client.put(f"/api/v1/ai/providers/{provider.json()['id']}/secret", json={"api_key": "test-only-provider-key"})
             yield client, script, factory
     finally:
@@ -113,7 +113,7 @@ async def test_web_search_available_without_personal_sources_and_visible_in_even
     from app.ai.models import Capability, ProviderKind, SourceDetail, Usage
 
     class SearchService:
-        models = (SimpleNamespace(capabilities=frozenset({Capability.TOOL_CALLING})),)
+        models = (SimpleNamespace(model='chat-model', enabled=True, privacy_classes={"personal"}, capabilities=frozenset({Capability.TOOL_CALLING})),)
         calls = 0
         async def complete(self, run_id, request, messages, **kwargs):
             self.calls += 1
@@ -152,7 +152,7 @@ async def test_exhausted_search_budget_is_reported_in_web_chat(tmp_path, monkeyp
     from app.ai.models import Capability, ProviderKind, Usage
 
     class SearchService:
-        models = (SimpleNamespace(capabilities=frozenset({Capability.TOOL_CALLING})),)
+        models = (SimpleNamespace(model='chat-model', enabled=True, privacy_classes={"personal"}, capabilities=frozenset({Capability.TOOL_CALLING})),)
         async def complete(self, run_id, request, messages, **kwargs):
             assert not kwargs.get('web_search')
             response = SimpleNamespace(text='', tool_calls=({'id':'s','name':'web_search','input':{'query':'weather'}},))
@@ -174,7 +174,7 @@ async def test_unsupported_provider_does_not_receive_search_tool(tmp_path, monke
     from app.core.models import AIProvider
 
     class SearchService:
-        models = (SimpleNamespace(capabilities=frozenset({Capability.TOOL_CALLING})),)
+        models = (SimpleNamespace(model='chat-model', enabled=True, privacy_classes={"personal"}, capabilities=frozenset({Capability.TOOL_CALLING})),)
         async def complete(self, run_id, request, messages, **kwargs):
             assert 'web_search' not in {tool['name'] for tool in kwargs['tools']}
             return SimpleNamespace(provider=SimpleNamespace(value='other'), model='test',
@@ -499,3 +499,59 @@ async def test_expired_action_api_preserves_receipt_contract(tmp_path, monkeypat
         assert (await client.get(actions_url)).json()[0]['result'] == receipt['result']
         async with factory() as session:
             assert not (await session.execute(select(Task))).scalars().all()
+
+async def test_selected_text_model_can_answer_when_other_model_supports_tools(tmp_path, monkeypatch):
+    models = [PRICED_MODEL, {**PRICED_MODEL, "name": "text-only", "capabilities": ["streaming"]}]
+    async with chat(tmp_path, monkeypatch, [], models=models) as (client, script, _):
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        events = await run(client, conversation["id"], "Hello", "manual-text",
+                           routing={"provider": "claude", "model": "text-only"})
+        assert payloads(events, "ai.run.completed")
+        assert not payloads(events, "ai.run.failed")
+        assert script.requests[0]["model"] == "text-only"
+        assert "tools" not in script.requests[0]
+
+
+async def test_app_reports_incomplete_tool_run_in_stream_and_history(tmp_path, monkeypatch):
+    replies = [[tool_use("list_tasks", f"page-{step}", offset=step)] for step in range(4)]
+    async with chat(tmp_path, monkeypatch, replies) as (client, script, _):
+        conversation = (await client.post("/api/v1/ai/conversations", json={})).json()
+        events = await run(client, conversation["id"], "List my tasks", "tool-limit")
+        assert len(script.requests) == 4
+        assert len(payloads(events, "ai.tool.result")) == 4
+        text = "".join(payload["text"] for payload in payloads(events, "ai.text.delta"))
+        assert "could not finish" in text
+        messages = (await client.get(f'/api/v1/ai/conversations/{conversation["id"]}/messages')).json()
+        assert messages[-1]["content"] == text
+
+
+async def test_app_synthesizes_tasks_and_calendar_after_both_tool_results(tmp_path, monkeypatch):
+    start = "2026-11-25T00:00:00+05:00"
+    end = "2026-11-26T00:00:00+05:00"
+    answer = "Finish the draft before the review."
+    replies = [
+        [tool_use("list_tasks", "tasks", date_field="due_at", starts_at=start, ends_at=end)],
+        [tool_use("read_calendar", "calendar", starts_at=start, ends_at=end)],
+        [{"type": "text", "text": answer}],
+    ]
+    async with chat(tmp_path, monkeypatch, replies) as (client, script, _):
+        task = await client.post("/api/v1/tasks", json={
+            "title": "Draft release notes", "due_at": "2026-11-25T09:00:00Z",
+        })
+        event = await client.post("/api/v1/calendar/events", json={
+            "title": "Release review", "starts_at": "2026-11-25T10:00:00Z",
+            "ends_at": "2026-11-25T10:30:00Z", "timezone": "Asia/Almaty",
+        })
+        assert task.is_success and event.is_success
+        conversation = (await client.post("/api/v1/ai/conversations", json={
+            "tool_scope": {"scopes": ["tasks.read", "calendar.read"]},
+        })).json()
+        events = await run(client, conversation["id"], "Plan November 25 using my tasks and calendar", "plan-day")
+
+        assert [row["tool"] for row in payloads(events, "ai.tool.result")] == ["list_tasks", "read_calendar"]
+        assert len(script.requests) == 3
+        final_input = script.requests[-1]
+        assert "read_note" not in {tool["name"] for tool in final_input["tools"]}
+        serialized_messages = json.dumps(final_input["messages"])
+        assert "Draft release notes" in serialized_messages and "Release review" in serialized_messages
+        assert "".join(row["text"] for row in payloads(events, "ai.text.delta")) == answer

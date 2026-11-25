@@ -61,6 +61,7 @@ async def test_shared_turn_duplicate_call_id_never_replays_write():
         (ChatMessage('user','Создай задачу'),), registry, PermissionContext(actor='test', scopes=frozenset({'tasks.write'})),
         parse_call=lambda raw: ToolCall(raw['name'],raw['input'],raw['id']))
     assert writes == [True] and result.steps == 2
+    assert result.followup_pending
 
 
 async def test_unknown_tool_is_returned_to_model_as_validation_error():

@@ -42,6 +42,7 @@ from app.ai.models import (
     TaskKind,
 )
 from app.ai.policy import ServerPolicyEngine
+from app.ai.router import supports_tool_calling
 from app.ai.tools import ToolRegistry
 from app.ai.turn import run_tool_turn
 from app.ai.usage import UsageRecord
@@ -774,7 +775,8 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
                 return await run_cancelled(run_id, owner_id)
 
             service = ai_api._service(provider, provider_secret, cancel_check=cancelled)
-            tools_supported = any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)
+            manual_model = item.model if item.model and item.model != 'auto' else None
+            tools_supported = supports_tool_calling(service.models, manual_model)
             if personal_scopes and not tools_supported:
                 raise ModelUnavailable("Configured model does not support tools")
 
@@ -873,7 +875,7 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
                 TaskKind.TOOL_ACTION if use_tools else TaskKind.UNKNOWN,
                 required_capabilities=frozenset({Capability.TOOL_CALLING}) if use_tools else frozenset(),
                 privacy=PrivacyClass.PERSONAL,
-                manual_model=item.model or None,
+                manual_model=manual_model,
                 context_tokens=sum(len(m.content) for m in messages) // 4,
                 request_budget=min(Decimal(100), remaining),
             )

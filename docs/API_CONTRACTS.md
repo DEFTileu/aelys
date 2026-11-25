@@ -719,8 +719,8 @@ there are no new endpoint permissions in the merge revision.
   in `tool_scope_json.scopes`. A new chat that omits `tool_scope.scopes` gets
   `tasks.read, calendar.read, notes.read`. Read tools (`list_tasks`, `read_calendar`,
   `read_note`) are offered and authorized only for switched-on sources. No mail or
-  finance scopes exist. A chat with no scopes, or whose models lack tool calling,
-  answers as plain text. Knowledge questions reject write scopes only.
+  finance scopes exist. A chat with no scopes, or with a selected model that
+  lacks tool calling, answers as plain text. Knowledge questions reject write scopes only.
 - Write tools (`create_task`, `update_task`, `complete_task`, `create_note`,
   `create_event`, `create_reminder`) never execute in a run. They persist an
   `ai_actions` row and emit SSE `ai.action.proposed`
@@ -743,9 +743,10 @@ there are no new endpoint permissions in the merge revision.
 - Within a run every step replays the model's own tool calls with their results
   (Claude `tool_use`/`tool_result`, OpenRouter `tool_calls`/`role: tool`; thinking
   blocks are not replayed). A tool run always stores an answer: the model text, or
-  "Prepared N changes for your approval." when it proposed without text. The answer
-  message carries `steps[{id, label, detail?, source?}]` so the chat shows them after
-  a reload. `create_task` accepts `due_at` and `due_timezone`.
+  "Prepared N changes for your approval." when it proposed without text. If
+  the turn stops with tool calls still awaiting a final model answer, the live
+  response and stored message identify the answer as incomplete. The message
+  carries `steps[{id, label, detail?, source?}]` so the chat shows them after a reload. `create_task` accepts `due_at` and `due_timezone`.
 - `POST /ai/attachments {name, content_base64}` accepts `.txt .md .csv .json .pdf`
   up to 2 MB (413 `ATTACHMENT_TOO_LARGE`, 422 for other types or unreadable files),
   extracts text, keeps it 24 h owner-scoped and returns `{id, name, size, chars}`.

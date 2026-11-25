@@ -16,6 +16,17 @@ from .models import (
 )
 
 
+def supports_tool_calling(models: Iterable[ModelSpec], manual_model: str | None) -> bool:
+    """Check whether this owner turn can use tools with the configured model."""
+    return any(
+        model.enabled
+        and PrivacyClass.PERSONAL in model.privacy_classes
+        and Capability.TOOL_CALLING in model.capabilities
+        and (not manual_model or model.model == manual_model)
+        for model in models
+    )
+
+
 class ModelRouter:
     def __init__(self, models: Iterable[ModelSpec], *, monthly_remaining: Decimal = Decimal("100.00")):
         self._models = tuple(models)

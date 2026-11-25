@@ -61,7 +61,7 @@ async def provider(sessions, integration_id, *, monthly_budget='100'):
 
 
 class Service:
-    models = (SimpleNamespace(capabilities=frozenset({Capability.TOOL_CALLING})),)
+    models = (SimpleNamespace(model='test', enabled=True, privacy_classes={"personal"}, capabilities=frozenset({Capability.TOOL_CALLING})),)
     requests: ClassVar[list] = []
     response = SimpleNamespace(text='Ответ', tool_calls=())
     gate = None

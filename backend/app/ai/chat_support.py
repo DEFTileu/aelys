@@ -183,7 +183,7 @@ TELEGRAM_POLICY = (
 )
 _NO_TOOLS = (
     "No data sources are shared with you in this chat, so you cannot see or change the owner's tasks, calendar or notes. "
-    "If the owner asks for that, tell them to turn the source on in this chat's sources."
+    "If the owner asks for that, tell them to check the chat sources and choose a model with tool support."
 )
 
 
@@ -208,11 +208,12 @@ DATA_GROUNDING_POLICY = (
     "Use the available read tools before claiming facts about personal records. "
     "If a source is unavailable, say so; never substitute guesses. "
     "For task dates distinguish due_at (scheduled deadline), created_at (creation), and completed_at "
-    "(current recorded completion, nullable and cleared on reopening). Ask which meaning is intended if ambiguous. "
+    "(current recorded completion, nullable and cleared on reopening). For broad questions, group results by date meaning and label what you checked. Ask only if the distinction changes what you should do. "
     "Current status is not historical status; list_tasks cannot reconstruct what was open on a past day "
     "or every past completion. Null timestamps mean unknown, not proof nothing happened. "
     "Use date_field and exact starts_at inclusive / ends_at exclusive bounds for task periods. "
     "Use owner-local calendar midnights with their correct UTC offsets, including DST, not a rolling 24 hours. "
+    "For requests that span several sources, read each relevant source before synthesizing. Reuse successful results instead of repeating calls. "
     "A truncated page is not the full set: continue with next_offset and identical filters or explicitly report a partial result. "
 )
 

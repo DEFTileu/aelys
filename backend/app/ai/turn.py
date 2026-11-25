@@ -247,4 +247,4 @@ async def run_tool_turn(
     if search_started and on_text:
         await on_text(final_text)
     return ToolTurnResult(final_text, result.provider.value, result.model,
-                          input_tokens, output_tokens, cost, step, bool(outputs and step == max_steps), tuple(sorted(used_memory_refs)))
+                          input_tokens, output_tokens, cost, step, bool(result.response.tool_calls), tuple(sorted(used_memory_refs)))

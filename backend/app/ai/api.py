@@ -83,6 +83,7 @@ from .models import (
 )
 from .policy import ServerPolicyEngine
 from .providers import ClaudeAdapter, OpenRouterAdapter
+from .router import supports_tool_calling
 from .secrets import AuthenticatedStreamCipher, SecretRef, SecretStore
 from .tools import ToolDescriptor, ToolRegistry
 from .turn import run_tool_turn
@@ -808,11 +809,10 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 last = replace(chat_messages[-1], media=tuple(images)) if images else chat_messages[-1]
                 chat_messages = (*chat_messages[:-1], *injected, last)
             requested_scopes = frozenset((item.tool_scope_json or {}).get("scopes", []))
-            # Without a tool-calling model the chat keeps answering as plain text.
-            search_supported = provider.kind in {'claude', 'openrouter'} and any(Capability.TOOL_CALLING in spec.capabilities and (not requested_model or getattr(spec, 'model', requested_model) == requested_model) for spec in service.models)
-            search_enabled = search_supported and 'web.search' in requested_scopes
+            tools_supported = supports_tool_calling(service.models, requested_model)
+            search_enabled = tools_supported and provider.kind in {'claude', 'openrouter'} and 'web.search' in requested_scopes
             effective_scopes = requested_scopes if search_enabled else requested_scopes - {'web.search'}
-            use_tools = bool(effective_scopes) and any(Capability.TOOL_CALLING in spec.capabilities for spec in service.models)
+            use_tools = bool(effective_scopes) and tools_supported
             from app.integrations.telegram_models import TelegramIntegration
             telegram_tz = (await db.execute(select(TelegramIntegration.timezone).where(TelegramIntegration.owner_id == user.id))).scalar_one_or_none()
             timezone = owner_timezone((item.tool_scope_json or {}).get("timezone"), (user.settings_json or {}).get("timezone"), telegram_tz)
@@ -891,15 +891,18 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                 finally:
                     if not turn.done():
                         turn.cancel()
-                if result.text[len(sent):] and result.text.startswith(sent):
-                    yield text_wire(result.text[len(sent):])
-                if result.text:
-                    await _persist_event(db, run_id, text_wire(result.text))
+                reply = result.text or (f"Prepared {proposals} change{'s' * (proposals != 1)} for your approval." if proposals else "")
+                if result.followup_pending:
+                    notice = "I could not finish this request in the available tool steps."
+                    reply = f"{reply}\n\n{notice}" if reply else notice
+                if reply.startswith(sent) and reply[len(sent):]:
+                    yield text_wire(reply[len(sent):])
+                if reply:
+                    await _persist_event(db, run_id, text_wire(reply))
                 if cancel_event.is_set() or await durable_cancel_check():
                     yield await emit("ai.run.cancelled", {"run_id": run_id})
                     return
                 item.token_counts={"input":result.input_tokens,"output":result.output_tokens}; item.cost_estimate=result.cost
-                reply = result.text or (f"Prepared {proposals} change{'s' * (proposals != 1)} for your approval." if proposals else "")
                 completed = await db.execute(update(AIRun).where(AIRun.id==run_id, AIRun.owner_id==user.id, AIRun.status=="running").values(status="completed", completed_at=datetime.now(UTC), token_counts=item.token_counts, cost_estimate=item.cost_estimate))
                 if int(getattr(completed, "rowcount", 0) or 0) != 1:
                     await db.rollback()
@@ -913,7 +916,7 @@ async def run_events(run_id:str,principal=Depends(current_principal),credentials
                     await db.execute(update(AIAction).where(AIAction.run_id == run_id, AIAction.owner_id == user.id).values(message_id=answer.id))
                     await db.execute(update(AIConversation).where(AIConversation.id == item.conversation_id).values(updated_at=datetime.now(UTC)))
                 await db.commit()
-                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(result.text), "input_tokens": result.input_tokens, "output_tokens": result.output_tokens, "estimated_cost": str(result.cost)})
+                yield await emit("ai.run.completed", {"run_id": run_id, "text_length": len(reply), "input_tokens": result.input_tokens, "output_tokens": result.output_tokens, "estimated_cost": str(result.cost)})
                 return
             failure_event: str | None = None
             completion_event: str | None = None

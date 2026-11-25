@@ -175,7 +175,11 @@ async def run_voice_turn(owner_id: str, device_id: str, turn_id: str, pcm: bytes
             result = await run_tool_turn(service, UUID(run.id), request, messages, registry, context,
                                          parse_call=ai_api._tool_call, on_event=event, on_usage=account, cancel_check=check, usage_before_check=True)
             await _authorized(db, owner_id, device_id)
-            reply = (result.text or '').strip() or 'Готово.'
+            reply = result.text.strip()
+            if result.followup_pending:
+                notice = 'Не удалось закончить запрос за отведённое число шагов.'
+                reply = f'{notice} {reply}' if reply else notice
+            reply = reply or 'Готово.'
             db.add(AIMessage(conversation_id=conversation.id, role='assistant', content=reply))
             run.status, run.completed_at = 'completed', now()
             run.cost_estimate = result.cost
