@@ -33,7 +33,7 @@
 Main now includes `0051_companion_v11` and Telegram migrations 0052–0054.
 OTA uses the next free revision `0055_companion_firmware`, after
 `0054_telegram_command_sessions`; the handoff's suggested 0052 is stale.
-ADR-030 remains PROPOSED. Signing, board OTA integration and owner-held key
+ADR-031 remains PROPOSED. Signing, board OTA integration and owner-held key
 setup require the owner's decision/presence; this integration does not enable
 signed-app checks or modify the installed board image.
 
@@ -74,7 +74,7 @@ configuration was performed. Preserve this worktree until those tasks are done.
 
 ---
 
-### Task 1: Protocol v2 and ADR-030 — model: **haiku** · board: no · after plan 2 merged
+### Task 1: Protocol v2 and ADR-031 — model: **haiku** · board: no · after plan 2 merged
 
 **Files:** Modify `docs/companion-protocol.md`, `docs/DECISIONS.md`.
 
@@ -83,8 +83,8 @@ configuration was performed. Preserve this worktree until those tasks are done.
   - `metrics` gains two optional fields: `light_sleep_pct` (int 0–100, share of the last period spent in light sleep) and `ui_wakes_per_s` (int). Old boards may omit them.
   - HTTP section: `GET /api/v1/devices/{device_id}/firmware` → `{version, url, sha256, size, min_version}` (`url` is a path starting with `/api/v1/companion/firmware/`, joined by the board with its own API base); `GET {url}` → `application/octet-stream`; `POST /api/v1/companion/coredumps` (raw body, headers `X-Fw-Version`, optional `X-Elf-Sha256`) → `{id}`.
   - Replace the note "Firmware OTA is not part of v1 (plan 4)" with the rollback rule: the board marks a new app valid only after `ready` + `snapshot` received and `hello` sent; otherwise it rolls back after 10 minutes of uptime.
-- [ ] **Step 2:** Add row `ADR-030 | Companion firmware releases, OTA and crash dumps | PROPOSED (owner, 2026-11-13)` stating: images stored in Postgres (`LargeBinary`, newest 3 per owner) — no object storage or new vendor; RSA-3072 app signing without Secure Boot, key only on the owner's Mac, no eFuse; upload only via a new dedicated owner CLI command (a narrow exception to "raw uploads are app-only", which stays for every other path); board downloads only from its own backend (`url` is a path, not a URL); core dumps ≤ 64 KB, newest 5 per device; the 10-minute confirm window. It becomes DECIDED when the owner approves this plan (record the date).
-- [ ] **Step 3: Commit** `docs(companion): add OTA to the device contract and propose ADR-030`.
+- [ ] **Step 2:** Add row `ADR-031 | Companion firmware releases, OTA and crash dumps | PROPOSED (owner, 2026-11-13)` stating: images stored in Postgres (`LargeBinary`, newest 3 per owner) — no object storage or new vendor; RSA-3072 app signing without Secure Boot, key only on the owner's Mac, no eFuse; upload only via a new dedicated owner CLI command (a narrow exception to "raw uploads are app-only", which stays for every other path); board downloads only from its own backend (`url` is a path, not a URL); core dumps ≤ 64 KB, newest 5 per device; the 10-minute confirm window. It becomes DECIDED when the owner approves this plan (record the date).
+- [ ] **Step 3: Commit** `docs(companion): add OTA to the device contract and propose ADR-031`.
 
 ### Task 2: Firmware releases in the backend — model: **sonnet** · board: no · after Task 1
 
