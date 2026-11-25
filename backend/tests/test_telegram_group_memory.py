@@ -1,5 +1,7 @@
+import json
 from types import SimpleNamespace
 
+import pytest
 from app.ai import api as ai_api
 from app.ai.models import ProviderKind, Usage
 from app.integrations import telegram_service as service
@@ -123,3 +125,71 @@ async def test_group_reply_can_find_an_edited_message_outside_recent_context(set
     assert fake.sent[-1] == (
         -100123, "Площадь Республики.", {"reply_to_message_id": 36, "message_thread_id": None, "entities": []},
     )
+
+
+@pytest.mark.parametrize("long_messages", [False, True])
+async def test_group_can_read_one_hundred_messages_and_continue_from_cursor(setup, monkeypatch, long_messages):
+    from app.ai.chat_history import MAX_PAGE_BYTES
+    from app.integrations.telegram_group import group_iteration
+
+    _, sessions, fake, integration_id = await bound(setup)
+    await provider(sessions, integration_id)
+
+    class Model(Service):
+        async def complete(self, _run_id, _request, messages, **kwargs):
+            self.requests.append(messages)
+            step = len(self.requests)
+            if step == 1:
+                recent = json.loads(messages[-2].content)
+                assert len(recent) == 18
+                calls = ({"id": "history-1", "name": "read_group_history", "input": {"limit": 100}},)
+            elif step == 2:
+                assert messages[-1].untrusted
+                page = json.loads(messages[-1].content)
+                count = len(page["messages"])
+                if long_messages:
+                    assert 0 < count < 100
+                    assert all(row["truncated"] for row in page["messages"])
+                    assert len(json.dumps(page["messages"], ensure_ascii=False).encode("utf-8")) <= MAX_PAGE_BYTES
+                else:
+                    assert count == 100
+                assert [row["id"] for row in page["messages"]] == list(range(135, 135 - count, -1))
+                assert page["next_before_message_id"] == 136 - count
+                calls = ({"id": "history-2", "name": "read_group_history",
+                          "input": {"limit": 100, "before_message_id": page["next_before_message_id"]}},)
+            else:
+                page = json.loads(messages[-1].content)
+                previous_page = json.loads(self.requests[-2][-1].content)
+                start = previous_page["next_before_message_id"] - 1
+                if long_messages:
+                    count = len(page["messages"])
+                    assert 0 < count < 100
+                    assert [row["id"] for row in page["messages"]] == list(range(start, start - count, -1))
+                    assert page["next_before_message_id"] == start - count + 1
+                else:
+                    assert [row["id"] for row in page["messages"]] == list(range(35, 10, -1))
+                    assert page["next_before_message_id"] is None
+                calls = ()
+            return SimpleNamespace(
+                provider=ProviderKind.CLAUDE, model="test",
+                response=SimpleNamespace(text="" if calls else "История просмотрена.", tool_calls=calls),
+                usage=SimpleNamespace(usage=Usage(5, 2), estimated_cost=0),
+            )
+
+    model = Model()
+    model.requests = []
+    monkeypatch.setattr(ai_api, "_service", lambda *args, **kwargs: model)
+    suffix = "я" * 1200 if long_messages else ""
+    updates = [
+        group(10, "/aelys_enable@aelys_test_bot"),
+        *(group(index, f"Сообщение {index}{suffix}", sender=888, topic=10) for index in range(11, 136)),
+        group(136, "Другая тема", sender=888, topic=20),
+        group(137, "@aelys_test_bot Прочитай историю", sender=777, topic=10),
+    ]
+    for start in range(0, len(updates), 100):
+        fake.updates = updates[start:start + 100]
+        await service.poll_once(integration_id, timeout=0)
+    await group_iteration(integration_id)
+    await group_iteration(integration_id)
+    assert len(model.requests) == 3
+    assert fake.sent[-1][1] == "История просмотрена."
