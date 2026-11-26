@@ -608,6 +608,9 @@ async def test_auto_reply_uses_real_ai_harness_and_records_usage(setup, monkeypa
     assert len(provider_requests) == 1
     if expected_status == 'sent':
         assert len(fake.sent) == 1 and fake.sent[0][1] == "Thank you for your message."
+    elif expected_status == 'failed':
+        assert len(fake.sent) == 1 and fake.sent[0][0] == OWNER
+        assert "Код: AI_UNAVAILABLE" in fake.sent[0][1] and decision_payload not in fake.sent[0][1]
     else:
         assert not fake.sent
     async with sessions() as session:

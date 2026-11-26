@@ -29,6 +29,7 @@ from app.ai.models import (
 )
 from app.ai.policy import ServerPolicyEngine
 from app.core.models import AIConversation, AIProvider, AIProviderSecret, AIRun
+from app.integrations.telegram_command_errors import error_code, notice
 from app.integrations.telegram_models import (
     TelegramBusinessMessage,
     TelegramIntegration,
@@ -55,6 +56,7 @@ class BusinessDecision:
     text: str | None
     owner_note: str | None
     sticker: dict[str, str | None] | None = None
+    error_code: str | None = None
 
 
 class _DecisionPayload(BaseModel):
@@ -87,7 +89,10 @@ class _PolicyDescriptor:
 
 
 _AUTO_REPLY = "[previous automatic reply; not evidence of owner commitments] "
-_MEDIA_HANDOFF = "В чате есть вложение, которое автоответчик не смог прочитать. Просмотрите переписку и ответьте вручную."
+
+
+def _media_handoff(code: str) -> BusinessDecision:
+    return BusinessDecision("handoff", None, notice(code), error_code=code)
 
 
 def _emoji(value: object) -> str | None:
@@ -174,8 +179,10 @@ async def generate_business_draft(
                 break
             pending.append(item)
         unread_media = [item for item in reversed(pending) if (item.media or {}).get("kind") in {"photo", "voice", "audio"}]
-        if any((item.media or {}).get("kind") != "photo" for item in unread_media) or len(unread_media) > 2:
-            return BusinessDecision("handoff", None, _MEDIA_HANDOFF)
+        if any((item.media or {}).get("kind") != "photo" for item in unread_media):
+            return _media_handoff("BUSINESS_AUDIO_UNSUPPORTED")
+        if len(unread_media) > 2:
+            return _media_handoff("BUSINESS_MEDIA_LIMIT")
         required = frozenset({Capability.IMAGES}) if unread_media else frozenset()
         request = RoutingRequest(TaskKind.UNKNOWN, required_capabilities=required, privacy=PrivacyClass.PERSONAL,
                                  manual_model=integration.model or None,
@@ -187,13 +194,15 @@ async def generate_business_draft(
             try:
                 service.select(request)
             except ModelUnavailable:
-                return BusinessDecision("handoff", None, _MEDIA_HANDOFF)
+                return _media_handoff("MEDIA_MODEL_UNAVAILABLE")
             from .telegram_business_media import preview_media
             for item in unread_media:
                 try:
                     data, mime = await asyncio.wait_for(preview_media(db, integration, item), timeout=20)
-                except (HTTPException, TimeoutError):
-                    return BusinessDecision("handoff", None, _MEDIA_HANDOFF)
+                except TimeoutError:
+                    return _media_handoff("TELEGRAM_MEDIA_TIMEOUT")
+                except HTTPException:
+                    return _media_handoff("TELEGRAM_MEDIA_UNAVAILABLE")
                 attachments[item.id] = (MediaContent(mime, data, "telegram-photo"),)
         turns: list[ChatMessage] = []
         for item in reversed(history):
@@ -238,7 +247,7 @@ async def generate_business_draft(
         # A long newest message must not squeeze the image out of its context and
         # produce a confident text-only answer to an unseen attachment.
         if sum(bool(turn.media) for turn in selected) != len(attachments):
-            return BusinessDecision("handoff", None, _MEDIA_HANDOFF)
+            return _media_handoff("BUSINESS_MEDIA_CONTEXT_LIMIT")
         messages = (ChatMessage("system", system), *reversed(selected))
         run_id = uuid4()
         started = datetime.now(UTC)
@@ -274,5 +283,7 @@ async def generate_business_draft(
         return BusinessDecision(parsed.action, parsed.text, parsed.owner_note, chosen)
     except TelegramAIError:
         raise
-    except Exception:  # noqa: BLE001 - provider failures never reveal owner or credential details
-        raise TelegramAIError("AI_UNAVAILABLE") from None
+    except TimeoutError:
+        raise TelegramAIError("AI_TIMEOUT") from None
+    except Exception as exc:  # noqa: BLE001 - provider failures never reveal owner or credential details
+        raise TelegramAIError(error_code(exc, "AI_UNAVAILABLE")) from None

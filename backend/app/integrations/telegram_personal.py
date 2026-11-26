@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .telegram_models import TelegramIntegration
 
-HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/new\n/remember <факт>\n/forget <ID или текст>\n/memory\n/task_suggestions [status|on <chat_id>|off]\n/help'
+HELP = '/task <заголовок>\\n<описание>\n/note <заголовок>\\n<текст>\n/today\n/remind 18:00 <текст>\n/busy 18:00 <статус>\n/free\n/new\n/remember <факт>\n/forget <ID или текст>\n/memory\n/task_suggestions [status|on <chat_id>|off]\n/errors\n/help'
 REMIND_HELP = 'Пример: /remind 18:00 Позвонить, /remind 2026-11-05 18:00 Встреча или /remind 2h Проверить. Укажите будущее время и текст до 300 символов.'
 BUSY_HELP = 'Пример: /busy 18:00 занят. Время HH:MM, текст от 1 до 200 символов.'
 
@@ -59,6 +59,10 @@ async def handle_owner_message(db: AsyncSession, item: TelegramIntegration, text
                     sync.exec_driver_sql('BEGIN')
             await connection.run_sync(begin_sqlite)
         async with db.begin_nested():
+            if command == '/errors':
+                from .telegram_command_errors import recent_errors
+                authorize(item, 'telegram.diagnostics.read')
+                return await recent_errors(db, item)
             if command in {'/remember', '/forget', '/memory'}:
                 from app.ai.memory import forget, list_memory, remember
                 if command == '/remember':

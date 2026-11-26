@@ -232,12 +232,13 @@ class _BaseAdapter:
         except RunCancelled:
             raise
         except Exception as exc:  # noqa: BLE001 - provider implementations expose only sanitized failures
+            status = exc.http_status if isinstance(exc, ProviderError) else None
             if media:
                 # Even a transport exception may echo the inline binary payload.
-                raise ProviderError("provider media request failed") from None
-            raise ProviderError(f"provider request failed: {redact_error(exc)}") from None
+                raise ProviderError("provider media request failed", http_status=status) from None
+            raise ProviderError(f"provider request failed: {redact_error(exc)}", http_status=status) from None
         if response.status >= 400:
-            raise ProviderError(f"provider returned status {response.status}")
+            raise ProviderError(f"provider returned status {response.status}", http_status=response.status)
         return response
 
     async def _stream(self, path: str, payload: Mapping[str, Any], *, media: bool = False) -> AsyncIterator[Mapping[str, Any]]:
@@ -247,9 +248,10 @@ class _BaseAdapter:
                 yield item
         except RunCancelled:
             raise
-        except Exception:  # Raw media/base64 must never enter error events or logs.
+        except Exception as exc:  # Raw media/base64 must never enter error events or logs.
             if media:
-                raise ProviderError("provider media stream failed") from None
+                status = exc.http_status if isinstance(exc, ProviderError) else None
+                raise ProviderError("provider media stream failed", http_status=status) from None
             raise
 
 

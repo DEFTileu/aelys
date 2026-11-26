@@ -7,6 +7,7 @@ from typing import ClassVar
 
 import pytest
 from app.ai import api as ai_api
+from app.ai.errors import ProviderError
 from app.ai.models import Capability, ProviderKind, Usage
 from app.core.models import (
     AIConversation,
@@ -310,6 +311,50 @@ async def test_timeout_is_terminal_without_retry(setup,monkeypatch,editable_tran
     assert 'время ожидания' in edits[-1][2]
     await dialogue.personal_iteration(integration_id)
     assert len(model.requests)==1
+
+
+@pytest.mark.parametrize(("status", "code"), [(None, "PROVIDER_ERROR"), (429, "PROVIDER_RATE_LIMITED")])
+async def test_provider_failure_keeps_safe_code_and_reference_in_owner_dm(setup, monkeypatch, editable_transport, status, code):
+    from app.integrations import telegram_personal_dialogue as dialogue
+
+    client, sessions, fake, integration_id = await bound(setup)
+    edits = editable_transport(fake)
+    await provider(sessions, integration_id)
+
+    class FailingService(Service):
+        calls = 0
+
+        async def complete(self, *args, **kwargs):
+            self.calls += 1
+            if status == 429 and self.calls == 1:
+                self.response = SimpleNamespace(text="", tool_calls=(
+                    {"id": "save", "name": "create_task", "input": {"title": "Study"}},
+                ))
+                return await super().complete(*args, **kwargs)
+            raise ProviderError("opaque private provider response", http_status=status)
+
+    monkeypatch.setattr(ai_api, "_service", lambda *args, **kwargs: FailingService())
+    fake.updates = [ordinary(1, "Создай задачу")]
+    await service.poll_once(integration_id, timeout=0)
+    await dialogue.personal_iteration(integration_id)
+    await dialogue.wait_for_personal_turns()
+
+    async with sessions() as db:
+        job = (await db.scalars(select(TelegramPersonalJob))).one()
+        assert job.error_code == code
+        assert edits[-1][0] == OWNER
+        assert f"Код: {code}" in edits[-1][2]
+        assert job.id in edits[-1][2]
+        assert "opaque private provider response" not in edits[-1][2]
+    if status == 429:
+        assert "Создано задач: 1" in edits[-1][2]
+        assert len((await client.get('/api/v1/tasks')).json()) == 1
+
+    fake.updates = [ordinary(2, "/errors", **{"from": {"id": 999, "is_bot": False}, "chat": {"id": 999, "type": "private"}}),
+                    ordinary(3, "/errors")]
+    await service.poll_once(integration_id, timeout=0)
+    reports = [(chat_id, body) for chat_id, body, _ in fake.sent if body.startswith("Последние ошибки Telegram")]
+    assert len(reports) == 1 and reports[0][0] == OWNER and code in reports[0][1]
 
 
 def test_owner_text_grants_writes_whatever_the_wording():

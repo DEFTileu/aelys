@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 import httpx
 
-from .errors import RunCancelled
+from .errors import ProviderError, RunCancelled
 from .providers import HttpResponse
 
 T = TypeVar("T")
@@ -101,8 +101,8 @@ class HttpxTransport:
             except ValueError:
                 body = {}
             return HttpResponse(response.status_code, body)
-        except httpx.HTTPError as exc:
-            raise RuntimeError("provider transport unavailable") from exc
+        except httpx.HTTPError:
+            raise ProviderError("provider transport unavailable") from None
 
     async def stream(
         self, url: str, *, headers: Mapping[str, str], json: Mapping[str, Any]
@@ -115,8 +115,8 @@ class HttpxTransport:
                 )
                 try:
                     if response.status_code >= 400:
-                        raise RuntimeError(
-                            f"provider returned status {response.status_code}"
+                        raise ProviderError(
+                            f"provider returned status {response.status_code}", http_status=response.status_code,
                         )
                     lines = response.aiter_lines().__aiter__()
                     while True:
@@ -142,5 +142,5 @@ class HttpxTransport:
             # Execution checks the same event/durable state after stream EOF
             # and emits the existing typed ai.run.cancelled event.
             return
-        except httpx.HTTPError as exc:
-            raise RuntimeError("provider transport unavailable") from exc
+        except httpx.HTTPError:
+            raise ProviderError("provider transport unavailable") from None

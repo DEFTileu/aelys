@@ -28,7 +28,6 @@ from app.ai.chat_support import (
 )
 from app.ai.crypto import decrypt_secret
 from app.ai.errors import (
-    AIError,
     BudgetExceeded,
     ModelUnavailable,
     PolicyDenied,
@@ -66,6 +65,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from .telegram_answer_format import TELEGRAM_ANSWER_STYLE, presented_answer_message
+from .telegram_command_errors import error_code
 from .telegram_models import TelegramGuestJob, TelegramIntegration
 from .telegram_personal import authorize
 from .telegram_personal_dialogue import _MEMORY_REQUEST, _trusted_owner_text
@@ -1021,15 +1021,7 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 - fixed safe errors only
-        code = (
-            exc.code
-            if isinstance(exc, AIError)
-            else "TOOL_ERROR"
-            if isinstance(exc, RuntimeError)
-            else "AI_ERROR"
-        )
-        if code not in _GUEST_FAILURES:
-            code = "AI_ERROR"
+        code = error_code(exc, "TOOL_ERROR" if isinstance(exc, RuntimeError) else "AI_ERROR")
         await _failure(
             job_id, code, usage=tuple(service.usage.records()) if service else (),
             progress=progress if progress.run_id is not None else None,

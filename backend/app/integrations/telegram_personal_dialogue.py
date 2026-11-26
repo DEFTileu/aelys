@@ -20,7 +20,6 @@ from app.ai.chat_history import HISTORY_SCOPE
 from app.ai.chat_support import owner_timezone, system_prompt
 from app.ai.crypto import decrypt_secret
 from app.ai.errors import (
-    AIError,
     BudgetExceeded,
     ModelUnavailable,
     PolicyDenied,
@@ -45,13 +44,15 @@ from app.core.models import (
     AIProvider,
     AIProviderSecret,
     AIRun,
+    AIRunEvent,
     Notification,
     Project,
     now,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .telegram_answer_format import TEXT_LIMIT, presented_answer_message
+from .telegram_command_errors import error_code, personal_failure_notice, safe_code
 from .telegram_models import TelegramIntegration, TelegramPersonalJob
 from .telegram_personal import authorize
 from .telegram_personal_queue import (
@@ -77,6 +78,8 @@ _active_jobs: dict[str, str] = {}
 # there is no delete tool. Quotes and files are untrusted, so they stay read-only.
 _READ_SCOPES = frozenset({'tasks.read', 'notes.read', 'calendar.read', HISTORY_SCOPE})
 _WRITE_SCOPES = frozenset({'tasks.write', 'notes.write', 'calendar.write', 'reminders.write'})
+_WRITE_TOOLS = frozenset({'create_task', 'update_task', 'complete_task', 'create_note',
+                          'create_event', 'create_reminder', 'remember', 'forget'})
 # Memory stays opt-in: a fact is stored or dropped only on an explicit request.
 _MEMORY_REQUEST = re.compile(
     r'(?i)(?:^|[.!?;,:\n]|\b(?:и|and)\s+)\s*'
@@ -91,23 +94,6 @@ def _trusted_owner_text(text: str) -> str:
     text = re.sub(r'(?m)^\s*>[^\n]*', ' ', text)
     text = re.sub(r'''"[^"]*"|«[^»]*»|“[^”]*”|(?<!\w)'[^']*'(?!\w)''', ' ', text)
     return text
-
-
-_FAILURES = {
-    'BUDGET_EXCEEDED': 'AI-бюджет исчерпан. Проверь лимит в настройках.',
-    'MODEL_UNAVAILABLE': 'Модель AI не настроена или не поддерживает нужные инструменты. Проверь провайдера и модель в настройках.',
-    'POLICY_DENIED': 'Действие запрещено политикой доступа. Напиши нужное действие отдельным сообщением, без цитаты и файла.',
-    'AI_TIMEOUT': 'Не выполнено, повтори. Превышено время ожидания AI.',
-    'TOOL_ERROR': 'Не выполнено, повтори. Данные могли измениться: проверь актуальную версию.',
-    'AI_ERROR': 'Не выполнено, повтори. AI сейчас недоступен.',
-    'TRANSCRIPTION_NOT_CONFIGURED': 'Распознавание голоса не настроено. Добавь отдельный ключ и модель Transcription в настройках AI.',
-    'TRANSCRIPTION_UNAVAILABLE': 'Не удалось распознать голос. Проверь ключ и модель Transcription и повтори.',
-    'MEDIA_TOO_LARGE': 'Файл слишком большой: голос/аудио и PDF — до 20 МБ, фото — до 10 МБ, текст — до 20 000 символов.',
-    'MEDIA_UNSUPPORTED': 'Этот тип файла не поддерживается. Пришли голос, аудио, фото, PDF или текстовый UTF-8 файл.',
-    'MEDIA_INVALID': 'Не удалось получить файл из Telegram. Пришли его заново.',
-    'MEDIA_TEXT_INVALID': 'Не удалось прочесть текст. Пришли файл в UTF-8.',
-    'MEDIA_MODEL_UNAVAILABLE': 'Выбранная модель не поддерживает фото или PDF. Выбери модель с нужной возможностью в настройках AI.',
-}
 
 
 def owner_scopes(text: str, *, quoted: bool = False) -> frozenset[str]:
@@ -171,16 +157,28 @@ async def _failure(job_id: str, code: str, *, usage: tuple[UsageRecord, ...] = (
         job.version += 1
         if job.run_id and await fail_run(db, job.run_id, job.owner_id, usage):
             code = job.error_code = CANCELLED
+        writes: dict[str, int] = {}
         if notify and code != CANCELLED:
+            if job.run_id:
+                tool_name = AIRunEvent.payload['tool'].as_string()
+                rows = await db.execute(select(tool_name, func.count()).where(
+                    AIRunEvent.run_id == job.run_id, AIRunEvent.event_type == 'ai.tool.approved',
+                    tool_name.in_(_WRITE_TOOLS),
+                ).group_by(tool_name))
+                writes = {name: count for name, count in rows}
             authorize(item, 'notifications.write')
             db.add(Notification(owner_id=job.owner_id, kind='telegram.personal.failed', title='Assistant request failed',
                                 body=None, data_json={'job_id': job.id, 'code': code}, dedup_key=f'telegram-personal-failed:{job.id}'))
         await db.commit()
-        integration_id = item.id
+        integration_id, run_id = item.id, job.run_id
     if not notify:
         return
     try:
-        await _send_owner(integration_id, STOPPED if code == CANCELLED else _FAILURES.get(code, _FAILURES['AI_ERROR']), progress=progress)
+        await _send_owner(
+            integration_id, STOPPED if code == CANCELLED
+            else personal_failure_notice(code, job_id, run_id, sum(writes.values()), writes.get('create_task', 0)),
+            progress=progress,
+        )
     except Exception:  # noqa: BLE001 - no request bodies or provider/token errors in logs
         logger.info('Telegram personal failure notice unavailable')
 
@@ -439,9 +437,10 @@ async def _process(job_id: str, progress: TurnProgress) -> None:
     except Exception as exc:  # noqa: BLE001 - fixed owner-facing errors only
         from .telegram_media import TelegramMediaError
         from .telegram_transcription import TranscriptionError
-        code = exc.code if isinstance(exc, (AIError, TelegramMediaError, TranscriptionError)) else 'TOOL_ERROR' if isinstance(exc, RuntimeError) else 'AI_ERROR'
-        if code not in _FAILURES:
-            code = 'AI_ERROR'
+        if isinstance(exc, (TelegramMediaError, TranscriptionError)):
+            code = safe_code(exc.code, 'AI_ERROR')
+        else:
+            code = error_code(exc, 'TOOL_ERROR' if isinstance(exc, RuntimeError) else 'AI_ERROR')
         await _failure(job_id, code, usage=tuple(service.usage.records()) if service else (), progress=progress)
 
 

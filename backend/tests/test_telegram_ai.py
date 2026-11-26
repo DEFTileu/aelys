@@ -365,6 +365,11 @@ async def test_unreadable_attachment_hands_off_instead_of_answering_blindly(stat
     await db.flush()
     decision = await telegram_ai.generate_business_draft(db, integration, target)
     assert decision.action == 'handoff' and decision.text is None and decision.owner_note
+    assert decision.error_code == {
+        'model': 'MEDIA_MODEL_UNAVAILABLE', 'download': 'TELEGRAM_MEDIA_UNAVAILABLE',
+        'audio': 'BUSINESS_AUDIO_UNSUPPORTED', 'too_many_photos': 'BUSINESS_MEDIA_LIMIT',
+    }[unavailable]
+    assert f'Код: {decision.error_code}' in decision.owner_note
     assert not calls
     assert bool(downloads) == (unavailable == 'download')
 

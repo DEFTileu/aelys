@@ -12,6 +12,10 @@ class AIError(Exception):
 class ProviderError(AIError):
     code = "PROVIDER_ERROR"
 
+    def __init__(self, message: str, *, http_status: int | None = None):
+        super().__init__(message)
+        self.http_status = http_status
+
 
 class ModelUnavailable(AIError):
     code = "MODEL_UNAVAILABLE"

@@ -467,7 +467,7 @@ async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: T
         if automatic:
             await check_automatic_reply_current(db, item, message)
         terminal = draft.action != "reply"
-        changed = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version, TelegramBusinessMessage.draft_status == "generating", TelegramBusinessMessage.deleted_at.is_(None)).values(draft_text=draft.text, draft_sticker=json.dumps(draft.sticker, separators=(',', ':')) if draft.sticker else None, owner_note=draft.owner_note, draft_status=draft.action if terminal else "ready", draft_error_code=None, updated_at=now(), version=TelegramBusinessMessage.version + 1))
+        changed = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version, TelegramBusinessMessage.draft_status == "generating", TelegramBusinessMessage.deleted_at.is_(None)).values(draft_text=draft.text, draft_sticker=json.dumps(draft.sticker, separators=(',', ':')) if draft.sticker else None, owner_note=draft.owner_note, draft_status=draft.action if terminal else "ready", draft_error_code=draft.error_code, updated_at=now(), version=TelegramBusinessMessage.version + 1))
         notify_owner = False
         if int(getattr(changed, "rowcount", 0) or 0) == 1 and draft.action == "handoff":
             existing_notice = (await db.execute(select(Notification.id).where(
@@ -489,9 +489,16 @@ async def generate_draft(db: AsyncSession, item: TelegramIntegration, message: T
             except Exception:  # noqa: BLE001 - durable Notification survives failed Telegram delivery
                 logger.info("Telegram handoff notification unavailable")
     except TelegramAIError as exc:
-        await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version).values(draft_status="failed", draft_error_code=exc.code, version=TelegramBusinessMessage.version + 1))
+        from .telegram_command_errors import notice
+        failed = await db.execute(update(TelegramBusinessMessage).where(TelegramBusinessMessage.id == message.id, TelegramBusinessMessage.version == claimed_version).values(draft_status="failed", draft_error_code=exc.code, updated_at=now(), version=TelegramBusinessMessage.version + 1))
         await db.commit()
-        raise error(409, exc.code, "Не удалось подготовить AI-ответ. Проверьте провайдера и лимит.") from None
+        if automatic and int(getattr(failed, "rowcount", 0) or 0) == 1:
+            from .telegram_personal_dialogue import _send_owner
+            try:
+                await _send_owner(item.id, f"Автоответчик Telegram\n{notice(exc.code)}\nID: {message.id}")
+            except Exception:  # noqa: BLE001 - the recorded failure remains available via /errors
+                logger.info("Telegram business failure notice unavailable")
+        raise error(409, exc.code, notice(exc.code)) from None
     except HTTPException as exc:
         # Stale automatic decisions still incurred provider usage: keep that audit
         # while making the claimed generation terminal/retryable only by the owner.
