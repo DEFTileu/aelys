@@ -168,6 +168,23 @@ async def test_resource_uuid_is_not_mistaken_for_iban():
     assert len(transport.payloads) == 1
 
 
+@pytest.mark.parametrize("card", ["", " 4111-1111-1111-1111"])
+async def test_task_uuid_is_distinct_from_card_numbers(card):
+    adapter, transport = adapter_for(ClaudeAdapter)
+    task_id = "deafbeef-4321-4321-8123-123458abcdef"
+    request = ProviderRequest("test-model", (
+        ChatMessage("tool", '{"id":"' + task_id + card + '"}', tool_call_id="call-1"),
+    ))
+    if card:
+        with pytest.raises(AIError) as failure:
+            await adapter.complete(request)
+        assert failure.value.code == "SENSITIVE_DATA_BLOCKED"
+        assert transport.payloads == []
+    else:
+        assert (await adapter.complete(request)).text == "ok"
+        assert task_id in str(transport.payloads[0])
+
+
 @pytest.mark.parametrize("content", [
     '{"password":"synthetic-password"}',
     '{"content":"\\u0073\\u006b-synthetic123456789"}',

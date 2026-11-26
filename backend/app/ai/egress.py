@@ -43,6 +43,7 @@ _PATTERNS = tuple(re.compile(pattern, re.IGNORECASE) for pattern in (
     r"\[REDACTED\]",
 ))
 _IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30}\b")
+_UUID4 = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b", re.IGNORECASE)
 _CARD = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
 
 
@@ -59,7 +60,9 @@ def _contains_sensitive(text: str, known_secrets: tuple[str, ...]) -> bool:
         number = "".join(str(ord(char) - 55) if char.isalpha() else char for char in rotated)
         if int(number) % 97 == 1:
             return True
-    for match in _CARD.finditer(normalized):
+    # UUIDv4 groups can accidentally satisfy Luhn. Keep a nonnumeric
+    # separator so the card check still sees numbers next to an identifier.
+    for match in _CARD.finditer(_UUID4.sub("_", normalized)):
         digits = [int(char) for char in match.group() if char.isascii() and char.isdigit()]
         if not 13 <= len(digits) <= 19 or len(set(digits)) < 2:
             continue
