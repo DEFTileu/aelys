@@ -115,6 +115,7 @@ export function TaskEditor({ value, onChange, task, projects, projectsUnavailabl
         <label className="task-editor__field"><span>Title</span>
           <input ref={titleRef} aria-label="Task title" type="text" value={value.title} required disabled={pending} onChange={(event) => patch({ title: event.target.value })} />
         </label>
+        {/^\/mail\?mail=[a-f0-9-]{36}$/i.test(task.description) && <a href={task.description}>Open source message</a>}
         <div className="task-editor__field"><span>Description</span><RichTextEditor key={task.id} label="Description" compact value={value.description} disabled={pending} onChange={description => patch({ description })} /></div>
         <div className="task-editor__date-fields">
           <label className="task-editor__field"><span>Date</span>

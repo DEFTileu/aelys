@@ -607,6 +607,7 @@ export class ApiClient {
   public mailMessages(query?: Query, options?: RequestOptions) { return this.request<readonly MailMessage[]>("/api/v1/mail/messages", this.read({ ...options, query }, "mail-messages")); }
   public setMailMessageRead(messageId: Id, body: MailMessageReadIn, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/mail/messages/${encodeURIComponent(messageId)}`, this.write(body, { queueOnOffline: false, ...options }, "PATCH")); }
   public mailPage(query?: Query, options?: RequestOptions) { return this.request<ReadPage<MailMessage>>("/api/v1/read/mail", this.read({ ...options, query }, "mail-pages")); }
+  public suggestMailTask(id: Id, timezone: string) { return this.request<Pick<AIAction, 'id' | 'title' | 'summary' | 'status'> | null>(`/api/v1/mail/messages/${encodeURIComponent(id)}/task-suggestion?timezone=${encodeURIComponent(timezone)}`, this.write(undefined, { queueOnOffline: false })); }
   public mailMessage(id: Id, options?: RequestOptions) { return this.request<MailMessage>(`/api/v1/read/mail/${encodeURIComponent(id)}`, this.read(options, `mail-details?id=${encodeURIComponent(id)}`)); }
   public importMailMessage(body: MessageIn, options?: RequestOptions) { return this.request<MailMessage>("/api/v1/mail/messages", this.write(body, options)); }
   public mailDrafts(options?: RequestOptions) { return this.request<readonly MailDraft[]>("/api/v1/mail/drafts", this.read(options, "mail-drafts")); }

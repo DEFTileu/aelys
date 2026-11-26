@@ -26,7 +26,7 @@ async def approve_action(db: AsyncSession, owner_id: str, action_id: str) -> AIA
         raise HTTPException(409, detail={'code': 'ACTION_REJECTED', 'message': 'This action was rejected'})
     if action.status != 'pending':
         return action
-    # An invalidator races on this row only; approval never reads connector data.
+    # Claim before running any domain mutation.
     claimed = await db.execute(update(AIAction).where(
         AIAction.id == action_id, AIAction.owner_id == owner_id, AIAction.status == 'pending',
     ).values(status='approved').returning(AIAction.id).execution_options(synchronize_session=False))
@@ -45,6 +45,13 @@ async def approve_action(db: AsyncSession, owner_id: str, action_id: str) -> AIA
         await db.commit()
         await db.refresh(action)
         return action
+    if action.source_kind == "mail_task_suggestion":
+        from app.domains.mail_task_suggestions import validate_approval
+        try:
+            await validate_approval(db, action)
+        except HTTPException:
+            await db.rollback()
+            raise
     from .personal_tools import personal_tool_registry
     registry = personal_tool_registry(db, owner_id, action.id)
     call = ToolCall(action.tool, action.arguments_json or {}, action.id)

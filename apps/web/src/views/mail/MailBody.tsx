@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { MailMessage } from '@aelys/shared'
 import { getSharedApiClient } from '../../lib/api'
+import { MailTaskSuggestion } from './MailTaskSuggestion'
 import { mailDocument } from './mailHtml'
 
 /** Load only the opened message; the shared client caches detail reads on this device. */
@@ -19,8 +20,7 @@ export function MailBody({ message, offline }: { message: MailMessage; offline: 
   }, [message.id, message.version, offline])
   const html = detail?.id === message.id ? detail.body_html : message.body_html
   const document = useMemo(() => html ? mailDocument(html, images) : null, [html, images])
-  if (!document) return <div className="mail-body">{message.body}</div>
-  return <div className="mail-rich-body">
+  return <>{!document ? <div className="mail-body">{message.body}</div> : <div className="mail-rich-body">
     <div className="mail-rich-tools" aria-label="Message display">
       <button type="button" aria-pressed={mode === 'formatted'} onClick={() => setMode('formatted')}>Formatted</button>
       <button type="button" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>Plain text</button>
@@ -31,5 +31,7 @@ export function MailBody({ message, offline }: { message: MailMessage; offline: 
     {mode === 'formatted'
       ? <iframe title="Formatted email" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer" srcDoc={document.srcDoc} />
       : <div className="mail-body">{message.body}</div>}
-  </div>
+  </div>}
+    <MailTaskSuggestion key={message.id} id={message.id} offline={offline} />
+  </>
 }

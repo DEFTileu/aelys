@@ -4702,6 +4702,75 @@
         ]
       }
     },
+    "/api/v1/mail/messages/{item_id}/task-suggestion": {
+      "post": {
+        "summary": "Suggest Mail Task",
+        "operationId": "suggest_mail_task_api_v1_mail_messages__item_id__task_suggestion_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "timezone",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timezone"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MailTaskSuggestionOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Suggest Mail Task Api V1 Mail Messages  Item Id  Task Suggestion Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mail/messages": {
       "get": {
         "summary": "Mail Messages",
@@ -11640,22 +11709,22 @@
         "properties": {
           "task_response": {
             "type": "string",
-            "pattern": "^≈?[0-9](\\.[05])?$",
+            "pattern": "^\u2248?[0-9](\\.[05])?$",
             "title": "Task Response"
           },
           "coherence": {
             "type": "string",
-            "pattern": "^≈?[0-9](\\.[05])?$",
+            "pattern": "^\u2248?[0-9](\\.[05])?$",
             "title": "Coherence"
           },
           "lexical": {
             "type": "string",
-            "pattern": "^≈?[0-9](\\.[05])?$",
+            "pattern": "^\u2248?[0-9](\\.[05])?$",
             "title": "Lexical"
           },
           "grammar": {
             "type": "string",
-            "pattern": "^≈?[0-9](\\.[05])?$",
+            "pattern": "^\u2248?[0-9](\\.[05])?$",
             "title": "Grammar"
           }
         },
@@ -14224,6 +14293,40 @@
           "owner_id"
         ],
         "title": "MailMessageOut"
+      },
+      "MailTaskSuggestionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "failed"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "status"
+        ],
+        "title": "MailTaskSuggestionOut"
       },
       "MemoryFactIn": {
         "properties": {

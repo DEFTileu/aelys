@@ -892,6 +892,17 @@ async def import_eml(file: UploadFile = File(), principal=Depends(current_princi
     await db.refresh(item)
     return item
 
+class MailTaskSuggestionOut(BaseModel):
+    id: str
+    title: str
+    summary: str
+    status: Literal["pending", "approved", "rejected", "failed"]
+
+@router.post("/mail/messages/{item_id}/task-suggestion", response_model=MailTaskSuggestionOut | None)
+async def suggest_mail_task(item_id: str, timezone: str | None = Query(default=None, max_length=64), principal=Depends(current_principal), db: AsyncSession=Depends(get_db)):
+    from .mail_task_suggestions import suggest
+    return await suggest(db, principal[0].id, item_id, timezone)
+
 @router.post("/mail/messages", response_model=MailMessageOut)
 async def import_message(body:MessageIn, principal=Depends(current_principal), db:AsyncSession=Depends(get_db)):
     user,_=principal; await owned_ref(MailAccount, body.account_id, user.id, db)

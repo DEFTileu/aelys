@@ -56,7 +56,7 @@ async def test_gmail_oauth_read_draft_and_disconnect(gmail_client, monkeypatch):
             assert kwargs['params']['maxResults'] == '25'
             return {'messages':[{'id':'external-1'}], 'nextPageToken':'next-page'}
         if url.endswith('/messages/external-1'):
-            return {'threadId':'thread-1','internalDate':'1793264400000','payload':{'mimeType':'text/plain','headers':[{'name':'From','value':'person@example.test'},{'name':'Subject','value':'Gmail message'}],'body':{'data':base64.urlsafe_b64encode(b'Plain body').decode()}}}
+            return {'threadId':'thread-1','internalDate':'1793264400000','payload':{'mimeType':'text/plain','headers':[{'name':'From','value':'person@example.test'},{'name':'Subject','value':'Gmail message'}],'body':{'data':base64.urlsafe_b64encode(b'Please review the design').decode()}}}
         if '/drafts' in url:
             raw = base64.urlsafe_b64decode(kwargs['json']['message']['raw'])
             assert b'My Gmail reply' in raw
@@ -89,7 +89,11 @@ async def test_gmail_oauth_read_draft_and_disconnect(gmail_client, monkeypatch):
     assert synced.json() == {'imported':1,'next_page_token':'next-page'}
     assert (await client.post(path + '/sync', params={'page_token':'next-page'})).json()['imported'] == 0
     mail = (await client.get('/api/v1/mail/messages')).json()
-    assert len(mail) == 1 and mail[0]['body'] == 'Plain body'
+    assert len(mail) == 1 and mail[0]['body'] == 'Please review the design'
+    before_suggestion = list(calls)
+    card = (await client.post(f"/api/v1/mail/messages/{mail[0]['id']}/task-suggestion")).json()
+    assert card['title'] == 'review the design' and card['status'] == 'pending'
+    assert calls == before_suggestion
     draft = (await client.post('/api/v1/mail/drafts', json={'recipients':['person@example.test'],'subject':'Reply','content':'My Gmail reply'})).json()
     publish = path + f"/drafts/{draft['id']}"
     assert (await client.post(publish, json={'version':draft['version']})).status_code == 200
@@ -100,6 +104,7 @@ async def test_gmail_oauth_read_draft_and_disconnect(gmail_client, monkeypatch):
         link = await session.get(GmailDraftLink, draft['id']); link.state = 'saving'; await session.commit()
     assert (await client.post(publish, json={'version':draft['version']})).status_code == 409
     disconnected = await client.post(path + '/disconnect')
+    assert (await client.post(f"/api/v1/ai/actions/{card['id']}/approve")).status_code == 404
     assert disconnected.json() == {'disconnected':True,'provider_revoked':True}
     assert (await client.post(path + '/sync')).status_code == 409
     assert not any('/send' in call[1] for call in calls)

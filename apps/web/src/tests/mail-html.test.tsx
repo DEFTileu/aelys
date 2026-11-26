@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mailDocument } from '../views/mail/mailHtml'
 import { MailBody } from '../views/mail/MailBody'
 import type { MailMessage } from '@aelys/shared'
-const client=vi.hoisted(()=>({mailMessage:vi.fn()}))
+const client=vi.hoisted(()=>({mailMessage:vi.fn(),suggestMailTask:vi.fn(),approveAIAction:vi.fn(),rejectAIAction:vi.fn()}))
 vi.mock('../lib/api',()=>({getSharedApiClient:()=>client}))
 let root:ReturnType<typeof createRoot>|undefined
 beforeEach(()=>{vi.resetAllMocks();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)})
@@ -59,6 +59,31 @@ it('keeps cached text usable when offline HTML is absent',async()=>{
  client.mailMessage.mockRejectedValue(new Error('cache miss'))
  const host=document.createElement('div');document.body.appendChild(host);root=createRoot(host)
  await act(async()=>root!.render(<MailBody message={{id:'m1',body:'Saved text'} as MailMessage} offline/>))
- expect(host.textContent).toBe('Saved text')
+ expect(host.querySelector('.mail-body')?.textContent).toBe('Saved text')
+ expect(host.querySelector('button')?.disabled).toBe(true)
  expect(client.mailMessage).toHaveBeenCalledWith('m1',{cacheOnly:true})
+})
+
+it.each(['Create task', 'Dismiss'])('presents the source and deadline before %s', async decision => {
+  const message = {id: 'source', version: 1, body: 'Please review the report'} as MailMessage
+  const card = {id: 'proposal', title: 'Review the report', summary: '2026-12-01T12:00:00Z', status: 'pending'}
+  client.mailMessage.mockResolvedValue(message)
+  client.suggestMailTask.mockResolvedValue(card)
+  client.approveAIAction.mockResolvedValue({...card, status: 'approved'})
+  client.rejectAIAction.mockResolvedValue({...card, status: 'rejected'})
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  root = createRoot(host)
+  await act(async () => root!.render(<MailBody message={message} offline={false} />))
+  expect(client.suggestMailTask).not.toHaveBeenCalled()
+  const click = async (name: string) => act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === name)!.click())
+  await click('Suggest a task')
+  expect(client.suggestMailTask).toHaveBeenCalledWith('source', Intl.DateTimeFormat().resolvedOptions().timeZone)
+  expect(host.textContent).toContain(card.title)
+  expect(host.textContent).toContain(new Date(card.summary).toLocaleString())
+  expect(host.querySelector('a')?.getAttribute('href')).toBe('/mail?mail=source')
+  expect(client.approveAIAction).not.toHaveBeenCalled()
+  await click(decision)
+  expect(decision === 'Dismiss' ? client.rejectAIAction : client.approveAIAction).toHaveBeenCalledWith('proposal')
+  expect(host.textContent).toContain(decision === 'Dismiss' ? 'Suggestion dismissed.' : 'Task created.')
 })

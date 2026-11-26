@@ -800,6 +800,16 @@ excluded from frontend state, caches and diagnostic/access-log query strings.
 `MailAccount.version` increases on reconnect, allowing clients to detect completion
 without importing mail automatically. See [Gmail setup](GMAIL_SETUP.md).
 
+### Task suggestion from an opened mail message
+
+The authenticated owner calls `POST /api/v1/mail/messages/{id}/task-suggestion` with
+an optional IANA `timezone` query parameter. The response is a proposal
+(`id`, `title`, ISO-instant `summary` or empty string, `status`) or JSON null
+when extraction abstains. Repeating the call returns the same decision for this
+owner and message. Approval and dismissal use the existing AI action endpoints.
+Mail source links open `/mail?mail={id}`. A removed or inaccessible source returns
+404; a pending proposal whose content or Gmail connection changed returns 409.
+
 ### Formatted mail alternative (2026-11-04)
 
 `GET /api/v1/read/mail/{id}` returns `MailMessageDetailOut`, adding optional

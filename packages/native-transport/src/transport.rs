@@ -1150,6 +1150,7 @@ const API_ALLOWLIST: &[(&str, &str)] = &[
     ("POST", "mail/gmail/*/disconnect"),
     ("POST", "mail/accounts"),
     ("POST", "mail/messages"),
+    ("POST", "mail/messages/*/task-suggestion"),
     ("PATCH", "mail/messages/*"),
     ("POST", "focus/sessions/*/pause"),
     ("POST", "focus/sessions/*/resume"),
@@ -5264,6 +5265,9 @@ mod tests {
         assert!(ok("POST", "/api/v1/integrations/telegram/connect"));
         assert!(ok("POST", "/api/v1/focus/sessions/abc123/pause"));
         assert!(ok("GET", "/api/v1/notes/abc123/revisions"));
+        assert!(ok("POST", "/api/v1/mail/messages/abc123/task-suggestion"));
+        assert!(!ok("POST", "/api/v1/mail/messages/abc123/task-suggestion/extra"));
+        assert!(!ok("GET", "/api/v1/mail/messages/abc123/task-suggestion"));
         // wrong method, auth/device/sync/credential routes, traversal and extra segments
         assert!(!ok("GET", "/api/v1/integrations/telegram/connect"));
         assert!(!ok("POST", "/api/v1/auth/login"));
